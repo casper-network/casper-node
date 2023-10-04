@@ -496,7 +496,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
     };
 
     let do_nothing_contract_package_hash = do_nothing_contract_package_key
-        .into_entity_addr()
+        .into_package_addr()
         .map(PackageHash::new)
         .expect("should be package hash");
 
@@ -732,7 +732,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder.exec(exec_request_1).expect_failure();
 
     // Disable payment contract
     let disable_request = {
@@ -870,7 +870,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
     };
 
     for exec_request in call_stored_payment_requests_2 {
-        builder.exec(exec_request).expect_success().commit();
+        builder.exec(exec_request).expect_failure();
     }
 }
 

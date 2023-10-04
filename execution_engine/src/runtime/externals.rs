@@ -2,7 +2,6 @@ use std::{collections::BTreeSet, convert::TryFrom};
 
 use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
-use crate::ADDRESS_LENGTH;
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
     account::AccountHash,

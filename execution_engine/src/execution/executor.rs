@@ -1,28 +1,21 @@
-use std::convert::{Infallible, TryFrom};
+use std::convert::TryFrom;
 use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
 use casper_storage::global_state::state::StateReader;
-use casper_types::package::PackageKindTag;
-use casper_types::system::handle_payment::METHOD_GET_PAYMENT_PURSE;
-use casper_types::system::SystemEntityType;
+
 use casper_types::{
     account::AccountHash,
     addressable_entity::NamedKeys,
     bytesrepr::FromBytes,
     package::PackageKind,
     system::{auction, handle_payment, mint, AUCTION, HANDLE_PAYMENT, MINT},
-    AddressableEntity, AddressableEntityHash, ApiError, BlockTime, CLTyped, CLValue, CLValueError,
-    ContextAccessRights, DeployHash, EntryPointType, Gas, Key, Motes, Phase, ProtocolVersion,
-    RuntimeArgs, StoredValue, Tagged, URef, U512,
+    AddressableEntity, AddressableEntityHash, ApiError, BlockTime, CLTyped, ContextAccessRights,
+    DeployHash, EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, Tagged,
+    URef, U512,
 };
 
-use crate::engine_state::{
-    SystemContractRegistry, TransferArgs, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
-};
+use crate::engine_state::TransferArgs;
 
-use crate::system::handle_payment::HandlePayment;
-
-use crate::system::standard_payment::handle_payment_provider::HandlePaymentProvider;
 use crate::{
     engine_state::{
         execution_kind::ExecutionKind, EngineConfig, Error as EngineStateError, ExecutionResult,
@@ -144,82 +137,82 @@ impl Executor {
         }
     }
 
-    /// Executes standard payment code natively.
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn exec_standard_payment<R>(
-        &self,
-        payment_args: RuntimeArgs,
-        payment_base_key: Key,
-        entity: &AddressableEntity,
-        package_kind: PackageKind,
-        payment_named_keys: &mut NamedKeys,
-        access_rights: ContextAccessRights,
-        authorization_keys: BTreeSet<AccountHash>,
-        account_hash: AccountHash,
-        blocktime: BlockTime,
-        deploy_hash: DeployHash,
-        payment_gas_limit: Gas,
-        protocol_version: ProtocolVersion,
-        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-        phase: Phase,
-        stack: RuntimeStack,
-    ) -> ExecutionResult
-    where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<Error>,
-    {
-        let spending_limit: U512 = match try_get_amount(&payment_args) {
-            Ok(spending_limit) => spending_limit,
-            Err(error) => {
-                return ExecutionResult::precondition_failure(error.into());
-            }
-        };
-
-        let address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_ref(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-
-        let runtime_context = self.create_runtime_context(
-            payment_named_keys,
-            entity,
-            payment_base_key,
-            authorization_keys,
-            access_rights,
-            package_kind,
-            account_hash,
-            address_generator,
-            Rc::clone(&tracking_copy),
-            blocktime,
-            protocol_version,
-            deploy_hash,
-            phase,
-            payment_args,
-            payment_gas_limit,
-            spending_limit,
-            EntryPointType::Session,
-        );
-
-        let effects = tracking_copy.borrow().effects();
-
-        // Standard payment is executed in the calling account's context; the stack already
-        // captures that.
-        let mut runtime = Runtime::new(runtime_context);
-
-        match runtime.call_host_standard_payment(stack) {
-            Ok(()) => ExecutionResult::Success {
-                effects: runtime.context().effects(),
-                transfers: runtime.context().transfers().to_owned(),
-                cost: runtime.context().gas_counter(),
-            },
-            Err(error) => ExecutionResult::Failure {
-                effects,
-                error: error.into(),
-                transfers: runtime.context().transfers().to_owned(),
-                cost: runtime.context().gas_counter(),
-            },
-        }
-    }
+    // /// Executes standard payment code natively.
+    // #[allow(clippy::too_many_arguments)]
+    // pub(crate) fn exec_standard_payment<R>(
+    //     &self,
+    //     payment_args: RuntimeArgs,
+    //     payment_base_key: Key,
+    //     entity: &AddressableEntity,
+    //     package_kind: PackageKind,
+    //     payment_named_keys: &mut NamedKeys,
+    //     access_rights: ContextAccessRights,
+    //     authorization_keys: BTreeSet<AccountHash>,
+    //     account_hash: AccountHash,
+    //     blocktime: BlockTime,
+    //     deploy_hash: DeployHash,
+    //     payment_gas_limit: Gas,
+    //     protocol_version: ProtocolVersion,
+    //     tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
+    //     phase: Phase,
+    //     stack: RuntimeStack,
+    // ) -> ExecutionResult
+    // where
+    //     R: StateReader<Key, StoredValue>,
+    //     R::Error: Into<Error>,
+    // {
+    //     let spending_limit: U512 = match try_get_amount(&payment_args) {
+    //         Ok(spending_limit) => spending_limit,
+    //         Err(error) => {
+    //             return ExecutionResult::precondition_failure(error.into());
+    //         }
+    //     };
+    //
+    //     let address_generator = {
+    //         let generator = AddressGenerator::new(deploy_hash.as_ref(), phase);
+    //         Rc::new(RefCell::new(generator))
+    //     };
+    //
+    //     let runtime_context = self.create_runtime_context(
+    //         payment_named_keys,
+    //         entity,
+    //         payment_base_key,
+    //         authorization_keys,
+    //         access_rights,
+    //         package_kind,
+    //         account_hash,
+    //         address_generator,
+    //         Rc::clone(&tracking_copy),
+    //         blocktime,
+    //         protocol_version,
+    //         deploy_hash,
+    //         phase,
+    //         payment_args,
+    //         payment_gas_limit,
+    //         spending_limit,
+    //         EntryPointType::Session,
+    //     );
+    //
+    //     let effects = tracking_copy.borrow().effects();
+    //
+    //     // Standard payment is executed in the calling account's context; the stack already
+    //     // captures that.
+    //     let mut runtime = Runtime::new(runtime_context);
+    //
+    //     match runtime.call_host_standard_payment(stack) {
+    //         Ok(()) => ExecutionResult::Success {
+    //             effects: runtime.context().effects(),
+    //             transfers: runtime.context().transfers().to_owned(),
+    //             cost: runtime.context().gas_counter(),
+    //         },
+    //         Err(error) => ExecutionResult::Failure {
+    //             effects,
+    //             error: error.into(),
+    //             transfers: runtime.context().transfers().to_owned(),
+    //             cost: runtime.context().gas_counter(),
+    //         },
+    //     }
+    // }
 
     /// Handles necessary address resolution and orchestration to securely call a system contract
     /// using the runtime.
@@ -410,7 +403,7 @@ impl Executor {
 
     /// Executes standard payment code natively.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn exec_standard_payment_via_mint<R>(
+    pub(crate) fn exec_standard_payment<R>(
         &self,
         payment_args: RuntimeArgs,
         entity: &AddressableEntity,
@@ -437,7 +430,7 @@ impl Executor {
 
         let get_payment_purse_stack = RuntimeStack::new_system_call_stack(max_stack_height);
 
-        let (maybe_purse, get_payment_result) = self.get_payment_purse_for_standard_payment(
+        let (maybe_purse, get_payment_result) = self.get_payment_purse(
             &entity,
             package_kind.clone(),
             authorization_keys.clone(),
@@ -517,7 +510,7 @@ impl Executor {
         Ok(payment_result)
     }
 
-    pub(crate) fn get_payment_purse_for_standard_payment<R>(
+    pub(crate) fn get_payment_purse<R>(
         &self,
         entity: &AddressableEntity,
         package_kind: PackageKind,

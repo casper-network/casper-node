@@ -95,6 +95,7 @@ pub fn update_associated_key(
     }
 }
 
+/// Add session code to an entity associated with an Account.
 pub fn add_session_version(entry_points: EntryPoints) {
     let (entry_points_ptr, entry_points_size, _entry_point_bytes) = to_ptr(entry_points);
 

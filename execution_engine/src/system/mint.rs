@@ -12,7 +12,7 @@ use casper_types::{
         mint::{Error, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         CallStackElement,
     },
-    Key, Phase, PublicKey, URef, U512,
+    Key, PublicKey, URef, U512,
 };
 
 use crate::{

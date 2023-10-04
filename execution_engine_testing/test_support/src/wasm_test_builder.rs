@@ -890,7 +890,7 @@ where
     pub fn expect_success(&mut self) -> &mut Self {
         // Check first result, as only first result is interesting for a simple test
         let exec_results = self
-            .get_last_exec_results()
+            .get_last_exec_result()
             .expect("Expected to be called after run()");
         let exec_result = exec_results
             .get(0)
@@ -909,7 +909,7 @@ where
     pub fn expect_failure(&mut self) -> &mut Self {
         // Check first result, as only first result is interesting for a simple test
         let exec_results = self
-            .get_last_exec_results()
+            .get_last_exec_result()
             .expect("Expected to be called after run()");
         let exec_result = exec_results
             .get(0)
@@ -927,7 +927,7 @@ where
 
     /// Returns `true` if the las exec had an error, otherwise returns false.
     pub fn is_error(&self) -> bool {
-        self.get_last_exec_results()
+        self.get_last_exec_result()
             .expect("Expected to be called after run()")
             .get(0)
             .expect("Unable to get first execution result")
@@ -936,7 +936,7 @@ where
 
     /// Returns an `Option<engine_state::Error>` if the last exec had an error.
     pub fn get_error(&self) -> Option<engine_state::Error> {
-        self.get_last_exec_results()
+        self.get_last_exec_result()
             .expect("Expected to be called after run()")
             .get(0)
             .expect("Unable to get first deploy result")
@@ -1017,7 +1017,7 @@ where
     }
 
     /// Returns the last results execs.
-    pub fn get_last_exec_results(&self) -> Option<Vec<Rc<ExecutionResult>>> {
+    pub fn get_last_exec_result(&self) -> Option<Vec<Rc<ExecutionResult>>> {
         let exec_results = self.exec_results.last()?;
 
         Some(exec_results.iter().map(Rc::clone).collect())
@@ -1248,7 +1248,7 @@ where
     /// Returns the `Gas` cost of the last exec.
     pub fn last_exec_gas_cost(&self) -> Gas {
         let exec_results = self
-            .get_last_exec_results()
+            .get_last_exec_result()
             .expect("Expected to be called after run()");
         let exec_result = exec_results.get(0).expect("should have result");
         exec_result.cost()

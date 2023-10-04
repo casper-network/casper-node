@@ -839,7 +839,7 @@ fn should_release_founder_stake() {
 
         let error = {
             let response = builder
-                .get_last_exec_results()
+                .get_last_exec_result()
                 .expect("should have last exec result");
             let exec_response = response.last().expect("should have response");
             exec_response
@@ -2344,7 +2344,7 @@ fn should_not_partially_undelegate_uninitialized_vesting_schedule() {
     builder.exec(partial_undelegate).commit();
     let error = {
         let response = builder
-            .get_last_exec_results()
+            .get_last_exec_result()
             .expect("should have last exec result");
         let exec_response = response.last().expect("should have response");
         exec_response
@@ -2418,7 +2418,7 @@ fn should_not_fully_undelegate_uninitialized_vesting_schedule() {
     builder.exec(full_undelegate).commit();
     let error = {
         let response = builder
-            .get_last_exec_results()
+            .get_last_exec_result()
             .expect("should have last exec result");
         let exec_response = response.last().expect("should have response");
         exec_response
@@ -2535,7 +2535,7 @@ fn should_not_undelegate_vfta_holder_stake() {
     builder.exec(partial_unbond).commit();
     let error = {
         let response = builder
-            .get_last_exec_results()
+            .get_last_exec_result()
             .expect("should have last exec result");
         let exec_response = response.last().expect("should have response");
         exec_response
@@ -2601,7 +2601,7 @@ fn should_release_vfta_holder_stake() {
 
         let error = {
             let response = builder
-                .get_last_exec_results()
+                .get_last_exec_result()
                 .expect("should have last exec result");
             let exec_response = response.last().expect("should have response");
             exec_response

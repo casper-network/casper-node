@@ -22,7 +22,6 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use serde_map_to_array::KeyValueJsonSchema;
 use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
-use crate::KeyTag::Account;
 use crate::{
     account::AccountHash,
     addressable_entity::{AssociatedKeys, Error, FromStrError, Weight},
@@ -1038,6 +1037,7 @@ impl Package {
         self.enabled_versions().0.values().next_back().copied()
     }
 
+    /// Return the Key representation for the previous entity.
     pub fn previous_entity_key(&self) -> Option<Key> {
         if let Some(previous_entity_hash) = self.current_entity_hash() {
             return Some(Key::addressable_entity_key(
@@ -1071,11 +1071,9 @@ impl Package {
         self.package_kind
     }
 
+    /// Is the given Package associated to an Account.
     pub fn is_account_kind(&self) -> bool {
-        match self.package_kind {
-            PackageKind::Account(_) => true,
-            _ => false,
-        }
+        matches!(self.package_kind, PackageKind::Account(_))
     }
 
     /// Update the entity package kind.

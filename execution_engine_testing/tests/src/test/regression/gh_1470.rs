@@ -147,7 +147,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
     builder.exec(call_contract_request).commit();
 
     let response = builder
-        .get_last_exec_results()
+        .get_last_exec_result()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -167,7 +167,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
     builder.exec(call_versioned_contract_request).commit();
 
     let response = builder
-        .get_last_exec_results()
+        .get_last_exec_result()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -484,7 +484,7 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
     builder.exec(call_contract_request).commit();
 
     let response = builder
-        .get_last_exec_results()
+        .get_last_exec_result()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -505,7 +505,7 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
     builder.exec(call_versioned_contract_request).commit();
 
     let response = builder
-        .get_last_exec_results()
+        .get_last_exec_result()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -591,7 +591,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
     builder.exec(call_contract_request).commit();
 
     let response = builder
-        .get_last_exec_results()
+        .get_last_exec_result()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -612,7 +612,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
     builder.exec(call_versioned_contract_request).commit();
 
     let response = builder
-        .get_last_exec_results()
+        .get_last_exec_result()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");

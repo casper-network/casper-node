@@ -308,7 +308,7 @@ fn should_not_call_session_from_contract() {
     builder.exec(exec_request_2).commit();
 
     let response = builder
-        .get_last_exec_results()
+        .get_last_exec_result()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");

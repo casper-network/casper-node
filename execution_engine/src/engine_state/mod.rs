@@ -19,7 +19,7 @@ mod transfer;
 pub mod upgrade;
 
 use itertools::Itertools;
-use std::convert::Infallible;
+
 use std::{
     cell::RefCell,
     collections::{btree_map::Entry, BTreeMap, BTreeSet},
@@ -44,14 +44,13 @@ use casper_storage::{
         trie_store::operations::PruneResult as GlobalStatePruneResult,
     },
 };
-use casper_types::package::PackageKindTag;
-use casper_types::system::mint::ARG_AMOUNT;
+
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{AssociatedKeys, NamedKeys},
     bytesrepr::ToBytes,
     execution::Effects,
-    package::{EntityVersions, Groups, PackageKind, PackageStatus},
+    package::{EntityVersions, Groups, PackageKind, PackageKindTag, PackageStatus},
     system::{
         auction::{
             BidAddr, BidKind, EraValidators, UnbondingPurse, ValidatorBid, WithdrawPurse,
@@ -64,7 +63,7 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, ApiError, BlockTime, ByteCodeHash,
-    CLValue, CLValueError, ChainspecRegistry, DeployHash, DeployInfo, Digest, EntryPoints, EraId,
+    CLValue, ChainspecRegistry, DeployHash, DeployInfo, Digest, EntryPoints, EraId,
     ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Package, PackageHash, Phase,
     ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Tagged, URef, UpgradeConfig, U512,
 };
@@ -1182,7 +1181,7 @@ where
                         DirectSystemContractCall::CreatePurse,
                         RuntimeArgs::new(), // mint create takes no arguments
                         &entity,
-                        package_kind.clone(),
+                        package_kind,
                         authorization_keys.clone(),
                         account_hash,
                         blocktime,
@@ -1275,7 +1274,7 @@ where
                     DirectSystemContractCall::GetPaymentPurse,
                     RuntimeArgs::default(),
                     &entity,
-                    package_kind.clone(),
+                    package_kind,
                     authorization_keys.clone(),
                     account_hash,
                     blocktime,
@@ -1319,7 +1318,7 @@ where
                     DirectSystemContractCall::Transfer,
                     runtime_args,
                     &entity,
-                    package_kind.clone(),
+                    package_kind,
                     authorization_keys.clone(),
                     account_hash,
                     blocktime,
@@ -1741,14 +1740,12 @@ where
 
             let payment_args = payment.args().clone();
 
-            let entity_key = Key::addressable_entity_key(package_kind.tag(), entity_hash);
-
             if payment.is_standard_payment(phase) {
                 // Todo potentially could be moved to Executor::Exec
-                match executor.exec_standard_payment_via_mint(
+                match executor.exec_standard_payment(
                     payment_args,
                     &entity,
-                    package_kind.clone(),
+                    package_kind,
                     authorization_keys.clone(),
                     account_hash,
                     blocktime,
@@ -1781,7 +1778,7 @@ where
                     payment_args,
                     entity_hash,
                     &entity,
-                    package_kind.clone(),
+                    package_kind,
                     &mut payment_named_keys,
                     payment_access_rights,
                     authorization_keys.clone(),

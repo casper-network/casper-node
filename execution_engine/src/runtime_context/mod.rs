@@ -27,10 +27,9 @@ use casper_types::{
     package::PackageKind,
     system::auction::{BidKind, EraInfo},
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
-    ContextAccessRights, Contract, DeployHash, DeployInfo, EntryPointType, Gas, GrantedAccess, Key,
-    KeyTag, Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
-    Tagged, Transfer, TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH,
-    KEY_HASH_LENGTH, U512,
+    ContextAccessRights, DeployHash, DeployInfo, EntryPointType, Gas, GrantedAccess, Key, KeyTag,
+    Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
+    TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{
@@ -141,7 +140,7 @@ where
         let entity = self.entity;
         let authorization_keys = self.authorization_keys.clone();
         let account_hash = self.account_hash;
-        let package_kind = self.package_kind.clone();
+        let package_kind = self.package_kind;
 
         let address_generator = self.address_generator.clone();
         let tracking_copy = self.state();
@@ -214,7 +213,7 @@ where
 
     /// Returns the package kind associated with the current context.
     pub fn get_package_kind(&self) -> PackageKind {
-        self.package_kind.clone()
+        self.package_kind
     }
 
     /// Returns whether the current context is of the system addressable entity.

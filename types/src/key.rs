@@ -29,18 +29,16 @@ use rand::{
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::bytesrepr::U8_SERIALIZED_LENGTH;
-use crate::contract_wasm::ContractWasmHash;
-use crate::contracts::{ContractHash, ContractPackageHash};
-use crate::package::{PackageKind, PackageKindTag};
 use crate::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity,
     addressable_entity::AddressableEntityHash,
-    byte_code::{ByteCodeHash, ByteCodeKind},
-    bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
+    byte_code::ByteCodeKind,
+    bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH},
     checksummed_hex,
-    package::PackageHash,
+    contract_wasm::ContractWasmHash,
+    contracts::{ContractHash, ContractPackageHash},
+    package::{PackageHash, PackageKindTag},
     system::auction::{BidAddr, BidAddrTag},
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
     DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError, TRANSFER_ADDR_LENGTH,
@@ -780,6 +778,7 @@ impl Key {
         Key::AddressableEntity((package_kind_tag, entity_hash.value()))
     }
 
+    /// Creates a new [`Key::AddressableEntity`] for a Smart contract.
     pub fn contract_entity_key(entity_hash: AddressableEntityHash) -> Key {
         Self::addressable_entity_key(PackageKindTag::SmartContract, entity_hash)
     }

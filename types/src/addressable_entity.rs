@@ -45,17 +45,17 @@ pub use self::{
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
 
-use crate::key::ByteCodeAddr;
-use crate::package::{PackageKind, PackageKindTag};
 use crate::{
     account::{Account, AccountHash},
     byte_code::ByteCodeHash,
     bytesrepr::{self, FromBytes, ToBytes},
     checksummed_hex,
     contracts::{Contract, ContractHash},
+    key::ByteCodeAddr,
+    package::PackageKindTag,
     uref::{self, URef},
     AccessRights, ApiError, CLType, CLTyped, ContextAccessRights, Group, HashAddr, Key,
-    PackageHash, ProtocolVersion, Tagged, KEY_HASH_LENGTH,
+    PackageHash, ProtocolVersion, KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -964,6 +964,7 @@ impl AddressableEntity {
         ContextAccessRights::new(entity_key, urefs_iter)
     }
 
+    /// Update the byte code hash for a given Entity associated with an Account.
     pub fn update_session_entity(
         self,
         byte_code_hash: ByteCodeHash,

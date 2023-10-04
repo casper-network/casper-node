@@ -3,7 +3,6 @@
 use std::{cell::RefCell, rc::Rc};
 
 use casper_storage::global_state::state::StateReader;
-use casper_types::package::PackageKindTag;
 use casper_types::{
     addressable_entity::NamedKeys, bytesrepr::Bytes, AddressableEntityHash, EntityVersionKey,
     ExecutableDeployItem, Key, Package, PackageHash, Phase, ProtocolVersion, StoredValue,
@@ -60,12 +59,9 @@ impl ExecutionKind {
         R: StateReader<Key, StoredValue>,
         R::Error: Into<ExecError>,
     {
-        let entity_hash: AddressableEntityHash;
         let package: Package;
 
         let is_payment_phase = phase == Phase::Payment;
-
-        let system_contract_registry = tracking_copy.borrow_mut().get_system_contracts()?;
 
         match executable_deploy_item {
             ExecutableDeployItem::Transfer { .. } => {
@@ -83,14 +79,7 @@ impl ExecutionKind {
             }
             ExecutableDeployItem::StoredContractByHash {
                 hash, entry_point, ..
-            } => {
-                let package_kind_tag = if system_contract_registry.has_contract_hash(&hash) {
-                    PackageKindTag::System
-                } else {
-                    PackageKindTag::SmartContract
-                };
-                Ok(ExecutionKind::new_addressable_entity(hash, entry_point))
-            }
+            } => Ok(ExecutionKind::new_addressable_entity(hash, entry_point)),
             ExecutableDeployItem::StoredContractByName {
                 name, entry_point, ..
             } => {
@@ -103,12 +92,6 @@ impl ExecutionKind {
                         AddressableEntityHash::new(hash)
                     }
                     _ => return Err(Error::InvalidKeyVariant),
-                };
-
-                let package_kind_tag = if system_contract_registry.has_contract_hash(&entity_hash) {
-                    PackageKindTag::System
-                } else {
-                    PackageKindTag::SmartContract
                 };
 
                 Ok(ExecutionKind::new_addressable_entity(
@@ -155,13 +138,6 @@ impl ExecutionKind {
                     )))?
                     .to_owned();
 
-                let package_kind_tag =
-                    if system_contract_registry.has_contract_hash(&looked_up_entity_hash) {
-                        PackageKindTag::System
-                    } else {
-                        PackageKindTag::SmartContract
-                    };
-
                 Ok(ExecutionKind::new_addressable_entity(
                     looked_up_entity_hash,
                     entry_point,
@@ -195,13 +171,6 @@ impl ExecutionKind {
                     .ok_or(Error::Exec(execution::Error::InvalidEntityVersion(
                         contract_version_key,
                     )))?;
-
-                let package_kind_tag =
-                    if system_contract_registry.has_contract_hash(&looked_up_entity_hash) {
-                        PackageKindTag::System
-                    } else {
-                        PackageKindTag::SmartContract
-                    };
 
                 Ok(ExecutionKind::new_addressable_entity(
                     looked_up_entity_hash,

@@ -225,6 +225,7 @@ impl DeployItemBuilder {
     /// Sets the payment code of the deploy using a stored versioned contract by contract hash.
     pub fn with_stored_versioned_payment_contract_by_hash(
         mut self,
+        // TODO: Make this PackageHash
         hash: HashAddr,
         version: Option<EntityVersion>,
         entry_point: &str,

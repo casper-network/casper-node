@@ -231,8 +231,11 @@ impl JsonSchema for ByteCodeHash {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[derive(PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+/// The type of Byte code.
 pub enum ByteCodeKind {
+    /// Empty byte code.
     Empty = 0,
+    /// Byte code to be executed with the V1 Casper execution engine.
     V1CasperWasm = 1,
 }
 

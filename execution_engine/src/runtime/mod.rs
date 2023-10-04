@@ -37,8 +37,8 @@ use casper_types::{
     system::{
         self,
         auction::{self, EraInfo},
-        handle_payment, mint, standard_payment, CallStackElement, SystemEntityType, AUCTION,
-        HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
+        handle_payment, mint, CallStackElement, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
+        STANDARD_PAYMENT,
     },
     AccessRights, ApiError, ByteCode, ByteCodeHash, ByteCodeKind, CLTyped, CLValue,
     ContextAccessRights, ContractWasm, DeployHash, EntityVersion, EntityVersionKey, EntityVersions,
@@ -52,12 +52,8 @@ use crate::{
     execution::{self, Error},
     runtime::host_function_flag::HostFunctionFlag,
     runtime_context::RuntimeContext,
-    system::{
-        auction::Auction, handle_payment::HandlePayment, mint::Mint,
-        standard_payment::StandardPayment,
-    },
+    system::{auction::Auction, handle_payment::HandlePayment, mint::Mint},
     tracking_copy::TrackingCopyExt,
-    ADDRESS_LENGTH,
 };
 pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
 pub use wasm_prep::{
@@ -747,18 +743,18 @@ where
         Ok(ret)
     }
 
-    /// Calls host standard payment contract.
-    pub(crate) fn call_host_standard_payment(&mut self, stack: RuntimeStack) -> Result<(), Error> {
-        // NOTE: This method (unlike other call_host_* methods) already runs on its own runtime
-        // context.
-        self.stack = Some(stack);
-        let gas_counter = self.gas_counter();
-        let amount: U512 =
-            Self::get_named_argument(self.context.args(), standard_payment::ARG_AMOUNT)?;
-        let result = self.pay(amount).map_err(Self::reverter);
-        self.set_gas_counter(gas_counter);
-        result
-    }
+    // /// Calls host standard payment contract.
+    // pub(crate) fn call_host_standard_payment(&mut self, stack: RuntimeStack) -> Result<(), Error> {
+    //     // NOTE: This method (unlike other call_host_* methods) already runs on its own runtime
+    //     // context.
+    //     self.stack = Some(stack);
+    //     let gas_counter = self.gas_counter();
+    //     let amount: U512 =
+    //         Self::get_named_argument(self.context.args(), standard_payment::ARG_AMOUNT)?;
+    //     let result = self.pay(amount).map_err(Self::reverter);
+    //     self.set_gas_counter(gas_counter);
+    //     result
+    // }
 
     /// Calls host auction contract.
     fn call_host_auction(
@@ -3262,7 +3258,7 @@ where
             Some(StoredValue::Contract(contract)) => {
                 let contract_package_key = Key::Hash(contract.contract_package_hash().value());
 
-                let mut legacy_contract_package: ContractPackage =
+                let legacy_contract_package: ContractPackage =
                     self.context.read_gs_typed(&contract_package_key)?;
 
                 let package: Package = legacy_contract_package.into();

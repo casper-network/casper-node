@@ -2,15 +2,12 @@ use std::convert::TryFrom;
 use std::{collections::BTreeSet, convert::TryInto};
 
 use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
-use casper_types::contracts::ContractPackage;
-use casper_types::package::PackageKindTag;
 use casper_types::{
     account::AccountHash,
     bytesrepr,
-    package::{EntityVersions, Groups, PackageKind, PackageStatus},
-    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeHash, CLValue,
-    EntryPoints, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, StoredValue,
-    StoredValueTypeMismatch, URef,
+    package::{EntityVersions, Groups, PackageKind, PackageKindTag, PackageStatus},
+    AccessRights, AddressableEntity, AddressableEntityHash, CLValue, EntryPoints, Key, Motes,
+    Package, PackageHash, Phase, ProtocolVersion, StoredValue, StoredValueTypeMismatch, URef,
 };
 
 use crate::{
