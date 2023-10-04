@@ -72,6 +72,8 @@ pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 128;
 const PADDING_BYTES: [u8; 32] = [0u8; 32];
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
 const BID_TAG_SERIALIZED_LENGTH: usize = 1;
+
+const CONTEXT_SERIALIZED_LENGTH: usize = KEY_HASH_LENGTH * 2;
 // u8 used to determine the ID
 const KEY_HASH_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_UREF_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_SERIALIZED_LENGTH;
@@ -94,7 +96,6 @@ const KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_CHECKSUM_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
-const KEY_CONTEXT_SERIALIZED_LENGTH: usize = KEY_HASH_LENGTH * 2;
 
 const MAX_SERIALIZED_LENGTH: usize = KEY_DELEGATOR_BID_SERIALIZED_LENGTH;
 
@@ -191,7 +192,7 @@ impl ToBytes for Context {
     }
 
     fn serialized_length(&self) -> usize {
-        KEY_CONTEXT_SERIALIZED_LENGTH
+        CONTEXT_SERIALIZED_LENGTH
     }
 }
 
@@ -938,7 +939,7 @@ impl ToBytes for Key {
                     KEY_ID_SERIALIZED_LENGTH + bid_addr.serialized_length()
                 }
             },
-            Key::Context(_) => KEY_CONTEXT_SERIALIZED_LENGTH,
+            Key::Context(ctx) => KEY_ID_SERIALIZED_LENGTH + ctx.serialized_length(),
         }
     }
 
@@ -1040,6 +1041,10 @@ impl FromBytes for Key {
             tag if tag == KeyTag::BidAddr as u8 => {
                 let (bid_addr, rem) = BidAddr::from_bytes(remainder)?;
                 Ok((Key::BidAddr(bid_addr), rem))
+            }
+            tag if tag == KeyTag::Context as u8 => {
+                let (context, rem) = Context::from_bytes(remainder)?;
+                Ok((Key::Context(context), rem))
             }
             _ => Err(Error::Formatting),
         }

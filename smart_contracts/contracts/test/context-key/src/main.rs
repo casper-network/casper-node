@@ -27,7 +27,7 @@ pub extern "C" fn call() {
     let value = storage::read_from_key(Key::Context(ctx));
     assert_eq!(value, Ok(Some(1)));
 
-    storage::write_to_key(Key::Context(ctx), Some(2));
+    storage::write_to_key(Key::Context(ctx), 2);
     let value = storage::read_from_key(Key::Context(ctx));
     assert_eq!(value, Ok(Some(2)));
 }
