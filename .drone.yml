@@ -518,4 +518,4 @@ volumes:
   temp: {}
 
 trigger:
-  cron: [ nightly-tests-cron, feat-2-0 ]
+  cron: [ nightly-tests-cron, feat-2-0, nightly-tests-cron-timeout]
