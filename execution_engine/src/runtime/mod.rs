@@ -594,8 +594,6 @@ where
                 let result: Result<(), mint::Error> =
                     mint_runtime.transfer(maybe_to, source, target, amount, id);
 
-                println!("{:?}", result);
-
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
             // Type: `fn read_base_round_reward() -> Result<U512, Error>`

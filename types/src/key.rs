@@ -769,7 +769,7 @@ impl Key {
         Key::Dictionary(addr)
     }
 
-    /// Creates a new [`Key::AddressableEntityHash`] variant from a package kind and an entity
+    /// Creates a new [`Key::AddressableEntity`] variant from a package kind and an entity
     /// hash.
     pub fn addressable_entity_key(
         package_kind_tag: PackageKindTag,
@@ -1542,7 +1542,25 @@ mod tests {
         let hash = [42; KEY_HASH_LENGTH];
         let key1 = Key::Hash(hash);
         assert!(key1.into_account().is_none());
+        assert_eq!(key1.into_hash_addr(), Some(hash));
+        assert!(key1.as_uref().is_none());
+    }
+
+    #[test]
+    fn check_entity_key_getters() {
+        let hash = [42; KEY_HASH_LENGTH];
+        let key1 = Key::contract_entity_key(AddressableEntityHash::new(hash));
+        assert!(key1.into_account().is_none());
         assert_eq!(key1.into_entity_addr(), Some(hash));
+        assert!(key1.as_uref().is_none());
+    }
+
+    #[test]
+    fn check_package_key_getters() {
+        let hash = [42; KEY_HASH_LENGTH];
+        let key1 = Key::Package(hash);
+        assert!(key1.into_account().is_none());
+        assert_eq!(key1.into_package_addr(), Some(hash));
         assert!(key1.as_uref().is_none());
     }
 

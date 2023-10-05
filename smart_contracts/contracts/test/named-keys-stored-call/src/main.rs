@@ -6,7 +6,7 @@ extern crate alloc;
 use alloc::string::String;
 
 use casper_contract::{self, contract_api::runtime, unwrap_or_revert::UnwrapOrRevert};
-use casper_types::{AddressableEntityHash, Key, RuntimeArgs};
+use casper_types::{Key, RuntimeArgs};
 
 const CONTRACT_HASH_NAME: &str = "contract_stored";
 

@@ -1271,40 +1271,24 @@ where
         // Setup system account
         self.setup_system_account()?;
 
-        println!("System account created");
-
         // Create mint
         let total_supply_key = self.create_mint()?;
 
-        println!("total supply created");
-
         let payment_purse_uref = self.create_purse(U512::zero())?;
-
-        println!("payment purse created");
 
         // Create all genesis accounts
         self.create_accounts(total_supply_key, payment_purse_uref)?;
 
-        println!("Accounts created");
-
         // Create the auction and setup the stake of all genesis validators.
         self.create_auction(total_supply_key)?;
-
-        println!("auction created");
 
         // Create handle payment
         self.create_handle_payment(payment_purse_uref)?;
 
-        println!("handle created");
-
         // Create standard payment
         self.create_standard_payment()?;
 
-        println!("standard created");
-
         self.store_chainspec_registry(chainspec_registry)?;
-
-        println!("chainspec created");
 
         Ok(())
     }

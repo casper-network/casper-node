@@ -204,8 +204,6 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
         .expect("should have contract hash")
         .into_entity_hash();
 
-    println!("{:?}", contract_hash);
-
     let contract_hash = contract_hash.unwrap();
 
     let exec_request_2 = ExecuteRequestBuilder::contract_call_by_hash(

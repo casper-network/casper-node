@@ -3964,14 +3964,14 @@
                 "additionalProperties": false
               },
               {
-                "description": "A record of byte code.",
+                "description": "Contract wasm.",
                 "type": "object",
                 "required": [
-                  "ByteCode"
+                  "ContractWasm"
                 ],
                 "properties": {
-                  "ByteCode": {
-                    "$ref": "#/components/schemas/ByteCode"
+                  "ContractWasm": {
+                    "$ref": "#/components/schemas/ContractWasm"
                   }
                 },
                 "additionalProperties": false
@@ -3990,14 +3990,14 @@
                 "additionalProperties": false
               },
               {
-                "description": "A `Package`.",
+                "description": "A contract package.",
                 "type": "object",
                 "required": [
-                  "Package"
+                  "ContractPackage"
                 ],
                 "properties": {
-                  "Package": {
-                    "$ref": "#/components/schemas/Package"
+                  "ContractPackage": {
+                    "$ref": "#/components/schemas/ContractPackage"
                   }
                 },
                 "additionalProperties": false
@@ -4111,10 +4111,36 @@
                   }
                 },
                 "additionalProperties": false
+              },
+              {
+                "description": "A `Package`.",
+                "type": "object",
+                "required": [
+                  "Package"
+                ],
+                "properties": {
+                  "Package": {
+                    "$ref": "#/components/schemas/Package"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A record of byte code.",
+                "type": "object",
+                "required": [
+                  "ByteCode"
+                ],
+                "properties": {
+                  "ByteCode": {
+                    "$ref": "#/components/schemas/ByteCode"
+                  }
+                },
+                "additionalProperties": false
               }
             ]
           },
-          "ByteCode": {
+          "ContractWasm": {
             "description": "A container for contract's WASM bytes.",
             "type": "object",
             "required": [
@@ -4142,10 +4168,10 @@
             ],
             "properties": {
               "contract_package_hash": {
-                "$ref": "#/components/schemas/PackageHash"
+                "$ref": "#/components/schemas/ContractPackageHash"
               },
               "contract_wasm_hash": {
-                "$ref": "#/components/schemas/ByteCodeHash"
+                "$ref": "#/components/schemas/ContractWasmHash"
               },
               "named_keys": {
                 "$ref": "#/components/schemas/NamedKeys"
@@ -4158,11 +4184,11 @@
               }
             }
           },
-          "PackageHash": {
-            "description": "The hex-encoded address of the Package.",
+          "ContractPackageHash": {
+            "description": "The hash address of the contract package",
             "type": "string"
           },
-          "ByteCodeHash": {
+          "ContractWasmHash": {
             "description": "The hash address of the contract wasm",
             "type": "string"
           },
@@ -4307,6 +4333,176 @@
             "description": "Casper Platform protocol version",
             "type": "string"
           },
+          "ContractPackage": {
+            "description": "Contract definition, metadata, and security container.",
+            "type": "object",
+            "required": [
+              "access_key",
+              "disabled_versions",
+              "groups",
+              "lock_status",
+              "versions"
+            ],
+            "properties": {
+              "access_key": {
+                "description": "Key used to add or disable versions",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ]
+              },
+              "versions": {
+                "description": "All versions (enabled & disabled)",
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/ContractHash"
+                }
+              },
+              "disabled_versions": {
+                "description": "Disabled versions",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ContractVersionKey"
+                },
+                "uniqueItems": true
+              },
+              "groups": {
+                "description": "Mapping maintaining the set of URefs associated with each \"user group\". This can be used to control access to methods in a particular version of the contract. A method is callable by any context which \"knows\" any of the URefs associated with the method's user group.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Array_of_NamedUserGroup"
+                  }
+                ]
+              },
+              "lock_status": {
+                "description": "A flag that determines whether a contract is locked",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ContractPackageStatus"
+                  }
+                ]
+              }
+            }
+          },
+          "ContractHash": {
+            "description": "The hash address of the contract",
+            "type": "string"
+          },
+          "ContractVersionKey": {
+            "description": "Major element of `ProtocolVersion` combined with `ContractVersion`.",
+            "type": "array",
+            "items": [
+              {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0.0
+              },
+              {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0.0
+              }
+            ],
+            "maxItems": 2,
+            "minItems": 2
+          },
+          "Array_of_NamedUserGroup": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NamedUserGroup"
+            }
+          },
+          "NamedUserGroup": {
+            "type": "object",
+            "required": [
+              "group_name",
+              "group_users"
+            ],
+            "properties": {
+              "group_name": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Group"
+                  }
+                ]
+              },
+              "group_users": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/URef"
+                },
+                "uniqueItems": true
+              }
+            }
+          },
+          "ContractPackageStatus": {
+            "description": "A enum to determine the lock status of the contract package.",
+            "oneOf": [
+              {
+                "description": "The package is locked and cannot be versioned.",
+                "type": "string",
+                "enum": [
+                  "Locked"
+                ]
+              },
+              {
+                "description": "The package is unlocked and can be versioned.",
+                "type": "string",
+                "enum": [
+                  "Unlocked"
+                ]
+              }
+            ]
+          },
+          "AddressableEntity": {
+            "description": "Methods and type signatures supported by a contract.",
+            "type": "object",
+            "required": [
+              "action_thresholds",
+              "associated_keys",
+              "byte_code_hash",
+              "entry_points",
+              "main_purse",
+              "named_keys",
+              "package_hash",
+              "protocol_version"
+            ],
+            "properties": {
+              "package_hash": {
+                "$ref": "#/components/schemas/PackageHash"
+              },
+              "byte_code_hash": {
+                "$ref": "#/components/schemas/ByteCodeHash"
+              },
+              "named_keys": {
+                "$ref": "#/components/schemas/NamedKeys"
+              },
+              "entry_points": {
+                "$ref": "#/components/schemas/Array_of_NamedEntryPoint"
+              },
+              "protocol_version": {
+                "$ref": "#/components/schemas/ProtocolVersion"
+              },
+              "main_purse": {
+                "$ref": "#/components/schemas/URef"
+              },
+              "associated_keys": {
+                "$ref": "#/components/schemas/AssociatedKeys"
+              },
+              "action_thresholds": {
+                "$ref": "#/components/schemas/ActionThresholds"
+              }
+            }
+          },
+          "PackageHash": {
+            "description": "The hex-encoded address of the Package.",
+            "type": "string"
+          },
+          "ByteCodeHash": {
+            "description": "The hash address of the contract wasm",
+            "type": "string"
+          },
           "Package": {
             "description": "Entity definition, metadata, and security container.",
             "type": "object",
@@ -4424,35 +4620,6 @@
             "description": "The hex-encoded address of the addressable entity.",
             "type": "string"
           },
-          "Array_of_NamedUserGroup": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/NamedUserGroup"
-            }
-          },
-          "NamedUserGroup": {
-            "type": "object",
-            "required": [
-              "group_name",
-              "group_users"
-            ],
-            "properties": {
-              "group_name": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/Group"
-                  }
-                ]
-              },
-              "group_users": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/URef"
-                },
-                "uniqueItems": true
-              }
-            }
-          },
           "PackageStatus": {
             "description": "A enum to determine the lock status of the package.",
             "oneOf": [
@@ -4475,13 +4642,6 @@
           "PackageKind": {
             "description": "The type of Package.",
             "oneOf": [
-              {
-                "description": "Packages associated with Wasm stored on chain.",
-                "type": "string",
-                "enum": [
-                  "Wasm"
-                ]
-              },
               {
                 "description": "Package associated with a native contract implementation.",
                 "type": "object",
@@ -4509,10 +4669,10 @@
                 "additionalProperties": false
               },
               {
-                "description": "Packages from the previous format.",
+                "description": "Packages associated with Wasm stored on chain.",
                 "type": "string",
                 "enum": [
-                  "Legacy"
+                  "SmartContract"
                 ]
               }
             ]
@@ -4550,45 +4710,40 @@
               }
             ]
           },
-          "AddressableEntity": {
-            "description": "Methods and type signatures supported by a contract.",
+          "ByteCode": {
+            "description": "A container for contract's WASM bytes.",
             "type": "object",
             "required": [
-              "action_thresholds",
-              "associated_keys",
-              "contract_wasm_hash",
-              "entry_points",
-              "main_purse",
-              "named_keys",
-              "package_hash",
-              "protocol_version"
+              "byte_code_kind",
+              "bytes"
             ],
             "properties": {
-              "package_hash": {
-                "$ref": "#/components/schemas/PackageHash"
+              "byte_code_kind": {
+                "$ref": "#/components/schemas/ByteCodeKind"
               },
-              "contract_wasm_hash": {
-                "$ref": "#/components/schemas/ByteCodeHash"
-              },
-              "named_keys": {
-                "$ref": "#/components/schemas/NamedKeys"
-              },
-              "entry_points": {
-                "$ref": "#/components/schemas/Array_of_NamedEntryPoint"
-              },
-              "protocol_version": {
-                "$ref": "#/components/schemas/ProtocolVersion"
-              },
-              "main_purse": {
-                "$ref": "#/components/schemas/URef"
-              },
-              "associated_keys": {
-                "$ref": "#/components/schemas/AssociatedKeys"
-              },
-              "action_thresholds": {
-                "$ref": "#/components/schemas/ActionThresholds"
+              "bytes": {
+                "$ref": "#/components/schemas/Bytes"
               }
             }
+          },
+          "ByteCodeKind": {
+            "description": "The type of Byte code.",
+            "oneOf": [
+              {
+                "description": "Empty byte code.",
+                "type": "string",
+                "enum": [
+                  "Empty"
+                ]
+              },
+              {
+                "description": "Byte code to be executed with the V1 Casper execution engine.",
+                "type": "string",
+                "enum": [
+                  "V1CasperWasm"
+                ]
+              }
+            ]
           },
           "GlobalStateIdentifier": {
             "description": "Identifier for possible ways to query Global State",

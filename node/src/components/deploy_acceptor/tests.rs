@@ -610,7 +610,7 @@ impl reactor::Reactor for Reactor {
                                 _ => QueryResult::ValueNotFound(String::new()),
                             }
                         }
-                    } else if let Key::Hash(_) = query_request.key() {
+                    } else if let Key::AddressableEntity(_) = query_request.key() {
                         match self.test_scenario {
                             TestScenario::FromPeerSessionContract(contract_scenario)
                             | TestScenario::FromPeerCustomPaymentContract(contract_scenario)
@@ -631,6 +631,11 @@ impl reactor::Reactor for Reactor {
                                     }
                                 }
                             }
+
+                            _ => QueryResult::ValueNotFound(String::new()),
+                        }
+                    } else if let Key::Package(_) = query_request.key() {
+                        match self.test_scenario {
                             TestScenario::FromPeerSessionPackage(contract_package_scenario)
                             | TestScenario::FromPeerCustomPaymentPackage(
                                 contract_package_scenario,
@@ -649,10 +654,11 @@ impl reactor::Reactor for Reactor {
                                     QueryResult::ValueNotFound(String::new())
                                 }
                             },
+
                             _ => QueryResult::ValueNotFound(String::new()),
                         }
                     } else {
-                        panic!("expect only queries using Key::Account or Key::Hash variant");
+                        panic!("expect only queries using Key::Account or Key::AddressableEntity or Key::Package variant");
                     };
                     responder.respond(Ok(query_result)).ignore()
                 }

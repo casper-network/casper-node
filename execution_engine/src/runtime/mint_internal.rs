@@ -18,7 +18,6 @@ use crate::{
 
 impl From<execution::Error> for Option<Error> {
     fn from(exec_error: execution::Error) -> Self {
-        println!("MINT {:?}", exec_error);
         match exec_error {
             // This is used to propagate [`execution::Error::GasLimit`] to make sure [`Mint`]
             // contract running natively supports propagating gas limit errors without a panic.

@@ -80,7 +80,7 @@ fn execute_and_assert_result(
     } else {
         builder.exec(execute_request).commit().expect_failure();
         let error = builder.get_error().expect("must have an error");
-        println!("{:?}", error);
+
         assert!(matches!(
             error,
             // Call chains have stored contract trying to call stored session which we don't
