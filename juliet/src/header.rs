@@ -102,7 +102,6 @@ pub enum ErrorKind {
 #[derive(Copy, Clone, Debug, EnumCount, EnumIter, Eq, FromRepr, PartialEq)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[repr(u8)]
-
 pub enum Kind {
     /// A request with no payload.
     Request = 0,
@@ -168,7 +167,7 @@ impl Header {
             }
 
             // Ensure the 4th bit is not set, since the error kind bits are superset of kind bits.
-            if header.0[0] & Self::KIND_MASK != header.0[0] {
+            if header.kind_byte() & Self::KIND_MASK != header.kind_byte() {
                 return None;
             }
         }
