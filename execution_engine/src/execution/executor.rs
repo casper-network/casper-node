@@ -431,8 +431,8 @@ impl Executor {
         let get_payment_purse_stack = RuntimeStack::new_system_call_stack(max_stack_height);
 
         let (maybe_purse, get_payment_result) = self.get_payment_purse(
-            &entity,
-            package_kind.clone(),
+            entity,
+            package_kind,
             authorization_keys.clone(),
             account_hash,
             blocktime,
@@ -443,7 +443,7 @@ impl Executor {
             get_payment_purse_stack,
         );
 
-        if let Some(_) = get_payment_result.as_error() {
+        if get_payment_result.as_error().is_some() {
             return Ok(get_payment_result);
         }
 
@@ -461,16 +461,14 @@ impl Executor {
                 None,
             );
 
-            let runtime_args = match RuntimeArgs::try_from(transfer_args) {
+            match RuntimeArgs::try_from(transfer_args) {
                 Ok(runtime_args) => runtime_args,
                 Err(error) => {
                     return Ok(ExecutionResult::precondition_failure(
                         Error::CLValue(error).into(),
                     ))
                 }
-            };
-
-            runtime_args
+            }
         };
 
         let transfer_stack = RuntimeStack::new_system_call_stack(max_stack_height);
@@ -490,7 +488,7 @@ impl Executor {
             payment_amount,
         );
 
-        if let Some(_) = payment_result.as_error() {
+        if payment_result.as_error().is_some() {
             return Ok(payment_result);
         }
 
@@ -503,13 +501,12 @@ impl Executor {
             None => Err(EngineStateError::reverter(ApiError::Transfer)),
         };
 
-        if let Err(engine_error) = transfer_result {
-            return Err(engine_error);
-        }
+        transfer_result?;
 
         Ok(payment_result)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn get_payment_purse<R>(
         &self,
         entity: &AddressableEntity,
@@ -530,7 +527,7 @@ impl Executor {
         self.call_system_contract(
             DirectSystemContractCall::GetPaymentPurse,
             RuntimeArgs::new(),
-            &entity,
+            entity,
             package_kind,
             authorization_keys,
             account_hash,
@@ -545,6 +542,7 @@ impl Executor {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn invoke_mint_to_transfer<R>(
         &self,
         runtime_args: RuntimeArgs,
@@ -567,7 +565,7 @@ impl Executor {
         self.call_system_contract(
             DirectSystemContractCall::Transfer,
             runtime_args,
-            &entity,
+            entity,
             package_kind,
             authorization_keys,
             account_hash,

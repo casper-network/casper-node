@@ -167,7 +167,7 @@ where
             .borrow_mut()
             .write(byte_code_key, StoredValue::ByteCode(byte_code));
 
-        let entity_key = Key::addressable_entity_key(PackageKindTag::System, contract_hash.into());
+        let entity_key = Key::addressable_entity_key(PackageKindTag::System, contract_hash);
 
         self.tracking_copy
             .borrow_mut()

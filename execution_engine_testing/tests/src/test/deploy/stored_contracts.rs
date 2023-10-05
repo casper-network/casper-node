@@ -7,7 +7,7 @@ use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
     account::AccountHash,
     package::{EntityVersion, ENTITY_INITIAL_VERSION},
-    runtime_args, AddressableEntity, EntityVersionKey, EraId, Gas, PackageHash, ProtocolVersion,
+    runtime_args, AddressableEntity, EntityVersionKey, EraId, PackageHash, ProtocolVersion,
     RuntimeArgs, U512,
 };
 
@@ -198,8 +198,7 @@ fn should_exec_stored_code_by_hash() {
 
     let proposer_initial_balance = builder.get_proposer_purse_balance();
 
-    let (sending_account, custom_payment_package_hash, installation_fee) =
-        install_custom_payment(&mut builder);
+    let (sending_account, custom_payment_package_hash, _) = install_custom_payment(&mut builder);
 
     // verify stored contract functions as expected by checking all the maths
 
@@ -269,7 +268,7 @@ fn should_not_transfer_above_balance_using_stored_payment_code_by_hash() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // store payment
-    let (default_account, hash, last_exec_cost) = install_custom_payment(&mut builder);
+    let (default_account, hash, _) = install_custom_payment(&mut builder);
     let starting_balance = builder.get_purse_balance(default_account.main_purse());
 
     let transferred_amount = starting_balance - *DEFAULT_PAYMENT + U512::one();
@@ -315,26 +314,13 @@ fn should_empty_account_using_stored_payment_code_by_hash() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // store payment
-    let proposer_reward_starting_balance_alpha = builder.get_proposer_purse_balance();
 
     let (default_account, hash, _) = install_custom_payment(&mut builder);
     let starting_balance = builder.get_purse_balance(default_account.main_purse());
 
     // verify stored contract functions as expected by checking all the maths
 
-    let (motes_alpha, modified_balance_alpha) = {
-        // get modified balance
-        let modified_balance_alpha: U512 = builder.get_purse_balance(default_account.main_purse());
-
-        let transaction_fee_alpha =
-            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_alpha;
-        (transaction_fee_alpha, modified_balance_alpha)
-    };
-
     let transferred_amount = starting_balance - *DEFAULT_PAYMENT;
-
-    // next make another deploy that USES stored payment logic
-    let proposer_reward_starting_balance_bravo = builder.get_proposer_purse_balance();
 
     {
         let exec_request_stored_payment = {
@@ -363,38 +349,7 @@ fn should_empty_account_using_stored_payment_code_by_hash() {
         builder.exec(exec_request_stored_payment).expect_failure();
     }
 
-    // let (motes_bravo, modified_balance_bravo) = {
-    //     let modified_balance_bravo: U512 = builder.get_purse_balance(default_account.main_purse());
-    //
-    //     let transaction_fee_bravo =
-    //         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_bravo;
-    //
-    //     (transaction_fee_bravo, modified_balance_bravo)
-    // };
-    //
-    // let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-    //
-    // assert_eq!(
-    //     modified_balance_bravo,
-    //     builder.calculate_refund_amount(payment_purse_amount)
-    // );
-    //
-    // assert!(
-    //     modified_balance_alpha < initial_balance,
-    //     "balance should be less than initial balance"
-    // );
-    //
-    // assert!(
-    //     modified_balance_bravo < modified_balance_alpha,
-    //     "second modified balance should be less than first modified balance"
-    // );
-    //
-    // let tally = motes_alpha + motes_bravo + transferred_amount + modified_balance_bravo;
-    //
-    // assert_eq!(
-    //     initial_balance, tally,
-    //     "no net resources should be gained or lost post-distribution"
-    // );
+    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
 }
 
 #[ignore]
@@ -406,28 +361,11 @@ fn should_exec_stored_code_by_named_hash() {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    // store payment
-    let proposer_reward_starting_balance_alpha = builder.get_proposer_purse_balance();
-
-    let (default_account, _, _) = install_custom_payment(&mut builder);
+    install_custom_payment(&mut builder);
 
     // verify stored contract functions as expected by checking all the maths
 
-    let (motes_alpha, modified_balance_alpha) = {
-        // get modified balance
-        let modified_balance_alpha: U512 = builder.get_purse_balance(default_account.main_purse());
-
-        // get cost
-        let transaction_fee_alpha =
-            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_alpha;
-
-        (transaction_fee_alpha, modified_balance_alpha)
-    };
-
     let transferred_amount = 1;
-
-    // next make another deploy that USES stored payment logic
-    let proposer_reward_starting_balance_bravo = builder.get_proposer_purse_balance();
 
     {
         let exec_request_stored_payment = {
@@ -454,35 +392,8 @@ fn should_exec_stored_code_by_named_hash() {
         };
 
         builder.exec(exec_request_stored_payment).expect_failure();
+        builder.assert_error(Error::Exec(execution::Error::InvalidContext))
     }
-
-    // let (motes_bravo, modified_balance_bravo) = {
-    //     let modified_balance_bravo: U512 = builder.get_purse_balance(default_account.main_purse());
-    //
-    //     let transaction_fee_bravo =
-    //         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_bravo;
-    //
-    //     (transaction_fee_bravo, modified_balance_bravo)
-    // };
-    //
-    // let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-    //
-    // assert!(
-    //     modified_balance_alpha < initial_balance,
-    //     "balance should be less than initial balance"
-    // );
-    //
-    // assert!(
-    //     modified_balance_bravo < modified_balance_alpha,
-    //     "second modified balance should be less than first modified balance"
-    // );
-    //
-    // let tally = motes_alpha + motes_bravo + U512::from(transferred_amount) + modified_balance_bravo;
-    //
-    // assert_eq!(
-    //     initial_balance, tally,
-    //     "no net resources should be gained or lost post-distribution"
-    // );
 }
 
 #[ignore]

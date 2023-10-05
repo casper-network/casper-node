@@ -10,11 +10,8 @@ use casper_types::{
     package::{EntityVersion, ENTITY_INITIAL_VERSION},
     runtime_args,
     system::mint,
-    testing::TestRng,
-    AddressableEntityHash, CLValue, EraId, PackageHash, ProtocolVersion, PublicKey, RuntimeArgs,
-    StoredValue, U512,
+    AddressableEntityHash, CLValue, EraId, PackageHash, ProtocolVersion, RuntimeArgs, StoredValue,
 };
-use get_call_stack_recursive_subcall::ContractAddress::ContractPackageHash;
 
 const DO_NOTHING_STORED_CONTRACT_NAME: &str = "do_nothing_stored";
 const DO_NOTHING_STORED_UPGRADER_CONTRACT_NAME: &str = "do_nothing_stored_upgrader";
@@ -24,11 +21,11 @@ const PURSE_HOLDER_STORED_CONTRACT_NAME: &str = "purse_holder_stored";
 const PURSE_HOLDER_STORED_UPGRADER_CONTRACT_NAME: &str = "purse_holder_stored_upgrader";
 const UPGRADE_THRESHOLD_CONTRACT_NAME: &str = "upgrade_threshold.wasm";
 const UPGRADE_THRESHOLD_UPGRADER: &str = "upgrade_threshold_upgrader.wasm";
-const UPGRADE_SESSION_LOGIC: &str = "upgrade_session_logic.wasm";
+
 const ENTRY_FUNCTION_NAME: &str = "delegate";
 const DO_NOTHING_CONTRACT_NAME: &str = "do_nothing_package_hash";
 const DO_NOTHING_HASH_KEY_NAME: &str = "do_nothing_hash";
-const RET_UREF_NAME: &str = "ret_uref";
+
 const INITIAL_VERSION: EntityVersion = ENTITY_INITIAL_VERSION;
 const UPGRADED_VERSION: EntityVersion = INITIAL_VERSION + 1;
 const PURSE_NAME_ARG_NAME: &str = "purse_name";
@@ -37,7 +34,7 @@ const METHOD_REMOVE: &str = "remove";
 const VERSION: &str = "version";
 
 const HASH_KEY_NAME: &str = "purse_holder";
-const ACCESS_KEY_NAME: &str = "purse_holder_access";
+
 const TOTAL_PURSES: usize = 3;
 const PURSE_NAME: &str = "purse_name";
 const ENTRY_POINT_NAME: &str = "entry_point";
