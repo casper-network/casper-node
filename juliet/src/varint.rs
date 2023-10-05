@@ -143,19 +143,19 @@ impl Varint32 {
     /// Returns the length of the given value encoded as a `Varint32`.
     #[inline]
     pub const fn length_of(value: u32) -> usize {
-        if value < 128 {
+        if value < (1 << 7) {
             return 1;
         }
 
-        if value < 16384 {
+        if value < 1 << 14 {
             return 2;
         }
 
-        if value < 2097152 {
+        if value < 1 << 21 {
             return 3;
         }
 
-        if value < 268435456 {
+        if value < 1 << 28 {
             return 4;
         }
 
