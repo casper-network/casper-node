@@ -13,13 +13,12 @@ use thiserror::Error;
 use tracing::{debug, error, trace};
 
 use casper_execution_engine::engine_state::MAX_PAYMENT;
-use casper_types::package::PackageKindTag;
 use casper_types::{
-    account::AccountHash, system::auction::ARG_AMOUNT, AddressableEntity, AddressableEntityHash,
-    BlockHash, BlockHeader, CLValue, Chainspec, CoreConfig, Deploy, DeployConfig,
-    DeployConfigurationFailure, Digest, EntityIdentifier, EntityVersion, EntityVersionKey,
-    ExecutableDeployItem, ExecutableDeployItemIdentifier, Key, Package, PackageHash,
-    PackageIdentifier, ProtocolVersion, StoredValue, Timestamp, U512,
+    account::AccountHash, package::PackageKindTag, system::auction::ARG_AMOUNT, AddressableEntity,
+    AddressableEntityHash, BlockHash, BlockHeader, CLValue, Chainspec, CoreConfig, Deploy,
+    DeployConfig, DeployConfigurationFailure, Digest, EntityIdentifier, EntityVersion,
+    EntityVersionKey, ExecutableDeployItem, ExecutableDeployItemIdentifier, Key, Package,
+    PackageHash, PackageIdentifier, ProtocolVersion, StoredValue, Timestamp, U512,
 };
 
 use crate::{

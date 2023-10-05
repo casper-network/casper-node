@@ -2,10 +2,9 @@
 #![no_main]
 
 use casper_contract::contract_api::{runtime, storage};
-use casper_types::package::PackageKindTag;
 use casper_types::{
-    addressable_entity::Parameters, CLType, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Key,
+    addressable_entity::Parameters, package::PackageKindTag, CLType, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints, Key,
 };
 
 const CONTRACT_HASH_NAME: &str = "contract";

@@ -6,11 +6,10 @@ use std::{
 
 use rand::Rng;
 
-use casper_types::package::PackageKindTag;
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
-    package::{EntityVersions, Groups, PackageKind, PackageStatus},
+    package::{EntityVersions, Groups, PackageKind, PackageKindTag, PackageStatus},
     system::auction::{BidAddr, BidKind, BidsExt, SeigniorageRecipientsSnapshot, UnbondingPurse},
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue, EntryPoints,
     Key, Package, PackageHash, ProtocolVersion, PublicKey, StoredValue, URef, U512,

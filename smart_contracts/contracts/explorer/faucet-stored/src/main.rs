@@ -9,10 +9,9 @@ use casper_contract::{
     contract_api::{account, runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::package::PackageKindTag;
 use casper_types::{
-    addressable_entity::NamedKeys, ApiError, CLType, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Key, Parameter, PublicKey, URef, U512,
+    addressable_entity::NamedKeys, package::PackageKindTag, ApiError, CLType, EntryPoint,
+    EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter, PublicKey, URef, U512,
 };
 
 #[repr(u16)]

@@ -22,8 +22,6 @@ use tracing::error;
 use wasmi::{MemoryRef, Trap, TrapKind};
 
 use casper_storage::global_state::state::StateReader;
-use casper_types::contracts::ContractPackage;
-use casper_types::package::PackageKindTag;
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
@@ -33,7 +31,8 @@ use casper_types::{
         Weight, DEFAULT_ENTRY_POINT_NAME,
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    package::{PackageKind, PackageStatus},
+    contracts::ContractPackage,
+    package::{PackageKind, PackageKindTag, PackageStatus},
     system::{
         self,
         auction::{self, EraInfo},
@@ -744,9 +743,9 @@ where
     }
 
     // /// Calls host standard payment contract.
-    // pub(crate) fn call_host_standard_payment(&mut self, stack: RuntimeStack) -> Result<(), Error> {
-    //     // NOTE: This method (unlike other call_host_* methods) already runs on its own runtime
-    //     // context.
+    // pub(crate) fn call_host_standard_payment(&mut self, stack: RuntimeStack) -> Result<(), Error>
+    // {     // NOTE: This method (unlike other call_host_* methods) already runs on its own
+    // runtime     // context.
     //     self.stack = Some(stack);
     //     let gas_counter = self.gas_counter();
     //     let amount: U512 =
@@ -1427,9 +1426,10 @@ where
 
         return match result {
             Ok(_) => {
-                // If `Ok` and the `host_buffer` is `None`, the contract's execution succeeded but did
-                // not explicitly call `runtime::ret()`.  Treat as though the execution returned the
-                // unit type `()` as per Rust functions which don't specify a return value.
+                // If `Ok` and the `host_buffer` is `None`, the contract's execution succeeded but
+                // did not explicitly call `runtime::ret()`.  Treat as though the
+                // execution returned the unit type `()` as per Rust functions which
+                // don't specify a return value.
                 self.context
                     .set_remaining_spending_limit(runtime.context.remaining_spending_limit());
                 Ok(runtime.take_host_buffer().unwrap_or(CLValue::from_t(())?))
@@ -1437,7 +1437,8 @@ where
             Err(error) => {
                 if let Some(host_error) = error.as_host_error() {
                     // If the "error" was in fact a trap caused by calling `ret` then this is normal
-                    // operation and we should return the value captured in the Runtime result field.
+                    // operation and we should return the value captured in the Runtime result
+                    // field.
                     let downcasted_error = host_error.downcast_ref::<Error>();
                     match downcasted_error {
                         Some(Error::Ret(ref ret_urefs)) => {
@@ -1446,8 +1447,8 @@ where
                             // validated in the `ret` call inside context we ret from.
                             self.context.access_rights_extend(ret_urefs);
 
-                            // Stored contracts are expected to always call a `ret` function, otherwise it's
-                            // an error.
+                            // Stored contracts are expected to always call a `ret` function,
+                            // otherwise it's an error.
                             return runtime.take_host_buffer().ok_or(Error::ExpectedReturnValue);
                         }
                         Some(error) => return Err(error.clone()),

@@ -387,9 +387,9 @@ mod tests {
 
     use num::{Bounded, Num};
 
-    use crate::byte_code::ByteCodeKind;
     use crate::{
-        bytesrepr::Bytes, testing::TestRng, AccessRights, ByteCode, Key, URef, U128, U256, U512,
+        byte_code::ByteCodeKind, bytesrepr::Bytes, testing::TestRng, AccessRights, ByteCode, Key,
+        URef, U128, U256, U512,
     };
 
     use super::*;

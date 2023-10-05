@@ -65,8 +65,8 @@ impl CallStackElement {
         }
     }
 
-    // /// Creates a [`'CallStackElement::StoredSession`]. This represents a call into a contract with
-    // /// `EntryPointType::Session`.
+    // /// Creates a [`'CallStackElement::StoredSession`]. This represents a call into a contract
+    // with /// `EntryPointType::Session`.
     // pub fn stored_session(
     //     account_hash: AccountHash,
     //     package_hash: PackageHash,

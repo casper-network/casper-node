@@ -6,10 +6,9 @@ extern crate alloc;
 
 use casper_contract::contract_api::{runtime, storage};
 
-use casper_types::package::PackageKindTag;
 use casper_types::{
-    addressable_entity::NamedKeys, CLType, CLTyped, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Group, Key, Parameter,
+    addressable_entity::NamedKeys, package::PackageKindTag, CLType, CLTyped, EntryPoint,
+    EntryPointAccess, EntryPointType, EntryPoints, Group, Key, Parameter,
 };
 use gh_1470_regression::{
     Arg1Type, Arg2Type, Arg3Type, Arg4Type, Arg5Type, ARG1, ARG2, ARG3, ARG4, ARG5,

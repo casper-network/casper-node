@@ -14,12 +14,11 @@ use schemars::JsonSchema;
 use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_bytes::ByteBuf;
 
-use crate::contract_wasm::ContractWasm;
-use crate::contracts::ContractPackage;
 use crate::{
     account::Account,
     bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    contracts::Contract,
+    contract_wasm::ContractWasm,
+    contracts::{Contract, ContractPackage},
     package::Package,
     system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
     AddressableEntity, ByteCode, CLValue, DeployInfo, Transfer,

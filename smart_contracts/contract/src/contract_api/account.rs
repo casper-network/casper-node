@@ -12,8 +12,9 @@ use casper_types::{
 };
 
 use super::to_ptr;
-use crate::contract_api::runtime::revert;
-use crate::{contract_api, ext_ffi, unwrap_or_revert::UnwrapOrRevert};
+use crate::{
+    contract_api, contract_api::runtime::revert, ext_ffi, unwrap_or_revert::UnwrapOrRevert,
+};
 
 /// Retrieves the ID of the account's main purse.
 pub fn get_main_purse() -> URef {

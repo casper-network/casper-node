@@ -1,5 +1,4 @@
-use std::convert::TryFrom;
-use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
+use std::{cell::RefCell, collections::BTreeSet, convert::TryFrom, rc::Rc};
 
 use casper_storage::global_state::state::StateReader;
 

@@ -4,12 +4,11 @@ use std::{cell::RefCell, collections::BTreeSet, fmt, rc::Rc};
 use thiserror::Error;
 
 use casper_storage::global_state::state::StateProvider;
-use casper_types::package::PackageKindTag;
 use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
     bytesrepr::{self, ToBytes},
     execution::Effects,
-    package::{EntityVersions, Groups, PackageKind, PackageStatus},
+    package::{EntityVersions, Groups, PackageKind, PackageKindTag, PackageStatus},
     system::{handle_payment::ACCUMULATION_PURSE_KEY, SystemEntityType},
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeKind, CLValue,
     CLValueError, Digest, EntryPoints, FeeHandling, Key, Package, PackageHash, Phase,

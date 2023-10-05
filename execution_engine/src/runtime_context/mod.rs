@@ -15,7 +15,6 @@ use std::{
 use tracing::error;
 
 use casper_storage::global_state::state::StateReader;
-use casper_types::package::PackageKindTag;
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
@@ -24,7 +23,7 @@ use casper_types::{
     },
     bytesrepr::ToBytes,
     execution::Effects,
-    package::PackageKind,
+    package::{PackageKind, PackageKindTag},
     system::auction::{BidKind, EraInfo},
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
     ContextAccessRights, DeployHash, DeployInfo, EntryPointType, Gas, GrantedAccess, Key, KeyTag,

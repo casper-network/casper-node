@@ -20,14 +20,13 @@ use datasize::DataSize;
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::addressable_entity::NamedKeys;
-use crate::package::{PackageKind, PackageStatus};
 use crate::{
     account,
-    addressable_entity::TryFromSliceForAccountHashError,
+    addressable_entity::{NamedKeys, TryFromSliceForAccountHashError},
     bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
     checksummed_hex,
     contract_wasm::ContractWasmHash,
+    package::{PackageKind, PackageStatus},
     uref,
     uref::URef,
     AddressableEntityHash, CLType, CLTyped, EntityVersionKey, EntryPoint, EntryPoints, Groups,

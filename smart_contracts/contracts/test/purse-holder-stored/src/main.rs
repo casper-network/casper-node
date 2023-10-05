@@ -11,9 +11,9 @@ use casper_contract::{
     contract_api::{runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::package::PackageKindTag;
 use casper_types::{
-    CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter,
+    package::PackageKindTag, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType,
+    EntryPoints, Key, Parameter,
 };
 
 pub const METHOD_ADD: &str = "add";

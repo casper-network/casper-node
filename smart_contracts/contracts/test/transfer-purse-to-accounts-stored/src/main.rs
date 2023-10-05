@@ -10,12 +10,12 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 
-use casper_types::package::PackageKindTag;
 use casper_types::{
     account::AccountHash,
     addressable_entity::{
         EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys, Parameter,
     },
+    package::PackageKindTag,
     CLType, CLTyped, Key, U512,
 };
 

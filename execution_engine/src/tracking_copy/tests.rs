@@ -7,7 +7,6 @@ use casper_storage::global_state::{
     state::{self, StateProvider, StateReader},
     trie::merkle_proof::TrieMerkleProof,
 };
-use casper_types::package::PackageKindTag;
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity::{
@@ -15,7 +14,7 @@ use casper_types::{
     },
     execution::{Effects, Transform, TransformKind},
     gens::*,
-    package::PackageHash,
+    package::{PackageHash, PackageKindTag},
     AccessRights, AddressableEntity, CLValue, Digest, EntryPoints, HashAddr, Key, KeyTag,
     ProtocolVersion, StoredValue, URef, U256, U512,
 };

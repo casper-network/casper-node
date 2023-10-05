@@ -27,16 +27,16 @@ use crate::{
     Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
 };
 
-use crate::byte_code::ByteCodeKind;
-use crate::contracts::{
-    ContractHash, ContractPackage, ContractPackageStatus, ContractVersionKey, ContractVersions,
-};
 use crate::{
     account::{associated_keys::gens::account_associated_keys_arb, Account},
     addressable_entity::{
         action_thresholds::gens::action_thresholds_arb, associated_keys::gens::associated_keys_arb,
     },
-    contracts::Contract,
+    byte_code::ByteCodeKind,
+    contracts::{
+        Contract, ContractHash, ContractPackage, ContractPackageStatus, ContractVersionKey,
+        ContractVersions,
+    },
     deploy_info::gens::{deploy_hash_arb, transfer_addr_arb},
     package::PackageKind,
     system::auction::{Bid, BidAddr, BidKind, ValidatorBid},

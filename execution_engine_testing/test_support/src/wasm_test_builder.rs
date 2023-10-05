@@ -40,12 +40,12 @@ use casper_storage::{
         trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_types::package::PackageKindTag;
 use casper_types::{
     account::AccountHash,
     bytesrepr::{self, FromBytes},
     contracts::ContractHash,
     execution::Effects,
+    package::PackageKindTag,
     runtime_args,
     system::{
         auction::{

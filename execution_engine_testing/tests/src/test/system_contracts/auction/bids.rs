@@ -21,11 +21,11 @@ use casper_execution_engine::{
     execution,
 };
 
-use casper_types::package::PackageKindTag;
 use casper_types::{
     self,
     account::AccountHash,
     api_error::ApiError,
+    package::PackageKindTag,
     runtime_args,
     system::{
         self,

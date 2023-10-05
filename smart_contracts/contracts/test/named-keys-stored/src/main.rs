@@ -10,9 +10,9 @@ use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::package::PackageKindTag;
 use casper_types::{
     addressable_entity::{NamedKeys, Parameters},
+    package::PackageKindTag,
     ApiError, CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, PackageHash,
     RuntimeArgs,
 };

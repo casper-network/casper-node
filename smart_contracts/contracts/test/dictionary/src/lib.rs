@@ -12,10 +12,10 @@ use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::package::PackageKindTag;
 use casper_types::{
-    addressable_entity::NamedKeys, api_error, bytesrepr::ToBytes, AccessRights, ApiError, CLType,
-    CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, URef,
+    addressable_entity::NamedKeys, api_error, bytesrepr::ToBytes, package::PackageKindTag,
+    AccessRights, ApiError, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType,
+    EntryPoints, Key, URef,
 };
 
 pub const DICTIONARY_NAME: &str = "local";

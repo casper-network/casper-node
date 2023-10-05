@@ -1,5 +1,7 @@
-use std::convert::TryFrom;
-use std::{collections::BTreeSet, convert::TryInto};
+use std::{
+    collections::BTreeSet,
+    convert::{TryFrom, TryInto},
+};
 
 use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
 use casper_types::{
@@ -64,7 +66,8 @@ pub trait TrackingCopyExt<R> {
     ) -> Result<(Motes, TrieMerkleProof<Key, StoredValue>), Self::Error>;
 
     // /// Gets a contract by Key.
-    // fn get_byte_code(&mut self, contract_wasm_hash: ByteCodeHash) -> Result<ByteCode, Self::Error>;
+    // fn get_byte_code(&mut self, contract_wasm_hash: ByteCodeHash) -> Result<ByteCode,
+    // Self::Error>;
 
     /// Gets an addressable entity  by Key.
     fn get_contract(

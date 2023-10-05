@@ -5,10 +5,9 @@ use casper_engine_test_support::{
     DEFAULT_PAYMENT,
 };
 use casper_execution_engine::engine_state::ExecuteRequest;
-use casper_types::package::PackageKindTag;
 use casper_types::{
-    account::AccountHash, bytesrepr::FromBytes, runtime_args, system::mint, AddressableEntity,
-    AddressableEntityHash, CLTyped, Key, PublicKey, URef, U512,
+    account::AccountHash, bytesrepr::FromBytes, package::PackageKindTag, runtime_args,
+    system::mint, AddressableEntity, AddressableEntityHash, CLTyped, Key, PublicKey, URef, U512,
 };
 
 use super::{

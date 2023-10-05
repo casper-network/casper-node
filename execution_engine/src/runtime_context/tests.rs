@@ -10,7 +10,6 @@ use once_cell::sync::Lazy;
 use rand::RngCore;
 
 use casper_storage::global_state::state::{self, lmdb::LmdbGlobalStateView, StateProvider};
-use casper_types::package::PackageKindTag;
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity::{
@@ -19,7 +18,7 @@ use casper_types::{
     },
     bytesrepr::ToBytes,
     execution::TransformKind,
-    package::PackageKind,
+    package::{PackageKind, PackageKindTag},
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCodeHash, CLValue,
     ContextAccessRights, DeployHash, EntryPointType, EntryPoints, Gas, Key, PackageHash, Phase,

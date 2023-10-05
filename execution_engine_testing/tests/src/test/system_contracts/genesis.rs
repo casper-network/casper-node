@@ -12,10 +12,9 @@ use casper_execution_engine::engine_state::{
     genesis::ExecConfigBuilder,
     run_genesis_request::RunGenesisRequest,
 };
-use casper_types::package::PackageKindTag;
 use casper_types::{
-    account::AccountHash, system::auction::DelegationRate, GenesisAccount, GenesisValidator, Key,
-    Motes, ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
+    account::AccountHash, package::PackageKindTag, system::auction::DelegationRate, GenesisAccount,
+    GenesisValidator, Key, Motes, ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
 };
 
 const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];

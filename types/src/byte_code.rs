@@ -7,18 +7,20 @@ use core::{
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use rand::distributions::{Distribution, Standard};
-use rand::Rng;
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 #[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::bytesrepr::U8_SERIALIZED_LENGTH;
-use crate::key::ByteCodeAddr;
 use crate::{
     addressable_entity, bytesrepr,
-    bytesrepr::{Bytes, Error, FromBytes, ToBytes},
-    checksummed_hex, uref, CLType, CLTyped,
+    bytesrepr::{Bytes, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    checksummed_hex,
+    key::ByteCodeAddr,
+    uref, CLType, CLTyped,
 };
 
 const BYTE_CODE_MAX_DISPLAY_LEN: usize = 16;

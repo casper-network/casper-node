@@ -3,10 +3,10 @@
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 
-use casper_types::package::PackageKindTag;
 use casper_types::{
     account::AccountHash,
     api_error, bytesrepr,
+    package::PackageKindTag,
     system::{
         auction::{self, EraInfo},
         SystemEntityType,

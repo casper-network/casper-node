@@ -664,8 +664,8 @@ impl Key {
         }
     }
 
-    /// Returns the inner bytes of `self` if `self` is of type [`Key::AddressableEntity`], otherwise returns
-    /// `None`.
+    /// Returns the inner bytes of `self` if `self` is of type [`Key::AddressableEntity`], otherwise
+    /// returns `None`.
     pub fn into_entity_addr(self) -> Option<EntityAddr> {
         match self {
             Key::AddressableEntity((_, hash)) => Some(hash),
@@ -682,8 +682,8 @@ impl Key {
         }
     }
 
-    /// Returns [`AddressableEntityHash`] of `self` if `self` is of type [`Key::AddressableEntity`], otherwise
-    /// returns `None`.
+    /// Returns [`AddressableEntityHash`] of `self` if `self` is of type [`Key::AddressableEntity`],
+    /// otherwise returns `None`.
     pub fn into_entity_hash(self) -> Option<AddressableEntityHash> {
         let entity_addr = self.into_entity_addr()?;
         Some(AddressableEntityHash::new(entity_addr))

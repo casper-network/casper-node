@@ -11,9 +11,9 @@ use casper_contract::{
 };
 use core::convert::TryInto;
 
-use casper_types::package::PackageKindTag;
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
+    package::PackageKindTag,
     CLType, CLTyped, Key, PackageHash, Parameter, URef,
 };
 

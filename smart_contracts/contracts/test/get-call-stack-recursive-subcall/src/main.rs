@@ -6,9 +6,9 @@ extern crate alloc;
 use alloc::{boxed::Box, string::ToString, vec};
 
 use casper_contract::contract_api::{runtime, storage};
-use casper_types::package::PackageKindTag;
 use casper_types::{
-    CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter,
+    package::PackageKindTag, CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
+    Key, Parameter,
 };
 
 use get_call_stack_recursive_subcall::{
