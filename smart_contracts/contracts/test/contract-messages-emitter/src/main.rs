@@ -22,8 +22,10 @@ use casper_types::{
 
 pub const ENTRY_POINT_INIT: &str = "init";
 pub const ENTRY_POINT_EMIT_MESSAGE: &str = "emit_message";
+pub const ENTRY_POINT_ADD_TOPIC: &str = "add_topic";
 pub const MESSAGE_EMITTER_INITIALIZED: &str = "message_emitter_initialized";
 pub const ARG_MESSAGE_SUFFIX_NAME: &str = "message_suffix";
+pub const ARG_TOPIC_NAME: &str = "topic_name";
 
 pub const MESSAGE_EMITTER_GENERIC_TOPIC: &str = "generic_messages";
 pub const MESSAGE_PREFIX: &str = "generic message: ";
@@ -35,7 +37,16 @@ pub extern "C" fn emit_message() {
     runtime::emit_message(
         MESSAGE_EMITTER_GENERIC_TOPIC,
         &MessagePayload::from_string(format!("{}{}", MESSAGE_PREFIX, suffix)),
-    );
+    )
+    .unwrap_or_revert();
+}
+
+#[no_mangle]
+pub extern "C" fn add_topic() {
+    let topic_name: String = runtime::get_named_arg(ARG_TOPIC_NAME);
+
+    runtime::manage_message_topic(topic_name.as_str(), MessageTopicOperation::Add)
+        .unwrap_or_revert();
 }
 
 #[no_mangle]
@@ -44,7 +55,8 @@ pub extern "C" fn init() {
         runtime::revert(ApiError::User(0));
     }
 
-    runtime::manage_message_topic(MESSAGE_EMITTER_GENERIC_TOPIC, MessageTopicOperation::Add);
+    runtime::manage_message_topic(MESSAGE_EMITTER_GENERIC_TOPIC, MessageTopicOperation::Add)
+        .unwrap_or_revert();
 
     runtime::put_key(MESSAGE_EMITTER_INITIALIZED, storage::new_uref(()).into());
 }
@@ -62,6 +74,13 @@ pub extern "C" fn call() {
     emitter_entry_points.add_entry_point(EntryPoint::new(
         ENTRY_POINT_EMIT_MESSAGE,
         vec![Parameter::new(ARG_MESSAGE_SUFFIX_NAME, String::cl_type())],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    ));
+    emitter_entry_points.add_entry_point(EntryPoint::new(
+        ENTRY_POINT_ADD_TOPIC,
+        vec![Parameter::new(ARG_TOPIC_NAME, String::cl_type())],
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Contract,

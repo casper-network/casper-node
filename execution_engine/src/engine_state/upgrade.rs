@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use casper_storage::global_state::state::StateProvider;
 use casper_types::{
-    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
+    addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, NamedKeys, Weight},
     bytesrepr::{self, ToBytes},
     execution::Effects,
     package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
@@ -183,6 +183,7 @@ where
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
+            MessageTopics::default(),
         );
         self.tracking_copy.borrow_mut().write(
             contract_hash.into(),
@@ -268,6 +269,7 @@ where
             main_purse,
             associated_keys,
             ActionThresholds::default(),
+            MessageTopics::default(),
         );
 
         let access_key = address_generator.new_uref(AccessRights::READ_ADD_WRITE);

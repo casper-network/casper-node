@@ -45,7 +45,7 @@ use casper_storage::{
 };
 use casper_types::{
     account::{Account, AccountHash},
-    addressable_entity::{AssociatedKeys, NamedKeys},
+    addressable_entity::{AssociatedKeys, MessageTopics, NamedKeys},
     bytesrepr::ToBytes,
     execution::Effects,
     package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
@@ -875,6 +875,7 @@ where
             account.main_purse(),
             associated_keys,
             account.action_thresholds().clone().into(),
+            MessageTopics::default(),
         );
 
         let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
@@ -2806,7 +2807,6 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::UnexpectedKeyVariant(_)
                 | ExecError::InvalidContractPackageKind(_)
                 | ExecError::Transform(_)
-                | ExecError::FailedTopicRegistration(_)
                 | ExecError::CannotEmitMessage(_)
                 | ExecError::InvalidMessageTopicOperation => false,
                 ExecError::DisabledUnrestrictedTransfers => false,

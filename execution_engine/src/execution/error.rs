@@ -191,9 +191,6 @@ pub enum Error {
     /// Failed to transfer tokens on a private chain.
     #[error("Failed to transfer with unrestricted transfers disabled")]
     DisabledUnrestrictedTransfers,
-    /// Failed to register a message topic due to config limits.
-    #[error("Failed to register a message topic: {0}")]
-    FailedTopicRegistration(MessagesLimitsError),
     /// Message was not emitted.
     #[error("Failed to emit a message on topic: {0}")]
     CannotEmitMessage(MessagesLimitsError),

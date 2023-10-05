@@ -7,8 +7,8 @@ use core::{
 
 use crate::{
     addressable_entity::{
-        self, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, TryFromIntError,
-        TryFromSliceForAccountHashError, UpdateKeyFailure,
+        self, AddKeyFailure, MessageTopicError, RemoveKeyFailure, SetThresholdFailure,
+        TryFromIntError, TryFromSliceForAccountHashError, UpdateKeyFailure,
     },
     bytesrepr,
     system::{auction, handle_payment, mint},
@@ -402,16 +402,28 @@ pub enum ApiError {
     /// assert_eq!(ApiError::from(41), ApiError::MessageTopicAlreadyRegistered);
     /// ```
     MessageTopicAlreadyRegistered,
+    /// The maximum number of allowed message topics was exceeded.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(42), ApiError::MaxTopicsNumberExceeded);
+    /// ```
+    MaxTopicsNumberExceeded,
+    /// The maximum size for the topic name was exceeded.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(43), ApiError::MaxTopicNameSizeExceeded);
+    /// ```
+    MaxTopicNameSizeExceeded,
     /// The message topic is not registered.
     /// ```
     /// # use casper_types::ApiError;
-    /// assert_eq!(ApiError::from(42), ApiError::MessageTopicNotRegistered);
+    /// assert_eq!(ApiError::from(44), ApiError::MessageTopicNotRegistered);
     /// ```
     MessageTopicNotRegistered,
     /// The message topic is full and cannot accept new messages.
     /// ```
     /// # use casper_types::ApiError;
-    /// assert_eq!(ApiError::from(43), ApiError::MessageTopicFull);
+    /// assert_eq!(ApiError::from(45), ApiError::MessageTopicFull);
     /// ```
     MessageTopicFull,
 }
@@ -517,6 +529,16 @@ impl From<handle_payment::Error> for ApiError {
     }
 }
 
+impl From<MessageTopicError> for ApiError {
+    fn from(error: MessageTopicError) -> Self {
+        match error {
+            MessageTopicError::DuplicateTopic => ApiError::MessageTopicAlreadyRegistered,
+            MessageTopicError::MaxTopicsExceeded => ApiError::MaxTopicsNumberExceeded,
+            MessageTopicError::TopicNameSizeExceeded => ApiError::MaxTopicNameSizeExceeded,
+        }
+    }
+}
+
 impl From<ApiError> for u32 {
     fn from(error: ApiError) -> Self {
         match error {
@@ -561,8 +583,10 @@ impl From<ApiError> for u32 {
             ApiError::ExceededRecursionDepth => 39,
             ApiError::NonRepresentableSerialization => 40,
             ApiError::MessageTopicAlreadyRegistered => 41,
-            ApiError::MessageTopicNotRegistered => 42,
-            ApiError::MessageTopicFull => 43,
+            ApiError::MaxTopicsNumberExceeded => 42,
+            ApiError::MaxTopicNameSizeExceeded => 43,
+            ApiError::MessageTopicNotRegistered => 44,
+            ApiError::MessageTopicFull => 45,
             ApiError::AuctionError(value) => AUCTION_ERROR_OFFSET + u32::from(value),
             ApiError::ContractHeader(value) => HEADER_ERROR_OFFSET + u32::from(value),
             ApiError::Mint(value) => MINT_ERROR_OFFSET + u32::from(value),
@@ -616,8 +640,10 @@ impl From<u32> for ApiError {
             39 => ApiError::ExceededRecursionDepth,
             40 => ApiError::NonRepresentableSerialization,
             41 => ApiError::MessageTopicAlreadyRegistered,
-            42 => ApiError::MessageTopicNotRegistered,
-            43 => ApiError::MessageTopicFull,
+            42 => ApiError::MaxTopicsNumberExceeded,
+            43 => ApiError::MaxTopicNameSizeExceeded,
+            44 => ApiError::MessageTopicNotRegistered,
+            45 => ApiError::MessageTopicFull,
             USER_ERROR_MIN..=USER_ERROR_MAX => ApiError::User(value as u16),
             HP_ERROR_MIN..=HP_ERROR_MAX => ApiError::HandlePayment(value as u8),
             MINT_ERROR_MIN..=MINT_ERROR_MAX => ApiError::Mint(value as u8),
@@ -679,6 +705,8 @@ impl Debug for ApiError {
             ApiError::MessageTopicAlreadyRegistered => {
                 write!(f, "ApiError::MessageTopicAlreadyRegistered")?
             }
+            ApiError::MaxTopicsNumberExceeded => write!(f, "ApiError::MaxTopicsNumberExceeded")?,
+            ApiError::MaxTopicNameSizeExceeded => write!(f, "ApiError::MaxTopicNameSizeExceeded")?,
             ApiError::MessageTopicNotRegistered => {
                 write!(f, "ApiError::MessageTopicNotRegistered")?
             }
@@ -903,6 +931,8 @@ mod tests {
         round_trip(Err(ApiError::AuctionError(0)));
         round_trip(Err(ApiError::AuctionError(u8::MAX)));
         round_trip(Err(ApiError::MessageTopicAlreadyRegistered));
+        round_trip(Err(ApiError::MaxTopicsNumberExceeded));
+        round_trip(Err(ApiError::MaxTopicNameSizeExceeded));
         round_trip(Err(ApiError::MessageTopicNotRegistered));
         round_trip(Err(ApiError::MessageTopicFull));
     }

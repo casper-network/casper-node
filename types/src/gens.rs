@@ -2,7 +2,12 @@
 //! [`Proptest`](https://crates.io/crates/proptest).
 #![allow(missing_docs)]
 
-use alloc::{boxed::Box, collections::BTreeSet, string::String, vec};
+use alloc::{
+    boxed::Box,
+    collections::{BTreeMap, BTreeSet},
+    string::String,
+    vec,
+};
 
 use proptest::{
     array, bits, bool,
@@ -14,9 +19,9 @@ use proptest::{
 
 use crate::{
     account::{self, action_thresholds::gens::account_action_thresholds_arb, AccountHash},
-    addressable_entity::{NamedKeys, Parameters, Weight},
-    contract_messages::{MessageSummary, MessageTopicSummary},
-    crypto::gens::public_key_arb_no_system,
+    addressable_entity::{MessageTopics, NamedKeys, Parameters, Weight},
+    contract_messages::{MessageSummary, MessageTopicHash, MessageTopicSummary},
+    crypto::{self, gens::public_key_arb_no_system},
     package::{ContractPackageStatus, ContractVersionKey, ContractVersions, Groups},
     system::auction::{
         gens::era_info_arb, DelegationRate, Delegator, UnbondingPurse, WithdrawPurse,
@@ -340,6 +345,17 @@ pub fn entry_points_arb() -> impl Strategy<Value = EntryPoints> {
     collection::vec(entry_point_arb(), 1..10).prop_map(EntryPoints::from)
 }
 
+pub fn message_topics_arb() -> impl Strategy<Value = MessageTopics> {
+    collection::vec(any::<String>(), 1..100).prop_map(|topic_names| {
+        MessageTopics::from(
+            topic_names
+                .into_iter()
+                .map(|name| (name.clone(), crypto::blake2b(name)))
+                .collect::<BTreeMap<String, MessageTopicHash>>(),
+        )
+    })
+}
+
 pub fn account_arb() -> impl Strategy<Value = Account> {
     (
         account_hash_arb(),
@@ -398,6 +414,7 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
         uref_arb(),
         associated_keys_arb(),
         action_thresholds_arb(),
+        message_topics_arb(),
     )
         .prop_map(
             |(
@@ -409,6 +426,7 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
                 main_purse,
                 associated_keys,
                 action_thresholds,
+                message_topics,
             )| {
                 AddressableEntity::new(
                     contract_package_hash_arb.into(),
@@ -419,6 +437,7 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
                     main_purse,
                     associated_keys,
                     action_thresholds,
+                    message_topics,
                 )
             },
         )

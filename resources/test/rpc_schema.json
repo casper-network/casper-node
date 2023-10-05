@@ -4666,6 +4666,7 @@
               "contract_wasm_hash",
               "entry_points",
               "main_purse",
+              "message_topics",
               "named_keys",
               "protocol_version"
             ],
@@ -4693,6 +4694,37 @@
               },
               "action_thresholds": {
                 "$ref": "#/components/schemas/ActionThresholds"
+              },
+              "message_topics": {
+                "$ref": "#/components/schemas/Array_of_MessageTopic"
+              }
+            }
+          },
+          "Array_of_MessageTopic": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageTopic"
+            }
+          },
+          "MessageTopic": {
+            "type": "object",
+            "required": [
+              "topic_hash",
+              "topic_name"
+            ],
+            "properties": {
+              "topic_name": {
+                "type": "string"
+              },
+              "topic_hash": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "uint8",
+                  "minimum": 0.0
+                },
+                "maxItems": 32,
+                "minItems": 32
               }
             }
           },

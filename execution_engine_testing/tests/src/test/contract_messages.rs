@@ -4,23 +4,27 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_BLOCK_TIME,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
+use casper_execution_engine::engine_state::EngineConfigBuilder;
 use casper_types::{
     bytesrepr::ToBytes,
     contract_messages::{MessagePayload, MessageSummary, MessageTopicHash, MessageTopicSummary},
-    crypto, runtime_args, ContractHash, Digest, Key, RuntimeArgs, StoredValue,
+    crypto, runtime_args, AddressableEntity, ContractHash, Digest, Key, MessagesLimits,
+    RuntimeArgs, StoredValue, WasmConfig,
 };
 
 const MESSAGE_EMITTER_INSTALLER_WASM: &str = "contract_messages_emitter.wasm";
 const MESSAGE_EMITTER_PACKAGE_NAME: &str = "messages_emitter_package_name";
 const MESSAGE_EMITTER_GENERIC_TOPIC: &str = "generic_messages";
 const ENTRY_POINT_EMIT_MESSAGE: &str = "emit_message";
+const ARG_TOPIC_NAME: &str = "topic_name";
+const ENTRY_POINT_ADD_TOPIC: &str = "add_topic";
 const ARG_MESSAGE_SUFFIX_NAME: &str = "message_suffix";
 
 const EMITTER_MESSAGE_PREFIX: &str = "generic message: ";
 
 fn install_messages_emitter_contract<'a>(
     builder: &'a RefCell<LmdbWasmTestBuilder>,
-) -> (ContractHash, [u8; 32]) {
+) -> ContractHash {
     // Request to install the contract that will be emitting messages.
     let install_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -54,16 +58,11 @@ fn install_messages_emitter_contract<'a>(
     };
 
     // Get the contract hash of the messages_emitter contract.
-    let message_emitter_contract_hash = message_emitter_package
+    *message_emitter_package
         .versions()
         .contract_hashes()
         .last()
-        .expect("Should have contract hash");
-
-    (
-        *message_emitter_contract_hash,
-        crypto::blake2b(MESSAGE_EMITTER_GENERIC_TOPIC),
-    )
+        .expect("Should have contract hash")
 }
 
 fn emit_message_with_suffix<'a>(
@@ -90,32 +89,45 @@ fn emit_message_with_suffix<'a>(
         .commit();
 }
 
-struct MessageEmitterQueryView<'a> {
+struct ContractQueryView<'a> {
     builder: &'a RefCell<LmdbWasmTestBuilder>,
     contract_hash: ContractHash,
-    message_topic_hash: MessageTopicHash,
 }
 
-impl<'a> MessageEmitterQueryView<'a> {
-    fn new(
-        builder: &'a RefCell<LmdbWasmTestBuilder>,
-        contract_hash: ContractHash,
-        message_topic_hash: MessageTopicHash,
-    ) -> Self {
+impl<'a> ContractQueryView<'a> {
+    fn new(builder: &'a RefCell<LmdbWasmTestBuilder>, contract_hash: ContractHash) -> Self {
         Self {
             builder,
             contract_hash,
-            message_topic_hash,
         }
     }
 
-    fn message_topic(&self) -> MessageTopicSummary {
+    fn entity(&self) -> AddressableEntity {
+        let query_result = self
+            .builder
+            .borrow_mut()
+            .query(None, Key::from(self.contract_hash), &[])
+            .expect("should query");
+
+        let entity = if let StoredValue::AddressableEntity(entity) = query_result {
+            entity
+        } else {
+            panic!(
+                "Stored value is not an adressable entity: {:?}",
+                query_result
+            );
+        };
+
+        entity
+    }
+
+    fn message_topic(&self, message_topic_hash: MessageTopicHash) -> MessageTopicSummary {
         let query_result = self
             .builder
             .borrow_mut()
             .query(
                 None,
-                Key::message_topic(self.contract_hash.value(), self.message_topic_hash),
+                Key::message_topic(self.contract_hash.value(), message_topic_hash),
                 &[],
             )
             .expect("should query");
@@ -133,6 +145,7 @@ impl<'a> MessageEmitterQueryView<'a> {
 
     fn message_summary(
         &self,
+        message_topic_hash: MessageTopicHash,
         message_index: u32,
         state_hash: Option<Digest>,
     ) -> Result<MessageSummary, String> {
@@ -140,7 +153,7 @@ impl<'a> MessageEmitterQueryView<'a> {
             state_hash,
             Key::message(
                 self.contract_hash.value(),
-                self.message_topic_hash,
+                message_topic_hash,
                 message_index,
             ),
             &[],
@@ -161,11 +174,24 @@ fn should_emit_messages() {
         .borrow_mut()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    let (contract_hash, message_topic_hash) = install_messages_emitter_contract(&builder);
-    let query_view = MessageEmitterQueryView::new(&builder, contract_hash, message_topic_hash);
+    let contract_hash = install_messages_emitter_contract(&builder);
+    let query_view = ContractQueryView::new(&builder, contract_hash);
+    let entity = query_view.entity();
 
+    let (topic_name, message_topic_hash) = entity
+        .message_topics()
+        .iter()
+        .next()
+        .expect("should have at least one topic");
+
+    assert_eq!(topic_name, &MESSAGE_EMITTER_GENERIC_TOPIC.to_string());
     // Check that the topic exists for the installed contract.
-    assert_eq!(query_view.message_topic().message_count(), 0);
+    assert_eq!(
+        query_view
+            .message_topic(*message_topic_hash)
+            .message_count(),
+        0
+    );
 
     // Now call the entry point to emit some messages.
     emit_message_with_suffix(&builder, "test", &contract_hash, DEFAULT_BLOCK_TIME);
@@ -173,20 +199,30 @@ fn should_emit_messages() {
         MessagePayload::from_string(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test"));
     let expected_message_hash = crypto::blake2b(expected_message.to_bytes().unwrap());
     let queried_message_summary = query_view
-        .message_summary(0, None)
+        .message_summary(*message_topic_hash, 0, None)
         .expect("should have value")
         .value();
     assert_eq!(expected_message_hash, queried_message_summary);
-    assert_eq!(query_view.message_topic().message_count(), 1);
+    assert_eq!(
+        query_view
+            .message_topic(*message_topic_hash)
+            .message_count(),
+        1
+    );
 
     // call again to emit a new message and check that the index in the topic incremented.
     emit_message_with_suffix(&builder, "test", &contract_hash, DEFAULT_BLOCK_TIME);
     let queried_message_summary = query_view
-        .message_summary(1, None)
+        .message_summary(*message_topic_hash, 1, None)
         .expect("should have value")
         .value();
     assert_eq!(expected_message_hash, queried_message_summary);
-    assert_eq!(query_view.message_topic().message_count(), 2);
+    assert_eq!(
+        query_view
+            .message_topic(*message_topic_hash)
+            .message_count(),
+        2
+    );
 
     let first_block_state_hash = builder.borrow().get_post_state_hash();
 
@@ -201,18 +237,25 @@ fn should_emit_messages() {
         MessagePayload::from_string(format!("{}{}", EMITTER_MESSAGE_PREFIX, "new block time"));
     let expected_message_hash = crypto::blake2b(expected_message.to_bytes().unwrap());
     let queried_message_summary = query_view
-        .message_summary(0, None)
+        .message_summary(*message_topic_hash, 0, None)
         .expect("should have value")
         .value();
     assert_eq!(expected_message_hash, queried_message_summary);
-    assert_eq!(query_view.message_topic().message_count(), 1);
+    assert_eq!(
+        query_view
+            .message_topic(*message_topic_hash)
+            .message_count(),
+        1
+    );
 
     // old messages should be pruned from tip and inaccessible at the latest state hash.
-    assert!(query_view.message_summary(1, None).is_err());
+    assert!(query_view
+        .message_summary(*message_topic_hash, 1, None)
+        .is_err());
 
     // old messages should still be discoverable at a state hash before pruning.
     assert!(query_view
-        .message_summary(1, Some(first_block_state_hash))
+        .message_summary(*message_topic_hash, 1, Some(first_block_state_hash))
         .is_ok());
 }
 
@@ -224,10 +267,22 @@ fn should_emit_message_on_empty_topic_in_new_block() {
         .borrow_mut()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    let (contract_hash, message_topic_hash) = install_messages_emitter_contract(&builder);
+    let contract_hash = install_messages_emitter_contract(&builder);
+    let query_view = ContractQueryView::new(&builder, contract_hash);
+    let entity = query_view.entity();
 
-    let query_view = MessageEmitterQueryView::new(&builder, contract_hash, message_topic_hash);
-    assert_eq!(query_view.message_topic().message_count(), 0);
+    let (_, message_topic_hash) = entity
+        .message_topics()
+        .iter()
+        .next()
+        .expect("should have at least one topic");
+
+    assert_eq!(
+        query_view
+            .message_topic(*message_topic_hash)
+            .message_count(),
+        0
+    );
 
     emit_message_with_suffix(
         &builder,
@@ -235,5 +290,171 @@ fn should_emit_message_on_empty_topic_in_new_block() {
         &contract_hash,
         DEFAULT_BLOCK_TIME + 1,
     );
-    assert_eq!(query_view.message_topic().message_count(), 1);
+    assert_eq!(
+        query_view
+            .message_topic(*message_topic_hash)
+            .message_count(),
+        1
+    );
+}
+
+#[ignore]
+#[test]
+fn should_add_topics() {
+    let builder = RefCell::new(LmdbWasmTestBuilder::default());
+    builder
+        .borrow_mut()
+        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    let contract_hash = install_messages_emitter_contract(&builder);
+    let query_view = ContractQueryView::new(&builder, contract_hash);
+
+    let add_topic_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        ENTRY_POINT_ADD_TOPIC,
+        runtime_args! {
+            ARG_TOPIC_NAME => "topic_1",
+        },
+    )
+    .build();
+
+    builder
+        .borrow_mut()
+        .exec(add_topic_request)
+        .expect_success()
+        .commit();
+
+    let topic_1_hash = *query_view
+        .entity()
+        .message_topics()
+        .get("topic_1")
+        .expect("should have added topic `topic_1");
+    assert_eq!(query_view.message_topic(topic_1_hash).message_count(), 0);
+
+    let add_topic_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        ENTRY_POINT_ADD_TOPIC,
+        runtime_args! {
+            ARG_TOPIC_NAME => "topic_2",
+        },
+    )
+    .build();
+
+    builder
+        .borrow_mut()
+        .exec(add_topic_request)
+        .expect_success()
+        .commit();
+
+    let topic_2_hash = *query_view
+        .entity()
+        .message_topics()
+        .get("topic_2")
+        .expect("should have added topic `topic_2");
+
+    assert!(query_view
+        .entity()
+        .message_topics()
+        .get("topic_1")
+        .is_some());
+    assert_eq!(query_view.message_topic(topic_1_hash).message_count(), 0);
+    assert_eq!(query_view.message_topic(topic_2_hash).message_count(), 0);
+}
+
+#[ignore]
+#[test]
+fn should_not_add_duplicate_topics() {
+    let builder = RefCell::new(LmdbWasmTestBuilder::default());
+    builder
+        .borrow_mut()
+        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+
+    let contract_hash = install_messages_emitter_contract(&builder);
+    let query_view = ContractQueryView::new(&builder, contract_hash);
+
+    let entity = query_view.entity();
+    let (first_topic_name, _) = entity
+        .message_topics()
+        .iter()
+        .next()
+        .expect("should have at least one topic");
+
+    let add_topic_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        ENTRY_POINT_ADD_TOPIC,
+        runtime_args! {
+            ARG_TOPIC_NAME => first_topic_name,
+        },
+    )
+    .build();
+
+    builder
+        .borrow_mut()
+        .exec(add_topic_request)
+        .expect_failure()
+        .commit();
+}
+
+#[ignore]
+#[test]
+fn should_not_exceed_configured_limits() {
+    let default_wasm_config = WasmConfig::default();
+    let custom_engine_config = EngineConfigBuilder::default()
+        .with_wasm_config(WasmConfig::new(
+            default_wasm_config.max_memory,
+            default_wasm_config.max_stack_height,
+            default_wasm_config.opcode_costs(),
+            default_wasm_config.storage_costs(),
+            default_wasm_config.take_host_function_costs(),
+            MessagesLimits {
+                max_topic_name_size: 32,
+                max_message_size: 100,
+                max_topics_per_contract: 1,
+            }
+        ))
+        .build();
+
+    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(custom_engine_config));
+    builder
+        .borrow_mut()
+        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+
+    let contract_hash = install_messages_emitter_contract(&builder);
+
+    // Check that the max number of topics limit is enforced.
+    let add_topic_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        ENTRY_POINT_ADD_TOPIC,
+        runtime_args! {
+            ARG_TOPIC_NAME => "topic_1",
+        },
+    )
+    .build();
+
+    builder
+        .borrow_mut()
+        .exec(add_topic_request)
+        .expect_failure()
+        .commit();
+
+    // Check topic name size limit is respected.
+    let large_topic_name = std::str::from_utf8(&[0x4du8; 100]).unwrap();
+    let add_topic_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        ENTRY_POINT_ADD_TOPIC,
+        runtime_args! {
+            ARG_TOPIC_NAME => large_topic_name,
+        },
+    )
+    .build();
+
+    builder
+        .borrow_mut()
+        .exec(add_topic_request)
+        .expect_failure()
+        .commit();
 }

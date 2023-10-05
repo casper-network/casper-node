@@ -1124,12 +1124,14 @@ where
                     ],
                 )?;
 
-                self.context
-                    .engine_config()
-                    .wasm_config()
-                    .messages_limits()
-                    .topic_name_size_within_limits(topic_name_size)
-                    .map_err(|e| Trap::from(Error::FailedTopicRegistration(e)))?;
+                let limits = self.context.engine_config().wasm_config().messages_limits();
+
+                if topic_name_size > limits.max_topic_name_size() {
+                    return Ok(Some(RuntimeValue::I32(api_error::i32_from(Err(
+                        ApiError::MaxTopicNameSizeExceeded,
+                    )))));
+                }
+
                 let topic_name = self.string_from_mem(topic_name_ptr, topic_name_size)?;
 
                 if operation_size as usize > MessageTopicOperation::max_serialized_len() {
@@ -1145,7 +1147,9 @@ where
                 }
 
                 let result = match topic_operation {
-                    MessageTopicOperation::Add => self.register_message_topic(topic_name)?,
+                    MessageTopicOperation::Add => {
+                        self.add_message_topic(topic_name).map_err(Trap::from)?
+                    }
                 };
 
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
@@ -1162,12 +1166,13 @@ where
                     [topic_name_ptr, topic_name_size, message_ptr, message_size],
                 )?;
 
-                self.context
-                    .engine_config()
-                    .wasm_config()
-                    .messages_limits()
-                    .topic_name_size_within_limits(topic_name_size)
-                    .map_err(|e| Trap::from(Error::CannotEmitMessage(e)))?;
+                let limits = self.context.engine_config().wasm_config().messages_limits();
+
+                if topic_name_size > limits.max_topic_name_size() {
+                    return Ok(Some(RuntimeValue::I32(api_error::i32_from(Err(
+                        ApiError::MaxTopicNameSizeExceeded,
+                    )))));
+                }
 
                 self.context
                     .engine_config()

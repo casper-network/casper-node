@@ -258,6 +258,7 @@ emit_message = { cost = 200, arguments = [0, 0, 0, 0] }
 
 [wasm.messages_limits]
 max_topic_name_size = 256
+max_topics_per_contract = 128
 max_message_size = 1_024
 
 [system_costs]

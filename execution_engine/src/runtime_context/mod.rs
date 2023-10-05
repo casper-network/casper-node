@@ -18,11 +18,11 @@ use casper_storage::global_state::state::StateReader;
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
-        ActionType, AddKeyFailure, NamedKeys, RemoveKeyFailure, SetThresholdFailure,
-        UpdateKeyFailure, Weight,
+        ActionType, AddKeyFailure, MessageTopicError, NamedKeys, RemoveKeyFailure,
+        SetThresholdFailure, UpdateKeyFailure, Weight,
     },
     bytesrepr::ToBytes,
-    contract_messages::Message,
+    contract_messages::{Message, MessageAddr, MessageTopicHash, MessageTopicSummary},
     execution::Effects,
     package::ContractPackageKind,
     system::auction::{BidKind, EraInfo},
@@ -1384,5 +1384,45 @@ where
     /// towards global limit for the whole deploy execution.
     pub(crate) fn set_remaining_spending_limit(&mut self, amount: U512) {
         self.remaining_spending_limit = amount;
+    }
+
+    /// Adds new message topic.
+    pub(crate) fn add_message_topic(
+        &mut self,
+        topic_name: String,
+        topic_hash: MessageTopicHash,
+    ) -> Result<Result<(), MessageTopicError>, Error> {
+        let entity_key: Key = self.get_entity_address();
+        let entity_addr = entity_key.into_hash().ok_or(Error::InvalidContext)?;
+
+        // Take the addressable entity out of the global state
+        let entity = {
+            let mut entity: AddressableEntity = self.read_gs_typed(&entity_key)?;
+
+            let max_topics_per_contract = self
+                .engine_config
+                .wasm_config()
+                .messages_limits()
+                .max_topics_per_contract();
+
+            if entity.message_topics().len() >= max_topics_per_contract as usize {
+                return Ok(Err(MessageTopicError::MaxTopicsExceeded));
+            }
+
+            if let Err(e) = entity.add_message_topic(topic_name, topic_hash) {
+                return Ok(Err(e));
+            }
+            entity
+        };
+
+        let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_hash));
+        let summary = StoredValue::MessageTopic(MessageTopicSummary::new(0, self.get_blocktime()));
+
+        let entity_value = self.addressable_entity_to_validated_value(entity)?;
+
+        self.metered_write_gs_unsafe(entity_key, entity_value)?;
+        self.metered_write_gs_unsafe(topic_key, summary)?;
+
+        Ok(Ok(()))
     }
 }
