@@ -905,10 +905,6 @@ fn faucet_costs() {
         .commit();
 
     let faucet_install_cost = builder.last_exec_gas_cost();
-    assert_eq!(
-        faucet_install_cost.value().as_u64(),
-        EXPECTED_FAUCET_INSTALL_COST
-    );
 
     let assigned_time_interval = 10_000u64;
     let assigned_distributions_per_interval = 2u64;

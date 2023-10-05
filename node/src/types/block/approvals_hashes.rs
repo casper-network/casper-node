@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
-use casper_types::{bytesrepr, ApprovalsHash, DeployId, Digest, Key, StoredValue};
+use casper_types::{bytesrepr, Block, DeployApprovalsHash, DeployId, Digest, Key, StoredValue};
 
-use super::{Block, BlockHash};
+use super::BlockHash;
 use crate::{
     components::{
         contract_runtime::APPROVALS_CHECKSUM_NAME,
@@ -27,7 +27,7 @@ pub(crate) struct ApprovalsHashes {
     /// Hash of the block that contains deploys that are relevant to the approvals.
     block_hash: BlockHash,
     /// The set of all deploys' finalized approvals' hashes.
-    approvals_hashes: Vec<ApprovalsHash>,
+    approvals_hashes: Vec<DeployApprovalsHash>,
     /// The Merkle proof of the checksum registry containing the checksum of
     /// the finalized approvals.
     #[data_size(skip)]
@@ -40,7 +40,7 @@ pub(crate) struct ApprovalsHashes {
 impl ApprovalsHashes {
     pub(crate) fn new(
         block_hash: &BlockHash,
-        approvals_hashes: Vec<ApprovalsHash>,
+        approvals_hashes: Vec<DeployApprovalsHash>,
         merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
     ) -> Self {
         Self {
@@ -102,7 +102,7 @@ impl ApprovalsHashes {
             .map(|(deploy_hash, approvals_hash)| DeployId::new(*deploy_hash, *approvals_hash))
     }
 
-    pub(crate) fn approvals_hashes(&self) -> &[ApprovalsHash] {
+    pub(crate) fn approvals_hashes(&self) -> &[DeployApprovalsHash] {
         self.approvals_hashes.as_ref()
     }
 

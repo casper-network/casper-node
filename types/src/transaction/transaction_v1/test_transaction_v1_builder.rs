@@ -2,8 +2,8 @@ use rand::Rng;
 
 use super::{AccountAndSecretKey, PricingModeV1, TransactionV1, TransactionV1Kind};
 use crate::{
-    testing::TestRng, PublicKey, SecretKey, TimeDiff, Timestamp, TransactionV1Approval,
-    TransactionV1Config, TransactionV1Hash,
+    testing::TestRng, PublicKey, SecretKey, TimeDiff, Timestamp, TransactionConfig,
+    TransactionV1Approval, TransactionV1Hash,
 };
 
 /// A builder for constructing a random [`TransactionV1`] for use in tests.
@@ -14,6 +14,7 @@ pub struct TestTransactionV1Builder {
     ttl: TimeDiff,
     pricing_mode: PricingModeV1,
     chain_name: String,
+    payment: Option<u64>,
     body: TransactionV1Kind,
     invalid_approvals: Vec<TransactionV1Approval>,
 }
@@ -27,7 +28,7 @@ impl TestTransactionV1Builder {
     ///   * given an invalid approval by calling `with_invalid_approval`
     pub fn new(rng: &mut TestRng) -> Self {
         let secret_key = SecretKey::random(rng);
-        let ttl_millis = rng.gen_range(60_000..TransactionV1Config::default().max_ttl.millis());
+        let ttl_millis = rng.gen_range(60_000..TransactionConfig::default().max_ttl.millis());
         TestTransactionV1Builder {
             account: PublicKey::from(&secret_key),
             secret_key: Some(secret_key),
@@ -35,6 +36,9 @@ impl TestTransactionV1Builder {
             ttl: TimeDiff::from_millis(ttl_millis),
             pricing_mode: PricingModeV1::random(rng),
             chain_name: rng.random_string(5..10),
+            payment: Some(
+                rng.gen_range(2_500_000_000..=TransactionConfig::default().block_gas_limit),
+            ),
             body: TransactionV1Kind::random(rng),
             invalid_approvals: vec![],
         }
@@ -72,6 +76,12 @@ impl TestTransactionV1Builder {
         self
     }
 
+    /// Sets the `payment` in the transaction.
+    pub fn with_payment(mut self, payment: u64) -> Self {
+        self.payment = Some(payment);
+        self
+    }
+
     /// Sets the `body` in the transaction.
     pub fn with_body(mut self, body: TransactionV1Kind) -> Self {
         self.body = body;
@@ -102,6 +112,7 @@ impl TestTransactionV1Builder {
             self.ttl,
             self.pricing_mode,
             self.chain_name,
+            self.payment,
             self.body,
             account_and_secret_key,
         );

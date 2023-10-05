@@ -1,6 +1,3 @@
-#[cfg(test)]
-pub(crate) mod test_block_builder;
-
 mod approvals_hashes;
 mod block_execution_results_or_chunk;
 mod block_execution_results_or_chunk_id;
@@ -11,7 +8,7 @@ mod signed_block;
 
 use casper_types::{
     bytesrepr::{self, ToBytes},
-    Block, BlockHash, DeployId, Digest, FinalitySignature,
+    BlockHash, DeployId, Digest, FinalitySignature,
 };
 
 pub(crate) use approvals_hashes::ApprovalsHashes;
@@ -20,7 +17,7 @@ pub(crate) use block_execution_results_or_chunk_id::BlockExecutionResultsOrChunk
 pub(crate) use block_payload::BlockPayload;
 pub use finalized_block::FinalizedBlock;
 pub(crate) use meta_block::{
-    MergeMismatchError as MetaBlockMergeError, MetaBlock, State as MetaBlockState,
+    ForwardMetaBlock, MergeMismatchError as MetaBlockMergeError, MetaBlock, State as MetaBlockState,
 };
 pub use signed_block::SignedBlock;
 

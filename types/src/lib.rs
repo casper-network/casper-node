@@ -30,7 +30,7 @@ mod block;
 mod block_time;
 mod byte_code;
 pub mod bytesrepr;
-#[cfg(any(feature = "std", test))]
+#[cfg(feature = "std")]
 mod chainspec;
 pub mod checksummed_hex;
 mod cl_type;
@@ -84,18 +84,21 @@ pub use addressable_entity::{
 };
 #[doc(inline)]
 pub use api_error::ApiError;
-pub use block::{
-    Block, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
-    BlockSignaturesMergeError, BlockValidationError, EraEnd, EraReport, FinalitySignature,
-    FinalitySignatureId, SignedBlockHeader, SignedBlockHeaderValidationError,
-};
 #[cfg(all(feature = "std", feature = "json-schema"))]
+pub use block::JsonBlockWithSignatures;
 pub use block::{
-    JsonBlock, JsonBlockBody, JsonBlockHeader, JsonEraEnd, JsonEraReport, JsonProof, JsonReward,
-    JsonValidatorWeight,
+    Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHashAndHeight, BlockHeader,
+    BlockSignatures, BlockSignaturesMergeError, BlockV1, BlockV2, BlockValidationError, EraEnd,
+    EraReport, FinalitySignature, FinalitySignatureId, SignedBlockHeader,
+    SignedBlockHeaderValidationError,
 };
+#[cfg(any(feature = "testing", test))]
+pub use block::{FromTestBlockBuilder, TestBlockBuilder};
+
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
 pub use byte_code::{ByteCode, ByteCodeHash, ByteCodeKind};
+#[cfg(feature = "std")]
+pub use chainspec::DEFAULT_HOST_FUNCTION_NEW_DICTIONARY;
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{
     AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,
@@ -104,8 +107,8 @@ pub use chainspec::{
     GenesisValidator, GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError,
     HandlePaymentCosts, HighwayConfig, HostFunction, HostFunctionCost, HostFunctionCosts,
     LegacyRequiredFinality, MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig, RefundHandling,
-    StandardPaymentCosts, StorageCosts, SystemConfig, TransactionV1Config, UpgradeConfig,
-    ValidatorConfig, WasmConfig,
+    StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig, TransactionV1Config,
+    UpgradeConfig, ValidatorConfig, WasmConfig,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{
@@ -118,11 +121,11 @@ pub use chainspec::{
     DEFAULT_CONTROL_FLOW_IF_OPCODE, DEFAULT_CONTROL_FLOW_LOOP_OPCODE,
     DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE,
     DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DELEGATE_COST, DEFAULT_DIV_COST,
-    DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
-    DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST,
+    DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_INTEGER_COMPARISON_COST,
+    DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MAX_STACK_HEIGHT,
+    DEFAULT_MIN_TRANSFER_MOTES, DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST,
     DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST,
-    DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY, MAX_PAYMENT_AMOUNT,
+    DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY,
 };
 pub use cl_type::{named_key_type, CLType, CLTyped};
 pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
@@ -162,14 +165,15 @@ pub use transaction::runtime_args::{NamedArg, RuntimeArgs};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use transaction::TestTransactionV1Builder;
 pub use transaction::{
-    runtime_args, Approval, ApprovalsHash, AuctionTransactionV1, Deploy,
-    DeployConfigurationFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
+    runtime_args, AuctionTransactionV1, Deploy,
+   DeployApproval, DeployApprovalsHash, DeployConfigurationFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
     DeployFootprint, DeployHash, DeployHeader, DeployId, DirectCallV1, EntityIdentifier,
     ExecutableDeployItem, ExecutableDeployItemIdentifier, NativeTransactionV1, PackageIdentifier,
-    PricingModeV1, Transaction, TransactionHash, TransactionV1, TransactionV1Approval,
-    TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError, TransactionV1Error,
-    TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header, TransactionV1Kind,
-    TransferTarget, UserlandTransactionV1,
+    PricingModeV1, Transaction, TransactionApprovalsHash, TransactionHash, TransactionId,
+    TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash, TransactionV1ConfigFailure,
+    TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
+    TransactionV1Hash, TransactionV1Header, TransactionV1Kind, TransferTarget,
+    UserlandTransactionV1,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction::{

@@ -9,17 +9,14 @@ use casper_types::{
 };
 
 use crate::{
-    components::{
-        block_accumulator::error::{Bogusness, Error as AcceptorError, InvalidGossipError},
-        fetcher::{EmptyValidationMetadata, FetchItem},
-    },
-    types::{EraValidatorWeights, MetaBlock, NodeId, SignatureWeight},
+    components::block_accumulator::error::{Bogusness, Error as AcceptorError, InvalidGossipError},
+    types::{EraValidatorWeights, ForwardMetaBlock, NodeId, SignatureWeight},
 };
 
 #[derive(DataSize, Debug)]
 pub(super) struct BlockAcceptor {
     block_hash: BlockHash,
-    meta_block: Option<MetaBlock>,
+    meta_block: Option<ForwardMetaBlock>,
     signatures: BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)>,
     peers: BTreeSet<NodeId>,
     last_progress: Timestamp,
@@ -30,14 +27,14 @@ pub(super) struct BlockAcceptor {
 #[allow(clippy::large_enum_variant)]
 pub(super) enum ShouldStore {
     SufficientlySignedBlock {
-        meta_block: MetaBlock,
+        meta_block: ForwardMetaBlock,
         block_signatures: BlockSignatures,
     },
     CompletedBlock {
-        meta_block: MetaBlock,
+        meta_block: ForwardMetaBlock,
         block_signatures: BlockSignatures,
     },
-    MarkComplete(MetaBlock),
+    MarkComplete(ForwardMetaBlock),
     SingleSignature(FinalitySignature),
     Nothing,
 }
@@ -67,7 +64,7 @@ impl BlockAcceptor {
 
     pub(super) fn register_block(
         &mut self,
-        meta_block: MetaBlock,
+        meta_block: ForwardMetaBlock,
         peer: Option<NodeId>,
     ) -> Result<(), AcceptorError> {
         if self.block_hash() != *meta_block.block.hash() {
@@ -77,7 +74,9 @@ impl BlockAcceptor {
             });
         }
 
-        if let Err(error) = meta_block.block.validate(&EmptyValidationMetadata) {
+        // Verify is needed for the cases when the block comes from the gossiper. It it came here
+        // from the fetcher it'll already be verified.
+        if let Err(error) = meta_block.block.verify() {
             warn!(%error, "received invalid block");
             // TODO[RC]: Consider renaming `InvalidGossip` and/or restructuring the errors
             return match peer {
@@ -450,7 +449,7 @@ impl BlockAcceptor {
             .map_or(false, |meta_block| meta_block.state.is_executed())
     }
 
-    pub(super) fn meta_block(&self) -> Option<MetaBlock> {
+    pub(super) fn meta_block(&self) -> Option<ForwardMetaBlock> {
         self.meta_block.clone()
     }
 
@@ -458,7 +457,7 @@ impl BlockAcceptor {
         self.last_progress = last_progress;
     }
 
-    pub(super) fn set_meta_block(&mut self, meta_block: Option<MetaBlock>) {
+    pub(super) fn set_meta_block(&mut self, meta_block: Option<ForwardMetaBlock>) {
         self.meta_block = meta_block;
     }
 

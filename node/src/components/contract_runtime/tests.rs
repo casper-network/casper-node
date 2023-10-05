@@ -318,7 +318,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
         let target_public_key = PublicKey::random(rng);
         let session = ExecutableDeployItem::Transfer {
             args: runtime_args! {
-              "amount" => U512::from(chainspec.deploy_config.native_transfer_minimum_motes),
+              "amount" => U512::from(chainspec.transaction_config.native_transfer_minimum_motes),
               "target" => target_public_key,
               "id" => Some(9_u64),
             },

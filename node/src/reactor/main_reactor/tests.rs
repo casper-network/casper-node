@@ -18,7 +18,8 @@ use casper_types::{
     testing::TestRng,
     AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, Block, BlockHash,
     BlockHeader, CLValue, Chainspec, ChainspecRawBytes, Deploy, DeployHash, EraId, Key, Motes,
-    ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, Timestamp, ValidatorConfig, U512,
+    ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, Timestamp, Transaction,
+    TransactionHash, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -42,7 +43,10 @@ use crate::{
     testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
     },
-    types::{BlockPayload, DeployOrTransferHash, ExitCode, NodeId, NodeRng},
+    types::{
+        AvailableBlockRange, BlockPayload, DeployOrTransferHash, DeployWithFinalizedApprovals,
+        ExitCode, NodeId, NodeRng, SyncHandling, TransactionWithFinalizedApprovals,
+    },
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };
@@ -244,6 +248,13 @@ fn has_completed_era(era_id: EraId) -> impl Fn(&Nodes) -> bool {
     }
 }
 
+fn available_block_range(
+    runner: &Runner<ConditionCheckReactor<FilterReactor<MainReactor>>>,
+) -> AvailableBlockRange {
+    let storage = runner.main_reactor().storage();
+    storage.get_available_block_range()
+}
+
 /// Given a block height and a node id, returns a predicate to check if the lowest available block
 /// for the specified node is at or below the specified height.
 fn node_has_lowest_available_block_at_or_below_height(
@@ -252,9 +263,7 @@ fn node_has_lowest_available_block_at_or_below_height(
 ) -> impl Fn(&Nodes) -> bool {
     move |nodes: &Nodes| {
         nodes.get(&node_id).map_or(true, |runner| {
-            let storage = runner.main_reactor().storage();
-
-            let available_block_range = storage.get_available_block_range();
+            let available_block_range = available_block_range(runner);
             if available_block_range.low() == 0 && available_block_range.high() == 0 {
                 false
             } else {
@@ -262,6 +271,19 @@ fn node_has_lowest_available_block_at_or_below_height(
             }
         })
     }
+}
+
+fn highest_complete_block(
+    runner: &Runner<ConditionCheckReactor<FilterReactor<MainReactor>>>,
+) -> Option<Block> {
+    let storage = runner.main_reactor().storage();
+    storage.read_highest_complete_block().unwrap_or(None)
+}
+
+fn highest_complete_block_hash(
+    runner: &Runner<ConditionCheckReactor<FilterReactor<MainReactor>>>,
+) -> Option<BlockHash> {
+    highest_complete_block(runner).map(|block| *block.hash())
 }
 
 fn is_ping(event: &MainEvent) -> bool {
@@ -377,18 +399,6 @@ async fn run_network() {
     .await;
 }
 
-fn highest_complete_block_hash(
-    runner: &Runner<ConditionCheckReactor<FilterReactor<MainReactor>>>,
-) -> Option<BlockHash> {
-    let storage = runner.main_reactor().storage();
-
-    if let Some(highest_block) = storage.read_highest_complete_block().unwrap_or(None) {
-        return Some(*highest_block.hash());
-    } else {
-        None
-    }
-}
-
 #[tokio::test]
 async fn historical_sync_with_era_height_1() {
     testing::init_logging();
@@ -440,7 +450,7 @@ async fn historical_sync_with_era_height_1() {
     }
     config.storage = storage_cfg;
     config.node.trusted_hash = Some(lfb);
-    config.node.sync_to_genesis = true;
+    config.node.sync_handling = SyncHandling::Genesis;
     let root = RESOURCES_PATH.join("local");
     let cfg = WithDir::new(root.clone(), config);
 
@@ -482,6 +492,132 @@ async fn historical_sync_with_era_height_1() {
         Duration::from_secs(1000),
     )
     .await;
+}
+
+#[tokio::test]
+async fn should_not_historical_sync_no_sync_node() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+
+    // Instantiate a new chain with a fixed size.
+    const NETWORK_SIZE: usize = 5;
+    let mut chain = TestChain::new(&mut rng, NETWORK_SIZE, None);
+    chain.chainspec_mut().core_config.minimum_era_height = 1;
+
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
+
+    // Wait for all nodes to reach era 1.
+    net.settle_on(
+        &mut rng,
+        is_in_era(EraId::from(1)),
+        Duration::from_secs(100),
+    )
+    .await;
+
+    let (_, first_node) = net
+        .nodes()
+        .iter()
+        .next()
+        .expect("Expected non-empty network");
+
+    let highest_block = highest_complete_block(first_node).expect("should have block");
+    let trusted_hash = *highest_block.hash();
+    let trusted_height = highest_block.height();
+
+    // Create a joiner node
+    let mut config = Config {
+        network: network::Config::default_local_net(chain.first_node_port()),
+        gossip: gossiper::Config::new_with_small_timeouts(),
+        ..Default::default()
+    };
+    let joiner_key = Arc::new(SecretKey::random(&mut rng));
+    let (storage_cfg, temp_dir) = storage::Config::default_for_tests();
+    {
+        let secret_key_path = temp_dir.path().join("secret_key");
+        joiner_key
+            .to_file(secret_key_path.clone())
+            .expect("could not write secret key");
+        config.consensus.secret_key_path = External::Path(secret_key_path);
+    }
+    config.storage = storage_cfg;
+    config.node.trusted_hash = Some(trusted_hash);
+    config.node.sync_handling = SyncHandling::NoSync;
+    let root = RESOURCES_PATH.join("local");
+    let cfg = WithDir::new(root.clone(), config);
+
+    let (joiner_id, _) = net
+        .add_node_with_config_and_chainspec(
+            cfg,
+            chain.chainspec(),
+            chain.chainspec_raw_bytes(),
+            &mut rng,
+        )
+        .await
+        .expect("could not add node to reactor");
+
+    // Wait for all nodes to reach era 2.
+    net.settle_on(
+        &mut rng,
+        has_completed_era(EraId::from(2)),
+        Duration::from_secs(100),
+    )
+    .await;
+
+    let available_block_range_pre = {
+        let (_, runner) = net
+            .nodes_mut()
+            .iter()
+            .find(|(x, _)| *x == &joiner_id)
+            .expect("should have runner");
+        available_block_range(runner)
+    };
+
+    let pre = available_block_range_pre.low();
+    assert!(
+        pre >= trusted_height,
+        "should not have acquired a block earlier than trusted hash block {} {}",
+        pre,
+        trusted_height
+    );
+
+    // Wait for all nodes to reach era 3.
+    net.settle_on(
+        &mut rng,
+        has_completed_era(EraId::from(3)),
+        Duration::from_secs(100),
+    )
+    .await;
+
+    let available_block_range_post = {
+        let (_, runner) = net
+            .nodes_mut()
+            .iter()
+            .find(|(x, _)| *x == &joiner_id)
+            .expect("should have runner 2");
+        available_block_range(runner)
+    };
+
+    let post = available_block_range_post.low();
+
+    assert!(
+        pre <= post,
+        "should not have acquired earlier blocks {} {}",
+        pre,
+        post
+    );
+
+    let pre = available_block_range_pre.high();
+    let post = available_block_range_post.high();
+    assert!(
+        pre < post,
+        "should have acquired later blocks {} {}",
+        pre,
+        post
+    );
 }
 
 #[tokio::test]
@@ -925,14 +1061,17 @@ async fn should_store_finalized_approvals() {
         runner
             .process_injected_effects(|effect_builder| {
                 effect_builder
-                    .put_deploy_to_storage(Arc::new(deploy.clone()))
+                    .put_transaction_to_storage(Transaction::from(deploy.clone()))
                     .ignore()
             })
             .await;
         runner
             .process_injected_effects(|effect_builder| {
                 effect_builder
-                    .announce_new_deploy_accepted(Arc::new(deploy), Source::Client)
+                    .announce_new_transaction_accepted(
+                        Arc::new(Transaction::from(deploy)),
+                        Source::Client,
+                    )
                     .ignore()
             })
             .await;
@@ -960,7 +1099,14 @@ async fn should_store_finalized_approvals() {
         let maybe_dwa = runner
             .main_reactor()
             .storage()
-            .get_deploy_with_finalized_approvals_by_hash(&deploy_hash);
+            .get_transaction_with_finalized_approvals_by_hash(&TransactionHash::from(deploy_hash))
+            .map(|transaction_wfa| match transaction_wfa {
+                TransactionWithFinalizedApprovals::Deploy {
+                    deploy,
+                    finalized_approvals,
+                } => DeployWithFinalizedApprovals::new(deploy, finalized_approvals),
+                _ => panic!("should receive deploy with finalized approvals"),
+            });
         let maybe_finalized_approvals = maybe_dwa
             .as_ref()
             .and_then(|dwa| dwa.finalized_approvals())
@@ -1230,17 +1376,18 @@ async fn settle_deploy(net: &mut TestingNetwork<FilterReactor<MainReactor>>, dep
     // saturate the network with the deploy via just making them all store and accept it
     // they're all validators so one of them should propose it
     for runner in net.runners_mut() {
+        let txn = Transaction::from(deploy.clone());
         runner
             .process_injected_effects(|effect_builder| {
                 effect_builder
-                    .put_deploy_to_storage(Arc::new(deploy.clone()))
+                    .put_transaction_to_storage(txn.clone())
                     .ignore()
             })
             .await;
         runner
             .process_injected_effects(|effect_builder| {
                 effect_builder
-                    .announce_new_deploy_accepted(Arc::new(deploy.clone()), Source::Client)
+                    .announce_new_transaction_accepted(Arc::new(txn), Source::Client)
                     .ignore()
             })
             .await;

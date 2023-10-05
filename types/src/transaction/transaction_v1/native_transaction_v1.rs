@@ -8,20 +8,31 @@ use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+#[cfg(any(feature = "std", test))]
+use tracing::debug;
 
-use super::AuctionTransactionV1;
 #[cfg(doc)]
 use super::TransactionV1;
+use super::{AuctionTransactionV1, OptionalArg, RequiredArg};
+#[cfg(any(feature = "std", test))]
+use super::{TransactionConfig, TransactionV1ConfigFailure};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
+    account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    RuntimeArgs,
+    CLValueError, RuntimeArgs, URef, U512,
 };
 
 const MINT_TRANSFER_TAG: u8 = 0;
 const AUCTION_TAG: u8 = 1;
 const RESERVATION_TAG: u8 = 2;
+
+const TRANSFER_ARG_SOURCE: RequiredArg<URef> = RequiredArg::new("source");
+const TRANSFER_ARG_TARGET: RequiredArg<URef> = RequiredArg::new("target");
+const TRANSFER_ARG_AMOUNT: RequiredArg<U512> = RequiredArg::new("amount");
+const TRANSFER_ARG_TO: OptionalArg<AccountHash> = OptionalArg::new("to");
+const TRANSFER_ARG_ID: OptionalArg<u64> = OptionalArg::new("id");
 
 /// A [`TransactionV1`] targeting native functionality.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
@@ -32,7 +43,6 @@ const RESERVATION_TAG: u8 = 2;
     schemars(description = "A TransactionV1 targeting native functionality.")
 )]
 #[serde(deny_unknown_fields)]
-#[non_exhaustive]
 pub enum NativeTransactionV1 {
     /// Calls the `transfer` entry point of the mint to transfer `Motes` from a source purse to a
     /// target purse.
@@ -48,7 +58,7 @@ pub enum NativeTransactionV1 {
     #[cfg_attr(
         feature = "json-schema",
         schemars(
-            description = "Calls the `transfer` entry point of the mint to transfer `Motes` from
+            description = "Calls the `transfer` entry point of the mint to transfer `Motes` from \
             a source purse to a target purse."
         )
     )]
@@ -63,8 +73,24 @@ pub enum NativeTransactionV1 {
 
 impl NativeTransactionV1 {
     /// Returns a new `NativeTransactionV1::MintTransfer`.
-    pub fn new_mint_transfer(args: RuntimeArgs) -> Self {
-        NativeTransactionV1::MintTransfer(args)
+    pub fn new_transfer<A: Into<U512>>(
+        source: URef,
+        target: URef,
+        amount: A,
+        maybe_to: Option<AccountHash>,
+        maybe_id: Option<u64>,
+    ) -> Result<Self, CLValueError> {
+        let mut args = RuntimeArgs::new();
+        TRANSFER_ARG_SOURCE.insert(&mut args, source)?;
+        TRANSFER_ARG_TARGET.insert(&mut args, target)?;
+        TRANSFER_ARG_AMOUNT.insert(&mut args, amount.into())?;
+        if let Some(to) = maybe_to {
+            TRANSFER_ARG_TO.insert(&mut args, to)?;
+        }
+        if let Some(id) = maybe_id {
+            TRANSFER_ARG_ID.insert(&mut args, id)?;
+        }
+        Ok(NativeTransactionV1::MintTransfer(args))
     }
 
     /// Returns a new `NativeTransactionV1::Auction`.
@@ -73,8 +99,8 @@ impl NativeTransactionV1 {
     }
 
     /// Returns a new `NativeTransactionV1::Reservation`.
-    pub fn new_reservation(args: RuntimeArgs) -> Self {
-        NativeTransactionV1::Reservation(args)
+    pub fn new_reservation() -> Self {
+        NativeTransactionV1::Reservation(RuntimeArgs::new())
     }
 
     /// Returns the runtime arguments.
@@ -87,11 +113,60 @@ impl NativeTransactionV1 {
         }
     }
 
+    pub(super) fn args_mut(&mut self) -> &mut RuntimeArgs {
+        match self {
+            NativeTransactionV1::MintTransfer(args) | NativeTransactionV1::Reservation(args) => {
+                args
+            }
+            NativeTransactionV1::Auction(auction_transaction) => auction_transaction.args_mut(),
+        }
+    }
+
+    #[cfg(any(feature = "std", test))]
+    pub(super) fn has_valid_args(
+        &self,
+        config: &TransactionConfig,
+    ) -> Result<(), TransactionV1ConfigFailure> {
+        match self {
+            NativeTransactionV1::MintTransfer(args) => {
+                let _source = TRANSFER_ARG_SOURCE.get(args)?;
+                let _target = TRANSFER_ARG_TARGET.get(args)?;
+                let amount = TRANSFER_ARG_AMOUNT.get(args)?;
+                if amount < U512::from(config.native_transfer_minimum_motes) {
+                    debug!(
+                        minimum = %config.native_transfer_minimum_motes,
+                        %amount,
+                        "insufficient transfer amount"
+                    );
+                    return Err(TransactionV1ConfigFailure::InsufficientTransferAmount {
+                        minimum: config.native_transfer_minimum_motes,
+                        attempted: amount,
+                    });
+                }
+                let _maybe_to = TRANSFER_ARG_TO.get(args)?;
+                let _maybe_id = TRANSFER_ARG_ID.get(args)?;
+                Ok(())
+            }
+            NativeTransactionV1::Auction(txn) => txn.has_valid_args(config),
+            NativeTransactionV1::Reservation(_args) => Ok(()),
+        }
+    }
+
     /// Returns a random `NativeTransactionV1`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..3) {
-            0 => NativeTransactionV1::MintTransfer(RuntimeArgs::random(rng)),
+            0 => {
+                let source = rng.gen();
+                let target = rng.gen();
+                let amount = rng.gen_range(
+                    TransactionConfig::default().native_transfer_minimum_motes..=u64::MAX,
+                );
+                let maybe_to = rng.gen::<bool>().then(|| rng.gen());
+                let maybe_id = rng.gen::<bool>().then(|| rng.gen());
+                NativeTransactionV1::new_transfer(source, target, amount, maybe_to, maybe_id)
+                    .unwrap()
+            }
             1 => NativeTransactionV1::Auction(AuctionTransactionV1::random(rng)),
             2 => NativeTransactionV1::Reservation(RuntimeArgs::random(rng)),
             _ => unreachable!(),

@@ -9,8 +9,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    ActivationPoint, Block, BlockHash, Digest, EraId, JsonBlock, ProtocolVersion, PublicKey,
-    TimeDiff, Timestamp,
+    ActivationPoint, Block, BlockHash, Digest, EraId, ProtocolVersion, PublicKey, TimeDiff,
+    Timestamp,
 };
 
 use crate::{
@@ -42,7 +42,7 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
     let mut peers = BTreeMap::new();
     peers.insert(*node_id, socket_addr.to_string());
     let status_feed = StatusFeed {
-        last_added_block: Some(Block::from(JsonBlock::doc_example().clone())),
+        last_added_block: Some(Block::example().clone()),
         peers,
         chainspec_info: ChainspecInfo::doc_example().clone(),
         our_public_signing_key: Some(PublicKey::example().clone()),
@@ -159,13 +159,18 @@ pub struct MinimalBlockInfo {
 
 impl From<Block> for MinimalBlockInfo {
     fn from(block: Block) -> Self {
+        let proposer = match &block {
+            Block::V1(v1) => v1.proposer().clone(),
+            Block::V2(v2) => v2.proposer().clone(),
+        };
+
         MinimalBlockInfo {
             hash: *block.hash(),
             timestamp: block.timestamp(),
             era_id: block.era_id(),
             height: block.height(),
             state_root_hash: *block.state_root_hash(),
-            creator: block.proposer().clone(),
+            creator: proposer,
         }
     }
 }

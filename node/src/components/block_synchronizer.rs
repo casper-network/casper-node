@@ -478,18 +478,15 @@ impl BlockSynchronizer {
                             .then(move |maybe_execution_results| async move {
                                 match maybe_execution_results {
                                     Some(execution_results) => {
-                                        let meta_block = MetaBlock::new(
+                                        let meta_block = MetaBlock::new_historical(
                                             Arc::new(*block),
                                             execution_results,
                                             MetaBlockState::new_after_historical_sync(),
                                         );
-                                        effect_builder.announce_meta_block(meta_block).await
+                                        effect_builder.announce_meta_block(meta_block).await;
                                     }
                                     None => {
-                                        error!(
-                                            "should have execution results for {}",
-                                            block.hash()
-                                        );
+                                        warn!("should have execution results for {}", block.hash());
                                     }
                                 }
                             })
@@ -864,7 +861,7 @@ impl BlockSynchronizer {
                     }
                 }
                 Some(block) => {
-                    if let Err(error) = builder.register_block(&block, maybe_peer_id) {
+                    if let Err(error) = builder.register_block(*block, maybe_peer_id) {
                         error!(%error, "BlockSynchronizer: failed to apply block");
                     }
                 }

@@ -1,13 +1,13 @@
 use prometheus::Registry;
 use rand::Rng;
 
-use casper_types::{testing::TestRng, EraId, TimeDiff};
+use casper_types::{testing::TestRng, EraId, TestBlockBuilder, TimeDiff};
 
 use super::*;
 use crate::{
     effect::announcements::DeployBufferAnnouncement::{self, DeploysExpired},
     reactor::{EventQueueHandle, QueueKind, Scheduler},
-    types::{FinalizedBlock, TestBlockBuilder},
+    types::FinalizedBlock,
     utils,
 };
 
@@ -110,8 +110,12 @@ fn assert_container_sizes(
 #[test]
 fn register_deploy_and_check_size() {
     let mut rng = TestRng::new();
-    let mut deploy_buffer =
-        DeployBuffer::new(DeployConfig::default(), Config::default(), &Registry::new()).unwrap();
+    let mut deploy_buffer = DeployBuffer::new(
+        TransactionConfig::default(),
+        Config::default(),
+        &Registry::new(),
+    )
+    .unwrap();
 
     // Try to register valid deploys
     let num_valid_deploys: usize = rng.gen_range(50..500);
@@ -147,8 +151,12 @@ fn register_deploy_and_check_size() {
 #[test]
 fn register_block_with_valid_deploys() {
     let mut rng = TestRng::new();
-    let mut deploy_buffer =
-        DeployBuffer::new(DeployConfig::default(), Config::default(), &Registry::new()).unwrap();
+    let mut deploy_buffer = DeployBuffer::new(
+        TransactionConfig::default(),
+        Config::default(),
+        &Registry::new(),
+    )
+    .unwrap();
 
     let deploys = create_valid_deploys(&mut rng, 10, DeployType::Random, None, None);
     let era_id = EraId::new(rng.gen_range(0..6));
@@ -168,8 +176,12 @@ fn register_block_with_valid_deploys() {
 #[test]
 fn register_finalized_block_with_valid_deploys() {
     let mut rng = TestRng::new();
-    let mut deploy_buffer =
-        DeployBuffer::new(DeployConfig::default(), Config::default(), &Registry::new()).unwrap();
+    let mut deploy_buffer = DeployBuffer::new(
+        TransactionConfig::default(),
+        Config::default(),
+        &Registry::new(),
+    )
+    .unwrap();
 
     let deploys = create_valid_deploys(&mut rng, 10, DeployType::Random, None, None);
     let block = FinalizedBlock::random(&mut rng, deploys.iter());
@@ -181,8 +193,12 @@ fn register_finalized_block_with_valid_deploys() {
 #[test]
 fn get_proposable_deploys() {
     let mut rng = TestRng::new();
-    let mut deploy_buffer =
-        DeployBuffer::new(DeployConfig::default(), Config::default(), &Registry::new()).unwrap();
+    let mut deploy_buffer = DeployBuffer::new(
+        TransactionConfig::default(),
+        Config::default(),
+        &Registry::new(),
+    )
+    .unwrap();
 
     // populate deploy buffer with some deploys
     let deploys = create_valid_deploys(&mut rng, 50, DeployType::Random, None, None);
@@ -238,57 +254,57 @@ fn get_proposable_deploys() {
 #[test]
 fn get_appendable_block_with_native_transfers() {
     let mut rng = TestRng::new();
-    let deploy_config = DeployConfig {
+    let transaction_config = TransactionConfig {
         block_max_deploy_count: 10,
-        block_max_transfer_count: 200,
+        block_max_native_count: 200,
         block_max_approval_count: 210,
         ..Default::default()
     };
     let mut deploy_buffer =
-        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
+        DeployBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
     get_appendable_block(
         &mut rng,
         &mut deploy_buffer,
         DeployType::Transfer,
-        deploy_config.block_max_transfer_count as usize,
+        transaction_config.block_max_native_count as usize,
     );
 }
 
 #[test]
 fn get_appendable_block_with_standard_deploys() {
     let mut rng = TestRng::new();
-    let deploy_config = DeployConfig {
+    let transaction_config = TransactionConfig {
         block_max_deploy_count: 10,
-        block_max_transfer_count: 200,
+        block_max_native_count: 200,
         block_max_approval_count: 210,
         ..Default::default()
     };
     let mut deploy_buffer =
-        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
+        DeployBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
     get_appendable_block(
         &mut rng,
         &mut deploy_buffer,
         DeployType::Standard,
-        deploy_config.block_max_deploy_count as usize,
+        transaction_config.block_max_deploy_count as usize,
     );
 }
 
 #[test]
 fn get_appendable_block_with_random_deploys() {
     let mut rng = TestRng::new();
-    let deploy_config = DeployConfig {
+    let transaction_config = TransactionConfig {
         block_max_deploy_count: 10,
-        block_max_transfer_count: 200,
+        block_max_native_count: 200,
         block_max_approval_count: 210,
         ..Default::default()
     };
     let mut deploy_buffer =
-        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
+        DeployBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
     get_appendable_block(
         &mut rng,
         &mut deploy_buffer,
         DeployType::Random,
-        deploy_config.block_max_transfer_count as usize,
+        transaction_config.block_max_native_count as usize,
     );
 }
 
@@ -320,8 +336,12 @@ fn get_appendable_block(
 #[test]
 fn register_deploys_and_blocks() {
     let mut rng = TestRng::new();
-    let mut deploy_buffer =
-        DeployBuffer::new(DeployConfig::default(), Config::default(), &Registry::new()).unwrap();
+    let mut deploy_buffer = DeployBuffer::new(
+        TransactionConfig::default(),
+        Config::default(),
+        &Registry::new(),
+    )
+    .unwrap();
 
     // try to register valid deploys
     let num_valid_deploys: usize = rng.gen_range(50..500);
@@ -415,6 +435,7 @@ fn register_deploys_and_blocks() {
 }
 
 /// Event for the mock reactor.
+#[derive(Debug)]
 enum ReactorEvent {
     DeployBufferAnnouncement(DeployBufferAnnouncement),
     Event(Event),
@@ -439,7 +460,7 @@ struct MockReactor {
 impl MockReactor {
     fn new() -> Self {
         MockReactor {
-            scheduler: utils::leak(Scheduler::new(QueueKind::weights())),
+            scheduler: utils::leak(Scheduler::new(QueueKind::weights(), None)),
         }
     }
 
@@ -463,8 +484,12 @@ impl MockReactor {
 #[tokio::test]
 async fn expire_deploys_and_check_announcement() {
     let mut rng = TestRng::new();
-    let mut deploy_buffer =
-        DeployBuffer::new(DeployConfig::default(), Config::default(), &Registry::new()).unwrap();
+    let mut deploy_buffer = DeployBuffer::new(
+        TransactionConfig::default(),
+        Config::default(),
+        &Registry::new(),
+    )
+    .unwrap();
 
     let reactor = MockReactor::new();
     let event_queue_handle = EventQueueHandle::without_shutdown(reactor.scheduler);

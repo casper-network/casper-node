@@ -8,9 +8,9 @@ use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[cfg(doc)]
-use super::Block;
 use super::BlockHash;
+#[cfg(doc)]
+use super::BlockV2;
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 

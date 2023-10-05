@@ -65,7 +65,7 @@ impl BlockExecutionResultsOrChunk {
 
         let is_v1 = matches!(execution_results.first(), Some(ExecutionResult::V1(_)));
 
-        // If it's not V1, just construct the `ValueOrChunk` from `Vec<VersionedExecutionResult>`.
+        // If it's not V1, just construct the `ValueOrChunk` from `Vec<ExecutionResult>`.
         if !is_v1 {
             let value = make_value_or_chunk(execution_results, &block_hash, chunk_index)?;
             return Some(BlockExecutionResultsOrChunk {
@@ -76,8 +76,8 @@ impl BlockExecutionResultsOrChunk {
         }
 
         // If it is V1, we need to construct the `ValueOrChunk` from a `Vec<ExecutionResultV1>` if
-        // it's big enough to need chunking, otherwise we need to use the
-        // `Vec<VersionedExecutionResult>` as the `ValueOrChunk::Value`.
+        // it's big enough to need chunking, otherwise we need to use the `Vec<ExecutionResult>` as
+        // the `ValueOrChunk::Value`.
         let mut v1_results = Vec::with_capacity(execution_results.len());
         for result in &execution_results {
             if let ExecutionResult::V1(v1_result) = result {

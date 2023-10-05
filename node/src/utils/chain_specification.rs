@@ -3,7 +3,7 @@ use tracing::{error, info, warn};
 
 use casper_types::{
     system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, Chainspec, ConsensusProtocolName, CoreConfig,
-    DeployConfig, ProtocolConfig, TimeDiff,
+    ProtocolConfig, TimeDiff, TransactionConfig,
 };
 
 pub(crate) mod error;
@@ -54,7 +54,7 @@ pub fn validate_chainspec(chainspec: &Chainspec) -> bool {
 
     validate_protocol_config(&chainspec.protocol_config)
         && validate_core_config(&chainspec.core_config)
-        && validate_deploy_config(&chainspec.deploy_config)
+        && validate_transaction_config(&chainspec.transaction_config)
 }
 
 /// Checks whether the values set in the config make sense and returns `false` if they don't.
@@ -105,15 +105,15 @@ pub(crate) fn validate_core_config(core_config: &CoreConfig) -> bool {
     true
 }
 
-/// Validates `DeployConfig` parameters
-pub(crate) fn validate_deploy_config(deploy_config: &DeployConfig) -> bool {
-    // the total number of deploys + transfers should not exceed the number of approvals because
-    // each deploy or transfer needs at least one approval to be valid
-    if let Some(total_deploy_and_transfer_slots) = deploy_config
+/// Validates `TransactionConfig` parameters
+pub(crate) fn validate_transaction_config(transaction_config: &TransactionConfig) -> bool {
+    // The total number of transactions should not exceed the number of approvals because each
+    // transaction needs at least one approval to be valid.
+    if let Some(total_deploy_and_transfer_slots) = transaction_config
         .block_max_deploy_count
-        .checked_add(deploy_config.block_max_transfer_count)
+        .checked_add(transaction_config.block_max_native_count)
     {
-        deploy_config.block_max_approval_count >= total_deploy_and_transfer_slots
+        transaction_config.block_max_approval_count >= total_deploy_and_transfer_slots
     } else {
         false
     }
@@ -128,15 +128,14 @@ mod tests {
 
     use casper_types::{
         bytesrepr::FromBytes, ActivationPoint, BrTableCost, ChainspecRawBytes, ControlFlowCosts,
-        CoreConfig, DeployConfig, EraId, GlobalStateUpdate, HighwayConfig, HostFunction,
-        HostFunctionCosts, Motes, OpcodeCosts, ProtocolConfig, ProtocolVersion, StorageCosts,
-        StoredValue, TimeDiff, Timestamp, WasmConfig, U512,
+        CoreConfig, EraId, GlobalStateUpdate, HighwayConfig, HostFunction, HostFunctionCosts,
+        Motes, OpcodeCosts, ProtocolConfig, ProtocolVersion, StorageCosts, StoredValue,
+        TestBlockBuilder, TimeDiff, Timestamp, TransactionConfig, WasmConfig, U512,
     };
 
     use super::*;
     use crate::{
         testing::init_logging,
-        types::TestBlockBuilder,
         utils::{Loadable, RESOURCES_PATH},
     };
 
@@ -245,9 +244,9 @@ mod tests {
     }
 
     #[test]
-    fn deploy_config_toml_roundtrip() {
+    fn transaction_config_toml_roundtrip() {
         let mut rng = crate::new_rng();
-        let config = DeployConfig::random(&mut rng);
+        let config = TransactionConfig::random(&mut rng);
         let encoded = toml::to_string_pretty(&config).unwrap();
         let decoded = toml::from_str(&encoded).unwrap();
         assert_eq!(config, decoded);
@@ -357,37 +356,37 @@ mod tests {
     }
 
     #[test]
-    fn should_have_valid_deploy_counts() {
-        let deploy_config = DeployConfig {
+    fn should_have_valid_transaction_counts() {
+        let transaction_config = TransactionConfig {
             block_max_approval_count: 100,
             block_max_deploy_count: 100,
-            block_max_transfer_count: 100,
+            block_max_native_count: 100,
             ..Default::default()
         };
         assert!(
-            !validate_deploy_config(&deploy_config),
+            !validate_transaction_config(&transaction_config),
             "max approval count that is not at least equal to deploy + transfer count should be invalid"
         );
 
-        let deploy_config = DeployConfig {
+        let transaction_config = TransactionConfig {
             block_max_approval_count: 200,
             block_max_deploy_count: 100,
-            block_max_transfer_count: 100,
+            block_max_native_count: 100,
             ..Default::default()
         };
         assert!(
-            validate_deploy_config(&deploy_config),
+            validate_transaction_config(&transaction_config),
             "max approval count equal to deploy + transfer count should be valid"
         );
 
-        let deploy_config = DeployConfig {
+        let transaction_config = TransactionConfig {
             block_max_approval_count: 200,
             block_max_deploy_count: 10,
-            block_max_transfer_count: 100,
+            block_max_native_count: 100,
             ..Default::default()
         };
         assert!(
-            validate_deploy_config(&deploy_config),
+            validate_transaction_config(&transaction_config),
             "max approval count greater than deploy + transfer count should be valid"
         );
     }
@@ -586,17 +585,17 @@ mod tests {
         );
 
         assert_eq!(
-            spec.deploy_config.max_payment_cost,
+            spec.transaction_config.deploy_config.max_payment_cost,
             Motes::new(U512::from(9))
         );
         assert_eq!(
-            spec.deploy_config.max_ttl,
+            spec.transaction_config.max_ttl,
             TimeDiff::from_seconds(26_300_160)
         );
-        assert_eq!(spec.deploy_config.max_dependencies, 11);
-        assert_eq!(spec.deploy_config.max_block_size, 12);
-        assert_eq!(spec.deploy_config.block_max_deploy_count, 125);
-        assert_eq!(spec.deploy_config.block_gas_limit, 13);
+        assert_eq!(spec.transaction_config.deploy_config.max_dependencies, 11);
+        assert_eq!(spec.transaction_config.max_block_size, 12);
+        assert_eq!(spec.transaction_config.block_max_deploy_count, 125);
+        assert_eq!(spec.transaction_config.block_gas_limit, 13);
 
         assert_eq!(spec.wasm_config, *EXPECTED_GENESIS_WASM_COSTS);
     }

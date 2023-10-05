@@ -7,12 +7,16 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(doc)]
 use super::Deploy;
-use super::{ApprovalsHash, DeployHash};
-use crate::bytesrepr::{self, FromBytes, ToBytes};
+use super::{DeployApprovalsHash, DeployHash};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    TransactionId,
+};
 
-/// The unique identifier of a [`Deploy`], comprising its [`DeployHash`] and [`ApprovalsHash`].
+/// The unique identifier of a [`Deploy`], comprising its [`DeployHash`] and
+/// [`DeployApprovalsHash`].
 #[derive(
     Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, Default,
 )]
@@ -20,12 +24,12 @@ use crate::testing::TestRng;
 #[serde(deny_unknown_fields)]
 pub struct DeployId {
     deploy_hash: DeployHash,
-    approvals_hash: ApprovalsHash,
+    approvals_hash: DeployApprovalsHash,
 }
 
 impl DeployId {
     /// Returns a new `DeployId`.
-    pub fn new(deploy_hash: DeployHash, approvals_hash: ApprovalsHash) -> Self {
+    pub fn new(deploy_hash: DeployHash, approvals_hash: DeployApprovalsHash) -> Self {
         DeployId {
             deploy_hash,
             approvals_hash,
@@ -38,19 +42,19 @@ impl DeployId {
     }
 
     /// Returns the approvals hash.
-    pub fn approvals_hash(&self) -> &ApprovalsHash {
+    pub fn approvals_hash(&self) -> &DeployApprovalsHash {
         &self.approvals_hash
     }
 
     /// Consumes `self`, returning a tuple of the constituent parts.
-    pub fn destructure(self) -> (DeployHash, ApprovalsHash) {
+    pub fn destructure(self) -> (DeployHash, DeployApprovalsHash) {
         (self.deploy_hash, self.approvals_hash)
     }
 
     /// Returns a random `DeployId`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        DeployId::new(DeployHash::random(rng), ApprovalsHash::random(rng))
+        DeployId::new(DeployHash::random(rng), DeployApprovalsHash::random(rng))
     }
 }
 
@@ -84,9 +88,18 @@ impl ToBytes for DeployId {
 impl FromBytes for DeployId {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (deploy_hash, remainder) = DeployHash::from_bytes(bytes)?;
-        let (approvals_hash, remainder) = ApprovalsHash::from_bytes(remainder)?;
+        let (approvals_hash, remainder) = DeployApprovalsHash::from_bytes(remainder)?;
         let id = DeployId::new(deploy_hash, approvals_hash);
         Ok((id, remainder))
+    }
+}
+
+impl From<DeployId> for TransactionId {
+    fn from(id: DeployId) -> Self {
+        Self::Deploy {
+            deploy_hash: id.deploy_hash,
+            approvals_hash: id.approvals_hash,
+        }
     }
 }
 

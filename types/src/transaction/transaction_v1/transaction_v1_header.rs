@@ -18,7 +18,7 @@ use crate::{
     Digest, PublicKey, TimeDiff, Timestamp,
 };
 #[cfg(any(feature = "std", test))]
-use crate::{TransactionV1Config, TransactionV1ConfigFailure, TransactionV1Hash};
+use crate::{TransactionConfig, TransactionV1ConfigFailure, TransactionV1Hash};
 
 /// The header portion of a [`TransactionV1`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
@@ -104,7 +104,7 @@ impl TransactionV1Header {
     #[cfg(any(feature = "std", test))]
     pub fn is_valid(
         &self,
-        config: &TransactionV1Config,
+        config: &TransactionConfig,
         at: Timestamp,
         transaction_hash: &TransactionV1Hash,
     ) -> Result<(), TransactionV1ConfigFailure> {

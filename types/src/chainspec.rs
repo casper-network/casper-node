@@ -5,14 +5,13 @@ mod accounts_config;
 mod activation_point;
 mod chainspec_raw_bytes;
 mod core_config;
-mod deploy_config;
 mod fee_handling;
 mod global_state_update;
 mod highway_config;
 mod network_config;
 mod protocol_config;
 mod refund_handling;
-mod transaction_v1_config;
+mod transaction_config;
 mod vm_config;
 
 use std::{fmt::Debug, sync::Arc};
@@ -37,20 +36,20 @@ pub use accounts_config::{
 pub use activation_point::ActivationPoint;
 pub use chainspec_raw_bytes::ChainspecRawBytes;
 pub use core_config::{ConsensusProtocolName, CoreConfig, LegacyRequiredFinality};
-pub use deploy_config::DeployConfig;
-#[cfg(any(feature = "testing", test))]
-pub use deploy_config::MAX_PAYMENT_AMOUNT;
 pub use fee_handling::FeeHandling;
 pub use global_state_update::{GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError};
 pub use highway_config::HighwayConfig;
 pub use network_config::NetworkConfig;
 pub use protocol_config::ProtocolConfig;
 pub use refund_handling::RefundHandling;
-pub use transaction_v1_config::TransactionV1Config;
+pub use transaction_config::{DeployConfig, TransactionConfig, TransactionV1Config};
+#[cfg(any(feature = "testing", test))]
+pub use transaction_config::{DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES};
 pub use vm_config::{
     AuctionCosts, BrTableCost, ChainspecRegistry, ControlFlowCosts, HandlePaymentCosts,
     HostFunction, HostFunctionCost, HostFunctionCosts, MintCosts, OpcodeCosts,
     StandardPaymentCosts, StorageCosts, SystemConfig, UpgradeConfig, WasmConfig,
+    DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
 };
 #[cfg(any(feature = "testing", test))]
 pub use vm_config::{
@@ -63,17 +62,17 @@ pub use vm_config::{
     DEFAULT_CONTROL_FLOW_IF_OPCODE, DEFAULT_CONTROL_FLOW_LOOP_OPCODE,
     DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE,
     DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DELEGATE_COST, DEFAULT_DIV_COST,
-    DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
-    DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST,
-    DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST,
-    DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY,
+    DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_INTEGER_COMPARISON_COST,
+    DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST,
+    DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST, DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST,
+    DEFAULT_UNREACHABLE_COST, DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY,
 };
 
 /// A collection of configuration settings describing the state of the system at genesis and after
 /// upgrades to basic system functionality occurring after genesis.
 #[derive(PartialEq, Eq, Serialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[serde(deny_unknown_fields)]
 pub struct Chainspec {
     /// Protocol config.
     #[serde(rename = "protocol")]
@@ -93,11 +92,7 @@ pub struct Chainspec {
 
     /// Transaction Config.
     #[serde(rename = "transactions")]
-    pub transaction_v1_config: TransactionV1Config,
-
-    /// Deploy Config.
-    #[serde(rename = "deploys")]
-    pub deploy_config: DeployConfig,
+    pub transaction_config: TransactionConfig,
 
     /// Wasm config.
     #[serde(rename = "wasm")]
@@ -182,8 +177,7 @@ impl Chainspec {
         let network_config = NetworkConfig::random(rng);
         let core_config = CoreConfig::random(rng);
         let highway_config = HighwayConfig::random(rng);
-        let transaction_config = TransactionV1Config::random(rng);
-        let deploy_config = DeployConfig::random(rng);
+        let transaction_config = TransactionConfig::random(rng);
         let wasm_config = rng.gen();
         let system_costs_config = rng.gen();
 
@@ -192,8 +186,7 @@ impl Chainspec {
             network_config,
             core_config,
             highway_config,
-            transaction_v1_config: transaction_config,
-            deploy_config,
+            transaction_config,
             wasm_config,
             system_costs_config,
         }
@@ -206,8 +199,7 @@ impl ToBytes for Chainspec {
         self.network_config.write_bytes(writer)?;
         self.core_config.write_bytes(writer)?;
         self.highway_config.write_bytes(writer)?;
-        self.transaction_v1_config.write_bytes(writer)?;
-        self.deploy_config.write_bytes(writer)?;
+        self.transaction_config.write_bytes(writer)?;
         self.wasm_config.write_bytes(writer)?;
         self.system_costs_config.write_bytes(writer)
     }
@@ -223,8 +215,7 @@ impl ToBytes for Chainspec {
             + self.network_config.serialized_length()
             + self.core_config.serialized_length()
             + self.highway_config.serialized_length()
-            + self.transaction_v1_config.serialized_length()
-            + self.deploy_config.serialized_length()
+            + self.transaction_config.serialized_length()
             + self.wasm_config.serialized_length()
             + self.system_costs_config.serialized_length()
     }
@@ -236,8 +227,7 @@ impl FromBytes for Chainspec {
         let (network_config, remainder) = NetworkConfig::from_bytes(remainder)?;
         let (core_config, remainder) = CoreConfig::from_bytes(remainder)?;
         let (highway_config, remainder) = HighwayConfig::from_bytes(remainder)?;
-        let (transaction_config, remainder) = TransactionV1Config::from_bytes(remainder)?;
-        let (deploy_config, remainder) = DeployConfig::from_bytes(remainder)?;
+        let (transaction_config, remainder) = TransactionConfig::from_bytes(remainder)?;
         let (wasm_config, remainder) = WasmConfig::from_bytes(remainder)?;
         let (system_costs_config, remainder) = SystemConfig::from_bytes(remainder)?;
         let chainspec = Chainspec {
@@ -245,8 +235,7 @@ impl FromBytes for Chainspec {
             network_config,
             core_config,
             highway_config,
-            transaction_v1_config: transaction_config,
-            deploy_config,
+            transaction_config,
             wasm_config,
             system_costs_config,
         };

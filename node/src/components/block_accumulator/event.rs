@@ -5,11 +5,11 @@ use std::{
 
 use derive_more::From;
 
-use casper_types::{Block, BlockHash, BlockSignatures, EraId, FinalitySignature};
+use casper_types::{BlockHash, BlockSignatures, BlockV2, EraId, FinalitySignature};
 
 use crate::{
     effect::requests::BlockAccumulatorRequest,
-    types::{MetaBlock, NodeId},
+    types::{ForwardMetaBlock, NodeId},
 };
 
 #[derive(Debug, From)]
@@ -22,7 +22,7 @@ pub(crate) enum Event {
         sender: NodeId,
     },
     ReceivedBlock {
-        block: Arc<Block>,
+        block: Arc<BlockV2>,
         sender: NodeId,
     },
     CreatedFinalitySignature {
@@ -33,10 +33,10 @@ pub(crate) enum Event {
         sender: NodeId,
     },
     ExecutedBlock {
-        meta_block: MetaBlock,
+        meta_block: ForwardMetaBlock,
     },
     Stored {
-        maybe_meta_block: Option<MetaBlock>,
+        maybe_meta_block: Option<ForwardMetaBlock>,
         maybe_block_signatures: Option<BlockSignatures>,
     },
 }

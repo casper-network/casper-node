@@ -10,7 +10,7 @@ use tracing::info;
 
 use casper_types::{
     execution::{ExecutionResult, ExecutionResultV2},
-    ChainspecRawBytes, Deploy, DeployHash, EraId, JsonBlock, ProtocolVersion, PublicKey,
+    Block, ChainspecRawBytes, Deploy, DeployHash, EraId, ProtocolVersion, PublicKey,
 };
 
 use super::{
@@ -32,8 +32,8 @@ static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     deploy: Deploy::doc_example().clone(),
     execution_info: Some(DeployExecutionInfo {
-        block_hash: JsonBlock::doc_example().hash,
-        block_height: JsonBlock::doc_example().header.height,
+        block_hash: *Block::example().hash(),
+        block_height: Block::example().header().height(),
         execution_result: Some(ExecutionResult::from(ExecutionResultV2::example().clone())),
     }),
 });

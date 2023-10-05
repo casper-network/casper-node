@@ -456,24 +456,9 @@ impl RpcWithoutParams for ListRpcs {
 }
 
 mod doc_example_impls {
-    use casper_types::{
-        account::Account, Deploy, EraEnd, EraReport, JsonBlock, JsonBlockHeader, PublicKey,
-        Timestamp,
-    };
+    use casper_types::{account::Account, Deploy, EraEnd, EraReport, PublicKey, Timestamp};
 
     use super::DocExample;
-
-    impl DocExample for JsonBlock {
-        fn doc_example() -> &'static Self {
-            JsonBlock::example()
-        }
-    }
-
-    impl DocExample for JsonBlockHeader {
-        fn doc_example() -> &'static Self {
-            &JsonBlock::example().header
-        }
-    }
 
     impl DocExample for Deploy {
         fn doc_example() -> &'static Self {

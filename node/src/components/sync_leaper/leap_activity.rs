@@ -155,17 +155,17 @@ mod tests {
 
     use rand::seq::SliceRandom;
 
-    use casper_types::{testing::TestRng, Block, BlockHash, BlockHeader};
+    use casper_types::{testing::TestRng, BlockHash, BlockHeader, BlockV2, TestBlockBuilder};
 
     use crate::{
         components::sync_leaper::{
             leap_activity::LeapActivity, tests::make_test_sync_leap, LeapActivityError, LeapState,
             PeerState,
         },
-        types::{NodeId, SyncLeap, SyncLeapIdentifier, TestBlockBuilder},
+        types::{NodeId, SyncLeap, SyncLeapIdentifier},
     };
 
-    fn make_random_block_with_height(rng: &mut TestRng, height: u64) -> Block {
+    fn make_random_block_with_height(rng: &mut TestRng, height: u64) -> BlockV2 {
         TestBlockBuilder::new()
             .era(0)
             .height(height)

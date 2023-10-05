@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::engine_state::Error as EngineStateError;
 use casper_json_rpc::ReservedErrorCode;
-use casper_types::{execution::ExecutionResultV2, BlockHash, Deploy, JsonBlock, ProtocolVersion};
+use casper_types::{execution::ExecutionResultV2, BlockHash, Deploy, ProtocolVersion, Transaction};
 
 use super::{
     chain::BlockIdentifier,
@@ -20,12 +20,12 @@ use super::{
 use crate::{components::contract_runtime::SpeculativeExecutionState, effect::EffectBuilder};
 
 static SPECULATIVE_EXEC_PARAMS: Lazy<SpeculativeExecParams> = Lazy::new(|| SpeculativeExecParams {
-    block_identifier: Some(BlockIdentifier::Hash(JsonBlock::doc_example().hash)),
+    block_identifier: Some(BlockIdentifier::Hash(*BlockHash::example())),
     deploy: Deploy::doc_example().clone(),
 });
 static SPECULATIVE_EXEC_RESULT: Lazy<SpeculativeExecResult> = Lazy::new(|| SpeculativeExecResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-    block_hash: JsonBlock::doc_example().hash,
+    block_hash: *BlockHash::example(),
     execution_result: ExecutionResultV2::example().clone(),
 });
 
@@ -82,7 +82,6 @@ impl RpcWithParams for SpeculativeExec {
             block_identifier: maybe_block_id,
             deploy,
         } = params;
-        let deploy = Arc::new(deploy);
         let only_from_available_block_range = true;
 
         let block = common::get_block(
@@ -98,16 +97,19 @@ impl RpcWithParams for SpeculativeExec {
             protocol_version: block.protocol_version(),
         };
 
-        let accept_deploy_result = effect_builder
-            .try_accept_deploy(Arc::clone(&deploy), Some(Box::new(block.take_header())))
+        let accept_transaction_result = effect_builder
+            .try_accept_transaction(
+                Transaction::from(deploy.clone()),
+                Some(Box::new(block.take_header())),
+            )
             .await;
 
-        if let Err(error) = accept_deploy_result {
+        if let Err(error) = accept_transaction_result {
             return Err(Error::new(ErrorCode::InvalidDeploy, error.to_string()));
         }
 
         let result = effect_builder
-            .speculative_execute_deploy(execution_prestate, Arc::clone(&deploy))
+            .speculative_execute_deploy(execution_prestate, Arc::new(deploy))
             .await;
 
         match result {

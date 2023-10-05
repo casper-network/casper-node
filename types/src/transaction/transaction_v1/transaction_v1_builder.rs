@@ -24,6 +24,7 @@ pub struct TransactionV1Builder<'a> {
     ttl: TimeDiff,
     pricing_mode: PricingModeV1,
     chain_name: Option<String>,
+    payment: Option<u64>,
     body: Option<TransactionV1Kind>,
 }
 
@@ -42,6 +43,7 @@ impl<'a> TransactionV1Builder<'a> {
             ttl: Self::DEFAULT_TTL,
             pricing_mode: Self::DEFAULT_PRICING_MODE,
             chain_name: None,
+            payment: None,
             body: None,
         }
     }
@@ -88,6 +90,14 @@ impl<'a> TransactionV1Builder<'a> {
         self
     }
 
+    /// Sets the `payment` in the transaction.
+    ///
+    /// If not provided, `payment` will be set to `None`.
+    pub fn with_payment(mut self, payment: u64) -> Self {
+        self.payment = Some(payment);
+        self
+    }
+
     /// Sets the `body` in the transaction.
     ///
     /// Must be provided or building will fail.
@@ -122,6 +132,7 @@ impl<'a> TransactionV1Builder<'a> {
             self.ttl,
             self.pricing_mode,
             chain_name,
+            self.payment,
             body,
             account_and_secret_key,
         );

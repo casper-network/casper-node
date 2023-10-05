@@ -352,7 +352,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "ca92fbeeb369f219189bad8f59bd2eca12ad569dcd36beed1d1c0e825d7ede28"
+                    "Hash": "0707070707070707070707070707070707070707070707070707070707070707"
                   }
                 }
               ],
@@ -534,7 +534,7 @@
                   "description": "The block header if a Block hash was provided.",
                   "anyOf": [
                     {
-                      "$ref": "#/components/schemas/JsonBlockHeader"
+                      "$ref": "#/components/schemas/BlockHeader"
                     },
                     {
                       "type": "null"
@@ -579,7 +579,7 @@
                   "block_header": {
                     "parent_hash": "0707070707070707070707070707070707070707070707070707070707070707",
                     "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
-                    "body_hash": "9703ac20bdd12ad4ce26e6ceac16cb9c0a092d8fd3a87d53850c49c527bf10f9",
+                    "body_hash": "0505050505050505050505050505050505050505050505050505050505050505",
                     "random_bit": true,
                     "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
                     "era_end": {
@@ -696,7 +696,7 @@
                 {
                   "name": "state_identifier",
                   "value": {
-                    "BlockHash": "ca92fbeeb369f219189bad8f59bd2eca12ad569dcd36beed1d1c0e825d7ede28"
+                    "BlockHash": "0707070707070707070707070707070707070707070707070707070707070707"
                   }
                 },
                 {
@@ -1048,11 +1048,11 @@
                   "description": "The RPC API version.",
                   "type": "string"
                 },
-                "block": {
+                "block_with_signatures": {
                   "description": "The block, if found.",
                   "anyOf": [
                     {
-                      "$ref": "#/components/schemas/JsonBlock"
+                      "$ref": "#/components/schemas/JsonBlockWithSignatures"
                     },
                     {
                       "type": "null"
@@ -1078,52 +1078,56 @@
                 "name": "chain_get_block_example_result",
                 "value": {
                   "api_version": "1.5.2",
-                  "block": {
-                    "hash": "ca92fbeeb369f219189bad8f59bd2eca12ad569dcd36beed1d1c0e825d7ede28",
-                    "header": {
-                      "parent_hash": "0707070707070707070707070707070707070707070707070707070707070707",
-                      "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
-                      "body_hash": "9703ac20bdd12ad4ce26e6ceac16cb9c0a092d8fd3a87d53850c49c527bf10f9",
-                      "random_bit": true,
-                      "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
-                      "era_end": {
-                        "era_report": {
-                          "equivocators": [
-                            "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"
-                          ],
-                          "rewards": [],
-                          "inactive_validators": [
-                            "018139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"
-                          ]
+                  "block_with_signatures": {
+                    "block": {
+                      "Version2": {
+                        "hash": "ca92fbeeb369f219189bad8f59bd2eca12ad569dcd36beed1d1c0e825d7ede28",
+                        "header": {
+                          "parent_hash": "0707070707070707070707070707070707070707070707070707070707070707",
+                          "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
+                          "body_hash": "9703ac20bdd12ad4ce26e6ceac16cb9c0a092d8fd3a87d53850c49c527bf10f9",
+                          "random_bit": true,
+                          "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
+                          "era_end": {
+                            "era_report": {
+                              "equivocators": [
+                                "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"
+                              ],
+                              "rewards": [],
+                              "inactive_validators": [
+                                "018139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"
+                              ]
+                            },
+                            "next_era_validator_weights": [
+                              {
+                                "validator": "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29",
+                                "weight": "123"
+                              },
+                              {
+                                "validator": "016e7a1cdd29b0b78fd13af4c5598feff4ef2a97166e3ca6f2e4fbfccd80505bf1",
+                                "weight": "456"
+                              },
+                              {
+                                "validator": "018a875fff1eb38451577acd5afee405456568dd7c89e090863a0557bc7af49f17",
+                                "weight": "789"
+                              }
+                            ]
+                          },
+                          "timestamp": "2020-11-17T00:39:24.072Z",
+                          "era_id": 1,
+                          "height": 10,
+                          "protocol_version": "1.0.0"
                         },
-                        "next_era_validator_weights": [
-                          {
-                            "validator": "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29",
-                            "weight": "123"
-                          },
-                          {
-                            "validator": "016e7a1cdd29b0b78fd13af4c5598feff4ef2a97166e3ca6f2e4fbfccd80505bf1",
-                            "weight": "456"
-                          },
-                          {
-                            "validator": "018a875fff1eb38451577acd5afee405456568dd7c89e090863a0557bc7af49f17",
-                            "weight": "789"
-                          }
-                        ]
-                      },
-                      "timestamp": "2020-11-17T00:39:24.072Z",
-                      "era_id": 1,
-                      "height": 10,
-                      "protocol_version": "1.0.0"
-                    },
-                    "body": {
-                      "proposer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "deploy_hashes": [
-                        "1414141414141414141414141414141414141414141414141414141414141414"
-                      ],
-                      "transfer_hashes": [
-                        "1515151515151515151515151515151515151515151515151515151515151515"
-                      ]
+                        "body": {
+                          "proposer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                          "deploy_hashes": [
+                            "1414141414141414141414141414141414141414141414141414141414141414"
+                          ],
+                          "transfer_hashes": [
+                            "1515151515151515151515151515151515151515151515151515151515151515"
+                          ]
+                        }
+                      }
                     },
                     "proofs": [
                       {
@@ -1195,7 +1199,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "ca92fbeeb369f219189bad8f59bd2eca12ad569dcd36beed1d1c0e825d7ede28"
+                    "Hash": "0707070707070707070707070707070707070707070707070707070707070707"
                   }
                 }
               ],
@@ -1203,7 +1207,7 @@
                 "name": "chain_get_block_transfers_example_result",
                 "value": {
                   "api_version": "1.5.2",
-                  "block_hash": "ca92fbeeb369f219189bad8f59bd2eca12ad569dcd36beed1d1c0e825d7ede28",
+                  "block_hash": "0707070707070707070707070707070707070707070707070707070707070707",
                   "transfers": [
                     {
                       "deploy_hash": "0000000000000000000000000000000000000000000000000000000000000000",
@@ -1579,7 +1583,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "ca92fbeeb369f219189bad8f59bd2eca12ad569dcd36beed1d1c0e825d7ede28"
+                    "Hash": "0707070707070707070707070707070707070707070707070707070707070707"
                   }
                 }
               ],
@@ -1741,7 +1745,7 @@
               "approvals": {
                 "type": "array",
                 "items": {
-                  "$ref": "#/components/schemas/Approval"
+                  "$ref": "#/components/schemas/DeployApproval"
                 },
                 "uniqueItems": true
               }
@@ -2340,7 +2344,7 @@
               }
             ]
           },
-          "Approval": {
+          "DeployApproval": {
             "description": "A struct containing a signature of a deploy hash and the public key of the signer.",
             "type": "object",
             "required": [
@@ -4791,7 +4795,7 @@
               }
             ]
           },
-          "JsonBlockHeader": {
+          "BlockHeader": {
             "description": "The header portion of a block.",
             "type": "object",
             "required": [
@@ -4846,7 +4850,7 @@
                 "description": "The `EraEnd` of a block if it is a switch block.",
                 "anyOf": [
                   {
-                    "$ref": "#/components/schemas/JsonEraEnd"
+                    "$ref": "#/components/schemas/EraEnd"
                   },
                   {
                     "type": "null"
@@ -4883,10 +4887,9 @@
                   }
                 ]
               }
-            },
-            "additionalProperties": false
+            }
           },
-          "JsonEraEnd": {
+          "EraEnd": {
             "description": "Information related to the end of an era, and validator weights for the following era.",
             "type": "object",
             "required": [
@@ -4898,21 +4901,21 @@
                 "description": "Equivocation, reward and validator inactivity information.",
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/JsonEraReport"
+                    "$ref": "#/components/schemas/EraReport_for_PublicKey"
                   }
                 ]
               },
               "next_era_validator_weights": {
                 "description": "The validators for the upcoming era and their respective weights.",
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/JsonValidatorWeight"
-                }
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Array_of_ValidatorWeight"
+                  }
+                ]
               }
-            },
-            "additionalProperties": false
+            }
           },
-          "JsonEraReport": {
+          "EraReport_for_PublicKey": {
             "description": "Equivocation, reward and validator inactivity information.",
             "type": "object",
             "required": [
@@ -4930,10 +4933,11 @@
               },
               "rewards": {
                 "description": "Rewards for finalization of earlier blocks.",
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/JsonReward"
-                }
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Array_of_EraReward"
+                  }
+                ]
               },
               "inactive_validators": {
                 "description": "Validators that haven't produced any unit during the era.",
@@ -4942,10 +4946,15 @@
                   "$ref": "#/components/schemas/PublicKey"
                 }
               }
-            },
-            "additionalProperties": false
+            }
           },
-          "JsonReward": {
+          "Array_of_EraReward": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EraReward"
+            }
+          },
+          "EraReward": {
             "description": "A validator's public key paired with a measure of the value of its contribution to consensus, as a fraction of the configured maximum block reward.",
             "type": "object",
             "required": [
@@ -4967,10 +4976,15 @@
                 "format": "uint64",
                 "minimum": 0.0
               }
-            },
-            "additionalProperties": false
+            }
           },
-          "JsonValidatorWeight": {
+          "Array_of_ValidatorWeight": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValidatorWeight"
+            }
+          },
+          "ValidatorWeight": {
             "description": "A validator's public key paired with its weight, i.e. the total number of motes staked by it and its delegators.",
             "type": "object",
             "required": [
@@ -4994,8 +5008,7 @@
                   }
                 ]
               }
-            },
-            "additionalProperties": false
+            }
           },
           "PurseIdentifier": {
             "description": "Identifier of a purse.",
@@ -5402,14 +5415,71 @@
               }
             }
           },
-          "JsonBlock": {
-            "description": "A block after execution, with the resulting global state root hash. This is the core component of the Casper linear blockchain",
+          "JsonBlockWithSignatures": {
+            "description": "A JSON-friendly representation of a block and the signatures for that block.",
+            "type": "object",
+            "required": [
+              "block",
+              "proofs"
+            ],
+            "properties": {
+              "block": {
+                "description": "The block.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Block"
+                  }
+                ]
+              },
+              "proofs": {
+                "description": "The proofs of the block, i.e. a collection of validators' signatures of the block hash.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Array_of_BlockProof"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "Block": {
+            "description": "A block after execution.",
+            "oneOf": [
+              {
+                "description": "The legacy, initial version of the block.",
+                "type": "object",
+                "required": [
+                  "Version1"
+                ],
+                "properties": {
+                  "Version1": {
+                    "$ref": "#/components/schemas/BlockV1"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "The version 2 of the block.",
+                "type": "object",
+                "required": [
+                  "Version2"
+                ],
+                "properties": {
+                  "Version2": {
+                    "$ref": "#/components/schemas/BlockV2"
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "BlockV1": {
+            "description": "A block after execution, with the resulting global state root hash. This is the core component of the Casper linear blockchain. Version 1.",
             "type": "object",
             "required": [
               "body",
               "hash",
-              "header",
-              "proofs"
+              "header"
             ],
             "properties": {
               "hash": {
@@ -5424,7 +5494,7 @@
                 "description": "The header portion of the block.",
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/JsonBlockHeader"
+                    "$ref": "#/components/schemas/BlockHeader"
                   }
                 ]
               },
@@ -5432,22 +5502,14 @@
                 "description": "The body portion of the block.",
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/JsonBlockBody"
+                    "$ref": "#/components/schemas/BlockBodyV1"
                   }
                 ]
-              },
-              "proofs": {
-                "description": "The proofs of the block, i.e. a collection of validators' signatures of the block hash.",
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/JsonProof"
-                }
               }
-            },
-            "additionalProperties": false
+            }
           },
-          "JsonBlockBody": {
-            "description": "The body portion of a block.",
+          "BlockBodyV1": {
+            "description": "The body portion of a block. Version 1.",
             "type": "object",
             "required": [
               "deploy_hashes",
@@ -5477,10 +5539,83 @@
                   "$ref": "#/components/schemas/DeployHash"
                 }
               }
-            },
-            "additionalProperties": false
+            }
           },
-          "JsonProof": {
+          "BlockV2": {
+            "description": "A block after execution, with the resulting global state root hash. This is the core component of the Casper linear blockchain. Version 2.",
+            "type": "object",
+            "required": [
+              "body",
+              "hash",
+              "header"
+            ],
+            "properties": {
+              "hash": {
+                "description": "The block hash identifying this block.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/BlockHash"
+                  }
+                ]
+              },
+              "header": {
+                "description": "The header portion of the block.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/BlockHeader"
+                  }
+                ]
+              },
+              "body": {
+                "description": "The body portion of the block.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/BlockBodyV2"
+                  }
+                ]
+              }
+            }
+          },
+          "BlockBodyV2": {
+            "description": "The body portion of a block. Version 2.",
+            "type": "object",
+            "required": [
+              "deploy_hashes",
+              "proposer",
+              "transfer_hashes"
+            ],
+            "properties": {
+              "proposer": {
+                "description": "The public key of the validator which proposed the block.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ]
+              },
+              "deploy_hashes": {
+                "description": "The deploy hashes of the non-transfer deploys within the block.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DeployHash"
+                }
+              },
+              "transfer_hashes": {
+                "description": "The deploy hashes of the transfers within the block.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DeployHash"
+                }
+              }
+            }
+          },
+          "Array_of_BlockProof": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BlockProof"
+            }
+          },
+          "BlockProof": {
             "description": "A validator's public key paired with a corresponding signature of a given block hash.",
             "type": "object",
             "required": [
@@ -5504,8 +5639,7 @@
                   }
                 ]
               }
-            },
-            "additionalProperties": false
+            }
           },
           "EraSummary": {
             "description": "The summary of an era",

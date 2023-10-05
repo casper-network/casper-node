@@ -33,8 +33,8 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     bytesrepr::Bytes, file_utils, AccountsConfig, ActivationPoint, Chainspec, ChainspecRawBytes,
-    CoreConfig, DeployConfig, GlobalStateUpdate, GlobalStateUpdateConfig, HighwayConfig,
-    NetworkConfig, ProtocolConfig, ProtocolVersion, SystemConfig, TransactionV1Config, WasmConfig,
+    CoreConfig, GlobalStateUpdate, GlobalStateUpdateConfig, HighwayConfig, NetworkConfig,
+    ProtocolConfig, ProtocolVersion, SystemConfig, TransactionConfig, WasmConfig,
 };
 
 use crate::utils::{
@@ -75,8 +75,7 @@ pub(super) struct TomlChainspec {
     protocol: TomlProtocol,
     network: TomlNetwork,
     core: CoreConfig,
-    transactions: TransactionV1Config,
-    deploys: DeployConfig,
+    transactions: TransactionConfig,
     highway: HighwayConfig,
     wasm: WasmConfig,
     system_costs: SystemConfig,
@@ -94,8 +93,7 @@ impl From<&Chainspec> for TomlChainspec {
             maximum_net_message_size: chainspec.network_config.maximum_net_message_size,
         };
         let core = chainspec.core_config.clone();
-        let transactions = chainspec.transaction_v1_config;
-        let deploys = chainspec.deploy_config;
+        let transactions = chainspec.transaction_config;
         let highway = chainspec.highway_config;
         let wasm = chainspec.wasm_config;
         let system_costs = chainspec.system_costs_config;
@@ -105,7 +103,6 @@ impl From<&Chainspec> for TomlChainspec {
             network,
             core,
             transactions,
-            deploys,
             highway,
             wasm,
             system_costs,
@@ -157,8 +154,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(
         protocol_config,
         network_config,
         core_config: toml_chainspec.core,
-        transaction_v1_config: toml_chainspec.transactions,
-        deploy_config: toml_chainspec.deploys,
+        transaction_config: toml_chainspec.transactions,
         highway_config: toml_chainspec.highway,
         wasm_config: toml_chainspec.wasm,
         system_costs_config: toml_chainspec.system_costs,

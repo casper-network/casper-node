@@ -1,12 +1,11 @@
 use assert_matches::assert_matches;
 
-use casper_types::{bytesrepr::ToBytes, execution::ExecutionResultV2, testing::TestRng};
+use casper_types::{
+    bytesrepr::ToBytes, execution::ExecutionResultV2, testing::TestRng, TestBlockBuilder,
+};
 
 use super::*;
-use crate::{
-    components::block_synchronizer::tests::test_utils::chunks_with_proof_from_data,
-    types::TestBlockBuilder,
-};
+use crate::components::block_synchronizer::tests::test_utils::chunks_with_proof_from_data;
 
 const NUM_TEST_EXECUTION_RESULTS: u64 = 100000;
 

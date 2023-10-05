@@ -71,9 +71,10 @@ use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 use crate::testing::{network::NetworkedReactor, ConditionCheckReactor};
 use crate::{
     components::{
-        block_accumulator, deploy_acceptor,
+        block_accumulator,
         fetcher::{self, FetchItem},
         network::{blocklist::BlocklistJustification, Identity as NetworkIdentity},
+        transaction_acceptor,
     },
     effect::{
         announcements::{ControlAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat},
@@ -497,7 +498,13 @@ where
             );
         }
 
-        let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
+        let event_queue_dump_threshold =
+            env::var("CL_EVENT_QUEUE_DUMP_THRESHOLD").map_or(None, |s| s.parse::<usize>().ok());
+
+        let scheduler = utils::leak(Scheduler::new(
+            QueueKind::weights(),
+            event_queue_dump_threshold,
+        ));
         let is_shutting_down = SharedFlag::new();
         let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
         let (reactor, initial_effects) = R::new(
@@ -988,7 +995,7 @@ fn handle_get_response<R>(
 ) -> Effects<<R as Reactor>::Event>
 where
     R: Reactor,
-    <R as Reactor>::Event: From<deploy_acceptor::Event>
+    <R as Reactor>::Event: From<transaction_acceptor::Event>
         + From<fetcher::Event<FinalitySignature>>
         + From<fetcher::Event<Block>>
         + From<fetcher::Event<BlockHeader>>
