@@ -42,9 +42,9 @@ pub const fn decode_varint32(input: &[u8]) -> Outcome<ParsedU32, Overflow> {
             return Fatal(Overflow);
         }
 
-        value |= ((c & 0b0111_1111) as u32) << (idx * 7);
+        value |= ((c & VARINT_MASK) as u32) << (idx * 7);
 
-        if c & 0b1000_0000 == 0 {
+        if c & !VARINT_MASK == 0 {
             return Success(ParsedU32 {
                 value,
                 offset: unsafe { NonZeroU8::new_unchecked((idx + 1) as u8) },
