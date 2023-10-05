@@ -10,9 +10,18 @@ set -e
 
 #######################################
 # Runs an integration tests that verifies if events are routed via correct SSE endpoints.
+# Prior to https://github.com/casper-network/casper-node/issues/4314 there were 3 different
+# endpoints, serving different evvents. The 3 events that this test verifies used to be
+# routed as follows:
 # - `BlockAdded`        via /events/main
 # - `DeployAccepted`    via /events/deploys
 # - `FinalitySignature` via /events/sigs
+#
+# Currently, all events should be emitted via `/events/main`. We check only for the above three
+# explicitly mentioned events as more detailed tests are located in the `tests` module
+# of the `event_stream_server`.
+#
+# Additionally, this test verifies that `/events/deploys` and `/events/sigs` are no longer accessible.
 #######################################
 function main() {
     log "------------------------------------------------------------"
@@ -22,14 +31,25 @@ function main() {
     do_await_genesis_era_to_complete
 
     ################################################
+    NO_DEPLOYS_PATH=$(curl -s localhost:18101/events/deploys)
+    if [ "$NO_DEPLOYS_PATH" = "invalid path: expected '/events/main'" ]; then
+        echo "The strings are equal."
+    else
+        echo "The strings are different."
+        exit 1
+    fi
+
+    NO_SIGS_PATH=$(curl -s localhost:18101/events/sigs)
+    if [ "$NO_SIGS_PATH" = "invalid path: expected '/events/main'" ]; then
+        echo "The strings are equal."
+    else
+        echo "The strings are different."
+        exit 1
+    fi
+
+    ################################################
     curl -o events_main.txt -N -s localhost:18101/events/main &
     log "Attached to event stream output (main)"
-
-    curl -o events_deploys.txt -N -s localhost:18101/events/deploys &
-    log "Attached to event stream output (deploys)"
-
-    curl -o events_sigs.txt -N -s localhost:18101/events/sigs &
-    log "Attached to event stream output (sigs)"
 
     log "Awaiting one block"
     await_n_blocks 1 false
@@ -48,8 +68,8 @@ function main() {
 
     do_send_wasm_deploys
 
-    cat events_deploys.txt
-    if grep -q DeployAccepted events_deploys.txt
+    cat events_main.txt
+    if grep -q DeployAccepted events_main.txt
     then
         log "Found"
     else
@@ -61,8 +81,8 @@ function main() {
     ################################################
 
 
-    cat events_sigs.txt
-    if grep -q FinalitySignature events_sigs.txt
+    cat events_main.txt
+    if grep -q FinalitySignature events_main.txt
     then
         log "Found"
     else
