@@ -412,11 +412,13 @@ fn should_not_exceed_configured_limits() {
                 max_topic_name_size: 32,
                 max_message_size: 100,
                 max_topics_per_contract: 1,
-            }
+            },
         ))
         .build();
 
-    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(custom_engine_config));
+    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(
+        custom_engine_config,
+    ));
     builder
         .borrow_mut()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
