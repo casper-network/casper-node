@@ -9,7 +9,7 @@ use crate::{
 };
 
 /// Root configuration.
-#[derive(DataSize, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, DataSize, Debug, Default, Serialize, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {

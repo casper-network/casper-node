@@ -395,6 +395,7 @@ fn register_deploys_and_blocks() {
 }
 
 /// Event for the mock reactor.
+#[derive(Debug)]
 enum ReactorEvent {
     DeployBufferAnnouncement(DeployBufferAnnouncement),
     Event(Event),
@@ -419,7 +420,7 @@ struct MockReactor {
 impl MockReactor {
     fn new() -> Self {
         MockReactor {
-            scheduler: utils::leak(Scheduler::new(QueueKind::weights())),
+            scheduler: utils::leak(Scheduler::new(QueueKind::weights(), None)),
         }
     }
 

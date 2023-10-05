@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.  The format
 * TLS connection keys can now be logged using the `network.keylog_location` setting (similar to `SSLKEYLOGFILE` envvar found in other applications).
 * Add a `lock_status` field to the JSON representation of the `ContractPackage` values.
 * Unit tests can be run with JSON log output by setting a `NODE_TEST_LOG=json` environment variable.
+* New environment variable `CL_EVENT_QUEUE_DUMP_THRESHOLD` to enable dumping of queue event counts to log when a certain threshold is exceeded.
 
 ### Fixed
 * Now possible to build outside a git repository context (e.g. from a source tarball). In such cases, the node's build version (as reported vie status endpoints) will not contain a trailing git short hash.

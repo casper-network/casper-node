@@ -129,6 +129,18 @@ To set the threshold at which a warn-level log message is generated for a long-r
 CL_EVENT_MAX_MICROSECS=1000
 ```
 
+To set the threshold above which the size of the current scheduler queues will be dumped to logs, use the `CL_EVENT_QUEUE_DUMP_THRESHOLD` variable. For example, to set the threshold to 10000 events:
+
+```
+CL_EVENT_QUEUE_DUMP_THRESHOLD=10000
+```
+
+This will dump a line to the log if the total number of events in queues exceeds 10000. After each dump, the threshold will be automatically increased by 10% to avoid log flooding.
+
+Example log entry:
+```
+Current event queue size (11000) is above the threshold (10000): details [("FinalitySignature", 3000), ("FromStorage", 1000), ("NetworkIncoming", 6500), ("Regular", 500)]
+```
 
 ## Logging
 

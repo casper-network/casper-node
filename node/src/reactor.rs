@@ -477,9 +477,14 @@ where
     ) -> Result<Self, R::Error> {
         adjust_open_files_limit();
 
-        let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
-        let is_shutting_down = SharedFuse::new();
+        let event_queue_dump_threshold =
+            env::var("CL_EVENT_QUEUE_DUMP_THRESHOLD").map_or(None, |s| s.parse::<usize>().ok());
 
+        let scheduler = utils::leak(Scheduler::new(
+            QueueKind::weights(),
+            event_queue_dump_threshold,
+        ));
+        let is_shutting_down = SharedFuse::new();
         let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
         let (reactor, initial_effects) = R::new(
             cfg,

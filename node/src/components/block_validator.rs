@@ -12,7 +12,7 @@ mod keyed_counter;
 mod tests;
 
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap},
     fmt::Debug,
     sync::Arc,
 };
@@ -21,7 +21,7 @@ use datasize::DataSize;
 use derive_more::{Display, From};
 use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use casper_types::Timestamp;
 
@@ -186,6 +186,7 @@ where
                 sender,
                 responder,
             }) => {
+                debug!(?block, "validating proposed block");
                 if block.deploy_hashes().count()
                     > self.chainspec.deploy_config.block_max_deploy_count as usize
                 {
@@ -211,20 +212,31 @@ where
                 }
 
                 let block_timestamp = block.timestamp();
-                let state = self
-                    .validation_states
-                    .entry(block)
-                    .or_insert(BlockValidationState {
-                        appendable_block: AppendableBlock::new(
-                            self.chainspec.deploy_config,
-                            block_timestamp,
-                        ),
-                        missing_deploys: block_deploys.clone(),
-                        responders: smallvec![],
-                    });
+                let state = match self.validation_states.entry(block) {
+                    Entry::Occupied(entry) => {
+                        let state = entry.into_mut();
+                        debug!(?state, "already validating this proposed block");
+                        state
+                    }
+                    Entry::Vacant(entry) => {
+                        let state = BlockValidationState {
+                            appendable_block: AppendableBlock::new(
+                                self.chainspec.deploy_config,
+                                block_timestamp,
+                            ),
+                            missing_deploys: block_deploys.clone(),
+                            responders: smallvec![],
+                        };
+                        entry.insert(state)
+                    }
+                };
 
                 if state.missing_deploys.is_empty() {
-                    // Block has already been validated successfully, early return to caller.
+                    debug!(
+                        block_timestamp = %state.appendable_block.timestamp(),
+                        "no missing deploys - block validation complete"
+                    );
+                    // Block has already been validated successfully or has no deploys.
                     return responder.respond(true).ignore();
                 }
 
@@ -272,6 +284,12 @@ where
                             info!(block = ?key, %dt_hash, ?deploy_footprint, ?err, "block invalid");
                             invalid.push(key.clone());
                         }
+                        debug!(
+                            block_timestamp = %state.appendable_block.timestamp(),
+                            deploy_hash = %dt_hash,
+                            missing_deploy_count = %state.missing_deploys.len(),
+                            "found deploy for block validation"
+                        );
                     }
                 }
 
@@ -284,6 +302,10 @@ where
                     if state.missing_deploys.is_empty() {
                         // This one is done and valid.
                         effects.extend(state.respond(true));
+                        debug!(
+                            block_timestamp = %state.appendable_block.timestamp(),
+                            "no further missing deploys - block validation complete"
+                        );
                         return false;
                     }
                     true

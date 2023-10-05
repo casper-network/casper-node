@@ -6,7 +6,7 @@
 
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
-    fmt::Debug,
+    fmt::{Debug, Display},
     hash::Hash,
     num::NonZeroUsize,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -15,7 +15,7 @@ use std::{
 use enum_iterator::IntoEnumIterator;
 use serde::Serialize;
 use tokio::sync::{Mutex, MutexGuard, Semaphore};
-use tracing::debug;
+use tracing::{debug, warn};
 
 /// Weighted round-robin scheduler.
 ///
@@ -43,6 +43,10 @@ pub struct WeightedRoundRobin<I, K> {
 
     /// Whether or not the queue is sealed (not accepting any more items).
     sealed: AtomicBool,
+
+    /// Dump count of events only when there is a 10%+ increase of events compared to the previous
+    /// report. Setting to `None` disables the dump function.
+    recent_event_count_peak: Option<AtomicUsize>,
 }
 
 /// State that wraps queue and its event count.
@@ -132,6 +136,42 @@ where
     I: Debug,
     K: Copy + Clone + Eq + Hash + IntoEnumIterator + Debug,
 {
+    /// Creates a new weighted round-robin scheduler.
+    ///
+    /// Creates a queue for each pair given in `weights`. The second component of each `weight` is
+    /// the number of times to return items from one queue before moving on to the next one.
+    pub(crate) fn new(
+        weights: Vec<(K, NonZeroUsize)>,
+        initial_event_count_threshold: Option<usize>,
+    ) -> Self {
+        assert!(!weights.is_empty(), "must provide at least one slot");
+
+        let queues = weights
+            .iter()
+            .map(|(idx, _)| (*idx, QueueState::new()))
+            .collect();
+        let slots: Vec<Slot<K>> = weights
+            .into_iter()
+            .map(|(key, tickets)| Slot {
+                key,
+                tickets: tickets.get(),
+            })
+            .collect();
+        let active_slot = slots[0];
+
+        WeightedRoundRobin {
+            state: Mutex::new(IterationState {
+                active_slot,
+                active_slot_idx: 0,
+            }),
+            slots,
+            queues,
+            total: Semaphore::new(0),
+            sealed: AtomicBool::new(false),
+            recent_event_count_peak: initial_event_count_threshold.map(AtomicUsize::new),
+        }
+    }
+
     /// Dump the queue contents to the given dumper function.
     pub async fn dump<F: FnOnce(&QueueDump<K, I>)>(&self, dumper: F)
     where
@@ -167,42 +207,14 @@ where
     }
 }
 
+fn should_dump_queues(total: usize, recent_threshold: usize) -> bool {
+    total > ((recent_threshold * 11) / 10)
+}
+
 impl<I, K> WeightedRoundRobin<I, K>
 where
-    K: Copy + Clone + Eq + Hash,
+    K: Copy + Clone + Eq + Hash + Display,
 {
-    /// Creates a new weighted round-robin scheduler.
-    ///
-    /// Creates a queue for each pair given in `weights`. The second component of each `weight` is
-    /// the number of times to return items from one queue before moving on to the next one.
-    pub(crate) fn new(weights: Vec<(K, NonZeroUsize)>) -> Self {
-        assert!(!weights.is_empty(), "must provide at least one slot");
-
-        let queues = weights
-            .iter()
-            .map(|(idx, _)| (*idx, QueueState::new()))
-            .collect();
-        let slots: Vec<Slot<K>> = weights
-            .into_iter()
-            .map(|(key, tickets)| Slot {
-                key,
-                tickets: tickets.get(),
-            })
-            .collect();
-        let active_slot = slots[0];
-
-        WeightedRoundRobin {
-            state: Mutex::new(IterationState {
-                active_slot,
-                active_slot_idx: 0,
-            }),
-            slots,
-            queues,
-            total: Semaphore::new(0),
-            sealed: AtomicBool::new(false),
-        }
-    }
-
     /// Pushes an item to a queue identified by key.
     ///
     /// ## Panics
@@ -219,6 +231,23 @@ where
             .expect("tried to push to non-existent queue")
             .push_back(item)
             .await;
+
+        // NOTE: Count may be off by one b/c of the way locking works when elements are popped.
+        // It's fine for its purposes.
+        if let Some(recent_event_count_peak) = &self.recent_event_count_peak {
+            let total = self.queues.iter().map(|q| q.1.event_count()).sum::<usize>();
+            let recent_threshold = recent_event_count_peak.load(Ordering::SeqCst);
+            if should_dump_queues(total, recent_threshold) {
+                recent_event_count_peak.store(total, Ordering::SeqCst);
+                let info: Vec<_> = self
+                    .queues
+                    .iter()
+                    .map(|q| (q.0.to_string(), q.1.event_count()))
+                    .filter(|(_, count)| count > &0)
+                    .collect();
+                warn!("Current event queue size ({total}) is above the threshold ({recent_threshold}): details {info:?}");
+            }
+        }
 
         // We increase the item count after we've put the item into the queue.
         self.total.add_permits(1);
@@ -327,7 +356,7 @@ mod tests {
     use super::*;
 
     #[repr(usize)]
-    #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+    #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, IntoEnumIterator)]
     enum QueueKind {
         One = 1,
         Two,
@@ -342,9 +371,18 @@ mod tests {
         }
     }
 
+    impl Display for QueueKind {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                QueueKind::One => write!(f, "One"),
+                QueueKind::Two => write!(f, "Two"),
+            }
+        }
+    }
+
     #[tokio::test]
     async fn should_respect_weighting() {
-        let scheduler = WeightedRoundRobin::<char, QueueKind>::new(weights());
+        let scheduler = WeightedRoundRobin::<char, QueueKind>::new(weights(), None);
         // Push three items on to each queue
         let future1 = scheduler
             .push('a', QueueKind::One)
@@ -367,7 +405,7 @@ mod tests {
 
     #[tokio::test]
     async fn can_seal_queue() {
-        let scheduler = WeightedRoundRobin::<char, QueueKind>::new(weights());
+        let scheduler = WeightedRoundRobin::<char, QueueKind>::new(weights(), None);
 
         assert_eq!(scheduler.item_count(), 0);
         scheduler.push('a', QueueKind::One).await;
@@ -387,5 +425,37 @@ mod tests {
         assert_eq!(('b', QueueKind::Two), scheduler.pop().await);
         assert_eq!(scheduler.item_count(), 0);
         assert!(scheduler.drain_queues().await.is_empty());
+    }
+
+    #[test]
+    fn should_calculate_dump_threshold() {
+        let total = 0;
+        let recent_threshold = 100;
+        assert!(!should_dump_queues(total, recent_threshold));
+
+        let total = 100;
+        let recent_threshold = 100;
+        assert!(!should_dump_queues(total, recent_threshold));
+
+        let total = 109;
+        let recent_threshold = 100;
+        assert!(!should_dump_queues(total, recent_threshold));
+
+        let total = 110;
+        let recent_threshold = 100;
+        assert!(!should_dump_queues(total, recent_threshold));
+
+        // Dump only if there is 10%+ increase in event count
+        let total = 111;
+        let recent_threshold = 100;
+        assert!(should_dump_queues(total, recent_threshold));
+
+        let total = 112;
+        let recent_threshold = 100;
+        assert!(should_dump_queues(total, recent_threshold));
+
+        let total = 1_000_000;
+        let recent_threshold = 100;
+        assert!(should_dump_queues(total, recent_threshold));
     }
 }
