@@ -42,8 +42,7 @@ use casper_types::{
 
 /// The URL root path.
 pub const SSE_API_ROOT_PATH: &str = "events";
-/// The URL path part to subscribe to all events other than `DeployAccepted`s and
-/// `FinalitySignature`s.
+/// The URL path part to subscribe to all events.
 pub const SSE_API_MAIN_PATH: &str = "main";
 /// The URL query string field name.
 pub const QUERY_FIELD: &str = "start_from";
@@ -218,7 +217,8 @@ pub(super) struct NewSubscriberInfo {
     pub(super) initial_events_sender: mpsc::UnboundedSender<ServerSentEvent>,
 }
 
-/// Filters the `event`, mapping it to a warp event, or `None` if it should be filtered out.
+/// Maps the `event` to a warp event, or `None` if it's a malformed event (ie.: `ApiVersion` event
+/// with `id` set or event other than `ApiVersion` without `id`)
 async fn map_server_sent_event(
     event: &ServerSentEvent,
 ) -> Option<Result<WarpServerSentEvent, RecvError>> {
@@ -593,14 +593,7 @@ mod tests {
                 received_events.iter().zip(deduplicated_events.iter())
             {
                 let received_event = received_event.as_ref().unwrap();
-
-                let expected_data_string = match &deduplicated_event.data {
-                    SseData::DeployAccepted { deploy } => serde_json::to_string(&DeployAccepted {
-                        deploy_accepted: deploy.clone(),
-                    })
-                    .unwrap(),
-                    data => serde_json::to_string(&data).unwrap(),
-                };
+                let expected_data_string = serde_json::to_string(&deduplicated_event.data).unwrap();
 
                 let expected_id_string = if let Some(id) = deduplicated_event.id {
                     format!("\nid:{}", id)
