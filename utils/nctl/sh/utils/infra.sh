@@ -377,7 +377,7 @@ function do_await_genesis_era_to_complete() {
     while :
     do
         CURRENT_ERA=$(get_chain_era)
-        if [ "$CURRENT_ERA" -ge "2" ]
+        if [ "$CURRENT_ERA" -ge "1" ]
         then
             log "genesis reached, era=$CURRENT_ERA"
             return
