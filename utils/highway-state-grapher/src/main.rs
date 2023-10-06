@@ -403,6 +403,10 @@ fn main() {
 
     let graph = Graph::new(&dump.highway_state);
 
+    for (index, (pub_key, _)) in dump.validators.iter().enumerate() {
+        eprintln!("{}: {}", index, pub_key);
+    }
+
     start_rendering(graph);
 }
 
