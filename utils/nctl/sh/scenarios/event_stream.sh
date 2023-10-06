@@ -8,6 +8,8 @@ source "$NCTL"/sh/scenarios/common/itst.sh
 # Exit if any of the commands fail.
 set -e
 
+TMP_EVENTS_FILE=tmp_events_main.txt
+
 #######################################
 # Runs an integration tests that verifies if events are routed via correct SSE endpoints.
 # Prior to https://github.com/casper-network/casper-node/issues/4314 there were 3 different
@@ -29,70 +31,51 @@ function main() {
     log "------------------------------------------------------------"
 
     do_await_genesis_era_to_complete
-
-    ################################################
-    NO_DEPLOYS_PATH=$(curl -s localhost:18101/events/deploys)
-    if [ "$NO_DEPLOYS_PATH" = "invalid path: expected '/events/main'" ]; then
-        echo "The strings are equal."
-    else
-        echo "The strings are different."
-        exit 1
-    fi
-
-    NO_SIGS_PATH=$(curl -s localhost:18101/events/sigs)
-    if [ "$NO_SIGS_PATH" = "invalid path: expected '/events/main'" ]; then
-        echo "The strings are equal."
-    else
-        echo "The strings are different."
-        exit 1
-    fi
-
-    ################################################
-    curl -o events_main.txt -N -s localhost:18101/events/main &
-    log "Attached to event stream output (main)"
-
-    log "Awaiting one block"
-    await_n_blocks 1 false
-
-    cat events_main.txt
-    if grep -q BlockAdded events_main.txt
-    then
-        log "Found"
-    else
-        log "ERROR: BlockAdded Not found"
-        exit 1
-    fi
-
-    ################################################
-
-
+    do_check_endpoint_does_not_exist 'deploys'
+    do_check_endpoint_does_not_exist 'sigs'
+    do_attach_to_event_stream
     do_send_wasm_deploys
-
-    cat events_main.txt
-    if grep -q DeployAccepted events_main.txt
-    then
-        log "Found"
-    else
-        log "ERROR: DeployAccepted Not found"
-        exit 1
-    fi
-
-
-    ################################################
-
-
-    cat events_main.txt
-    if grep -q FinalitySignature events_main.txt
-    then
-        log "Found"
-    else
-        log "ERROR: FinalitySignature Not found"
-        exit 1
-    fi
+    await_n_blocks 1 false
+    do_check_event_emitted 'BlockAdded'
+    do_check_event_emitted 'DeployAccepted'
+    do_check_event_emitted 'FinalitySignature'
 
     log "------------------------------------------------------------"
     log "Event stream test complete"
     log "------------------------------------------------------------"
+
+    # Clean-up temporary event file on successful run
+    rm $TMP_EVENTS_FILE
+}
+
+function do_check_event_emitted() {
+    local EVENT_NAME=${1}
+
+    log_step "checking '$EVENT_NAME' was emitted"
+
+    if ! grep -q $EVENT_NAME $TMP_EVENTS_FILE
+    then
+        log "ERROR: '$EVENT_NAME' event not found"
+        exit 1
+    fi
+
+}
+
+function do_attach_to_event_stream() {
+    log_step "attaching to event stream"
+    curl -o $TMP_EVENTS_FILE -N -s localhost:18101/events/main &
+}
+
+function do_check_endpoint_does_not_exist() {
+    local RESPONSE
+    local EVENT_PATH=${1}
+
+    log_step "checking endpoint '$EVENT_PATH' does not exist"
+
+    RESPONSE=$(curl -s localhost:18101/events/{$EVENT_PATH})
+    if [ "$RESPONSE" != "invalid path: expected '/events/main'" ]; then
+        exit 1
+    fi
 }
 
 function do_send_wasm_deploys() {
