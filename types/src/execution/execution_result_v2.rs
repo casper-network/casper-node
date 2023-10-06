@@ -30,7 +30,7 @@ use super::{Transform, TransformKind};
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, RESULT_ERR_TAG, RESULT_OK_TAG, U8_SERIALIZED_LENGTH},
     contract_messages::Message,
-    TransferAddr, U512,
+    crypto, TransferAddr, U512,
 };
 #[cfg(any(feature = "testing", test))]
 use crate::{contract_messages::MessagePayload, testing::TestRng};
@@ -111,10 +111,13 @@ impl Distribution<ExecutionResultV2> for Standard {
             .iter()
             .filter_map(|transform| {
                 if let Key::Message(addr) = transform.key() {
+                    let topic_name = Alphanumeric.sample_string(rng, 32);
+                    let topic_name_hash = crypto::blake2b(AsRef::<[u8]>::as_ref(&topic_name));
                     Some(Message::new(
                         addr.entity_addr(),
                         MessagePayload::from_string(format!("random_msg: {}", rng.gen::<u64>())),
-                        Alphanumeric.sample_string(rng, 32),
+                        topic_name,
+                        topic_name_hash.into(),
                         rng.gen::<u32>(),
                     ))
                 } else {
@@ -159,10 +162,13 @@ impl ExecutionResultV2 {
             .iter()
             .filter_map(|transform| {
                 if let Key::Message(addr) = transform.key() {
+                    let topic_name = Alphanumeric.sample_string(rng, 32);
+                    let topic_name_hash = crypto::blake2b(AsRef::<[u8]>::as_ref(&topic_name));
                     Some(Message::new(
                         addr.entity_addr(),
                         MessagePayload::from_string(format!("random_msg: {}", rng.gen::<u64>())),
-                        Alphanumeric.sample_string(rng, 32),
+                        topic_name,
+                        topic_name_hash.into(),
                         rng.gen::<u32>(),
                     ))
                 } else {

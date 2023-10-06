@@ -2562,7 +2562,8 @@
         "entity_addr",
         "index",
         "message",
-        "topic"
+        "topic_name",
+        "topic_name_hash"
       ],
       "properties": {
         "entity_addr": {
@@ -2577,9 +2578,17 @@
             }
           ]
         },
-        "topic": {
+        "topic_name": {
           "description": "The name of the topic on which the message was emitted on.",
           "type": "string"
+        },
+        "topic_name_hash": {
+          "description": "The hash of the name of the topic.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/TopicNameHash"
+            }
+          ]
         },
         "index": {
           "description": "Message index in the topic.",
@@ -2606,6 +2615,10 @@
           "additionalProperties": false
         }
       ]
+    },
+    "TopicNameHash": {
+      "description": "The hash of the name of the message topic.",
+      "type": "string"
     },
     "FinalitySignature": {
       "description": "A validator's signature of a block, confirming it is finalized.",

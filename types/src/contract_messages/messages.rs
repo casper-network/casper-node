@@ -12,6 +12,8 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use super::TopicNameHash;
+
 /// The length of a message digest
 pub const MESSAGE_CHECKSUM_LENGTH: usize = 32;
 
@@ -120,18 +122,27 @@ pub struct Message {
     /// The payload of the message.
     message: MessagePayload,
     /// The name of the topic on which the message was emitted on.
-    topic: String,
+    topic_name: String,
+    /// The hash of the name of the topic.
+    topic_name_hash: TopicNameHash,
     /// Message index in the topic.
     index: u32,
 }
 
 impl Message {
     /// Creates new instance of [`Message`] with the specified source and message payload.
-    pub fn new(source: HashAddr, message: MessagePayload, topic: String, index: u32) -> Self {
+    pub fn new(
+        source: HashAddr,
+        message: MessagePayload,
+        topic_name: String,
+        topic_name_hash: TopicNameHash,
+        index: u32,
+    ) -> Self {
         Self {
             entity_addr: source,
             message,
-            topic,
+            topic_name,
+            topic_name_hash,
             index,
         }
     }
@@ -142,7 +153,8 @@ impl ToBytes for Message {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.append(&mut self.entity_addr.to_bytes()?);
         buffer.append(&mut self.message.to_bytes()?);
-        buffer.append(&mut self.topic.to_bytes()?);
+        buffer.append(&mut self.topic_name.to_bytes()?);
+        buffer.append(&mut self.topic_name_hash.to_bytes()?);
         buffer.append(&mut self.index.to_bytes()?);
         Ok(buffer)
     }
@@ -150,7 +162,8 @@ impl ToBytes for Message {
     fn serialized_length(&self) -> usize {
         self.entity_addr.serialized_length()
             + self.message.serialized_length()
-            + self.topic.serialized_length()
+            + self.topic_name.serialized_length()
+            + self.topic_name_hash.serialized_length()
             + self.index.serialized_length()
     }
 }
@@ -159,13 +172,15 @@ impl FromBytes for Message {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (entity_addr, rem) = FromBytes::from_bytes(bytes)?;
         let (message, rem) = FromBytes::from_bytes(rem)?;
-        let (topic, rem) = FromBytes::from_bytes(rem)?;
+        let (topic_name, rem) = FromBytes::from_bytes(rem)?;
+        let (topic_name_hash, rem) = FromBytes::from_bytes(rem)?;
         let (index, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             Message {
                 entity_addr,
                 message,
-                topic,
+                topic_name,
+                topic_name_hash,
                 index,
             },
             rem,

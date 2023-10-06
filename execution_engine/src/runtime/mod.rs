@@ -3262,11 +3262,11 @@ where
             .into_hash()
             .ok_or(Error::InvalidContext)?;
 
-        let topic_hash = crypto::blake2b(AsRef::<[u8]>::as_ref(&topic_name)).into();
-        let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_hash));
+        let topic_name_hash = crypto::blake2b(AsRef::<[u8]>::as_ref(&topic_name)).into();
+        let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash));
 
         // Check if the topic exists and get the summary.
-        let current_topic_summary = if let Some(StoredValue::MessageTopic(message_summary)) =
+        let prev_topic_summary = if let Some(StoredValue::MessageTopic(message_summary)) =
             self.context.read_gs(&topic_key)?
         {
             message_summary
@@ -3275,23 +3275,22 @@ where
         };
 
         let current_blocktime = self.context.get_blocktime();
-        let message_index = if current_topic_summary.blocktime() != current_blocktime {
-            for index in 1..current_topic_summary.message_count() {
+        let message_index = if prev_topic_summary.blocktime() != current_blocktime {
+            for index in 1..prev_topic_summary.message_count() {
                 self.context
-                    .prune_gs_unsafe(Key::message(entity_addr, topic_hash, index));
+                    .prune_gs_unsafe(Key::message(entity_addr, topic_name_hash, index));
             }
             0
         } else {
-            current_topic_summary.message_count()
+            prev_topic_summary.message_count()
         };
 
         let new_topic_summary = StoredValue::MessageTopic(MessageTopicSummary::new(
-            message_index + 1,
+            message_index + 1, //TODO[AS]: need checked add here
             current_blocktime,
         ));
 
-        let message_key = Key::message(entity_addr, topic_hash, message_index);
-
+        let message_key = Key::message(entity_addr, topic_name_hash, message_index);
         let message_checksum = StoredValue::Message(MessageChecksum(crypto::blake2b(
             message.to_bytes().map_err(Error::BytesRepr)?,
         )));
@@ -3301,7 +3300,13 @@ where
             new_topic_summary,
             message_key,
             message_checksum,
-            Message::new(entity_addr, message, topic_name, message_index),
+            Message::new(
+                entity_addr,
+                message,
+                topic_name,
+                topic_name_hash,
+                message_index,
+            ),
         )?;
         Ok(Ok(()))
     }
