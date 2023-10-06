@@ -17,7 +17,7 @@ use serde_bytes::ByteBuf;
 use crate::{
     account::Account,
     bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    contract_messages::{MessageSummary, MessageTopicSummary},
+    contract_messages::{MessageChecksum, MessageTopicSummary},
     contracts::Contract,
     package::Package,
     system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
@@ -84,7 +84,7 @@ pub enum StoredValue {
     /// Variant that stores a message topic.
     MessageTopic(MessageTopicSummary),
     /// Variant that stores a message digest.
-    Message(MessageSummary),
+    Message(MessageChecksum),
 }
 
 impl StoredValue {
@@ -635,11 +635,8 @@ impl FromBytes for StoredValue {
                 .map(|(message_summary, remainder)| {
                     (StoredValue::MessageTopic(message_summary), remainder)
                 }),
-            tag if tag == Tag::Message as u8 => {
-                MessageSummary::from_bytes(remainder).map(|(message_digest, remainder)| {
-                    (StoredValue::Message(message_digest), remainder)
-                })
-            }
+            tag if tag == Tag::Message as u8 => MessageChecksum::from_bytes(remainder)
+                .map(|(checksum, remainder)| (StoredValue::Message(checksum), remainder)),
             _ => Err(Error::Formatting),
         }
     }
@@ -678,7 +675,7 @@ mod serde_helpers {
         BidKind(&'a BidKind),
         /// Variant that stores [`MessageSummary`].
         MessageTopic(&'a MessageTopicSummary),
-        Message(&'a MessageSummary),
+        Message(&'a MessageChecksum),
     }
 
     #[derive(Deserialize)]
@@ -712,7 +709,7 @@ mod serde_helpers {
         /// Variant that stores [`MessageSummary`].
         MessageTopic(MessageTopicSummary),
         /// Variant that stores [`MessageDigest`].
-        Message(MessageSummary),
+        Message(MessageChecksum),
     }
 
     impl<'a> From<&'a StoredValue> for BinarySerHelper<'a> {

@@ -49,7 +49,7 @@ use crate::{
     account::{Account, AccountHash},
     bytesrepr::{self, FromBytes, ToBytes},
     checksummed_hex,
-    contract_messages::MessageTopicHash,
+    contract_messages::TopicNameHash,
     contract_wasm::ContractWasmHash,
     contracts::Contract,
     uref::{self, URef},
@@ -615,8 +615,8 @@ impl KeyValueJsonSchema for EntryPointLabels {
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(transparent, deny_unknown_fields)]
 pub struct MessageTopics(
-    #[serde(with = "BTreeMapToArray::<String, MessageTopicHash, MessageTopicLabels>")]
-    BTreeMap<String, MessageTopicHash>,
+    #[serde(with = "BTreeMapToArray::<String, TopicNameHash, MessageTopicLabels>")]
+    BTreeMap<String, TopicNameHash>,
 );
 
 impl ToBytes for MessageTopics {
@@ -635,8 +635,7 @@ impl ToBytes for MessageTopics {
 
 impl FromBytes for MessageTopics {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (message_topics_map, remainder) =
-            BTreeMap::<String, MessageTopicHash>::from_bytes(bytes)?;
+        let (message_topics_map, remainder) = BTreeMap::<String, TopicNameHash>::from_bytes(bytes)?;
         Ok((MessageTopics(message_topics_map), remainder))
     }
 }
@@ -646,7 +645,7 @@ impl MessageTopics {
     pub fn add_topic(
         &mut self,
         topic_name: String,
-        topic_hash: MessageTopicHash,
+        topic_name_hash: TopicNameHash,
     ) -> Result<(), MessageTopicError> {
         if self.0.len() > u32::MAX as usize {
             return Err(MessageTopicError::MaxTopicsExceeded);
@@ -654,7 +653,7 @@ impl MessageTopics {
 
         match self.0.entry(topic_name) {
             Entry::Vacant(entry) => {
-                entry.insert(topic_hash);
+                entry.insert(topic_name_hash);
                 Ok(())
             }
             Entry::Occupied(_) => Err(MessageTopicError::DuplicateTopic),
@@ -667,7 +666,7 @@ impl MessageTopics {
     }
 
     /// Gets the topic hash from the collection by its topic name.
-    pub fn get(&self, topic_name: &str) -> Option<&MessageTopicHash> {
+    pub fn get(&self, topic_name: &str) -> Option<&TopicNameHash> {
         self.0.get(topic_name)
     }
 
@@ -682,7 +681,7 @@ impl MessageTopics {
     }
 
     /// Returns an iterator over the account hash and the weights.
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &MessageTopicHash)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &TopicNameHash)> {
         self.0.iter()
     }
 }
@@ -691,7 +690,7 @@ struct MessageTopicLabels;
 
 impl KeyValueLabels for MessageTopicLabels {
     const KEY: &'static str = "topic_name";
-    const VALUE: &'static str = "topic_hash";
+    const VALUE: &'static str = "topic_name_hash";
 }
 
 #[cfg(feature = "json-schema")]
@@ -699,8 +698,8 @@ impl KeyValueJsonSchema for MessageTopicLabels {
     const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("MessageTopic");
 }
 
-impl From<BTreeMap<String, MessageTopicHash>> for MessageTopics {
-    fn from(topics: BTreeMap<String, MessageTopicHash>) -> MessageTopics {
+impl From<BTreeMap<String, TopicNameHash>> for MessageTopics {
+    fn from(topics: BTreeMap<String, TopicNameHash>) -> MessageTopics {
         MessageTopics(topics)
     }
 }
@@ -997,9 +996,9 @@ impl AddressableEntity {
     pub fn add_message_topic(
         &mut self,
         topic_name: String,
-        topic_hash: MessageTopicHash,
+        topic_name_hash: TopicNameHash,
     ) -> Result<(), MessageTopicError> {
-        self.message_topics.add_topic(topic_name, topic_hash)
+        self.message_topics.add_topic(topic_name, topic_name_hash)
     }
 
     /// Takes `named_keys`

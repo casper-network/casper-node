@@ -35,7 +35,7 @@ use crate::{
     addressable_entity::ContractHash,
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
     checksummed_hex,
-    contract_messages::{self, MessageAddr, MessageTopicHash},
+    contract_messages::{self, MessageAddr, TopicNameHash},
     contract_wasm::ContractWasmHash,
     package::ContractPackageHash,
     system::auction::{BidAddr, BidAddrTag},
@@ -57,7 +57,6 @@ const ERA_SUMMARY_PREFIX: &str = "era-summary-";
 const CHAINSPEC_REGISTRY_PREFIX: &str = "chainspec-registry-";
 const CHECKSUM_REGISTRY_PREFIX: &str = "checksum-registry-";
 const BID_ADDR_PREFIX: &str = "bid-addr-";
-const MESSAGE_PREFIX: &str = "message-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -432,9 +431,7 @@ impl Key {
             Key::BidAddr(bid_addr) => {
                 format!("{}{}", BID_ADDR_PREFIX, bid_addr)
             }
-            Key::Message(message_addr) => {
-                format!("{}{}", MESSAGE_PREFIX, message_addr)
-            }
+            Key::Message(message_addr) => message_addr.to_formatted_string(),
         }
     }
 
@@ -598,10 +595,10 @@ impl Key {
             return Ok(Key::ChecksumRegistry);
         }
 
-        if let Some(message_addr) = input.strip_prefix(MESSAGE_PREFIX) {
-            let message_addr = MessageAddr::from_formatted_str(message_addr)?;
-
-            return Ok(Key::Message(message_addr));
+        match MessageAddr::from_formatted_str(input) {
+            Ok(message_addr) => return Ok(Key::Message(message_addr)),
+            Err(contract_messages::FromStrError::InvalidPrefix) => {}
+            Err(error) => return Err(error.into()),
         }
 
         Err(FromStrError::UnknownPrefix)
@@ -707,18 +704,18 @@ impl Key {
 
     /// Creates a new [`Key::Message`] variant that identifies an indexed message based on an
     /// `entity_addr` `topic_hash` and message `index`.
-    pub fn message(entity_addr: HashAddr, topic_hash: MessageTopicHash, index: u32) -> Key {
+    pub fn message(entity_addr: HashAddr, topic_name_hash: TopicNameHash, index: u32) -> Key {
         Key::Message(MessageAddr::new_message_addr(
             entity_addr,
-            topic_hash,
+            topic_name_hash,
             index,
         ))
     }
 
     /// Creates a new [`Key::Message`] variant that identifies a message topic based on an
     /// `entity_addr` and a hash of the topic name.
-    pub fn message_topic(entity_addr: HashAddr, topic_hash: MessageTopicHash) -> Key {
-        Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_hash))
+    pub fn message_topic(entity_addr: HashAddr, topic_name_hash: TopicNameHash) -> Key {
+        Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash))
     }
 
     /// Returns true if the key is of type [`Key::Dictionary`].
@@ -1227,8 +1224,15 @@ mod tests {
     const UNBOND_KEY: Key = Key::Unbond(AccountHash::new([42; 32]));
     const CHAINSPEC_REGISTRY_KEY: Key = Key::ChainspecRegistry;
     const CHECKSUM_REGISTRY_KEY: Key = Key::ChecksumRegistry;
-    const MESSAGE_TOPIC_KEY: Key = Key::Message(MessageAddr::new_topic_addr([42; 32], [42; 32]));
-    const MESSAGE_KEY: Key = Key::Message(MessageAddr::new_message_addr([42; 32], [2; 32], 9));
+    const MESSAGE_TOPIC_KEY: Key = Key::Message(MessageAddr::new_topic_addr(
+        [42; 32],
+        TopicNameHash::new([42; 32]),
+    ));
+    const MESSAGE_KEY: Key = Key::Message(MessageAddr::new_message_addr(
+        [42; 32],
+        TopicNameHash::new([2; 32]),
+        9,
+    ));
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
@@ -1660,10 +1664,6 @@ mod tests {
             "{}",
             bid_addr_err
         );
-        assert!(Key::from_formatted_str(MESSAGE_PREFIX)
-            .unwrap_err()
-            .to_string()
-            .starts_with("message-topic-key from string error: "));
         let invalid_prefix = "a-0000000000000000000000000000000000000000000000000000000000000000";
         assert_eq!(
             Key::from_formatted_str(invalid_prefix)
@@ -1741,9 +1741,14 @@ mod tests {
         round_trip(&Key::Unbond(AccountHash::new(zeros)));
         round_trip(&Key::ChainspecRegistry);
         round_trip(&Key::ChecksumRegistry);
-        round_trip(&Key::Message(MessageAddr::new_topic_addr(zeros, nines)));
+        round_trip(&Key::Message(MessageAddr::new_topic_addr(
+            zeros,
+            nines.into(),
+        )));
         round_trip(&Key::Message(MessageAddr::new_message_addr(
-            zeros, nines, 1,
+            zeros,
+            nines.into(),
+            1,
         )));
     }
 }

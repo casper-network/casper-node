@@ -2570,7 +2570,7 @@
           "type": "string"
         },
         "message": {
-          "description": "Message payload",
+          "description": "The payload of the message.",
           "allOf": [
             {
               "$ref": "#/definitions/MessagePayload"
@@ -2578,11 +2578,11 @@
           ]
         },
         "topic": {
-          "description": "Topic name",
+          "description": "The name of the topic on which the message was emitted on.",
           "type": "string"
         },
         "index": {
-          "description": "Message index in the topic",
+          "description": "Message index in the topic.",
           "type": "integer",
           "format": "uint32",
           "minimum": 0.0
@@ -2592,13 +2592,6 @@
     "MessagePayload": {
       "description": "The payload of the message emitted by an addressable entity during execution.",
       "oneOf": [
-        {
-          "description": "Empty message.",
-          "type": "string",
-          "enum": [
-            "Empty"
-          ]
-        },
         {
           "description": "Human readable string message.",
           "type": "object",

@@ -32,7 +32,7 @@ use casper_types::{
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contract_messages::{
-        Message, MessageAddr, MessagePayload, MessageSummary, MessageTopicSummary,
+        Message, MessageAddr, MessageChecksum, MessagePayload, MessageTopicSummary,
     },
     crypto,
     package::{ContractPackageKind, ContractPackageStatus},
@@ -3244,7 +3244,7 @@ where
     }
 
     fn add_message_topic(&mut self, topic_name: String) -> Result<Result<(), ApiError>, Error> {
-        let topic_hash: [u8; 32] = crypto::blake2b(AsRef::<[u8]>::as_ref(&topic_name));
+        let topic_hash = crypto::blake2b(AsRef::<[u8]>::as_ref(&topic_name)).into();
 
         self.context
             .add_message_topic(topic_name, topic_hash)
@@ -3262,8 +3262,8 @@ where
             .into_hash()
             .ok_or(Error::InvalidContext)?;
 
-        let topic_digest: [u8; 32] = crypto::blake2b(AsRef::<[u8]>::as_ref(&topic_name));
-        let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_digest));
+        let topic_hash = crypto::blake2b(AsRef::<[u8]>::as_ref(&topic_name)).into();
+        let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_hash));
 
         // Check if the topic exists and get the summary.
         let current_topic_summary = if let Some(StoredValue::MessageTopic(message_summary)) =
@@ -3278,7 +3278,7 @@ where
         let message_index = if current_topic_summary.blocktime() != current_blocktime {
             for index in 1..current_topic_summary.message_count() {
                 self.context
-                    .prune_gs_unsafe(Key::message(entity_addr, topic_digest, index));
+                    .prune_gs_unsafe(Key::message(entity_addr, topic_hash, index));
             }
             0
         } else {
@@ -3290,9 +3290,9 @@ where
             current_blocktime,
         ));
 
-        let message_key = Key::message(entity_addr, topic_digest, message_index);
+        let message_key = Key::message(entity_addr, topic_hash, message_index);
 
-        let message_digest = StoredValue::Message(MessageSummary(crypto::blake2b(
+        let message_checksum = StoredValue::Message(MessageChecksum(crypto::blake2b(
             message.to_bytes().map_err(Error::BytesRepr)?,
         )));
 
@@ -3300,7 +3300,7 @@ where
             topic_key,
             new_topic_summary,
             message_key,
-            message_digest,
+            message_checksum,
             Message::new(entity_addr, message, topic_name, message_index),
         )?;
         Ok(Ok(()))

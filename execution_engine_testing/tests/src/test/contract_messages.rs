@@ -7,7 +7,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::engine_state::EngineConfigBuilder;
 use casper_types::{
     bytesrepr::ToBytes,
-    contract_messages::{MessagePayload, MessageSummary, MessageTopicHash, MessageTopicSummary},
+    contract_messages::{MessageChecksum, MessagePayload, MessageTopicSummary, TopicNameHash},
     crypto, runtime_args, AddressableEntity, ContractHash, Digest, Key, MessagesLimits,
     RuntimeArgs, StoredValue, WasmConfig,
 };
@@ -22,9 +22,7 @@ const ARG_MESSAGE_SUFFIX_NAME: &str = "message_suffix";
 
 const EMITTER_MESSAGE_PREFIX: &str = "generic message: ";
 
-fn install_messages_emitter_contract<'a>(
-    builder: &'a RefCell<LmdbWasmTestBuilder>,
-) -> ContractHash {
+fn install_messages_emitter_contract(builder: &RefCell<LmdbWasmTestBuilder>) -> ContractHash {
     // Request to install the contract that will be emitting messages.
     let install_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -65,8 +63,8 @@ fn install_messages_emitter_contract<'a>(
         .expect("Should have contract hash")
 }
 
-fn emit_message_with_suffix<'a>(
-    builder: &'a RefCell<LmdbWasmTestBuilder>,
+fn emit_message_with_suffix(
+    builder: &RefCell<LmdbWasmTestBuilder>,
     suffix: &str,
     contract_hash: &ContractHash,
     block_time: u64,
@@ -121,13 +119,13 @@ impl<'a> ContractQueryView<'a> {
         entity
     }
 
-    fn message_topic(&self, message_topic_hash: MessageTopicHash) -> MessageTopicSummary {
+    fn message_topic(&self, topic_name_hash: TopicNameHash) -> MessageTopicSummary {
         let query_result = self
             .builder
             .borrow_mut()
             .query(
                 None,
-                Key::message_topic(self.contract_hash.value(), message_topic_hash),
+                Key::message_topic(self.contract_hash.value(), topic_name_hash),
                 &[],
             )
             .expect("should query");
@@ -145,17 +143,13 @@ impl<'a> ContractQueryView<'a> {
 
     fn message_summary(
         &self,
-        message_topic_hash: MessageTopicHash,
+        topic_name_hash: TopicNameHash,
         message_index: u32,
         state_hash: Option<Digest>,
-    ) -> Result<MessageSummary, String> {
+    ) -> Result<MessageChecksum, String> {
         let query_result = self.builder.borrow_mut().query(
             state_hash,
-            Key::message(
-                self.contract_hash.value(),
-                message_topic_hash,
-                message_index,
-            ),
+            Key::message(self.contract_hash.value(), topic_name_hash, message_index),
             &[],
         )?;
 

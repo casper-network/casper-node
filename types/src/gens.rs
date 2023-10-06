@@ -20,7 +20,7 @@ use proptest::{
 use crate::{
     account::{self, action_thresholds::gens::account_action_thresholds_arb, AccountHash},
     addressable_entity::{MessageTopics, NamedKeys, Parameters, Weight},
-    contract_messages::{MessageSummary, MessageTopicHash, MessageTopicSummary},
+    contract_messages::{MessageChecksum, MessageTopicSummary, TopicNameHash},
     crypto::{self, gens::public_key_arb_no_system},
     package::{ContractPackageStatus, ContractVersionKey, ContractVersions, Groups},
     system::auction::{
@@ -350,8 +350,11 @@ pub fn message_topics_arb() -> impl Strategy<Value = MessageTopics> {
         MessageTopics::from(
             topic_names
                 .into_iter()
-                .map(|name| (name.clone(), crypto::blake2b(name)))
-                .collect::<BTreeMap<String, MessageTopicHash>>(),
+                .map(|name| {
+                    let name_hash = crypto::blake2b(AsRef::<[u8]>::as_ref(&name)).into();
+                    (name, name_hash)
+                })
+                .collect::<BTreeMap<String, TopicNameHash>>(),
         )
     })
 }
@@ -647,8 +650,8 @@ fn message_topic_summary_arb() -> impl Strategy<Value = MessageTopicSummary> {
     })
 }
 
-fn message_summary_arb() -> impl Strategy<Value = MessageSummary> {
-    u8_slice_32().prop_map(MessageSummary)
+fn message_summary_arb() -> impl Strategy<Value = MessageChecksum> {
+    u8_slice_32().prop_map(MessageChecksum)
 }
 
 pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {

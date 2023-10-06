@@ -3692,7 +3692,7 @@
                 "type": "string"
               },
               "message": {
-                "description": "Message payload",
+                "description": "The payload of the message.",
                 "allOf": [
                   {
                     "$ref": "#/components/schemas/MessagePayload"
@@ -3700,11 +3700,11 @@
                 ]
               },
               "topic": {
-                "description": "Topic name",
+                "description": "The name of the topic on which the message was emitted on.",
                 "type": "string"
               },
               "index": {
-                "description": "Message index in the topic",
+                "description": "Message index in the topic.",
                 "type": "integer",
                 "format": "uint32",
                 "minimum": 0.0
@@ -3714,13 +3714,6 @@
           "MessagePayload": {
             "description": "The payload of the message emitted by an addressable entity during execution.",
             "oneOf": [
-              {
-                "description": "Empty message.",
-                "type": "string",
-                "enum": [
-                  "Empty"
-                ]
-              },
               {
                 "description": "Human readable string message.",
                 "type": "object",
@@ -4213,7 +4206,7 @@
                 ],
                 "properties": {
                   "Message": {
-                    "$ref": "#/components/schemas/MessageSummary"
+                    "$ref": "#/components/schemas/MessageChecksum"
                   }
                 },
                 "additionalProperties": false
@@ -4709,24 +4702,25 @@
           "MessageTopic": {
             "type": "object",
             "required": [
-              "topic_hash",
-              "topic_name"
+              "topic_name",
+              "topic_name_hash"
             ],
             "properties": {
               "topic_name": {
                 "type": "string"
               },
-              "topic_hash": {
-                "type": "array",
-                "items": {
-                  "type": "integer",
-                  "format": "uint8",
-                  "minimum": 0.0
-                },
-                "maxItems": 32,
-                "minItems": 32
+              "topic_name_hash": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/TopicNameHash"
+                  }
+                ]
               }
             }
+          },
+          "TopicNameHash": {
+            "description": "The hash of the name of the message topic.",
+            "type": "string"
           },
           "MessageTopicSummary": {
             "description": "Summary of a message topic that will be stored in global state.",
@@ -4758,8 +4752,8 @@
             "format": "uint64",
             "minimum": 0.0
           },
-          "MessageSummary": {
-            "description": "Message summary as a formatted string.",
+          "MessageChecksum": {
+            "description": "Message checksum as a formatted string.",
             "type": "string"
           },
           "GlobalStateIdentifier": {

@@ -22,7 +22,7 @@ use casper_types::{
         SetThresholdFailure, UpdateKeyFailure, Weight,
     },
     bytesrepr::ToBytes,
-    contract_messages::{Message, MessageAddr, MessageTopicHash, MessageTopicSummary},
+    contract_messages::{Message, MessageAddr, MessageTopicSummary, TopicNameHash},
     execution::Effects,
     package::ContractPackageKind,
     system::auction::{BidKind, EraInfo},
@@ -1390,7 +1390,7 @@ where
     pub(crate) fn add_message_topic(
         &mut self,
         topic_name: String,
-        topic_hash: MessageTopicHash,
+        topic_name_hash: TopicNameHash,
     ) -> Result<Result<(), MessageTopicError>, Error> {
         let entity_key: Key = self.get_entity_address();
         let entity_addr = entity_key.into_hash().ok_or(Error::InvalidContext)?;
@@ -1409,13 +1409,13 @@ where
                 return Ok(Err(MessageTopicError::MaxTopicsExceeded));
             }
 
-            if let Err(e) = entity.add_message_topic(topic_name, topic_hash) {
+            if let Err(e) = entity.add_message_topic(topic_name, topic_name_hash) {
                 return Ok(Err(e));
             }
             entity
         };
 
-        let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_hash));
+        let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash));
         let summary = StoredValue::MessageTopic(MessageTopicSummary::new(0, self.get_blocktime()));
 
         let entity_value = self.addressable_entity_to_validated_value(entity)?;
