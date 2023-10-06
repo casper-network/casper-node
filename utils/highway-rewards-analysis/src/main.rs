@@ -74,9 +74,24 @@ fn main() {
     let validators =
         validators::<ClContext>(&dump.faulty, &dump.cannot_propose, dump.validators.clone());
 
-    find_skipped_rounds(&validators, &dump, args.verbose);
+    print_faults(&validators, &dump.highway_state);
 
-    find_lowest_quorum_participation(&validators, &dump);
+    print_skipped_rounds(&validators, &dump, args.verbose);
+
+    print_lowest_quorum_participation(&validators, &dump);
+}
+
+fn print_faults(validators: &Validators<PublicKey>, state: &State<ClContext>) {
+    if state.faulty_validators().count() == 0 {
+        return;
+    }
+
+    println!("Faults:");
+    for vid in state.faulty_validators() {
+        let fault = state.maybe_fault(vid).unwrap();
+        println!("{}: {:?}", validators.id(vid).unwrap(), fault);
+    }
+    println!();
 }
 
 const TOP_TO_PRINT: usize = 10;
@@ -86,7 +101,7 @@ fn round_num(dump: &EraDump, round_id: Timestamp) -> u64 {
     (round_id.millis() - dump.start_time.millis()) / min_round_length.millis()
 }
 
-fn find_skipped_rounds(validators: &Validators<PublicKey>, dump: &EraDump, verbose: bool) {
+fn print_skipped_rounds(validators: &Validators<PublicKey>, dump: &EraDump, verbose: bool) {
     let state = &dump.highway_state;
     let highest_block = state.fork_choice(state.panorama()).unwrap();
     let all_blocks = std::iter::once(highest_block).chain(state.ancestor_hashes(highest_block));
@@ -142,7 +157,7 @@ fn find_skipped_rounds(validators: &Validators<PublicKey>, dump: &EraDump, verbo
     println!();
 }
 
-fn find_lowest_quorum_participation(validators: &Validators<PublicKey>, dump: &EraDump) {
+fn print_lowest_quorum_participation(validators: &Validators<PublicKey>, dump: &EraDump) {
     let state = &dump.highway_state;
     let highest_block = state.fork_choice(state.panorama()).unwrap();
     let mut quora_sum = vec![0.0; validators.len()];
