@@ -27,10 +27,12 @@ use serde::{Deserialize, Serialize};
 use super::Effects;
 #[cfg(feature = "json-schema")]
 use super::{Transform, TransformKind};
+#[cfg(any(feature = "testing", test))]
+use crate::crypto;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, RESULT_ERR_TAG, RESULT_OK_TAG, U8_SERIALIZED_LENGTH},
     contract_messages::Message,
-    crypto, TransferAddr, U512,
+    TransferAddr, U512,
 };
 #[cfg(any(feature = "testing", test))]
 use crate::{contract_messages::MessagePayload, testing::TestRng};
