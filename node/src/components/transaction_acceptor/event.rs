@@ -3,8 +3,8 @@ use std::fmt::{self, Display, Formatter};
 use serde::Serialize;
 
 use casper_types::{
-    account::AccountHash, AddressableEntity, AddressableEntityHash, BlockHeader, Deploy,
-    EntityVersion, Package, PackageHash, StoredValue, Timestamp, U512,
+    AddressableEntity, AddressableEntityHash, BlockHeader, EntityVersion, Package, PackageHash,
+    Timestamp, Transaction, U512,
 };
 
 use super::{Error, Source};

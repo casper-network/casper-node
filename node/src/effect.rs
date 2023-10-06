@@ -1921,7 +1921,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Retrieves a `Package` from under the given key in global state if present.
-    pub(crate) async fn get_package(self, state_root_hash: Digest, key: Key) -> Option<Package>
+    pub(crate) async fn get_package(self, state_root_hash: Digest, key: Key) -> Option<Box<Package>>
     where
         REv: From<ContractRuntimeRequest>,
     {

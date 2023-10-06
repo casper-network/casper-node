@@ -395,7 +395,7 @@ impl TestScenario {
                     }
                     ContractScenario::MissingContractAtHash => {
                         let body = TransactionV1Kind::new_stored_contract_by_hash(
-                            ContractHash::default(),
+                            AddressableEntityHash::default(),
                             "call".to_string(),
                             RuntimeArgs::new(),
                         );
@@ -408,7 +408,7 @@ impl TestScenario {
                     }
                     ContractScenario::MissingEntryPoint => {
                         let body = TransactionV1Kind::new_stored_contract_by_hash(
-                            ContractHash::default(),
+                            AddressableEntityHash::default(),
                             "non-existent-entry-point".to_string(),
                             RuntimeArgs::new(),
                         );
@@ -463,7 +463,7 @@ impl TestScenario {
                 }
                 ContractPackageScenario::MissingPackageAtHash => {
                     let body = TransactionV1Kind::new_stored_versioned_contract_by_hash(
-                        ContractPackageHash::default(),
+                        PackageHash::default(),
                         None,
                         "call".to_string(),
                         RuntimeArgs::new(),
@@ -477,7 +477,7 @@ impl TestScenario {
                 }
                 ContractPackageScenario::MissingContractVersion => {
                     let body = TransactionV1Kind::new_stored_versioned_contract_by_hash(
-                        ContractPackageHash::default(),
+                        PackageHash::default(),
                         Some(6),
                         "call".to_string(),
                         RuntimeArgs::new(),
@@ -669,7 +669,7 @@ impl reactor::Reactor for Reactor {
                     query_request,
                     responder,
                 } => {
-                    let query_result = if let Key::Hash(_) = query_request.key() {
+                    let query_result = if let Key::Package(_) = query_request.key() {
                         match self.test_scenario {
                             TestScenario::FromPeerCustomPaymentContractPackage(
                                 ContractPackageScenario::MissingPackageAtHash,
@@ -699,13 +699,13 @@ impl reactor::Reactor for Reactor {
                                 _,
                                 ContractPackageScenario::MissingContractVersion,
                             ) => QueryResult::Success {
-                                value: Box::new(StoredValue::ContractPackage(Package::default())),
+                                value: Box::new(StoredValue::Package(Package::default())),
                                 proofs: vec![],
                             },
                             _ => panic!("unexpected query: {:?}", query_request),
                         }
                     } else {
-                        panic!("expect only queries using Key::Hash variant");
+                        panic!("expect only queries using Key::Package variant");
                     };
                     responder.respond(Ok(query_result)).ignore()
                 }
@@ -753,7 +753,7 @@ impl reactor::Reactor for Reactor {
                     } else if let Key::Account(account_hash) = key {
                         let account = create_account(account_hash, self.test_scenario);
                         Some(AddressableEntity::from(account))
-                    } else if let Key::Hash(_) = key {
+                    } else if let Key::AddressableEntity(_) = key {
                         match self.test_scenario {
                             TestScenario::FromPeerCustomPaymentContract(
                                 ContractScenario::MissingContractAtHash,

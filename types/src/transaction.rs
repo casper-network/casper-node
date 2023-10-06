@@ -25,7 +25,7 @@ use crate::{
 #[cfg(any(feature = "std", test))]
 use account_and_secret_key::AccountAndSecretKey;
 pub use deploy::{
-    runtime_args, Approval, ApprovalsHash, Deploy, DeployConfigurationFailure,
+    runtime_args, Deploy, DeployApproval, DeployApprovalsHash, DeployConfigurationFailure,
     DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash,
     DeployHeader, DeployId, EntityIdentifier, ExecutableDeployItem, ExecutableDeployItemIdentifier,
     PackageIdentifier, TransferTarget,

@@ -22,11 +22,10 @@ use casper_types::{
     bytesrepr::Bytes,
     crypto::{sign, PublicKey, Signature},
     AccessRights, AsymmetricType, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2,
-    ChunkWithProof, Deploy, DeployApproval, DeployApprovalsHash, DeployHash,
-    DeployId, Digest, EraEnd, EraId, EraReport,
-    ExecutableDeployItem, FinalitySignature,
-    FinalitySignatureId, PackageHash, ProtocolVersion, RuntimeArgs, SecretKey, SemVer, SignedBlockHeader,
-    TimeDiff, Timestamp, Transaction, TransactionId, TransactionV1, TransactionV1ApprovalsHash,
+    ChunkWithProof, Deploy, DeployApproval, DeployApprovalsHash, DeployHash, DeployId, Digest,
+    EraEnd, EraId, EraReport, ExecutableDeployItem, FinalitySignature, FinalitySignatureId,
+    PackageHash, ProtocolVersion, RuntimeArgs, SecretKey, SemVer, SignedBlockHeader, TimeDiff,
+    Timestamp, Transaction, TransactionId, TransactionV1, TransactionV1ApprovalsHash,
     TransactionV1Builder, TransactionV1Hash, TransactionV1Kind, URef, KEY_HASH_LENGTH, U512,
 };
 

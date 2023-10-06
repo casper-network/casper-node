@@ -165,8 +165,8 @@ pub use transaction::runtime_args::{NamedArg, RuntimeArgs};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use transaction::TestTransactionV1Builder;
 pub use transaction::{
-    runtime_args, AuctionTransactionV1, Deploy,
-   DeployApproval, DeployApprovalsHash, DeployConfigurationFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
+    runtime_args, AuctionTransactionV1, Deploy, DeployApproval, DeployApprovalsHash,
+    DeployConfigurationFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
     DeployFootprint, DeployHash, DeployHeader, DeployId, DirectCallV1, EntityIdentifier,
     ExecutableDeployItem, ExecutableDeployItemIdentifier, NativeTransactionV1, PackageIdentifier,
     PricingModeV1, Transaction, TransactionApprovalsHash, TransactionHash, TransactionId,
