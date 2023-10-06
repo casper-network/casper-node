@@ -20,6 +20,9 @@ use parity_wasm::elements::Module;
 use tracing::error;
 use wasmi::{MemoryRef, Trap, TrapKind};
 
+#[cfg(feature = "test-support")]
+use wasmi::RuntimeValue;
+
 use casper_types::{
     account::{
         Account, AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
@@ -1056,6 +1059,9 @@ where
             }
         };
 
+        #[cfg(feature = "test-support")]
+        dump_runtime_stack_info(instance, engine_config.wasm_config().max_stack_height);
+
         if let Some(host_error) = error.as_host_error() {
             // If the "error" was in fact a trap caused by calling `ret` then
             // this is normal operation and we should return the value captured
@@ -1396,6 +1402,9 @@ where
                 return Ok(runtime.take_host_buffer().unwrap_or(CLValue::from_t(())?));
             }
         };
+
+        #[cfg(feature = "test-support")]
+        dump_runtime_stack_info(instance, self.config.wasm_config().max_stack_height);
 
         if let Some(host_error) = error.as_host_error() {
             // If the "error" was in fact a trap caused by calling `ret` then this is normal
@@ -2993,4 +3002,21 @@ where
 
         Ok(Ok(()))
     }
+}
+
+#[cfg(feature = "test-support")]
+fn dump_runtime_stack_info(instance: wasmi::ModuleRef, max_stack_height: u32) {
+    let globals = instance.globals();
+    let Some(current_runtime_call_stack_height) = globals.last()
+    else {
+        return;
+    };
+
+    if let RuntimeValue::I32(current_runtime_call_stack_height) =
+        current_runtime_call_stack_height.get()
+    {
+        if current_runtime_call_stack_height > max_stack_height as i32 {
+            eprintln!("runtime stack overflow, current={current_runtime_call_stack_height}, max={max_stack_height}");
+        }
+    };
 }
