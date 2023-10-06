@@ -2807,7 +2807,6 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::UnexpectedKeyVariant(_)
                 | ExecError::InvalidContractPackageKind(_)
                 | ExecError::Transform(_)
-                | ExecError::CannotEmitMessage(_)
                 | ExecError::InvalidMessageTopicOperation => false,
                 ExecError::DisabledUnrestrictedTransfers => false,
             },

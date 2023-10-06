@@ -1108,8 +1108,8 @@ where
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
             }
             FunctionIndex::ManageMessageTopic => {
-                // args(0) = pointer to the topic name in wasm memory
-                // args(1) = size of the topic name string in wasm memory
+                // args(0) = pointer to the serialized topic name string in wasm memory
+                // args(1) = size of the serialized topic name string in wasm memory
                 // args(2) = pointer to the operation to be performed for the specified topic
                 // args(3) = size of the operation
                 let (topic_name_ptr, topic_name_size, operation_ptr, operation_size) =
@@ -1155,10 +1155,10 @@ where
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
             }
             FunctionIndex::EmitMessage => {
-                // args(0) = pointer to the message kind name in wasm memory
-                // args(1) = size of the name string in wasm memory
-                // args(2) = pointer to the message contents
-                // args(3) = size of the message contents
+                // args(0) = pointer to the serialized topic name string in wasm memory
+                // args(1) = size of the serialized name string in wasm memory
+                // args(2) = pointer to the serialized message payload in wasm memory
+                // args(3) = size of the serialized message payload in wasm memory
                 let (topic_name_ptr, topic_name_size, message_ptr, message_size) =
                     Args::parse(args)?;
                 self.charge_host_function_call(
@@ -1174,12 +1174,11 @@ where
                     )))));
                 }
 
-                self.context
-                    .engine_config()
-                    .wasm_config()
-                    .messages_limits()
-                    .message_size_within_limits(message_size)
-                    .map_err(|e| Trap::from(Error::CannotEmitMessage(e)))?;
+                if message_size > limits.max_message_size() {
+                    return Ok(Some(RuntimeValue::I32(api_error::i32_from(Err(
+                        ApiError::MessageTooLarge,
+                    )))));
+                }
 
                 let topic_name = self.string_from_mem(topic_name_ptr, topic_name_size)?;
                 let message = self.t_from_mem(message_ptr, message_size)?;

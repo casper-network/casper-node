@@ -809,8 +809,8 @@ extern "C" {
     ///
     /// # Arguments
     ///
-    /// * `topic_name_ptr` - pointer to a `str` containing the name of the message topic.
-    /// * `topic_name_size` - size of the topic string.
+    /// * `topic_name_ptr` - pointer to the serialized topic name string.
+    /// * `topic_name_size` - size of the serialized name string.
     /// * `operation_ptr` - pointer to the management operation to be performed for the specified
     ///   topic.
     /// * `operation_ptr_size` - size of the operation.
@@ -824,9 +824,10 @@ extern "C" {
     ///
     /// # Arguments
     ///
-    /// * `topic_name_ptr` - pointer to a `str` containing the name of the topic to be registered.
-    /// * `topic_name_size` - size of the topic string.
-    /// * `message_ptr` - pointer pointer to serialized message payload.
+    /// * `topic_name_ptr` - pointer to the serialized topic name string where the message will be
+    ///   emitted.
+    /// * `topic_name_size` - size of the serialized name string.
+    /// * `message_ptr` - pointer to the serialized message payload to be emitted.
     /// * `message_size` - size of the serialized message payload.
     pub fn casper_emit_message(
         topic_name_ptr: *const u8,

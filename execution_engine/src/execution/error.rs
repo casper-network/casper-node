@@ -9,7 +9,7 @@ use casper_types::{
     execution::TransformError,
     package::ContractPackageKind,
     system, AccessRights, ApiError, CLType, CLValueError, ContractHash, ContractPackageHash,
-    ContractVersionKey, ContractWasmHash, Key, MessagesLimitsError, StoredValueTypeMismatch, URef,
+    ContractVersionKey, ContractWasmHash, Key, StoredValueTypeMismatch, URef,
 };
 
 use crate::{
@@ -191,9 +191,6 @@ pub enum Error {
     /// Failed to transfer tokens on a private chain.
     #[error("Failed to transfer with unrestricted transfers disabled")]
     DisabledUnrestrictedTransfers,
-    /// Message was not emitted.
-    #[error("Failed to emit a message on topic: {0}")]
-    CannotEmitMessage(MessagesLimitsError),
     /// Invalid message topic operation.
     #[error("The requested operation is invalid for a message topic")]
     InvalidMessageTopicOperation,

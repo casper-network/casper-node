@@ -2,7 +2,6 @@
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
 use crate::bytesrepr::{self, FromBytes, ToBytes};
 
@@ -20,15 +19,6 @@ pub struct MessagesLimits {
 }
 
 impl MessagesLimits {
-    /// Check if a specified message size exceeds the configured max value.
-    pub fn message_size_within_limits(&self, message_size: u32) -> Result<(), Error> {
-        if message_size > self.max_message_size {
-            Err(Error::MessageTooLarge(self.max_message_size, message_size))
-        } else {
-            Ok(())
-        }
-    }
-
     /// Returns the max number of topics a contract can register.
     pub fn max_topics_per_contract(&self) -> u32 {
         self.max_topics_per_contract
@@ -37,6 +27,11 @@ impl MessagesLimits {
     /// Returns the maximum allowed size for the topic name string.
     pub fn max_topic_name_size(&self) -> u32 {
         self.max_topic_name_size
+    }
+
+    /// Returns the maximum allowed size (in bytes) of the serialized message payload.
+    pub fn max_message_size(&self) -> u32 {
+        self.max_message_size
     }
 }
 
@@ -93,22 +88,6 @@ impl Distribution<MessagesLimits> for Standard {
             max_topics_per_contract: rng.gen(),
         }
     }
-}
-
-/// Possible execution errors.
-#[derive(Error, Debug, Clone)]
-#[non_exhaustive]
-pub enum Error {
-    /// Topic name size exceeded.
-    #[error(
-        "Topic name size is too large: expected less then {} bytes, got {} bytes",
-        _0,
-        _1
-    )]
-    TopicNameSizeExceeded(u32, u32),
-    /// Message size exceeded.
-    #[error("Message size cannot exceed {} bytes; actual size {}", _0, _1)]
-    MessageTooLarge(u32, u32),
 }
 
 #[doc(hidden)]

@@ -405,7 +405,7 @@ fn should_not_exceed_configured_limits() {
             MessagesLimits {
                 max_topic_name_size: 32,
                 max_message_size: 100,
-                max_topics_per_contract: 1,
+                max_topics_per_contract: 2,
             },
         ))
         .build();
@@ -419,13 +419,15 @@ fn should_not_exceed_configured_limits() {
 
     let contract_hash = install_messages_emitter_contract(&builder);
 
-    // Check that the max number of topics limit is enforced.
+    // if the topic larger than the limit, registering should fail.
+    // string is 29 bytes + 4 bytes for size = 33 bytes > limit established above
+    let too_large_topic_name = std::str::from_utf8(&[0x4du8; 29]).unwrap();
     let add_topic_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         contract_hash,
         ENTRY_POINT_ADD_TOPIC,
         runtime_args! {
-            ARG_TOPIC_NAME => "topic_1",
+            ARG_TOPIC_NAME => too_large_topic_name,
         },
     )
     .build();
@@ -436,14 +438,34 @@ fn should_not_exceed_configured_limits() {
         .expect_failure()
         .commit();
 
-    // Check topic name size limit is respected.
-    let large_topic_name = std::str::from_utf8(&[0x4du8; 100]).unwrap();
+    // if the topic name is equal to the limit, registering should work.
+    // string is 28 bytes + 4 bytes for size = 32 bytes == limit established above
+    let topic_name_at_limit = std::str::from_utf8(&[0x4du8; 28]).unwrap();
     let add_topic_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         contract_hash,
         ENTRY_POINT_ADD_TOPIC,
         runtime_args! {
-            ARG_TOPIC_NAME => large_topic_name,
+            ARG_TOPIC_NAME => topic_name_at_limit,
+        },
+    )
+    .build();
+
+    builder
+        .borrow_mut()
+        .exec(add_topic_request)
+        .expect_success()
+        .commit();
+
+    // Check that the max number of topics limit is enforced.
+    // 2 topics are already registered, so registering another topic should
+    // fail since the limit is already reached.
+    let add_topic_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        ENTRY_POINT_ADD_TOPIC,
+        runtime_args! {
+            ARG_TOPIC_NAME => "topic_1",
         },
     )
     .build();
