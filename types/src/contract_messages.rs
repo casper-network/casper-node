@@ -104,24 +104,22 @@ impl MessageAddr {
         {
             Some(topic_string) => (topic_string, None),
             None => {
-                let parts = input.rsplitn(2, '-').collect::<Vec<_>>();
-                if parts.len() != 2 {
-                    return Err(FromStrError::MissingMessageIndex);
-                }
-                (parts[1], Some(u32::from_str_radix(parts[0], 16)?))
+                let (remainder, message_index_str) = input
+                    .rsplit_once('-')
+                    .ok_or(FromStrError::MissingMessageIndex)?;
+                (remainder, Some(u32::from_str_radix(message_index_str, 16)?))
             }
         };
 
-        let parts = remainder.splitn(2, '-').collect::<Vec<_>>();
-        if parts.len() != 2 {
-            return Err(FromStrError::MissingMessageIndex);
-        }
+        let (entity_addr_str, topic_name_hash_str) = remainder
+            .split_once('-')
+            .ok_or(FromStrError::MissingMessageIndex)?;
 
-        let bytes = checksummed_hex::decode(parts[0])?;
+        let bytes = checksummed_hex::decode(entity_addr_str)?;
         let entity_addr = <[u8; KEY_HASH_LENGTH]>::try_from(bytes[0..KEY_HASH_LENGTH].as_ref())
             .map_err(|err| FromStrError::EntityHashParseError(err.to_string()))?;
 
-        let topic_name_hash = TopicNameHash::from_formatted_str(parts[1])?;
+        let topic_name_hash = TopicNameHash::from_formatted_str(topic_name_hash_str)?;
         Ok(MessageAddr {
             entity_addr,
             topic_name_hash,

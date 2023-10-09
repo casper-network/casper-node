@@ -3244,7 +3244,7 @@ where
     }
 
     fn add_message_topic(&mut self, topic_name: String) -> Result<Result<(), ApiError>, Error> {
-        let topic_hash = crypto::blake2b(AsRef::<[u8]>::as_ref(&topic_name)).into();
+        let topic_hash = crypto::blake2b(&topic_name).into();
 
         self.context
             .add_message_topic(topic_name, topic_hash)
@@ -3262,15 +3262,12 @@ where
             .into_hash()
             .ok_or(Error::InvalidContext)?;
 
-        let topic_name_hash = crypto::blake2b(AsRef::<[u8]>::as_ref(&topic_name)).into();
+        let topic_name_hash = crypto::blake2b(&topic_name).into();
         let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash));
 
         // Check if the topic exists and get the summary.
-        let prev_topic_summary = if let Some(StoredValue::MessageTopic(message_summary)) =
-            self.context.read_gs(&topic_key)?
-        {
-            message_summary
-        } else {
+        let Some(StoredValue::MessageTopic(prev_topic_summary)) =
+            self.context.read_gs(&topic_key)? else {
             return Ok(Err(ApiError::MessageTopicNotRegistered));
         };
 
@@ -3285,15 +3282,15 @@ where
             prev_topic_summary.message_count()
         };
 
-        let new_topic_summary = StoredValue::MessageTopic(MessageTopicSummary::new(
+        let new_topic_summary = MessageTopicSummary::new(
             message_index + 1, //TODO[AS]: need checked add here
             current_blocktime,
-        ));
+        );
 
         let message_key = Key::message(entity_addr, topic_name_hash, message_index);
-        let message_checksum = StoredValue::Message(MessageChecksum(crypto::blake2b(
+        let message_checksum = MessageChecksum(crypto::blake2b(
             message.to_bytes().map_err(Error::BytesRepr)?,
-        )));
+        ));
 
         self.context.metered_emit_message(
             topic_key,

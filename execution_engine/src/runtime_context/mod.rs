@@ -22,7 +22,9 @@ use casper_types::{
         SetThresholdFailure, UpdateKeyFailure, Weight,
     },
     bytesrepr::ToBytes,
-    contract_messages::{Message, MessageAddr, MessageTopicSummary, TopicNameHash},
+    contract_messages::{
+        Message, MessageAddr, MessageChecksum, MessageTopicSummary, TopicNameHash,
+    },
     execution::Effects,
     package::ContractPackageKind,
     system::auction::{BidKind, EraInfo},
@@ -954,33 +956,16 @@ where
     }
 
     /// Emits message and writes message summary to global state with a measurement.
-    pub(crate) fn metered_emit_message<V>(
+    pub(crate) fn metered_emit_message(
         &mut self,
         topic_key: Key,
-        topic_value: V,
+        topic_value: MessageTopicSummary,
         message_key: Key,
-        message_value: V,
+        message_value: MessageChecksum,
         message: Message,
-    ) -> Result<(), Error>
-    where
-        V: Into<StoredValue>,
-    {
-        let topic_value = topic_value.into();
-        let message_value = message_value.into();
-
-        match topic_value {
-            StoredValue::MessageTopic(_) => {}
-            _ => {
-                return Err(Error::UnexpectedStoredValueVariant);
-            }
-        }
-
-        match message_value {
-            StoredValue::Message(_) => {}
-            _ => {
-                return Err(Error::UnexpectedStoredValueVariant);
-            }
-        }
+    ) -> Result<(), Error> {
+        let topic_value = StoredValue::MessageTopic(topic_value);
+        let message_value = StoredValue::Message(message_value);
 
         // Charge for amount as measured by serialized length
         let bytes_count = topic_value.serialized_length() + message_value.serialized_length();
