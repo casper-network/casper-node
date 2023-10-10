@@ -37,8 +37,6 @@ pub(crate) enum BlocklistJustification {
         /// The era for which the invalid value was destined.
         era: EraId,
     },
-    /// Too many unasked or expired pongs were sent by the peer.
-    PongLimitExceeded,
     /// Peer misbehaved during consensus and is blocked for it.
     BadConsensusBehavior,
     /// Peer is on the wrong network.
@@ -75,9 +73,6 @@ impl Display for BlocklistJustification {
             ),
             BlocklistJustification::SentInvalidConsensusValue { era } => {
                 write!(f, "sent an invalid consensus value in {}", era)
-            }
-            BlocklistJustification::PongLimitExceeded => {
-                f.write_str("wrote too many expired or invalid pongs")
             }
             BlocklistJustification::BadConsensusBehavior => {
                 f.write_str("sent invalid data in consensus")

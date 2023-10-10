@@ -105,14 +105,9 @@ use datasize::DataSize;
 
 use prometheus::IntGauge;
 use rand::Rng;
-use tracing::{debug, error, error_span, field::Empty, info, trace, warn, Span};
+use tracing::{debug, error_span, field::Empty, info, trace, warn, Span};
 
-use super::{
-    blocklist::BlocklistJustification,
-    display_error,
-    health::{ConnectionHealth, HealthCheckOutcome, HealthConfig, Nonce, TaggedTimestamp},
-    NodeId,
-};
+use super::{blocklist::BlocklistJustification, display_error, NodeId};
 
 /// An outgoing connection/address in various states.
 #[derive(DataSize, Debug)]
@@ -160,8 +155,6 @@ where
         ///
         /// Can be a channel to decouple sending, or even a direct connection handle.
         handle: H,
-        /// Health of the connection.
-        health: ConnectionHealth,
     },
     /// The address was blocked and will not be retried.
     Blocked {
@@ -256,13 +249,6 @@ pub(crate) enum DialRequest<H> {
     /// this request can immediately be followed by a connection request, as in the case of a ping
     /// timeout.
     Disconnect { handle: H, span: Span },
-
-    /// Send a ping to a peer.
-    SendPing {
-        peer_id: NodeId,
-        nonce: Nonce,
-        span: Span,
-    },
 }
 
 impl<H> Display for DialRequest<H>
@@ -276,9 +262,6 @@ where
             }
             DialRequest::Disconnect { handle, .. } => {
                 write!(f, "disconnect: {}", handle)
-            }
-            DialRequest::SendPing { peer_id, nonce, .. } => {
-                write!(f, "ping[{}]: {}", nonce, peer_id)
             }
         }
     }
@@ -295,8 +278,6 @@ pub struct OutgoingConfig {
     pub(crate) unblock_after: Duration,
     /// Safety timeout, after which a connection is no longer expected to finish dialing.
     pub(crate) sweep_timeout: Duration,
-    /// Health check configuration.
-    pub(crate) health: HealthConfig,
 }
 
 impl OutgoingConfig {
@@ -682,41 +663,17 @@ where
             })
     }
 
-    /// Records a pong being received.
-    pub(super) fn record_pong(&mut self, peer_id: NodeId, pong: TaggedTimestamp) -> bool {
-        let addr = if let Some(addr) = self.routes.get(&peer_id) {
-            *addr
-        } else {
-            debug!(%peer_id, nonce=%pong.nonce(), "ignoring pong received from peer without route");
-            return false;
-        };
-
-        if let Some(outgoing) = self.outgoing.get_mut(&addr) {
-            if let OutgoingState::Connected { ref mut health, .. } = outgoing.state {
-                health.record_pong(&self.config.health, pong)
-            } else {
-                debug!(%peer_id, nonce=%pong.nonce(), "ignoring pong received from peer that is not in connected state");
-                false
-            }
-        } else {
-            debug!(%peer_id, nonce=%pong.nonce(), "ignoring pong received from peer without route");
-            false
-        }
-    }
-
     /// Performs housekeeping like reconnection or unblocking peers.
     ///
     /// This function must periodically be called. A good interval is every second.
     pub(super) fn perform_housekeeping<R: Rng>(
         &mut self,
-        rng: &mut R,
+        _rng: &mut R,
         now: Instant,
     ) -> Vec<DialRequest<H>> {
         let mut to_forget = Vec::new();
         let mut to_fail = Vec::new();
-        let mut to_ping_timeout = Vec::new();
         let mut to_reconnect = Vec::new();
-        let mut to_ping = Vec::new();
 
         for (&addr, outgoing) in self.outgoing.iter_mut() {
             // Note: `Span::in_scope` is no longer serviceable here due to borrow limitations.
@@ -776,27 +733,8 @@ where
                         to_fail.push((addr, failures_so_far + 1));
                     }
                 }
-                OutgoingState::Connected {
-                    peer_id,
-                    ref mut health,
-                    ..
-                } => {
-                    // Check if we need to send a ping, or give up and disconnect.
-                    let health_outcome = health.update_health(rng, &self.config.health, now);
-
-                    match health_outcome {
-                        HealthCheckOutcome::DoNothing => {
-                            // Nothing to do.
-                        }
-                        HealthCheckOutcome::SendPing(nonce) => {
-                            trace!(%nonce, "sending ping");
-                            to_ping.push((peer_id, addr, nonce));
-                        }
-                        HealthCheckOutcome::GiveUp => {
-                            info!("disconnecting after ping retries were exhausted");
-                            to_ping_timeout.push(addr);
-                        }
-                    }
+                OutgoingState::Connected { .. } => {
+                    // Nothing to do.
                 }
                 OutgoingState::Loopback => {
                     // Entry is ignored. Not outputting any `trace` because this is log spam even at
@@ -828,31 +766,6 @@ where
 
         let mut dial_requests = Vec::new();
 
-        // Request disconnection from failed pings.
-        for addr in to_ping_timeout {
-            let span = make_span(addr, self.outgoing.get(&addr));
-
-            let (_, opt_handle) = span.clone().in_scope(|| {
-                self.change_outgoing_state(
-                    addr,
-                    OutgoingState::Connecting {
-                        failures_so_far: 0,
-                        since: now,
-                    },
-                )
-            });
-
-            if let Some(handle) = opt_handle {
-                dial_requests.push(DialRequest::Disconnect {
-                    handle,
-                    span: span.clone(),
-                });
-            } else {
-                error!("did not expect connection under ping timeout to not have a residual connection handle. this is a bug");
-            }
-            dial_requests.push(DialRequest::Dial { addr, span });
-        }
-
         // Reconnect others.
         dial_requests.extend(to_reconnect.into_iter().map(|(addr, failures_so_far)| {
             let span = make_span(addr, self.outgoing.get(&addr));
@@ -868,16 +781,6 @@ where
             });
 
             DialRequest::Dial { addr, span }
-        }));
-
-        // Finally, schedule pings.
-        dial_requests.extend(to_ping.into_iter().map(|(peer_id, addr, nonce)| {
-            let span = make_span(addr, self.outgoing.get(&addr));
-            DialRequest::SendPing {
-                peer_id,
-                nonce,
-                span,
-            }
         }));
 
         dial_requests
@@ -898,7 +801,7 @@ where
                 addr,
                 handle,
                 node_id,
-                when
+                when: _
             } => {
                 info!("established outgoing connection");
 
@@ -917,7 +820,6 @@ where
                         OutgoingState::Connected {
                             peer_id: node_id,
                             handle,
-                            health: ConnectionHealth::new(when),
                         },
                     );
                     None
@@ -1029,10 +931,7 @@ mod tests {
 
     use super::{DialOutcome, DialRequest, NodeId, OutgoingConfig, OutgoingManager};
     use crate::{
-        components::network::{
-            blocklist::BlocklistJustification,
-            health::{HealthConfig, TaggedTimestamp},
-        },
+        components::network::blocklist::BlocklistJustification,
         testing::{init_logging, test_clock::TestClock},
     };
 
@@ -1052,7 +951,6 @@ mod tests {
             base_timeout: Duration::from_secs(1),
             unblock_after: Duration::from_secs(60),
             sweep_timeout: Duration::from_secs(45),
-            health: HealthConfig::test_config(),
         }
     }
 

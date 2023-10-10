@@ -17,7 +17,7 @@ use casper_hashing::Digest;
 use casper_types::testing::TestRng;
 use casper_types::{crypto, AsymmetricType, ProtocolVersion, PublicKey, SecretKey, Signature};
 
-use super::{connection_id::ConnectionId, health::Nonce, serialize_network_message, Ticket};
+use super::{connection_id::ConnectionId, serialize_network_message, Ticket};
 use crate::{
     effect::EffectBuilder,
     protocol,
@@ -53,16 +53,6 @@ pub(crate) enum Message<P> {
         #[serde(default)]
         chainspec_hash: Option<Digest>,
     },
-    /// A ping request.
-    Ping {
-        /// The nonce to be returned with the pong.
-        nonce: Nonce,
-    },
-    /// A pong response.
-    Pong {
-        /// Nonce to match pong to ping.
-        nonce: Nonce,
-    },
     Payload(P),
 }
 
@@ -72,9 +62,7 @@ impl<P: Payload> Message<P> {
     #[allow(dead_code)] // TODO: Re-add, once decision is made whether to keep message classses.
     pub(super) fn classify(&self) -> MessageKind {
         match self {
-            Message::Handshake { .. } | Message::Ping { .. } | Message::Pong { .. } => {
-                MessageKind::Protocol
-            }
+            Message::Handshake { .. } => MessageKind::Protocol,
             Message::Payload(payload) => payload.message_kind(),
         }
     }
@@ -83,7 +71,7 @@ impl<P: Payload> Message<P> {
     #[inline]
     pub(super) fn is_low_priority(&self) -> bool {
         match self {
-            Message::Handshake { .. } | Message::Ping { .. } | Message::Pong { .. } => false,
+            Message::Handshake { .. } => false,
             Message::Payload(payload) => payload.is_low_priority(),
         }
     }
@@ -93,8 +81,6 @@ impl<P: Payload> Message<P> {
         match self {
             Message::Handshake { .. } => Channel::Network,
             Message::Payload(payload) => payload.get_channel(),
-            Message::Ping { .. } => Channel::Network,
-            Message::Pong { .. } => Channel::Network,
         }
     }
 }
@@ -272,8 +258,6 @@ impl<P: Display> Display for Message<P> {
                     OptDisplay::new(chainspec_hash.as_ref(), "none")
                 )
             }
-            Message::Ping { nonce } => write!(f, "ping({})", nonce),
-            Message::Pong { nonce } => write!(f, "pong({})", nonce),
             Message::Payload(payload) => write!(f, "payload: {}", payload),
         }
     }
@@ -436,12 +420,6 @@ mod specimen_support {
                         protocol_version: LargestSpecimen::largest_specimen(estimator, cache),
                         consensus_certificate: LargestSpecimen::largest_specimen(estimator, cache),
                         chainspec_hash: LargestSpecimen::largest_specimen(estimator, cache),
-                    },
-                    MessageDiscriminants::Ping => Message::Ping {
-                        nonce: LargestSpecimen::largest_specimen(estimator, cache),
-                    },
-                    MessageDiscriminants::Pong => Message::Pong {
-                        nonce: LargestSpecimen::largest_specimen(estimator, cache),
                     },
                     MessageDiscriminants::Payload => {
                         Message::Payload(LargestSpecimen::largest_specimen(estimator, cache))
