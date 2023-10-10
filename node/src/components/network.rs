@@ -490,11 +490,23 @@ where
             };
             trace!(%msg, encoded_size=payload.len(), %channel, "enqueing message for sending");
 
-            // Build the request.
-            let request = connection
-                .rpc_client
-                .create_request(channel.into_channel_id())
-                .with_payload(payload);
+            /// Build the request.
+            ///
+            /// Internal helper function to ensure requests are always built the same way.
+            // Note: Ideally, this would be a closure, but lifetime inference does not
+            //       work out here, and we cannot annotate lifetimes on closures.
+            #[inline(always)]
+            fn mk_request<'a>(
+                rpc_client: &'a JulietRpcClient<{ Channel::COUNT }>,
+                channel: Channel,
+                payload: Bytes,
+            ) -> juliet::rpc::JulietRpcRequestBuilder<'a, { Channel::COUNT }> {
+                rpc_client
+                    .create_request(channel.into_channel_id())
+                    .with_payload(payload)
+            }
+
+            let request = mk_request(&connection.rpc_client, channel, payload);
 
             // Attempt to enqueue it directly, regardless of what `message_queued_responder` is.
             match request.try_queue_for_sending() {
@@ -521,9 +533,7 @@ where
                         // since the networking component usually controls its own futures, we are
                         // allowed to spawn these as well.
                         tokio::spawn(async move {
-                            let guard = client
-                                .create_request(channel.into_channel_id())
-                                .with_payload(payload)
+                            let guard = mk_request(&client, channel, payload)
                                 .queue_for_sending()
                                 .await;
                             responder.respond(()).await;
