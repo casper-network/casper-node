@@ -12,8 +12,8 @@ use casper_types::{
         WithdrawPurse, WithdrawPurses,
     },
     testing::TestRng,
-    AccessRights, AddressableEntity, ByteCodeHash, CLValue, EntryPoints, EraId, Key, PackageHash,
-    ProtocolVersion, PublicKey, StoredValue, URef, URefAddr, U512,
+    AccessRights, AddressableEntity, ByteCodeHash, CLValue, EntityKind, EntryPoints, EraId, Key,
+    PackageHash, ProtocolVersion, PublicKey, StoredValue, URef, URefAddr, U512,
 };
 
 use super::{
@@ -68,6 +68,7 @@ impl MockStateReader {
             main_purse,
             AssociatedKeys::new(account_hash, Weight::new(1)),
             ActionThresholds::default(),
+            EntityKind::Account(account_hash),
         );
 
         self.purses.insert(main_purse.addr(), balance);

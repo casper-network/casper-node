@@ -7,6 +7,7 @@ use casper_storage::global_state::{
     state::{self, StateProvider, StateReader},
     trie::merkle_proof::TrieMerkleProof,
 };
+use casper_types::addressable_entity::EntityKindTag;
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity::{
@@ -14,9 +15,9 @@ use casper_types::{
     },
     execution::{Effects, Transform, TransformKind},
     gens::*,
-    package::{PackageHash, PackageKindTag},
-    AccessRights, AddressableEntity, CLValue, Digest, EntryPoints, HashAddr, Key, KeyTag,
-    ProtocolVersion, StoredValue, URef, U256, U512,
+    package::PackageHash,
+    AccessRights, AddressableEntity, CLValue, Digest, EntityKind, EntryPoints, HashAddr, Key,
+    KeyTag, ProtocolVersion, StoredValue, URef, U256, U512,
 };
 
 use super::{
@@ -198,6 +199,7 @@ fn tracking_copy_add_named_key() {
         URef::new([0u8; 32], AccessRights::READ_ADD_WRITE),
         associated_keys,
         Default::default(),
+        EntityKind::Account(zero_account_hash),
     );
 
     let db = CountingDb::new_init(StoredValue::AddressableEntity(contract));
@@ -357,6 +359,7 @@ proptest! {
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
+            EntityKind::SmartContract
         ));
         let contract_key = Key::Hash(hash);
 
@@ -400,10 +403,9 @@ proptest! {
             ProtocolVersion::V1_0_0,
             purse,
             associated_keys,
-            ActionThresholds::default()
+            ActionThresholds::default(),
+            EntityKind::Account(address)
         );
-
-
 
         let account_key = Key::Account(address);
 
@@ -450,8 +452,9 @@ proptest! {
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
+            EntityKind::SmartContract
         ));
-        let contract_key = Key::AddressableEntity((PackageKindTag::SmartContract,hash));
+        let contract_key = Key::AddressableEntity((EntityKindTag::SmartContract,hash));
 
         // create account which knows about contract
         let mut account_named_keys = NamedKeys::new();
@@ -459,7 +462,7 @@ proptest! {
 
 
         let entity_hash = AddressableEntityHash::new([10;32]);
-        let new_entity_key: Key = Key::addressable_entity_key(PackageKindTag::Account, entity_hash);
+        let new_entity_key: Key = Key::addressable_entity_key(EntityKindTag::Account, entity_hash);
         let account_value = CLValue::from_t(new_entity_key).unwrap();
         let account_key = Key::Account(address);
 
@@ -553,6 +556,7 @@ fn query_for_circular_references_should_fail() {
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
+        EntityKind::SmartContract,
     ));
 
     let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
@@ -593,7 +597,7 @@ fn validate_query_proof_should_work() {
     let fake_purse = URef::new([4; 32], AccessRights::READ_ADD_WRITE);
     let account_entity_hash = AddressableEntityHash::new([30; 32]);
     let account_entity_key: Key =
-        Key::addressable_entity_key(PackageKindTag::Account, account_entity_hash);
+        Key::addressable_entity_key(EntityKindTag::Account, account_entity_hash);
     let cl_value = CLValue::from_t(account_entity_key).unwrap();
     let account_value = StoredValue::CLValue(cl_value);
     let account_key = Key::Account(account_hash);
@@ -607,6 +611,7 @@ fn validate_query_proof_should_work() {
         fake_purse,
         AssociatedKeys::new(account_hash, Weight::new(1)),
         ActionThresholds::default(),
+        EntityKind::Account(account_hash),
     ));
 
     // create contract that refers to that account
@@ -626,6 +631,7 @@ fn validate_query_proof_should_work() {
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
+        EntityKind::SmartContract,
     ));
     let contract_key = Key::Hash([5; 32]);
 
@@ -641,7 +647,7 @@ fn validate_query_proof_should_work() {
 
     let main_entity_hash = AddressableEntityHash::new([81; 32]);
     let main_entity_key: Key =
-        Key::addressable_entity_key(PackageKindTag::Account, main_entity_hash);
+        Key::addressable_entity_key(EntityKindTag::Account, main_entity_hash);
 
     let cl_value_2 = CLValue::from_t(main_entity_key).unwrap();
     let main_entity = StoredValue::AddressableEntity(AddressableEntity::new(
@@ -653,6 +659,7 @@ fn validate_query_proof_should_work() {
         fake_purse,
         AssociatedKeys::new(account_hash, Weight::new(1)),
         ActionThresholds::default(),
+        EntityKind::Account(account_hash),
     ));
 
     let main_account_value = StoredValue::CLValue(cl_value_2);
@@ -1076,6 +1083,7 @@ fn query_with_large_depth_with_fixed_path_should_fail() {
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
+            EntityKind::SmartContract,
         ));
         pairs.push((contract_key, contract));
         contract_keys.push(contract_key);
@@ -1138,6 +1146,7 @@ fn query_with_large_depth_with_urefs_should_fail() {
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
+        EntityKind::SmartContract,
     ));
     let contract_key = Key::Hash([0; 32]);
     pairs.push((contract_key, contract));

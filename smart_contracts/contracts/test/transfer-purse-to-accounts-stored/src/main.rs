@@ -15,7 +15,6 @@ use casper_types::{
     addressable_entity::{
         EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys, Parameter,
     },
-    package::PackageKindTag,
     CLType, CLTyped, Key, U512,
 };
 
@@ -83,8 +82,5 @@ pub extern "C" fn call() {
     );
 
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
-    runtime::put_key(
-        HASH_KEY_NAME,
-        Key::addressable_entity_key(PackageKindTag::SmartContract, contract_hash),
-    );
+    runtime::put_key(HASH_KEY_NAME, Key::contract_entity_key(contract_hash));
 }

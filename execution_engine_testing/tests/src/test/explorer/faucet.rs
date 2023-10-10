@@ -6,9 +6,9 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
+use casper_types::addressable_entity::EntityKindTag;
 use casper_types::{
-    account::AccountHash, package::PackageKindTag, runtime_args, system::mint, ApiError, Key,
-    PublicKey, SecretKey, U512,
+    account::AccountHash, runtime_args, system::mint, ApiError, Key, PublicKey, SecretKey, U512,
 };
 
 // test constants.
@@ -154,7 +154,7 @@ fn should_allow_installer_to_set_variables() {
 
     let faucet_contract_hash = helper.query_and_set_faucet_contract_hash(&builder);
     let faucet_entity_key =
-        Key::addressable_entity_key(PackageKindTag::SmartContract, faucet_contract_hash);
+        Key::addressable_entity_key(EntityKindTag::SmartContract, faucet_contract_hash);
 
     assert_eq!(
         helper.query_faucet_purse_balance(&builder),
@@ -395,7 +395,7 @@ fn should_not_fund_once_exhausted() {
 
     let faucet_contract_hash = get_faucet_entity_hash(&builder, installer_account);
     let faucet_entity_key =
-        Key::addressable_entity_key(PackageKindTag::SmartContract, faucet_contract_hash);
+        Key::addressable_entity_key(EntityKindTag::SmartContract, faucet_contract_hash);
     let faucet_purse = get_faucet_purse(&builder, installer_account);
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
 
@@ -585,7 +585,7 @@ fn should_allow_installer_to_fund_freely() {
 
     let faucet_contract_hash = get_faucet_entity_hash(&builder, installer_account);
     let faucet_entity_key =
-        Key::addressable_entity_key(PackageKindTag::SmartContract, faucet_contract_hash);
+        Key::addressable_entity_key(EntityKindTag::SmartContract, faucet_contract_hash);
     let faucet_purse = get_faucet_purse(&builder, installer_account);
 
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
@@ -865,7 +865,7 @@ fn faucet_costs() {
     // This test will fail if execution costs vary.  The expected costs should not be updated
     // without understanding why the cost has changed.  If the costs do change, it should be
     // reflected in the "Costs by Entry Point" section of the faucet crate's README.md.
-    const EXPECTED_FAUCET_INSTALL_COST: u64 = 84_201_467_790;
+    const EXPECTED_FAUCET_INSTALL_COST: u64 = 84_200_837_790;
     const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 650_487_100;
     const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 3_247_573_380;
     const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 3_368_370_660;

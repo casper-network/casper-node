@@ -4,12 +4,14 @@ use std::{
 };
 
 use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
+use casper_types::addressable_entity::EntityKindTag;
 use casper_types::{
     account::AccountHash,
     bytesrepr,
-    package::{EntityVersions, Groups, PackageKind, PackageKindTag, PackageStatus},
-    AccessRights, AddressableEntity, AddressableEntityHash, CLValue, EntryPoints, Key, Motes,
-    Package, PackageHash, Phase, ProtocolVersion, StoredValue, StoredValueTypeMismatch, URef,
+    package::{EntityVersions, Groups, PackageStatus},
+    AccessRights, AddressableEntity, AddressableEntityHash, CLValue, EntityKind, EntryPoints, Key,
+    Motes, Package, PackageHash, Phase, ProtocolVersion, StoredValue, StoredValueTypeMismatch,
+    URef,
 };
 
 use crate::{
@@ -148,28 +150,27 @@ where
                     account.main_purse(),
                     account.associated_keys().clone().into(),
                     account.action_thresholds().clone().into(),
+                    EntityKind::Account(account_hash),
                 );
 
                 let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
 
-                let contract_package = {
-                    let mut contract_package = Package::new(
+                let package = {
+                    let mut package = Package::new(
                         access_key,
                         EntityVersions::default(),
                         BTreeSet::default(),
                         Groups::default(),
                         PackageStatus::Locked,
-                        PackageKind::Account(account_hash),
                     );
-                    contract_package
-                        .insert_entity_version(protocol_version.value().major, entity_hash);
-                    contract_package
+                    package.insert_entity_version(protocol_version.value().major, entity_hash);
+                    package
                 };
 
-                let entity_key = Key::addressable_entity_key(PackageKindTag::Account, entity_hash);
+                let entity_key = entity.entity_key(entity_hash);
 
                 self.write(entity_key, StoredValue::AddressableEntity(entity.clone()));
-                self.write(package_hash.into(), contract_package.into());
+                self.write(package_hash.into(), package.into());
 
                 let contract_by_account = match CLValue::from_t(entity_key) {
                     Ok(cl_value) => cl_value,
@@ -279,9 +280,9 @@ where
         entity_hash: AddressableEntityHash,
     ) -> Result<AddressableEntity, Self::Error> {
         let package_kind_tag = if self.get_system_contracts()?.has_contract_hash(&entity_hash) {
-            PackageKindTag::System
+            EntityKindTag::System
         } else {
-            PackageKindTag::SmartContract
+            EntityKindTag::SmartContract
         };
 
         let key = Key::addressable_entity_key(package_kind_tag, entity_hash);

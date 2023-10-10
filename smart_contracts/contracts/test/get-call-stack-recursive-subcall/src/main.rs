@@ -7,8 +7,7 @@ use alloc::{boxed::Box, string::ToString, vec};
 
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
-    package::PackageKindTag, CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
-    Key, Parameter,
+    CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter,
 };
 
 use get_call_stack_recursive_subcall::{
@@ -62,8 +61,5 @@ pub extern "C" fn call() {
         Some(PACKAGE_ACCESS_KEY_NAME.to_string()),
     );
 
-    runtime::put_key(
-        CONTRACT_NAME,
-        Key::addressable_entity_key(PackageKindTag::SmartContract, contract_hash),
-    );
+    runtime::put_key(CONTRACT_NAME, Key::contract_entity_key(contract_hash));
 }

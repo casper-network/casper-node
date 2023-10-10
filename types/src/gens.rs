@@ -22,9 +22,9 @@ use crate::{
         DELEGATION_RATE_DENOMINATOR,
     },
     transfer::TransferAddr,
-    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, CLType, CLValue, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg, Package, Parameter,
-    Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, CLType, CLValue, EntityKind,
+    EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg,
+    Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
 };
 
 use crate::{
@@ -38,7 +38,6 @@ use crate::{
         ContractVersions,
     },
     deploy_info::gens::{deploy_hash_arb, transfer_addr_arb},
-    package::PackageKind,
     system::auction::{Bid, BidAddr, BidKind, ValidatorBid},
 };
 pub use crate::{deploy_info::gens::deploy_info_arb, transfer::gens::transfer_arb};
@@ -440,6 +439,7 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
                     main_purse,
                     associated_keys,
                     action_thresholds,
+                    EntityKind::SmartContract,
                 )
             },
         )
@@ -504,7 +504,6 @@ pub fn package_arb() -> impl Strategy<Value = Package> {
                 disabled_versions,
                 groups,
                 PackageStatus::default(),
-                PackageKind::SmartContract,
             )
         })
 }

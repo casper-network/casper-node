@@ -4,10 +4,11 @@ use parity_wasm::elements;
 use thiserror::Error;
 
 use casper_types::{
-    addressable_entity::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
+    addressable_entity::{
+        AddKeyFailure, EntityKind, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure,
+    },
     bytesrepr,
     execution::TransformError,
-    package::PackageKind,
     system, AccessRights, AddressableEntityHash, ApiError, ByteCodeHash, CLType, CLValueError,
     EntityVersionKey, Key, PackageHash, StoredValueTypeMismatch, URef,
 };
@@ -185,9 +186,9 @@ pub enum Error {
     /// Invalid key
     #[error("Invalid key {0}")]
     UnexpectedKeyVariant(Key),
-    /// Invalid Contract package kind.
-    #[error("Invalid contract package kind: {0}")]
-    InvalidPackageKind(PackageKind),
+    /// Invalid AddressableEntity kind.
+    #[error("Invalid entity kind: {0}")]
+    InvalidEntityKind(EntityKind),
     /// Failed to transfer tokens on a private chain.
     #[error("Failed to transfer with unrestricted transfers disabled")]
     DisabledUnrestrictedTransfers,

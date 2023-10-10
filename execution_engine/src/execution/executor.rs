@@ -4,9 +4,8 @@ use casper_storage::global_state::state::StateReader;
 
 use casper_types::{
     account::AccountHash,
-    addressable_entity::NamedKeys,
+    addressable_entity::{EntityKind, NamedKeys},
     bytesrepr::FromBytes,
-    package::PackageKind,
     system::{auction, handle_payment, mint, AUCTION, HANDLE_PAYMENT, MINT},
     AddressableEntity, AddressableEntityHash, ApiError, BlockTime, CLTyped, ContextAccessRights,
     DeployHash, EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, Tagged,
@@ -53,7 +52,7 @@ impl Executor {
         args: RuntimeArgs,
         entity_hash: AddressableEntityHash,
         entity: &AddressableEntity,
-        package_kind: PackageKind,
+        package_kind: EntityKind,
         named_keys: &mut NamedKeys,
         access_rights: ContextAccessRights,
         authorization_keys: BTreeSet<AccountHash>,
@@ -136,83 +135,6 @@ impl Executor {
         }
     }
 
-    // /// Executes standard payment code natively.
-    // #[allow(clippy::too_many_arguments)]
-    // pub(crate) fn exec_standard_payment<R>(
-    //     &self,
-    //     payment_args: RuntimeArgs,
-    //     payment_base_key: Key,
-    //     entity: &AddressableEntity,
-    //     package_kind: PackageKind,
-    //     payment_named_keys: &mut NamedKeys,
-    //     access_rights: ContextAccessRights,
-    //     authorization_keys: BTreeSet<AccountHash>,
-    //     account_hash: AccountHash,
-    //     blocktime: BlockTime,
-    //     deploy_hash: DeployHash,
-    //     payment_gas_limit: Gas,
-    //     protocol_version: ProtocolVersion,
-    //     tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-    //     phase: Phase,
-    //     stack: RuntimeStack,
-    // ) -> ExecutionResult
-    // where
-    //     R: StateReader<Key, StoredValue>,
-    //     R::Error: Into<Error>,
-    // {
-    //     let spending_limit: U512 = match try_get_amount(&payment_args) {
-    //         Ok(spending_limit) => spending_limit,
-    //         Err(error) => {
-    //             return ExecutionResult::precondition_failure(error.into());
-    //         }
-    //     };
-    //
-    //     let address_generator = {
-    //         let generator = AddressGenerator::new(deploy_hash.as_ref(), phase);
-    //         Rc::new(RefCell::new(generator))
-    //     };
-    //
-    //     let runtime_context = self.create_runtime_context(
-    //         payment_named_keys,
-    //         entity,
-    //         payment_base_key,
-    //         authorization_keys,
-    //         access_rights,
-    //         package_kind,
-    //         account_hash,
-    //         address_generator,
-    //         Rc::clone(&tracking_copy),
-    //         blocktime,
-    //         protocol_version,
-    //         deploy_hash,
-    //         phase,
-    //         payment_args,
-    //         payment_gas_limit,
-    //         spending_limit,
-    //         EntryPointType::Session,
-    //     );
-    //
-    //     let effects = tracking_copy.borrow().effects();
-    //
-    //     // Standard payment is executed in the calling account's context; the stack already
-    //     // captures that.
-    //     let mut runtime = Runtime::new(runtime_context);
-    //
-    //     match runtime.call_host_standard_payment(stack) {
-    //         Ok(()) => ExecutionResult::Success {
-    //             effects: runtime.context().effects(),
-    //             transfers: runtime.context().transfers().to_owned(),
-    //             cost: runtime.context().gas_counter(),
-    //         },
-    //         Err(error) => ExecutionResult::Failure {
-    //             effects,
-    //             error: error.into(),
-    //             transfers: runtime.context().transfers().to_owned(),
-    //             cost: runtime.context().gas_counter(),
-    //         },
-    //     }
-    // }
-
     /// Handles necessary address resolution and orchestration to securely call a system contract
     /// using the runtime.
     #[allow(clippy::too_many_arguments)]
@@ -221,7 +143,7 @@ impl Executor {
         direct_system_contract_call: DirectSystemContractCall,
         runtime_args: RuntimeArgs,
         entity: &AddressableEntity,
-        package_kind: PackageKind,
+        package_kind: EntityKind,
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
@@ -288,7 +210,7 @@ impl Executor {
         };
 
         let mut named_keys = contract.named_keys().clone();
-        let access_rights = contract.extract_access_rights(package_kind.tag(), entity_hash);
+        let access_rights = contract.extract_access_rights(entity_hash);
         let entity_address = Key::addressable_entity_key(package_kind.tag(), entity_hash);
 
         let runtime_context = self.create_runtime_context(
@@ -356,7 +278,7 @@ impl Executor {
         entity_address: Key,
         authorization_keys: BTreeSet<AccountHash>,
         access_rights: ContextAccessRights,
-        package_kind: PackageKind,
+        package_kind: EntityKind,
         account_hash: AccountHash,
         address_generator: Rc<RefCell<AddressGenerator>>,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -406,7 +328,7 @@ impl Executor {
         &self,
         payment_args: RuntimeArgs,
         entity: &AddressableEntity,
-        package_kind: PackageKind,
+        package_kind: EntityKind,
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
@@ -509,7 +431,7 @@ impl Executor {
     pub(crate) fn get_payment_purse<R>(
         &self,
         entity: &AddressableEntity,
-        package_kind: PackageKind,
+        package_kind: EntityKind,
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
@@ -546,7 +468,7 @@ impl Executor {
         &self,
         runtime_args: RuntimeArgs,
         entity: &AddressableEntity,
-        package_kind: PackageKind,
+        package_kind: EntityKind,
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,

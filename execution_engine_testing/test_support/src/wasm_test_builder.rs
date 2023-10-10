@@ -40,12 +40,12 @@ use casper_storage::{
         trie_store::lmdb::LmdbTrieStore,
     },
 };
+use casper_types::addressable_entity::EntityKindTag;
 use casper_types::{
     account::AccountHash,
     bytesrepr::{self, FromBytes},
     contracts::ContractHash,
     execution::Effects,
-    package::PackageKindTag,
     runtime_args,
     system::{
         auction::{
@@ -678,7 +678,7 @@ where
             .cloned()
             .expect("should have mint_contract_hash");
 
-        let mint_key = Key::addressable_entity_key(PackageKindTag::System, mint_entity_hash);
+        let mint_key = Key::addressable_entity_key(EntityKindTag::System, mint_entity_hash);
 
         let result = self.query(maybe_post_state, mint_key, &[TOTAL_SUPPLY_KEY.to_string()]);
 
@@ -696,7 +696,7 @@ where
     /// Panics if the total supply or seigniorage rate can't be found.
     pub fn base_round_reward(&mut self, maybe_post_state: Option<Digest>) -> U512 {
         let mint_key: Key =
-            Key::addressable_entity_key(PackageKindTag::System, self.get_mint_contract_hash());
+            Key::addressable_entity_key(EntityKindTag::System, self.get_mint_contract_hash());
 
         let mint_contract = self
             .query(maybe_post_state, mint_key, &[])
@@ -1057,7 +1057,7 @@ where
     /// Returns the "handle payment" contract, panics if it can't be found.
     pub fn get_handle_payment_contract(&self) -> AddressableEntity {
         let handle_payment_contract = Key::addressable_entity_key(
-            PackageKindTag::System,
+            EntityKindTag::System,
             self.get_system_entity_hash(HANDLE_PAYMENT)
                 .cloned()
                 .expect("should have handle payment contract uref"),
@@ -1147,14 +1147,14 @@ where
         &self,
         entity_hash: AddressableEntityHash,
     ) -> Option<AddressableEntity> {
-        let entity_key = Key::addressable_entity_key(PackageKindTag::SmartContract, entity_hash);
+        let entity_key = Key::addressable_entity_key(EntityKindTag::SmartContract, entity_hash);
 
         let contract_value: StoredValue = match self.query(None, entity_key, &[]) {
             Ok(stored_value) => stored_value,
             Err(_) => self
                 .query(
                     None,
-                    Key::addressable_entity_key(PackageKindTag::System, entity_hash),
+                    Key::addressable_entity_key(EntityKindTag::System, entity_hash),
                     &[],
                 )
                 .expect("must have value"),

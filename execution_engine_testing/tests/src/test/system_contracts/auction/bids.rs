@@ -21,11 +21,11 @@ use casper_execution_engine::{
     execution,
 };
 
+use casper_types::addressable_entity::EntityKindTag;
 use casper_types::{
     self,
     account::AccountHash,
     api_error::ApiError,
-    package::PackageKindTag,
     runtime_args,
     system::{
         self,
@@ -403,7 +403,7 @@ fn should_run_delegate_and_undelegate() {
     );
     assert_eq!(*active_bid.delegation_rate(), ADD_BID_DELEGATION_RATE_1);
 
-    let auction_key = Key::addressable_entity_key(PackageKindTag::System, auction_hash);
+    let auction_key = Key::addressable_entity_key(EntityKindTag::System, auction_hash);
 
     let auction_stored_value = builder
         .query(None, auction_key, &[])

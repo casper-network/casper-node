@@ -7,9 +7,11 @@ use std::{
 
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{ActionThresholds, AddressableEntity, AssociatedKeys, NamedKeys},
+    addressable_entity::{
+        ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind, NamedKeys,
+    },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    package::{PackageKind, PackageStatus},
+    package::PackageStatus,
     system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
     AccessRights, AddressableEntityHash, ByteCodeHash, CLType, CLTyped, CLValue, DeployHash,
     DeployInfo, EntityVersionKey, EntityVersions, EntryPoint, EntryPointAccess, EntryPointType,
@@ -493,7 +495,7 @@ fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> AddressableEntit
         tmp
     };
 
-    casper_types::addressable_entity::AddressableEntity::new(
+    AddressableEntity::new(
         PackageHash::default(),
         ByteCodeHash::default(),
         named_keys,
@@ -502,6 +504,7 @@ fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> AddressableEntit
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
+        EntityKind::SmartContract,
     )
 }
 
@@ -566,7 +569,6 @@ fn sample_contract_package(
         disabled_versions,
         groups,
         PackageStatus::Locked,
-        PackageKind::SmartContract,
     )
 }
 

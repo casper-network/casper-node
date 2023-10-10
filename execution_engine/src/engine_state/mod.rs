@@ -47,10 +47,10 @@ use casper_storage::{
 
 use casper_types::{
     account::{Account, AccountHash},
-    addressable_entity::{AssociatedKeys, NamedKeys},
+    addressable_entity::{AssociatedKeys, EntityKind, EntityKindTag, NamedKeys},
     bytesrepr::ToBytes,
     execution::Effects,
-    package::{EntityVersions, Groups, PackageKind, PackageKindTag, PackageStatus},
+    package::{EntityVersions, Groups, PackageStatus},
     system::{
         auction::{
             BidAddr, BidKind, EraValidators, UnbondingPurse, ValidatorBid, WithdrawPurse,
@@ -877,6 +877,7 @@ where
             account.main_purse(),
             associated_keys,
             account.action_thresholds().clone().into(),
+            EntityKind::Account(account_hash),
         );
 
         let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
@@ -888,13 +889,12 @@ where
                 BTreeSet::default(),
                 Groups::default(),
                 PackageStatus::Locked,
-                PackageKind::Account(account_hash),
             );
             package.insert_entity_version(protocol_version.value().major, entity_hash);
             package
         };
 
-        let entity_key: Key = Key::addressable_entity_key(PackageKindTag::Account, entity_hash);
+        let entity_key: Key = entity.entity_key(entity_hash);
 
         tracking_copy.borrow_mut().write(entity_key, entity.into());
         tracking_copy
@@ -955,24 +955,6 @@ where
         Ok(BalanceResult::Success { motes, proof })
     }
 
-    /// Return the package kind.
-    pub fn get_entity_package_kind(
-        &self,
-        entity_package_address: PackageHash,
-        tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-    ) -> Result<PackageKind, Error> {
-        let entity_package = match tracking_copy
-            .borrow_mut()
-            .read(&entity_package_address.into())
-            .map_err(Into::into)?
-        {
-            Some(StoredValue::Package(entity_package)) => entity_package,
-            Some(_) | None => return Err(Error::MissingEntityPackage(entity_package_address)),
-        };
-
-        Ok(entity_package.get_package_kind())
-    }
-
     /// Executes a native transfer.
     ///
     /// Native transfers do not involve WASM at all, and also skip executing payment code.
@@ -1016,11 +998,7 @@ where
             Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
         };
 
-        let package_kind =
-            match self.get_entity_package_kind(entity.package_hash(), Rc::clone(&tracking_copy)) {
-                Ok(package_kind) => package_kind,
-                Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
-            };
+        let package_kind = entity.entity_kind();
 
         let system_contract_registry = tracking_copy.borrow_mut().get_system_contracts()?;
 
@@ -1041,8 +1019,8 @@ where
             }
         };
 
-        let mut handle_payment_access_rights = handle_payment_contract
-            .extract_access_rights(PackageKindTag::System, *handle_payment_contract_hash);
+        let mut handle_payment_access_rights =
+            handle_payment_contract.extract_access_rights(*handle_payment_contract_hash);
 
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
 
@@ -1467,7 +1445,7 @@ where
                     DirectSystemContractCall::FinalizePayment,
                     handle_payment_args,
                     &system_addressable_entity,
-                    PackageKind::Account(PublicKey::System.to_account_hash()),
+                    EntityKind::Account(PublicKey::System.to_account_hash()),
                     authorization_keys,
                     PublicKey::System.to_account_hash(),
                     blocktime,
@@ -1574,12 +1552,7 @@ where
             }
         };
 
-        let package_address = entity.package_hash();
-        let package_kind =
-            match self.get_entity_package_kind(package_address, Rc::clone(&tracking_copy)) {
-                Ok(package_kind) => package_kind,
-                Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
-            };
+        let entity_kind = entity.entity_kind();
 
         let payment = deploy_item.payment;
         let session = deploy_item.session;
@@ -1729,8 +1702,7 @@ where
             );
 
             // payment_code_spec_2: execute payment code
-            let payment_access_rights =
-                entity.extract_access_rights(package_kind.tag(), entity_hash);
+            let payment_access_rights = entity.extract_access_rights(entity_hash);
 
             let mut payment_named_keys = entity.named_keys().clone();
 
@@ -1741,7 +1713,7 @@ where
                 match executor.exec_standard_payment(
                     payment_args,
                     &entity,
-                    package_kind,
+                    entity_kind,
                     authorization_keys.clone(),
                     account_hash,
                     blocktime,
@@ -1774,7 +1746,7 @@ where
                     payment_args,
                     entity_hash,
                     &entity,
-                    package_kind,
+                    entity_kind,
                     &mut payment_named_keys,
                     payment_access_rights,
                     authorization_keys.clone(),
@@ -1913,7 +1885,7 @@ where
             self.config.max_runtime_call_stack_height() as usize,
         );
 
-        let session_access_rights = entity.extract_access_rights(package_kind.tag(), entity_hash);
+        let session_access_rights = entity.extract_access_rights(entity_hash);
 
         let mut session_named_keys = entity.named_keys().clone();
 
@@ -1940,7 +1912,7 @@ where
                 session_args,
                 entity_hash,
                 &entity,
-                package_kind,
+                entity_kind,
                 &mut session_named_keys,
                 session_access_rights,
                 authorization_keys.clone(),
@@ -2064,8 +2036,8 @@ where
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
             };
 
-            let mut handle_payment_access_rights = handle_payment_contract
-                .extract_access_rights(PackageKindTag::System, *handle_payment_contract_hash);
+            let mut handle_payment_access_rights =
+                handle_payment_contract.extract_access_rights(*handle_payment_contract_hash);
             handle_payment_access_rights.extend(&[payment_purse_uref, rewards_target_purse]);
 
             let gas_limit = Gas::new(U512::MAX);
@@ -2078,7 +2050,7 @@ where
                     DirectSystemContractCall::FinalizePayment,
                     handle_payment_args,
                     &system_addressable_entity,
-                    PackageKind::Account(system_account_hash),
+                    EntityKind::Account(system_account_hash),
                     authorization_keys,
                     system_account_hash,
                     blocktime,
@@ -2226,7 +2198,7 @@ where
             .copied()
             .ok_or_else(|| Error::MissingSystemContractHash(AUCTION.to_string()))?;
 
-        let auction_key = Key::addressable_entity_key(PackageKindTag::System, auction_hash);
+        let auction_key = Key::addressable_entity_key(EntityKindTag::System, auction_hash);
 
         let query_request = QueryRequest::new(
             state_root_hash,
@@ -2340,7 +2312,7 @@ where
             DirectSystemContractCall::DistributeAccumulatedFees,
             RuntimeArgs::default(),
             &virtual_system_contract_by_account,
-            PackageKind::Account(system_account_hash),
+            EntityKind::Account(system_account_hash),
             authorization_keys.clone(),
             system_account_hash,
             BlockTime::default(),
@@ -2364,7 +2336,7 @@ where
             DirectSystemContractCall::DistributeRewards,
             runtime_args,
             &virtual_system_contract_by_account,
-            PackageKind::Account(system_account_hash),
+            EntityKind::Account(system_account_hash),
             authorization_keys,
             system_account_hash,
             BlockTime::default(),
@@ -2443,7 +2415,7 @@ where
                     DirectSystemContractCall::Slash,
                     slash_args,
                     &system_addressable_entity,
-                    PackageKind::Account(system_account_hash),
+                    EntityKind::Account(system_account_hash),
                     authorization_keys.clone(),
                     system_account_hash,
                     BlockTime::default(),
@@ -2484,7 +2456,7 @@ where
             DirectSystemContractCall::RunAuction,
             run_auction_args,
             &system_addressable_entity,
-            PackageKind::Account(system_account_hash),
+            EntityKind::Account(system_account_hash),
             authorization_keys,
             system_account_hash,
             BlockTime::default(),
@@ -2542,7 +2514,7 @@ where
         let account = match tracking_copy
             .borrow_mut()
             .read(&Key::addressable_entity_key(
-                PackageKindTag::Account,
+                EntityKindTag::Account,
                 entity_hash,
             ))
             .map_err(|_| Error::InvalidKeyVariant)?
@@ -2819,7 +2791,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::MissingRuntimeStack
                 | ExecError::DisabledEntity(_)
                 | ExecError::UnexpectedKeyVariant(_)
-                | ExecError::InvalidPackageKind(_)
+                | ExecError::InvalidEntityKind(_)
                 | ExecError::Transform(_) => false,
                 ExecError::DisabledUnrestrictedTransfers => false,
             },

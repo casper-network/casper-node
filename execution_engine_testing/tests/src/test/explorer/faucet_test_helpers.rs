@@ -5,9 +5,10 @@ use casper_engine_test_support::{
     DEFAULT_PAYMENT,
 };
 use casper_execution_engine::engine_state::ExecuteRequest;
+use casper_types::addressable_entity::EntityKindTag;
 use casper_types::{
-    account::AccountHash, bytesrepr::FromBytes, package::PackageKindTag, runtime_args,
-    system::mint, AddressableEntity, AddressableEntityHash, CLTyped, Key, PublicKey, URef, U512,
+    account::AccountHash, bytesrepr::FromBytes, runtime_args, system::mint, AddressableEntity,
+    AddressableEntityHash, CLTyped, Key, PublicKey, URef, U512,
 };
 
 use super::{
@@ -422,7 +423,7 @@ pub fn get_available_amount(
     builder
         .query(
             None,
-            Key::addressable_entity_key(PackageKindTag::SmartContract, faucet_contract_hash),
+            Key::addressable_entity_key(EntityKindTag::SmartContract, faucet_contract_hash),
             &[AVAILABLE_AMOUNT_NAMED_KEY.to_string()],
         )
         .expect("failed to find available amount named key")
@@ -440,7 +441,7 @@ pub fn get_remaining_requests(
     builder
         .query(
             None,
-            Key::addressable_entity_key(PackageKindTag::SmartContract, faucet_contract_hash),
+            Key::addressable_entity_key(EntityKindTag::SmartContract, faucet_contract_hash),
             &[REMAINING_REQUESTS_NAMED_KEY.to_string()],
         )
         .expect("failed to find available amount named key")

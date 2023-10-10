@@ -26,6 +26,11 @@ use num_traits::FromPrimitive;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
@@ -45,6 +50,8 @@ pub use self::{
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
 
+use crate::bytesrepr::U8_SERIALIZED_LENGTH;
+use crate::system::SystemEntityType;
 use crate::{
     account::{Account, AccountHash},
     byte_code::ByteCodeHash,
@@ -52,10 +59,9 @@ use crate::{
     checksummed_hex,
     contracts::{Contract, ContractHash},
     key::ByteCodeAddr,
-    package::PackageKindTag,
     uref::{self, URef},
     AccessRights, ApiError, CLType, CLTyped, ContextAccessRights, Group, HashAddr, Key,
-    PackageHash, ProtocolVersion, KEY_HASH_LENGTH,
+    PackageHash, ProtocolVersion, PublicKey, Tagged, KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -641,6 +647,202 @@ impl KeyValueJsonSchema for EntryPointLabels {
     const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("NamedEntryPoint");
 }
 
+#[allow(missing_docs)]
+#[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[repr(u8)]
+pub enum EntityKindTag {
+    System = 0,
+    Account = 1,
+    SmartContract = 2,
+}
+
+impl TryFrom<u8> for EntityKindTag {
+    type Error = bytesrepr::Error;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(EntityKindTag::System),
+            1 => Ok(EntityKindTag::Account),
+            2 => Ok(EntityKindTag::SmartContract),
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl Distribution<EntityKindTag> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EntityKindTag {
+        match rng.gen_range(0..=1) {
+            0 => EntityKindTag::System,
+            1 => EntityKindTag::Account,
+            2 => EntityKindTag::SmartContract,
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+/// The type of Package.
+pub enum EntityKind {
+    /// Package associated with a native contract implementation.
+    System(SystemEntityType),
+    /// Package associated with an Account hash.
+    Account(AccountHash),
+    /// Packages associated with Wasm stored on chain.
+    #[default]
+    SmartContract,
+}
+
+impl EntityKind {
+    /// Returns the Account hash associated with a Package based on the package kind.
+    pub fn maybe_account_hash(&self) -> Option<AccountHash> {
+        match self {
+            Self::Account(account_hash) => Some(*account_hash),
+            Self::SmartContract | Self::System(_) => None,
+        }
+    }
+
+    /// Returns the associated key set based on the Account hash set in the package kind.
+    pub fn associated_keys(&self) -> AssociatedKeys {
+        match self {
+            Self::Account(account_hash) => AssociatedKeys::new(*account_hash, Weight::new(1)),
+            Self::SmartContract | Self::System(_) => AssociatedKeys::default(),
+        }
+    }
+
+    /// Returns if the current package is either a system contract or the system entity.
+    pub fn is_system(&self) -> bool {
+        matches!(self, Self::System(_))
+    }
+
+    /// Returns if the current package is the system mint.
+    pub fn is_system_mint(&self) -> bool {
+        matches!(self, Self::System(SystemEntityType::Mint))
+    }
+
+    /// Returns if the current package is the system auction.
+    pub fn is_system_auction(&self) -> bool {
+        matches!(self, Self::System(SystemEntityType::Auction))
+    }
+
+    /// Returns if the current package is associated with the system addressable entity.
+    pub fn is_system_account(&self) -> bool {
+        match self {
+            Self::Account(account_hash) => {
+                if *account_hash == PublicKey::System.to_account_hash() {
+                    return true;
+                }
+                false
+            }
+            _ => false,
+        }
+    }
+}
+
+impl Tagged<EntityKindTag> for EntityKind {
+    fn tag(&self) -> EntityKindTag {
+        match self {
+            EntityKind::System(_) => EntityKindTag::System,
+            EntityKind::Account(_) => EntityKindTag::Account,
+            EntityKind::SmartContract => EntityKindTag::SmartContract,
+        }
+    }
+}
+
+impl Tagged<u8> for EntityKind {
+    fn tag(&self) -> u8 {
+        let package_kind_tag: EntityKindTag = self.tag();
+        package_kind_tag as u8
+    }
+}
+
+impl ToBytes for EntityKind {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+            + match self {
+                EntityKind::SmartContract => 0,
+                EntityKind::System(system_entity_type) => system_entity_type.serialized_length(),
+                EntityKind::Account(account_hash) => account_hash.serialized_length(),
+            }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            EntityKind::SmartContract => {
+                writer.push(self.tag());
+                Ok(())
+            }
+            EntityKind::System(system_entity_type) => {
+                writer.push(self.tag());
+                system_entity_type.write_bytes(writer)
+            }
+            EntityKind::Account(account_hash) => {
+                writer.push(self.tag());
+                account_hash.write_bytes(writer)
+            }
+        }
+    }
+}
+
+impl FromBytes for EntityKind {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            tag if tag == EntityKindTag::System as u8 => {
+                let (entity_type, remainder) = SystemEntityType::from_bytes(remainder)?;
+                Ok((EntityKind::System(entity_type), remainder))
+            }
+            tag if tag == EntityKindTag::Account as u8 => {
+                let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
+                Ok((EntityKind::Account(account_hash), remainder))
+            }
+            tag if tag == EntityKindTag::SmartContract as u8 => {
+                Ok((EntityKind::SmartContract, remainder))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+impl Display for EntityKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            EntityKind::SmartContract => {
+                write!(f, "PackageKind:Wasm")
+            }
+            EntityKind::System(system_entity) => {
+                write!(f, "PackageKind:System({})", system_entity)
+            }
+            EntityKind::Account(account_hash) => {
+                write!(f, "PackageKind:Account({})", account_hash)
+            }
+        }
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl Distribution<EntityKind> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EntityKind {
+        match rng.gen_range(0..=2) {
+            0 => EntityKind::System(rng.gen()),
+            1 => EntityKind::Account(rng.gen()),
+            2 => EntityKind::SmartContract,
+            _ => unreachable!(),
+        }
+    }
+}
+
 /// Methods and type signatures supported by a contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -654,6 +856,7 @@ pub struct AddressableEntity {
     main_purse: URef,
     associated_keys: AssociatedKeys,
     action_thresholds: ActionThresholds,
+    entity_kind: EntityKind,
 }
 
 impl From<AddressableEntity>
@@ -694,6 +897,7 @@ impl AddressableEntity {
         main_purse: URef,
         associated_keys: AssociatedKeys,
         action_thresholds: ActionThresholds,
+        entity_kind: EntityKind,
     ) -> Self {
         AddressableEntity {
             package_hash,
@@ -704,6 +908,7 @@ impl AddressableEntity {
             main_purse,
             action_thresholds,
             associated_keys,
+            entity_kind,
         }
     }
 
@@ -949,18 +1154,39 @@ impl AddressableEntity {
         self.protocol_version.value().major == protocol_version.value().major
     }
 
+    /// Returns the kind of Package.
+    pub fn entity_kind(&self) -> EntityKind {
+        self.entity_kind
+    }
+
+    /// Is the given Package associated to an Account.
+    pub fn is_account_kind(&self) -> bool {
+        matches!(self.entity_kind, EntityKind::Account(_))
+    }
+
+    /// Key for the addressable entity
+    pub fn entity_key(&self, entity_hash: AddressableEntityHash) -> Key {
+        match self.entity_kind {
+            EntityKind::System(_) => {
+                Key::addressable_entity_key(EntityKindTag::System, entity_hash)
+            }
+            EntityKind::Account(_) => {
+                Key::addressable_entity_key(EntityKindTag::Account, entity_hash)
+            }
+            EntityKind::SmartContract => {
+                Key::addressable_entity_key(EntityKindTag::SmartContract, entity_hash)
+            }
+        }
+    }
+
     /// Extracts the access rights from the named keys of the addressable entity.
-    pub fn extract_access_rights(
-        &self,
-        package_kind_tag: PackageKindTag,
-        entity_hash: AddressableEntityHash,
-    ) -> ContextAccessRights {
+    pub fn extract_access_rights(&self, entity_hash: AddressableEntityHash) -> ContextAccessRights {
         let urefs_iter = self
             .named_keys
             .keys()
             .filter_map(|key| key.as_uref().copied())
             .chain(iter::once(self.main_purse));
-        let entity_key = Key::AddressableEntity((package_kind_tag, entity_hash.value()));
+        let entity_key = self.entity_key(entity_hash);
         ContextAccessRights::new(entity_key, urefs_iter)
     }
 
@@ -979,6 +1205,7 @@ impl AddressableEntity {
             main_purse: self.main_purse,
             associated_keys: self.associated_keys,
             action_thresholds: self.action_thresholds,
+            entity_kind: self.entity_kind,
         }
     }
 }
@@ -994,6 +1221,7 @@ impl ToBytes for AddressableEntity {
         self.main_purse().write_bytes(&mut result)?;
         self.associated_keys().write_bytes(&mut result)?;
         self.action_thresholds().write_bytes(&mut result)?;
+        self.entity_kind().write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -1006,6 +1234,7 @@ impl ToBytes for AddressableEntity {
             + ToBytes::serialized_length(&self.main_purse)
             + ToBytes::serialized_length(&self.associated_keys)
             + ToBytes::serialized_length(&self.action_thresholds)
+            + ToBytes::serialized_length(&self.entity_kind)
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -1017,6 +1246,7 @@ impl ToBytes for AddressableEntity {
         self.main_purse().write_bytes(writer)?;
         self.associated_keys().write_bytes(writer)?;
         self.action_thresholds().write_bytes(writer)?;
+        self.entity_kind().write_bytes(writer)?;
         Ok(())
     }
 }
@@ -1031,6 +1261,7 @@ impl FromBytes for AddressableEntity {
         let (main_purse, bytes) = URef::from_bytes(bytes)?;
         let (associated_keys, bytes) = AssociatedKeys::from_bytes(bytes)?;
         let (action_thresholds, bytes) = ActionThresholds::from_bytes(bytes)?;
+        let (entity_kind, bytes) = EntityKind::from_bytes(bytes)?;
         Ok((
             AddressableEntity {
                 package_hash,
@@ -1041,6 +1272,7 @@ impl FromBytes for AddressableEntity {
                 main_purse,
                 associated_keys,
                 action_thresholds,
+                entity_kind,
             },
             bytes,
         ))
@@ -1058,6 +1290,7 @@ impl Default for AddressableEntity {
             main_purse: URef::default(),
             action_thresholds: ActionThresholds::default(),
             associated_keys: AssociatedKeys::default(),
+            entity_kind: EntityKind::SmartContract,
         }
     }
 }
@@ -1073,6 +1306,7 @@ impl From<Contract> for AddressableEntity {
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
+            EntityKind::SmartContract,
         )
     }
 }
@@ -1088,6 +1322,7 @@ impl From<Account> for AddressableEntity {
             value.main_purse(),
             value.associated_keys().clone().into(),
             value.action_thresholds().clone().into(),
+            EntityKind::Account(value.account_hash()),
         )
     }
 }
@@ -1537,9 +1772,9 @@ mod tests {
             associated_keys,
             ActionThresholds::new(Weight::new(1), Weight::new(1), Weight::new(1))
                 .expect("should create thresholds"),
+            EntityKind::SmartContract,
         );
-        let access_rights =
-            contract.extract_access_rights(PackageKindTag::SmartContract, entity_hash);
+        let access_rights = contract.extract_access_rights(entity_hash);
         let expected_uref = URef::new([42; UREF_ADDR_LENGTH], AccessRights::READ_ADD_WRITE);
         assert!(
             access_rights.has_access_rights_to_uref(&uref),

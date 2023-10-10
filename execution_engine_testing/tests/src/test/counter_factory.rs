@@ -6,9 +6,10 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{engine_state::Error, execution};
+use casper_types::addressable_entity::EntityKindTag;
 use casper_types::{
-    addressable_entity::DEFAULT_ENTRY_POINT_NAME, package::PackageKindTag, runtime_args,
-    AddressableEntityHash, ByteCodeKind, Key, RuntimeArgs, U512,
+    addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, AddressableEntityHash,
+    ByteCodeKind, Key, RuntimeArgs, U512,
 };
 
 const CONTRACT_COUNTER_FACTORY: &str = "counter_factory.wasm";
@@ -89,7 +90,7 @@ fn contract_factory_wasm_should_have_expected_exports() {
     let (builder, contract_hash) = setup();
 
     let factory_contract_entity_key =
-        Key::addressable_entity_key(PackageKindTag::SmartContract, contract_hash);
+        Key::addressable_entity_key(EntityKindTag::SmartContract, contract_hash);
 
     let factory_contract = builder
         .query(None, factory_contract_entity_key, &[])

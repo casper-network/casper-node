@@ -17,9 +17,9 @@ use serde::{Deserialize, Serialize};
 
 use casper_storage::global_state::state::StateProvider;
 use casper_types::{
-    addressable_entity::{ActionThresholds, NamedKeys},
+    addressable_entity::{ActionThresholds, EntityKind, NamedKeys},
     execution::Effects,
-    package::{EntityVersions, Groups, PackageKind, PackageStatus},
+    package::{EntityVersions, Groups, PackageStatus},
     system::{
         auction::{
             self, BidAddr, BidKind, DelegationRate, Delegator, SeigniorageRecipient,
@@ -594,7 +594,7 @@ where
         let system_account_addr = PublicKey::System.to_account_hash();
 
         self.store_addressable_entity(
-            PackageKind::Account(system_account_addr),
+            EntityKind::Account(system_account_addr),
             NO_WASM,
             None,
             None,
@@ -660,7 +660,7 @@ where
         let contract_hash = self.store_system_contract(
             named_keys,
             entry_points,
-            PackageKind::System(SystemEntityType::Mint),
+            EntityKind::System(SystemEntityType::Mint),
         )?;
 
         {
@@ -706,7 +706,7 @@ where
         let contract_hash = self.store_system_contract(
             named_keys,
             entry_points,
-            PackageKind::System(SystemEntityType::HandlePayment),
+            EntityKind::System(SystemEntityType::HandlePayment),
         )?;
 
         self.store_system_contract_registry(HANDLE_PAYMENT, contract_hash)?;
@@ -974,7 +974,7 @@ where
         let contract_hash = self.store_system_contract(
             named_keys,
             entry_points,
-            PackageKind::System(SystemEntityType::Auction),
+            EntityKind::System(SystemEntityType::Auction),
         )?;
 
         self.store_system_contract_registry(AUCTION, contract_hash)?;
@@ -990,7 +990,7 @@ where
         let contract_hash = self.store_system_contract(
             named_keys,
             entry_points,
-            PackageKind::System(SystemEntityType::HandlePayment),
+            EntityKind::System(SystemEntityType::HandlePayment),
         )?;
 
         self.store_system_contract_registry(STANDARD_PAYMENT, contract_hash)?;
@@ -1038,7 +1038,7 @@ where
             };
 
             self.store_addressable_entity(
-                PackageKind::Account(account.account_hash()),
+                EntityKind::Account(account.account_hash()),
                 NO_WASM,
                 None,
                 None,
@@ -1110,7 +1110,7 @@ where
         &self,
         named_keys: NamedKeys,
         entry_points: EntryPoints,
-        contract_package_kind: PackageKind,
+        contract_package_kind: EntityKind,
     ) -> Result<AddressableEntityHash, Box<GenesisError>> {
         self.store_addressable_entity(
             contract_package_kind,
@@ -1123,7 +1123,7 @@ where
 
     fn store_addressable_entity(
         &self,
-        package_kind: PackageKind,
+        entity_kind: EntityKind,
         no_wasm: bool,
         maybe_named_keys: Option<NamedKeys>,
         maybe_entry_points: Option<EntryPoints>,
@@ -1135,7 +1135,7 @@ where
         } else {
             ByteCodeHash::new(self.address_generator.borrow_mut().new_hash_address())
         };
-        let entity_hash = if package_kind.is_system_account() {
+        let entity_hash = if entity_kind.is_system_account() {
             let entity_hash_addr = PublicKey::System.to_account_hash().value();
             AddressableEntityHash::new(entity_hash_addr)
         } else {
@@ -1145,8 +1145,8 @@ where
         let package_hash = PackageHash::new(self.address_generator.borrow_mut().new_hash_address());
 
         let byte_code = ByteCode::new(ByteCodeKind::Empty, vec![]);
-        let associated_keys = package_kind.associated_keys();
-        let maybe_account_hash = package_kind.maybe_account_hash();
+        let associated_keys = entity_kind.associated_keys();
+        let maybe_account_hash = entity_kind.maybe_account_hash();
         let named_keys = maybe_named_keys.unwrap_or_default();
         let entry_points = match maybe_entry_points {
             Some(entry_points) => entry_points,
@@ -1168,6 +1168,7 @@ where
             main_purse,
             associated_keys,
             ActionThresholds::default(),
+            entity_kind,
         );
 
         let access_key = self
@@ -1183,7 +1184,6 @@ where
                 BTreeSet::default(),
                 Groups::default(),
                 PackageStatus::default(),
-                package_kind,
             );
             package.insert_entity_version(protocol_version.value().major, entity_hash);
             package
@@ -1195,7 +1195,7 @@ where
             .borrow_mut()
             .write(byte_code_key, StoredValue::ByteCode(byte_code));
 
-        let entity_key = Key::AddressableEntity((package_kind.tag(), entity_hash.value()));
+        let entity_key = Key::AddressableEntity((entity_kind.tag(), entity_hash.value()));
 
         self.tracking_copy
             .borrow_mut()

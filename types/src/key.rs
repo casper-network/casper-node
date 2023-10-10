@@ -29,6 +29,7 @@ use rand::{
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::addressable_entity::EntityKindTag;
 use crate::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity,
@@ -38,7 +39,7 @@ use crate::{
     checksummed_hex,
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
-    package::{PackageHash, PackageKindTag},
+    package::PackageHash,
     system::auction::{BidAddr, BidAddrTag},
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
     DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError, TRANSFER_ADDR_LENGTH,
@@ -213,7 +214,7 @@ pub enum Key {
     /// A `Key` under which we store package information.
     Package(PackageAddr),
     /// A `Key` under which we write an addressable entity.
-    AddressableEntity((PackageKindTag, EntityAddr)),
+    AddressableEntity((EntityKindTag, EntityAddr)),
     /// A `Key` under which we write a byte code record.
     ByteCode((ByteCodeKind, ByteCodeAddr)),
 }
@@ -772,15 +773,15 @@ impl Key {
     /// Creates a new [`Key::AddressableEntity`] variant from a package kind and an entity
     /// hash.
     pub fn addressable_entity_key(
-        package_kind_tag: PackageKindTag,
+        entity_kind_tag: EntityKindTag,
         entity_hash: AddressableEntityHash,
     ) -> Self {
-        Key::AddressableEntity((package_kind_tag, entity_hash.value()))
+        Key::AddressableEntity((entity_kind_tag, entity_hash.value()))
     }
 
     /// Creates a new [`Key::AddressableEntity`] for a Smart contract.
     pub fn contract_entity_key(entity_hash: AddressableEntityHash) -> Key {
-        Self::addressable_entity_key(PackageKindTag::SmartContract, entity_hash)
+        Self::addressable_entity_key(EntityKindTag::SmartContract, entity_hash)
     }
 
     /// Creates a new [`Key::ByteCode`] variant from a byte code kind and an byte code addr.
@@ -1125,7 +1126,7 @@ impl FromBytes for Key {
             }
             tag if tag == KeyTag::AddressableEntity as u8 => {
                 let (package_kind_tag, rem) = u8::from_bytes(remainder)?;
-                let package_kind_tag = PackageKindTag::try_from(package_kind_tag)?;
+                let package_kind_tag = EntityKindTag::try_from(package_kind_tag)?;
                 let (entity_addr, rem) = EntityAddr::from_bytes(rem)?;
                 Ok((Key::AddressableEntity((package_kind_tag, entity_addr)), rem))
             }
@@ -1219,7 +1220,7 @@ mod serde_helpers {
         ChecksumRegistry,
         BidAddr(&'a BidAddr),
         Package(&'a PackageAddr),
-        AddressableEntity((&'a PackageKindTag, &'a EntityAddr)),
+        AddressableEntity((&'a EntityKindTag, &'a EntityAddr)),
         ByteCode((&'a ByteCodeKind, &'a ByteCodeAddr)),
     }
 
@@ -1243,7 +1244,7 @@ mod serde_helpers {
         ChecksumRegistry,
         BidAddr(BidAddr),
         Package(PackageAddr),
-        AddressableEntity((PackageKindTag, EntityAddr)),
+        AddressableEntity((EntityKindTag, EntityAddr)),
         ByteCode((ByteCodeKind, ByteCodeAddr)),
     }
 

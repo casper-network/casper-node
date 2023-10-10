@@ -2,9 +2,9 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
+use casper_types::addressable_entity::EntityKindTag;
 use casper_types::{
-    execution::TransformKind, package::PackageKindTag, runtime_args, CLValue, Key, RuntimeArgs,
-    StoredValue,
+    execution::TransformKind, runtime_args, CLValue, Key, RuntimeArgs, StoredValue,
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -39,7 +39,7 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
         .get_entity_hash_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract hash associated with default account");
 
-    let entity_key = Key::addressable_entity_key(PackageKindTag::Account, entity_hash);
+    let entity_key = Key::addressable_entity_key(EntityKindTag::Account, entity_hash);
 
     let effects = &builder.get_effects()[0];
     let mut add_keys_iter = effects

@@ -79,8 +79,8 @@ pub use access_rights::{
 };
 #[doc(inline)]
 pub use addressable_entity::{
-    AddressableEntity, AddressableEntityHash, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Parameter,
+    AddressableEntity, AddressableEntityHash, EntityKind, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints, Parameter,
 };
 #[doc(inline)]
 pub use api_error::ApiError;

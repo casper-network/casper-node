@@ -7,7 +7,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::engine_state::{Error as CoreError, ExecError, ExecuteRequest};
 use casper_types::{
     runtime_args, system::CallStackElement, AddressableEntity, AddressableEntityHash, CLValue,
-    EntityAddr, EntryPointType, HashAddr, Key, PackageAddr, PackageHash, StoredValue, Tagged, U512,
+    EntityAddr, EntryPointType, HashAddr, Key, PackageAddr, PackageHash, StoredValue, U512,
 };
 
 use get_call_stack_recursive_subcall::{
@@ -168,16 +168,13 @@ impl BuilderExt for LmdbWasmTestBuilder {
             .query(None, Key::Package(contract_package_hash), &[])
             .unwrap();
 
-        let contract_package = match value {
+        let package = match value {
             StoredValue::Package(package) => package,
             _ => panic!("unreachable"),
         };
 
-        let current_contract_hash = contract_package.current_entity_hash().unwrap();
-        let current_contract_entity_key = Key::addressable_entity_key(
-            contract_package.get_package_kind().tag(),
-            current_contract_hash,
-        );
+        let current_entity_hash = package.current_entity_hash().unwrap();
+        let current_contract_entity_key = Key::contract_entity_key(current_entity_hash);
 
         let cl_value = self
             .query(

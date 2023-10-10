@@ -18,12 +18,11 @@ use casper_storage::global_state::state::StateReader;
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
-        ActionType, AddKeyFailure, NamedKeys, RemoveKeyFailure, SetThresholdFailure,
-        UpdateKeyFailure, Weight,
+        ActionType, AddKeyFailure, EntityKind, EntityKindTag, NamedKeys, RemoveKeyFailure,
+        SetThresholdFailure, UpdateKeyFailure, Weight,
     },
     bytesrepr::ToBytes,
     execution::Effects,
-    package::{PackageKind, PackageKindTag},
     system::auction::{BidKind, EraInfo},
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
     ContextAccessRights, DeployHash, DeployInfo, EntryPointType, Gas, GrantedAccess, Key, KeyTag,
@@ -67,7 +66,7 @@ pub struct RuntimeContext<'a, R> {
     entity: &'a AddressableEntity,
     // Key pointing to the entity we are currently running
     entity_key: Key,
-    package_kind: PackageKind,
+    entity_kind: EntityKind,
     account_hash: AccountHash,
 }
 
@@ -86,7 +85,7 @@ where
         entity_address: Key,
         authorization_keys: BTreeSet<AccountHash>,
         access_rights: ContextAccessRights,
-        package_kind: PackageKind,
+        package_kind: EntityKind,
         account_hash: AccountHash,
         address_generator: Rc<RefCell<AddressGenerator>>,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -122,7 +121,7 @@ where
             engine_config,
             transfers,
             remaining_spending_limit,
-            package_kind,
+            entity_kind: package_kind,
         }
     }
 
@@ -139,7 +138,7 @@ where
         let entity = self.entity;
         let authorization_keys = self.authorization_keys.clone();
         let account_hash = self.account_hash;
-        let package_kind = self.package_kind;
+        let package_kind = self.entity_kind;
 
         let address_generator = self.address_generator.clone();
         let tracking_copy = self.state();
@@ -176,7 +175,7 @@ where
             engine_config,
             transfers,
             remaining_spending_limit,
-            package_kind,
+            entity_kind: package_kind,
         }
     }
 
@@ -211,13 +210,13 @@ where
     }
 
     /// Returns the package kind associated with the current context.
-    pub fn get_package_kind(&self) -> PackageKind {
-        self.package_kind
+    pub fn get_package_kind(&self) -> EntityKind {
+        self.entity_kind
     }
 
     /// Returns whether the current context is of the system addressable entity.
     pub fn is_system_account(&self) -> bool {
-        if let Some(account_hash) = self.package_kind.maybe_account_hash() {
+        if let Some(account_hash) = self.entity_kind.maybe_account_hash() {
             return account_hash == PublicKey::System.to_account_hash();
         }
         false
@@ -881,7 +880,7 @@ where
     pub(crate) fn charge_gas(&mut self, gas: Gas) -> Result<(), Error> {
         let prev = self.gas_counter();
         let gas_limit = self.gas_limit();
-        let is_system = self.package_kind.is_system();
+        let is_system = self.entity_kind.is_system();
 
         // gas charge overflow protection
         match prev.checked_add(gas.cost(is_system)) {
@@ -1357,7 +1356,7 @@ where
     pub(crate) fn get_system_entity_key(&self, name: &str) -> Result<Key, Error> {
         let system_entity_hash = self.get_system_contract(name)?;
         Ok(Key::addressable_entity_key(
-            PackageKindTag::System,
+            EntityKindTag::System,
             system_entity_hash,
         ))
     }

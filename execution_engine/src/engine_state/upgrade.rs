@@ -5,10 +5,12 @@ use thiserror::Error;
 
 use casper_storage::global_state::state::StateProvider;
 use casper_types::{
-    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
+    addressable_entity::{
+        ActionThresholds, AssociatedKeys, EntityKind, EntityKindTag, NamedKeys, Weight,
+    },
     bytesrepr::{self, ToBytes},
     execution::Effects,
-    package::{EntityVersions, Groups, PackageKind, PackageKindTag, PackageStatus},
+    package::{EntityVersions, Groups, PackageStatus},
     system::{handle_payment::ACCUMULATION_PURSE_KEY, SystemEntityType},
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeKind, CLValue,
     CLValueError, Digest, EntryPoints, FeeHandling, Key, Package, PackageHash, Phase,
@@ -156,6 +158,7 @@ where
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
+            EntityKind::System(system_contract_type),
         );
 
         let byte_code_key =
@@ -166,7 +169,7 @@ where
             .borrow_mut()
             .write(byte_code_key, StoredValue::ByteCode(byte_code));
 
-        let entity_key = Key::addressable_entity_key(PackageKindTag::System, contract_hash);
+        let entity_key = new_entity.entity_key(contract_hash);
 
         self.tracking_copy
             .borrow_mut()
@@ -210,8 +213,8 @@ where
                 )
             })?
         {
-            let mut package: Package = contract_package.into();
-            package.update_package_kind(PackageKind::System(system_contract_type));
+            let package: Package = contract_package.into();
+
             return Ok(package);
         }
 
@@ -229,7 +232,7 @@ where
             .tracking_copy
             .borrow_mut()
             .read(&Key::AddressableEntity((
-                PackageKindTag::System,
+                EntityKindTag::System,
                 contract_hash.value(),
             )))
             .map_err(|_| {
@@ -293,7 +296,7 @@ where
             purse_uref
         };
 
-        let contract = AddressableEntity::new(
+        let system_account_entity = AddressableEntity::new(
             package_hash,
             byte_code_hash,
             NamedKeys::new(),
@@ -302,22 +305,21 @@ where
             main_purse,
             associated_keys,
             ActionThresholds::default(),
+            EntityKind::Account(account_hash),
         );
 
         let access_key = address_generator.new_uref(AccessRights::READ_ADD_WRITE);
 
-        let contract_package = {
-            let mut contract_package = Package::new(
+        let package = {
+            let mut package = Package::new(
                 access_key,
                 EntityVersions::default(),
                 BTreeSet::default(),
                 Groups::default(),
                 PackageStatus::default(),
-                PackageKind::Account(account_hash),
             );
-            contract_package
-                .insert_entity_version(self.new_protocol_version.value().major, entity_hash);
-            contract_package
+            package.insert_entity_version(self.new_protocol_version.value().major, entity_hash);
+            package
         };
 
         let byte_code_key = Key::ByteCode((ByteCodeKind::Empty, byte_code_hash.value()));
@@ -325,14 +327,16 @@ where
             .borrow_mut()
             .write(byte_code_key, StoredValue::ByteCode(byte_code));
 
-        let entity_key = Key::addressable_entity_key(PackageKindTag::Account, entity_hash);
-        self.tracking_copy
-            .borrow_mut()
-            .write(entity_key, StoredValue::AddressableEntity(contract));
+        let entity_key = system_account_entity.entity_key(entity_hash);
+
+        self.tracking_copy.borrow_mut().write(
+            entity_key,
+            StoredValue::AddressableEntity(system_account_entity),
+        );
 
         self.tracking_copy
             .borrow_mut()
-            .write(package_hash.into(), StoredValue::Package(contract_package));
+            .write(package_hash.into(), StoredValue::Package(package));
 
         let contract_by_account = CLValue::from_t(entity_key)
             .map_err(|error| ProtocolUpgradeError::CLValue(error.to_string()))?;
@@ -387,7 +391,7 @@ where
             addressable_entity.named_keys_append(new_named_keys);
 
             let entity_key =
-                Key::addressable_entity_key(PackageKindTag::System, *handle_payment_hash);
+                Key::addressable_entity_key(EntityKindTag::System, *handle_payment_hash);
 
             self.tracking_copy.borrow_mut().write(
                 entity_key,

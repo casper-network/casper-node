@@ -8,10 +8,10 @@ use casper_execution_engine::{
     engine_state::{run_genesis_request::RunGenesisRequest, Error as EngineError},
     execution::Error,
 };
+use casper_types::addressable_entity::EntityKindTag;
 use casper_types::{
-    account::AccountHash, package::PackageKindTag, runtime_args, system::mint, AccessRights,
-    AddressableEntityHash, ApiError, CLType, CLValue, GenesisAccount, Key, Motes, RuntimeArgs,
-    StoredValue, U512,
+    account::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntityHash,
+    ApiError, CLType, CLValue, GenesisAccount, Key, Motes, RuntimeArgs, StoredValue, U512,
 };
 use std::{convert::TryFrom, path::PathBuf};
 
@@ -92,7 +92,7 @@ fn query_dictionary_item(
                     .into_entity_hash()
                     .expect("must convert to contract hash");
 
-                let entity_key = Key::addressable_entity_key(PackageKindTag::Account, entity_hash);
+                let entity_key = Key::addressable_entity_key(EntityKindTag::Account, entity_hash);
 
                 return query_dictionary_item(
                     builder,
@@ -621,7 +621,7 @@ fn should_query_dictionary_items_with_test_builder() {
         // Query through contract's named keys
         let queried_value = query_dictionary_item(
             &builder,
-            Key::addressable_entity_key(PackageKindTag::SmartContract, entity_hash),
+            Key::addressable_entity_key(EntityKindTag::SmartContract, entity_hash),
             Some(dictionary::DICTIONARY_NAME.to_string()),
             dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
         )
