@@ -868,7 +868,6 @@ where
                         addr: peer_addr,
                         handle,
                         node_id: peer_id,
-                        when: now,
                     });
 
                 let mut effects = self.process_dial_requests(request);
@@ -1293,7 +1292,7 @@ where
                 }
                 Event::SweepOutgoing => {
                     let now = Instant::now();
-                    let requests = self.outgoing_manager.perform_housekeeping(rng, now);
+                    let requests = self.outgoing_manager.perform_housekeeping(now);
 
                     let mut effects = self.process_dial_requests(requests);
 
