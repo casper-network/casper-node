@@ -1234,7 +1234,7 @@ mod tests {
     const MESSAGE_KEY: Key = Key::Message(MessageAddr::new_message_addr(
         [42; 32],
         TopicNameHash::new([2; 32]),
-        9,
+        15,
     ));
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
@@ -1259,6 +1259,9 @@ mod tests {
         MESSAGE_KEY,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
+    const TOPIC_NAME_HEX_STRING: &str =
+        "0202020202020202020202020202020202020202020202020202020202020202";
+    const MESSAGE_INDEX_HEX_STRING: &str = "f";
     const UNIFIED_HEX_STRING: &str =
         "002a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
     const VALIDATOR_HEX_STRING: &str =
@@ -1393,7 +1396,15 @@ mod tests {
         );
         assert_eq!(
             format!("{}", MESSAGE_TOPIC_KEY),
-            format!("Key::MessageTopic({}{})", HEX_STRING, HEX_STRING)
+            format!("Key::Message({}-{})", HEX_STRING, HEX_STRING)
+        );
+
+        assert_eq!(
+            format!("{}", MESSAGE_KEY),
+            format!(
+                "Key::Message({}-{}-{})",
+                HEX_STRING, TOPIC_NAME_HEX_STRING, MESSAGE_INDEX_HEX_STRING
+            )
         )
     }
 
