@@ -6,7 +6,9 @@ mod topics;
 
 pub use error::FromStrError;
 pub use messages::{Message, MessageChecksum, MessagePayload};
-pub use topics::{MessageTopicOperation, MessageTopicSummary, TopicNameHash};
+pub use topics::{
+    MessageTopicOperation, MessageTopicSummary, TopicNameHash, TOPIC_NAME_HASH_LENGTH,
+};
 
 use crate::{
     alloc::string::ToString,
