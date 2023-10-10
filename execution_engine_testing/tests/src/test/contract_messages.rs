@@ -13,8 +13,11 @@ use casper_types::{
 };
 
 const MESSAGE_EMITTER_INSTALLER_WASM: &str = "contract_messages_emitter.wasm";
-const MESSAGE_EMITTER_PACKAGE_NAME: &str = "messages_emitter_package_name";
+const MESSAGE_EMITTER_UPGRADER_WASM: &str = "contract_messages_upgrader.wasm";
+const MESSAGE_EMITTER_FROM_CONTRACT: &str = "contract_messages_from_account.wasm";
+const MESSAGE_EMITTER_PACKAGE_HASH_KEY_NAME: &str = "messages_emitter_package_hash";
 const MESSAGE_EMITTER_GENERIC_TOPIC: &str = "generic_messages";
+const MESSAGE_EMITTER_UPGRADED_TOPIC: &str = "new_topic_after_upgrade";
 const ENTRY_POINT_EMIT_MESSAGE: &str = "emit_message";
 const ARG_TOPIC_NAME: &str = "topic_name";
 const ENTRY_POINT_ADD_TOPIC: &str = "add_topic";
@@ -45,7 +48,7 @@ fn install_messages_emitter_contract(builder: &RefCell<LmdbWasmTestBuilder>) -> 
         .query(
             None,
             Key::from(*DEFAULT_ACCOUNT_ADDR),
-            &[MESSAGE_EMITTER_PACKAGE_NAME.into()],
+            &[MESSAGE_EMITTER_PACKAGE_HASH_KEY_NAME.into()],
         )
         .expect("should query");
 
@@ -56,6 +59,46 @@ fn install_messages_emitter_contract(builder: &RefCell<LmdbWasmTestBuilder>) -> 
     };
 
     // Get the contract hash of the messages_emitter contract.
+    *message_emitter_package
+        .versions()
+        .contract_hashes()
+        .last()
+        .expect("Should have contract hash")
+}
+
+fn upgrade_messages_emitter_contract(builder: &RefCell<LmdbWasmTestBuilder>) -> ContractHash {
+    let upgrade_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        MESSAGE_EMITTER_UPGRADER_WASM,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    // Execute the request to upgrade the message emitting contract.
+    // This will also register a new topic for the contract to emit messages on.
+    builder
+        .borrow_mut()
+        .exec(upgrade_request)
+        .expect_success()
+        .commit();
+
+    // Get the contract package for the upgraded messages emitter contract.
+    let query_result = builder
+        .borrow_mut()
+        .query(
+            None,
+            Key::from(*DEFAULT_ACCOUNT_ADDR),
+            &[MESSAGE_EMITTER_PACKAGE_HASH_KEY_NAME.into()],
+        )
+        .expect("should query");
+
+    let message_emitter_package = if let StoredValue::ContractPackage(package) = query_result {
+        package
+    } else {
+        panic!("Stored value is not a contract package: {:?}", query_result);
+    };
+
+    // Get the contract hash of the latest version of the messages emitter contract.
     *message_emitter_package
         .versions()
         .contract_hashes()
@@ -491,6 +534,57 @@ fn should_not_exceed_configured_limits() {
     builder
         .borrow_mut()
         .exec(emit_message_request)
+        .expect_failure()
+        .commit();
+}
+
+#[ignore]
+#[test]
+fn should_carry_message_topics_on_upgraded_contract() {
+    let builder = RefCell::new(LmdbWasmTestBuilder::default());
+    builder
+        .borrow_mut()
+        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+
+    let _ = install_messages_emitter_contract(&builder);
+    let contract_hash = upgrade_messages_emitter_contract(&builder);
+    let query_view = ContractQueryView::new(&builder, contract_hash);
+
+    let entity = query_view.entity();
+    assert_eq!(entity.message_topics().len(), 2);
+    let mut expected_topic_names = 0;
+    for (topic_name, topic_hash) in entity.message_topics().iter() {
+        if topic_name == MESSAGE_EMITTER_GENERIC_TOPIC
+            || topic_name == MESSAGE_EMITTER_UPGRADED_TOPIC
+        {
+            expected_topic_names += 1;
+        }
+
+        assert_eq!(query_view.message_topic(*topic_hash).message_count(), 0);
+    }
+    assert_eq!(expected_topic_names, 2);
+}
+
+#[ignore]
+#[test]
+fn should_not_emit_messages_from_account() {
+    let builder = RefCell::new(LmdbWasmTestBuilder::default());
+    builder
+        .borrow_mut()
+        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+
+    // Request to run a deploy that tries to register a message topic without a contract.
+    let install_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        MESSAGE_EMITTER_FROM_CONTRACT,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    // Expect to fail since topics can only be registered by stored contracts.
+    builder
+        .borrow_mut()
+        .exec(install_request)
         .expect_failure()
         .commit();
 }

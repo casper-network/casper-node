@@ -12,9 +12,9 @@ use casper_types::{
     crypto,
     package::{ContractPackageKind, ContractPackageStatus},
     system::auction::EraInfo,
-    ApiError, ContractHash, ContractPackageHash, ContractVersion, EraId, Gas, Group, HostFunction,
-    HostFunctionCost, Key, StoredValue, URef, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, U512,
-    UREF_SERIALIZED_LENGTH,
+    ApiError, ContractHash, ContractPackageHash, ContractVersion, EntryPointType, EraId, Gas,
+    Group, HostFunction, HostFunctionCost, Key, StoredValue, URef,
+    DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, U512, UREF_SERIALIZED_LENGTH,
 };
 
 use super::{args::Args, Error, Runtime};
@@ -1141,10 +1141,10 @@ where
                     .t_from_mem(operation_ptr, operation_size)
                     .map_err(|_e| Trap::from(Error::InvalidMessageTopicOperation))?;
 
-                // don't allow managing topics for accounts.
-                if let Key::Account(_) = self.context.get_entity_address() {
+                // only allow managing messages from stored contracts
+                let EntryPointType::Contract = self.context.entry_point_type() else {
                     return Err(Trap::from(Error::InvalidContext));
-                }
+                };
 
                 let result = match topic_operation {
                     MessageTopicOperation::Add => {

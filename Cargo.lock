@@ -945,6 +945,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "contract-messages-from-account"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "contract-messages-upgrader"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
