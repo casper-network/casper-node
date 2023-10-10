@@ -12,7 +12,7 @@ use casper_types::{
         mint::{Error, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         CallStackElement,
     },
-    Key, Phase, PublicKey, URef, U512,
+    Phase, PublicKey, URef, U512,
 };
 
 use crate::{
@@ -44,8 +44,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                     // total supply URef should exist due to genesis
                     return Err(Error::TotalSupplyNotFound);
                 }
-                Some(Key::URef(uref)) => uref,
-                Some(_) => return Err(Error::MissingKey),
+                Some(key) => key,
             };
             // increase total supply
             self.add(total_supply_uref, initial_balance)?;
@@ -68,13 +67,12 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         }
 
         // get total supply or error
-        let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY) {
-            Some(Key::URef(uref)) => uref,
-            Some(_) => return Err(Error::MissingKey), // TODO
+        let total_supply_key = match self.get_key(TOTAL_SUPPLY_KEY) {
+            Some(key) => key,
             None => return Err(Error::MissingKey),
         };
         let total_supply: U512 = self
-            .read(total_supply_uref)?
+            .read(total_supply_key)?
             .ok_or(Error::TotalSupplyNotFound)?;
 
         // decrease total supply
@@ -83,7 +81,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             .ok_or(Error::ArithmeticOverflow)?;
 
         // update total supply
-        self.write(total_supply_uref, reduced_total_supply)?;
+        self.write(total_supply_key, reduced_total_supply)?;
 
         Ok(())
     }
@@ -257,8 +255,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
     /// Retrieves the base round reward.
     fn read_base_round_reward(&mut self) -> Result<U512, Error> {
         let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY) {
-            Some(Key::URef(uref)) => uref,
-            Some(_) => return Err(Error::MissingKey), // TODO
+            Some(key) => key,
             None => return Err(Error::MissingKey),
         };
         let total_supply: U512 = self
@@ -266,8 +263,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             .ok_or(Error::TotalSupplyNotFound)?;
 
         let round_seigniorage_rate_uref = match self.get_key(ROUND_SEIGNIORAGE_RATE_KEY) {
-            Some(Key::URef(uref)) => uref,
-            Some(_) => return Err(Error::MissingKey), // TODO
+            Some(key) => key,
             None => return Err(Error::MissingKey),
         };
         let round_seigniorage_rate: Ratio<U512> = self
@@ -300,18 +296,17 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         }
         self.add_balance(existing_purse, amount)?;
         // get total supply uref if exists, otherwise error.
-        let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY) {
+        let total_supply_key = match self.get_key(TOTAL_SUPPLY_KEY) {
             None => {
                 // total supply URef should exist due to genesis
                 // which obviously must have been called
                 // before new rewards are minted at the end of an era
                 return Err(Error::TotalSupplyNotFound);
             }
-            Some(Key::URef(uref)) => uref,
-            Some(_) => return Err(Error::MissingKey),
+            Some(key) => key,
         };
         // increase total supply
-        self.add(total_supply_uref, amount)?;
+        self.add(total_supply_key, amount)?;
         Ok(())
     }
 }

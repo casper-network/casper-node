@@ -170,13 +170,9 @@ fn should_modify_with_owned_access_rights() {
         .commit()
         .expect_success();
 
-    let stored_value = builder
-        .query(None, dictionary_seed_uref.into(), &[])
+    let dictionary_uref_value = builder
+        .query_uref_value(None, dictionary_seed_uref.into(), &[])
         .expect("should have value");
-    let dictionary_uref_value = stored_value
-        .as_cl_value()
-        .cloned()
-        .expect("should have cl value");
     assert_eq!(
         dictionary_uref_value.cl_type(),
         &CLType::Unit,

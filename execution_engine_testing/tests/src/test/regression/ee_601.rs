@@ -2,9 +2,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{
-    execution::TransformKind, runtime_args, CLValue, Key, RuntimeArgs, StoredValue,
-};
+use casper_types::{execution::TransformKind, runtime_args, CLValue, Key, RuntimeArgs};
 
 const ARG_AMOUNT: &str = "amount";
 
@@ -60,23 +58,23 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
 
     builder.commit();
 
-    let payment_value: StoredValue = builder
-        .query(None, *payment_uref, &[])
+    let payment_value: CLValue = builder
+        .query_uref_value(None, *payment_uref, &[])
         .expect("should find payment value");
 
     assert_eq!(
         payment_value,
-        StoredValue::CLValue(CLValue::from_t("payment".to_string()).unwrap()),
+        CLValue::from_t("payment".to_string()).unwrap(),
         "expected payment"
     );
 
-    let session_value: StoredValue = builder
-        .query(None, *session_uref, &[])
+    let session_value: CLValue = builder
+        .query_uref_value(None, *session_uref, &[])
         .expect("should find session value");
 
     assert_eq!(
         session_value,
-        StoredValue::CLValue(CLValue::from_t("session".to_string()).unwrap()),
+        CLValue::from_t("session".to_string()).unwrap(),
         "expected session"
     );
 }

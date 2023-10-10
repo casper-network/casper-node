@@ -805,7 +805,6 @@ extern "C" {
         contract_hash_ptr: *const u8,
         contract_hash_size: usize,
     ) -> i32;
-
     /// This function causes the runtime to generate a new `Context` key, with
     /// the provided key-value pair stored under it in the global state. This operations results in
     /// a 32-byte hash of the entity owning the context being written to the `key_hash_out_ptr`
@@ -827,5 +826,27 @@ extern "C" {
         value_size: usize,
         owner_out_ptr: *mut u8,
         key_hash_out_ptr: *mut u8,
+    );
+    /// This function causes the runtime to generate a new `URef`, with
+    /// the provided value stored under it in the global state and a
+    /// specified lifetime. The new `URef` is written (in serialized form) to the wasm linear
+    /// memory starting from the `key_ptr` offset. Note that data corruption is possible if not
+    /// enough memory is allocated for the `URef` at `key_ptr`. This
+    /// function will cause a `Trap` if the bytes in wasm memory from offset `value_ptr` to
+    /// `value_ptr + value_size` cannot be de-serialized into a `Value`.
+    ///
+    /// # Arguments
+    ///
+    /// * `key_ptr` - pointer to the offset in wasm memory where the new `URef` will be written
+    /// * `value_ptr` - pointer to bytes representing the value to write under the new `URef`
+    /// * `value_size` - size of the value (in bytes)
+    /// * `lifetime_ptr` - pointer to bytes representing the lifetime of the new `URef`
+    /// * `lifetime_size` - size of the lifetime value (in bytes)
+    pub fn casper_new_uref_with_lifetime(
+        uref_ptr: *mut u8,
+        value_ptr: *const u8,
+        value_size: usize,
+        lifetime_ptr: *const u8,
+        lifetime_size: usize,
     );
 }

@@ -20,6 +20,7 @@ use casper_types::{
         DEFAULT_ENTRY_POINT_NAME,
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
+    crypto,
     package::{ContractPackageKind, ContractPackageStatus},
     system::{
         self,
@@ -28,9 +29,9 @@ use casper_types::{
         HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, CLTyped, CLValue, Context, ContextAccessRights, ContractPackageHash,
-    ContractVersion, ContractVersionKey, ContractVersions, ContractWasm, DeployHash, Digest, Gas,
-    GrantedAccess, Group, Groups, HostFunction, HostFunctionCost, Key, NamedArg, Package, Phase,
-    PublicKey, RuntimeArgs, StoredValue, Transfer, TransferResult, TransferredTo, URef,
+    ContractVersion, ContractVersionKey, ContractVersions, ContractWasm, DeployHash, Gas,
+    GrantedAccess, Group, Groups, HostFunction, HostFunctionCost, Key, Lifetime, NamedArg, Package,
+    Phase, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferResult, TransferredTo, URef,
     DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
@@ -1571,7 +1572,7 @@ where
         is_locked: ContractPackageStatus,
         contract_package_kind: ContractPackageKind,
     ) -> Result<(Package, URef), Error> {
-        let access_key = self.context.new_unit_uref()?;
+        let access_key = self.context.new_internal_unit_uref()?;
         let contract_package = Package::new(
             access_key,
             ContractVersions::new(),
@@ -1632,7 +1633,7 @@ where
         // Proceed with creating user group
         let mut new_urefs = Vec::with_capacity(num_new_urefs as usize);
         for _ in 0..num_new_urefs {
-            let u = self.context.new_unit_uref()?;
+            let u = self.context.new_internal_unit_uref()?;
             new_urefs.push(u);
         }
 
@@ -1853,7 +1854,27 @@ where
     /// access_rights set.
     fn new_uref(&mut self, uref_ptr: u32, value_ptr: u32, value_size: u32) -> Result<(), Trap> {
         let cl_value = self.cl_value_from_mem(value_ptr, value_size)?; // read initial value from memory
-        let uref = self.context.new_uref(StoredValue::CLValue(cl_value))?;
+        let uref = self.context.new_uref(cl_value, Lifetime::Indefinite)?;
+        self.try_get_memory()?
+            .set(uref_ptr, &uref.into_bytes().map_err(Error::BytesRepr)?)
+            .map_err(|e| Error::Interpreter(e.into()).into())
+    }
+
+    /// Generates new unforgable reference with a specified lifetime
+    /// and adds it to the context's access_rights set.
+    fn new_uref_with_lifetime(
+        &mut self,
+        uref_ptr: u32,
+        value_ptr: u32,
+        value_size: u32,
+        lifetime_ptr: u32,
+        lifetime_size: u32,
+    ) -> Result<(), Trap> {
+        let lifetime = self.t_from_mem(lifetime_ptr, lifetime_size)?;
+        let cl_value = self.cl_value_from_mem(value_ptr, value_size)?; // read initial value from memory
+
+        let uref = self.context.new_uref(cl_value, lifetime)?;
+
         self.try_get_memory()?
             .set(uref_ptr, &uref.into_bytes().map_err(Error::BytesRepr)?)
             .map_err(|e| Error::Interpreter(e.into()).into())
@@ -1874,13 +1895,13 @@ where
             .map_err(|e| Error::Interpreter(e.into()))?;
 
         let owner = self.context.get_entity_address();
-        let key_hash = Digest::hash(key);
+        let key_hash = crypto::blake2b(key);
 
         memory
             .set(owner_ptr, &owner.value())
             .map_err(|e| Error::Interpreter(e.into()))?;
         memory
-            .set(key_hash_ptr, &key_hash.value())
+            .set(key_hash_ptr, &key_hash)
             .map_err(|e| Error::Interpreter(e.into()))?;
 
         let cl_value = self.cl_value_from_mem(value_ptr, value_size)?; // read initial value from memory
@@ -2360,7 +2381,7 @@ where
                     ActionThresholds::default(),
                 );
 
-                let access_key = self.context.new_unit_uref()?;
+                let access_key = self.context.new_internal_unit_uref()?;
                 let contract_package = {
                     let mut contract_package = Package::new(
                         access_key,
@@ -2891,7 +2912,7 @@ where
         };
 
         // Proceed with creating new URefs
-        let new_uref = self.context.new_unit_uref()?;
+        let new_uref = self.context.new_internal_unit_uref()?;
         if !group.insert(new_uref) {
             return Ok(Err(addressable_entity::Error::URefAlreadyExists.into()));
         }
@@ -2986,7 +3007,7 @@ where
         }
 
         // Create new URef
-        let new_uref = self.context.new_unit_uref()?;
+        let new_uref = self.context.new_internal_unit_uref()?;
 
         // create CLValue for return value
         let new_uref_value = CLValue::from_t(new_uref)?;

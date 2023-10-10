@@ -29,10 +29,8 @@ fn get_value<const COUNT: usize>(builder: &LmdbWasmTestBuilder, result: &str) ->
     let uref = account.named_keys().get(result).expect("should have value");
 
     builder
-        .query(None, *uref, &[])
+        .query_uref_value(None, *uref, &[])
         .expect("should query")
-        .into_cl_value()
-        .expect("should be CLValue")
         .into_t()
         .expect("should convert")
 }

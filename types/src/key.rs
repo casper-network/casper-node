@@ -158,13 +158,16 @@ impl Display for KeyTag {
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Context {
     owner: ContractHash,
-    key_hash: Digest,
+    key_hash: KeyHash,
 }
 
 impl Context {
     /// Creates a new `Context` instance.
-    pub fn new(owner: ContractHash, key_hash: Digest) -> Self {
-        Context { owner, key_hash }
+    pub fn new(owner: ContractHash, key_hash: [u8; KEY_HASH_LENGTH]) -> Self {
+        Context {
+            owner,
+            key_hash: KeyHash(key_hash),
+        }
     }
 
     /// Returns the contract hash of the owner of the context.
@@ -173,8 +176,8 @@ impl Context {
     }
 
     /// Returns the key hash of the context.
-    pub fn key_hash(&self) -> Digest {
-        self.key_hash
+    pub fn key_hash(&self) -> [u8; KEY_HASH_LENGTH] {
+        self.key_hash.0
     }
 }
 
@@ -187,7 +190,7 @@ impl ToBytes for Context {
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
         self.owner.write_bytes(writer)?;
-        self.key_hash.write_bytes(writer)?;
+        self.key_hash.0.write_bytes(writer)?;
         Ok(())
     }
 
@@ -200,9 +203,20 @@ impl FromBytes for Context {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let (owner, bytes) = FromBytes::from_bytes(bytes)?;
         let (key_hash, bytes) = FromBytes::from_bytes(bytes)?;
-        Ok((Context { owner, key_hash }, bytes))
+        Ok((Context::new(owner, key_hash), bytes))
     }
 }
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(description = "Hex-encoded key hash.")
+)]
+struct KeyHash(
+    #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] [u8; KEY_HASH_LENGTH],
+);
 
 /// The key under which data (e.g. [`CLValue`]s, smart contracts, user accounts) are stored in
 /// global state.
@@ -477,7 +491,7 @@ impl Key {
                 format!(
                     "{}{}",
                     base16::encode_lower(&context.owner),
-                    base16::encode_lower(&context.key_hash)
+                    base16::encode_lower(&context.key_hash.0)
                 )
             }
         }
@@ -707,6 +721,15 @@ impl Key {
         }
     }
 
+    /// Returns the inner [`Context`] if `self` is of type [`Key::Context`], otherwise returns
+    /// `None`.
+    pub fn into_context(self) -> Option<Context> {
+        match self {
+            Key::Context(ctx) => Some(ctx),
+            _ => None,
+        }
+    }
+
     /// Returns a reference to the inner [`DictionaryAddr`] if `self` is of type
     /// [`Key::Dictionary`], otherwise returns `None`.
     pub fn as_dictionary(&self) -> Option<&DictionaryAddr> {
@@ -828,7 +851,7 @@ impl Display for Key {
                 f,
                 "Key::Context({}{})",
                 base16::encode_lower(&context.owner),
-                base16::encode_lower(&context.key_hash)
+                base16::encode_lower(&context.key_hash.0)
             ),
         }
     }

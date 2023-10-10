@@ -6,8 +6,8 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::engine_state::{Error as CoreError, ExecError, ExecuteRequest};
 use casper_types::{
-    runtime_args, system::CallStackElement, AddressableEntity, CLValue, ContractHash,
-    ContractPackageHash, EntryPointType, HashAddr, Key, StoredValue, U512,
+    runtime_args, system::CallStackElement, AddressableEntity, ContractHash, ContractPackageHash,
+    EntryPointType, HashAddr, Key, StoredValue, U512,
 };
 
 use get_call_stack_recursive_subcall::{
@@ -130,18 +130,14 @@ impl BuilderExt for LmdbWasmTestBuilder {
         stored_call_stack_key: &str,
     ) -> Vec<CallStackElement> {
         let cl_value = self
-            .query(
+            .query_uref_value(
                 None,
                 (*DEFAULT_ACCOUNT_ADDR).into(),
                 &[stored_call_stack_key.to_string()],
             )
             .unwrap();
 
-        cl_value
-            .into_cl_value()
-            .map(CLValue::into_t::<Vec<CallStackElement>>)
-            .unwrap()
-            .unwrap()
+        cl_value.into_t().unwrap()
     }
 
     fn get_call_stack_from_contract_context(
@@ -161,18 +157,14 @@ impl BuilderExt for LmdbWasmTestBuilder {
         let current_contract_hash = contract_package.current_contract_hash().unwrap();
 
         let cl_value = self
-            .query(
+            .query_uref_value(
                 None,
                 current_contract_hash.into(),
                 &[stored_call_stack_key.to_string()],
             )
             .unwrap();
 
-        cl_value
-            .into_cl_value()
-            .map(CLValue::into_t::<Vec<CallStackElement>>)
-            .unwrap()
-            .unwrap()
+        cl_value.into_t().unwrap()
     }
 }
 

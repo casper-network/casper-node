@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{Key, RuntimeArgs, StoredValue};
+use casper_types::{Key, RuntimeArgs};
 
 const COUNT_KEY: &str = "count";
 const COUNTER_INSTALLER_WASM: &str = "counter_installer.wasm";
@@ -40,34 +40,25 @@ fn should_run_counter_example() {
     builder.exec(install_request_1).expect_success().commit();
 
     let query_result = builder
-        .query(
+        .query_uref_value(
             None,
             Key::from(*DEFAULT_ACCOUNT_ADDR),
             &[COUNTER_KEY.into(), COUNT_KEY.into()],
         )
         .expect("should query");
 
-    let counter_before: i32 = if let StoredValue::CLValue(cl_value) = query_result {
-        cl_value.into_t().unwrap()
-    } else {
-        panic!("Stored value is not an i32: {:?}", query_result);
-    };
-
+    let counter_before: i32 = query_result.into_t().unwrap();
     builder.exec(inc_request_1).expect_success().commit();
 
     let query_result = builder
-        .query(
+        .query_uref_value(
             None,
             Key::from(*DEFAULT_ACCOUNT_ADDR),
             &[COUNTER_KEY.into(), COUNT_KEY.into()],
         )
         .expect("should query");
 
-    let counter_after: i32 = if let StoredValue::CLValue(cl_value) = query_result {
-        cl_value.into_t().unwrap()
-    } else {
-        panic!("Stored value is not an i32: {:?}", query_result);
-    };
+    let counter_after: i32 = query_result.into_t().unwrap();
 
     let counter_diff = counter_after - counter_before;
     assert_eq!(counter_diff, 1);

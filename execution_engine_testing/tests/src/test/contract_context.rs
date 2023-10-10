@@ -115,15 +115,12 @@ fn should_enforce_intended_execution_contexts() {
     // Check version
 
     let contract_version_stored = builder
-        .query(
+        .query_uref_value(
             None,
             Key::Account(*DEFAULT_ACCOUNT_ADDR),
             &[CONTRACT_VERSION.to_string()],
         )
-        .expect("should query account")
-        .as_cl_value()
-        .cloned()
-        .expect("should be cl value");
+        .expect("should query account");
     assert_eq!(contract_version_stored.into_t::<u32>().unwrap(), 1u32);
 }
 

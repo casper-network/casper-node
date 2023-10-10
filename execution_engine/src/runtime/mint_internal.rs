@@ -103,14 +103,14 @@ where
     fn new_uref<T: CLTyped + ToBytes>(&mut self, init: T) -> Result<URef, Error> {
         let cl_value: CLValue = CLValue::from_t(init).map_err(|_| Error::CLValue)?;
         self.context
-            .new_uref(StoredValue::CLValue(cl_value))
+            .new_internal_uref(cl_value)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::NewURef))
     }
 
-    fn read<T: CLTyped + FromBytes>(&mut self, uref: URef) -> Result<Option<T>, Error> {
+    fn read<T: CLTyped + FromBytes>(&mut self, key: Key) -> Result<Option<T>, Error> {
         let maybe_value = self
             .context
-            .read_gs(&Key::URef(uref))
+            .read_gs(&key)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
         match maybe_value {
             Some(StoredValue::CLValue(value)) => {
@@ -122,17 +122,17 @@ where
         }
     }
 
-    fn write<T: CLTyped + ToBytes>(&mut self, uref: URef, value: T) -> Result<(), Error> {
+    fn write<T: CLTyped + ToBytes>(&mut self, key: Key, value: T) -> Result<(), Error> {
         let cl_value = CLValue::from_t(value).map_err(|_| Error::CLValue)?;
         self.context
-            .metered_write_gs(Key::URef(uref), StoredValue::CLValue(cl_value))
+            .metered_write_gs(key, StoredValue::CLValue(cl_value))
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 
-    fn add<T: CLTyped + ToBytes>(&mut self, uref: URef, value: T) -> Result<(), Error> {
+    fn add<T: CLTyped + ToBytes>(&mut self, key: Key, value: T) -> Result<(), Error> {
         let cl_value = CLValue::from_t(value).map_err(|_| Error::CLValue)?;
         self.context
-            .metered_add_gs(uref, cl_value)
+            .metered_add_gs(key, cl_value)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 

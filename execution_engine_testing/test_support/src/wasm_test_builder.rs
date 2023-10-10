@@ -627,6 +627,24 @@ where
         Err(format!("{:?}", query_result))
     }
 
+    /// Queries state for a [`StoredValue`] which is pointed to by a [`StoredValue::URef`].
+    pub fn query_uref_value(
+        &self,
+        maybe_post_state: Option<Digest>,
+        base_key: Key,
+        path: &[String],
+    ) -> Result<CLValue, String> {
+        let (context, _) = self
+            .query(maybe_post_state, base_key, path)?
+            .into_uref()
+            .expect("should be uref");
+        let result = self
+            .query(maybe_post_state, Key::Context(context), &[])?
+            .into_cl_value()
+            .expect("should be CLVlue");
+        Ok(result)
+    }
+
     /// Queries state for a dictionary item.
     pub fn query_dictionary_item(
         &self,
@@ -702,18 +720,16 @@ where
 
         let mint_named_keys = mint_contract.named_keys().clone();
 
-        let total_supply_uref = *mint_named_keys
+        let total_supply_key = *mint_named_keys
             .get(TOTAL_SUPPLY_KEY)
-            .expect("must track total supply")
-            .as_uref()
-            .expect("must get uref");
+            .expect("must track total supply");
 
-        let round_seigniorage_rate_uref = *mint_named_keys
+        let round_seigniorage_rate_key = *mint_named_keys
             .get(ROUND_SEIGNIORAGE_RATE_KEY)
             .expect("must track round seigniorage rate");
 
         let total_supply = self
-            .query(maybe_post_state, Key::URef(total_supply_uref), &[])
+            .query(maybe_post_state, total_supply_key, &[])
             .expect("must read value under total supply URef")
             .into_cl_value()
             .expect("must convert into CL value")
@@ -721,7 +737,7 @@ where
             .expect("must convert into U512");
 
         let rate = self
-            .query(maybe_post_state, round_seigniorage_rate_uref, &[])
+            .query(maybe_post_state, round_seigniorage_rate_key, &[])
             .expect("must read value")
             .into_cl_value()
             .expect("must conver to cl value")

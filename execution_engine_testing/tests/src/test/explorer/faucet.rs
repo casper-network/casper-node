@@ -14,7 +14,7 @@ use casper_types::{
 use super::{
     faucet_test_helpers::{
         get_available_amount, get_faucet_contract_hash, get_faucet_purse, get_remaining_requests,
-        query_stored_value, FaucetDeployHelper, FaucetInstallSessionRequestBuilder,
+        query_stored_value_uref, FaucetDeployHelper, FaucetInstallSessionRequestBuilder,
         FundAccountRequestBuilder,
     },
     ARG_AMOUNT, ARG_AVAILABLE_AMOUNT, ARG_DISTRIBUTIONS_PER_INTERVAL, ARG_ID, ARG_TARGET,
@@ -158,7 +158,7 @@ fn should_allow_installer_to_set_variables() {
         helper.faucet_purse_fund_amount()
     );
 
-    let available_amount: U512 = query_stored_value(
+    let available_amount: U512 = query_stored_value_uref(
         &mut builder,
         faucet_contract_hash.into(),
         vec![AVAILABLE_AMOUNT_NAMED_KEY.to_string()],
@@ -168,7 +168,7 @@ fn should_allow_installer_to_set_variables() {
     // the set_variable entrypoint to finish setup.
     assert_eq!(available_amount, U512::zero());
 
-    let time_interval: u64 = query_stored_value(
+    let time_interval: u64 = query_stored_value_uref(
         &mut builder,
         faucet_contract_hash.into(),
         vec![TIME_INTERVAL_NAMED_KEY.to_string()],
@@ -177,7 +177,7 @@ fn should_allow_installer_to_set_variables() {
     // defaults to around two hours.
     assert_eq!(time_interval, TWO_HOURS_AS_MILLIS);
 
-    let distributions_per_interval: u64 = query_stored_value(
+    let distributions_per_interval: u64 = query_stored_value_uref(
         &mut builder,
         faucet_contract_hash.into(),
         vec![DISTRIBUTIONS_PER_INTERVAL_NAMED_KEY.to_string()],
@@ -190,7 +190,7 @@ fn should_allow_installer_to_set_variables() {
         .expect_success()
         .commit();
 
-    let available_amount: U512 = query_stored_value(
+    let available_amount: U512 = query_stored_value_uref(
         &mut builder,
         faucet_contract_hash.into(),
         vec![AVAILABLE_AMOUNT_NAMED_KEY.to_string()],
@@ -198,7 +198,7 @@ fn should_allow_installer_to_set_variables() {
 
     assert_eq!(available_amount, helper.faucet_purse_fund_amount());
 
-    let time_interval: u64 = query_stored_value(
+    let time_interval: u64 = query_stored_value_uref(
         &mut builder,
         faucet_contract_hash.into(),
         vec![TIME_INTERVAL_NAMED_KEY.to_string()],
@@ -206,7 +206,7 @@ fn should_allow_installer_to_set_variables() {
 
     assert_eq!(time_interval, helper.faucet_time_interval().unwrap());
 
-    let distributions_per_interval: u64 = query_stored_value(
+    let distributions_per_interval: u64 = query_stored_value_uref(
         &mut builder,
         faucet_contract_hash.into(),
         vec![DISTRIBUTIONS_PER_INTERVAL_NAMED_KEY.to_string()],
@@ -490,7 +490,7 @@ fn should_not_fund_once_exhausted() {
     );
 
     // faucet may resume distributions once block time is > last_distribution_time + time_interval.
-    let last_distribution_time = query_stored_value::<u64>(
+    let last_distribution_time = query_stored_value_uref::<u64>(
         &mut builder,
         faucet_contract_hash.into(),
         [LAST_DISTRIBUTION_TIME_NAMED_KEY.to_string()].into(),
@@ -519,7 +519,7 @@ fn should_not_fund_once_exhausted() {
             .main_purse(),
     );
 
-    let last_distribution_time = query_stored_value::<u64>(
+    let last_distribution_time = query_stored_value_uref::<u64>(
         &mut builder,
         faucet_contract_hash.into(),
         [LAST_DISTRIBUTION_TIME_NAMED_KEY.to_string()].into(),
@@ -527,7 +527,7 @@ fn should_not_fund_once_exhausted() {
 
     assert_eq!(last_distribution_time, 11_011u64);
 
-    let remaining_requests = query_stored_value::<U512>(
+    let remaining_requests = query_stored_value_uref::<U512>(
         &mut builder,
         faucet_contract_hash.into(),
         [REMAINING_REQUESTS_NAMED_KEY.to_string()].into(),
@@ -584,7 +584,7 @@ fn should_allow_installer_to_fund_freely() {
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
     assert_eq!(faucet_purse_balance, faucet_fund_amount);
 
-    let available_amount = query_stored_value::<U512>(
+    let available_amount = query_stored_value_uref::<U512>(
         &mut builder,
         faucet_contract_hash.into(),
         [AVAILABLE_AMOUNT_NAMED_KEY.to_string()].into(),
@@ -599,7 +599,7 @@ fn should_allow_installer_to_fund_freely() {
         .expect_success()
         .commit();
 
-    let available_amount = query_stored_value::<U512>(
+    let available_amount = query_stored_value_uref::<U512>(
         &mut builder,
         faucet_contract_hash.into(),
         [AVAILABLE_AMOUNT_NAMED_KEY.to_string()].into(),
@@ -746,7 +746,7 @@ fn should_allow_funding_by_an_authorized_account() {
         .expect("failed to find faucet named key");
 
     let maybe_authorized_account_public_key = builder
-        .query(
+        .query_uref_value(
             None,
             Key::Hash(
                 faucet_named_key
@@ -756,9 +756,6 @@ fn should_allow_funding_by_an_authorized_account() {
             &[AUTHORIZED_ACCOUNT_NAMED_KEY.to_string()],
         )
         .expect("failed to find authorized account named key")
-        .as_cl_value()
-        .expect("failed to convert into cl value")
-        .clone()
         .into_t::<Option<PublicKey>>()
         .expect("failed to convert into optional public key");
 
@@ -775,7 +772,7 @@ fn should_allow_funding_by_an_authorized_account() {
         .commit();
 
     let maybe_authorized_account_public_key = builder
-        .query(
+        .query_uref_value(
             None,
             Key::Hash(
                 faucet_named_key
@@ -785,9 +782,6 @@ fn should_allow_funding_by_an_authorized_account() {
             &[AUTHORIZED_ACCOUNT_NAMED_KEY.to_string()],
         )
         .expect("failed to find authorized account named key")
-        .as_cl_value()
-        .expect("failed to convert into cl value")
-        .clone()
         .into_t::<Option<PublicKey>>()
         .expect("failed to convert into optional public key");
 

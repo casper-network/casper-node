@@ -1,6 +1,4 @@
-use std::convert::TryFrom;
-
-use casper_types::{runtime_args, system::mint, ApiError, CLValue, U512};
+use casper_types::{runtime_args, system::mint, ApiError, U512};
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
@@ -47,14 +45,11 @@ fn should_run_purse_to_purse_transfer() {
         .get("purse_transfer_result")
         .unwrap()
         .normalize();
-    let purse_transfer_result = CLValue::try_from(
-        builder
-            .query(None, purse_transfer_result_key, &[])
-            .expect("should have purse transfer result"),
-    )
-    .expect("should be a CLValue")
-    .into_t::<String>()
-    .expect("should be String");
+    let purse_transfer_result = builder
+        .query_uref_value(None, purse_transfer_result_key, &[])
+        .expect("should have purse transfer result")
+        .into_t::<String>()
+        .expect("should be String");
     // Main assertion for the result of `transfer_from_purse_to_purse`
     assert_eq!(
         purse_transfer_result,
@@ -66,14 +61,11 @@ fn should_run_purse_to_purse_transfer() {
         .get("main_purse_balance")
         .unwrap()
         .normalize();
-    let main_purse_balance = CLValue::try_from(
-        builder
-            .query(None, main_purse_balance_key, &[])
-            .expect("should have main purse balance"),
-    )
-    .expect("should be a CLValue")
-    .into_t::<U512>()
-    .expect("should be U512");
+    let main_purse_balance = builder
+        .query_uref_value(None, main_purse_balance_key, &[])
+        .expect("should have main purse balance")
+        .into_t::<U512>()
+        .expect("should be U512");
 
     // Assert secondary purse value after successful transfer
     let purse_secondary_key = default_account.named_keys().get("purse:secondary").unwrap();
@@ -118,14 +110,11 @@ fn should_run_purse_to_purse_transfer_with_error() {
         .get("purse_transfer_result")
         .unwrap()
         .normalize();
-    let purse_transfer_result = CLValue::try_from(
-        builder
-            .query(None, purse_transfer_result_key, &[])
-            .expect("should have purse transfer result"),
-    )
-    .expect("should be a CLValue")
-    .into_t::<String>()
-    .expect("should be String");
+    let purse_transfer_result = builder
+        .query_uref_value(None, purse_transfer_result_key, &[])
+        .expect("should have purse transfer result")
+        .into_t::<String>()
+        .expect("should be String");
     // Main assertion for the result of `transfer_from_purse_to_purse`
     assert_eq!(
         purse_transfer_result,
@@ -141,14 +130,11 @@ fn should_run_purse_to_purse_transfer_with_error() {
         .get("main_purse_balance")
         .unwrap()
         .normalize();
-    let main_purse_balance = CLValue::try_from(
-        builder
-            .query(None, main_purse_balance_key, &[])
-            .expect("should have main purse balance"),
-    )
-    .expect("should be a CLValue")
-    .into_t::<U512>()
-    .expect("should be U512");
+    let main_purse_balance = builder
+        .query_uref_value(None, main_purse_balance_key, &[])
+        .expect("should have main purse balance")
+        .into_t::<U512>()
+        .expect("should be U512");
 
     // Assert secondary purse value after successful transfer
     let purse_secondary_key = default_account.named_keys().get("purse:secondary").unwrap();

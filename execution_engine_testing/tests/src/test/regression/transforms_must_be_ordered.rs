@@ -99,32 +99,31 @@ fn contract_transforms_should_be_ordered_in_the_effects() {
         )
         .collect();
 
-    assert!(effects
-        .transforms()
-        .iter()
-        .filter_map(|transform| {
-            let uref = match transform.key() {
-                Key::URef(uref) => uref,
-                _ => return None,
-            };
-            let uref_index: u32 = match urefs
-                .iter()
-                .enumerate()
-                .find(|(_, u)| u.addr() == uref.addr())
-            {
-                Some((i, _)) => i.try_into().unwrap(),
-                None => return None,
-            };
-            let (type_index, value): (u8, i32) = match transform.kind() {
-                TransformKind::Identity => (0, 0),
-                TransformKind::Write(sv) => {
-                    let v: i32 = sv.as_cl_value().unwrap().clone().into_t().unwrap();
-                    (1, v)
-                }
-                TransformKind::AddInt32(v) => (2, *v),
-                _ => panic!("Invalid transform."),
-            };
-            Some((type_index, uref_index, value))
-        })
-        .eq(operations.into_iter()));
+    assert_eq!(
+        effects
+            .transforms()
+            .iter()
+            .filter_map(|transform| {
+                let addr = match transform.key() {
+                    Key::Context(ctx) => ctx.key_hash(),
+                    _ => return None,
+                };
+                let uref_index: u32 = match urefs.iter().position(|u| u.addr() == addr) {
+                    Some(i) => i.try_into().unwrap(),
+                    None => return None,
+                };
+                let (type_index, value): (u8, i32) = match transform.kind() {
+                    TransformKind::Identity => (0, 0),
+                    TransformKind::Write(sv) => {
+                        let v: i32 = sv.as_cl_value().unwrap().clone().into_t().unwrap();
+                        (1, v)
+                    }
+                    TransformKind::AddInt32(v) => (2, *v),
+                    _ => panic!("Invalid transform."),
+                };
+                Some((type_index, uref_index, value))
+            })
+            .collect::<Vec<_>>(),
+        operations
+    );
 }

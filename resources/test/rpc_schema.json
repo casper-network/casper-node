@@ -4629,9 +4629,13 @@
                 "$ref": "#/components/schemas/ContractHash"
               },
               "key_hash": {
-                "$ref": "#/components/schemas/Digest"
+                "$ref": "#/components/schemas/KeyHash"
               }
             }
+          },
+          "KeyHash": {
+            "description": "Hex-encoded key hash.",
+            "type": "string"
           },
           "Lifetime": {
             "description": "Lifetime of a value stored behind a [`crate::URef`].",

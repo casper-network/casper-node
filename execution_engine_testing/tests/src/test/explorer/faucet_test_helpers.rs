@@ -362,17 +362,14 @@ impl Default for FaucetFundRequestBuilder {
     }
 }
 
-pub fn query_stored_value<T: CLTyped + FromBytes>(
+pub fn query_stored_value_uref<T: CLTyped + FromBytes>(
     builder: &mut LmdbWasmTestBuilder,
     base_key: Key,
     path: Vec<String>,
 ) -> T {
     builder
-        .query(None, base_key, &path)
+        .query_uref_value(None, base_key, &path)
         .expect("must have stored value")
-        .as_cl_value()
-        .cloned()
-        .expect("must have cl value")
         .into_t::<T>()
         .expect("must get value")
 }
@@ -414,15 +411,12 @@ pub fn get_available_amount(
     faucet_contract_hash: ContractHash,
 ) -> U512 {
     builder
-        .query(
+        .query_uref_value(
             None,
             faucet_contract_hash.into(),
             &[AVAILABLE_AMOUNT_NAMED_KEY.to_string()],
         )
         .expect("failed to find available amount named key")
-        .as_cl_value()
-        .cloned()
-        .expect("failed to convert to cl value")
         .into_t::<U512>()
         .expect("failed to convert into U512")
 }
@@ -432,15 +426,12 @@ pub fn get_remaining_requests(
     faucet_contract_hash: ContractHash,
 ) -> U512 {
     builder
-        .query(
+        .query_uref_value(
             None,
             faucet_contract_hash.into(),
             &[REMAINING_REQUESTS_NAMED_KEY.to_string()],
         )
         .expect("failed to find available amount named key")
-        .as_cl_value()
-        .cloned()
-        .expect("failed to convert to cl value")
         .into_t::<U512>()
         .expect("failed to convert into U512")
 }

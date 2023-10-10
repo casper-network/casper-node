@@ -1,10 +1,8 @@
-use std::convert::TryFrom;
-
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{bytesrepr::FromBytes, runtime_args, CLTyped, CLValue, Key, U512};
+use casper_types::{bytesrepr::FromBytes, runtime_args, CLTyped, Key, URef, U512};
 
 const CONTRACT_NAMED_KEYS: &str = "named_keys.wasm";
 const EXPECTED_UREF_VALUE: u64 = 123_456_789u64;
@@ -32,9 +30,10 @@ fn run_command(builder: &mut LmdbWasmTestBuilder, command: &str) {
     builder.exec(exec_request).commit().expect_success();
 }
 
-fn read_value<T: CLTyped + FromBytes>(builder: &mut LmdbWasmTestBuilder, key: Key) -> T {
-    CLValue::try_from(builder.query(None, key, &[]).expect("should have value"))
-        .expect("should have CLValue")
+fn read_value<T: CLTyped + FromBytes>(builder: &mut LmdbWasmTestBuilder, key: URef) -> T {
+    builder
+        .query_uref_value(None, Key::URef(key), &[])
+        .expect("should have value")
         .into_t()
         .expect("should convert successfully")
 }
@@ -59,8 +58,18 @@ fn should_run_named_keys_contract() {
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
-    let uref1 = *account.named_keys().get(KEY1).expect("should have key");
-    let uref2 = *account.named_keys().get(KEY2).expect("should have key");
+    let uref1 = account
+        .named_keys()
+        .get(KEY1)
+        .expect("should have key")
+        .into_uref()
+        .expect("should be uref");
+    let uref2 = account
+        .named_keys()
+        .get(KEY2)
+        .expect("should have key")
+        .into_uref()
+        .expect("should be uref");
     let value1: String = read_value(&mut builder, uref1);
     let value2: U512 = read_value(&mut builder, uref2);
     assert_eq!(value1, "Hello, world!");
@@ -83,7 +92,12 @@ fn should_run_named_keys_contract() {
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
-    let uref2 = *account.named_keys().get(KEY2).expect("should have key");
+    let uref2 = account
+        .named_keys()
+        .get(KEY2)
+        .expect("should have key")
+        .into_uref()
+        .expect("should be uref");
     let value2: U512 = read_value(&mut builder, uref2);
     assert_eq!(value2, U512::zero());
 
@@ -92,7 +106,12 @@ fn should_run_named_keys_contract() {
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
-    let uref2 = *account.named_keys().get(KEY2).expect("should have key");
+    let uref2 = account
+        .named_keys()
+        .get(KEY2)
+        .expect("should have key")
+        .into_uref()
+        .expect("should be uref");
     let value2: U512 = read_value(&mut builder, uref2);
     assert_eq!(value2, U512::from(EXPECTED_UREF_VALUE));
 

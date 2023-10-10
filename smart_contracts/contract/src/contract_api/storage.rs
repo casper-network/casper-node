@@ -9,8 +9,8 @@ use casper_types::{
     api_error,
     bytesrepr::{self, FromBytes, ToBytes},
     package::ContractVersion,
-    AccessRights, ApiError, CLTyped, CLValue, Context, ContractHash, ContractPackageHash, Digest,
-    HashAddr, Key, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, UREF_SERIALIZED_LENGTH,
+    AccessRights, ApiError, CLTyped, CLValue, Context, ContractHash, ContractPackageHash, HashAddr,
+    Key, Lifetime, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, UREF_SERIALIZED_LENGTH,
 };
 
 use crate::{
@@ -83,11 +83,24 @@ pub fn add<T: CLTyped + ToBytes>(uref: URef, value: T) {
 
 /// Returns a new unforgeable pointer, where the value is initialized to `init`.
 pub fn new_uref<T: CLTyped + ToBytes>(init: T) -> URef {
+    new_uref_with_lifetime(init, Lifetime::Indefinite)
+}
+
+/// Returns a new unforgeable pointer, where the value is initialized to `init`.
+pub fn new_uref_with_lifetime<T: CLTyped + ToBytes>(init: T, lifetime: Lifetime) -> URef {
     let uref_non_null_ptr = contract_api::alloc_bytes(UREF_SERIALIZED_LENGTH);
     let cl_value = CLValue::from_t(init).unwrap_or_revert();
     let (cl_value_ptr, cl_value_size, _cl_value_bytes) = contract_api::to_ptr(cl_value);
+    let (lifetime_ptr, lifetime_size, _lifetime_bytes) = contract_api::to_ptr(lifetime);
+
     let bytes = unsafe {
-        ext_ffi::casper_new_uref(uref_non_null_ptr.as_ptr(), cl_value_ptr, cl_value_size); // URef has `READ_ADD_WRITE`
+        ext_ffi::casper_new_uref_with_lifetime(
+            uref_non_null_ptr.as_ptr(),
+            cl_value_ptr,
+            cl_value_size,
+            lifetime_ptr,
+            lifetime_size,
+        );
         Vec::from_raw_parts(
             uref_non_null_ptr.as_ptr(),
             UREF_SERIALIZED_LENGTH,
@@ -527,5 +540,5 @@ pub fn new_context_key<T: CLTyped + ToBytes>(key: &[u8], init: T) -> Context {
             key_hash.as_mut_ptr(),
         );
     };
-    Context::new(ContractHash::new(owner), Digest::from(key_hash))
+    Context::new(ContractHash::new(owner), key_hash)
 }

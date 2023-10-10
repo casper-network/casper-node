@@ -1,7 +1,7 @@
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     system::mint::Error,
-    CLTyped, URef, U512,
+    CLTyped, Key, URef, U512,
 };
 
 /// Provides functionality of a contract storage.
@@ -10,13 +10,13 @@ pub trait StorageProvider {
     fn new_uref<T: CLTyped + ToBytes>(&mut self, init: T) -> Result<URef, Error>;
 
     /// Read data from [`URef`].
-    fn read<T: CLTyped + FromBytes>(&mut self, uref: URef) -> Result<Option<T>, Error>;
+    fn read<T: CLTyped + FromBytes>(&mut self, key: Key) -> Result<Option<T>, Error>;
 
     /// Write data under a [`URef`].
-    fn write<T: CLTyped + ToBytes>(&mut self, uref: URef, value: T) -> Result<(), Error>;
+    fn write<T: CLTyped + ToBytes>(&mut self, key: Key, value: T) -> Result<(), Error>;
 
     /// Add data to a [`URef`].
-    fn add<T: CLTyped + ToBytes>(&mut self, uref: URef, value: T) -> Result<(), Error>;
+    fn add<T: CLTyped + ToBytes>(&mut self, key: Key, value: T) -> Result<(), Error>;
 
     /// Read balance.
     fn read_balance(&mut self, uref: URef) -> Result<Option<U512>, Error>;

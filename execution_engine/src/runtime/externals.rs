@@ -1133,6 +1133,25 @@ where
                 )?;
                 Ok(None)
             }
+            FunctionIndex::NewURefWithLifetime => {
+                // args(0) = pointer to uref destination in Wasm memory
+                // args(1) = pointer to initial value
+                // args(2) = size of initial value
+                // args(3) = pointer to the lifetime value
+                // args(4) = size of lifetime value
+                let (uref_ptr, value_ptr, value_size, lifetime_ptr, lifetime_size) =
+                    Args::parse(args)?;
+
+                // TODO: add a charge
+                self.new_uref_with_lifetime(
+                    uref_ptr,
+                    value_ptr,
+                    value_size,
+                    lifetime_ptr,
+                    lifetime_size,
+                )?;
+                Ok(None)
+            }
         }
     }
 }

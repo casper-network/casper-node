@@ -135,13 +135,11 @@ fn should_adjust_total_supply() {
     let mint_hash = builder.get_mint_contract_hash();
 
     // should check total supply before step
-    let total_supply_key = get_named_key(&mut builder, mint_hash, TOTAL_SUPPLY_KEY)
-        .into_uref()
-        .expect("should be uref");
+    let total_supply_key = get_named_key(&mut builder, mint_hash, TOTAL_SUPPLY_KEY);
 
     let starting_total_supply = CLValue::try_from(
         builder
-            .query(maybe_post_state_hash, total_supply_key.into(), &[])
+            .query(maybe_post_state_hash, total_supply_key, &[])
             .expect("should have total supply"),
     )
     .expect("should be a CLValue")
@@ -164,7 +162,7 @@ fn should_adjust_total_supply() {
     // should check total supply after step
     let modified_total_supply = CLValue::try_from(
         builder
-            .query(maybe_post_state_hash, total_supply_key.into(), &[])
+            .query(maybe_post_state_hash, total_supply_key, &[])
             .expect("should have total supply"),
     )
     .expect("should be a CLValue")

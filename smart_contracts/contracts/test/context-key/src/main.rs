@@ -7,7 +7,7 @@ use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{ContractHash, Digest, Key};
+use casper_types::{ContractHash, Key, KEY_HASH_LENGTH};
 
 fn get_entity_hash() -> ContractHash {
     storage::read_from_key::<Key>(Key::from(runtime::get_caller()))
@@ -22,7 +22,7 @@ pub extern "C" fn call() {
     let ctx = storage::new_context_key(b"foobar", 1);
     let contract_hash = get_entity_hash();
     assert_eq!(ctx.owner(), contract_hash);
-    assert_ne!(ctx.key_hash(), Digest::default());
+    assert_ne!(ctx.key_hash(), <[u8; KEY_HASH_LENGTH]>::default());
 
     let value = storage::read_from_key(Key::Context(ctx));
     assert_eq!(value, Ok(Some(1)));

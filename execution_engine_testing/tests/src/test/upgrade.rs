@@ -4,7 +4,7 @@ use casper_engine_test_support::{
 };
 use casper_types::{
     package::{ContractVersion, CONTRACT_INITIAL_VERSION},
-    runtime_args, CLValue, ContractPackageHash, RuntimeArgs, StoredValue,
+    runtime_args, CLValue, ContractPackageHash, RuntimeArgs,
 };
 
 const DO_NOTHING_STORED_CONTRACT_NAME: &str = "do_nothing_stored";
@@ -289,12 +289,12 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
         .expect("version uref should exist");
 
     let original_version = builder
-        .query(None, version, &[])
+        .query_uref_value(None, version, &[])
         .expect("version should exist");
 
     assert_eq!(
         original_version,
-        StoredValue::CLValue(CLValue::from_t("1.0.0".to_string()).unwrap()),
+        CLValue::from_t("1.0.0".to_string()).unwrap(),
         "should be original version"
     );
 
@@ -326,12 +326,12 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
         .expect("version key should exist");
 
     let upgraded_version = builder
-        .query(None, version, &[])
+        .query_uref_value(None, version, &[])
         .expect("version should exist");
 
     assert_eq!(
         upgraded_version,
-        StoredValue::CLValue(CLValue::from_t("1.0.1".to_string()).unwrap()),
+        CLValue::from_t("1.0.1".to_string()).unwrap(),
         "should be original version"
     );
 }

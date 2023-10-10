@@ -24,11 +24,14 @@ use casper_types::{
     bytesrepr::ToBytes,
     execution::Effects,
     package::ContractPackageKind,
-    system::auction::EraInfo,
-    AccessRights, AddressableEntity, BlockTime, CLType, CLValue, ContextAccessRights, ContractHash,
-    ContractPackageHash, DeployHash, EntryPointType, Gas, GrantedAccess, Key, KeyTag, Package,
-    Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr, URef,
-    URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
+    system::{
+        auction::{EraInfo, ERA_ID_KEY},
+        AUCTION,
+    },
+    AccessRights, AddressableEntity, BlockTime, CLType, CLValue, Context, ContextAccessRights,
+    ContractHash, ContractPackageHash, DeployHash, EntryPointType, EraId, Gas, GrantedAccess, Key,
+    KeyTag, Lifetime, Package, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
+    Transfer, TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{
@@ -342,19 +345,26 @@ where
     }
 
     /// Creates new [`URef`] instance.
-    pub fn new_uref(&mut self, value: StoredValue) -> Result<URef, Error> {
+    pub fn new_uref(&mut self, value: CLValue, lifetime: Lifetime) -> Result<URef, Error> {
         let uref = self
             .address_generator
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
+        let context = Context::new(self.entity_address, uref.addr());
+
         self.insert_uref(uref);
-        self.metered_write_gs(Key::URef(uref), value)?;
+        self.metered_write_gs_unsafe(Key::URef(uref), StoredValue::URef(context, lifetime))?;
+        self.metered_write_gs_unsafe(Key::Context(context), StoredValue::CLValue(value))?;
         Ok(uref)
     }
 
+    pub(crate) fn new_internal_uref(&mut self, value: CLValue) -> Result<URef, Error> {
+        self.new_uref(value, Lifetime::Indefinite)
+    }
+
     /// Creates a new URef where the value it stores is CLType::Unit.
-    pub(crate) fn new_unit_uref(&mut self) -> Result<URef, Error> {
-        self.new_uref(StoredValue::CLValue(CLValue::unit()))
+    pub(crate) fn new_internal_unit_uref(&mut self) -> Result<URef, Error> {
+        self.new_internal_uref(CLValue::unit())
     }
 
     /// Creates a new transfer address using a transfer address generator.
@@ -409,14 +419,18 @@ where
         self.validate_readable(key)?;
         self.validate_key(key)?;
 
+        let key = match self.resolve_uref_indirection(*key) {
+            Err(Error::URefNotFound(_)) => return Ok(None),
+            other => other?,
+        };
         let maybe_stored_value = self
             .tracking_copy
             .borrow_mut()
-            .read(key)
+            .read(&key)
             .map_err(Into::into)?;
 
         let stored_value = match maybe_stored_value {
-            Some(stored_value) => dictionary::handle_stored_value(*key, stored_value)?,
+            Some(stored_value) => dictionary::handle_stored_value(key, stored_value)?,
             None => return Ok(None),
         };
 
@@ -862,6 +876,7 @@ where
         self.validate_writeable(&key)?;
         self.validate_key(&key)?;
         self.validate_value(&stored_value)?;
+        let key = self.resolve_uref_indirection(key)?;
         self.metered_write_gs_unsafe(key, stored_value)
     }
 
@@ -901,6 +916,7 @@ where
         self.validate_addable(&key)?;
         self.validate_key(&key)?;
         self.validate_value(&value)?;
+        let key = self.resolve_uref_indirection(key)?;
         self.metered_add_gs_unsafe(key, value)
     }
 
@@ -1241,5 +1257,41 @@ where
     /// towards global limit for the whole deploy execution.
     pub(crate) fn set_remaining_spending_limit(&mut self, amount: U512) {
         self.remaining_spending_limit = amount;
+    }
+
+    fn resolve_uref_indirection(&mut self, key: Key) -> Result<Key, Error> {
+        match key {
+            Key::URef(uref) => match self.read_gs_direct(&Key::URef(uref))? {
+                Some(StoredValue::URef(context, lifetime))
+                    if lifetime.is_alive_in_era(self.get_current_era()?) =>
+                {
+                    Ok(Key::Context(context))
+                }
+                _ => Err(Error::URefNotFound(uref)),
+            },
+            _ => Ok(key),
+        }
+    }
+
+    fn get_current_era(&mut self) -> Result<EraId, Error> {
+        // TODO: kinda awful error handling
+        let auction_hash = self.get_system_contract(AUCTION)?;
+        let auction_contract = self
+            .read_gs_direct(&Key::from(auction_hash))?
+            .ok_or_else(|| Error::Interpreter("auction contract not found".to_string()))?
+            .into_addressable_entity()
+            .ok_or_else(|| Error::Interpreter("auction contract is not a entity".to_string()))?;
+        let era_id_key = auction_contract
+            .named_keys()
+            .get(ERA_ID_KEY)
+            .ok_or_else(|| Error::Interpreter("era id key not found".to_string()))?;
+        self.read_gs_direct(era_id_key)?
+            .ok_or_else(|| {
+                Error::Interpreter("era id key points to non-existent value".to_string())
+            })?
+            .into_cl_value()
+            .ok_or_else(|| Error::Interpreter("era id key points to non-CLValue".to_string()))?
+            .into_t()
+            .map_err(|e| Error::Interpreter(format!("era id key points to invalid CLValue: {}", e)))
     }
 }

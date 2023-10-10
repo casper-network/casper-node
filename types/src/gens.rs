@@ -22,7 +22,7 @@ use crate::{
         DELEGATION_RATE_DENOMINATOR,
     },
     transfer::TransferAddr,
-    AccessRights, AddressableEntity, CLType, CLValue, Context, ContractHash, ContractWasm, Digest,
+    AccessRights, AddressableEntity, CLType, CLValue, Context, ContractHash, ContractWasm,
     EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg,
     Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
 };
@@ -627,7 +627,7 @@ fn unbondings_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<Unbon
 
 fn context_arb() -> impl Strategy<Value = Context> {
     (contract_hash_arb(), u8_slice_32())
-        .prop_map(|(contract_hash, key_hash)| Context::new(contract_hash, Digest::from(key_hash)))
+        .prop_map(|(contract_hash, key_hash)| Context::new(contract_hash, key_hash))
 }
 
 fn lifetime_arb() -> impl Strategy<Value = Lifetime> {

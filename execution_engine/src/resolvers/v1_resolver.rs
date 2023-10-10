@@ -249,6 +249,10 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32; 6][..], None),
                 FunctionIndex::NewContextKey.into(),
             ),
+            "casper_new_uref_with_lifetime" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 5][..], None),
+                FunctionIndex::NewURefWithLifetime.into(),
+            ),
             _ => {
                 return Err(InterpreterError::Function(format!(
                     "host module doesn't export function with name {}",

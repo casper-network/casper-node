@@ -19,11 +19,11 @@ use casper_types::{
     bytesrepr::ToBytes,
     execution::TransformKind,
     package::ContractPackageKind,
-    system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
-    AccessRights, AddressableEntity, BlockTime, CLValue, ContextAccessRights, ContractHash,
-    ContractPackageHash, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, Gas, Key,
-    Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef, KEY_HASH_LENGTH,
-    U256, U512,
+    system::{auction::ERA_ID_KEY, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
+    AccessRights, AddressableEntity, BlockTime, CLValue, Context, ContextAccessRights,
+    ContractHash, ContractPackageHash, ContractWasmHash, DeployHash, EntryPointType, EntryPoints,
+    EraId, Gas, Key, Lifetime, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey,
+    StoredValue, URef, KEY_HASH_LENGTH, U256, U512,
 };
 use tempfile::TempDir;
 
@@ -109,8 +109,13 @@ fn random_contract_key<G: RngCore>(entropy_source: &mut G) -> ContractHash {
 
 // Create URef Key.
 fn create_uref_as_key(address_generator: &mut AddressGenerator, rights: AccessRights) -> Key {
+    Key::URef(create_uref(address_generator, rights))
+}
+
+// Create URef Key.
+fn create_uref(address_generator: &mut AddressGenerator, rights: AccessRights) -> URef {
     let address = address_generator.create_address();
-    Key::URef(URef::new(address, rights))
+    URef::new(address, rights)
 }
 
 fn random_hash<G: RngCore>(entropy_source: &mut G) -> Key {
@@ -125,17 +130,34 @@ fn new_runtime_context<'a>(
     entity_address: ContractHash,
     named_keys: &'a mut NamedKeys,
     access_rights: ContextAccessRights,
-    address_generator: AddressGenerator,
+    mut address_generator: AddressGenerator,
 ) -> (RuntimeContext<'a, LmdbGlobalStateView>, TempDir) {
     let (mut tracking_copy, tempdir) =
         new_tracking_copy(account_hash, entity_address, addressable_entity.clone());
+
+    let auction_hash = ContractHash::new(address_generator.create_address());
+    let era_id_key = Key::Context(Context::new(
+        auction_hash,
+        address_generator.create_address(),
+    ));
+    let era = CLValue::from_t(EraId::default())
+        .expect("should encode")
+        .into();
+    tracking_copy.write(era_id_key, era);
+
+    let mut auction = AddressableEntity::default();
+    auction.named_keys_append(NamedKeys::from(
+        iter::once((ERA_ID_KEY.to_owned(), era_id_key)).collect::<BTreeMap<_, _>>(),
+    ));
+
+    tracking_copy.write(Key::Hash(auction_hash.value()), auction.into());
 
     let default_system_registry = {
         let mut registry = SystemContractRegistry::new();
         registry.insert(MINT.to_string(), ContractHash::default());
         registry.insert(HANDLE_PAYMENT.to_string(), ContractHash::default());
         registry.insert(STANDARD_PAYMENT.to_string(), ContractHash::default());
-        registry.insert(AUCTION.to_string(), ContractHash::default());
+        registry.insert(AUCTION.to_string(), auction_hash);
         StoredValue::CLValue(CLValue::from_t(registry).unwrap())
     };
 
@@ -234,16 +256,14 @@ fn last_transform_kind_on_addressable_entity(
 
 #[test]
 fn use_uref_valid() {
-    // Test fixture
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref_as_key = create_uref_as_key(&mut rng, AccessRights::READ_WRITE);
-    let mut named_keys = NamedKeys::new();
-    named_keys.insert(String::new(), uref_as_key);
     // Use uref as the key to perform an action on the global state.
     // This should succeed because the uref is valid.
-    let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
-    let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
-        rc.metered_write_gs(uref_as_key, value)
+    let value = CLValue::from_t(43_i32).unwrap();
+    let query_result = build_runtime_context_and_execute(NamedKeys::default(), |mut rc| {
+        let uref = rc
+            .new_uref(value.clone(), Lifetime::Indefinite)
+            .expect("should create uref");
+        rc.metered_write_gs(Key::from(uref), value)
     });
     query_result.expect("writing using valid uref should succeed");
 }
@@ -535,15 +555,12 @@ fn uref_key_readable_invalid() {
 
 #[test]
 fn uref_key_writeable_valid() {
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref_key = create_uref_as_key(&mut rng, AccessRights::WRITE);
-
-    let mut named_keys = NamedKeys::new();
-    named_keys.insert(String::new(), uref_key);
-
-    let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
+    let query_result = build_runtime_context_and_execute(NamedKeys::default(), |mut rc| {
+        let uref = rc
+            .new_uref(CLValue::from_t(1_i32).unwrap(), Lifetime::Indefinite)
+            .expect("should create new uref");
         rc.metered_write_gs(
-            uref_key,
+            Key::from(uref),
             StoredValue::CLValue(CLValue::from_t(1_i32).unwrap()),
         )
     });
@@ -569,15 +586,10 @@ fn uref_key_writeable_invalid() {
 
 #[test]
 fn uref_key_addable_valid() {
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref_key = create_uref_as_key(&mut rng, AccessRights::ADD_WRITE);
-
-    let mut named_keys = NamedKeys::new();
-    named_keys.insert(String::new(), uref_key);
-
-    let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
-        rc.metered_write_gs(uref_key, CLValue::from_t(10_i32).unwrap())
-            .expect("Writing to the GlobalState should work.");
+    let query_result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
+        let uref_key = rc
+            .new_uref(CLValue::from_t(10_i32).unwrap(), Lifetime::Indefinite)
+            .expect("should create new uref");
         rc.metered_add_gs(uref_key, CLValue::from_t(1_i32).unwrap())
     });
     assert!(query_result.is_ok());
@@ -963,11 +975,6 @@ fn validate_valid_purse_of_an_account() {
 fn should_meter_for_gas_storage_write() {
     // Test fixture
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref_as_key = create_uref_as_key(&mut rng, AccessRights::READ_WRITE);
-
-    let mut named_keys = NamedKeys::new();
-    named_keys.insert("entry".to_string(), uref_as_key);
-
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
     let expected_write_cost = test_engine_config()
         .wasm_config()
@@ -975,9 +982,13 @@ fn should_meter_for_gas_storage_write() {
         .calculate_gas_cost(value.serialized_length());
 
     let (gas_usage_before, gas_usage_after) =
-        build_runtime_context_and_execute(named_keys, |mut rc| {
+        build_runtime_context_and_execute(NamedKeys::default(), |mut rc| {
+            let ctx = Context::new(rc.entity_address, rng.create_address());
+            rc.metered_write_gs(Key::Context(ctx), value.clone())
+                .expect("should write");
+
             let gas_before = rc.gas_counter();
-            rc.metered_write_gs(uref_as_key, value)
+            rc.metered_write_gs(Key::Context(ctx), value)
                 .expect("should write");
             let gas_after = rc.gas_counter();
             Ok((gas_before, gas_after))
@@ -998,11 +1009,6 @@ fn should_meter_for_gas_storage_write() {
 fn should_meter_for_gas_storage_add() {
     // Test fixture
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
-    let uref_as_key = create_uref_as_key(&mut rng, AccessRights::ADD_WRITE);
-
-    let mut named_keys = NamedKeys::new();
-    named_keys.insert("entry".to_string(), uref_as_key);
-
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
     let expected_add_cost = test_engine_config()
         .wasm_config()
@@ -1010,11 +1016,14 @@ fn should_meter_for_gas_storage_add() {
         .calculate_gas_cost(value.serialized_length());
 
     let (gas_usage_before, gas_usage_after) =
-        build_runtime_context_and_execute(named_keys, |mut rc| {
-            rc.metered_write_gs(uref_as_key, value.clone())
+        build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
+            let ctx = Context::new(rc.entity_address, rng.create_address());
+            rc.metered_write_gs(Key::Context(ctx), value.clone())
                 .expect("should write");
+
             let gas_before = rc.gas_counter();
-            rc.metered_add_gs(uref_as_key, value).expect("should add");
+            rc.metered_add_gs(Key::Context(ctx), value)
+                .expect("should add");
             let gas_after = rc.gas_counter();
             Ok((gas_before, gas_after))
         })

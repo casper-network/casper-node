@@ -46,10 +46,10 @@ pub trait RuntimeProvider {
 /// Provides functionality of a contract storage.
 pub trait StorageProvider {
     /// Reads data from [`URef`].
-    fn read<T: FromBytes + CLTyped>(&mut self, uref: URef) -> Result<Option<T>, Error>;
+    fn read<T: FromBytes + CLTyped>(&mut self, key: Key) -> Result<Option<T>, Error>;
 
     /// Writes data to [`URef].
-    fn write<T: ToBytes + CLTyped>(&mut self, uref: URef, value: T) -> Result<(), Error>;
+    fn write<T: ToBytes + CLTyped>(&mut self, key: Key, value: T) -> Result<(), Error>;
 
     /// Reads [`Bid`] at account hash derived from given public key
     fn read_bid(&mut self, key: &Key) -> Result<Option<BidKind>, Error>;

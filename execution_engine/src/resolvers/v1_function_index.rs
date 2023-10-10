@@ -61,6 +61,7 @@ pub(crate) enum FunctionIndex {
     DictionaryReadFuncIndex,
     EnableContractVersion,
     NewContextKey,
+    NewURefWithLifetime,
 }
 
 impl From<FunctionIndex> for usize {

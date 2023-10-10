@@ -294,6 +294,14 @@ impl StoredValue {
         }
     }
 
+    /// Returns the underlying `Context` and `Lifetime` if this is a `URef` variant.
+    pub fn into_uref(self) -> Option<(Context, Lifetime)> {
+        match self {
+            StoredValue::URef(ctx, lifetime) => Some((ctx, lifetime)),
+            _ => None,
+        }
+    }
+
     /// Returns the type name of the [`StoredValue`] enum variant.
     ///
     /// For [`CLValue`] variants it will return the name of the [`CLType`](crate::cl_type::CLType)
@@ -785,6 +793,16 @@ pub enum Lifetime {
     Indefinite,
     /// Finite lifetime ending at a specific [`EraId`].
     Finite(EraId),
+}
+
+impl Lifetime {
+    /// Returns `true` if the value is alive in the given era.
+    pub fn is_alive_in_era(self, era_id: EraId) -> bool {
+        match self {
+            Lifetime::Indefinite => true,
+            Lifetime::Finite(ending_at) => ending_at >= era_id,
+        }
+    }
 }
 
 impl ToBytes for Lifetime {
