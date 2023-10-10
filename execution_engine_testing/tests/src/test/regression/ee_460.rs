@@ -2,8 +2,9 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::addressable_entity::EntityKindTag;
-use casper_types::{execution::TransformKind, runtime_args, Key, U512};
+use casper_types::{
+    addressable_entity::EntityKindTag, execution::TransformKind, runtime_args, Key, U512,
+};
 
 const CONTRACT_EE_460_REGRESSION: &str = "ee_460_regression.wasm";
 

@@ -8,10 +8,10 @@ use casper_execution_engine::{
     engine_state::{run_genesis_request::RunGenesisRequest, Error as EngineError},
     execution::Error,
 };
-use casper_types::addressable_entity::EntityKindTag;
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntityHash,
-    ApiError, CLType, CLValue, GenesisAccount, Key, Motes, RuntimeArgs, StoredValue, U512,
+    account::AccountHash, addressable_entity::EntityKindTag, runtime_args, system::mint,
+    AccessRights, AddressableEntityHash, ApiError, CLType, CLValue, GenesisAccount, Key, Motes,
+    RuntimeArgs, StoredValue, U512,
 };
 use std::{convert::TryFrom, path::PathBuf};
 

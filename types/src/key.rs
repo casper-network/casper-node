@@ -29,11 +29,10 @@ use rand::{
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::addressable_entity::EntityKindTag;
 use crate::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity,
-    addressable_entity::AddressableEntityHash,
+    addressable_entity::{AddressableEntityHash, EntityKindTag},
     byte_code::ByteCodeKind,
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH},
     checksummed_hex,

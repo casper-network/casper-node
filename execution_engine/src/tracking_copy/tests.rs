@@ -7,11 +7,10 @@ use casper_storage::global_state::{
     state::{self, StateProvider, StateReader},
     trie::merkle_proof::TrieMerkleProof,
 };
-use casper_types::addressable_entity::EntityKindTag;
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity::{
-        ActionThresholds, AddressableEntityHash, AssociatedKeys, NamedKeys, Weight,
+        ActionThresholds, AddressableEntityHash, AssociatedKeys, EntityKindTag, NamedKeys, Weight,
     },
     execution::{Effects, Transform, TransformKind},
     gens::*,

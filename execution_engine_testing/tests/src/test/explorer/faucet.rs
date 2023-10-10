@@ -6,9 +6,9 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::addressable_entity::EntityKindTag;
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, ApiError, Key, PublicKey, SecretKey, U512,
+    account::AccountHash, addressable_entity::EntityKindTag, runtime_args, system::mint, ApiError,
+    Key, PublicKey, SecretKey, U512,
 };
 
 // test constants.

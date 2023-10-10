@@ -5,7 +5,7 @@ use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{EntityKind, EntryPoints, NamedKeys},
+    addressable_entity::{EntryPoints, NamedKeys},
     api_error,
     bytesrepr::{self, ToBytes},
     crypto,

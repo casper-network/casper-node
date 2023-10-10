@@ -40,9 +40,9 @@ use casper_storage::{
         trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_types::addressable_entity::EntityKindTag;
 use casper_types::{
     account::AccountHash,
+    addressable_entity::EntityKindTag,
     bytesrepr::{self, FromBytes},
     contracts::ContractHash,
     execution::Effects,

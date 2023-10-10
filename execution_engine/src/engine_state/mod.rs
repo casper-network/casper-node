@@ -65,7 +65,7 @@ use casper_types::{
     AccessRights, AddressableEntity, AddressableEntityHash, ApiError, BlockTime, ByteCodeHash,
     CLValue, ChainspecRegistry, DeployHash, DeployInfo, Digest, EntryPoints, EraId,
     ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Package, PackageHash, Phase,
-    ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Tagged, URef, UpgradeConfig, U512,
+    ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
 };
 
 use self::transfer::NewTransferTargetMode;

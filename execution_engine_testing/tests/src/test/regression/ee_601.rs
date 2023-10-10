@@ -2,9 +2,9 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::addressable_entity::EntityKindTag;
 use casper_types::{
-    execution::TransformKind, runtime_args, CLValue, Key, RuntimeArgs, StoredValue,
+    addressable_entity::EntityKindTag, execution::TransformKind, runtime_args, CLValue, Key,
+    RuntimeArgs, StoredValue,
 };
 
 const ARG_AMOUNT: &str = "amount";

@@ -13,11 +13,6 @@ use core::{
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(any(feature = "testing", test))]
-use rand::{
-    distributions::{Distribution, Standard},
-    Rng,
-};
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
@@ -26,15 +21,12 @@ use serde_map_to_array::KeyValueJsonSchema;
 use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
 use crate::{
-    account::AccountHash,
-    addressable_entity::{AssociatedKeys, Error, FromStrError, Weight},
-    bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH},
+    addressable_entity::{Error, FromStrError},
+    bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
     checksummed_hex,
     crypto::{self, PublicKey},
-    system::SystemEntityType,
     uref::URef,
-    AddressableEntityHash, CLType, CLTyped, HashAddr, Key, Tagged, BLAKE2B_DIGEST_LENGTH,
-    KEY_HASH_LENGTH,
+    AddressableEntityHash, CLType, CLTyped, HashAddr, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.

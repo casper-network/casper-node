@@ -21,10 +21,10 @@ use casper_execution_engine::{
     execution,
 };
 
-use casper_types::addressable_entity::EntityKindTag;
 use casper_types::{
     self,
     account::AccountHash,
+    addressable_entity::EntityKindTag,
     api_error::ApiError,
     runtime_args,
     system::{
