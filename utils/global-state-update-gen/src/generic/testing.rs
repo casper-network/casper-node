@@ -5,7 +5,7 @@ use rand::Rng;
 
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
+    addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, NamedKeys, Weight},
     system::auction::{
         BidKind, BidsExt, Delegator, SeigniorageRecipient, SeigniorageRecipients,
         SeigniorageRecipientsSnapshot, UnbondingPurse, UnbondingPurses, ValidatorBid,
@@ -68,6 +68,7 @@ impl MockStateReader {
             main_purse,
             AssociatedKeys::new(account_hash, Weight::new(1)),
             ActionThresholds::default(),
+            MessageTopics::default(),
         );
 
         self.purses.insert(main_purse.addr(), balance);

@@ -13,8 +13,8 @@ use casper_storage::global_state::state::{self, lmdb::LmdbGlobalStateView, State
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity::{
-        ActionThresholds, ActionType, AddKeyFailure, AssociatedKeys, NamedKeys, RemoveKeyFailure,
-        SetThresholdFailure, Weight,
+        ActionThresholds, ActionType, AddKeyFailure, AssociatedKeys, MessageTopics, NamedKeys,
+        RemoveKeyFailure, SetThresholdFailure, Weight,
     },
     bytesrepr::ToBytes,
     execution::TransformKind,
@@ -83,6 +83,7 @@ fn new_addressable_entity_with_purse(
         URef::new(purse, AccessRights::READ_ADD_WRITE),
         associated_keys,
         Default::default(),
+        MessageTopics::default(),
     );
     let account_key = Key::Account(account_hash);
     let contract_key = contract_hash.into();
@@ -447,6 +448,7 @@ fn contract_key_addable_valid() {
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
+        MessageTopics::default(),
     ));
 
     let read_contract = runtime_context.read_gs(&contract_key).unwrap();

@@ -4,6 +4,7 @@ use std::collections::VecDeque;
 
 use casper_types::{
     bytesrepr::FromBytes,
+    contract_messages::Message,
     execution::{Effects, ExecutionResultV2 as TypesExecutionResult, Transform, TransformKind},
     CLTyped, CLValue, Gas, Key, Motes, StoredValue, TransferAddr,
 };
@@ -25,6 +26,8 @@ pub enum ExecutionResult {
         cost: Gas,
         /// Execution effects.
         effects: Effects,
+        /// Messages emitted during execution.
+        messages: Vec<Message>,
     },
     /// Execution was finished successfully
     Success {
@@ -34,6 +37,8 @@ pub enum ExecutionResult {
         cost: Gas,
         /// Execution effects.
         effects: Effects,
+        /// Messages emitted during execution.
+        messages: Vec<Message>,
     },
 }
 
@@ -60,6 +65,7 @@ impl ExecutionResult {
             transfers: Vec::default(),
             cost: Gas::default(),
             effects: Effects::new(),
+            messages: Vec::default(),
         }
     }
 
@@ -127,19 +133,25 @@ impl ExecutionResult {
                 error,
                 transfers,
                 effects,
+                messages,
                 ..
             } => ExecutionResult::Failure {
                 error,
                 transfers,
                 cost,
                 effects,
+                messages,
             },
             ExecutionResult::Success {
-                transfers, effects, ..
+                transfers,
+                effects,
+                messages,
+                ..
             } => ExecutionResult::Success {
                 transfers,
                 cost,
                 effects,
+                messages,
             },
         }
     }
@@ -154,17 +166,25 @@ impl ExecutionResult {
                 error,
                 cost,
                 effects,
+                messages,
                 ..
             } => ExecutionResult::Failure {
                 error,
                 transfers,
                 cost,
                 effects,
+                messages,
             },
-            ExecutionResult::Success { cost, effects, .. } => ExecutionResult::Success {
+            ExecutionResult::Success {
+                cost,
+                effects,
+                messages,
+                ..
+            } => ExecutionResult::Success {
                 transfers,
                 cost,
                 effects,
+                messages,
             },
         }
     }
@@ -180,20 +200,24 @@ impl ExecutionResult {
                 transfers,
                 cost,
                 effects: _,
+                messages,
             } => ExecutionResult::Failure {
                 error,
                 transfers,
                 cost,
                 effects,
+                messages,
             },
             ExecutionResult::Success {
                 transfers,
                 cost,
                 effects: _,
+                messages,
             } => ExecutionResult::Success {
                 transfers,
                 cost,
                 effects,
+                messages,
             },
         }
     }
@@ -291,6 +315,7 @@ impl ExecutionResult {
             effects,
             transfers,
             cost: gas_cost,
+            messages: Vec::default(),
         })
     }
 
@@ -312,21 +337,25 @@ impl From<ExecutionResult> for TypesExecutionResult {
                 transfers,
                 cost,
                 effects,
+                messages,
             } => TypesExecutionResult::Success {
                 effects,
                 transfers,
                 cost: cost.value(),
+                messages,
             },
             ExecutionResult::Failure {
                 error,
                 transfers,
                 cost,
                 effects,
+                messages,
             } => TypesExecutionResult::Failure {
                 effects,
                 transfers,
                 cost: cost.value(),
                 error_message: error.to_string(),
+                messages,
             },
         }
     }
@@ -422,9 +451,11 @@ impl ExecutionResultBuilder {
         let mut transfers = self.transfers();
         let cost = self.total_cost();
 
-        let mut all_effects = match self.payment_execution_result {
+        let (mut all_effects, mut all_messages) = match self.payment_execution_result {
             Some(result @ ExecutionResult::Failure { .. }) => return Ok(result),
-            Some(ExecutionResult::Success { effects, .. }) => effects,
+            Some(ExecutionResult::Success {
+                effects, messages, ..
+            }) => (effects, messages),
             None => return Err(ExecutionResultBuilderError::MissingPaymentExecutionResult),
         };
 
@@ -436,11 +467,18 @@ impl ExecutionResultBuilder {
                 transfers: session_transfers,
                 effects: _,
                 cost: _,
+                messages,
             }) => {
                 error = Some(session_error);
                 transfers = session_transfers;
+                all_messages.extend(messages);
             }
-            Some(ExecutionResult::Success { effects, .. }) => all_effects.append(effects),
+            Some(ExecutionResult::Success {
+                effects, messages, ..
+            }) => {
+                all_effects.append(effects);
+                all_messages.extend(messages);
+            }
             None => return Err(ExecutionResultBuilderError::MissingSessionExecutionResult),
         };
 
@@ -451,7 +489,12 @@ impl ExecutionResultBuilder {
                     error::Error::Finalization,
                 ));
             }
-            Some(ExecutionResult::Success { effects, .. }) => all_effects.append(effects),
+            Some(ExecutionResult::Success {
+                effects, messages, ..
+            }) => {
+                all_effects.append(effects);
+                all_messages.extend(messages);
+            }
             None => return Err(ExecutionResultBuilderError::MissingFinalizeExecutionResult),
         }
 
@@ -460,12 +503,14 @@ impl ExecutionResultBuilder {
                 transfers,
                 cost,
                 effects: all_effects,
+                messages: all_messages,
             }),
             Some(error) => Ok(ExecutionResult::Failure {
                 error,
                 transfers,
                 cost,
                 effects: all_effects,
+                messages: all_messages,
             }),
         }
     }

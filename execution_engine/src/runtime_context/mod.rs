@@ -18,10 +18,13 @@ use casper_storage::global_state::state::StateReader;
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
-        ActionType, AddKeyFailure, NamedKeys, RemoveKeyFailure, SetThresholdFailure,
-        UpdateKeyFailure, Weight,
+        ActionType, AddKeyFailure, MessageTopicError, NamedKeys, RemoveKeyFailure,
+        SetThresholdFailure, UpdateKeyFailure, Weight,
     },
     bytesrepr::ToBytes,
+    contract_messages::{
+        Message, MessageAddr, MessageChecksum, MessageTopicSummary, TopicNameHash,
+    },
     execution::Effects,
     package::ContractPackageKind,
     system::auction::{BidKind, EraInfo},
@@ -330,8 +333,8 @@ where
                 error!("should not remove the checksum registry key");
                 Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
             }
-            Key::MessageTopic(_) => {
-                error!("should not remove the message keys");
+            Key::Message(_) => {
+                error!("should not remove the message key");
                 Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
             }
             bid_key @ Key::BidAddr(_) => {
@@ -657,6 +660,11 @@ where
         self.tracking_copy.borrow().effects()
     }
 
+    /// Returns a copy of the current messages of a tracking copy.
+    pub fn messages(&self) -> Vec<Message> {
+        self.tracking_copy.borrow().messages()
+    }
+
     /// Returns list of transfers.
     pub fn transfers(&self) -> &Vec<TransferAddr> {
         &self.transfers
@@ -725,6 +733,8 @@ where
             StoredValue::BidKind(_) => Ok(()),
             StoredValue::Withdraw(_) => Ok(()),
             StoredValue::Unbonding(_) => Ok(()),
+            StoredValue::MessageTopic(_) => Ok(()),
+            StoredValue::Message(_) => Ok(()),
         }
     }
 
@@ -804,7 +814,7 @@ where
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry
             | Key::BidAddr(_)
-            | Key::MessageTopic(_) => true,
+            | Key::Message(_) => true,
         }
     }
 
@@ -827,7 +837,7 @@ where
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry
             | Key::BidAddr(_)
-            | Key::MessageTopic(_) => false,
+            | Key::Message(_) => false,
         }
     }
 
@@ -850,7 +860,7 @@ where
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry
             | Key::BidAddr(_)
-            | Key::MessageTopic(_) => false,
+            | Key::Message(_) => false,
         }
     }
 
@@ -942,6 +952,32 @@ where
         self.tracking_copy
             .borrow_mut()
             .write(key.into(), stored_value);
+        Ok(())
+    }
+
+    /// Emits message and writes message summary to global state with a measurement.
+    pub(crate) fn metered_emit_message(
+        &mut self,
+        topic_key: Key,
+        topic_value: MessageTopicSummary,
+        message_key: Key,
+        message_value: MessageChecksum,
+        message: Message,
+    ) -> Result<(), Error> {
+        let topic_value = StoredValue::MessageTopic(topic_value);
+        let message_value = StoredValue::Message(message_value);
+
+        // Charge for amount as measured by serialized length
+        let bytes_count = topic_value.serialized_length() + message_value.serialized_length();
+        self.charge_gas_storage(bytes_count)?;
+
+        self.tracking_copy.borrow_mut().emit_message(
+            topic_key,
+            topic_value,
+            message_key,
+            message_value,
+            message,
+        );
         Ok(())
     }
 
@@ -1333,5 +1369,45 @@ where
     /// towards global limit for the whole deploy execution.
     pub(crate) fn set_remaining_spending_limit(&mut self, amount: U512) {
         self.remaining_spending_limit = amount;
+    }
+
+    /// Adds new message topic.
+    pub(crate) fn add_message_topic(
+        &mut self,
+        topic_name: String,
+        topic_name_hash: TopicNameHash,
+    ) -> Result<Result<(), MessageTopicError>, Error> {
+        let entity_key: Key = self.get_entity_address();
+        let entity_addr = entity_key.into_hash().ok_or(Error::InvalidContext)?;
+
+        // Take the addressable entity out of the global state
+        let entity = {
+            let mut entity: AddressableEntity = self.read_gs_typed(&entity_key)?;
+
+            let max_topics_per_contract = self
+                .engine_config
+                .wasm_config()
+                .messages_limits()
+                .max_topics_per_contract();
+
+            if entity.message_topics().len() >= max_topics_per_contract as usize {
+                return Ok(Err(MessageTopicError::MaxTopicsExceeded));
+            }
+
+            if let Err(e) = entity.add_message_topic(topic_name, topic_name_hash) {
+                return Ok(Err(e));
+            }
+            entity
+        };
+
+        let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash));
+        let summary = StoredValue::MessageTopic(MessageTopicSummary::new(0, self.get_blocktime()));
+
+        let entity_value = self.addressable_entity_to_validated_value(entity)?;
+
+        self.metered_write_gs_unsafe(entity_key, entity_value)?;
+        self.metered_write_gs_unsafe(topic_key, summary)?;
+
+        Ok(Ok(()))
     }
 }

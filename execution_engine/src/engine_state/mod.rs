@@ -45,7 +45,7 @@ use casper_storage::{
 };
 use casper_types::{
     account::{Account, AccountHash},
-    addressable_entity::{AssociatedKeys, NamedKeys},
+    addressable_entity::{AssociatedKeys, MessageTopics, NamedKeys},
     bytesrepr::ToBytes,
     execution::Effects,
     package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
@@ -875,6 +875,7 @@ where
             account.main_purse(),
             associated_keys,
             account.action_thresholds().clone().into(),
+            MessageTopics::default(),
         );
 
         let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
@@ -2714,11 +2715,13 @@ fn log_execution_result(preamble: &'static str, result: &ExecutionResult) {
             transfers,
             cost,
             effects,
+            messages,
         } => {
             debug!(
                 %cost,
                 transfer_count = %transfers.len(),
                 transforms_count = %effects.len(),
+                messages_count = %messages.len(),
                 "{}: execution success",
                 preamble
             );
@@ -2728,12 +2731,14 @@ fn log_execution_result(preamble: &'static str, result: &ExecutionResult) {
             transfers,
             cost,
             effects,
+            messages,
         } => {
             debug!(
                 %error,
                 %cost,
                 transfer_count = %transfers.len(),
                 transforms_count = %effects.len(),
+                messages_count = %messages.len(),
                 "{}: execution failure",
                 preamble
             );
@@ -2748,6 +2753,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
             transfers: _,
             cost: _,
             effects: _,
+            messages: _,
         } => match error {
             Error::Exec(err) => match err {
                 ExecError::WasmPreprocessing(_) | ExecError::UnsupportedWasmStart => true,
@@ -2800,7 +2806,8 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::DisabledContract(_)
                 | ExecError::UnexpectedKeyVariant(_)
                 | ExecError::InvalidContractPackageKind(_)
-                | ExecError::Transform(_) => false,
+                | ExecError::Transform(_)
+                | ExecError::InvalidMessageTopicOperation => false,
                 ExecError::DisabledUnrestrictedTransfers => false,
             },
             Error::WasmPreprocessing(_) => true,

@@ -17,6 +17,7 @@ use serde_bytes::ByteBuf;
 use crate::{
     account::Account,
     bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    contract_messages::{MessageChecksum, MessageTopicSummary},
     contracts::Contract,
     package::Package,
     system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
@@ -40,6 +41,8 @@ enum Tag {
     Unbonding = 10,
     AddressableEntity = 11,
     BidKind = 12,
+    MessageTopic = 13,
+    Message = 14,
 }
 
 /// A value stored in Global State.
@@ -78,6 +81,10 @@ pub enum StoredValue {
     AddressableEntity(AddressableEntity),
     /// Variant that stores [`BidKind`].
     BidKind(BidKind),
+    /// Variant that stores a message topic.
+    MessageTopic(MessageTopicSummary),
+    /// Variant that stores a message digest.
+    Message(MessageChecksum),
 }
 
 impl StoredValue {
@@ -309,6 +316,8 @@ impl StoredValue {
             StoredValue::Unbonding(_) => "Unbonding".to_string(),
             StoredValue::AddressableEntity(_) => "AddressableEntity".to_string(),
             StoredValue::BidKind(_) => "BidKind".to_string(),
+            StoredValue::MessageTopic(_) => "MessageTopic".to_string(),
+            StoredValue::Message(_) => "Message".to_string(),
         }
     }
 
@@ -327,6 +336,8 @@ impl StoredValue {
             StoredValue::Unbonding(_) => Tag::Unbonding,
             StoredValue::AddressableEntity(_) => Tag::AddressableEntity,
             StoredValue::BidKind(_) => Tag::BidKind,
+            StoredValue::MessageTopic(_) => Tag::MessageTopic,
+            StoredValue::Message(_) => Tag::Message,
         }
     }
 }
@@ -544,6 +555,10 @@ impl ToBytes for StoredValue {
                 StoredValue::Unbonding(unbonding_purses) => unbonding_purses.serialized_length(),
                 StoredValue::AddressableEntity(entity) => entity.serialized_length(),
                 StoredValue::BidKind(bid_kind) => bid_kind.serialized_length(),
+                StoredValue::MessageTopic(message_topic_summary) => {
+                    message_topic_summary.serialized_length()
+                }
+                StoredValue::Message(message_digest) => message_digest.serialized_length(),
             }
     }
 
@@ -565,6 +580,10 @@ impl ToBytes for StoredValue {
             StoredValue::Unbonding(unbonding_purses) => unbonding_purses.write_bytes(writer)?,
             StoredValue::AddressableEntity(entity) => entity.write_bytes(writer)?,
             StoredValue::BidKind(bid_kind) => bid_kind.write_bytes(writer)?,
+            StoredValue::MessageTopic(message_topic_summary) => {
+                message_topic_summary.write_bytes(writer)?
+            }
+            StoredValue::Message(message_digest) => message_digest.write_bytes(writer)?,
         };
         Ok(())
     }
@@ -612,6 +631,12 @@ impl FromBytes for StoredValue {
             }
             tag if tag == Tag::AddressableEntity as u8 => AddressableEntity::from_bytes(remainder)
                 .map(|(entity, remainder)| (StoredValue::AddressableEntity(entity), remainder)),
+            tag if tag == Tag::MessageTopic as u8 => MessageTopicSummary::from_bytes(remainder)
+                .map(|(message_summary, remainder)| {
+                    (StoredValue::MessageTopic(message_summary), remainder)
+                }),
+            tag if tag == Tag::Message as u8 => MessageChecksum::from_bytes(remainder)
+                .map(|(checksum, remainder)| (StoredValue::Message(checksum), remainder)),
             _ => Err(Error::Formatting),
         }
     }
@@ -648,6 +673,10 @@ mod serde_helpers {
         AddressableEntity(&'a AddressableEntity),
         /// Variant that stores [`BidKind`].
         BidKind(&'a BidKind),
+        /// Variant that stores [`MessageTopicSummary`].
+        MessageTopic(&'a MessageTopicSummary),
+        /// Variant that stores a [`MessageChecksum`].
+        Message(&'a MessageChecksum),
     }
 
     #[derive(Deserialize)]
@@ -678,6 +707,10 @@ mod serde_helpers {
         AddressableEntity(AddressableEntity),
         /// Variant that stores [`BidKind`].
         BidKind(BidKind),
+        /// Variant that stores [`MessageTopicSummary`].
+        MessageTopic(MessageTopicSummary),
+        /// Variant that stores [`MessageChecksum`].
+        Message(MessageChecksum),
     }
 
     impl<'a> From<&'a StoredValue> for BinarySerHelper<'a> {
@@ -698,6 +731,10 @@ mod serde_helpers {
                     BinarySerHelper::AddressableEntity(payload)
                 }
                 StoredValue::BidKind(payload) => BinarySerHelper::BidKind(payload),
+                StoredValue::MessageTopic(message_topic_summary) => {
+                    BinarySerHelper::MessageTopic(message_topic_summary)
+                }
+                StoredValue::Message(message_digest) => BinarySerHelper::Message(message_digest),
             }
         }
     }
@@ -722,6 +759,10 @@ mod serde_helpers {
                     StoredValue::AddressableEntity(payload)
                 }
                 BinaryDeserHelper::BidKind(payload) => StoredValue::BidKind(payload),
+                BinaryDeserHelper::MessageTopic(message_topic_summary) => {
+                    StoredValue::MessageTopic(message_topic_summary)
+                }
+                BinaryDeserHelper::Message(message_digest) => StoredValue::Message(message_digest),
             }
         }
     }

@@ -191,6 +191,9 @@ pub enum Error {
     /// Failed to transfer tokens on a private chain.
     #[error("Failed to transfer with unrestricted transfers disabled")]
     DisabledUnrestrictedTransfers,
+    /// Invalid message topic operation.
+    #[error("The requested operation is invalid for a message topic")]
+    InvalidMessageTopicOperation,
 }
 
 impl From<PreprocessingError> for Error {

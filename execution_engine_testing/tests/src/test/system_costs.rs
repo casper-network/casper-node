@@ -16,10 +16,11 @@ use casper_types::{
         handle_payment, mint, AUCTION,
     },
     AuctionCosts, BrTableCost, ControlFlowCosts, EraId, Gas, GenesisAccount, GenesisValidator,
-    HandlePaymentCosts, HostFunction, HostFunctionCost, HostFunctionCosts, MintCosts, Motes,
-    OpcodeCosts, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StandardPaymentCosts,
-    StorageCosts, SystemConfig, WasmConfig, DEFAULT_ADD_BID_COST, DEFAULT_MAX_STACK_HEIGHT,
-    DEFAULT_TRANSFER_COST, DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY, U512,
+    HandlePaymentCosts, HostFunction, HostFunctionCost, HostFunctionCosts, MessageLimits,
+    MintCosts, Motes, OpcodeCosts, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey,
+    StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig, DEFAULT_ADD_BID_COST,
+    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_TRANSFER_COST, DEFAULT_WASMLESS_TRANSFER_COST,
+    DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
 use crate::wasm_utils;
@@ -968,6 +969,8 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         blake2b: HostFunction::fixed(0),
         random_bytes: HostFunction::fixed(0),
         enable_contract_version: HostFunction::fixed(0),
+        manage_message_topic: HostFunction::fixed(0),
+        emit_message: HostFunction::fixed(0),
     };
 
     let new_wasm_config = WasmConfig::new(
@@ -976,6 +979,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         new_opcode_costs,
         new_storage_costs,
         new_host_function_costs,
+        MessageLimits::default(),
     );
 
     let new_wasmless_transfer_cost = 0;

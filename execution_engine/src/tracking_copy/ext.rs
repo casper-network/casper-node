@@ -3,6 +3,7 @@ use std::{collections::BTreeSet, convert::TryInto};
 use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
 use casper_types::{
     account::AccountHash,
+    addressable_entity::MessageTopics,
     package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
     AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, ContractWasm,
     ContractWasmHash, EntryPoints, Key, Motes, Package, Phase, ProtocolVersion, StoredValue,
@@ -146,6 +147,7 @@ where
                     account.main_purse(),
                     account.associated_keys().clone().into(),
                     account.action_thresholds().clone().into(),
+                    MessageTopics::default(),
                 );
 
                 let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);

@@ -2450,6 +2450,7 @@
                 "cost",
                 "effects",
                 "error_message",
+                "messages",
                 "transfers"
               ],
               "properties": {
@@ -2479,6 +2480,13 @@
                 "error_message": {
                   "description": "The error message associated with executing the deploy.",
                   "type": "string"
+                },
+                "messages": {
+                  "description": "Messages that were emitted during execution.",
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/Message"
+                  }
                 }
               },
               "additionalProperties": false
@@ -2498,6 +2506,7 @@
               "required": [
                 "cost",
                 "effects",
+                "messages",
                 "transfers"
               ],
               "properties": {
@@ -2523,6 +2532,13 @@
                       "$ref": "#/definitions/U512"
                     }
                   ]
+                },
+                "messages": {
+                  "description": "Messages that were emitted during execution.",
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/Message"
+                  }
                 }
               },
               "additionalProperties": false
@@ -2538,6 +2554,71 @@
       "items": {
         "$ref": "#/definitions/Transform"
       }
+    },
+    "Message": {
+      "description": "Message that was emitted by an addressable entity during execution.",
+      "type": "object",
+      "required": [
+        "entity_addr",
+        "index",
+        "message",
+        "topic_name",
+        "topic_name_hash"
+      ],
+      "properties": {
+        "entity_addr": {
+          "description": "The identity of the entity that produced the message.",
+          "type": "string"
+        },
+        "message": {
+          "description": "The payload of the message.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/MessagePayload"
+            }
+          ]
+        },
+        "topic_name": {
+          "description": "The name of the topic on which the message was emitted on.",
+          "type": "string"
+        },
+        "topic_name_hash": {
+          "description": "The hash of the name of the topic.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/TopicNameHash"
+            }
+          ]
+        },
+        "index": {
+          "description": "Message index in the topic.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "MessagePayload": {
+      "description": "The payload of the message emitted by an addressable entity during execution.",
+      "oneOf": [
+        {
+          "description": "Human readable string message.",
+          "type": "object",
+          "required": [
+            "String"
+          ],
+          "properties": {
+            "String": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "TopicNameHash": {
+      "description": "The hash of the name of the message topic.",
+      "type": "string"
     },
     "FinalitySignature": {
       "description": "A validator's signature of a block, confirming it is finalized.",
