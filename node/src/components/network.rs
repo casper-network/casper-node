@@ -496,11 +496,11 @@ where
             // Note: Ideally, this would be a closure, but lifetime inference does not
             //       work out here, and we cannot annotate lifetimes on closures.
             #[inline(always)]
-            fn mk_request<'a>(
-                rpc_client: &'a JulietRpcClient<{ Channel::COUNT }>,
+            fn mk_request(
+                rpc_client: &JulietRpcClient<{ Channel::COUNT }>,
                 channel: Channel,
                 payload: Bytes,
-            ) -> juliet::rpc::JulietRpcRequestBuilder<'a, { Channel::COUNT }> {
+            ) -> juliet::rpc::JulietRpcRequestBuilder<'_, { Channel::COUNT }> {
                 rpc_client
                     .create_request(channel.into_channel_id())
                     .with_payload(payload)
