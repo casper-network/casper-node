@@ -99,6 +99,7 @@ impl ToBytes for WasmConfig {
         ret.append(&mut self.opcode_costs.to_bytes()?);
         ret.append(&mut self.storage_costs.to_bytes()?);
         ret.append(&mut self.host_function_costs.to_bytes()?);
+        ret.append(&mut self.messages_limits.to_bytes()?);
 
         Ok(ret)
     }
@@ -109,6 +110,7 @@ impl ToBytes for WasmConfig {
             + self.opcode_costs.serialized_length()
             + self.storage_costs.serialized_length()
             + self.host_function_costs.serialized_length()
+            + self.messages_limits.serialized_length()
     }
 }
 
