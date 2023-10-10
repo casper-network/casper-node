@@ -675,7 +675,7 @@ impl<C: Context> State<C> {
 
     /// Returns the ancestor of the block with the given `hash`, on the specified `height`, or
     /// `None` if the block's height is lower than that.
-    /// NOTE: Panics if used on non-proposal hashes. For those use [`find_ancestor_unit`].
+    /// NOTE: Panics if used on non-proposal hashes.
     pub fn find_ancestor_proposal<'a>(
         &'a self,
         hash: &'a C::Hash,
