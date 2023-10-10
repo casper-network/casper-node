@@ -60,8 +60,8 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
-        DeployExecutionInfo, DeployWithFinalizedApprovals, ExecutableBlock, FinalizedApprovals,
-        LegacyDeploy, MetaBlockState, NodeId, SignedBlock, StatusFeed, TrieOrChunk, TrieOrChunkId,
+        ExecutableBlock, ExecutionInfo, FinalizedApprovals, LegacyDeploy, MetaBlockState, NodeId,
+        SignedBlock, StatusFeed, TransactionWithFinalizedApprovals, TrieOrChunk, TrieOrChunkId,
     },
     utils::Source,
 };
@@ -369,12 +369,10 @@ pub(crate) enum StorageRequest {
         /// previously stored.
         responder: Responder<bool>,
     },
-    /// Retrieve deploys with given hashes.
-    GetDeploys {
-        /// Hashes of deploys to be retrieved.
-        deploy_hashes: Vec<DeployHash>,
-        /// Responder to call with the results.
-        responder: Responder<SmallVec<[Option<DeployWithFinalizedApprovals>; 1]>>,
+    /// Retrieve transaction with given hashes.
+    GetTransactions {
+        transaction_hashes: Vec<TransactionHash>,
+        responder: Responder<SmallVec<[Option<TransactionWithFinalizedApprovals>; 1]>>,
     },
     /// Retrieve legacy deploy with given hash.
     GetLegacyDeploy {
@@ -416,12 +414,9 @@ pub(crate) enum StorageRequest {
         /// None is returned when we don't have the block in the storage.
         responder: Responder<Option<BlockExecutionResultsOrChunk>>,
     },
-    /// Retrieve deploy and its execution info.
-    GetDeployAndExecutionInfo {
-        /// Hash of deploy to be retrieved.
-        deploy_hash: DeployHash,
-        /// Responder to call with the results.
-        responder: Responder<Option<(DeployWithFinalizedApprovals, Option<DeployExecutionInfo>)>>,
+    GetTransactionAndExecutionInfo {
+        transaction_hash: TransactionHash,
+        responder: Responder<Option<(TransactionWithFinalizedApprovals, Option<ExecutionInfo>)>>,
     },
     /// Retrieve block and its signatures by its hash.
     GetSignedBlockByHash {
@@ -563,8 +558,14 @@ impl Display for StorageRequest {
             StorageRequest::PutTransaction { transaction, .. } => {
                 write!(formatter, "put {}", transaction)
             }
-            StorageRequest::GetDeploys { deploy_hashes, .. } => {
-                write!(formatter, "get {}", DisplayIter::new(deploy_hashes.iter()))
+            StorageRequest::GetTransactions {
+                transaction_hashes, ..
+            } => {
+                write!(
+                    formatter,
+                    "get {}",
+                    DisplayIter::new(transaction_hashes.iter())
+                )
             }
             StorageRequest::GetLegacyDeploy { deploy_hash, .. } => {
                 write!(formatter, "get legacy deploy {}", deploy_hash)
@@ -585,8 +586,14 @@ impl Display for StorageRequest {
                 write!(formatter, "get block execution results or chunk for {}", id)
             }
 
-            StorageRequest::GetDeployAndExecutionInfo { deploy_hash, .. } => {
-                write!(formatter, "get deploy and metadata for {}", deploy_hash)
+            StorageRequest::GetTransactionAndExecutionInfo {
+                transaction_hash, ..
+            } => {
+                write!(
+                    formatter,
+                    "get transaction and metadata for {}",
+                    transaction_hash
+                )
             }
             StorageRequest::GetFinalitySignature { id, .. } => {
                 write!(formatter, "get finality signature {}", id)

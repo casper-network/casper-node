@@ -1,6 +1,6 @@
 use std::collections::{btree_map::Entry, BTreeMap};
 
-use casper_types::{BlockHash, BlockHashAndHeight, BlockHeader, DeployHash, EraId};
+use casper_types::{BlockHash, BlockHashAndHeight, BlockHeader, EraId, TransactionHash};
 
 use super::{FatalStorageError, Storage};
 
@@ -48,31 +48,28 @@ impl Storage {
     /// Inserts the relevant entries to the index.
     ///
     /// If a duplicate entry is encountered, index is not updated and an error is returned.
-    /// Inserts the relevant entries to the index.
-    ///
-    /// If a duplicate entry is encountered, index is not updated and an error is returned.
-    pub(crate) fn insert_to_deploy_index<'a>(
-        deploy_hash_index: &mut BTreeMap<DeployHash, BlockHashAndHeight>,
+    pub(crate) fn insert_to_transaction_index(
+        transaction_hash_index: &mut BTreeMap<TransactionHash, BlockHashAndHeight>,
         block_hash: BlockHash,
         block_height: u64,
-        deploy_hash_iter: impl Iterator<Item = &'a DeployHash> + Clone,
+        transaction_hashes: Vec<TransactionHash>,
     ) -> Result<(), FatalStorageError> {
-        if let Some(hash) = deploy_hash_iter.clone().find(|hash| {
-            deploy_hash_index
+        if let Some(hash) = transaction_hashes.iter().find(|hash| {
+            transaction_hash_index
                 .get(hash)
                 .map_or(false, |old_block_hash_and_height| {
                     *old_block_hash_and_height.block_hash() != block_hash
                 })
         }) {
-            return Err(FatalStorageError::DuplicateDeployIndex {
-                deploy_hash: *hash,
-                first: deploy_hash_index[hash],
+            return Err(FatalStorageError::DuplicateTransactionIndex {
+                transaction_hash: *hash,
+                first: transaction_hash_index[hash],
                 second: BlockHashAndHeight::new(block_hash, block_height),
             });
         }
 
-        for hash in deploy_hash_iter {
-            deploy_hash_index.insert(*hash, BlockHashAndHeight::new(block_hash, block_height));
+        for hash in transaction_hashes {
+            transaction_hash_index.insert(hash, BlockHashAndHeight::new(block_hash, block_height));
         }
 
         Ok(())

@@ -130,6 +130,7 @@ use casper_types::{
     PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId, Transfer, U512,
 };
 
+use crate::types::TransactionWithFinalizedApprovals;
 use crate::{
     components::{
         block_synchronizer::{
@@ -152,9 +153,8 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
-        DeployExecutionInfo, DeployWithFinalizedApprovals, ExecutableBlock, FinalizedApprovals,
-        FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState, NodeId, SignedBlock, TrieOrChunk,
-        TrieOrChunkId,
+        ExecutableBlock, ExecutionInfo, FinalizedApprovals, FinalizedBlock, LegacyDeploy,
+        MetaBlock, MetaBlockState, NodeId, SignedBlock, TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -1483,20 +1483,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested deploys from the deploy store.
+    /// Gets the requested transactions from storage.
     ///
-    /// Returns the "original" deploys, which are the first received by the node, along with a
+    /// Returns the "original" transactions, which are the first received by the node, along with a
     /// potentially different set of approvals used during execution of the recorded block.
-    pub(crate) async fn get_deploys_from_storage(
+    pub(crate) async fn get_transactions_from_storage(
         self,
-        deploy_hashes: Vec<DeployHash>,
-    ) -> SmallVec<[Option<DeployWithFinalizedApprovals>; 1]>
+        transaction_hashes: Vec<TransactionHash>,
+    ) -> SmallVec<[Option<TransactionWithFinalizedApprovals>; 1]>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetDeploys {
-                deploy_hashes,
+            |responder| StorageRequest::GetTransactions {
+                transaction_hashes,
                 responder,
             },
             QueueKind::FromStorage,
@@ -1582,17 +1582,17 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested deploys from the deploy store.
-    pub(crate) async fn get_deploy_and_execution_info_from_storage(
+    /// Gets the requested transaction and associated execution info if available.
+    pub(crate) async fn get_transaction_and_execution_info_from_storage(
         self,
-        deploy_hash: DeployHash,
-    ) -> Option<(DeployWithFinalizedApprovals, Option<DeployExecutionInfo>)>
+        transaction_hash: TransactionHash,
+    ) -> Option<(TransactionWithFinalizedApprovals, Option<ExecutionInfo>)>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetDeployAndExecutionInfo {
-                deploy_hash,
+            |responder| StorageRequest::GetTransactionAndExecutionInfo {
+                transaction_hash,
                 responder,
             },
             QueueKind::FromStorage,

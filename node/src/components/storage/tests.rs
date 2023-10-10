@@ -22,7 +22,7 @@ use casper_types::{
     AccessRights, Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures, BlockV2,
     Chainspec, ChainspecRawBytes, Deploy, DeployApprovalsHash, DeployHash, Digest, EraId,
     FinalitySignature, ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TestBlockBuilder,
-    TestBlockV1Builder, TimeDiff, Transaction, Transfer, URef, U512,
+    TestBlockV1Builder, TimeDiff, Transaction, TransactionHash, Transfer, URef, U512,
 };
 use tempfile::tempdir;
 
@@ -43,8 +43,8 @@ use crate::{
     testing::{ComponentHarness, UnitTestEvent},
     types::{
         sync_leap_validation_metadata::SyncLeapValidationMetaData, ApprovalsHashes,
-        AvailableBlockRange, DeployExecutionInfo, DeployWithFinalizedApprovals, LegacyDeploy,
-        SignedBlock, SyncLeapIdentifier,
+        AvailableBlockRange, ExecutionInfo, LegacyDeploy, SignedBlock, SyncLeapIdentifier,
+        TransactionWithFinalizedApprovals,
     },
     utils::{Loadable, WithDir},
 };
@@ -340,17 +340,17 @@ fn get_block_signatures(storage: &mut Storage, block_hash: BlockHash) -> Option<
     storage.get_block_signatures(&mut txn, &block_hash).unwrap()
 }
 
-/// Loads a set of deploys from a storage component.
+/// Loads a set of `Transaction`s from a storage component.
 ///
-/// Applies `into_naive` to all loaded deploys.
-fn get_naive_deploys(
+/// Applies `into_naive` to all loaded `Transaction`s.
+fn get_naive_transactions(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
-    deploy_hashes: Multiple<DeployHash>,
-) -> Vec<Option<Deploy>> {
+    transaction_hashes: Multiple<TransactionHash>,
+) -> Vec<Option<Transaction>> {
     let response = harness.send_request(storage, move |responder| {
-        StorageRequest::GetDeploys {
-            deploy_hashes: deploy_hashes.to_vec(),
+        StorageRequest::GetTransactions {
+            transaction_hashes: transaction_hashes.to_vec(),
             responder,
         }
         .into()
@@ -358,28 +358,28 @@ fn get_naive_deploys(
     assert!(harness.is_idle());
     response
         .into_iter()
-        .map(|opt_dfa| opt_dfa.map(DeployWithFinalizedApprovals::into_naive))
+        .map(|opt_twfa| opt_twfa.map(TransactionWithFinalizedApprovals::into_naive))
         .collect()
 }
 
 /// Loads a deploy with associated execution info from the storage component.
 ///
 /// Any potential finalized approvals are discarded.
-fn get_naive_deploy_and_execution_info(
+fn get_naive_transaction_and_execution_info(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
-    deploy_hash: DeployHash,
-) -> Option<(Deploy, Option<DeployExecutionInfo>)> {
+    transaction_hash: TransactionHash,
+) -> Option<(Transaction, Option<ExecutionInfo>)> {
     let response = harness.send_request(storage, |responder| {
-        StorageRequest::GetDeployAndExecutionInfo {
-            deploy_hash,
+        StorageRequest::GetTransactionAndExecutionInfo {
+            transaction_hash,
             responder,
         }
         .into()
     });
     assert!(harness.is_idle());
-    response.map(|(deploy_with_finalized_approvals, exec_info)| {
-        (deploy_with_finalized_approvals.into_naive(), exec_info)
+    response.map(|(txn_with_finalized_approvals, exec_info)| {
+        (txn_with_finalized_approvals.into_naive(), exec_info)
     })
 }
 
@@ -480,13 +480,13 @@ fn put_block_signatures(
     response
 }
 
-/// Stores a deploy in a storage component.
-fn put_deploy(
+/// Stores a `Transaction` in a storage component.
+fn put_transaction(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
-    deploy: &Deploy,
+    transaction: &Transaction,
 ) -> bool {
-    let transaction = Arc::new(Transaction::from(deploy.clone()));
+    let transaction = Arc::new(transaction.clone());
     let response = harness.send_request(storage, move |responder| {
         StorageRequest::PutTransaction {
             transaction,
@@ -498,14 +498,14 @@ fn put_deploy(
     response
 }
 
-fn insert_to_deploy_index(
+fn insert_to_transaction_index(
     storage: &mut Storage,
-    deploy: Deploy,
+    transaction: Transaction,
     block_hash_and_height: BlockHashAndHeight,
 ) -> bool {
     storage
-        .deploy_hash_index
-        .insert(*deploy.hash(), block_hash_and_height)
+        .transaction_hash_index
+        .insert(transaction.hash(), block_hash_and_height)
         .is_none()
 }
 
@@ -908,75 +908,76 @@ fn different_block_at_height_is_fatal() {
 }
 
 #[test]
-fn get_vec_of_non_existing_deploy_returns_nones() {
+fn get_vec_of_non_existing_transaction_returns_nones() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    let deploy_id = DeployHash::random(&mut harness.rng);
-    let response = get_naive_deploys(&mut harness, &mut storage, smallvec![deploy_id]);
+    let transaction_id = Transaction::random(&mut harness.rng).hash();
+    let response = get_naive_transactions(&mut harness, &mut storage, smallvec![transaction_id]);
     assert_eq!(response, vec![None]);
 
-    // Also verify that we can retrieve using an empty set of deploy hashes.
-    let response = get_naive_deploys(&mut harness, &mut storage, smallvec![]);
+    // Also verify that we can retrieve using an empty set of transaction hashes.
+    let response = get_naive_transactions(&mut harness, &mut storage, smallvec![]);
     assert!(response.is_empty());
 }
 
 #[test]
-fn can_retrieve_store_and_load_deploys() {
+fn can_retrieve_store_and_load_transactions() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
     // Create a random deploy, store and load it.
-    let deploy = Deploy::random(&mut harness.rng);
+    let transaction = Transaction::random(&mut harness.rng);
 
-    let was_new = put_deploy(&mut harness, &mut storage, &deploy);
+    let was_new = put_transaction(&mut harness, &mut storage, &transaction);
     let block_hash_and_height = BlockHashAndHeight::random(&mut harness.rng);
     // Insert to the deploy hash index as well so that we can perform the GET later.
     // Also check that we don't have an entry there for this deploy.
-    assert!(insert_to_deploy_index(
+    assert!(insert_to_transaction_index(
         &mut storage,
-        deploy.clone(),
+        transaction.clone(),
         block_hash_and_height
     ));
-    assert!(was_new, "putting deploy should have returned `true`");
+    assert!(was_new, "putting transaction should have returned `true`");
 
     // Storing the same deploy again should work, but yield a result of `false`.
-    let was_new_second_time = put_deploy(&mut harness, &mut storage, &deploy);
+    let was_new_second_time = put_transaction(&mut harness, &mut storage, &transaction);
     assert!(
         !was_new_second_time,
-        "storing deploy the second time should have returned `false`"
+        "storing transaction the second time should have returned `false`"
     );
-    assert!(!insert_to_deploy_index(
+    assert!(!insert_to_transaction_index(
         &mut storage,
-        deploy.clone(),
+        transaction.clone(),
         block_hash_and_height
     ));
 
-    // Retrieve the stored deploy.
-    let response = get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.hash()]);
-    assert_eq!(response, vec![Some(deploy.clone())]);
+    // Retrieve the stored transaction.
+    let response =
+        get_naive_transactions(&mut harness, &mut storage, smallvec![transaction.hash()]);
+    assert_eq!(response, vec![Some(transaction.clone())]);
 
     // Finally try to get the execution info as well. Since we did not store any, we expect to get
     // the block hash and height from the indices.
-    let (deploy_response, exec_info_response) = harness
+    let (transaction_response, exec_info_response) = harness
         .send_request(&mut storage, |responder| {
-            StorageRequest::GetDeployAndExecutionInfo {
-                deploy_hash: *deploy.hash(),
+            StorageRequest::GetTransactionAndExecutionInfo {
+                transaction_hash: transaction.hash(),
                 responder,
             }
             .into()
         })
-        .expect("no deploy with execution info returned");
+        .expect("no transaction with execution info returned");
 
-    assert_eq!(deploy_response.into_naive(), deploy);
+    assert_eq!(transaction_response.into_naive(), transaction);
     match exec_info_response {
-        Some(DeployExecutionInfo {
+        Some(ExecutionInfo {
             execution_result: Some(_),
             ..
         }) => {
             panic!("We didn't store any execution info but we received it in the response.")
         }
-        Some(DeployExecutionInfo {
+        Some(ExecutionInfo {
             block_hash,
             block_height,
             execution_result: None,
@@ -991,23 +992,23 @@ fn can_retrieve_store_and_load_deploys() {
         ),
     }
 
-    // Create a random deploy, store and load it.
-    let deploy = Deploy::random(&mut harness.rng);
+    // Create a random transaction, store and load it.
+    let transaction = Transaction::random(&mut harness.rng);
 
-    assert!(put_deploy(&mut harness, &mut storage, &deploy));
-    // Don't insert to the deploy hash index. Since we have no execution results
+    assert!(put_transaction(&mut harness, &mut storage, &transaction));
+    // Don't insert to the transaction hash index. Since we have no execution results
     // either, we should receive a `None` execution info response.
-    let (deploy_response, exec_info_response) = harness
+    let (transaction_response, exec_info_response) = harness
         .send_request(&mut storage, |responder| {
-            StorageRequest::GetDeployAndExecutionInfo {
-                deploy_hash: *deploy.hash(),
+            StorageRequest::GetTransactionAndExecutionInfo {
+                transaction_hash: transaction.hash(),
                 responder,
             }
             .into()
         })
-        .expect("no deploy with execution info returned");
+        .expect("no transaction with execution info returned");
 
-    assert_eq!(deploy_response.into_naive(), deploy);
+    assert_eq!(transaction_response.into_naive(), transaction);
     assert!(
         exec_info_response.is_none(),
         "We didn't store any block info in the index but we received it in the response."
@@ -1015,27 +1016,28 @@ fn can_retrieve_store_and_load_deploys() {
 }
 
 #[test]
-fn storing_and_loading_a_lot_of_deploys_does_not_exhaust_handles() {
+fn storing_and_loading_a_lot_of_transactions_does_not_exhaust_handles() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
     let total = 1000;
     let batch_size = 25;
 
-    let mut deploy_hashes = Vec::new();
+    let mut transaction_hashes = Vec::new();
 
     for _ in 0..total {
-        let deploy = Deploy::random(&mut harness.rng);
-        deploy_hashes.push(*deploy.hash());
-        put_deploy(&mut harness, &mut storage, &deploy);
+        let transaction = Transaction::random(&mut harness.rng);
+        transaction_hashes.push(transaction.hash());
+        put_transaction(&mut harness, &mut storage, &transaction);
     }
 
-    // Shuffle deploy hashes around to get a random order.
-    deploy_hashes.as_mut_slice().shuffle(&mut harness.rng);
+    // Shuffle transaction hashes around to get a random order.
+    transaction_hashes.as_mut_slice().shuffle(&mut harness.rng);
 
     // Retrieve all from storage, ensuring they are found.
-    for chunk in deploy_hashes.chunks(batch_size) {
-        let result = get_naive_deploys(&mut harness, &mut storage, chunk.iter().cloned().collect());
+    for chunk in transaction_hashes.chunks(batch_size) {
+        let result =
+            get_naive_transactions(&mut harness, &mut storage, chunk.iter().cloned().collect());
         assert!(result.iter().all(Option::is_some));
     }
 }
@@ -1055,7 +1057,7 @@ fn store_random_execution_results() {
     fn setup_block(
         harness: &mut ComponentHarness<UnitTestEvent>,
         storage: &mut Storage,
-        expected_outcome: &mut HashMap<DeployHash, DeployExecutionInfo>,
+        expected_outcome: &mut HashMap<DeployHash, ExecutionInfo>,
         block_hash: &BlockHash,
         block_height: u64,
     ) {
@@ -1069,11 +1071,11 @@ fn store_random_execution_results() {
             let deploy = Deploy::random(&mut harness.rng);
 
             // Store deploy.
-            put_deploy(harness, storage, &deploy);
+            put_transaction(harness, storage, &Transaction::from(deploy.clone()));
 
             let execution_result =
                 ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
-            let execution_info = DeployExecutionInfo {
+            let execution_info = ExecutionInfo {
                 block_hash: *block_hash,
                 block_height,
                 execution_result: Some(execution_result.clone()),
@@ -1109,11 +1111,12 @@ fn store_random_execution_results() {
     // At this point, we are all set up and ready to receive results. Iterate over every deploy and
     // see if its execution-data-per-block matches our expectations.
     for (deploy_hash, expected_exec_info) in expected_outcome.into_iter() {
-        let (deploy, maybe_exec_info) =
-            get_naive_deploy_and_execution_info(&mut harness, &mut storage, deploy_hash)
-                .expect("missing deploy");
+        let transaction_hash = TransactionHash::from(deploy_hash);
+        let (transaction, maybe_exec_info) =
+            get_naive_transaction_and_execution_info(&mut harness, &mut storage, transaction_hash)
+                .expect("missing transaction");
 
-        assert_eq!(deploy_hash, *deploy.hash());
+        assert_eq!(transaction_hash, transaction.hash());
         assert_eq!(maybe_exec_info, Some(expected_exec_info));
     }
 }
@@ -1128,7 +1131,11 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
     let deploy = Deploy::random(&mut harness.rng);
     let deploy_hash = *deploy.hash();
 
-    put_deploy(&mut harness, &mut storage, &deploy);
+    put_transaction(
+        &mut harness,
+        &mut storage,
+        &Transaction::from(deploy.clone()),
+    );
 
     let mut exec_result_1 = HashMap::new();
     exec_result_1.insert(
@@ -1158,16 +1165,19 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
         exec_result_2,
     );
 
-    let (returned_deploy, returned_exec_info) =
-        get_naive_deploy_and_execution_info(&mut harness, &mut storage, deploy_hash)
-            .expect("missing deploy");
-    let expected_exec_info = Some(DeployExecutionInfo {
+    let (returned_transaction, returned_exec_info) = get_naive_transaction_and_execution_info(
+        &mut harness,
+        &mut storage,
+        TransactionHash::from(deploy_hash),
+    )
+    .expect("missing deploy");
+    let expected_exec_info = Some(ExecutionInfo {
         block_hash,
         block_height,
         execution_result: Some(new_exec_result),
     });
 
-    assert_eq!(returned_deploy, deploy);
+    assert_eq!(returned_transaction, Transaction::from(deploy));
     assert_eq!(returned_exec_info, expected_exec_info);
 }
 
@@ -1213,7 +1223,11 @@ fn persist_blocks_deploys_and_execution_info_across_instantiations() {
 
     let block_height = block.height();
     let execution_result = ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
-    put_deploy(&mut harness, &mut storage, &deploy);
+    put_transaction(
+        &mut harness,
+        &mut storage,
+        &Transaction::from(deploy.clone()),
+    );
     put_complete_block(&mut harness, &mut storage, block.clone());
     let mut execution_results = HashMap::new();
     execution_results.insert(*deploy.hash(), execution_result.clone());
@@ -1241,12 +1255,22 @@ fn persist_blocks_deploys_and_execution_info_across_instantiations() {
     let actual_block = get_block(&mut harness, &mut storage, *block.hash())
         .expect("missing block we stored earlier");
     assert_eq!(actual_block, block);
-    let actual_deploys = get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.hash()]);
-    assert_eq!(actual_deploys, vec![Some(deploy.clone())]);
+    let actual_deploys = get_naive_transactions(
+        &mut harness,
+        &mut storage,
+        smallvec![TransactionHash::from(*deploy.hash())],
+    );
+    assert_eq!(
+        actual_deploys,
+        vec![Some(Transaction::from(deploy.clone()))]
+    );
 
-    let (_, maybe_exec_info) =
-        get_naive_deploy_and_execution_info(&mut harness, &mut storage, *deploy.hash())
-            .expect("missing deploy we stored earlier");
+    let (_, maybe_exec_info) = get_naive_transaction_and_execution_info(
+        &mut harness,
+        &mut storage,
+        TransactionHash::from(*deploy.hash()),
+    )
+    .expect("missing deploy we stored earlier");
 
     let retrieved_execution_result = maybe_exec_info
         .expect("should have execution info")
@@ -1315,7 +1339,11 @@ fn should_hard_reset() {
     {
         let deploy = random_deploys.get(index).expect("should have deploys");
         let execution_result = ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
-        put_deploy(&mut harness, &mut storage, deploy);
+        put_transaction(
+            &mut harness,
+            &mut storage,
+            &Transaction::from(deploy.clone()),
+        );
         let mut exec_results = HashMap::new();
         exec_results.insert(*deploy.hash(), execution_result);
         put_execution_results(
@@ -1368,12 +1396,15 @@ fn should_hard_reset() {
 
         // Check execution results in deleted blocks have been removed.
         for (index, deploy) in deploys.iter().enumerate() {
-            let (_, maybe_exec_info) =
-                get_naive_deploy_and_execution_info(&mut harness, &mut storage, *deploy.hash())
-                    .unwrap();
+            let (_, maybe_exec_info) = get_naive_transaction_and_execution_info(
+                &mut harness,
+                &mut storage,
+                TransactionHash::from(*deploy.hash()),
+            )
+            .unwrap();
             let should_have_exec_results = index < blocks_per_era * reset_era;
             match maybe_exec_info {
-                Some(DeployExecutionInfo {
+                Some(ExecutionInfo {
                     execution_result, ..
                 }) => {
                     assert_eq!(should_have_exec_results, execution_result.is_some());

@@ -4,7 +4,7 @@ use lmdb::{Database, RwTransaction, Transaction};
 
 use casper_types::{
     execution::ExecutionResult, Block, BlockBody, BlockBodyV1, BlockHash, BlockHeader,
-    BlockHeaderV1, DeployHash, Digest,
+    BlockHeaderV1, DeployHash, Digest, TransactionHash,
 };
 use tracing::error;
 
@@ -28,7 +28,7 @@ impl Storage {
     ///     style Start fill:#66ccff,stroke:#333,stroke-width:4px
     ///     style End fill:#66ccff,stroke:#333,stroke-width:4px
     ///     style write_block fill:#00FF00,stroke:#333,stroke-width:4px
-    ///     
+    ///
     ///     Start --> A[Block fetched]
     ///     A --> put_block_to_storage
     ///     put_block_to_storage --> StorageRequest::PutBlock
@@ -63,7 +63,7 @@ impl Storage {
     ///     style Start fill:#66ccff,stroke:#333,stroke-width:4px
     ///     style End fill:#66ccff,stroke:#333,stroke-width:4px
     ///     style B fill:#00FF00,stroke:#333,stroke-width:4px
-    ///     
+    ///
     ///     Start --> A["Validated block needs to be stored<br>(might be coming from contract runtime)"]
     ///     A --> put_executed_block_to_storage
     ///     put_executed_block_to_storage --> StorageRequest::PutExecutedBlock
@@ -148,11 +148,15 @@ impl Storage {
                 &mut self.switch_block_era_id_index,
                 &block.clone_header(),
             )?;
-            Self::insert_to_deploy_index(
-                &mut self.deploy_hash_index,
+            let transaction_hashes = block
+                .deploy_and_transfer_hashes()
+                .map(|deploy_hash| TransactionHash::Deploy(*deploy_hash))
+                .collect();
+            Self::insert_to_transaction_index(
+                &mut self.transaction_hash_index,
                 *block.hash(),
                 block.height(),
-                block.clone_body().deploy_and_transfer_hashes(),
+                transaction_hashes,
             )?;
         }
         Ok(true)

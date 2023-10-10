@@ -50,7 +50,7 @@ use std::{
     fmt::{self, Display, Formatter},
     fs::{self, OpenOptions},
     io::ErrorKind,
-    iter, mem,
+    mem,
     path::{Path, PathBuf},
     rc::Rc,
     sync::Arc,
@@ -103,17 +103,17 @@ use crate::{
     protocol::Message,
     types::{
         ApprovalsHashes, AvailableBlockRange, BlockExecutionResultsOrChunk,
-        BlockExecutionResultsOrChunkId, BlockWithMetadata, DeployExecutionInfo,
-        DeployWithFinalizedApprovals, ExecutableBlock, FinalizedApprovals,
-        FinalizedDeployApprovals, LegacyDeploy, MaxTtl, NodeId, NodeRng, SignedBlock, SyncLeap,
-        SyncLeapIdentifier, TransactionWithFinalizedApprovals,
+        BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, ExecutionInfo,
+        FinalizedApprovals, FinalizedDeployApprovals, LegacyDeploy, MaxTtl, NodeId, NodeRng,
+        SignedBlock, SyncLeap, SyncLeapIdentifier, TransactionWithFinalizedApprovals,
+        VariantMismatch,
     },
     utils::{display_error, WithDir},
 };
 use deploy_metadata_v1::DeployMetadataV1;
 use disjoint_sequences::{DisjointSequences, Sequence};
+pub use error::FatalStorageError;
 use error::GetRequestError;
-pub use error::{FatalStorageError, VariantMismatch};
 use lmdb_ext::{BytesreprError, LmdbExtError, TransactionExt, WriteTransactionExt};
 use metrics::Metrics;
 use object_pool::ObjectPool;
@@ -167,10 +167,8 @@ const STORAGE_FILES: [&str; 5] = [
 
 #[derive(DataSize, Debug)]
 struct VersionedDatabases {
-    /// The legacy block body database, storing [BlockBodyV1] objects.
     #[data_size(skip)]
     legacy: Database,
-    /// The current block body database, storing [BlockBody] objects.
     #[data_size(skip)]
     current: Database,
 }
@@ -201,12 +199,10 @@ pub struct Storage {
     /// The transaction database.
     #[data_size(skip)]
     transaction_db: Database,
-    /// Database of `ExecutionResultV1`s indexed by deploy hash.
+    /// Databases of `ExecutionResult`s indexed by transaction hash for current DB or by deploy hash
+    /// for legacy DB.
     #[data_size(skip)]
-    execution_results_v1_db: Database,
-    /// Database of `ExecutionResult`s indexed by transaction hash.
-    #[data_size(skip)]
-    execution_results_db: Database,
+    execution_results_dbs: VersionedDatabases,
     /// The transfer database.
     #[data_size(skip)]
     transfer_db: Database,
@@ -223,8 +219,8 @@ pub struct Storage {
     block_height_index: BTreeMap<u64, BlockHash>,
     /// A map of era ID to switch block ID.
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
-    /// A map of deploy hashes to hashes and heights of blocks containing them.
-    deploy_hash_index: BTreeMap<DeployHash, BlockHashAndHeight>,
+    /// A map of transaction hashes to hashes and heights of blocks containing them.
+    transaction_hash_index: BTreeMap<TransactionHash, BlockHashAndHeight>,
     /// Runs of completed blocks known in storage.
     completed_blocks: DisjointSequences,
     /// The activation point era of the current protocol version.
@@ -440,10 +436,10 @@ impl Storage {
         let block_metadata_db = env.create_db(Some("block_metadata"), DatabaseFlags::empty())?;
         let deploy_db = env.create_db(Some("deploys"), DatabaseFlags::empty())?;
         let transaction_db = env.create_db(Some("transactions"), DatabaseFlags::empty())?;
-        let execution_results_v1_db =
-            env.create_db(Some("deploy_metadata"), DatabaseFlags::empty())?;
-        let execution_results_db =
-            env.create_db(Some("execution_results"), DatabaseFlags::empty())?;
+        let execution_results_dbs = VersionedDatabases {
+            legacy: env.create_db(Some("deploy_metadata"), DatabaseFlags::empty())?,
+            current: env.create_db(Some("execution_results"), DatabaseFlags::empty())?,
+        };
         let transfer_db = env.create_db(Some("transfer"), DatabaseFlags::empty())?;
         let state_store_db = env.create_db(Some("state_store"), DatabaseFlags::empty())?;
         let finalized_deploy_approvals_db =
@@ -463,12 +459,13 @@ impl Storage {
         info!("indexing block store");
         let mut block_height_index = BTreeMap::new();
         let mut switch_block_era_id_index = BTreeMap::new();
-        let mut deploy_hash_index = BTreeMap::new();
+        let mut transaction_hash_index = BTreeMap::new();
         let mut block_txn = env.begin_rw_txn()?;
 
         let mut deleted_block_hashes = HashSet::new();
         let mut deleted_block_body_hashes = HashSet::new();
         let mut deleted_deploy_hashes = HashSet::<DeployHash>::new();
+        let mut deleted_transaction_hashes = HashSet::<TransactionHash>::new();
 
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
@@ -489,8 +486,11 @@ impl Storage {
                     let _ = deleted_block_hashes.insert(block_header.block_hash());
 
                     if let Some(block_body) = maybe_block_body? {
-                        deleted_deploy_hashes.extend(block_body.deploy_hashes());
-                        deleted_deploy_hashes.extend(block_body.transfer_hashes());
+                        deleted_transaction_hashes.extend(
+                            block_body
+                                .deploy_and_transfer_hashes()
+                                .map(|deploy_hash| TransactionHash::Deploy(*deploy_hash)),
+                        );
                     }
 
                     let _ = deleted_block_body_hashes.insert(*block_header.body_hash());
@@ -507,11 +507,15 @@ impl Storage {
             )?;
 
             if let Some(block_body) = maybe_block_body? {
-                Self::insert_to_deploy_index(
-                    &mut deploy_hash_index,
+                let transaction_hashes = block_body
+                    .deploy_and_transfer_hashes()
+                    .map(|deploy_hash| TransactionHash::Deploy(*deploy_hash))
+                    .collect();
+                Self::insert_to_transaction_index(
+                    &mut transaction_hash_index,
                     block_header.block_hash(),
                     block_header.height(),
-                    block_body.deploy_and_transfer_hashes(),
+                    transaction_hashes,
                 )?;
             }
         }
@@ -552,11 +556,15 @@ impl Storage {
             )?;
 
             if let Some(block_body) = maybe_block_body? {
-                Self::insert_to_deploy_index(
-                    &mut deploy_hash_index,
+                let transaction_hashes = block_body
+                    .deploy_and_transfer_hashes()
+                    .map(|deploy_hash| TransactionHash::Deploy(*deploy_hash))
+                    .collect();
+                Self::insert_to_transaction_index(
+                    &mut transaction_hash_index,
                     block_header.block_hash(),
                     block_header.height(),
-                    block_body.deploy_and_transfer_hashes(),
+                    transaction_hashes,
                 )?;
             }
         }
@@ -578,17 +586,17 @@ impl Storage {
         )?;
 
         initialize_block_metadata_db(&env, &block_metadata_db, &deleted_block_hashes_raw)?;
-        initialize_execution_results_db(
+        initialize_execution_results_v1_db(
             &env,
-            &execution_results_v1_db,
+            &execution_results_dbs.legacy,
             "execution results v1 db",
             &deleted_deploy_hashes,
         )?;
         initialize_execution_results_db(
             &env,
-            &execution_results_db,
+            &execution_results_dbs.current,
             "execution results db",
-            &deleted_deploy_hashes,
+            &deleted_transaction_hashes,
         )?;
 
         let metrics = registry.map(Metrics::new).transpose()?;
@@ -602,15 +610,14 @@ impl Storage {
             approvals_hashes_db,
             deploy_db,
             transaction_db,
-            execution_results_v1_db,
-            execution_results_db,
+            execution_results_dbs,
             transfer_db,
             state_store_db,
             finalized_deploy_approvals_db,
             finalized_transaction_approvals_db,
             block_height_index,
             switch_block_era_id_index,
-            deploy_hash_index,
+            transaction_hash_index,
             completed_blocks: Default::default(),
             activation_era,
             key_block_height_for_activation_point: None,
@@ -973,18 +980,16 @@ impl Storage {
             } => responder
                 .respond(self.put_transaction(&transaction)?)
                 .ignore(),
-            StorageRequest::GetDeploys {
-                deploy_hashes,
+            StorageRequest::GetTransactions {
+                transaction_hashes,
                 responder,
             } => {
                 let mut txn = self.env.begin_ro_txn()?;
                 responder
-                    .respond(
-                        self.get_deploys_with_finalized_approvals(
-                            &mut txn,
-                            deploy_hashes.as_slice(),
-                        )?,
-                    )
+                    .respond(self.get_transactions_with_finalized_approvals(
+                        &mut txn,
+                        transaction_hashes.as_slice(),
+                    )?)
                     .ignore()
             }
             StorageRequest::GetLegacyDeploy {
@@ -1073,43 +1078,33 @@ impl Storage {
                 txn.commit()?;
                 responder.respond(()).ignore()
             }
-            StorageRequest::GetDeployAndExecutionInfo {
-                deploy_hash,
+            StorageRequest::GetTransactionAndExecutionInfo {
+                transaction_hash,
                 responder,
             } => {
-                let transaction_hash = TransactionHash::from(deploy_hash);
                 let mut txn = self.env.begin_ro_txn()?;
 
-                let deploy_wfa = match self
+                let transaction_wfa = match self
                     .get_transaction_with_finalized_approvals(&mut txn, &transaction_hash)?
                 {
-                    Some(TransactionWithFinalizedApprovals::Deploy {
-                        deploy,
-                        finalized_approvals,
-                    }) => DeployWithFinalizedApprovals::new(deploy, finalized_approvals),
-                    Some(transaction_wfa) => {
-                        let mismatch =
-                            VariantMismatch(Box::new((transaction_hash, transaction_wfa)));
-                        error!(%mismatch, "failed getting getting deploy and exec info");
-                        return Err(FatalStorageError::from(mismatch));
-                    }
+                    Some(transaction_wfa) => transaction_wfa,
                     None => return Ok(responder.respond(None).ignore()),
                 };
 
-                let block_hash_and_height =
-                    match self.get_block_hash_and_height_by_deploy_hash(deploy_hash)? {
-                        Some(value) => value,
-                        None => return Ok(responder.respond(Some((deploy_wfa, None))).ignore()),
-                    };
-                let execution_result = self.get_execution_result(&mut txn, &deploy_hash)?;
-                let execution_info = DeployExecutionInfo {
+                let block_hash_and_height = match self.transaction_hash_index.get(&transaction_hash)
+                {
+                    Some(value) => *value,
+                    None => return Ok(responder.respond(Some((transaction_wfa, None))).ignore()),
+                };
+                let execution_result = self.get_execution_result(&mut txn, &transaction_hash)?;
+                let execution_info = ExecutionInfo {
                     block_hash: *block_hash_and_height.block_hash(),
                     block_height: block_hash_and_height.block_height(),
                     execution_result,
                 };
 
                 responder
-                    .respond(Some((deploy_wfa, Some(execution_info))))
+                    .respond(Some((transaction_wfa, Some(execution_info))))
                     .ignore()
             }
             StorageRequest::GetSignedBlockByHash {
@@ -1612,11 +1607,15 @@ impl Storage {
         block_height: u64,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     ) -> Result<bool, FatalStorageError> {
-        Self::insert_to_deploy_index(
-            &mut self.deploy_hash_index,
+        let transaction_hashes = execution_results
+            .keys()
+            .map(|deploy_hash| TransactionHash::Deploy(*deploy_hash))
+            .collect();
+        Self::insert_to_transaction_index(
+            &mut self.transaction_hash_index,
             *block_hash,
             block_height,
-            execution_results.keys(),
+            transaction_hashes,
         )?;
         let mut transfers: Vec<Transfer> = vec![];
         for (deploy_hash, execution_result) in execution_results.into_iter() {
@@ -1645,26 +1644,12 @@ impl Storage {
                 }
             }
 
-            // Write the execution result to the appropriate DB.
-            let was_written = match execution_result {
-                ExecutionResult::V1(v1_result) => {
-                    let v1_results = DeployMetadataV1 {
-                        execution_results: iter::once((*block_hash, v1_result)).collect(),
-                    };
-                    txn.put_value(
-                        self.execution_results_v1_db,
-                        &deploy_hash,
-                        &v1_results,
-                        true,
-                    )?
-                }
-                versioned_result => txn.put_value(
-                    self.execution_results_db,
-                    &deploy_hash,
-                    &versioned_result,
-                    true,
-                )?,
-            };
+            let was_written = txn.put_value_bytesrepr(
+                self.execution_results_dbs.current,
+                &TransactionHash::Deploy(deploy_hash),
+                &execution_result,
+                true,
+            )?;
 
             if !was_written {
                 error!(?block_hash, ?deploy_hash, "failed to write deploy metadata");
@@ -1875,11 +1860,19 @@ impl Storage {
             return Ok(None);
         };
 
-        let deploy_hashes = block.deploy_and_transfer_hashes().copied().collect_vec();
+        let transaction_hashes = block
+            .deploy_and_transfer_hashes()
+            .map(|deploy_hash| TransactionHash::from(*deploy_hash))
+            .collect_vec();
         Ok(self
-            .get_deploys_with_finalized_approvals(&mut txn, &deploy_hashes)?
+            .get_transactions_with_finalized_approvals(&mut txn, &transaction_hashes)?
             .into_iter()
-            .map(|maybe_deploy| maybe_deploy.map(|deploy| deploy.into_naive()))
+            .map(|maybe_transaction| {
+                maybe_transaction.and_then(|twfa| match twfa.into_naive() {
+                    Transaction::Deploy(deploy) => Some(deploy),
+                    Transaction::V1(_) => None,
+                })
+            })
             .collect::<Option<Vec<Deploy>>>()
             .map(|deploys| (block, deploys)))
     }
@@ -1936,22 +1929,13 @@ impl Storage {
         txn: &mut Tx,
         deploy_hash: DeployHash,
     ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        self.deploy_hash_index
-            .get(&deploy_hash)
+        self.transaction_hash_index
+            .get(&TransactionHash::Deploy(deploy_hash))
             .and_then(|block_hash_and_height| {
                 self.get_single_block_header(txn, block_hash_and_height.block_hash())
                     .transpose()
             })
             .transpose()
-    }
-
-    /// Retrieves the block hash and height for a deploy hash by looking it up in the index
-    /// and returning it.
-    fn get_block_hash_and_height_by_deploy_hash(
-        &self,
-        deploy_hash: DeployHash,
-    ) -> Result<Option<BlockHashAndHeight>, FatalStorageError> {
-        Ok(self.deploy_hash_index.get(&deploy_hash).copied())
     }
 
     /// Retrieves the highest block from storage, if one exists. May return an LMDB error.
@@ -2306,35 +2290,16 @@ impl Storage {
         Ok(Some(block))
     }
 
-    /// Retrieves a set of deploys from storage, along with their potential finalized approvals.
-    fn get_deploys_with_finalized_approvals<Tx: LmdbTransaction>(
+    /// Retrieves a set of transactions, along with their potential finalized approvals.
+    fn get_transactions_with_finalized_approvals<Tx: LmdbTransaction>(
         &self,
         txn: &mut Tx,
-        deploy_hashes: &[DeployHash],
-    ) -> Result<SmallVec<[Option<DeployWithFinalizedApprovals>; 1]>, FatalStorageError> {
-        deploy_hashes
+        transaction_hashes: &[TransactionHash],
+    ) -> Result<SmallVec<[Option<TransactionWithFinalizedApprovals>; 1]>, FatalStorageError> {
+        transaction_hashes
             .iter()
-            .map(|deploy_hash| {
-                let transaction_hash = TransactionHash::from(*deploy_hash);
-                match self.get_transaction_with_finalized_approvals(txn, &transaction_hash)? {
-                    Some(TransactionWithFinalizedApprovals::Deploy {
-                        deploy,
-                        finalized_approvals,
-                    }) => Ok(Some(DeployWithFinalizedApprovals::new(
-                        deploy,
-                        finalized_approvals,
-                    ))),
-                    Some(transaction_wfa) => {
-                        let mismatch =
-                            VariantMismatch(Box::new((transaction_hash, transaction_wfa)));
-                        error!(
-                            %mismatch,
-                            "failed getting getting deploys with finalized approvals"
-                        );
-                        Err(FatalStorageError::from(mismatch))
-                    }
-                    None => Ok(None),
-                }
+            .map(|transaction_hash| {
+                self.get_transaction_with_finalized_approvals(txn, transaction_hash)
             })
             .collect()
     }
@@ -2428,17 +2393,23 @@ impl Storage {
     fn get_execution_result<Tx: LmdbTransaction>(
         &self,
         txn: &mut Tx,
-        deploy_hash: &DeployHash,
+        transaction_hash: &TransactionHash,
     ) -> Result<Option<ExecutionResult>, FatalStorageError> {
-        if let Some(exec_result) = txn.get_value(self.execution_results_db, deploy_hash)? {
+        if let Some(exec_result) =
+            txn.get_value_bytesrepr(self.execution_results_dbs.current, transaction_hash)?
+        {
             return Ok(Some(exec_result));
         };
 
-        // If we don't have this execution result stored as a versioned ExecutionResult, try to read
-        // from the `execution_results_v1_db`, where they were stored as a newtyped HashMap with a
-        // single entry prior to `casper-node` v2.0.0.
+        // If we don't have this execution result stored as a versioned ExecutionResult, and if
+        // we're looking under a deploy hash, try to read from the `execution_results_v1_db`, where
+        // they were stored as a newtyped HashMap with a single entry prior to `casper-node` v2.0.0.
+        let deploy_hash = match transaction_hash {
+            TransactionHash::Deploy(hash) => hash,
+            TransactionHash::V1(_) => return Ok(None),
+        };
         let v1_results: DeployMetadataV1 =
-            match txn.get_value(self.execution_results_v1_db, deploy_hash)? {
+            match txn.get_value(self.execution_results_dbs.legacy, deploy_hash)? {
                 Some(results) => results,
                 None => return Ok(None),
             };
@@ -2803,12 +2774,13 @@ impl Storage {
 
         let mut execution_results = vec![];
         for deploy_hash in block_body.deploy_and_transfer_hashes() {
-            match self.get_execution_result(txn, deploy_hash)? {
+            let transaction_hash = TransactionHash::Deploy(*deploy_hash);
+            match self.get_execution_result(txn, &transaction_hash)? {
                 None => {
                     debug!(
                         %block_hash,
-                        %deploy_hash,
-                        "retrieved block but deploy is absent"
+                        %transaction_hash,
+                        "retrieved block but execution result for given transaction is absent"
                     );
                     return Ok(None);
                 }
@@ -3053,7 +3025,7 @@ impl Storage {
             .env
             .begin_ro_txn()
             .expect("could not create RO transaction");
-        self.get_execution_result(&mut txn, deploy_hash)
+        self.get_execution_result(&mut txn, &TransactionHash::Deploy(*deploy_hash))
             .expect("could not retrieve deploy metadata from storage")
     }
 
@@ -3222,8 +3194,8 @@ fn initialize_block_metadata_db(
     Ok(())
 }
 
-/// Purges stale entries from the deploy metadata database.
-fn initialize_execution_results_db(
+/// Purges stale entries from the deploy V1 metadata database.
+fn initialize_execution_results_v1_db(
     env: &Environment,
     db: &Database,
     db_name: &str,
@@ -3239,6 +3211,28 @@ fn initialize_execution_results_db(
                 debug!(%deleted_deploy_hash, db_name, "not purging entry: doesn't exist");
             }
         });
+    txn.commit()?;
+
+    info!("deploy metadata database initialized");
+    Ok(())
+}
+
+/// Purges stale entries from the deploy metadata database.
+fn initialize_execution_results_db(
+    env: &Environment,
+    db: &Database,
+    db_name: &str,
+    deleted_transaction_hashes: &HashSet<TransactionHash>,
+) -> Result<(), LmdbExtError> {
+    info!("initializing {}", db_name);
+
+    let mut txn = env.begin_rw_txn()?;
+    for deleted_transaction_hash in deleted_transaction_hashes {
+        let serialized_key = lmdb_ext::serialize_bytesrepr(deleted_transaction_hash)?;
+        if txn.del(*db, &serialized_key, None).is_err() {
+            debug!(%deleted_transaction_hash, db_name, "not purging entry: doesn't exist");
+        }
+    }
     txn.commit()?;
 
     info!("deploy metadata database initialized");
