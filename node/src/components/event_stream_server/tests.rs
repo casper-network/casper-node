@@ -26,9 +26,7 @@ use casper_types::testing::TestRng;
 
 use super::*;
 use crate::{logging, testing::assert_schema};
-use sse_server::{
-    DeployAccepted, Id, QUERY_FIELD, SSE_API_MAIN_PATH as MAIN_PATH, SSE_API_ROOT_PATH as ROOT_PATH,
-};
+use sse_server::{DeployAccepted, Id, QUERY_FIELD, SSE_API_PATH as ROOT_PATH};
 
 /// The total number of random events `EventStreamServer` will emit by default, excluding the
 /// initial `ApiVersion` event.
@@ -402,14 +400,13 @@ impl TestFixture {
 
 /// Returns the URL for a client to use to connect to the server at the given address.
 ///
-/// The URL is `/events/<SSE_API_MAIN_PATH>` with `?start_from=X` query string appended if
+/// The URL is `/events` with `?start_from=X` query string appended if
 /// `maybe_start_from` is `Some`.
-fn url(server_address: SocketAddr, maybe_start_from: Option<Id>) -> String {
+fn make_url(server_address: SocketAddr, maybe_start_from: Option<Id>) -> String {
     format!(
-        "http://{}/{}/{}{}",
+        "http://{}/{}/{}",
         server_address,
         ROOT_PATH,
-        MAIN_PATH,
         match maybe_start_from {
             Some(start_from) => format!("?{}={}", QUERY_FIELD, start_from),
             None => String::new(),
@@ -572,7 +569,7 @@ fn parse_response(response_text: String, client_id: &str) -> Vec<ReceivedEvent> 
 }
 
 /// Client setup:
-///   * `<IP:port>/events/<SSE_API_MAIN_PATH>`
+///   * `<IP:port>/events`
 ///   * no `?start_from=` query
 ///   * connected before first event
 ///
@@ -586,7 +583,7 @@ async fn should_serve_events_with_no_query() {
     let barrier = server_behavior.add_client_sync_before_event(0);
     let server_address = fixture.run_server(server_behavior).await;
 
-    let url = url(server_address, None);
+    let url = make_url(server_address, None);
     let (expected_events, final_id) = fixture.all_events();
     let received_events = subscribe(&url, barrier, final_id, "client").await.unwrap();
     fixture.stop_server().await;
@@ -595,10 +592,10 @@ async fn should_serve_events_with_no_query() {
 }
 
 /// Client setup:
-///   * `<IP:port>/events/<SSE_API_MAIN_PATH>?start_from=25`
+///   * `<IP:port>/events?start_from=25`
 ///   * connected just before event ID 50
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn should_serve_main_events_with_query() {
+async fn should_serve_events_with_query() {
     let mut rng = crate::new_rng();
     let mut fixture = TestFixture::new(&mut rng);
 
@@ -609,7 +606,7 @@ async fn should_serve_main_events_with_query() {
     let barrier = server_behavior.add_client_sync_before_event(connect_at_event_id);
     let server_address = fixture.run_server(server_behavior).await;
 
-    let url = url(server_address, Some(start_from_event_id));
+    let url = make_url(server_address, Some(start_from_event_id));
     let (expected_events, final_id) = fixture.events_filtered_by_id(start_from_event_id);
     let received_events = subscribe(&url, barrier, final_id, "client").await.unwrap();
     fixture.stop_server().await;
@@ -618,10 +615,10 @@ async fn should_serve_main_events_with_query() {
 }
 
 /// Client setup:
-///   * `<IP:port>/events/<SSE_API_MAIN_PATH>?start_from=0`
+///   * `<IP:port>/events?start_from=0`
 ///   * connected just before event ID 75
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn should_serve_remaining_main_events_with_query() {
+async fn should_serve_remaining_events_with_query() {
     let mut rng = crate::new_rng();
     let mut fixture = TestFixture::new(&mut rng);
 
@@ -632,7 +629,7 @@ async fn should_serve_remaining_main_events_with_query() {
     let barrier = server_behavior.add_client_sync_before_event(connect_at_event_id);
     let server_address = fixture.run_server(server_behavior).await;
 
-    let url = url(server_address, Some(start_from_event_id));
+    let url = make_url(server_address, Some(start_from_event_id));
     let expected_first_event = connect_at_event_id - BUFFER_LENGTH;
     let (expected_events, final_id) = fixture.events_filtered_by_id(expected_first_event);
     let received_events = subscribe(&url, barrier, final_id, "client").await.unwrap();
@@ -642,10 +639,10 @@ async fn should_serve_remaining_main_events_with_query() {
 }
 
 /// Client setup:
-///   * `<IP:port>/events/<SSE_API_MAIN_PATH>?start_from=25`
+///   * `<IP:port>/events?start_from=25`
 ///   * connected before first event
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn should_serve_main_events_with_query_for_future_event() {
+async fn should_serve_events_with_query_for_future_event() {
     let mut rng = crate::new_rng();
     let mut fixture = TestFixture::new(&mut rng);
 
@@ -653,7 +650,7 @@ async fn should_serve_main_events_with_query_for_future_event() {
     let barrier = server_behavior.add_client_sync_before_event(0);
     let server_address = fixture.run_server(server_behavior).await;
 
-    let url = url(server_address, Some(25));
+    let url = make_url(server_address, Some(25));
     let (expected_events, final_id) = fixture.all_events();
     let received_events = subscribe(&url, barrier, final_id, "client").await.unwrap();
     fixture.stop_server().await;
@@ -675,7 +672,7 @@ async fn server_exit_should_gracefully_shut_down_stream() {
     let barrier3 = server_behavior.add_client_sync_before_event(0);
     let server_address = fixture.run_server(server_behavior).await;
 
-    let url1 = url(server_address, None);
+    let url1 = make_url(server_address, None);
 
     // Run the three clients, and stop the server after a short delay.
     let (received_events1, received_events2, received_events3, _) = join!(
@@ -762,13 +759,13 @@ async fn lagging_clients_should_be_disconnected() {
     // at most `MAX_EVENT_COUNT` events, but the clients' futures should return before that, having
     // been disconnected for lagging.
     let mut server_behavior = ServerBehavior::new_for_lagging_test();
-    let barrier_main = server_behavior.add_client_sync_before_event(0);
+    let barrier = server_behavior.add_client_sync_before_event(0);
     let server_address = fixture.run_server(server_behavior).await;
 
-    let url_main = url(server_address, None);
+    let url = make_url(server_address, None);
 
     // Run the slow clients, then stop the server.
-    let result_slow_main = subscribe_slow(&url_main, barrier_main, "client 1").await;
+    let result_slow = subscribe_slow(&url, barrier, "client 1").await;
     fixture.stop_server().await;
 
     // Ensure both slow clients' streams terminated with an `UnexpectedEof` error.
@@ -786,7 +783,7 @@ async fn lagging_clients_should_be_disconnected() {
             .kind();
         assert!(matches!(kind, io::ErrorKind::UnexpectedEof));
     };
-    check_error(result_slow_main);
+    check_error(result_slow);
 }
 
 /// Checks that clients using the correct <IP:Port> but wrong path get a helpful error response.
@@ -803,17 +800,12 @@ async fn should_handle_bad_url_path() {
         format!("http://{}?{}=0", server_address, QUERY_FIELD),
         format!("http://{}/bad", server_address),
         format!("http://{}/bad?{}=0", server_address, QUERY_FIELD),
-        format!("http://{}/{}", server_address, ROOT_PATH),
         format!("http://{}/{}?{}=0", server_address, QUERY_FIELD, ROOT_PATH),
         format!("http://{}/{}/bad", server_address, ROOT_PATH),
         format!("http://{}/{}/bad?{}=0", server_address, QUERY_FIELD, ROOT_PATH),
-        format!("http://{}/{}/{}bad", server_address, ROOT_PATH, MAIN_PATH),
-        format!("http://{}/{}/{}bad?{}=0", server_address, QUERY_FIELD, ROOT_PATH, MAIN_PATH),
-        format!("http://{}/{}/{}/bad", server_address, ROOT_PATH, MAIN_PATH),
-        format!("http://{}/{}/{}/bad?{}=0", server_address, QUERY_FIELD, ROOT_PATH, MAIN_PATH),
     ];
 
-    let expected_body = format!("invalid path: expected '/{0}/{1}'", ROOT_PATH, MAIN_PATH);
+    let expected_body = format!("invalid path: expected '/{0}'", ROOT_PATH);
     for url in &urls {
         let response = reqwest::get(url).await.unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND, "URL: {}", url);
@@ -837,13 +829,13 @@ async fn should_handle_bad_url_query() {
 
     let server_address = fixture.run_server(ServerBehavior::new()).await;
 
-    let main_url = format!("http://{}/{}/{}", server_address, ROOT_PATH, MAIN_PATH);
+    let url = format!("http://{}/{}", server_address, ROOT_PATH);
     let urls = [
-        format!("{}?not-a-kv-pair", main_url),
-        format!("{}?start_fro=0", main_url),
-        format!("{}?{}=not-integer", main_url, QUERY_FIELD),
-        format!("{}?{}='0'", main_url, QUERY_FIELD),
-        format!("{}?{}=0&extra=1", main_url, QUERY_FIELD),
+        format!("{}?not-a-kv-pair", url),
+        format!("{}?start_fro=0", url),
+        format!("{}?{}=not-integer", url, QUERY_FIELD),
+        format!("{}?{}='0'", url, QUERY_FIELD),
+        format!("{}?{}=0&extra=1", url, QUERY_FIELD),
     ];
 
     let expected_body = format!(
@@ -871,7 +863,7 @@ async fn should_handle_bad_url_query() {
 
 /// Check that a server which restarts continues from the previous numbering of event IDs.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn should_persist_main_event_ids() {
+async fn should_persist_event_ids() {
     let mut rng = crate::new_rng();
     let mut fixture = TestFixture::new(&mut rng);
 
@@ -882,7 +874,7 @@ async fn should_persist_main_event_ids() {
         let server_address = fixture.run_server(server_behavior).await;
 
         // Consume these and stop the server.
-        let url = url(server_address, None);
+        let url = make_url(server_address, None);
         let (_expected_events, final_id) = fixture.all_events();
         let _ = subscribe(&url, barrier, final_id, "client 1")
             .await
@@ -905,7 +897,7 @@ async fn should_persist_main_event_ids() {
         assert!(fixture.first_event_id >= first_run_final_id);
 
         // Consume the events and assert their IDs are all >= `first_run_final_id`.
-        let url = url(server_address, None);
+        let url = make_url(server_address, None);
         let (expected_events, final_id) = fixture.events_filtered_by_id(EVENT_COUNT + 1);
         let received_events = subscribe(&url, barrier, final_id, "client 2")
             .await
@@ -922,7 +914,7 @@ async fn should_persist_main_event_ids() {
 
 /// Check that a server handles wrapping round past the maximum value for event IDs.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn should_handle_wrapping_past_max_event_id_for_main() {
+async fn should_handle_wrapping_past_max_event_id() {
     let mut rng = crate::new_rng();
     let mut fixture = TestFixture::new(&mut rng);
 
@@ -946,9 +938,9 @@ async fn should_handle_wrapping_past_max_event_id_for_main() {
 
     // The first client doesn't need a query string, but the second will request to start from an ID
     // from before they wrapped past the maximum value, and the third from event 0.
-    let url1 = url(server_address, None);
-    let url2 = url(server_address, Some(start_index + 1));
-    let url3 = url(server_address, Some(0));
+    let url1 = make_url(server_address, None);
+    let url2 = make_url(server_address, Some(start_index + 1));
+    let url3 = make_url(server_address, Some(0));
     let (expected_events1, final_id1) = fixture.all_events();
     let (expected_events2, final_id2) = fixture.events_filtered_by_id(start_index + 1);
     let (expected_events3, final_id3) = fixture.events_filtered_by_id(0);
@@ -983,50 +975,50 @@ async fn should_limit_concurrent_subscribers() {
     let barrier6 = server_behavior.add_client_sync_before_event(1);
     let server_address = fixture.run_server(server_behavior).await;
 
-    let url_main = url(server_address, None);
+    let url = make_url(server_address, None);
 
-    let (expected_main_events, final_main_id) = fixture.all_events();
+    let (expected_events, final_id) = fixture.all_events();
 
     // Run the six clients.
     let (
-        received_events_main_1,
-        received_events_main_2,
-        received_events_main_3,
-        empty_events_main_1,
-        empty_events_main_2,
-        empty_events_main_3,
+        received_events_1,
+        received_events_2,
+        received_events_3,
+        empty_events_1,
+        empty_events_2,
+        empty_events_3,
     ) = join!(
-        subscribe(&url_main, barrier1, final_main_id, "client 1"),
-        subscribe(&url_main, barrier2, final_main_id, "client 2"),
-        subscribe(&url_main, barrier3, final_main_id, "client 3"),
-        subscribe(&url_main, barrier4, final_main_id, "client 4"),
-        subscribe(&url_main, barrier5, final_main_id, "client 5"),
-        subscribe(&url_main, barrier6, final_main_id, "client 6"),
+        subscribe(&url, barrier1, final_id, "client 1"),
+        subscribe(&url, barrier2, final_id, "client 2"),
+        subscribe(&url, barrier3, final_id, "client 3"),
+        subscribe(&url, barrier4, final_id, "client 4"),
+        subscribe(&url, barrier5, final_id, "client 5"),
+        subscribe(&url, barrier6, final_id, "client 6"),
     );
 
     // Check the first three received all expected events.
-    assert_eq!(received_events_main_1.unwrap(), expected_main_events);
-    assert_eq!(received_events_main_2.unwrap(), expected_main_events);
-    assert_eq!(received_events_main_3.unwrap(), expected_main_events);
+    assert_eq!(received_events_1.unwrap(), expected_events);
+    assert_eq!(received_events_2.unwrap(), expected_events);
+    assert_eq!(received_events_3.unwrap(), expected_events);
 
     // Check the second three received no events.
-    assert!(empty_events_main_1.unwrap().is_empty());
-    assert!(empty_events_main_2.unwrap().is_empty());
-    assert!(empty_events_main_3.unwrap().is_empty());
+    assert!(empty_events_1.unwrap().is_empty());
+    assert!(empty_events_2.unwrap().is_empty());
+    assert!(empty_events_3.unwrap().is_empty());
 
     // Check that now the first clients have all disconnected, three new clients can connect.  Have
     // them start from event 80 to allow them to actually pull some events off the stream (as the
     // server has by now stopped creating any new events).
     let start_id = EVENT_COUNT - 20;
 
-    let url_main = url(server_address, Some(start_id));
+    let url = make_url(server_address, Some(start_id));
 
-    let (expected_main_events, final_main_id) = fixture.events_filtered_by_id(start_id);
+    let (expected_events, final_id) = fixture.events_filtered_by_id(start_id);
 
-    let received_events_main = subscribe_no_sync(&url_main, final_main_id, "client 7").await;
+    let received_events = subscribe_no_sync(&url, final_id, "client 7").await;
 
     // Check the last three clients' received events are as expected.
-    assert_eq!(received_events_main.unwrap(), expected_main_events);
+    assert_eq!(received_events.unwrap(), expected_events);
 
     fixture.stop_server().await;
 }

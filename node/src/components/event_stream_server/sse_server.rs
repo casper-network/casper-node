@@ -41,9 +41,7 @@ use casper_types::{
 };
 
 /// The URL root path.
-pub const SSE_API_ROOT_PATH: &str = "events";
-/// The URL path part to subscribe to all events.
-pub const SSE_API_MAIN_PATH: &str = "main";
+pub const SSE_API_PATH: &str = "events";
 /// The URL query string field name.
 pub const QUERY_FIELD: &str = "start_from";
 
@@ -298,9 +296,8 @@ fn parse_query(query: HashMap<String, String>) -> Result<Option<Id>, Response> {
 /// Creates a 404 response with a useful error message in the body.
 fn create_404() -> Response {
     let mut response = Response::new(Body::from(format!(
-        "invalid path: expected '/{root}/{main}'\n",
-        root = SSE_API_ROOT_PATH,
-        main = SSE_API_MAIN_PATH,
+        "invalid path: expected '/{root}'\n",
+        root = SSE_API_PATH,
     )));
     *response.status_mut() = StatusCode::NOT_FOUND;
     response
@@ -343,8 +340,7 @@ impl ChannelsAndFilter {
         // new client subscription.
         let (new_subscriber_info_sender, new_subscriber_info_receiver) = mpsc::unbounded_channel();
 
-        let serve = move |path_param: String,
-                          query: HashMap<String, String>,
+        let serve = move |query: HashMap<String, String>,
                           maybe_remote_address: Option<SocketAddr>| {
             let remote_address = match maybe_remote_address {
                 Some(address) => address.to_string(),
@@ -359,10 +355,6 @@ impl ChannelsAndFilter {
                     "event stream server has max subscribers: rejecting new one"
                 );
                 return create_503();
-            }
-
-            if SSE_API_MAIN_PATH != path_param.as_str() {
-                return create_404();
             }
 
             let start_from = match parse_query(query) {
@@ -398,8 +390,7 @@ impl ChannelsAndFilter {
         };
 
         let sse_filter = warp::get()
-            .and(path(SSE_API_ROOT_PATH))
-            .and(path::param::<String>())
+            .and(path(SSE_API_PATH))
             .and(path::end())
             .and(warp::query())
             .and(addr::remote())
@@ -496,10 +487,10 @@ mod tests {
     use super::*;
     use crate::logging;
 
-    /// This test checks that main events from the initial stream which are duplicated in the
+    /// This test checks that events from the initial stream which are duplicated in the
     /// ongoing stream are filtered out.
     #[tokio::test]
-    async fn should_filter_duplicate_main_events() {
+    async fn should_filter_duplicate_events() {
         // Returns `count` SSE events. The events will have sequential IDs starting from `start_id`.
         fn make_events(rng: &mut TestRng, start_id: Id, count: usize) -> Vec<ServerSentEvent> {
             (start_id..(start_id + count as u32))

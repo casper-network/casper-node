@@ -19,11 +19,12 @@ TMP_EVENTS_FILE=tmp_events_main.txt
 # - `DeployAccepted`    via /events/deploys
 # - `FinalitySignature` via /events/sigs
 #
-# Currently, all events should be emitted via `/events/main`. We check only for the above three
+# Currently, all events should be emitted via `/events`. We check only for the above three
 # explicitly mentioned events as more detailed tests are located in the `tests` module
 # of the `event_stream_server`.
 #
-# Additionally, this test verifies that `/events/deploys` and `/events/sigs` are no longer accessible.
+# Additionally, this test verifies that `/events/main`, `/events/deploys` and `/events/sigs`
+# are no longer accessible.
 #######################################
 function main() {
     log "------------------------------------------------------------"
@@ -33,6 +34,7 @@ function main() {
     do_await_genesis_era_to_complete
     do_check_endpoint_does_not_exist 'deploys'
     do_check_endpoint_does_not_exist 'sigs'
+    do_check_endpoint_does_not_exist 'main'
     do_attach_to_event_stream
     do_send_wasm_deploys
     await_n_blocks 1 false
@@ -63,7 +65,7 @@ function do_check_event_emitted() {
 
 function do_attach_to_event_stream() {
     log_step "attaching to event stream"
-    curl -o $TMP_EVENTS_FILE -N -s localhost:18101/events/main &
+    curl -o $TMP_EVENTS_FILE -N -s localhost:18101/events &
 }
 
 function do_check_endpoint_does_not_exist() {
@@ -73,7 +75,7 @@ function do_check_endpoint_does_not_exist() {
     log_step "checking endpoint '$EVENT_PATH' does not exist"
 
     RESPONSE=$(curl -s localhost:18101/events/{$EVENT_PATH})
-    if [ "$RESPONSE" != "invalid path: expected '/events/main'" ]; then
+    if [ "$RESPONSE" != "invalid path: expected '/events'" ]; then
         exit 1
     fi
 }
