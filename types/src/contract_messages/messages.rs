@@ -187,3 +187,28 @@ impl FromBytes for Message {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{bytesrepr, contract_messages::topics::TOPIC_NAME_HASH_LENGTH, KEY_HASH_LENGTH};
+
+    use super::*;
+
+    #[test]
+    fn serialization_roundtrip() {
+        let message_checksum = MessageChecksum([1; MESSAGE_CHECKSUM_LENGTH]);
+        bytesrepr::test_serialization_roundtrip(&message_checksum);
+
+        let message_payload = MessagePayload::from_string("message payload".to_string());
+        bytesrepr::test_serialization_roundtrip(&message_payload);
+
+        let message = Message::new(
+            [1; KEY_HASH_LENGTH],
+            message_payload,
+            "test_topic".to_string(),
+            TopicNameHash::new([0x4du8; TOPIC_NAME_HASH_LENGTH]),
+            10,
+        );
+        bytesrepr::test_serialization_roundtrip(&message);
+    }
+}

@@ -105,7 +105,7 @@ pub use chainspec::{
     ControlFlowCosts, CoreConfig, DelegatorConfig, DeployConfig, FeeHandling, GenesisAccount,
     GenesisValidator, GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError,
     HandlePaymentCosts, HighwayConfig, HostFunction, HostFunctionCost, HostFunctionCosts,
-    LegacyRequiredFinality, MessagesLimits, MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig,
+    LegacyRequiredFinality, MessageLimits, MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig,
     RefundHandling, StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig,
     TransactionV1Config, UpgradeConfig, ValidatorConfig, WasmConfig,
 };

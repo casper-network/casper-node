@@ -703,7 +703,7 @@ impl Key {
     }
 
     /// Creates a new [`Key::Message`] variant that identifies an indexed message based on an
-    /// `entity_addr` `topic_hash` and message `index`.
+    /// `entity_addr`, `topic_name_hash` and message `index`.
     pub fn message(entity_addr: HashAddr, topic_name_hash: TopicNameHash, index: u32) -> Key {
         Key::Message(MessageAddr::new_message_addr(
             entity_addr,

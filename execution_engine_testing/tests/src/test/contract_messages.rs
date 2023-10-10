@@ -8,8 +8,8 @@ use casper_execution_engine::engine_state::EngineConfigBuilder;
 use casper_types::{
     bytesrepr::ToBytes,
     contract_messages::{MessageChecksum, MessagePayload, MessageTopicSummary, TopicNameHash},
-    crypto, runtime_args, AddressableEntity, ContractHash, Digest, Key, MessagesLimits,
-    RuntimeArgs, StoredValue, WasmConfig,
+    crypto, runtime_args, AddressableEntity, ContractHash, Digest, Key, MessageLimits, RuntimeArgs,
+    StoredValue, WasmConfig,
 };
 
 const MESSAGE_EMITTER_INSTALLER_WASM: &str = "contract_messages_emitter.wasm";
@@ -402,7 +402,7 @@ fn should_not_exceed_configured_limits() {
             default_wasm_config.opcode_costs(),
             default_wasm_config.storage_costs(),
             default_wasm_config.take_host_function_costs(),
-            MessagesLimits {
+            MessageLimits {
                 max_topic_name_size: 32,
                 max_message_size: 100,
                 max_topics_per_contract: 2,
@@ -473,6 +473,24 @@ fn should_not_exceed_configured_limits() {
     builder
         .borrow_mut()
         .exec(add_topic_request)
+        .expect_failure()
+        .commit();
+
+    // Check message size limit
+    let large_message = std::str::from_utf8(&[0x4du8; 128]).unwrap();
+    let emit_message_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        ENTRY_POINT_EMIT_MESSAGE,
+        runtime_args! {
+            ARG_MESSAGE_SUFFIX_NAME => large_message,
+        },
+    )
+    .build();
+
+    builder
+        .borrow_mut()
+        .exec(emit_message_request)
         .expect_failure()
         .commit();
 }

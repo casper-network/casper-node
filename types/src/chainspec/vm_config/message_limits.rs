@@ -9,7 +9,7 @@ use crate::bytesrepr::{self, FromBytes, ToBytes};
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
-pub struct MessagesLimits {
+pub struct MessageLimits {
     /// Maximum size (in bytes) of a topic name string.
     pub max_topic_name_size: u32,
     /// Maximum message size in bytes.
@@ -18,7 +18,7 @@ pub struct MessagesLimits {
     pub max_topics_per_contract: u32,
 }
 
-impl MessagesLimits {
+impl MessageLimits {
     /// Returns the max number of topics a contract can register.
     pub fn max_topics_per_contract(&self) -> u32 {
         self.max_topics_per_contract
@@ -35,7 +35,7 @@ impl MessagesLimits {
     }
 }
 
-impl Default for MessagesLimits {
+impl Default for MessageLimits {
     fn default() -> Self {
         Self {
             max_topic_name_size: 256,
@@ -45,7 +45,7 @@ impl Default for MessagesLimits {
     }
 }
 
-impl ToBytes for MessagesLimits {
+impl ToBytes for MessageLimits {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
 
@@ -63,14 +63,14 @@ impl ToBytes for MessagesLimits {
     }
 }
 
-impl FromBytes for MessagesLimits {
+impl FromBytes for MessageLimits {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (max_topic_name_size, rem) = FromBytes::from_bytes(bytes)?;
         let (max_message_size, rem) = FromBytes::from_bytes(rem)?;
         let (max_topics_per_contract, rem) = FromBytes::from_bytes(rem)?;
 
         Ok((
-            MessagesLimits {
+            MessageLimits {
                 max_topic_name_size,
                 max_message_size,
                 max_topics_per_contract,
@@ -80,9 +80,9 @@ impl FromBytes for MessagesLimits {
     }
 }
 
-impl Distribution<MessagesLimits> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> MessagesLimits {
-        MessagesLimits {
+impl Distribution<MessageLimits> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> MessageLimits {
+        MessageLimits {
             max_topic_name_size: rng.gen(),
             max_message_size: rng.gen(),
             max_topics_per_contract: rng.gen(),
@@ -95,19 +95,37 @@ impl Distribution<MessagesLimits> for Standard {
 pub mod gens {
     use proptest::{num, prop_compose};
 
-    use super::MessagesLimits;
+    use super::MessageLimits;
 
     prop_compose! {
         pub fn message_limits_arb()(
             max_topic_name_size in num::u32::ANY,
             max_message_size in num::u32::ANY,
             max_topics_per_contract in num::u32::ANY,
-        ) -> MessagesLimits {
-            MessagesLimits {
+        ) -> MessageLimits {
+            MessageLimits {
                 max_topic_name_size,
                 max_message_size,
                 max_topics_per_contract,
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use proptest::proptest;
+
+    use crate::bytesrepr;
+
+    use super::gens;
+
+    proptest! {
+        #[test]
+        fn should_serialize_and_deserialize_with_arbitrary_values(
+            message_limits in gens::message_limits_arb()
+        ) {
+            bytesrepr::test_serialization_roundtrip(&message_limits);
         }
     }
 }

@@ -351,7 +351,7 @@ pub fn message_topics_arb() -> impl Strategy<Value = MessageTopics> {
             topic_names
                 .into_iter()
                 .map(|name| {
-                    let name_hash = crypto::blake2b(AsRef::<[u8]>::as_ref(&name)).into();
+                    let name_hash = crypto::blake2b(&name).into();
                     (name, name_hash)
                 })
                 .collect::<BTreeMap<String, TopicNameHash>>(),

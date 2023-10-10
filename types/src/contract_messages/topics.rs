@@ -195,6 +195,7 @@ const TOPIC_OPERATION_ADD_TAG: u8 = 0;
 const OPERATION_MAX_SERIALIZED_LEN: usize = 1;
 
 /// Operations that can be performed on message topics.
+#[derive(Debug, PartialEq)]
 pub enum MessageTopicOperation {
     /// Add a new message topic.
     Add,
@@ -230,5 +231,24 @@ impl FromBytes for MessageTopicOperation {
             TOPIC_OPERATION_ADD_TAG => Ok((MessageTopicOperation::Add, remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::bytesrepr;
+
+    use super::*;
+
+    #[test]
+    fn serialization_roundtrip() {
+        let topic_name_hash = TopicNameHash::new([0x4du8; TOPIC_NAME_HASH_LENGTH]);
+        bytesrepr::test_serialization_roundtrip(&topic_name_hash);
+
+        let topic_summary = MessageTopicSummary::new(10, BlockTime::new(100));
+        bytesrepr::test_serialization_roundtrip(&topic_summary);
+
+        let topic_operation = MessageTopicOperation::Add;
+        bytesrepr::test_serialization_roundtrip(&topic_operation);
     }
 }

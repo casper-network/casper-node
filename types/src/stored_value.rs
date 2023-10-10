@@ -673,8 +673,9 @@ mod serde_helpers {
         AddressableEntity(&'a AddressableEntity),
         /// Variant that stores [`BidKind`].
         BidKind(&'a BidKind),
-        /// Variant that stores [`MessageSummary`].
+        /// Variant that stores [`MessageTopicSummary`].
         MessageTopic(&'a MessageTopicSummary),
+        /// Variant that stores a [`MessageChecksum`].
         Message(&'a MessageChecksum),
     }
 
@@ -706,9 +707,9 @@ mod serde_helpers {
         AddressableEntity(AddressableEntity),
         /// Variant that stores [`BidKind`].
         BidKind(BidKind),
-        /// Variant that stores [`MessageSummary`].
+        /// Variant that stores [`MessageTopicSummary`].
         MessageTopic(MessageTopicSummary),
-        /// Variant that stores [`MessageDigest`].
+        /// Variant that stores [`MessageChecksum`].
         Message(MessageChecksum),
     }
 

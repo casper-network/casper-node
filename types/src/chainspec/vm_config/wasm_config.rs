@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    chainspec::vm_config::{HostFunctionCosts, MessagesLimits, OpcodeCosts, StorageCosts},
+    chainspec::vm_config::{HostFunctionCosts, MessageLimits, OpcodeCosts, StorageCosts},
 };
 
 /// Default maximum number of pages of the Wasm memory.
@@ -33,7 +33,7 @@ pub struct WasmConfig {
     /// Host function costs table.
     host_function_costs: HostFunctionCosts,
     /// Messages limits.
-    messages_limits: MessagesLimits,
+    messages_limits: MessageLimits,
 }
 
 impl WasmConfig {
@@ -44,7 +44,7 @@ impl WasmConfig {
         opcode_costs: OpcodeCosts,
         storage_costs: StorageCosts,
         host_function_costs: HostFunctionCosts,
-        messages_limits: MessagesLimits,
+        messages_limits: MessageLimits,
     ) -> Self {
         Self {
             max_memory,
@@ -72,7 +72,7 @@ impl WasmConfig {
     }
 
     /// Returns the limits config for messages.
-    pub fn messages_limits(&self) -> MessagesLimits {
+    pub fn messages_limits(&self) -> MessageLimits {
         self.messages_limits
     }
 }
@@ -85,7 +85,7 @@ impl Default for WasmConfig {
             opcode_costs: OpcodeCosts::default(),
             storage_costs: StorageCosts::default(),
             host_function_costs: HostFunctionCosts::default(),
-            messages_limits: MessagesLimits::default(),
+            messages_limits: MessageLimits::default(),
         }
     }
 }
@@ -156,7 +156,7 @@ pub mod gens {
     use crate::{
         chainspec::vm_config::{
             host_function_costs::gens::host_function_costs_arb,
-            messages_limits::gens::message_limits_arb, opcode_costs::gens::opcode_costs_arb,
+            message_limits::gens::message_limits_arb, opcode_costs::gens::opcode_costs_arb,
             storage_costs::gens::storage_costs_arb,
         },
         WasmConfig,

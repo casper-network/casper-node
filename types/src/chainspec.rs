@@ -47,7 +47,7 @@ pub use transaction_config::{DeployConfig, TransactionConfig, TransactionV1Confi
 pub use transaction_config::{DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES};
 pub use vm_config::{
     AuctionCosts, BrTableCost, ChainspecRegistry, ControlFlowCosts, HandlePaymentCosts,
-    HostFunction, HostFunctionCost, HostFunctionCosts, MessagesLimits, MintCosts, OpcodeCosts,
+    HostFunction, HostFunctionCost, HostFunctionCosts, MessageLimits, MintCosts, OpcodeCosts,
     StandardPaymentCosts, StorageCosts, SystemConfig, UpgradeConfig, WasmConfig,
     DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
 };

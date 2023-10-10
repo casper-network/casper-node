@@ -165,7 +165,7 @@ impl ExecutionResultV2 {
             .filter_map(|transform| {
                 if let Key::Message(addr) = transform.key() {
                     let topic_name = Alphanumeric.sample_string(rng, 32);
-                    let topic_name_hash = crypto::blake2b(AsRef::<[u8]>::as_ref(&topic_name));
+                    let topic_name_hash = crypto::blake2b(&topic_name);
                     Some(Message::new(
                         addr.entity_addr(),
                         MessagePayload::from_string(format!("random_msg: {}", rng.gen::<u64>())),

@@ -647,7 +647,7 @@ impl MessageTopics {
         topic_name: String,
         topic_name_hash: TopicNameHash,
     ) -> Result<(), MessageTopicError> {
-        if self.0.len() > u32::MAX as usize {
+        if self.0.len() >= u32::MAX as usize {
             return Err(MessageTopicError::MaxTopicsExceeded);
         }
 
@@ -680,7 +680,7 @@ impl MessageTopics {
         self.0.is_empty()
     }
 
-    /// Returns an iterator over the account hash and the weights.
+    /// Returns an iterator over the topic name and its hash.
     pub fn iter(&self) -> impl Iterator<Item = (&String, &TopicNameHash)> {
         self.0.iter()
     }
