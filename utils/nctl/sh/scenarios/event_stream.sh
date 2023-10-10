@@ -13,7 +13,7 @@ TMP_EVENTS_FILE=tmp_events_main.txt
 #######################################
 # Runs an integration tests that verifies if events are routed via correct SSE endpoints.
 # Prior to https://github.com/casper-network/casper-node/issues/4314 there were 3 different
-# endpoints, serving different evvents. The 3 events that this test verifies used to be
+# endpoints, serving different events. The 3 events that this test verifies used to be
 # routed as follows:
 # - `BlockAdded`        via /events/main
 # - `DeployAccepted`    via /events/deploys
