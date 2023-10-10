@@ -20,7 +20,7 @@ use crate::{
     account::AccountHash,
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     transaction::{AuctionTransactionV1, DirectCallV1},
-    AddressableEntityHash, CLTyped, CLValueError, ContractPackageHash, ContractPackageIdentifier,
+    CLTyped, CLValueError, ContractHash, ContractPackageHash, ContractPackageIdentifier,
     ContractVersion, PublicKey, RuntimeArgs, URef, U512,
 };
 
@@ -158,7 +158,7 @@ impl TransactionV1Kind {
 
     /// Returns a new stored-contract-by-hash transaction body.
     pub fn new_stored_contract_by_hash(
-        hash: AddressableEntityHash,
+        hash: ContractHash,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Self {

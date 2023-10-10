@@ -7,10 +7,10 @@ use crate::Digest;
 
 pub(crate) mod contract_hash_as_digest {
     use super::*;
-    use crate::AddressableEntityHash;
+    use crate::ContractHash;
 
     pub(crate) fn serialize<S: Serializer>(
-        contract_hash: &AddressableEntityHash,
+        contract_hash: &ContractHash,
         serializer: S,
     ) -> Result<S::Ok, S::Error> {
         Digest::from(contract_hash.value()).serialize(serializer)
@@ -18,9 +18,9 @@ pub(crate) mod contract_hash_as_digest {
 
     pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
-    ) -> Result<AddressableEntityHash, D::Error> {
+    ) -> Result<ContractHash, D::Error> {
         let digest = Digest::deserialize(deserializer)?;
-        Ok(AddressableEntityHash::new(digest.value()))
+        Ok(ContractHash::new(digest.value()))
     }
 }
 

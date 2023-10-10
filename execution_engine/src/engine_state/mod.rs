@@ -60,10 +60,10 @@ use casper_types::{
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, AddressableEntity, AddressableEntityHash, ApiError, BlockTime, CLValue,
-    ChainspecRegistry, ContractPackageHash, ContractWasmHash, DeployHash, DeployInfo, Digest,
-    EntryPoints, EraId, ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Package, Phase,
-    ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
+    AccessRights, AddressableEntity, ApiError, BlockTime, CLValue, ChainspecRegistry, ContractHash,
+    ContractPackageHash, ContractWasmHash, DeployHash, DeployInfo, Digest, EntryPoints, EraId,
+    ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Package, Phase, ProtocolVersion,
+    PublicKey, RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
 };
 
 use self::transfer::NewTransferTargetMode;
@@ -808,7 +808,7 @@ where
         protocol_version: ProtocolVersion,
         authorization_keys: &BTreeSet<AccountHash>,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-    ) -> Result<(AddressableEntity, AddressableEntityHash), Error> {
+    ) -> Result<(AddressableEntity, ContractHash), Error> {
         let entity_record = match tracking_copy
             .borrow_mut()
             .get_addressable_entity_by_account_hash(protocol_version, account_hash)
@@ -817,7 +817,7 @@ where
             Err(_) => return Err(Error::MissingContractByAccountHash(account_hash)),
         };
 
-        let entity_hash: AddressableEntityHash = match tracking_copy
+        let entity_hash: ContractHash = match tracking_copy
             .borrow_mut()
             .get_entity_hash_by_account_hash(account_hash)
         {
@@ -859,7 +859,7 @@ where
             AddressGenerator::new(account.main_purse().addr().as_ref(), Phase::System);
 
         let contract_wasm_hash = *ACCOUNT_WASM_HASH;
-        let contract_hash = AddressableEntityHash::new(generator.new_hash_address());
+        let contract_hash = ContractHash::new(generator.new_hash_address());
         let contract_package_hash = ContractPackageHash::new(generator.new_hash_address());
 
         let entry_points = EntryPoints::new();
@@ -1059,7 +1059,7 @@ where
             None => {
                 return Ok(ExecutionResult::precondition_failure(
                     Error::GasConversionOverflow,
-                ));
+                ))
             }
         };
 
@@ -1376,7 +1376,7 @@ where
                 match Gas::from_motes(payment_purse_balance, WASMLESS_TRANSFER_FIXED_GAS_PRICE) {
                     Some(gas) => gas,
                     None => {
-                        return Ok(make_charged_execution_failure(Error::GasConversionOverflow));
+                        return Ok(make_charged_execution_failure(Error::GasConversionOverflow))
                     }
                 };
 
@@ -1392,7 +1392,7 @@ where
             Err(error) => {
                 return Ok(make_charged_execution_failure(
                     ExecError::from(error).into(),
-                ));
+                ))
             }
         };
 
@@ -1696,7 +1696,7 @@ where
                 None => {
                     return Ok(ExecutionResult::precondition_failure(
                         Error::GasConversionOverflow,
-                    ));
+                    ))
                 }
             };
 
@@ -1883,7 +1883,7 @@ where
                 None => {
                     return Ok(ExecutionResult::precondition_failure(
                         Error::GasConversionOverflow,
-                    ));
+                    ))
                 }
             };
 
@@ -1930,7 +1930,7 @@ where
                     None => {
                         return Ok(ExecutionResult::precondition_failure(
                             Error::GasConversionOverflow,
-                        ));
+                        ))
                     }
                 };
 
@@ -2025,7 +2025,7 @@ where
                     None => {
                         return Ok(ExecutionResult::precondition_failure(
                             Error::GasConversionOverflow,
-                        ));
+                        ))
                     }
                 };
 
@@ -2585,7 +2585,7 @@ where
     }
 
     /// Returns mint system contract hash.
-    pub fn get_system_mint_hash(&self, state_hash: Digest) -> Result<AddressableEntityHash, Error> {
+    pub fn get_system_mint_hash(&self, state_hash: Digest) -> Result<ContractHash, Error> {
         let registry = self.get_system_contract_registry(state_hash)?;
         let mint_hash = registry.get(MINT).ok_or_else(|| {
             error!("Missing system mint contract hash");
@@ -2595,10 +2595,7 @@ where
     }
 
     /// Returns auction system contract hash.
-    pub fn get_system_auction_hash(
-        &self,
-        state_hash: Digest,
-    ) -> Result<AddressableEntityHash, Error> {
+    pub fn get_system_auction_hash(&self, state_hash: Digest) -> Result<ContractHash, Error> {
         let registry = self.get_system_contract_registry(state_hash)?;
         let auction_hash = registry.get(AUCTION).ok_or_else(|| {
             error!("Missing system auction contract hash");
@@ -2608,10 +2605,7 @@ where
     }
 
     /// Returns handle payment system contract hash.
-    pub fn get_handle_payment_hash(
-        &self,
-        state_hash: Digest,
-    ) -> Result<AddressableEntityHash, Error> {
+    pub fn get_handle_payment_hash(&self, state_hash: Digest) -> Result<ContractHash, Error> {
         let registry = self.get_system_contract_registry(state_hash)?;
         let handle_payment = registry.get(HANDLE_PAYMENT).ok_or_else(|| {
             error!("Missing system handle payment contract hash");
@@ -2621,10 +2615,7 @@ where
     }
 
     /// Returns standard payment system contract hash.
-    pub fn get_standard_payment_hash(
-        &self,
-        state_hash: Digest,
-    ) -> Result<AddressableEntityHash, Error> {
+    pub fn get_standard_payment_hash(&self, state_hash: Digest) -> Result<ContractHash, Error> {
         let registry = self.get_system_contract_registry(state_hash)?;
         let standard_payment = registry.get(STANDARD_PAYMENT).ok_or_else(|| {
             error!("Missing system standard payment contract hash");

@@ -1854,7 +1854,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Stored contract referenced by its [`AddressableEntityHash`], entry point and an instance of [`RuntimeArgs`].",
+                "description": "Stored contract referenced by its [`ContractHash`], entry point and an instance of [`RuntimeArgs`].",
                 "type": "object",
                 "required": [
                   "StoredContractByHash"
@@ -4396,7 +4396,7 @@
               "contract_hash": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/AddressableEntityHash"
+                    "$ref": "#/components/schemas/ContractHash"
                   }
                 ]
               }
@@ -4424,7 +4424,7 @@
               }
             }
           },
-          "AddressableEntityHash": {
+          "ContractHash": {
             "description": "The hex-encoded address of the addressable entity.",
             "type": "string"
           },

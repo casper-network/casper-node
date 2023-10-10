@@ -13,7 +13,7 @@ use rand::{
 };
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{bytesrepr, AddressableEntityHash, URef, URefAddr};
+use crate::{bytesrepr, ContractHash, URef, URefAddr};
 
 /// The number of bytes in a serialized [`AccessRights`].
 pub const ACCESS_RIGHTS_SERIALIZED_LENGTH: usize = 1;
@@ -157,7 +157,7 @@ pub enum GrantedAccess {
 /// Access rights for a given runtime context.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ContextAccessRights {
-    context_contract_hash: AddressableEntityHash,
+    context_contract_hash: ContractHash,
     access_rights: BTreeMap<URefAddr, AccessRights>,
 }
 
@@ -165,7 +165,7 @@ impl ContextAccessRights {
     /// Creates a new instance of access rights from an iterator of URefs merging any duplicates,
     /// taking the union of their rights.
     pub fn new<T: IntoIterator<Item = URef>>(
-        context_contract_hash: AddressableEntityHash,
+        context_contract_hash: ContractHash,
         uref_iter: T,
     ) -> Self {
         let mut context_access_rights = ContextAccessRights {
@@ -177,7 +177,7 @@ impl ContextAccessRights {
     }
 
     /// Returns the current context key.
-    pub fn context_key(&self) -> AddressableEntityHash {
+    pub fn context_key(&self) -> ContractHash {
         self.context_contract_hash
     }
 
@@ -250,7 +250,7 @@ mod tests {
     use super::*;
     use crate::UREF_ADDR_LENGTH;
 
-    const CONTRACT_HASH: AddressableEntityHash = AddressableEntityHash::new([1u8; 32]);
+    const CONTRACT_HASH: ContractHash = ContractHash::new([1u8; 32]);
     const UREF_ADDRESS: [u8; UREF_ADDR_LENGTH] = [1; UREF_ADDR_LENGTH];
     const UREF_NO_PERMISSIONS: URef = URef::new(UREF_ADDRESS, AccessRights::empty());
     const UREF_READ: URef = URef::new(UREF_ADDRESS, AccessRights::READ);
@@ -367,7 +367,7 @@ mod tests {
             granted_access,
             GrantedAccess::Granted {
                 uref_addr: UREF_ADDRESS,
-                newly_granted_access_rights: AccessRights::WRITE,
+                newly_granted_access_rights: AccessRights::WRITE
             }
         );
         assert!(context_rights.has_access_rights_to_uref(&UREF_READ_ADD_WRITE));
@@ -377,7 +377,7 @@ mod tests {
             granted_access,
             GrantedAccess::Granted {
                 uref_addr: new_uref.addr(),
-                newly_granted_access_rights: AccessRights::all(),
+                newly_granted_access_rights: AccessRights::all()
             }
         );
         assert!(context_rights.has_access_rights_to_uref(&new_uref));

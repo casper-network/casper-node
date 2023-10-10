@@ -4,7 +4,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::engine_state::ExecuteRequest;
 use casper_types::{
-    runtime_args, system::standard_payment::ARG_AMOUNT, AddressableEntityHash, ContractPackageHash,
+    runtime_args, system::standard_payment::ARG_AMOUNT, ContractHash, ContractPackageHash,
     RuntimeArgs,
 };
 
@@ -15,11 +15,7 @@ const NEW_KEY_NAME: &str = "Hello";
 const CONTRACT_PACKAGE_KEY: &str = "contract_package";
 const CONTRACT_HASH_KEY: &str = "contract_hash";
 
-fn setup() -> (
-    LmdbWasmTestBuilder,
-    ContractPackageHash,
-    AddressableEntityHash,
-) {
+fn setup() -> (LmdbWasmTestBuilder, ContractPackageHash, ContractHash) {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -56,15 +52,13 @@ fn setup() -> (
 
     let contract_hash = contract_hash_key
         .into_hash()
-        .map(AddressableEntityHash::new)
+        .map(ContractHash::new)
         .expect("should be hash");
 
     (builder, contract_package_hash, contract_hash)
 }
 
-fn test(
-    request_builder: impl FnOnce(ContractPackageHash, AddressableEntityHash) -> ExecuteRequest,
-) {
+fn test(request_builder: impl FnOnce(ContractPackageHash, ContractHash) -> ExecuteRequest) {
     let (mut builder, contract_package_hash, contract_hash) = setup();
 
     let exec_request = request_builder(contract_package_hash, contract_hash);

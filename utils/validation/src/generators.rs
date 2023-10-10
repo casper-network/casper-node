@@ -14,10 +14,10 @@ use casper_types::{
         Bid, BidAddr, BidKind, Delegator, EraInfo, SeigniorageAllocation, UnbondingPurse,
         ValidatorBid, WithdrawPurse,
     },
-    AccessRights, AddressableEntityHash, CLType, CLTyped, CLValue, ContractPackageHash,
-    ContractVersionKey, ContractWasm, ContractWasmHash, DeployHash, DeployInfo, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, Parameter, ProtocolVersion,
-    PublicKey, SecretKey, StoredValue, Transfer, TransferAddr, URef, U512,
+    AccessRights, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash, ContractVersionKey,
+    ContractWasm, ContractWasmHash, DeployHash, DeployInfo, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints, EraId, Group, Key, Parameter, ProtocolVersion, PublicKey,
+    SecretKey, StoredValue, Transfer, TransferAddr, URef, U512,
 };
 use casper_validation::{
     abi::{ABIFixture, ABITestCase},
@@ -383,8 +383,8 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         );
 
         let mut active_versions = BTreeMap::new();
-        let v1_hash = AddressableEntityHash::new([99; 32]);
-        let v2_hash = AddressableEntityHash::new([100; 32]);
+        let v1_hash = ContractHash::new([99; 32]);
+        let v2_hash = ContractHash::new([100; 32]);
         active_versions.insert(ContractVersionKey::new(1, 2), v1_hash);
         let v1 = ContractVersionKey::new(1, 1);
         active_versions.insert(v1, v2_hash);

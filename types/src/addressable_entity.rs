@@ -225,14 +225,14 @@ impl Display for FromStrError {
     derive(JsonSchema),
     schemars(description = "The hex-encoded address of the addressable entity.")
 )]
-pub struct AddressableEntityHash(
+pub struct ContractHash(
     #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr,
 );
 
-impl AddressableEntityHash {
+impl ContractHash {
     /// Constructs a new `ContractHash` from the raw bytes of the contract hash.
-    pub const fn new(value: HashAddr) -> AddressableEntityHash {
-        AddressableEntityHash(value)
+    pub const fn new(value: HashAddr) -> ContractHash {
+        ContractHash(value)
     }
 
     /// Returns the raw bytes of the contract hash as an array.
@@ -261,29 +261,29 @@ impl AddressableEntityHash {
             .strip_prefix(CONTRACT_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
         let bytes = HashAddr::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
-        Ok(AddressableEntityHash(bytes))
+        Ok(ContractHash(bytes))
     }
 }
 
-impl Display for AddressableEntityHash {
+impl Display for ContractHash {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", base16::encode_lower(&self.0))
     }
 }
 
-impl Debug for AddressableEntityHash {
+impl Debug for ContractHash {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
         write!(f, "ContractHash({})", base16::encode_lower(&self.0))
     }
 }
 
-impl CLTyped for AddressableEntityHash {
+impl CLTyped for ContractHash {
     fn cl_type() -> CLType {
         CLType::ByteArray(KEY_HASH_LENGTH as u32)
     }
 }
 
-impl ToBytes for AddressableEntityHash {
+impl ToBytes for ContractHash {
     #[inline(always)]
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.0.to_bytes()
@@ -301,20 +301,20 @@ impl ToBytes for AddressableEntityHash {
     }
 }
 
-impl FromBytes for AddressableEntityHash {
+impl FromBytes for ContractHash {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (bytes, rem) = FromBytes::from_bytes(bytes)?;
-        Ok((AddressableEntityHash::new(bytes), rem))
+        Ok((ContractHash::new(bytes), rem))
     }
 }
 
-impl From<[u8; 32]> for AddressableEntityHash {
+impl From<[u8; 32]> for ContractHash {
     fn from(bytes: [u8; 32]) -> Self {
-        AddressableEntityHash(bytes)
+        ContractHash(bytes)
     }
 }
 
-impl Serialize for AddressableEntityHash {
+impl Serialize for ContractHash {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
             self.to_formatted_string().serialize(serializer)
@@ -324,40 +324,40 @@ impl Serialize for AddressableEntityHash {
     }
 }
 
-impl<'de> Deserialize<'de> for AddressableEntityHash {
+impl<'de> Deserialize<'de> for ContractHash {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         if deserializer.is_human_readable() {
             let formatted_string = String::deserialize(deserializer)?;
-            AddressableEntityHash::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
+            ContractHash::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
         } else {
             let bytes = HashAddr::deserialize(deserializer)?;
-            Ok(AddressableEntityHash(bytes))
+            Ok(ContractHash(bytes))
         }
     }
 }
 
-impl AsRef<[u8]> for AddressableEntityHash {
+impl AsRef<[u8]> for ContractHash {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
     }
 }
 
-impl TryFrom<&[u8]> for AddressableEntityHash {
+impl TryFrom<&[u8]> for ContractHash {
     type Error = TryFromSliceForContractHashError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, TryFromSliceForContractHashError> {
         HashAddr::try_from(bytes)
-            .map(AddressableEntityHash::new)
+            .map(ContractHash::new)
             .map_err(|_| TryFromSliceForContractHashError(()))
     }
 }
 
-impl TryFrom<&Vec<u8>> for AddressableEntityHash {
+impl TryFrom<&Vec<u8>> for ContractHash {
     type Error = TryFromSliceForContractHashError;
 
     fn try_from(bytes: &Vec<u8>) -> Result<Self, Self::Error> {
         HashAddr::try_from(bytes as &[u8])
-            .map(AddressableEntityHash::new)
+            .map(ContractHash::new)
             .map_err(|_| TryFromSliceForContractHashError(()))
     }
 }
@@ -907,10 +907,7 @@ impl AddressableEntity {
     }
 
     /// Extracts the access rights from the named keys of the addressable entity.
-    pub fn extract_access_rights(
-        &self,
-        contract_hash: AddressableEntityHash,
-    ) -> ContextAccessRights {
+    pub fn extract_access_rights(&self, contract_hash: ContractHash) -> ContextAccessRights {
         let urefs_iter = self
             .named_keys
             .keys()
@@ -1397,36 +1394,36 @@ mod tests {
     fn contract_hash_from_slice() {
         let bytes: Vec<u8> = (0..32).collect();
         let contract_hash = HashAddr::try_from(&bytes[..]).expect("should create contract hash");
-        let contract_hash = AddressableEntityHash::new(contract_hash);
+        let contract_hash = ContractHash::new(contract_hash);
         assert_eq!(&bytes, &contract_hash.as_bytes());
     }
 
     #[test]
     fn contract_hash_from_str() {
-        let contract_hash = AddressableEntityHash([3; 32]);
+        let contract_hash = ContractHash([3; 32]);
         let encoded = contract_hash.to_formatted_string();
-        let decoded = AddressableEntityHash::from_formatted_str(&encoded).unwrap();
+        let decoded = ContractHash::from_formatted_str(&encoded).unwrap();
         assert_eq!(contract_hash, decoded);
 
         let invalid_prefix =
             "contract--0000000000000000000000000000000000000000000000000000000000000000";
-        assert!(AddressableEntityHash::from_formatted_str(invalid_prefix).is_err());
+        assert!(ContractHash::from_formatted_str(invalid_prefix).is_err());
 
         let short_addr = "contract-00000000000000000000000000000000000000000000000000000000000000";
-        assert!(AddressableEntityHash::from_formatted_str(short_addr).is_err());
+        assert!(ContractHash::from_formatted_str(short_addr).is_err());
 
         let long_addr =
             "contract-000000000000000000000000000000000000000000000000000000000000000000";
-        assert!(AddressableEntityHash::from_formatted_str(long_addr).is_err());
+        assert!(ContractHash::from_formatted_str(long_addr).is_err());
 
         let invalid_hex =
             "contract-000000000000000000000000000000000000000000000000000000000000000g";
-        assert!(AddressableEntityHash::from_formatted_str(invalid_hex).is_err());
+        assert!(ContractHash::from_formatted_str(invalid_hex).is_err());
     }
 
     #[test]
     fn contract_hash_serde_roundtrip() {
-        let contract_hash = AddressableEntityHash([255; 32]);
+        let contract_hash = ContractHash([255; 32]);
         let serialized = bincode::serialize(&contract_hash).unwrap();
         let deserialized = bincode::deserialize(&serialized).unwrap();
         assert_eq!(contract_hash, deserialized)
@@ -1434,7 +1431,7 @@ mod tests {
 
     #[test]
     fn contract_hash_json_roundtrip() {
-        let contract_hash = AddressableEntityHash([255; 32]);
+        let contract_hash = ContractHash([255; 32]);
         let json_string = serde_json::to_string_pretty(&contract_hash).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(contract_hash, decoded)
@@ -1444,7 +1441,7 @@ mod tests {
     fn should_extract_access_rights() {
         const MAIN_PURSE: URef = URef::new([2; 32], AccessRights::READ_ADD_WRITE);
 
-        let contract_hash = AddressableEntityHash([255; 32]);
+        let contract_hash = ContractHash([255; 32]);
         let uref = URef::new([84; UREF_ADDR_LENGTH], AccessRights::READ_ADD);
         let uref_r = URef::new([42; UREF_ADDR_LENGTH], AccessRights::READ);
         let uref_a = URef::new([42; UREF_ADDR_LENGTH], AccessRights::ADD);

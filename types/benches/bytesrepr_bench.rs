@@ -11,11 +11,11 @@ use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     package::{ContractPackageKind, ContractPackageStatus},
     system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
-    AccessRights, AddressableEntityHash, CLType, CLTyped, CLValue, ContractPackageHash,
-    ContractVersionKey, ContractVersions, ContractWasmHash, DeployHash, DeployInfo, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, Group, Groups, Key, Package, Parameter,
-    ProtocolVersion, PublicKey, SecretKey, Transfer, TransferAddr, URef, KEY_HASH_LENGTH,
-    TRANSFER_ADDR_LENGTH, U128, U256, U512, UREF_ADDR_LENGTH,
+    AccessRights, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash, ContractVersionKey,
+    ContractVersions, ContractWasmHash, DeployHash, DeployInfo, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints, Group, Groups, Key, Package, Parameter, ProtocolVersion,
+    PublicKey, SecretKey, Transfer, TransferAddr, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH,
+    U128, U256, U512, UREF_ADDR_LENGTH,
 };
 
 static KB: usize = 1024;
@@ -509,8 +509,8 @@ fn contract_version_key_fn(i: u8) -> ContractVersionKey {
     ContractVersionKey::new(i as u32, i as u32)
 }
 
-fn contract_hash_fn(i: u8) -> AddressableEntityHash {
-    AddressableEntityHash::new([i; KEY_HASH_LENGTH])
+fn contract_hash_fn(i: u8) -> ContractHash {
+    ContractHash::new([i; KEY_HASH_LENGTH])
 }
 
 fn sample_map<K: Ord, V, FK, FV>(key_fn: FK, value_fn: FV, count: u8) -> BTreeMap<K, V>

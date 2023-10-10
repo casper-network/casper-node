@@ -9,9 +9,7 @@ use casper_storage::global_state::{
 };
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
-    addressable_entity::{
-        ActionThresholds, AddressableEntityHash, AssociatedKeys, NamedKeys, Weight,
-    },
+    addressable_entity::{ActionThresholds, AssociatedKeys, ContractHash, NamedKeys, Weight},
     execution::{Effects, Transform, TransformKind},
     gens::*,
     package::ContractPackageHash,
@@ -154,7 +152,7 @@ fn tracking_copy_write() {
         tc.effects,
         effects(vec![
             (k, TransformKind::Write(one)),
-            (k, TransformKind::Write(two)),
+            (k, TransformKind::Write(two))
         ])
     );
 }
@@ -249,7 +247,7 @@ fn tracking_copy_add_named_key() {
                 TransformKind::AddKeys(NamedKeys::from(
                     iter::once((name2, u2)).collect::<BTreeMap<_, _>>()
                 ))
-            ),
+            )
         ])
     );
 }
@@ -269,7 +267,7 @@ fn tracking_copy_rw() {
         tc.effects,
         effects(vec![
             (k, TransformKind::Identity),
-            (k, TransformKind::Write(value)),
+            (k, TransformKind::Write(value))
         ])
     );
 }
@@ -289,7 +287,7 @@ fn tracking_copy_ra() {
         tc.effects,
         effects(vec![
             (k, TransformKind::Identity),
-            (k, TransformKind::AddInt32(3)),
+            (k, TransformKind::AddInt32(3))
         ])
     );
 }
@@ -310,7 +308,7 @@ fn tracking_copy_aw() {
         tc.effects,
         effects(vec![
             (k, TransformKind::AddInt32(3)),
-            (k, TransformKind::Write(write_value)),
+            (k, TransformKind::Write(write_value))
         ])
     );
 }
@@ -458,7 +456,7 @@ proptest! {
         account_named_keys.insert(contract_name, contract_key);
 
 
-        let contract_hash = AddressableEntityHash::new([10;32]);
+        let contract_hash = ContractHash::new([10;32]);
         let new_contract_key: Key = contract_hash.into();
         let account_value = CLValue::from_t(new_contract_key).unwrap();
         let account_key = Key::Account(address);
@@ -591,7 +589,7 @@ fn validate_query_proof_should_work() {
     // create account
     let account_hash = AccountHash::new([3; 32]);
     let fake_purse = URef::new([4; 32], AccessRights::READ_ADD_WRITE);
-    let account_contract_hash = AddressableEntityHash::new([30; 32]);
+    let account_contract_hash = ContractHash::new([30; 32]);
     let account_contract_key: Key = account_contract_hash.into();
     let cl_value = CLValue::from_t(account_contract_key).unwrap();
     let account_value = StoredValue::CLValue(cl_value);
@@ -638,7 +636,7 @@ fn validate_query_proof_should_work() {
         tmp
     };
 
-    let main_contract_hash = AddressableEntityHash::new([81; 32]);
+    let main_contract_hash = ContractHash::new([81; 32]);
     let main_contract_key: Key = main_contract_hash.into();
 
     let cl_value_2 = CLValue::from_t(main_contract_key).unwrap();
@@ -708,7 +706,7 @@ fn validate_query_proof_should_work() {
             &proofs,
             &main_contract_key,
             &[],
-            &account_value,
+            &account_value
         ),
         Err(ValidationError::PathLengthDifferentThanProofLessOne)
     );
@@ -720,7 +718,7 @@ fn validate_query_proof_should_work() {
             &proofs,
             &main_contract_key,
             path,
-            &main_account_value,
+            &main_account_value
         ),
         Err(ValidationError::UnexpectedValue)
     );
@@ -732,7 +730,7 @@ fn validate_query_proof_should_work() {
             &proofs,
             &account_key,
             path,
-            &account_value,
+            &account_value
         ),
         Err(ValidationError::UnexpectedKey)
     );
@@ -744,7 +742,7 @@ fn validate_query_proof_should_work() {
             &proofs,
             &main_contract_key,
             path,
-            &account_value,
+            &account_value
         ),
         Err(ValidationError::InvalidProofHash)
     );
@@ -759,7 +757,7 @@ fn validate_query_proof_should_work() {
                 "a non-existent path key 1".to_string(),
                 "a non-existent path key 2".to_string()
             ],
-            &account_value,
+            &account_value
         ),
         Err(ValidationError::PathCold)
     );
@@ -787,7 +785,7 @@ fn validate_query_proof_should_work() {
             ],
             &main_contract_key,
             path,
-            &account_contract,
+            &account_contract
         ),
         Err(ValidationError::UnexpectedKey)
     );
@@ -803,7 +801,7 @@ fn validate_query_proof_should_work() {
             ],
             &uref_key.normalize(),
             path,
-            &account_value,
+            &account_value
         ),
         Err(ValidationError::PathCold)
     );
@@ -815,7 +813,7 @@ fn validate_query_proof_should_work() {
             &[misfit_proof, proofs[1].to_owned(), proofs[2].to_owned()],
             &uref_key.normalize(),
             path,
-            &account_value,
+            &account_value
         ),
         Err(ValidationError::PathCold)
     );
@@ -852,7 +850,7 @@ fn validate_query_proof_should_work() {
             &[proofs[0].to_owned(), misfit_proof, proofs[2].to_owned()],
             &main_contract_key,
             path,
-            &account_value,
+            &account_value
         ),
         Err(ValidationError::InvalidProofHash)
     );
@@ -876,14 +874,14 @@ fn get_keys_should_return_keys_in_the_account_keyspace() {
     // account 1
     let account_1_hash = AccountHash::new([1; 32]);
 
-    let account_cl_value = CLValue::from_t(AddressableEntityHash::new([20; 32])).unwrap();
+    let account_cl_value = CLValue::from_t(ContractHash::new([20; 32])).unwrap();
     let account_1_value = StoredValue::CLValue(account_cl_value);
     let account_1_key = Key::Account(account_1_hash);
 
     // account 2
     let account_2_hash = AccountHash::new([2; 32]);
 
-    let fake_account_cl_value = CLValue::from_t(AddressableEntityHash::new([21; 32])).unwrap();
+    let fake_account_cl_value = CLValue::from_t(ContractHash::new([21; 32])).unwrap();
     let account_2_value = StoredValue::CLValue(fake_account_cl_value);
     let account_2_key = Key::Account(account_2_hash);
 
@@ -919,7 +917,7 @@ fn get_keys_should_return_keys_in_the_uref_keyspace() {
     // account
     let account_hash = AccountHash::new([1; 32]);
 
-    let account_cl_value = CLValue::from_t(AddressableEntityHash::new([20; 32])).unwrap();
+    let account_cl_value = CLValue::from_t(ContractHash::new([20; 32])).unwrap();
     let account_value = StoredValue::CLValue(account_cl_value);
     let account_key = Key::Account(account_hash);
 
@@ -1011,7 +1009,7 @@ fn get_keys_should_handle_reads_from_empty_trie() {
     // persist account
     let account_hash = AccountHash::new([1; 32]);
 
-    let account_value = CLValue::from_t(AddressableEntityHash::new([10; 32])).unwrap();
+    let account_value = CLValue::from_t(ContractHash::new([10; 32])).unwrap();
     let account_value = StoredValue::CLValue(account_value);
     let account_key = Key::Account(account_hash);
     tracking_copy.write(account_key, account_value);

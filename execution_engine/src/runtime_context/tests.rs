@@ -20,10 +20,10 @@ use casper_types::{
     execution::TransformKind,
     package::ContractPackageKind,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
-    AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLValue,
-    ContextAccessRights, ContractPackageHash, ContractWasmHash, DeployHash, EntryPointType,
-    EntryPoints, Gas, Key, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue,
-    URef, KEY_HASH_LENGTH, U256, U512,
+    AccessRights, AddressableEntity, BlockTime, CLValue, ContextAccessRights, ContractHash,
+    ContractPackageHash, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, Gas, Key,
+    Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef, KEY_HASH_LENGTH,
+    U256, U512,
 };
 use tempfile::TempDir;
 
@@ -46,7 +46,7 @@ fn test_engine_config() -> EngineConfig {
 
 fn new_tracking_copy(
     account_hash: AccountHash,
-    init_entity_key: AddressableEntityHash,
+    init_entity_key: ContractHash,
     init_entity: AddressableEntity,
 ) -> (TrackingCopy<LmdbGlobalStateView>, TempDir) {
     let entity_key_cl_value =
@@ -101,10 +101,10 @@ fn random_account_key<G: RngCore>(entropy_source: &mut G) -> Key {
 }
 
 // create random contract key.
-fn random_contract_key<G: RngCore>(entropy_source: &mut G) -> AddressableEntityHash {
+fn random_contract_key<G: RngCore>(entropy_source: &mut G) -> ContractHash {
     let mut key = [0u8; 32];
     entropy_source.fill_bytes(&mut key);
-    AddressableEntityHash::new(key)
+    ContractHash::new(key)
 }
 
 // Create URef Key.
@@ -122,7 +122,7 @@ fn random_hash<G: RngCore>(entropy_source: &mut G) -> Key {
 fn new_runtime_context<'a>(
     addressable_entity: &'a AddressableEntity,
     account_hash: AccountHash,
-    entity_address: AddressableEntityHash,
+    entity_address: ContractHash,
     named_keys: &'a mut NamedKeys,
     access_rights: ContextAccessRights,
     address_generator: AddressGenerator,
@@ -132,13 +132,10 @@ fn new_runtime_context<'a>(
 
     let default_system_registry = {
         let mut registry = SystemContractRegistry::new();
-        registry.insert(MINT.to_string(), AddressableEntityHash::default());
-        registry.insert(HANDLE_PAYMENT.to_string(), AddressableEntityHash::default());
-        registry.insert(
-            STANDARD_PAYMENT.to_string(),
-            AddressableEntityHash::default(),
-        );
-        registry.insert(AUCTION.to_string(), AddressableEntityHash::default());
+        registry.insert(MINT.to_string(), ContractHash::default());
+        registry.insert(HANDLE_PAYMENT.to_string(), ContractHash::default());
+        registry.insert(STANDARD_PAYMENT.to_string(), ContractHash::default());
+        registry.insert(AUCTION.to_string(), ContractHash::default());
         StoredValue::CLValue(CLValue::from_t(registry).unwrap())
     };
 
@@ -200,7 +197,7 @@ where
         .expect("should create secret key");
     let public_key = PublicKey::from(&secret_key);
     let account_hash = public_key.to_account_hash();
-    let contract_hash = AddressableEntityHash::new([10u8; 32]);
+    let contract_hash = ContractHash::new([10u8; 32]);
     let deploy_hash = [1u8; 32];
     let addressable_entity =
         new_addressable_entity(public_key.to_account_hash(), named_keys.clone());
@@ -367,7 +364,7 @@ fn contract_key_not_writeable() {
 fn contract_key_addable_valid() {
     // Contract key is addable if it is a "base" key - current context of the execution.
     let account_hash = AccountHash::new([0u8; 32]);
-    let entity_hash = AddressableEntityHash::new([1u8; 32]);
+    let entity_hash = ContractHash::new([1u8; 32]);
     let entity = new_addressable_entity(account_hash, NamedKeys::new());
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
     let mut address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
@@ -378,7 +375,7 @@ fn contract_key_addable_valid() {
     let mut access_rights = entity_as_stored_value
         .as_addressable_entity()
         .unwrap()
-        .extract_access_rights(AddressableEntityHash::default());
+        .extract_access_rights(ContractHash::default());
 
     let (tracking_copy, _tempdir) = new_tracking_copy(account_hash, entity_hash, entity);
     let tracking_copy = Rc::new(RefCell::new(tracking_copy));
@@ -388,13 +385,10 @@ fn contract_key_addable_valid() {
 
     let default_system_registry = {
         let mut registry = SystemContractRegistry::new();
-        registry.insert(MINT.to_string(), AddressableEntityHash::default());
-        registry.insert(HANDLE_PAYMENT.to_string(), AddressableEntityHash::default());
-        registry.insert(
-            STANDARD_PAYMENT.to_string(),
-            AddressableEntityHash::default(),
-        );
-        registry.insert(AUCTION.to_string(), AddressableEntityHash::default());
+        registry.insert(MINT.to_string(), ContractHash::default());
+        registry.insert(HANDLE_PAYMENT.to_string(), ContractHash::default());
+        registry.insert(STANDARD_PAYMENT.to_string(), ContractHash::default());
+        registry.insert(AUCTION.to_string(), ContractHash::default());
         StoredValue::CLValue(CLValue::from_t(registry).unwrap())
     };
 
@@ -456,7 +450,7 @@ fn contract_key_addable_valid() {
 #[test]
 fn contract_key_addable_invalid() {
     let account_hash = AccountHash::new([0u8; 32]);
-    let contract_hash = AddressableEntityHash::new([1u8; 32]);
+    let contract_hash = ContractHash::new([1u8; 32]);
     let entity = new_addressable_entity(account_hash, NamedKeys::new());
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
     let mut address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
@@ -468,7 +462,7 @@ fn contract_key_addable_invalid() {
     let mut access_rights = contract
         .as_addressable_entity()
         .unwrap()
-        .extract_access_rights(AddressableEntityHash::default());
+        .extract_access_rights(ContractHash::default());
     let (tracking_copy, _tempdir) = new_tracking_copy(account_hash, contract_hash, entity.clone());
     let tracking_copy = Rc::new(RefCell::new(tracking_copy));
 
@@ -758,7 +752,7 @@ fn should_verify_ownership_before_adding_key() {
     let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         // Overwrites a `base_key` to a different one before doing any operation as
         // account `[0; 32]`
-        runtime_context.entity_address = AddressableEntityHash::new([1; 32]);
+        runtime_context.entity_address = ContractHash::new([1; 32]);
 
         let err = runtime_context
             .add_associated_key(AccountHash::new([84; 32]), Weight::new(123))
@@ -782,7 +776,7 @@ fn should_verify_ownership_before_removing_a_key() {
     let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         // Overwrites a `base_key` to a different one before doing any operation as
         // account `[0; 32]`
-        runtime_context.entity_address = AddressableEntityHash::new([1; 32]);
+        runtime_context.entity_address = ContractHash::new([1; 32]);
 
         let err = runtime_context
             .remove_associated_key(AccountHash::new([84; 32]))
@@ -806,7 +800,7 @@ fn should_verify_ownership_before_setting_action_threshold() {
     let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         // Overwrites a `base_key` to a different one before doing any operation as
         // account `[0; 32]`
-        runtime_context.entity_address = AddressableEntityHash::new([1; 32]);
+        runtime_context.entity_address = ContractHash::new([1; 32]);
 
         let err = runtime_context
             .set_action_threshold(ActionType::Deployment, Weight::new(123))
@@ -858,7 +852,7 @@ fn remove_uref_works() {
     let uref_name = "Foo".to_owned();
     let uref_key = create_uref_as_key(&mut address_generator, AccessRights::READ);
     let account_hash = AccountHash::new([0u8; 32]);
-    let contract_hash = AddressableEntityHash::new([1u8; 32]);
+    let contract_hash = ContractHash::new([1u8; 32]);
     let mut named_keys = NamedKeys::new();
     named_keys.insert(uref_name.clone(), uref_key);
     let addressable_entity = new_addressable_entity(account_hash, named_keys.clone());
@@ -906,7 +900,7 @@ fn an_accounts_access_rights_should_include_main_purse() {
     let test_main_purse = URef::new([42u8; 32], AccessRights::READ_ADD_WRITE);
     // All other access rights except for main purse are extracted from named keys.
     let account_hash = AccountHash::new([0u8; 32]);
-    let contract_hash = AddressableEntityHash::new([1u8; 32]);
+    let contract_hash = ContractHash::new([1u8; 32]);
     let named_keys = NamedKeys::new();
     let entity =
         new_addressable_entity_with_purse(account_hash, test_main_purse.addr(), named_keys);
@@ -931,7 +925,7 @@ fn validate_valid_purse_of_an_account() {
 
     let deploy_hash = [1u8; 32];
     let account_hash = AccountHash::new([0u8; 32]);
-    let contract_hash = AddressableEntityHash::new([1u8; 32]);
+    let contract_hash = ContractHash::new([1u8; 32]);
     let entity =
         new_addressable_entity_with_purse(account_hash, test_main_purse.addr(), named_keys.clone());
 

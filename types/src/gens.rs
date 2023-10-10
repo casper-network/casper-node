@@ -22,9 +22,9 @@ use crate::{
         DELEGATION_RATE_DENOMINATOR,
     },
     transfer::TransferAddr,
-    AccessRights, AddressableEntity, AddressableEntityHash, CLType, CLValue, ContractWasm,
-    EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg,
-    Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
+    AccessRights, AddressableEntity, CLType, CLValue, ContractHash, ContractWasm, EntryPoint,
+    EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg, Package, Parameter,
+    Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
 };
 
 use crate::{
@@ -435,7 +435,7 @@ pub fn contract_version_key_arb() -> impl Strategy<Value = ContractVersionKey> {
 pub fn contract_versions_arb() -> impl Strategy<Value = ContractVersions> {
     collection::btree_map(
         contract_version_key_arb(),
-        u8_slice_32().prop_map(AddressableEntityHash::new),
+        u8_slice_32().prop_map(ContractHash::new),
         1..5,
     )
     .prop_map(ContractVersions::from)
@@ -638,21 +638,21 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         unbondings_arb(1..50).prop_map(StoredValue::Unbonding)
     ]
     .prop_map(|stored_value|
-            // The following match statement is here only to make sure
-            // we don't forget to update the generator when a new variant is added.
-            match stored_value {
-                StoredValue::CLValue(_) => stored_value,
-                StoredValue::Account(_) => stored_value,
-                StoredValue::ContractWasm(_) => stored_value,
-                StoredValue::Contract(_) => stored_value,
-                StoredValue::ContractPackage(_) => stored_value,
-                StoredValue::Transfer(_) => stored_value,
-                StoredValue::DeployInfo(_) => stored_value,
-                StoredValue::EraInfo(_) => stored_value,
-                StoredValue::Bid(_) => stored_value,
-                StoredValue::Withdraw(_) => stored_value,
-                StoredValue::Unbonding(_) => stored_value,
-                StoredValue::AddressableEntity(_) => stored_value,
-                StoredValue::BidKind(_) => stored_value,
-            })
+        // The following match statement is here only to make sure
+        // we don't forget to update the generator when a new variant is added.
+        match stored_value {
+            StoredValue::CLValue(_) => stored_value,
+            StoredValue::Account(_) => stored_value,
+            StoredValue::ContractWasm(_) => stored_value,
+            StoredValue::Contract(_) => stored_value,
+            StoredValue::ContractPackage(_) => stored_value,
+            StoredValue::Transfer(_) => stored_value,
+            StoredValue::DeployInfo(_) => stored_value,
+            StoredValue::EraInfo(_) => stored_value,
+            StoredValue::Bid(_) => stored_value,
+            StoredValue::Withdraw(_) => stored_value,
+            StoredValue::Unbonding(_) => stored_value,
+            StoredValue::AddressableEntity(_) => stored_value,
+            StoredValue::BidKind(_) => stored_value,
+        })
 }

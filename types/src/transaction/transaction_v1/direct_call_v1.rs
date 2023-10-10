@@ -17,7 +17,7 @@ use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     system::mint::ARG_AMOUNT,
-    AddressableEntityHash, ContractIdentifier, ContractPackageHash, ContractPackageIdentifier,
+    ContractHash, ContractIdentifier, ContractPackageHash, ContractPackageIdentifier,
     ContractVersion, Gas, Motes, RuntimeArgs, U512,
 };
 
@@ -39,7 +39,7 @@ pub enum DirectCallV1 {
     /// Stored contract referenced by its hash.
     StoredContractByHash {
         /// Contract hash.
-        hash: AddressableEntityHash,
+        hash: ContractHash,
         /// Name of the entry point.
         entry_point: String,
         /// Runtime arguments.
@@ -82,7 +82,7 @@ pub enum DirectCallV1 {
 impl DirectCallV1 {
     /// Returns a new `DirectCallV1::StoredContractByHash`.
     pub fn new_stored_contract_by_hash(
-        hash: AddressableEntityHash,
+        hash: ContractHash,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Self {
@@ -213,7 +213,7 @@ impl DirectCallV1 {
         let args = RuntimeArgs::random(rng);
         match rng.gen_range(0..4) {
             0 => DirectCallV1::StoredContractByHash {
-                hash: AddressableEntityHash::new(rng.gen()),
+                hash: ContractHash::new(rng.gen()),
                 entry_point,
                 args,
             },
@@ -457,7 +457,7 @@ impl FromBytes for DirectCallV1 {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
             STORED_CONTRACT_BY_HASH_TAG => {
-                let (hash, remainder) = AddressableEntityHash::from_bytes(remainder)?;
+                let (hash, remainder) = ContractHash::from_bytes(remainder)?;
                 let (entry_point, remainder) = String::from_bytes(remainder)?;
                 let (args, remainder) = RuntimeArgs::from_bytes(remainder)?;
                 Ok((

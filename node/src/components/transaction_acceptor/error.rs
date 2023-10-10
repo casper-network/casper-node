@@ -3,7 +3,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 use casper_types::{
-    AddressableEntityHash, BlockHash, BlockHeader, ContractPackageHash, ContractVersion,
+    BlockHash, BlockHeader, ContractHash, ContractPackageHash, ContractVersion,
     DeployConfigurationFailure, Digest, PublicKey, Timestamp, TransactionV1ConfigFailure,
 };
 
@@ -25,9 +25,9 @@ pub(crate) enum Error {
 
     /// The transaction is invalid due to missing or otherwise invalid parameters.
     #[error(
-    "{failure} at state root hash {:?} of block {:?} at height {block_height}",
-    state_root_hash,
-    block_hash.inner(),
+        "{failure} at state root hash {:?} of block {:?} at height {block_height}",
+        state_root_hash,
+        block_hash.inner(),
     )]
     Parameters {
         state_root_hash: Digest,
@@ -76,9 +76,7 @@ pub(crate) enum ParameterFailure {
     NoSuchAddressableEntity { public_key: PublicKey },
     /// No such contract at given hash.
     #[error("contract at {contract_hash} does not exist")]
-    NoSuchContractAtHash {
-        contract_hash: AddressableEntityHash,
-    },
+    NoSuchContractAtHash { contract_hash: ContractHash },
     /// No such contract entrypoint.
     #[error("contract does not have entry point '{entry_point_name}'")]
     NoSuchEntryPoint { entry_point_name: String },

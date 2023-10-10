@@ -11,9 +11,8 @@ use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
     package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
     system::auction::{BidAddr, BidKind, BidsExt, SeigniorageRecipientsSnapshot, UnbondingPurse},
-    AccessRights, AddressableEntity, AddressableEntityHash, CLValue, ContractPackageHash,
-    ContractWasmHash, EntryPoints, Key, Package, ProtocolVersion, PublicKey, StoredValue, URef,
-    U512,
+    AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, ContractWasmHash,
+    EntryPoints, Key, Package, ProtocolVersion, PublicKey, StoredValue, URef, U512,
 };
 
 use super::{config::Transfer, state_reader::StateReader};
@@ -162,7 +161,7 @@ impl<T: StateReader> StateTracker<T> {
 
         let mut rng = rand::thread_rng();
 
-        let contract_hash = AddressableEntityHash::new(rng.gen());
+        let contract_hash = ContractHash::new(rng.gen());
         let contract_package_hash = ContractPackageHash::new(rng.gen());
         let contract_wasm_hash = ContractWasmHash::new([0u8; 32]);
 

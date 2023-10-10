@@ -8,8 +8,8 @@ use casper_types::{
     api_error,
     bytesrepr::{self, FromBytes, ToBytes},
     package::ContractVersion,
-    AccessRights, AddressableEntityHash, ApiError, CLTyped, CLValue, ContractPackageHash, HashAddr,
-    Key, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, UREF_SERIALIZED_LENGTH,
+    AccessRights, ApiError, CLTyped, CLValue, ContractHash, ContractPackageHash, HashAddr, Key,
+    URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, UREF_SERIALIZED_LENGTH,
 };
 
 use crate::{
@@ -106,7 +106,7 @@ pub fn new_contract(
     named_keys: Option<NamedKeys>,
     hash_name: Option<String>,
     uref_name: Option<String>,
-) -> (AddressableEntityHash, ContractVersion) {
+) -> (ContractHash, ContractVersion) {
     create_contract(entry_points, named_keys, hash_name, uref_name, false)
 }
 
@@ -123,7 +123,7 @@ pub fn new_locked_contract(
     named_keys: Option<NamedKeys>,
     hash_name: Option<String>,
     uref_name: Option<String>,
-) -> (AddressableEntityHash, ContractVersion) {
+) -> (ContractHash, ContractVersion) {
     create_contract(entry_points, named_keys, hash_name, uref_name, true)
 }
 
@@ -133,7 +133,7 @@ fn create_contract(
     hash_name: Option<String>,
     uref_name: Option<String>,
     is_locked: bool,
-) -> (AddressableEntityHash, ContractVersion) {
+) -> (ContractHash, ContractVersion) {
     let (contract_package_hash, access_uref) = create_contract_package(is_locked);
 
     if let Some(hash_name) = hash_name {
@@ -290,7 +290,7 @@ pub fn add_contract_version(
     contract_package_hash: ContractPackageHash,
     entry_points: EntryPoints,
     named_keys: NamedKeys,
-) -> (AddressableEntityHash, ContractVersion) {
+) -> (ContractHash, ContractVersion) {
     let (contract_package_hash_ptr, contract_package_hash_size, _bytes1) =
         contract_api::to_ptr(contract_package_hash);
     let (entry_points_ptr, entry_points_size, _bytes4) = contract_api::to_ptr(entry_points);
@@ -330,7 +330,7 @@ pub fn add_contract_version(
 /// `create_contract` or `create_contract_package_at_hash` first.
 pub fn disable_contract_version(
     contract_package_hash: ContractPackageHash,
-    contract_hash: AddressableEntityHash,
+    contract_hash: ContractHash,
 ) -> Result<(), ApiError> {
     let (contract_package_hash_ptr, contract_package_hash_size, _bytes1) =
         contract_api::to_ptr(contract_package_hash);
@@ -354,7 +354,7 @@ pub fn disable_contract_version(
 /// [`new_contract`] or [`create_contract_package_at_hash`] first.
 pub fn enable_contract_version(
     contract_package_hash: ContractPackageHash,
-    contract_hash: AddressableEntityHash,
+    contract_hash: ContractHash,
 ) -> Result<(), ApiError> {
     let (contract_package_hash_ptr, contract_package_hash_size, _bytes1) =
         contract_api::to_ptr(contract_package_hash);

@@ -6,7 +6,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::engine_state::{Error as CoreError, ExecError, ExecuteRequest};
 use casper_types::{
-    runtime_args, system::CallStackElement, AddressableEntity, AddressableEntityHash, CLValue,
+    runtime_args, system::CallStackElement, AddressableEntity, CLValue, ContractHash,
     ContractPackageHash, EntryPointType, HashAddr, Key, StoredValue, U512,
 };
 
@@ -24,7 +24,7 @@ const CONTRACT_NAME: &str = "our_contract_name";
 const CONTRACT_FORWARDER_ENTRYPOINT_CONTRACT: &str = METHOD_FORWARDER_CONTRACT_NAME;
 const CONTRACT_FORWARDER_ENTRYPOINT_SESSION: &str = METHOD_FORWARDER_SESSION_NAME;
 
-fn stored_session(contract_hash: AddressableEntityHash) -> Call {
+fn stored_session(contract_hash: ContractHash) -> Call {
     Call {
         contract_address: ContractAddress::ContractHash(contract_hash),
         target_method: CONTRACT_FORWARDER_ENTRYPOINT_SESSION.to_string(),
@@ -40,7 +40,7 @@ fn stored_versioned_session(contract_package_hash: ContractPackageHash) -> Call 
     }
 }
 
-fn stored_contract(contract_hash: AddressableEntityHash) -> Call {
+fn stored_contract(contract_hash: ContractHash) -> Call {
     Call {
         contract_address: ContractAddress::ContractHash(contract_hash),
         target_method: CONTRACT_FORWARDER_ENTRYPOINT_CONTRACT.to_string(),

@@ -8,7 +8,7 @@ use core::str::FromStr;
 use gh_1470_regression_call::{ARG_CONTRACT_HASH, ARG_CONTRACT_PACKAGE_HASH, ARG_TEST_METHOD};
 
 use casper_contract::{contract_api::runtime, unwrap_or_revert::UnwrapOrRevert};
-use casper_types::{runtime_args, AddressableEntityHash, ContractPackageHash};
+use casper_types::{runtime_args, ContractHash, ContractPackageHash};
 
 use gh_1470_regression_call::TestMethod;
 
@@ -56,7 +56,7 @@ pub extern "C" fn call() {
 
     match test_method {
         TestMethod::CallDoNothing => {
-            let contract_hash: AddressableEntityHash = runtime::get_named_arg(ARG_CONTRACT_HASH);
+            let contract_hash: ContractHash = runtime::get_named_arg(ARG_CONTRACT_HASH);
 
             runtime::call_contract::<()>(
                 contract_hash,
@@ -76,7 +76,7 @@ pub extern "C" fn call() {
             );
         }
         TestMethod::CallDoNothingNoArgs => {
-            let contract_hash: AddressableEntityHash = runtime::get_named_arg(ARG_CONTRACT_HASH);
+            let contract_hash: ContractHash = runtime::get_named_arg(ARG_CONTRACT_HASH);
 
             runtime::call_contract::<()>(
                 contract_hash,
@@ -96,7 +96,7 @@ pub extern "C" fn call() {
             );
         }
         TestMethod::CallDoNothingTypeMismatch => {
-            let contract_hash: AddressableEntityHash = runtime::get_named_arg(ARG_CONTRACT_HASH);
+            let contract_hash: ContractHash = runtime::get_named_arg(ARG_CONTRACT_HASH);
 
             runtime::call_contract::<()>(
                 contract_hash,
@@ -117,7 +117,7 @@ pub extern "C" fn call() {
             );
         }
         TestMethod::CallDoNothingNoOptionals => {
-            let contract_hash: AddressableEntityHash = runtime::get_named_arg(ARG_CONTRACT_HASH);
+            let contract_hash: ContractHash = runtime::get_named_arg(ARG_CONTRACT_HASH);
 
             runtime::call_contract::<()>(
                 contract_hash,
@@ -137,7 +137,7 @@ pub extern "C" fn call() {
             );
         }
         TestMethod::CallDoNothingExtra => {
-            let contract_hash: AddressableEntityHash = runtime::get_named_arg(ARG_CONTRACT_HASH);
+            let contract_hash: ContractHash = runtime::get_named_arg(ARG_CONTRACT_HASH);
 
             runtime::call_contract::<()>(
                 contract_hash,
@@ -157,7 +157,7 @@ pub extern "C" fn call() {
             );
         }
         TestMethod::CallDoNothingOptionalTypeMismatch => {
-            let contract_hash: AddressableEntityHash = runtime::get_named_arg(ARG_CONTRACT_HASH);
+            let contract_hash: ContractHash = runtime::get_named_arg(ARG_CONTRACT_HASH);
 
             runtime::call_contract::<()>(
                 contract_hash,

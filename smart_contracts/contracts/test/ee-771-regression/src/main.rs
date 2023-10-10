@@ -8,7 +8,7 @@ use alloc::string::ToString;
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
     addressable_entity::{NamedKeys, Parameters},
-    AddressableEntityHash, CLType, ContractVersion, EntryPoint, EntryPointAccess, EntryPointType,
+    CLType, ContractHash, ContractVersion, EntryPoint, EntryPointAccess, EntryPointType,
     EntryPoints, RuntimeArgs,
 };
 
@@ -48,7 +48,7 @@ pub extern "C" fn contract_ext() {
     }
 }
 
-fn store(named_keys: NamedKeys) -> (AddressableEntityHash, ContractVersion) {
+fn store(named_keys: NamedKeys) -> (ContractHash, ContractVersion) {
     // extern "C" fn call(named_keys: NamedKeys) {
     let entry_points = {
         let mut entry_points = EntryPoints::new();
@@ -68,7 +68,7 @@ fn store(named_keys: NamedKeys) -> (AddressableEntityHash, ContractVersion) {
     storage::new_contract(entry_points, Some(named_keys), None, None)
 }
 
-fn install() -> AddressableEntityHash {
+fn install() -> ContractHash {
     let (contract_hash, _contract_version) = store(NamedKeys::new());
 
     let mut keys = NamedKeys::new();
@@ -84,7 +84,7 @@ fn install() -> AddressableEntityHash {
     contract_hash
 }
 
-fn dispatch(contract_hash: AddressableEntityHash) {
+fn dispatch(contract_hash: ContractHash) {
     runtime::call_contract(contract_hash, "contract_ext", RuntimeArgs::default())
 }
 

@@ -8,8 +8,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    execution::TransformKind, runtime_args, system::standard_payment, AddressableEntityHash, Key,
-    URef, U512,
+    execution::TransformKind, runtime_args, system::standard_payment, ContractHash, Key, URef, U512,
 };
 
 #[ignore]
@@ -41,7 +40,7 @@ fn contract_transforms_should_be_ordered_in_the_effects() {
         .get("ordered-transforms-contract-hash")
         .unwrap()
     {
-        Key::Hash(addr) => AddressableEntityHash::new(*addr),
+        Key::Hash(addr) => ContractHash::new(*addr),
         _ => panic!("Couldn't find ordered-transforms contract."),
     };
 
