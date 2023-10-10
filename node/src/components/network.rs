@@ -504,6 +504,7 @@ where
                 rpc_client
                     .create_request(channel.into_channel_id())
                     .with_payload(payload)
+                    .with_timeout(Duration::from_secs(30))
             }
 
             let request = mk_request(&connection.rpc_client, channel, payload);
