@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use datasize::DataSize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use casper_types::{TimeDiff, Timestamp};
 
@@ -17,39 +17,39 @@ use crate::components::consensus::{
 /// A unit sent to or received from the network.
 ///
 /// This is only instantiated when it gets added to a `State`, and only once it has been validated.
-#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize)]
-pub(crate) struct Unit<C>
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Unit<C>
 where
     C: Context,
 {
     /// The list of latest units and faults observed by the creator of this message.
     /// The panorama must be valid, and this unit's creator must not be marked as faulty.
-    pub(crate) panorama: Panorama<C>,
+    pub panorama: Panorama<C>,
     /// The number of earlier messages by the same creator.
     /// This must be `0` if the creator's entry in the panorama is `None`. Otherwise it must be
     /// the previous unit's sequence number plus one.
-    pub(crate) seq_number: u64,
+    pub seq_number: u64,
     /// The validator who created and sent this unit.
-    pub(crate) creator: ValidatorIndex,
+    pub creator: ValidatorIndex,
     /// The block this unit votes for. Either it or its parent must be the fork choice.
-    pub(crate) block: C::Hash,
+    pub block: C::Hash,
     /// A skip list index of the creator's swimlane, i.e. the previous unit by the same creator.
     ///
     /// For every `p = 1 << i` that divides `seq_number`, this contains an `i`-th entry pointing to
     /// the older unit with `seq_number - p`.
-    pub(crate) skip_idx: Vec<C::Hash>,
+    pub skip_idx: Vec<C::Hash>,
     /// This unit's timestamp, in milliseconds since the epoch. This must not be earlier than the
     /// timestamp of any unit cited in the panorama.
-    pub(crate) timestamp: Timestamp,
+    pub timestamp: Timestamp,
     /// Original signature of the `SignedWireUnit`.
-    pub(crate) signature: C::Signature,
+    pub signature: C::Signature,
     /// The length of the current round, that this message belongs to.
     ///
     /// All cited units by `creator` in the same round must have the same round length.
-    pub(crate) round_len: TimeDiff,
+    pub round_len: TimeDiff,
     /// Units that this one claims are endorsed.
     /// All of these must be cited (directly or indirectly) by the panorama.
-    pub(crate) endorsed: BTreeSet<C::Hash>,
+    pub endorsed: BTreeSet<C::Hash>,
 }
 
 impl<C: Context> Unit<C> {
@@ -101,17 +101,17 @@ impl<C: Context> Unit<C> {
     }
 
     /// Returns the creator's previous unit.
-    pub(crate) fn previous(&self) -> Option<&C::Hash> {
+    pub fn previous(&self) -> Option<&C::Hash> {
         self.skip_idx.first()
     }
 
     /// Returns the time at which the round containing this unit began.
-    pub(crate) fn round_id(&self) -> Timestamp {
+    pub fn round_id(&self) -> Timestamp {
         state::round_id(self.timestamp, self.round_len)
     }
 
     /// Returns the length of the round containing this unit.
-    pub(crate) fn round_len(&self) -> TimeDiff {
+    pub fn round_len(&self) -> TimeDiff {
         self.round_len
     }
 
@@ -120,7 +120,7 @@ impl<C: Context> Unit<C> {
     ///
     /// NOTE: Returns `false` if `vidx` is faulty or hasn't produced any units according to the
     /// creator of `vhash`.
-    pub(crate) fn new_hash_obs(&self, state: &State<C>, vidx: ValidatorIndex) -> bool {
+    pub fn new_hash_obs(&self, state: &State<C>, vidx: ValidatorIndex) -> bool {
         let latest_obs = self.panorama[vidx].correct();
         let penultimate_obs = self
             .previous()
@@ -132,7 +132,7 @@ impl<C: Context> Unit<C> {
     }
 
     /// Returns an iterator over units this one claims are endorsed.
-    pub(crate) fn claims_endorsed(&self) -> impl Iterator<Item = &C::Hash> {
+    pub fn claims_endorsed(&self) -> impl Iterator<Item = &C::Hash> {
         self.endorsed.iter()
     }
 }

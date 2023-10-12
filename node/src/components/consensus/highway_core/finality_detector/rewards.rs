@@ -12,7 +12,7 @@ use crate::components::consensus::{
 /// Returns the map of rewards to be paid out when the block `bhash` gets finalized.
 ///
 /// This is the sum of all rewards for finalization of ancestors of `bhash`, as seen from `bhash`.
-pub(crate) fn compute_rewards<C: Context>(state: &State<C>, bhash: &C::Hash) -> ValidatorMap<u64> {
+pub fn compute_rewards<C: Context>(state: &State<C>, bhash: &C::Hash) -> ValidatorMap<u64> {
     // The unit that introduced the payout block.
     let payout_unit = state.unit(bhash);
     // The panorama of the payout block: Rewards must only use this panorama, since it defines
@@ -38,17 +38,15 @@ pub(crate) fn compute_rewards<C: Context>(state: &State<C>, bhash: &C::Hash) -> 
     rewards
 }
 
-/// Returns the rewards for finalizing the block with hash `proposal_h`.
-fn compute_rewards_for<C: Context>(
-    state: &State<C>,
-    panorama: &Panorama<C>,
-    proposal_h: &C::Hash,
-) -> ValidatorMap<u64> {
-    let proposal_unit = state.unit(proposal_h);
-    let r_id = proposal_unit.round_id();
-
-    // Only consider messages in round `r_id` for the summit. To compute the assigned weight, we
-    // also include validators who didn't send a message in that round, but were supposed to.
+/// Finds the total assigned weight of a particular round and the latest unit of each validator in
+/// that round.
+pub fn assigned_weight_and_latest_unit<'a, 'b: 'a, 'c: 'a, C: Context>(
+    state: &'b State<C>,
+    panorama: &'c Panorama<C>,
+    r_id: Timestamp,
+) -> (Weight, ValidatorMap<Option<&'a C::Hash>>) {
+    // To compute the assigned weight, we also include validators who didn't send a message in that
+    // round, but were supposed to.
     let mut assigned_weight = Weight(0);
     let mut latest = ValidatorMap::from(vec![None; panorama.len()]);
     for (idx, obs) in panorama.enumerate() {
@@ -59,13 +57,17 @@ fn compute_rewards_for<C: Context>(
         }
         assigned_weight += state.weight(idx);
     }
+    (assigned_weight, latest)
+}
 
-    if assigned_weight.is_zero() {
-        return ValidatorMap::from(vec![0; latest.len()]);
-    }
-
+/// Finds the maximum quora of level-1 summits in which different validators participated.
+pub fn find_max_quora<C: Context>(
+    state: &State<C>,
+    proposal_h: &C::Hash,
+    latest: &ValidatorMap<Option<&C::Hash>>,
+) -> ValidatorMap<Weight> {
     // Find all level-1 summits. For each validator, store the highest quorum it is a part of.
-    let horizon = Horizon::level0(proposal_h, state, &latest);
+    let horizon = Horizon::level0(proposal_h, state, latest);
     let (mut committee, _) = horizon.prune_committee(Weight(1), latest.keys_some().collect());
     let mut max_quorum = ValidatorMap::from(vec![Weight(0); latest.len()]);
     while let Some(quorum) = horizon.committee_quorum(&committee) {
@@ -77,6 +79,26 @@ fn compute_rewards_for<C: Context>(
             max_quorum[vidx] = quorum;
         }
     }
+    max_quorum
+}
+
+/// Returns the rewards for finalizing the block with hash `proposal_h`.
+pub fn compute_rewards_for<C: Context>(
+    state: &State<C>,
+    panorama: &Panorama<C>,
+    proposal_h: &C::Hash,
+) -> ValidatorMap<u64> {
+    let proposal_unit = state.unit(proposal_h);
+    let r_id = proposal_unit.round_id();
+
+    // Only consider messages in round `r_id` for the summit.
+    let (assigned_weight, latest) = assigned_weight_and_latest_unit(state, panorama, r_id);
+
+    if assigned_weight.is_zero() {
+        return ValidatorMap::from(vec![0; latest.len()]);
+    }
+
+    let max_quorum = find_max_quora(state, proposal_h, &latest);
 
     let faulty_w: Weight = panorama.iter_faulty().map(|vidx| state.weight(vidx)).sum();
 
@@ -113,7 +135,7 @@ fn compute_rewards_for<C: Context>(
 
 /// Information about how a validator participated in a particular round.
 #[derive(Debug, Eq, PartialEq)]
-enum RoundParticipation<'a, C: Context> {
+pub enum RoundParticipation<'a, C: Context> {
     /// The validator was not assigned: The round ID was not the beginning of one of their rounds.
     Unassigned,
     /// The validator was assigned but did not create any messages in that round.
@@ -123,7 +145,7 @@ enum RoundParticipation<'a, C: Context> {
 }
 
 /// Returns information about the participation of a validator with `obs` in round `r_id`.
-fn round_participation<'a, C: Context>(
+pub fn round_participation<'a, C: Context>(
     state: &'a State<C>,
     obs: &'a Observation<C>,
     r_id: Timestamp,

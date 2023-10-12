@@ -1,3 +1,5 @@
+//! Utilities common to different consensus algorithms.
+
 use itertools::Itertools;
 use num_rational::Ratio;
 use std::collections::{BTreeMap, HashSet};
@@ -12,7 +14,7 @@ use casper_types::U512;
 
 /// Computes the validator set given the stakes and the faulty and inactive
 /// reports from the previous eras.
-pub(crate) fn validators<C: Context>(
+pub fn validators<C: Context>(
     faulty: &HashSet<C::ValidatorId>,
     inactive: &HashSet<C::ValidatorId>,
     validator_stakes: BTreeMap<C::ValidatorId, U512>,

@@ -1,3 +1,5 @@
+//! Functions for detecting finality of proposed blocks and calculating rewards.
+
 mod horizon;
 mod rewards;
 
@@ -18,6 +20,10 @@ use crate::components::consensus::{
     utils::{ValidatorIndex, Weight},
 };
 use horizon::Horizon;
+pub use rewards::{
+    assigned_weight_and_latest_unit, compute_rewards, compute_rewards_for, find_max_quora,
+    round_participation, RoundParticipation,
+};
 
 /// An error returned if the configured fault tolerance has been exceeded.
 #[derive(Debug)]
@@ -179,7 +185,7 @@ impl<C: Context> FinalityDetector<C> {
         let state = highway.state();
 
         // Compute the rewards, and replace each validator index with the validator ID.
-        let rewards = rewards::compute_rewards(state, bhash);
+        let rewards = compute_rewards(state, bhash);
         let rewards_iter = rewards.enumerate();
         let rewards = rewards_iter.map(|(vidx, r)| (to_id(vidx), *r)).collect();
 

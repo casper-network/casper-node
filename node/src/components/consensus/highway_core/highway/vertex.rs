@@ -50,13 +50,17 @@ mod relaxed {
         deserialize = "C::Hash: Deserialize<'de>",
     ))]
     #[strum_discriminants(derive(strum::EnumIter))]
-    pub(crate) enum Dependency<C>
+    pub enum Dependency<C>
     where
         C: Context,
     {
+        /// The hash of a unit.
         Unit(C::Hash),
+        /// The index of the validator against which evidence is needed.
         Evidence(ValidatorIndex),
+        /// The hash of the unit to be endorsed.
         Endorsement(C::Hash),
+        /// The ping by a particular validator for a particular timestamp.
         Ping(ValidatorIndex, Timestamp),
     }
 
@@ -71,21 +75,25 @@ mod relaxed {
         deserialize = "C::Hash: Deserialize<'de>",
     ))]
     #[strum_discriminants(derive(strum::EnumIter))]
-    pub(crate) enum Vertex<C>
+    pub enum Vertex<C>
     where
         C: Context,
     {
+        /// A signed unit of the consensus DAG.
         Unit(SignedWireUnit<C>),
+        /// Evidence of a validator's transgression.
         Evidence(Evidence<C>),
+        /// Endorsements for a unit.
         Endorsements(Endorsements<C>),
+        /// A ping conveying the activity of its creator.
         Ping(Ping<C>),
     }
 }
-pub(crate) use relaxed::{Dependency, DependencyDiscriminants, Vertex, VertexDiscriminants};
+pub use relaxed::{Dependency, DependencyDiscriminants, Vertex, VertexDiscriminants};
 
 impl<C: Context> Dependency<C> {
     /// Returns whether this identifies a unit, as opposed to other types of vertices.
-    pub(crate) fn is_unit(&self) -> bool {
+    pub fn is_unit(&self) -> bool {
         matches!(self, Dependency::Unit(_))
     }
 }
@@ -97,7 +105,7 @@ impl<C: Context> Vertex<C> {
     /// `C::ConsensusValue` is a transaction, it should be validated first (correct signature,
     /// structure, gas limit, etc.). If it is a hash of a transaction, the transaction should be
     /// obtained _and_ validated. Only after that, the vertex can be considered valid.
-    pub(crate) fn value(&self) -> Option<&C::ConsensusValue> {
+    pub fn value(&self) -> Option<&C::ConsensusValue> {
         match self {
             Vertex::Unit(swunit) => swunit.wire_unit().value.as_ref(),
             Vertex::Evidence(_) | Vertex::Endorsements(_) | Vertex::Ping(_) => None,
@@ -105,7 +113,7 @@ impl<C: Context> Vertex<C> {
     }
 
     /// Returns the unit hash of this vertex (if it is a unit).
-    pub(crate) fn unit_hash(&self) -> Option<C::Hash> {
+    pub fn unit_hash(&self) -> Option<C::Hash> {
         match self {
             Vertex::Unit(swunit) => Some(swunit.hash()),
             Vertex::Evidence(_) | Vertex::Endorsements(_) | Vertex::Ping(_) => None,
@@ -113,7 +121,7 @@ impl<C: Context> Vertex<C> {
     }
 
     /// Returns the seq number of this vertex (if it is a unit).
-    pub(crate) fn unit_seq_number(&self) -> Option<u64> {
+    pub fn unit_seq_number(&self) -> Option<u64> {
         match self {
             Vertex::Unit(swunit) => Some(swunit.wire_unit().seq_number),
             _ => None,
@@ -121,12 +129,12 @@ impl<C: Context> Vertex<C> {
     }
 
     /// Returns whether this is evidence, as opposed to other types of vertices.
-    pub(crate) fn is_evidence(&self) -> bool {
+    pub fn is_evidence(&self) -> bool {
         matches!(self, Vertex::Evidence(_))
     }
 
     /// Returns a `Timestamp` provided the vertex is a `Vertex::Unit` or `Vertex::Ping`.
-    pub(crate) fn timestamp(&self) -> Option<Timestamp> {
+    pub fn timestamp(&self) -> Option<Timestamp> {
         match self {
             Vertex::Unit(signed_wire_unit) => Some(signed_wire_unit.wire_unit().timestamp),
             Vertex::Ping(ping) => Some(ping.timestamp()),
@@ -134,7 +142,8 @@ impl<C: Context> Vertex<C> {
         }
     }
 
-    pub(crate) fn creator(&self) -> Option<ValidatorIndex> {
+    /// Returns the creator of this vertex, if one is defined.
+    pub fn creator(&self) -> Option<ValidatorIndex> {
         match self {
             Vertex::Unit(signed_wire_unit) => Some(signed_wire_unit.wire_unit().creator),
             Vertex::Ping(ping) => Some(ping.creator),
@@ -142,7 +151,8 @@ impl<C: Context> Vertex<C> {
         }
     }
 
-    pub(crate) fn id(&self) -> Dependency<C> {
+    /// Returns the ID of this vertex.
+    pub fn id(&self) -> Dependency<C> {
         match self {
             Vertex::Unit(signed_wire_unit) => Dependency::Unit(signed_wire_unit.hash()),
             Vertex::Evidence(evidence) => Dependency::Evidence(evidence.perpetrator()),
@@ -152,7 +162,7 @@ impl<C: Context> Vertex<C> {
     }
 
     /// Returns a reference to the unit, or `None` if this is not a unit.
-    pub(crate) fn unit(&self) -> Option<&SignedWireUnit<C>> {
+    pub fn unit(&self) -> Option<&SignedWireUnit<C>> {
         match self {
             Vertex::Unit(signed_wire_unit) => Some(signed_wire_unit),
             _ => None,
@@ -160,7 +170,7 @@ impl<C: Context> Vertex<C> {
     }
 
     /// Returns true whether unit is a proposal.
-    pub(crate) fn is_proposal(&self) -> bool {
+    pub fn is_proposal(&self) -> bool {
         self.value().is_some()
     }
 }
@@ -293,12 +303,13 @@ mod specimen_support {
     }
 }
 
+/// A `WireUnit` together with its hash and a cryptographic signature by its creator.
 #[derive(DataSize, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) struct SignedWireUnit<C>
+pub struct SignedWireUnit<C>
 where
     C: Context,
 {
@@ -318,17 +329,20 @@ impl<C: Context> SignedWireUnit<C> {
         }
     }
 
-    pub(crate) fn wire_unit(&self) -> &WireUnit<C> {
+    /// Returns the inner `WireUnit`.
+    pub fn wire_unit(&self) -> &WireUnit<C> {
         self.hashed_wire_unit.wire_unit()
     }
 
-    pub(crate) fn hash(&self) -> C::Hash {
+    /// Returns this unit's hash.
+    pub fn hash(&self) -> C::Hash {
         self.hashed_wire_unit.hash()
     }
 }
 
+/// A `WireUnit` together with its hash.
 #[derive(Clone, DataSize, Debug, Eq, PartialEq, Hash)]
-pub(crate) struct HashedWireUnit<C>
+pub struct HashedWireUnit<C>
 where
     C: Context,
 {
@@ -346,15 +360,18 @@ where
         Self::new_with_hash(wire_unit, hash)
     }
 
-    pub(crate) fn into_inner(self) -> WireUnit<C> {
+    /// Returns the inner `WireUnit`.
+    pub fn into_inner(self) -> WireUnit<C> {
         self.wire_unit
     }
 
-    pub(crate) fn wire_unit(&self) -> &WireUnit<C> {
+    /// Returns a reference to the inner `WireUnit`.
+    pub fn wire_unit(&self) -> &WireUnit<C> {
         &self.wire_unit
     }
 
-    pub(crate) fn hash(&self) -> C::Hash {
+    /// Returns this unit's hash.
+    pub fn hash(&self) -> C::Hash {
         self.hash
     }
 
@@ -383,18 +400,26 @@ impl<'de, C: Context> Deserialize<'de> for HashedWireUnit<C> {
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) struct WireUnit<C>
+pub struct WireUnit<C>
 where
     C: Context,
 {
-    pub(crate) panorama: Panorama<C>,
-    pub(crate) creator: ValidatorIndex,
-    pub(crate) instance_id: C::InstanceId,
-    pub(crate) value: Option<C::ConsensusValue>,
-    pub(crate) seq_number: u64,
-    pub(crate) timestamp: Timestamp,
-    pub(crate) round_exp: u8,
-    pub(crate) endorsed: BTreeSet<C::Hash>,
+    /// The panorama of cited units.
+    pub panorama: Panorama<C>,
+    /// The index of the creator of this unit.
+    pub creator: ValidatorIndex,
+    /// The consensus instance ID for which this unit was created.
+    pub instance_id: C::InstanceId,
+    /// The consensus value included in the unit, if any.
+    pub value: Option<C::ConsensusValue>,
+    /// The sequence number of this unit in the creator's swimlane.
+    pub seq_number: u64,
+    /// Timestamp of when the unit was created.
+    pub timestamp: Timestamp,
+    /// The current round exponent of the unit's creator.
+    pub round_exp: u8,
+    /// The units this unit endorses.
+    pub endorsed: BTreeSet<C::Hash>,
 }
 
 impl<C: Context> Debug for WireUnit<C> {
@@ -427,7 +452,7 @@ impl<C: Context> WireUnit<C> {
     }
 
     /// Returns the creator's previous unit.
-    pub(crate) fn previous(&self) -> Option<&C::Hash> {
+    pub fn previous(&self) -> Option<&C::Hash> {
         self.panorama[self.creator].correct()
     }
 
@@ -438,17 +463,20 @@ impl<C: Context> WireUnit<C> {
     }
 }
 
+/// A set of endorsements for a unit.
 #[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
 #[serde(bound(
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) struct Endorsements<C>
+pub struct Endorsements<C>
 where
     C: Context,
 {
-    pub(crate) unit: C::Hash,
-    pub(crate) endorsers: Vec<(ValidatorIndex, C::Signature)>,
+    /// The endorsed unit.
+    pub unit: C::Hash,
+    /// The endorsements for the unit.
+    pub endorsers: Vec<(ValidatorIndex, C::Signature)>,
 }
 
 impl<C: Context> Endorsements<C> {
@@ -479,7 +507,7 @@ impl<C: Context> From<SignedEndorsement<C>> for Endorsements<C> {
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) struct Ping<C>
+pub struct Ping<C>
 where
     C: Context,
 {
@@ -507,12 +535,12 @@ impl<C: Context> Ping<C> {
     }
 
     /// The creator who signals that it is online.
-    pub(crate) fn creator(&self) -> ValidatorIndex {
+    pub fn creator(&self) -> ValidatorIndex {
         self.creator
     }
 
     /// The timestamp when the ping was created.
-    pub(crate) fn timestamp(&self) -> Timestamp {
+    pub fn timestamp(&self) -> Timestamp {
         self.timestamp
     }
 

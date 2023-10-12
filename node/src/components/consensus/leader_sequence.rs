@@ -1,13 +1,13 @@
 use datasize::DataSize;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tracing::error;
 
 use crate::components::consensus::utils::{ValidatorIndex, ValidatorMap, Weight};
 
 /// A pseudorandom sequence of validator indices, distributed by weight.
-#[derive(Debug, Clone, DataSize, Serialize)]
+#[derive(Debug, Clone, DataSize, Serialize, Deserialize)]
 pub(crate) struct LeaderSequence {
     /// Cumulative validator weights: Entry `i` contains the sum of the weights of validators `0`
     /// through `i`.

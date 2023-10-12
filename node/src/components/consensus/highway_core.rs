@@ -33,8 +33,8 @@
 mod test_macros;
 
 pub(crate) mod active_validator;
-pub(crate) mod finality_detector;
-pub(crate) mod highway;
+pub mod finality_detector;
+pub mod highway;
 pub(crate) mod state;
 pub(super) mod synchronizer;
 
@@ -43,7 +43,7 @@ mod evidence;
 #[cfg(test)]
 pub(crate) mod highway_testing;
 
-pub(crate) use state::State;
+pub use state::{Observation, Panorama, State};
 
 // Enables the endorsement mechanism.
 const ENABLE_ENDORSEMENTS: bool = false;

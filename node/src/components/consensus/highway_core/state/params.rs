@@ -1,11 +1,11 @@
 use datasize::DataSize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::{TimeDiff, Timestamp};
 
 /// Protocol parameters for Highway.
-#[derive(Debug, DataSize, Clone, Serialize)]
-pub(crate) struct Params {
+#[derive(Debug, DataSize, Clone, Serialize, Deserialize)]
+pub struct Params {
     seed: u64,
     block_reward: u64,
     reduced_block_reward: u64,
@@ -68,55 +68,55 @@ impl Params {
     }
 
     /// Returns the random seed.
-    pub(crate) fn seed(&self) -> u64 {
+    pub fn seed(&self) -> u64 {
         self.seed
     }
 
     /// Returns the total reward for a finalized block.
-    pub(crate) fn block_reward(&self) -> u64 {
+    pub fn block_reward(&self) -> u64 {
         self.block_reward
     }
 
     /// Returns the reduced block reward that is paid out even if the heaviest summit does not
     /// exceed half the total weight. This is at most `block_reward`.
-    pub(crate) fn reduced_block_reward(&self) -> u64 {
+    pub fn reduced_block_reward(&self) -> u64 {
         self.reduced_block_reward
     }
 
     /// Returns the minimum round length. This is always greater than 0.
-    pub(crate) fn min_round_length(&self) -> TimeDiff {
+    pub fn min_round_length(&self) -> TimeDiff {
         self.min_round_len
     }
 
     /// Returns the maximum round length.
-    pub(crate) fn max_round_length(&self) -> TimeDiff {
+    pub fn max_round_length(&self) -> TimeDiff {
         self.max_round_len
     }
 
     /// Returns the initial round length.
-    pub(crate) fn init_round_len(&self) -> TimeDiff {
+    pub fn init_round_len(&self) -> TimeDiff {
         self.init_round_len
     }
 
     /// Returns the minimum height of the last block.
-    pub(crate) fn end_height(&self) -> u64 {
+    pub fn end_height(&self) -> u64 {
         self.end_height
     }
 
     /// Returns the start timestamp of the era.
-    pub(crate) fn start_timestamp(&self) -> Timestamp {
+    pub fn start_timestamp(&self) -> Timestamp {
         self.start_timestamp
     }
 
     /// Returns the minimum timestamp of the last block.
-    pub(crate) fn end_timestamp(&self) -> Timestamp {
+    pub fn end_timestamp(&self) -> Timestamp {
         self.end_timestamp
     }
 
     /// Returns the maximum number of additional units included in evidence for conflicting
     /// endorsements. If you endorse two conflicting forks at sequence numbers that differ by more
     /// than this, you get away with it and are not marked faulty.
-    pub(crate) fn endorsement_evidence_limit(&self) -> u64 {
+    pub fn endorsement_evidence_limit(&self) -> u64 {
         self.endorsement_evidence_limit
     }
 }
