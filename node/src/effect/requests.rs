@@ -60,7 +60,7 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
-        DeployExecutionInfo, DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock,
+        DeployExecutionInfo, DeployWithFinalizedApprovals, ExecutableBlock, FinalizedApprovals,
         LegacyDeploy, MetaBlockState, NodeId, SignedBlock, StatusFeed, TrieOrChunk, TrieOrChunkId,
     },
     utils::Source,
@@ -665,7 +665,7 @@ pub(crate) struct MakeBlockExecutableRequest {
     /// Hash of the block to be made executable.
     pub block_hash: BlockHash,
     /// Responder with the executable block and it's deploys
-    pub responder: Responder<Option<(FinalizedBlock, Vec<Deploy>)>>,
+    pub responder: Responder<Option<ExecutableBlock>>,
 }
 
 impl Display for MakeBlockExecutableRequest {
@@ -865,12 +865,10 @@ impl Display for RestRequest {
 #[derive(Debug, Serialize)]
 #[must_use]
 pub(crate) enum ContractRuntimeRequest {
-    /// A request to enqueue a `FinalizedBlock` for execution.
+    /// A request to enqueue a `ExecutableBlock` for execution.
     EnqueueBlockForExecution {
-        /// A `FinalizedBlock` to enqueue.
-        finalized_block: FinalizedBlock,
-        /// The deploys for that `FinalizedBlock`
-        deploys: Vec<Deploy>,
+        /// A `ExecutableBlock` to enqueue.
+        executable_block: ExecutableBlock,
         /// The key block height for the current protocol version's activation point.
         key_block_height_for_activation_point: u64,
         meta_block_state: MetaBlockState,
@@ -968,9 +966,9 @@ impl Display for ContractRuntimeRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ContractRuntimeRequest::EnqueueBlockForExecution {
-                finalized_block, ..
+                executable_block, ..
             } => {
-                write!(formatter, "finalized_block: {}", finalized_block)
+                write!(formatter, "executable_block: {}", executable_block)
             }
             ContractRuntimeRequest::Query { query_request, .. } => {
                 write!(formatter, "query request: {:?}", query_request)

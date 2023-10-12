@@ -12,7 +12,7 @@ use casper_types::{bytesrepr, CLValueError, PublicKey, U512};
 
 use crate::{
     components::contract_runtime::ExecutionPreState,
-    types::{FinalizedBlock, InternalEraReport},
+    types::{ExecutableBlock, InternalEraReport},
 };
 
 /// An error returned from mis-configuring the contract runtime component.
@@ -37,12 +37,12 @@ pub enum BlockExecutionError {
     /// block. These must agree and this error will be thrown if they do not.
     #[error(
         "block's height does not agree with execution pre-state. \
-         block: {finalized_block:?}, \
+         block: {executable_block:?}, \
          execution pre-state: {execution_pre_state:?}"
     )]
     WrongBlockHeight {
         /// The finalized block the system attempted to execute.
-        finalized_block: Box<FinalizedBlock>,
+        executable_block: Box<ExecutableBlock>,
         /// The state of the block chain prior to block execution that was to be used.
         execution_pre_state: Box<ExecutionPreState>,
     },

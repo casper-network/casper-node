@@ -939,21 +939,21 @@ async fn dont_upgrade_without_switch_block() {
         runner.reactor_mut().inner_mut().set_filter(move |event| {
             if let MainEvent::ContractRuntimeRequest(
                 ContractRuntimeRequest::EnqueueBlockForExecution {
-                    finalized_block, ..
+                    executable_block, ..
                 },
             ) = &event
             {
-                if finalized_block.era_report.is_some()
-                    && finalized_block.era_id == EraId::from(1)
+                if executable_block.era_report.is_some()
+                    && executable_block.era_id == EraId::from(1)
                     && !exec_request_received
                 {
-                    info!("delaying {}", finalized_block);
+                    info!("delaying {}", executable_block);
                     exec_request_received = true;
                     return Either::Left(
                         time::sleep(Duration::from_secs(10)).event(move |_| event),
                     );
                 }
-                info!("not delaying {}", finalized_block);
+                info!("not delaying {}", executable_block);
             }
             Either::Right(event)
         });

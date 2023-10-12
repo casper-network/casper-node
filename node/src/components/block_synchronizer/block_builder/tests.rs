@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, thread, time::Duration};
 
-use casper_types::{testing::TestRng, TestBlockBuilder};
+use casper_types::{testing::TestRng, Deploy, TestBlockBuilder};
 use num_rational::Ratio;
 
 use crate::components::consensus::tests::utils::{ALICE_PUBLIC_KEY, ALICE_SECRET_KEY};
@@ -239,20 +239,22 @@ fn register_finalized_block() {
         Acceptance::NeededIt
     );
     // Set the builder's state to `HaveStrictFinalitySignatures`.
-    let finalized_block = FinalizedBlock::from(block.clone());
+    //let finalized_block = FinalizedBlock::from(block.clone());
+    let expected_deploys = vec![Deploy::random(&mut rng)];
+    let executable_block =
+        ExecutableBlock::from_block_and_deploys(block.clone(), expected_deploys.clone());
     builder.acquisition_state = BlockAcquisitionState::HaveStrictFinalitySignatures(
         Box::new(block.clone().into()),
         signature_acquisition.clone(),
     );
-    let expected_deploys = vec![Deploy::random(&mut rng)];
 
     // Register the finalized block.
     thread::sleep(Duration::from_millis(5));
-    builder.register_made_finalized_block(finalized_block.clone(), expected_deploys.clone());
+    builder.register_made_finalized_block(executable_block.clone());
     match &builder.acquisition_state {
-        BlockAcquisitionState::HaveFinalizedBlock(actual_block, _, actual_deploys, enqueued) => {
+        BlockAcquisitionState::HaveFinalizedBlock(actual_block, executable_block, enqueued) => {
             assert_eq!(actual_block.hash(), block.hash());
-            assert_eq!(expected_deploys, *actual_deploys);
+            assert_eq!(expected_deploys, *executable_block.deploys);
             assert!(!enqueued);
         }
         _ => panic!("Unexpected outcome in registering finalized block"),
@@ -270,7 +272,7 @@ fn register_finalized_block() {
     );
     // Register the finalized block. This should fail on historical builders.
     thread::sleep(Duration::from_millis(5));
-    builder.register_made_finalized_block(finalized_block, expected_deploys);
+    builder.register_made_finalized_block(executable_block);
     assert!(builder.is_failed());
     assert_ne!(latest_timestamp, builder.last_progress);
 }
@@ -307,13 +309,12 @@ fn register_block_execution() {
         Acceptance::NeededIt
     );
 
-    let finalized_block = Box::new(FinalizedBlock::from(block.clone()));
-    builder.acquisition_state = BlockAcquisitionState::HaveFinalizedBlock(
-        Box::new(block.into()),
-        finalized_block,
+    let executable_block = Box::new(ExecutableBlock::from_block_and_deploys(
+        block.clone(),
         vec![Deploy::random(&mut rng)],
-        false,
-    );
+    ));
+    builder.acquisition_state =
+        BlockAcquisitionState::HaveFinalizedBlock(Box::new(block.into()), executable_block, false);
 
     assert_eq!(builder.execution_progress, ExecutionProgress::Idle);
     // Register the block execution enquement as successful. This should
@@ -323,7 +324,7 @@ fn register_block_execution() {
     assert_eq!(builder.execution_progress, ExecutionProgress::Started);
     assert!(matches!(
         builder.acquisition_state,
-        BlockAcquisitionState::HaveFinalizedBlock(_, _, _, true)
+        BlockAcquisitionState::HaveFinalizedBlock(_, _, true)
     ));
     assert!(!builder.is_failed());
     assert_ne!(latest_timestamp, builder.last_progress);
@@ -336,7 +337,7 @@ fn register_block_execution() {
     assert_eq!(builder.execution_progress, ExecutionProgress::Started);
     assert!(matches!(
         builder.acquisition_state,
-        BlockAcquisitionState::HaveFinalizedBlock(_, _, _, true)
+        BlockAcquisitionState::HaveFinalizedBlock(_, _, true)
     ));
     assert!(!builder.is_failed());
     assert_ne!(latest_timestamp, builder.last_progress);

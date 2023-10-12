@@ -8,8 +8,8 @@ use derive_more::Display;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
-    execution::ExecutionResult, Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployId,
-    Digest, EraId, FinalitySignature, ProtocolVersion, PublicKey,
+    execution::ExecutionResult, Block, BlockHash, BlockHeader, DeployHash, DeployId, Digest, EraId,
+    FinalitySignature, ProtocolVersion, PublicKey,
 };
 
 use crate::{
@@ -19,7 +19,7 @@ use crate::{
         ExecutionResultsAcquisition, ExecutionResultsChecksum,
     },
     types::{
-        ApprovalsHashes, BlockExecutionResultsOrChunk, EraValidatorWeights, FinalizedBlock,
+        ApprovalsHashes, BlockExecutionResultsOrChunk, EraValidatorWeights, ExecutableBlock,
         SignatureWeight,
     },
     NodeRng,
@@ -119,7 +119,7 @@ pub(super) enum BlockAcquisitionState {
     // with execution are strictly forward sync states. Until a refactor splits
     // the `Complete` states for the historical and forward cases, we need to
     // keep the block around.
-    HaveFinalizedBlock(Box<Block>, Box<FinalizedBlock>, Vec<Deploy>, bool),
+    HaveFinalizedBlock(Box<Block>, Box<ExecutableBlock>, bool),
     // The `Complete` state needs the block itself in order to produce a meta
     // block announcement in the historical sync flow. In the forward sync,
     // only the block hash and height are necessary. Therefore, we retain the
@@ -179,10 +179,10 @@ impl Display for BlockAcquisitionState {
                 block.height(),
                 block.hash()
             ),
-            BlockAcquisitionState::HaveFinalizedBlock(block, finalized_block, _, _) => write!(
+            BlockAcquisitionState::HaveFinalizedBlock(block, _, _) => write!(
                 f,
                 "have finalized block({}) for: {}",
-                finalized_block.height,
+                block.height(),
                 *block.hash()
             ),
             BlockAcquisitionState::Complete(block) => {
@@ -232,7 +232,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveGlobalState(block, _, _, _)
             | BlockAcquisitionState::HaveAllExecutionResults(block, _, _, _)
             | BlockAcquisitionState::HaveApprovalsHashes(block, _, _)
-            | BlockAcquisitionState::HaveFinalizedBlock(block, _, _, _)
+            | BlockAcquisitionState::HaveFinalizedBlock(block, _, _)
             | BlockAcquisitionState::Complete(block) => Some(block.clone()),
         }
     }
@@ -477,19 +477,13 @@ impl BlockAcquisitionState {
                     ))
                 }
             }
-            BlockAcquisitionState::HaveFinalizedBlock(
-                block,
-                finalized_block,
-                deploys,
-                enqueued,
-            ) => {
+            BlockAcquisitionState::HaveFinalizedBlock(block, executable_block, enqueued) => {
                 if is_historical {
                     Err(BlockAcquisitionError::InvalidStateTransition)
                 } else if *enqueued == false {
                     Ok(BlockAcquisitionAction::enqueue_block_for_execution(
                         block.hash(),
-                        finalized_block.clone(),
-                        deploys.clone(),
+                        executable_block.clone(),
                     ))
                 } else {
                     // if the block was already enqueued for execution just wait, there's
@@ -513,8 +507,8 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::Initialized(..) | BlockAcquisitionState::Failed(..) => None,
             BlockAcquisitionState::HaveBlockHeader(header, _)
             | BlockAcquisitionState::HaveWeakFinalitySignatures(header, _) => Some(header.height()),
-            BlockAcquisitionState::HaveFinalizedBlock(_, finalized_block, _, _) => {
-                Some(finalized_block.height)
+            BlockAcquisitionState::HaveFinalizedBlock(_, executable_block, _) => {
+                Some(executable_block.height)
             }
             BlockAcquisitionState::HaveBlock(block, _, _)
             | BlockAcquisitionState::HaveGlobalState(block, ..)
@@ -1208,8 +1202,7 @@ impl BlockAcquisitionState {
     pub(super) fn register_made_finalized_block(
         &mut self,
         need_execution_state: bool,
-        finalized_block: FinalizedBlock,
-        deploys: Vec<Deploy>,
+        executable_block: ExecutableBlock,
     ) -> Result<(), BlockAcquisitionError> {
         if need_execution_state {
             return Err(BlockAcquisitionError::InvalidAttemptToEnqueueBlockForExecution);
@@ -1219,8 +1212,7 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::HaveStrictFinalitySignatures(block, _) => {
                 BlockAcquisitionState::HaveFinalizedBlock(
                     block.clone(),
-                    Box::new(finalized_block),
-                    deploys,
+                    Box::new(executable_block),
                     false,
                 )
             }
@@ -1247,10 +1239,10 @@ impl BlockAcquisitionState {
         &mut self,
     ) -> Result<(), BlockAcquisitionError> {
         match self {
-            BlockAcquisitionState::HaveFinalizedBlock(block_hash, _, _, enqueued) => {
+            BlockAcquisitionState::HaveFinalizedBlock(block, _, enqueued) => {
                 info!(
                     "BlockAcquisition: registering block enqueued for execution for: {}",
-                    block_hash
+                    block
                 );
                 *enqueued = true;
             }
@@ -1279,7 +1271,7 @@ impl BlockAcquisitionState {
         }
 
         let new_state = match self {
-            BlockAcquisitionState::HaveFinalizedBlock(block, _, _, _) => {
+            BlockAcquisitionState::HaveFinalizedBlock(block, _, _) => {
                 info!(
                     "BlockAcquisition: registering block executed for: {}",
                     *block.hash()

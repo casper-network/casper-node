@@ -58,8 +58,8 @@ use crate::{
     fatal, protocol,
     types::{
         create_single_block_rewarded_signatures, BlockWithMetadata, DeployOrTransferHash,
-        FinalizedBlock, FinalizedDeployApprovals, InternalEraReport, MetaBlockState, NodeId,
-        ValidatorMatrix,
+        ExecutableBlock, FinalizedBlock, FinalizedDeployApprovals, InternalEraReport,
+        MetaBlockState, NodeId, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -1407,8 +1407,11 @@ async fn execute_finalized_block<REv>(
             return;
         }
     };
+
+    let executable_block =
+        ExecutableBlock::from_finalized_block_and_deploys(finalized_block, deploys);
     effect_builder
-        .enqueue_block_for_execution(finalized_block, deploys, MetaBlockState::new())
+        .enqueue_block_for_execution(executable_block, MetaBlockState::new())
         .await
 }
 

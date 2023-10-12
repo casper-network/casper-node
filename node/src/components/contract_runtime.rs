@@ -45,7 +45,7 @@ use casper_storage::{
 };
 use casper_types::{
     bytesrepr::Bytes, BlockHash, BlockHeaderV2, Chainspec, ChainspecRawBytes, ChainspecRegistry,
-    Deploy, Digest, EraId, ProtocolVersion, Timestamp, UpgradeConfig, U512,
+    Digest, EraId, ProtocolVersion, Timestamp, UpgradeConfig, U512,
 };
 
 use crate::{
@@ -61,7 +61,9 @@ use crate::{
     },
     fatal,
     protocol::Message,
-    types::{ChunkingError, FinalizedBlock, MetaBlock, MetaBlockState, TrieOrChunk, TrieOrChunkId},
+    types::{
+        ChunkingError, ExecutableBlock, MetaBlock, MetaBlockState, TrieOrChunk, TrieOrChunkId,
+    },
     NodeRng,
 };
 pub(crate) use config::Config;
@@ -175,7 +177,68 @@ impl ExecutionPreState {
     }
 }
 
-type ExecQueue = Arc<Mutex<BTreeMap<u64, (FinalizedBlock, Vec<Deploy>, MetaBlockState)>>>;
+use exec_queue::{ExecQueue, QueueItem};
+mod exec_queue {
+    use datasize::DataSize;
+    use std::{
+        collections::BTreeMap,
+        sync::{Arc, Mutex},
+    };
+
+    use crate::types::{ExecutableBlock, MetaBlockState};
+
+    #[derive(Default, Clone, DataSize)]
+    pub(super) struct ExecQueue(Arc<Mutex<BTreeMap<u64, QueueItem>>>);
+
+    impl ExecQueue {
+        /// How many blocks are backed up in the queue
+        pub fn len(&self) -> usize {
+            self.0
+            .lock()
+            .expect(
+                "components::contract_runtime: couldn't get execution queue size; mutex poisoned",
+            )
+            .len()
+        }
+
+        pub fn remove(&mut self, height: u64) -> Option<QueueItem> {
+            self.0
+                .lock()
+                .expect(
+                    "components::contract_runtime: couldn't remove from the queue; mutex poisoned",
+                )
+                .remove(&height)
+        }
+
+        pub fn insert(&mut self, height: u64, item: QueueItem) {
+            self.0
+                .lock()
+                .expect(
+                    "components::contract_runtime: couldn't insert into the queue; mutex poisoned",
+                )
+                .insert(height, item);
+        }
+
+        /// Remove every entry older than the given height, and return the new len.
+        pub fn remove_older_then(&mut self, height: u64) -> i64 {
+            let mut locked_queue = self.0
+            .lock()
+            .expect(
+                "components::contract_runtime: couldn't initialize contract runtime block execution queue; mutex poisoned"
+            );
+
+            *locked_queue = locked_queue.split_off(&height);
+
+            core::convert::TryInto::try_into(locked_queue.len()).unwrap_or(i64::MIN)
+        }
+    }
+
+    // Should it be an enum?
+    pub(super) struct QueueItem {
+        pub executable_block: ExecutableBlock,
+        pub meta_block_state: MetaBlockState,
+    }
+}
 
 #[derive(Debug, From, Serialize)]
 pub(crate) enum Event {
@@ -260,12 +323,7 @@ where
 impl ContractRuntime {
     /// How many blocks are backed up in the queue
     pub(crate) fn queue_depth(&self) -> usize {
-        self.exec_queue
-            .lock()
-            .expect(
-                "components::contract_runtime: couldn't get execution queue size; mutex poisoned",
-            )
-            .len()
+        self.exec_queue.len()
     }
 
     /// Handles an incoming request to get a trie.
@@ -499,17 +557,17 @@ impl ContractRuntime {
                 .ignore()
             }
             ContractRuntimeRequest::EnqueueBlockForExecution {
-                finalized_block,
-                deploys,
+                executable_block,
                 key_block_height_for_activation_point,
                 meta_block_state,
             } => {
                 let mut effects = Effects::new();
-                let exec_queue = Arc::clone(&self.exec_queue);
-                let finalized_block_height = finalized_block.height;
+                let mut exec_queue = self.exec_queue.clone();
+                let finalized_block_height = executable_block.height;
                 let current_pre_state = self.execution_pre_state.lock().unwrap();
                 let next_block_height = current_pre_state.next_block_height;
                 match finalized_block_height.cmp(&next_block_height) {
+                    // An old block: it won't be executed:
                     Ordering::Less => {
                         debug!(
                             "ContractRuntime: finalized block({}) precedes expected next block({})",
@@ -521,17 +579,18 @@ impl ContractRuntime {
                                 .ignore(),
                         );
                     }
+                    // This is the next block to be executed, we do it right away:
                     Ordering::Equal => {
                         info!(
                             "ContractRuntime: execute finalized block({}) with {} deploys",
                             finalized_block_height,
-                            deploys.len()
+                            executable_block.deploys.len()
                         );
                         let engine_state = Arc::clone(&self.engine_state);
                         let metrics = Arc::clone(&self.metrics);
                         let shared_pre_state = Arc::clone(&self.execution_pre_state);
                         effects.extend(
-                            Self::execute_finalized_block_or_requeue(
+                            Self::execute_executable_block_or_requeue(
                                 engine_state,
                                 metrics,
                                 self.chainspec.clone(),
@@ -539,14 +598,14 @@ impl ContractRuntime {
                                 shared_pre_state,
                                 current_pre_state.clone(),
                                 effect_builder,
-                                finalized_block,
-                                deploys,
+                                executable_block,
                                 key_block_height_for_activation_point,
                                 meta_block_state,
                             )
                             .ignore(),
                         )
                     }
+                    // This is a future block, we store it into exec_queue, to be executed later:
                     Ordering::Greater => {
                         debug!(
                             "ContractRuntime: enqueuing({}) waiting for({})",
@@ -555,17 +614,20 @@ impl ContractRuntime {
                         info!(
                             "ContractRuntime: enqueuing finalized block({}) with {} deploys for execution",
                             finalized_block_height,
-                            deploys.len()
+                            executable_block.    deploys.len()
                         );
-                        exec_queue
-                            .lock()
-                            .expect("components::contract_runtime: couldn't enqueue block for execution; mutex poisoned")
-                            .insert(finalized_block_height, (finalized_block, deploys, meta_block_state));
+                        exec_queue.insert(
+                            finalized_block_height,
+                            QueueItem {
+                                executable_block,
+                                meta_block_state,
+                            },
+                        );
                     }
                 }
                 self.metrics
                     .exec_queue_size
-                    .set(self.queue_depth().try_into().unwrap_or(i64::MIN));
+                    .set(self.exec_queue.len().try_into().unwrap_or(i64::MIN));
                 effects
             }
             ContractRuntimeRequest::GetBids {
@@ -706,7 +768,7 @@ impl ContractRuntime {
             execution_pre_state,
             engine_state,
             metrics,
-            exec_queue: Arc::new(Mutex::new(BTreeMap::new())),
+            exec_queue: Default::default(),
             system_contract_registry: None,
             chainspec,
         })
@@ -770,31 +832,23 @@ impl ContractRuntime {
         let mut execution_pre_state = self.execution_pre_state.lock().unwrap();
         *execution_pre_state = sequential_block_state;
 
-        {
-            let mut exec_queue = self.exec_queue
-                .lock()
-                .expect(
-                    "components::contract_runtime: couldn't initialize contract runtime block execution queue; mutex poisoned"
-                );
-            *exec_queue = exec_queue.split_off(&execution_pre_state.next_block_height);
-            self.metrics
-                .exec_queue_size
-                .set(exec_queue.len().try_into().unwrap_or(i64::MIN));
-        }
+        let new_len = self
+            .exec_queue
+            .remove_older_then(execution_pre_state.next_block_height);
+        self.metrics.exec_queue_size.set(new_len);
         debug!(next_block_height, "ContractRuntime: set initial state");
     }
 
     #[allow(clippy::too_many_arguments)]
-    async fn execute_finalized_block_or_requeue<REv>(
+    async fn execute_executable_block_or_requeue<REv>(
         engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
         metrics: Arc<Metrics>,
         chainspec: Arc<Chainspec>,
-        exec_queue: ExecQueue,
+        mut exec_queue: ExecQueue,
         shared_pre_state: Arc<Mutex<ExecutionPreState>>,
         current_pre_state: ExecutionPreState,
         effect_builder: EffectBuilder<REv>,
-        finalized_block: FinalizedBlock,
-        deploys: Vec<Deploy>,
+        mut executable_block: ExecutableBlock,
         key_block_height_for_activation_point: u64,
         mut meta_block_state: MetaBlockState,
     ) where
@@ -811,12 +865,12 @@ impl ContractRuntime {
         let protocol_version = chainspec.protocol_version();
         let activation_point = chainspec.protocol_config.activation_point;
         let prune_batch_size = chainspec.core_config.prune_batch_size;
-        let rewards = if finalized_block.era_report.is_some() {
-            if chainspec.core_config.compute_rewards {
+        if executable_block.era_report.is_some() && executable_block.rewards.is_none() {
+            executable_block.rewards = Some(if chainspec.core_config.compute_rewards {
                 match rewards::rewards_for_era(
                     effect_builder,
-                    finalized_block.era_id,
-                    finalized_block.height,
+                    executable_block.era_id,
+                    executable_block.height,
                     chainspec,
                 )
                 .await
@@ -829,10 +883,8 @@ impl ContractRuntime {
             } else {
                 //TODO instead, use a list of all the validators with 0
                 BTreeMap::new()
-            }
-        } else {
-            BTreeMap::new()
-        };
+            });
+        }
 
         let BlockAndExecutionResults {
             block,
@@ -846,12 +898,10 @@ impl ContractRuntime {
                 Some(contract_runtime_metrics),
                 protocol_version,
                 current_pre_state,
-                finalized_block,
-                deploys,
+                executable_block,
                 activation_point.era_id(),
                 key_block_height_for_activation_point,
                 prune_batch_size,
-                rewards,
             )
         })
         .await
@@ -964,18 +1014,18 @@ impl ContractRuntime {
         effect_builder.announce_meta_block(meta_block).await;
 
         // If the child is already finalized, start execution.
-        let next_block = {
-            // needed to help this async block impl Send (the MutexGuard lives too long)
-            let queue = &mut *exec_queue
-                .lock()
-                .expect("components::contract_runtime: couldn't get next block for execution; mutex poisoned");
-            queue.remove(&new_execution_pre_state.next_block_height)
-        };
-        if let Some((finalized_block, deploys, meta_block_state)) = next_block {
+        let next_block = exec_queue.remove(new_execution_pre_state.next_block_height);
+
+        // We schedule the next block from the queue to be executed:
+        if let Some(QueueItem {
+            executable_block,
+            meta_block_state,
+        }) = next_block
+        {
             metrics.exec_queue_size.dec();
             debug!("ContractRuntime: next block enqueue_block_for_execution");
             effect_builder
-                .enqueue_block_for_execution(finalized_block, deploys, meta_block_state)
+                .enqueue_block_for_execution(executable_block, meta_block_state)
                 .await;
         }
     }

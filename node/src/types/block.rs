@@ -3,6 +3,7 @@ mod block_execution_results_or_chunk;
 mod block_execution_results_or_chunk_id;
 mod block_payload;
 mod block_with_metadata;
+mod executable_block;
 mod finalized_block;
 mod meta_block;
 mod signed_block;
@@ -17,6 +18,7 @@ pub use block_execution_results_or_chunk::BlockExecutionResultsOrChunk;
 pub(crate) use block_execution_results_or_chunk_id::BlockExecutionResultsOrChunkId;
 pub(crate) use block_payload::BlockPayload;
 pub(crate) use block_with_metadata::BlockWithMetadata;
+pub use executable_block::ExecutableBlock;
 pub use finalized_block::{FinalizedBlock, InternalEraReport};
 pub(crate) use meta_block::{
     ForwardMetaBlock, MergeMismatchError as MetaBlockMergeError, MetaBlock, State as MetaBlockState,

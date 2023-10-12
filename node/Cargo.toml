@@ -89,7 +89,7 @@ tracing-futures = "0.2.5"
 tracing-subscriber = { version = "0.3.15", features = ["env-filter", "fmt", "json"] }
 uint = "0.9.0"
 uuid = { version = "0.8.1", features = ["serde", "v4"] }
-warp = { version = "0.3.0", features = ["compression"] }
+warp = { version = "0.3.6", features = ["compression"] }
 wheelbuf = "0.2.0"
 
 [build-dependencies]

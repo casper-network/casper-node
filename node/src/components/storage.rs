@@ -104,9 +104,9 @@ use crate::{
     types::{
         ApprovalsHashes, AvailableBlockRange, BlockExecutionResultsOrChunk,
         BlockExecutionResultsOrChunkId, BlockWithMetadata, DeployExecutionInfo,
-        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, FinalizedDeployApprovals,
-        LegacyDeploy, MaxTtl, NodeId, NodeRng, SignedBlock, SyncLeap, SyncLeapIdentifier,
-        TransactionWithFinalizedApprovals,
+        DeployWithFinalizedApprovals, ExecutableBlock, FinalizedApprovals,
+        FinalizedDeployApprovals, LegacyDeploy, MaxTtl, NodeId, NodeRng, SignedBlock, SyncLeap,
+        SyncLeapIdentifier, TransactionWithFinalizedApprovals,
     },
     utils::{display_error, WithDir},
 };
@@ -156,8 +156,6 @@ const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::WRITE_MAP;
 const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::empty();
 const _STORAGE_EVENT_SIZE: usize = mem::size_of::<Event>();
 const_assert!(_STORAGE_EVENT_SIZE <= 32);
-
-type FinalizedBlockAndDeploys = (FinalizedBlock, Vec<Deploy>);
 
 const STORAGE_FILES: [&str; 5] = [
     "data.lmdb",
@@ -1547,11 +1545,11 @@ impl Storage {
         self.get_blocks_while(&mut txn, |block| block.timestamp() >= timestamp)
     }
 
-    /// Make a finalized block from a executed block, respecting Deploy Approvals.
+    /// Returns an executable block.
     pub(crate) fn make_executable_block(
         &self,
         block_hash: &BlockHash,
-    ) -> Result<Option<FinalizedBlockAndDeploys>, FatalStorageError> {
+    ) -> Result<Option<ExecutableBlock>, FatalStorageError> {
         let (block, deploys) = match self.read_block_and_finalized_deploys_by_hash(*block_hash)? {
             Some(block_and_finalized_deploys) => block_and_finalized_deploys,
             None => {
@@ -1593,15 +1591,18 @@ impl Storage {
                 return Ok(None);
             }
         }
-        let finalized_block: FinalizedBlock = block.into();
+
         info!(
             ?block_hash,
             "Storage: created finalized_block({}) {} with {} deploys",
-            finalized_block.height,
+            block.height(),
             block_hash,
             deploys.len()
         );
-        Ok(Some((finalized_block, deploys)))
+
+        Ok(Some(ExecutableBlock::from_block_and_deploys(
+            block, deploys,
+        )))
     }
 
     fn write_execution_results(

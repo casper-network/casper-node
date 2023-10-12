@@ -1,7 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 use tracing::{debug, warn};
 
-use casper_types::{Block, BlockHash, Deploy, DeployHash, DeployId, Digest, EraId, PublicKey};
+use casper_types::{Block, BlockHash, DeployHash, DeployId, Digest, EraId, PublicKey};
 
 use crate::{
     components::block_synchronizer::{
@@ -9,7 +9,7 @@ use crate::{
         signature_acquisition::SignatureAcquisition, BlockAcquisitionError,
         ExecutionResultsAcquisition, ExecutionResultsChecksum,
     },
-    types::{BlockExecutionResultsOrChunkId, EraValidatorWeights, FinalizedBlock, NodeId},
+    types::{BlockExecutionResultsOrChunkId, EraValidatorWeights, ExecutableBlock, NodeId},
     NodeRng,
 };
 
@@ -185,12 +185,15 @@ impl BlockAcquisitionAction {
 
     pub(super) fn enqueue_block_for_execution(
         block_hash: &BlockHash,
-        block: Box<FinalizedBlock>,
-        deploys: Vec<Deploy>,
+        executable_block: Box<ExecutableBlock>,
     ) -> Self {
         BlockAcquisitionAction {
             peers_to_ask: vec![],
-            need_next: NeedNext::EnqueueForExecution(*block_hash, block.height, block, deploys),
+            need_next: NeedNext::EnqueueForExecution(
+                *block_hash,
+                executable_block.height,
+                executable_block,
+            ),
         }
     }
 

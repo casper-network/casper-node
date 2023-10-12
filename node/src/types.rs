@@ -28,7 +28,9 @@ pub(crate) use block::{
     BlockExecutionResultsOrChunkId, BlockPayload, BlockWithMetadata, ForwardMetaBlock, MetaBlock,
     MetaBlockMergeError, MetaBlockState,
 };
-pub use block::{BlockExecutionResultsOrChunk, FinalizedBlock, InternalEraReport, SignedBlock};
+pub use block::{
+    BlockExecutionResultsOrChunk, ExecutableBlock, FinalizedBlock, InternalEraReport, SignedBlock,
+};
 pub use chunkable::Chunkable;
 pub use datasize::DataSize;
 pub use exit_code::ExitCode;

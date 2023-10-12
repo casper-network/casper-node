@@ -12,7 +12,7 @@ use datasize::DataSize;
 use tracing::{debug, error, trace, warn};
 
 use casper_types::{
-    execution::ExecutionResult, Block, BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash,
+    execution::ExecutionResult, Block, BlockHash, BlockHeader, BlockSignatures, DeployHash,
     DeployId, Digest, EraId, FinalitySignature, LegacyRequiredFinality, ProtocolVersion, PublicKey,
     TimeDiff, Timestamp,
 };
@@ -28,8 +28,8 @@ use super::{
 use crate::{
     components::block_synchronizer::block_builder::latch::Latch,
     types::{
-        ApprovalsHashes, BlockExecutionResultsOrChunk, EraValidatorWeights, FinalizedBlock, NodeId,
-        ValidatorMatrix,
+        ApprovalsHashes, BlockExecutionResultsOrChunk, EraValidatorWeights, ExecutableBlock,
+        NodeId, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -271,7 +271,7 @@ impl BlockBuilder {
             | BlockAcquisitionState::HaveApprovalsHashes(_, _, _)
             | BlockAcquisitionState::HaveAllDeploys(_, _)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
-            | BlockAcquisitionState::HaveFinalizedBlock(_, _, _, _)
+            | BlockAcquisitionState::HaveFinalizedBlock(_, _, _)
             | BlockAcquisitionState::Failed(_, _) => {
                 //TODO: does failed also mean finished?
                 false
@@ -315,16 +315,11 @@ impl BlockBuilder {
         }
     }
 
-    pub(super) fn register_made_finalized_block(
-        &mut self,
-        block: FinalizedBlock,
-        deploys: Vec<Deploy>,
-    ) {
-        if let Err(error) = self.acquisition_state.register_made_finalized_block(
-            self.should_fetch_execution_state,
-            block,
-            deploys,
-        ) {
+    pub(super) fn register_made_finalized_block(&mut self, executable_block: ExecutableBlock) {
+        if let Err(error) = self
+            .acquisition_state
+            .register_made_finalized_block(self.should_fetch_execution_state, executable_block)
+        {
             error!(%error, "register finalized block failed");
             self.abort()
         } else {

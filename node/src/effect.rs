@@ -152,8 +152,9 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
-        DeployExecutionInfo, DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock,
-        LegacyDeploy, MetaBlock, MetaBlockState, NodeId, SignedBlock, TrieOrChunk, TrieOrChunkId,
+        DeployExecutionInfo, DeployWithFinalizedApprovals, ExecutableBlock, FinalizedApprovals,
+        FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState, NodeId, SignedBlock, TrieOrChunk,
+        TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -875,15 +876,14 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
-    /// Request that a block be made executable (i.e. produce a FinalizedBlock plus any Deploys),
-    /// if able to.
+    /// Request that a block be made executable, if able to: `ExecutableBlock`.
     ///
     /// Completion means that the block can be enqueued for processing by the execution engine via
     /// the contract_runtime component.
     pub(crate) async fn make_block_executable(
         self,
         block_hash: BlockHash,
-    ) -> Option<(FinalizedBlock, Vec<Deploy>)>
+    ) -> Option<ExecutableBlock>
     where
         REv: From<MakeBlockExecutableRequest>,
     {
@@ -1783,8 +1783,7 @@ impl<REv> EffectBuilder<REv> {
     /// Enqueues a finalized block execution.
     pub(crate) async fn enqueue_block_for_execution(
         self,
-        finalized_block: FinalizedBlock,
-        deploys: Vec<Deploy>,
+        executable_block: ExecutableBlock,
         meta_block_state: MetaBlockState,
     ) where
         REv: From<StorageRequest> + From<ContractRuntimeRequest>,
@@ -1805,8 +1804,7 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 ContractRuntimeRequest::EnqueueBlockForExecution {
-                    finalized_block,
-                    deploys,
+                    executable_block,
                     key_block_height_for_activation_point,
                     meta_block_state,
                 },
