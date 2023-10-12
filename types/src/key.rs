@@ -163,7 +163,7 @@ pub struct Context {
 
 impl Context {
     /// Creates a new `Context` instance.
-    pub fn new(owner: ContractHash, key_hash: [u8; KEY_HASH_LENGTH]) -> Self {
+    pub const fn new(owner: ContractHash, key_hash: [u8; KEY_HASH_LENGTH]) -> Self {
         Context {
             owner,
             key_hash: KeyHash(key_hash),

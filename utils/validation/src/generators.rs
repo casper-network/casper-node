@@ -14,10 +14,10 @@ use casper_types::{
         Bid, BidAddr, BidKind, Delegator, EraInfo, SeigniorageAllocation, UnbondingPurse,
         ValidatorBid, WithdrawPurse,
     },
-    AccessRights, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash, ContractVersionKey,
-    ContractWasm, ContractWasmHash, DeployHash, DeployInfo, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, EraId, Group, Key, Parameter, ProtocolVersion, PublicKey,
-    SecretKey, StoredValue, Transfer, TransferAddr, URef, U512,
+    AccessRights, CLType, CLTyped, CLValue, Context, ContractHash, ContractPackageHash,
+    ContractVersionKey, ContractWasm, ContractWasmHash, DeployHash, DeployInfo, EntryPoint,
+    EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, Parameter, ProtocolVersion,
+    PublicKey, SecretKey, StoredValue, Transfer, TransferAddr, URef, U512,
 };
 use casper_validation::{
     abi::{ABIFixture, ABITestCase},
@@ -211,6 +211,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         const UNBOND_KEY: Key = Key::Unbond(AccountHash::new([42; 32]));
         const CHAINSPEC_REGISTRY_KEY: Key = Key::ChainspecRegistry;
         const CHECKSUM_REGISTRY_KEY: Key = Key::ChecksumRegistry;
+        const CONTEXT_KEY: Key = Key::Context(Context::new(ContractHash::new([42; 32]), [42; 32]));
 
         let mut keys = BTreeMap::new();
         keys.insert(
@@ -285,6 +286,10 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         keys.insert(
             "ChecksumRegistry".to_string(),
             ABITestCase::from_inputs(vec![CHECKSUM_REGISTRY_KEY.into()])?,
+        );
+        keys.insert(
+            "Context".to_string(),
+            ABITestCase::from_inputs(vec![CONTEXT_KEY.into()])?,
         );
         Fixture::ABI {
             name: "key".to_string(),

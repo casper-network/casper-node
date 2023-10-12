@@ -6,6 +6,7 @@ use std::{
     rc::Rc,
 };
 
+use assert_matches::assert_matches;
 use once_cell::sync::Lazy;
 use rand::RngCore;
 
@@ -136,11 +137,9 @@ fn new_runtime_context<'a>(
         new_tracking_copy(account_hash, entity_address, addressable_entity.clone());
 
     let auction_hash = ContractHash::new(address_generator.create_address());
-    let era_id_key = Key::Context(Context::new(
-        auction_hash,
-        address_generator.create_address(),
-    ));
-    let era = CLValue::from_t(EraId::default())
+    let era_ctx = Context::new(auction_hash, address_generator.create_address());
+    let era_id_key = Key::Context(era_ctx);
+    let era = CLValue::from_t(EraId::new(1))
         .expect("should encode")
         .into();
     tracking_copy.write(era_id_key, era);
@@ -551,6 +550,44 @@ fn uref_key_readable_invalid() {
     let query_result =
         build_runtime_context_and_execute(named_keys, |mut rc| rc.read_gs(&uref_key));
     assert_invalid_access(query_result, AccessRights::READ);
+}
+
+#[test]
+fn uref_key_read_expired() {
+    let query_result = build_runtime_context_and_execute(NamedKeys::default(), |mut rc| {
+        let uref = rc
+            .new_uref(
+                CLValue::from_t(1_i32).unwrap(),
+                Lifetime::Finite(EraId::new(0)),
+            )
+            .expect("should create new uref");
+        rc.read_gs(&Key::from(uref))
+    });
+    assert_eq!(query_result.unwrap(), None);
+}
+
+#[test]
+fn uref_key_write_expired() {
+    let query_result = build_runtime_context_and_execute(NamedKeys::default(), |mut rc| {
+        let value = CLValue::from_t(1_i32).unwrap();
+        let uref = rc
+            .new_uref(value.clone(), Lifetime::Finite(EraId::new(0)))
+            .expect("should create new uref");
+        rc.metered_write_gs(Key::from(uref), value)
+    });
+    assert_matches!(query_result, Err(Error::URefNotFound(_)));
+}
+
+#[test]
+fn uref_key_add_expired() {
+    let query_result = build_runtime_context_and_execute(NamedKeys::default(), |mut rc| {
+        let value = CLValue::from_t(1_i32).unwrap();
+        let uref = rc
+            .new_uref(value.clone(), Lifetime::Finite(EraId::new(0)))
+            .expect("should create new uref");
+        rc.metered_add_gs(Key::from(uref), value)
+    });
+    assert_matches!(query_result, Err(Error::URefNotFound(_)));
 }
 
 #[test]
