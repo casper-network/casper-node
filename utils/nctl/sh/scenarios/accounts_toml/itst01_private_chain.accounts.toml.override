@@ -43,6 +43,12 @@ balance = "0"
 bonded_amount = "1000000000000005"
 delegation_rate = 5
 
+[[delegators]]
+validator_public_key = "PBK_V5"
+delegator_public_key = "020248509e67db3127f82d5224c5c18eac00f96d1edeadbadc8eb2c8606227b56873"
+balance = "1000000000000000000"
+delegated_amount = "100000000000001"
+
 [[administrators]]
 public_key = "PBK_FAUCET"
 balance = "1000000000000000000000000000000000"
