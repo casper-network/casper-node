@@ -181,35 +181,35 @@ pub fn delegate() {
         Vec::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
     entry_points.add_entry_point(EntryPoint::new(
         SHARE_RO_ENTRYPOINT,
         Vec::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
     entry_points.add_entry_point(EntryPoint::new(
         SHARE_W_ENTRYPOINT,
         Vec::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
     entry_points.add_entry_point(EntryPoint::new(
         INVALID_PUT_DICTIONARY_ITEM_KEY_ENTRYPOINT,
         Vec::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
     entry_points.add_entry_point(EntryPoint::new(
         INVALID_GET_DICTIONARY_ITEM_KEY_ENTRYPOINT,
         Vec::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
     let named_keys = {
         let uref = {

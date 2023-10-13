@@ -30,7 +30,7 @@ use casper_types::{
         },
         handle_payment::{self, ACCUMULATION_PURSE_KEY},
         mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
-        standard_payment, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
+        SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, ByteCode,
     ByteCodeHash, ByteCodeKind, CLValue, Chainspec, ChainspecRegistry, Digest, EntryPoints, EraId,
@@ -982,22 +982,6 @@ where
         Ok(contract_hash)
     }
 
-    fn create_standard_payment(&self) -> Result<AddressableEntityHash, Box<GenesisError>> {
-        let named_keys = NamedKeys::new();
-
-        let entry_points = standard_payment::standard_payment_entry_points();
-
-        let contract_hash = self.store_system_contract(
-            named_keys,
-            entry_points,
-            PackageKind::System(SystemEntityType::HandlePayment),
-        )?;
-
-        self.store_system_contract_registry(STANDARD_PAYMENT, contract_hash)?;
-
-        Ok(contract_hash)
-    }
-
     pub(crate) fn create_accounts(
         &self,
         total_supply_key: Key,
@@ -1283,9 +1267,6 @@ where
 
         // Create handle payment
         self.create_handle_payment(payment_purse_uref)?;
-
-        // Create standard payment
-        self.create_standard_payment()?;
 
         self.store_chainspec_registry(chainspec_registry)?;
 

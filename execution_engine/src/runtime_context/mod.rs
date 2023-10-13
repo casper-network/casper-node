@@ -1029,8 +1029,8 @@ where
         weight: Weight,
     ) -> Result<(), Error> {
         let entity_key = match self.entry_point_type {
-            EntryPointType::Contract => self.entity_key,
-            EntryPointType::Session | EntryPointType::Install => {
+            EntryPointType::AddressableEntity => self.entity_key,
+            EntryPointType::Session | EntryPointType::Factory => {
                 self.get_entity_address_for_account_hash(self.account_hash)?
             }
         };
@@ -1153,8 +1153,8 @@ where
         threshold: Weight,
     ) -> Result<(), Error> {
         let entity_key = match self.entry_point_type {
-            EntryPointType::Contract => self.entity_key,
-            EntryPointType::Session | EntryPointType::Install => {
+            EntryPointType::AddressableEntity => self.entity_key,
+            EntryPointType::Session | EntryPointType::Factory => {
                 self.get_entity_address_for_account_hash(self.account_hash)?
             }
         };

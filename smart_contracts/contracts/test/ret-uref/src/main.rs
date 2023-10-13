@@ -54,7 +54,7 @@ pub extern "C" fn call() {
             vec![Parameter::new(ACCESS_UREF, CLType::URef)],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
         entry_points.add_entry_point(put_uref_entrypoint);
         let get_uref_entrypoint = EntryPoint::new(
@@ -62,7 +62,7 @@ pub extern "C" fn call() {
             vec![],
             CLType::URef,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
         entry_points.add_entry_point(get_uref_entrypoint);
         let insert_uref_entrypoint = EntryPoint::new(

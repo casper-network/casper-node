@@ -617,6 +617,13 @@ impl EntryPoints {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
+
+    /// Checks if any of the entry points are of the type Session.
+    pub fn contains_stored_session(&self) -> bool {
+        self.0
+            .values()
+            .any(|entry_point| entry_point.entry_point_type == EntryPointType::Session)
+    }
 }
 
 impl From<Vec<EntryPoint>> for EntryPoints {
@@ -1101,12 +1108,14 @@ impl From<Account> for AddressableEntity {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntryPointType {
-    /// Runs as session code
+    /// Runs as session code (caller)
+    /// Deprecated, retained to allow read back of legacy stored session.
     Session = 0b00000000,
-    /// Runs within contract's context
-    Contract = 0b00000001,
-    /// Installer entry point.
-    Install = 0b10000000,
+    /// Runs within called entity's context (called)
+    AddressableEntity = 0b00000001,
+    /// This entry point is intended to extract a subset of bytecode.
+    /// Runs within called entity's context (called)
+    Factory = 0b10000000,
 }
 
 impl EntryPointType {
@@ -1128,7 +1137,7 @@ impl EntryPointType {
     pub fn is_invalid_context(&self) -> bool {
         match self {
             EntryPointType::Session => true,
-            EntryPointType::Contract | EntryPointType::Install => false,
+            EntryPointType::AddressableEntity | EntryPointType::Factory => false,
         }
     }
 }

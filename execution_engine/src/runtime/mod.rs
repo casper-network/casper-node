@@ -533,7 +533,7 @@ where
 
         let runtime_context = self.context.new_from_self(
             base_key,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
             &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
@@ -664,7 +664,7 @@ where
 
         let runtime_context = self.context.new_from_self(
             base_key,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
             &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
@@ -774,7 +774,7 @@ where
 
         let runtime_context = self.context.new_from_self(
             entity_address,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
             &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
@@ -1081,11 +1081,11 @@ where
         let current = self.context.entry_point_type();
         let next = entry_point.entry_point_type();
         match (current, next) {
-            (EntryPointType::Contract, EntryPointType::Session) => {
+            (EntryPointType::AddressableEntity, EntryPointType::Session) => {
                 // Session code can't be called from Contract code for security reasons.
                 Err(Error::InvalidContext)
             }
-            (EntryPointType::Install, EntryPointType::Session) => {
+            (EntryPointType::Factory, EntryPointType::Session) => {
                 // Session code can't be called from Installer code for security reasons.
                 Err(Error::InvalidContext)
             }
@@ -1093,8 +1093,8 @@ where
                 // Session code called from session reuses current base key
                 Ok(self.context.get_entity_key())
             }
-            (EntryPointType::Session, EntryPointType::Contract)
-            | (EntryPointType::Contract, EntryPointType::Contract) => {
+            (EntryPointType::Session, EntryPointType::AddressableEntity)
+            | (EntryPointType::AddressableEntity, EntryPointType::AddressableEntity) => {
                 Ok(Key::addressable_entity_key(package_kind.tag(), entity_hash))
             }
             _ => {
@@ -1740,6 +1740,10 @@ where
         mut named_keys: NamedKeys,
         output_ptr: u32,
     ) -> Result<Result<(), ApiError>, Error> {
+        if entry_points.contains_stored_session() {
+            return Err(Error::InvalidEntryPointType);
+        }
+
         let mut package = self.context.get_package(package_hash)?;
 
         if package.get_package_kind() != PackageKind::SmartContract {

@@ -149,7 +149,7 @@ pub extern "C" fn call() {
         ],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     let send_to_purse = EntryPoint::new(
         METHOD_SEND_TO_PURSE,
@@ -160,7 +160,7 @@ pub extern "C" fn call() {
         ],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     let hardcoded_src = EntryPoint::new(
         METHOD_HARDCODED_PURSE_SRC,
@@ -170,7 +170,7 @@ pub extern "C" fn call() {
         ],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     let stored_payment = EntryPoint::new(
         METHOD_STORED_PAYMENT,
@@ -180,14 +180,14 @@ pub extern "C" fn call() {
         ],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     let hardcoded_payment = EntryPoint::new(
         METHOD_HARDCODED_PAYMENT,
         vec![Parameter::new(ARG_AMOUNT, CLType::U512)],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
 
     entry_points.add_entry_point(send_to_account);

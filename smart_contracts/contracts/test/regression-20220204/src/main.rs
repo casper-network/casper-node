@@ -38,7 +38,7 @@ pub extern "C" fn call() {
         vec![Parameter::new(ARG_PURSE, URef::cl_type())],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
 
     entry_points.add_entry_point(EntryPoint::new(
@@ -56,7 +56,7 @@ pub extern "C" fn call() {
         vec![Parameter::new(ARG_PURSE, NonTrivialArg::cl_type())],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
 
     entry_points.add_entry_point(EntryPoint::new(

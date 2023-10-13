@@ -134,7 +134,7 @@ fn create_entry_points_1() -> EntryPoints {
         Vec::new(),
         CLType::I32,
         EntryPointAccess::groups(&["Group 1"]),
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(restricted_contract);
 
@@ -152,7 +152,7 @@ fn create_entry_points_1() -> EntryPoints {
         Vec::new(),
         CLType::I32,
         EntryPointAccess::groups(&["Group 1"]),
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(restricted_contract);
 
@@ -165,7 +165,7 @@ fn create_entry_points_1() -> EntryPoints {
         EntryPointAccess::Public,
         // NOTE: Public contract authorizes any contract call, because this contract has groups
         // uref in its named keys
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(unrestricted_contract_caller);
 

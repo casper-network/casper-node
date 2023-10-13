@@ -47,7 +47,7 @@ fn stored_contract(contract_hash: AddressableEntityHash) -> Call {
     Call {
         contract_address: ContractAddress::ContractHash(contract_hash),
         target_method: CONTRACT_FORWARDER_ENTRYPOINT_CONTRACT.to_string(),
-        entry_point_type: EntryPointType::Contract,
+        entry_point_type: EntryPointType::AddressableEntity,
     }
 }
 
@@ -55,7 +55,7 @@ fn stored_versioned_contract(contract_package_hash: PackageHash) -> Call {
     Call {
         contract_address: ContractAddress::ContractPackageHash(contract_package_hash),
         target_method: CONTRACT_FORWARDER_ENTRYPOINT_CONTRACT.to_string(),
-        entry_point_type: EntryPointType::Contract,
+        entry_point_type: EntryPointType::AddressableEntity,
     }
 }
 
@@ -217,7 +217,7 @@ fn assert_each_context_has_correct_call_stack_info(
         let stored_call_stack_key = format!("call_stack-{}", i);
         // we need to know where to look for the call stack information
         let call_stack = match call.entry_point_type {
-            EntryPointType::Contract | EntryPointType::Install => builder
+            EntryPointType::AddressableEntity | EntryPointType::Factory => builder
                 .get_call_stack_from_contract_context(
                     &stored_call_stack_key,
                     current_contract_package_hash,
@@ -279,7 +279,7 @@ fn assert_each_context_has_correct_call_stack_info_module_bytes(
         let stored_call_stack_key = format!("call_stack-{}", i);
         // we need to know where to look for the call stack information
         let call_stack = match call.entry_point_type {
-            EntryPointType::Contract | EntryPointType::Install => builder
+            EntryPointType::AddressableEntity | EntryPointType::Factory => builder
                 .get_call_stack_from_contract_context(
                     &stored_call_stack_key,
                     current_contract_package_hash.value(),
@@ -315,7 +315,7 @@ fn assert_call_stack_matches_calls(call_stack: Vec<CallStackElement>, calls: &[C
                     package_hash: contract_package_hash,
                     ..
                 },
-            ) if *entry_point_type == EntryPointType::Contract
+            ) if *entry_point_type == EntryPointType::AddressableEntity
                 && *contract_package_hash == *current_contract_package_hash => {}
 
             // Unversioned Call with EntryPointType::Contract
@@ -329,7 +329,7 @@ fn assert_call_stack_matches_calls(call_stack: Vec<CallStackElement>, calls: &[C
                     entity_hash: contract_hash,
                     ..
                 },
-            ) if *entry_point_type == EntryPointType::Contract
+            ) if *entry_point_type == EntryPointType::AddressableEntity
                 && *contract_hash == *current_contract_hash => {}
 
             // // Versioned Call with EntryPointType::Session

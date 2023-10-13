@@ -182,7 +182,7 @@ pub extern "C" fn call() {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(add_bid_proxy_call_1);
 
@@ -195,7 +195,7 @@ pub extern "C" fn call() {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(add_bid_proxy_call);
 
@@ -207,7 +207,7 @@ pub extern "C" fn call() {
         ],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
 
     let withdraw_proxy_call = EntryPoint::new(
@@ -218,7 +218,7 @@ pub extern "C" fn call() {
         ],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
 
     let delegate_proxy_call = EntryPoint::new(
@@ -230,7 +230,7 @@ pub extern "C" fn call() {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
 
     let delegate_proxy_call_1 = EntryPoint::new(
@@ -242,7 +242,7 @@ pub extern "C" fn call() {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
 
     let undelegate_proxy_call = EntryPoint::new(
@@ -254,7 +254,7 @@ pub extern "C" fn call() {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
 
     let undelegate_proxy_call_1 = EntryPoint::new(
@@ -266,7 +266,7 @@ pub extern "C" fn call() {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
 
     let activate_bid_proxy_call = EntryPoint::new(
@@ -277,7 +277,7 @@ pub extern "C" fn call() {
         )],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     let activate_bid_proxy_call_1 = EntryPoint::new(
         METHOD_ACTIVATE_BID_CALL_1,
@@ -287,7 +287,7 @@ pub extern "C" fn call() {
         )],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
 
     entry_points.add_entry_point(withdraw_proxy_call);

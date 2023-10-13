@@ -228,7 +228,7 @@ fn store_function(
             ],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
 
         entry_points.add_entry_point(entry_point);

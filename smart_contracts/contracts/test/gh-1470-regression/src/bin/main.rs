@@ -60,7 +60,7 @@ pub extern "C" fn call() {
         ],
         CLType::Unit,
         EntryPointAccess::Groups(vec![Group::new(GROUP_LABEL)]),
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
 
     entry_points.add_entry_point(EntryPoint::new(
@@ -72,7 +72,7 @@ pub extern "C" fn call() {
         ],
         CLType::Unit,
         EntryPointAccess::Groups(vec![Group::new(GROUP_LABEL)]),
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
 
     let named_keys = NamedKeys::new();

@@ -22,7 +22,7 @@ pub extern "C" fn call() {
         vec![Parameter::new(ARG_TARGET, AddressableEntityHash::cl_type())],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
 
     let (contract_hash, _contract_version) =

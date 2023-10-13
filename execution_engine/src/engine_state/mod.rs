@@ -2820,7 +2820,8 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::DisabledEntity(_)
                 | ExecError::UnexpectedKeyVariant(_)
                 | ExecError::InvalidPackageKind(_)
-                | ExecError::Transform(_) => false,
+                | ExecError::Transform(_)
+                | ExecError::InvalidEntryPointType => false,
                 ExecError::DisabledUnrestrictedTransfers => false,
             },
             Error::WasmPreprocessing(_) => true,

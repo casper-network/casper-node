@@ -63,7 +63,7 @@ pub extern "C" fn call() {
             vec![Parameter::new(ARG_PURSE_NAME, CLType::String)],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
         entry_points.add_entry_point(add);
         let version = EntryPoint::new(
@@ -71,7 +71,7 @@ pub extern "C" fn call() {
             vec![],
             CLType::String,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
         entry_points.add_entry_point(version);
 
@@ -80,7 +80,7 @@ pub extern "C" fn call() {
             vec![Parameter::new(ARG_PURSE_NAME, CLType::String)],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
         entry_points.add_entry_point(remove);
         entry_points

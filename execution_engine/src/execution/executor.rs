@@ -136,83 +136,6 @@ impl Executor {
         }
     }
 
-    // /// Executes standard payment code natively.
-    // #[allow(clippy::too_many_arguments)]
-    // pub(crate) fn exec_standard_payment<R>(
-    //     &self,
-    //     payment_args: RuntimeArgs,
-    //     payment_base_key: Key,
-    //     entity: &AddressableEntity,
-    //     package_kind: PackageKind,
-    //     payment_named_keys: &mut NamedKeys,
-    //     access_rights: ContextAccessRights,
-    //     authorization_keys: BTreeSet<AccountHash>,
-    //     account_hash: AccountHash,
-    //     blocktime: BlockTime,
-    //     deploy_hash: DeployHash,
-    //     payment_gas_limit: Gas,
-    //     protocol_version: ProtocolVersion,
-    //     tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-    //     phase: Phase,
-    //     stack: RuntimeStack,
-    // ) -> ExecutionResult
-    // where
-    //     R: StateReader<Key, StoredValue>,
-    //     R::Error: Into<Error>,
-    // {
-    //     let spending_limit: U512 = match try_get_amount(&payment_args) {
-    //         Ok(spending_limit) => spending_limit,
-    //         Err(error) => {
-    //             return ExecutionResult::precondition_failure(error.into());
-    //         }
-    //     };
-    //
-    //     let address_generator = {
-    //         let generator = AddressGenerator::new(deploy_hash.as_ref(), phase);
-    //         Rc::new(RefCell::new(generator))
-    //     };
-    //
-    //     let runtime_context = self.create_runtime_context(
-    //         payment_named_keys,
-    //         entity,
-    //         payment_base_key,
-    //         authorization_keys,
-    //         access_rights,
-    //         package_kind,
-    //         account_hash,
-    //         address_generator,
-    //         Rc::clone(&tracking_copy),
-    //         blocktime,
-    //         protocol_version,
-    //         deploy_hash,
-    //         phase,
-    //         payment_args,
-    //         payment_gas_limit,
-    //         spending_limit,
-    //         EntryPointType::Session,
-    //     );
-    //
-    //     let effects = tracking_copy.borrow().effects();
-    //
-    //     // Standard payment is executed in the calling account's context; the stack already
-    //     // captures that.
-    //     let mut runtime = Runtime::new(runtime_context);
-    //
-    //     match runtime.call_host_standard_payment(stack) {
-    //         Ok(()) => ExecutionResult::Success {
-    //             effects: runtime.context().effects(),
-    //             transfers: runtime.context().transfers().to_owned(),
-    //             cost: runtime.context().gas_counter(),
-    //         },
-    //         Err(error) => ExecutionResult::Failure {
-    //             effects,
-    //             error: error.into(),
-    //             transfers: runtime.context().transfers().to_owned(),
-    //             cost: runtime.context().gas_counter(),
-    //         },
-    //     }
-    // }
-
     /// Handles necessary address resolution and orchestration to securely call a system contract
     /// using the runtime.
     #[allow(clippy::too_many_arguments)]
@@ -308,7 +231,7 @@ impl Executor {
             runtime_args.clone(),
             gas_limit,
             remaining_spending_limit,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
 
         let mut runtime = Runtime::new(runtime_context);
