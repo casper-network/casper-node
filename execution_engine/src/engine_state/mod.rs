@@ -719,18 +719,24 @@ where
         for contract_key in all_contract_keys {
             let owner = ContractHash::new(contract_key.into_hash().unwrap());
 
-            let StoredValue::AddressableEntity(contract) = tracking_copy
+            let contract = match tracking_copy
                 .borrow_mut()
                 .read(&contract_key)
                 .map_err(|_| Error::FailedToGetStoredContracts)?
-                .unwrap() else {
-                continue;
+                .unwrap()
+            {
+                StoredValue::AddressableEntity(contract) => contract,
+                StoredValue::Contract(_) => todo!(),
+                StoredValue::ContractPackage(_) | StoredValue::ContractWasm(_) => {
+                    continue;
+                }
+                _ => return Err(Error::KeyPointingAtUnexpectedType(contract_key)),
             };
 
             for key in contract
                 .named_keys()
                 .iter()
-                .filter_map(|(_, key)| key.as_uref().is_some().then_some(*key))
+                .filter_map(|(_, key)| key.as_uref().is_some().then_some(key.normalize()))
             {
                 unreached_uref_keys.remove(&key);
             }
@@ -757,12 +763,6 @@ where
         is_system_contract: bool,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Result<(), Error> {
-        const SYSTEM_UREFS: &[&str] = &[
-            handle_payment::PAYMENT_PURSE_KEY,
-            handle_payment::REFUND_PURSE_KEY,
-            handle_payment::ACCUMULATION_PURSE_KEY,
-        ];
-
         let mut new_named_keys = NamedKeys::new();
 
         for (name, key) in entity.named_keys().iter() {
@@ -771,10 +771,14 @@ where
                 .read(key)
                 .map_err(|_| Error::FailedToGetStoredCLValues)?;
 
-            match (key, value) {
-                (Key::URef(uref), Some(StoredValue::CLValue(value)))
-                    if is_system_contract && !SYSTEM_UREFS.contains(&name.as_str()) =>
-                {
+            let uref = key.into_uref().unwrap();
+            let balance = tracking_copy
+                .borrow_mut()
+                .get(&Key::Balance(uref.addr()))
+                .map_err(|_| Error::FailedToGetStoredBalance)?;
+
+            match (value, balance) {
+                (Some(StoredValue::CLValue(value)), None) if is_system_contract => {
                     let ctx = Context::new(contract_hash, uref.addr());
                     tracking_copy
                         .borrow_mut()
@@ -782,7 +786,7 @@ where
 
                     new_named_keys.insert(name.clone(), Key::Context(ctx));
                 }
-                (&Key::URef(uref), Some(StoredValue::CLValue(value))) => {
+                (Some(StoredValue::CLValue(value)), _) => {
                     let ctx = Context::new(contract_hash, uref.addr());
                     let stored_uref = StoredValue::URef(ctx, Lifetime::Indefinite);
                     tracking_copy
@@ -792,7 +796,7 @@ where
                         .borrow_mut()
                         .write(Key::Context(ctx), value.into());
                 }
-                _ => {}
+                _ => return Err(Error::KeyPointingAtUnexpectedType(*key)),
             }
         }
 
@@ -2938,6 +2942,8 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
             | Error::FailedToGetStoredWithdraws
             | Error::FailedToGetStoredContracts
             | Error::FailedToGetStoredCLValues
+            | Error::FailedToGetStoredBalance
+            | Error::KeyPointingAtUnexpectedType(_)
             | Error::FailedToGetWithdrawPurses
             | Error::FailedToRetrieveUnbondingDelay
             | Error::FailedToRetrieveEraId

@@ -96,6 +96,12 @@ pub enum Error {
     /// Failed to get the stored values under Key::URef.
     #[error("Failed to get stored CLValues under URefs")]
     FailedToGetStoredCLValues,
+    /// Failed to get the stored balance.
+    #[error("Failed to get stored Balance")]
+    FailedToGetStoredBalance,
+    /// Failed to get the stored balance.
+    #[error("Key was pointing at a value of unexpected type")]
+    KeyPointingAtUnexpectedType(Key),
     /// Failed to convert the StoredValue into WithdrawPurse.
     #[error("Failed to convert the stored value to a withdraw purse")]
     FailedToGetWithdrawPurses,
