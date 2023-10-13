@@ -56,14 +56,15 @@ use casper_types::{
             ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY, ERA_ID_KEY, LOCKED_FUNDS_PERIOD_KEY,
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
-        handle_payment::{self, ACCUMULATION_PURSE_KEY},
+        handle_payment,
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, AddressableEntity, ApiError, BlockTime, CLValue, ChainspecRegistry, ContractHash,
-    ContractPackageHash, ContractWasmHash, DeployHash, DeployInfo, Digest, EntryPoints, EraId,
-    ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Package, Phase, ProtocolVersion,
-    PublicKey, RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
+    AccessRights, AddressableEntity, ApiError, BlockTime, CLValue, ChainspecRegistry, Context,
+    ContractHash, ContractPackageHash, ContractWasmHash, DeployHash, DeployInfo, Digest,
+    EntryPoints, EraId, ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Lifetime, Motes,
+    Package, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, UpgradeConfig,
+    U512,
 };
 
 use self::transfer::NewTransferTargetMode;
@@ -680,6 +681,8 @@ where
             };
         }
 
+        self.migrate_urefs(tracking_copy.clone())?;
+
         let effects = tracking_copy.borrow().effects();
 
         // commit
@@ -693,6 +696,125 @@ where
             post_state_hash,
             effects,
         })
+    }
+
+    fn migrate_urefs(
+        &self,
+        tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
+    ) -> Result<(), Error> {
+        let system_contracts = tracking_copy.borrow_mut().get_system_contracts()?;
+
+        let all_contract_keys = tracking_copy
+            .borrow_mut()
+            .get_keys(&KeyTag::Hash)
+            .map_err(|_| Error::FailedToGetKeys(KeyTag::Hash))?;
+
+        let all_uref_keys = tracking_copy
+            .borrow_mut()
+            .get_keys(&KeyTag::URef)
+            .map_err(|_| Error::FailedToGetKeys(KeyTag::URef))?;
+
+        let mut unreached_uref_keys = all_uref_keys;
+
+        for contract_key in all_contract_keys {
+            let owner = ContractHash::new(contract_key.into_hash().unwrap());
+
+            let StoredValue::AddressableEntity(contract) = tracking_copy
+                .borrow_mut()
+                .read(&contract_key)
+                .map_err(|_| Error::FailedToGetStoredContracts)?
+                .unwrap() else {
+                continue;
+            };
+
+            for key in contract
+                .named_keys()
+                .iter()
+                .filter_map(|(_, key)| key.as_uref().is_some().then_some(*key))
+            {
+                unreached_uref_keys.remove(&key);
+            }
+
+            if system_contracts.has_contract_hash(&owner) {
+                self.migrate_urefs_on_system_entity(owner, contract, tracking_copy.clone())?;
+            } else {
+                self.migrate_urefs_on_entity(owner, contract, tracking_copy.clone())?;
+            }
+        }
+
+        for key in unreached_uref_keys {
+            tracking_copy.borrow_mut().prune(key);
+        }
+
+        Ok(())
+    }
+
+    fn migrate_urefs_on_entity(
+        &self,
+        contract_hash: ContractHash,
+        entity: AddressableEntity,
+        tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
+    ) -> Result<(), Error> {
+        for (_, &key) in entity.named_keys().iter() {
+            let value = tracking_copy
+                .borrow_mut()
+                .read(&key)
+                .map_err(|_| Error::FailedToGetStoredCLValues)?;
+
+            if let (Key::URef(uref), Some(StoredValue::CLValue(value))) = (key, value) {
+                let ctx = Context::new(contract_hash, uref.addr());
+                let stored_uref = StoredValue::URef(ctx, Lifetime::Indefinite);
+                tracking_copy
+                    .borrow_mut()
+                    .write(Key::URef(uref), stored_uref);
+                tracking_copy
+                    .borrow_mut()
+                    .write(Key::Context(ctx), value.into());
+            }
+        }
+        Ok(())
+    }
+
+    fn migrate_urefs_on_system_entity(
+        &self,
+        contract_hash: ContractHash,
+        mut entity: AddressableEntity,
+        tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
+    ) -> Result<(), Error> {
+        const SYSTEM_UREFS: &[&str] = &[
+            handle_payment::PAYMENT_PURSE_KEY,
+            handle_payment::REFUND_PURSE_KEY,
+            handle_payment::ACCUMULATION_PURSE_KEY,
+        ];
+
+        let mut new_named_keys = entity.named_keys().clone();
+
+        for (name, key) in entity.named_keys().iter() {
+            let value = tracking_copy
+                .borrow_mut()
+                .read(key)
+                .map_err(|_| Error::FailedToGetStoredCLValues)?;
+
+            match (key, value) {
+                (Key::URef(uref), Some(StoredValue::CLValue(value)))
+                    if !SYSTEM_UREFS.contains(&name.as_str()) =>
+                {
+                    let ctx = Context::new(contract_hash, uref.addr());
+                    tracking_copy
+                        .borrow_mut()
+                        .write(Key::Context(ctx), value.into());
+
+                    new_named_keys.insert(name.clone(), Key::Context(ctx));
+                }
+                _ => {}
+            }
+        }
+
+        entity.named_keys_append(new_named_keys);
+        tracking_copy
+            .borrow_mut()
+            .write(Key::Hash(contract_hash.value()), entity.into());
+        Ok(())
     }
 
     /// Commit a prune of leaf nodes from the tip of the merkle trie.
@@ -2142,7 +2264,7 @@ where
 
                 let accumulation_purse_uref = match handle_payment_contract
                     .named_keys()
-                    .get(ACCUMULATION_PURSE_KEY)
+                    .get(handle_payment::ACCUMULATION_PURSE_KEY)
                 {
                     Some(Key::URef(accumulation_purse)) => accumulation_purse,
                     Some(_) | None => {
@@ -2828,6 +2950,8 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
             | Error::RuntimeStackOverflow
             | Error::FailedToGetKeys(_)
             | Error::FailedToGetStoredWithdraws
+            | Error::FailedToGetStoredContracts
+            | Error::FailedToGetStoredCLValues
             | Error::FailedToGetWithdrawPurses
             | Error::FailedToRetrieveUnbondingDelay
             | Error::FailedToRetrieveEraId

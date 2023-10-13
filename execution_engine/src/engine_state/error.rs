@@ -90,6 +90,12 @@ pub enum Error {
     /// Failed to get the purses stored under Key::Withdraw
     #[error("Failed to get stored values under withdraws")]
     FailedToGetStoredWithdraws,
+    /// Failed to get the stored values under Key::ContractHash.
+    #[error("Failed to get stored values under contract hashes")]
+    FailedToGetStoredContracts,
+    /// Failed to get the stored values under Key::URef.
+    #[error("Failed to get stored CLValues under URefs")]
+    FailedToGetStoredCLValues,
     /// Failed to convert the StoredValue into WithdrawPurse.
     #[error("Failed to convert the stored value to a withdraw purse")]
     FailedToGetWithdrawPurses,
