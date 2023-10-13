@@ -650,6 +650,65 @@ fn uref_key_addable_invalid() {
 }
 
 #[test]
+fn context_key_write_non_owned() {
+    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+
+    let query_result = build_runtime_context_and_execute(NamedKeys::default(), |mut rc| {
+        let other_owner = ContractHash::new(rng.create_address());
+        let ctx = Context::new(other_owner, rng.create_address());
+        rc.metered_write_gs(Key::Context(ctx), CLValue::from_t(1).unwrap())
+    });
+    assert_matches!(
+        query_result,
+        Err(Error::InvalidAccess {
+            required: AccessRights::WRITE
+        })
+    );
+}
+
+#[test]
+fn context_key_read_non_owned() {
+    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+
+    let query_result = build_runtime_context_and_execute(NamedKeys::default(), |mut rc| {
+        let other_owner = ContractHash::new(rng.create_address());
+        let ctx = Context::new(other_owner, rng.create_address());
+        rc.read_gs(&Key::Context(ctx))
+    });
+    assert_matches!(
+        query_result,
+        Err(Error::InvalidAccess {
+            required: AccessRights::READ
+        })
+    );
+}
+
+#[test]
+fn context_key_write_owned() {
+    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+
+    let query_result = build_runtime_context_and_execute(NamedKeys::default(), |mut rc| {
+        let ctx = Context::new(rc.entity_address, rng.create_address());
+        rc.metered_write_gs(Key::Context(ctx), CLValue::from_t(1).unwrap())
+    });
+    assert_matches!(query_result, Ok(()));
+}
+
+#[test]
+fn context_key_read_owned() {
+    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let value = CLValue::from_t(1).unwrap();
+
+    let query_result = build_runtime_context_and_execute(NamedKeys::default(), |mut rc| {
+        let ctx = Context::new(rc.entity_address, rng.create_address());
+        rc.metered_write_gs(Key::Context(ctx), value.clone())
+            .expect("should write");
+        rc.read_gs(&Key::Context(ctx))
+    });
+    assert_eq!(query_result.unwrap(), Some(StoredValue::CLValue(value)));
+}
+
+#[test]
 fn hash_key_readable() {
     // values under hash's are universally readable
     let query = |runtime_context: RuntimeContext<LmdbGlobalStateView>| {
