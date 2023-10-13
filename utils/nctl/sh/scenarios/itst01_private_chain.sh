@@ -1,1 +1,1 @@
-/home/magister/Casper/casper-node/utils/nctl/sh/scenarios/itst01.sh
+itst01.sh
