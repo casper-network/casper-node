@@ -735,11 +735,12 @@ where
                 unreached_uref_keys.remove(&key);
             }
 
-            if system_contracts.has_contract_hash(&owner) {
-                self.migrate_urefs_on_system_entity(owner, contract, tracking_copy.clone())?;
-            } else {
-                self.migrate_urefs_on_entity(owner, contract, tracking_copy.clone())?;
-            }
+            self.migrate_urefs_on_entity(
+                owner,
+                contract,
+                system_contracts.has_contract_hash(&owner),
+                tracking_copy.clone(),
+            )?;
         }
 
         for key in unreached_uref_keys {
@@ -752,33 +753,8 @@ where
     fn migrate_urefs_on_entity(
         &self,
         contract_hash: ContractHash,
-        entity: AddressableEntity,
-        tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-    ) -> Result<(), Error> {
-        for (_, &key) in entity.named_keys().iter() {
-            let value = tracking_copy
-                .borrow_mut()
-                .read(&key)
-                .map_err(|_| Error::FailedToGetStoredCLValues)?;
-
-            if let (Key::URef(uref), Some(StoredValue::CLValue(value))) = (key, value) {
-                let ctx = Context::new(contract_hash, uref.addr());
-                let stored_uref = StoredValue::URef(ctx, Lifetime::Indefinite);
-                tracking_copy
-                    .borrow_mut()
-                    .write(Key::URef(uref), stored_uref);
-                tracking_copy
-                    .borrow_mut()
-                    .write(Key::Context(ctx), value.into());
-            }
-        }
-        Ok(())
-    }
-
-    fn migrate_urefs_on_system_entity(
-        &self,
-        contract_hash: ContractHash,
         mut entity: AddressableEntity,
+        is_system_contract: bool,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Result<(), Error> {
         const SYSTEM_UREFS: &[&str] = &[
@@ -787,7 +763,7 @@ where
             handle_payment::ACCUMULATION_PURSE_KEY,
         ];
 
-        let mut new_named_keys = entity.named_keys().clone();
+        let mut new_named_keys = NamedKeys::new();
 
         for (name, key) in entity.named_keys().iter() {
             let value = tracking_copy
@@ -797,7 +773,7 @@ where
 
             match (key, value) {
                 (Key::URef(uref), Some(StoredValue::CLValue(value)))
-                    if !SYSTEM_UREFS.contains(&name.as_str()) =>
+                    if is_system_contract && !SYSTEM_UREFS.contains(&name.as_str()) =>
                 {
                     let ctx = Context::new(contract_hash, uref.addr());
                     tracking_copy
@@ -805,6 +781,16 @@ where
                         .write(Key::Context(ctx), value.into());
 
                     new_named_keys.insert(name.clone(), Key::Context(ctx));
+                }
+                (&Key::URef(uref), Some(StoredValue::CLValue(value))) => {
+                    let ctx = Context::new(contract_hash, uref.addr());
+                    let stored_uref = StoredValue::URef(ctx, Lifetime::Indefinite);
+                    tracking_copy
+                        .borrow_mut()
+                        .write(Key::URef(uref), stored_uref);
+                    tracking_copy
+                        .borrow_mut()
+                        .write(Key::Context(ctx), value.into());
                 }
                 _ => {}
             }
