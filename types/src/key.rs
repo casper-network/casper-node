@@ -56,6 +56,7 @@ const ERA_SUMMARY_PREFIX: &str = "era-summary-";
 const CHAINSPEC_REGISTRY_PREFIX: &str = "chainspec-registry-";
 const CHECKSUM_REGISTRY_PREFIX: &str = "checksum-registry-";
 const BID_ADDR_PREFIX: &str = "bid-addr-";
+const CONTEXT_PREFIX: &str = "context-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -315,6 +316,8 @@ pub enum FromStrError {
     ChecksumRegistry(String),
     /// Bid parse error.
     BidAddr(String),
+    /// Context parse error.
+    Context(String),
     /// Unknown prefix.
     UnknownPrefix,
 }
@@ -374,6 +377,7 @@ impl Display for FromStrError {
                 write!(f, "checksum-registry-key from string error: {}", error)
             }
             FromStrError::BidAddr(error) => write!(f, "bid-addr-key from string error: {}", error),
+            FromStrError::Context(error) => write!(f, "context-key from string error: {}", error),
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
         }
     }
@@ -489,7 +493,8 @@ impl Key {
             }
             Key::Context(context) => {
                 format!(
-                    "{}{}",
+                    "{}{}{}",
+                    CONTEXT_PREFIX,
                     base16::encode_lower(&context.owner),
                     base16::encode_lower(&context.key_hash.0)
                 )
@@ -655,6 +660,25 @@ impl Key {
                 )
             })?;
             return Ok(Key::ChecksumRegistry);
+        }
+
+        if let Some(hex) = input.strip_prefix(CONTEXT_PREFIX) {
+            let hash = checksummed_hex::decode(hex)
+                .map_err(|error| FromStrError::Context(error.to_string()))?;
+            match (hash.get(..KEY_HASH_LENGTH), hash.get(KEY_HASH_LENGTH..)) {
+                (Some(owner), Some(key_hash)) => {
+                    let owner = ContractHash::try_from(owner)
+                        .map_err(|error| FromStrError::Context(error.to_string()))?;
+                    let key_hash = <[u8; KEY_HASH_LENGTH]>::try_from(key_hash)
+                        .map_err(|error| FromStrError::Context(error.to_string()))?;
+                    return Ok(Key::Context(Context::new(owner, key_hash)));
+                }
+                _ => {
+                    return Err(FromStrError::Context(
+                        "invalid context key length".to_string(),
+                    ))
+                }
+            }
         }
 
         Err(FromStrError::UnknownPrefix)
@@ -1168,6 +1192,7 @@ mod serde_helpers {
         ChainspecRegistry,
         ChecksumRegistry,
         BidAddr(BidAddr),
+        Context(Context),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -1213,6 +1238,7 @@ mod serde_helpers {
                 BinaryDeserHelper::ChainspecRegistry => Key::ChainspecRegistry,
                 BinaryDeserHelper::ChecksumRegistry => Key::ChecksumRegistry,
                 BinaryDeserHelper::BidAddr(bid_addr) => Key::BidAddr(bid_addr),
+                BinaryDeserHelper::Context(context) => Key::Context(context),
             }
         }
     }
@@ -1271,6 +1297,8 @@ mod tests {
     const UNBOND_KEY: Key = Key::Unbond(AccountHash::new([42; 32]));
     const CHAINSPEC_REGISTRY_KEY: Key = Key::ChainspecRegistry;
     const CHECKSUM_REGISTRY_KEY: Key = Key::ChecksumRegistry;
+    const CONTEXT_KEY: Key = Key::Context(Context::new(ContractHash::new([42; 32]), [42; 32]));
+
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
@@ -1290,6 +1318,7 @@ mod tests {
         UNIFIED_BID_KEY,
         VALIDATOR_BID_KEY,
         DELEGATOR_BID_KEY,
+        CONTEXT_KEY,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
     const UNIFIED_HEX_STRING: &str =
@@ -1423,6 +1452,10 @@ mod tests {
                 "Key::ChecksumRegistry({})",
                 base16::encode_lower(&PADDING_BYTES),
             )
+        );
+        assert_eq!(
+            format!("{}", CONTEXT_KEY),
+            format!("Key::Context({}{})", HEX_STRING, HEX_STRING)
         );
     }
 
@@ -1688,6 +1721,10 @@ mod tests {
             .unwrap_err()
             .to_string()
             .starts_with("checksum-registry-key from string error: "));
+        assert!(Key::from_formatted_str(CONTEXT_PREFIX)
+            .unwrap_err()
+            .to_string()
+            .starts_with("context-key from string error: "));
         let bid_addr_err = Key::from_formatted_str(BID_ADDR_PREFIX)
             .unwrap_err()
             .to_string();
@@ -1773,5 +1810,6 @@ mod tests {
         round_trip(&Key::Unbond(AccountHash::new(zeros)));
         round_trip(&Key::ChainspecRegistry);
         round_trip(&Key::ChecksumRegistry);
+        round_trip(&Key::Context(Context::new(ContractHash::new(zeros), zeros)));
     }
 }
