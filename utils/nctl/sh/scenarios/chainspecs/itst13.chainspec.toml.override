@@ -1,0 +1,9 @@
+[core]
+era_duration = '210seconds'
+auction_delay = 1
+
+[highway]
+maximum_round_length = '17seconds'
+
+[deploys]
+delete = { cost = 14_000, arguments = [0, 0] }
