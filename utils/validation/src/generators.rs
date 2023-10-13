@@ -16,8 +16,8 @@ use casper_types::{
     },
     AccessRights, CLType, CLTyped, CLValue, Context, ContractHash, ContractPackageHash,
     ContractVersionKey, ContractWasm, ContractWasmHash, DeployHash, DeployInfo, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, Parameter, ProtocolVersion,
-    PublicKey, SecretKey, StoredValue, Transfer, TransferAddr, URef, U512,
+    EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, Lifetime, Parameter,
+    ProtocolVersion, PublicKey, SecretKey, StoredValue, Transfer, TransferAddr, URef, U512,
 };
 use casper_validation::{
     abi::{ABIFixture, ABITestCase},
@@ -462,6 +462,14 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
                 unbonding_purse_1,
                 unbonding_purse_2,
             ])
+            .into()])?,
+        );
+        stored_value.insert(
+            "URef".to_string(),
+            ABITestCase::from_inputs(vec![StoredValue::URef(
+                Context::new(v1_hash, [42; 32]),
+                Lifetime::Indefinite,
+            )
             .into()])?,
         );
 
