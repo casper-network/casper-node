@@ -71,10 +71,12 @@ pub enum MessagePayload {
     String(String),
 }
 
-impl MessagePayload {
-    /// Creates a new [`MessagePayload`] from a [`String`].
-    pub fn from_string(message: String) -> Self {
-        Self::String(message)
+impl<T> From<T> for MessagePayload
+where
+    T: Into<String>,
+{
+    fn from(value: T) -> Self {
+        Self::String(value.into())
     }
 }
 
@@ -199,7 +201,7 @@ mod tests {
         let message_checksum = MessageChecksum([1; MESSAGE_CHECKSUM_LENGTH]);
         bytesrepr::test_serialization_roundtrip(&message_checksum);
 
-        let message_payload = MessagePayload::from_string("message payload".to_string());
+        let message_payload = "message payload".into();
         bytesrepr::test_serialization_roundtrip(&message_payload);
 
         let message = Message::new(

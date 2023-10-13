@@ -1184,6 +1184,9 @@ where
                 let message = self.t_from_mem(message_ptr, message_size)?;
 
                 let result = self.emit_message(topic_name, message)?;
+                if result.is_ok() {
+                    self.charge_emit_message()?;
+                }
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
             }
         }

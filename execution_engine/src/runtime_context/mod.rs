@@ -72,6 +72,7 @@ pub struct RuntimeContext<'a, R> {
     entity_address: Key,
     package_kind: ContractPackageKind,
     account_hash: AccountHash,
+    last_message_cost: U512,
 }
 
 impl<'a, R> RuntimeContext<'a, R>
@@ -126,6 +127,7 @@ where
             transfers,
             remaining_spending_limit,
             package_kind,
+            last_message_cost: U512::from(0),
         }
     }
 
@@ -180,6 +182,7 @@ where
             transfers,
             remaining_spending_limit,
             package_kind,
+            last_message_cost: self.last_message_cost,
         }
     }
 
@@ -663,6 +666,16 @@ where
     /// Returns a copy of the current messages of a tracking copy.
     pub fn messages(&self) -> Vec<Message> {
         self.tracking_copy.borrow().messages()
+    }
+
+    /// Returns the cost charged for the last emitted message.
+    pub fn last_message_cost(&self) -> U512 {
+        self.last_message_cost
+    }
+
+    /// Sets the cost charged for the last emitted message.
+    pub fn set_last_message_cost(&mut self, last_cost: U512) {
+        self.last_message_cost = last_cost
     }
 
     /// Returns list of transfers.

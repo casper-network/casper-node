@@ -13,8 +13,8 @@ use casper_types::DEFAULT_ADD_BID_COST;
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
     BrTableCost, CLValue, ContractHash, ControlFlowCosts, EraId, HostFunction, HostFunctionCosts,
-    MessageLimits, OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts, StoredValue,
-    WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
+    MessageCosts, MessageLimits, OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts,
+    StoredValue, WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_types::{
@@ -144,6 +144,7 @@ static STORAGE_COSTS_ONLY: Lazy<WasmConfig> = Lazy::new(|| {
         StorageCosts::default(),
         *NEW_HOST_FUNCTION_COSTS,
         MessageLimits::default(),
+        MessageCosts::default(),
     )
 });
 

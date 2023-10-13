@@ -759,6 +759,7 @@ fn make_wasm_config(
         old_wasm_config.storage_costs(),
         new_host_function_costs,
         old_wasm_config.messages_limits(),
+        old_wasm_config.message_costs(),
     )
 }
 

@@ -1396,8 +1396,10 @@ where
 
         // The `runtime`'s context was initialized with our counter from before the call and any gas
         // charged by the sub-call was added to its counter - so let's copy the correct value of the
-        // counter from there to our counter.
+        // counter from there to our counter. Do the same for the message cost tracking.
         self.context.set_gas_counter(runtime.context.gas_counter());
+        self.context
+            .set_last_message_cost(runtime.context.last_message_cost());
 
         {
             let transfers = self.context.transfers_mut();
@@ -2971,6 +2973,22 @@ where
     {
         let cost = host_function.calculate_gas_cost(weights);
         self.gas(cost)?;
+        Ok(())
+    }
+
+    /// Charge gas cost for emitting a message.
+    fn charge_emit_message(&mut self) -> Result<(), Trap> {
+        let costs = self.context.engine_config().wasm_config().message_costs();
+        let cost = match self.context.last_message_cost() {
+            last_cost if last_cost == U512::from(0) => Gas::new(costs.first_message_cost().into()),
+            last_cost => Gas::new(
+                last_cost
+                    .checked_add(costs.cost_increase_per_message().into())
+                    .ok_or(Error::GasLimit)?,
+            ),
+        };
+        self.gas(cost)?;
+        self.context.set_last_message_cost(cost.value());
         Ok(())
     }
 

@@ -129,8 +129,9 @@ mod tests {
     use casper_types::{
         bytesrepr::FromBytes, ActivationPoint, BrTableCost, ChainspecRawBytes, ControlFlowCosts,
         CoreConfig, EraId, GlobalStateUpdate, HighwayConfig, HostFunction, HostFunctionCosts,
-        MessageLimits, Motes, OpcodeCosts, ProtocolConfig, ProtocolVersion, StorageCosts,
-        StoredValue, TestBlockBuilder, TimeDiff, Timestamp, TransactionConfig, WasmConfig, U512,
+        MessageCosts, MessageLimits, Motes, OpcodeCosts, ProtocolConfig, ProtocolVersion,
+        StorageCosts, StoredValue, TestBlockBuilder, TimeDiff, Timestamp, TransactionConfig,
+        WasmConfig, U512,
     };
 
     use super::*;
@@ -232,6 +233,7 @@ mod tests {
             EXPECTED_GENESIS_STORAGE_COSTS,
             *EXPECTED_GENESIS_HOST_FUNCTION_COSTS,
             MessageLimits::default(),
+            MessageCosts::default(),
         )
     });
 

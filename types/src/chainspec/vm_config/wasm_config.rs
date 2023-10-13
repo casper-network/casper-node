@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    chainspec::vm_config::{HostFunctionCosts, MessageLimits, OpcodeCosts, StorageCosts},
+    chainspec::vm_config::{
+        HostFunctionCosts, MessageCosts, MessageLimits, OpcodeCosts, StorageCosts,
+    },
 };
 
 /// Default maximum number of pages of the Wasm memory.
@@ -34,6 +36,8 @@ pub struct WasmConfig {
     host_function_costs: HostFunctionCosts,
     /// Messages limits.
     messages_limits: MessageLimits,
+    /// Messages costs.
+    message_costs: MessageCosts,
 }
 
 impl WasmConfig {
@@ -45,6 +49,7 @@ impl WasmConfig {
         storage_costs: StorageCosts,
         host_function_costs: HostFunctionCosts,
         messages_limits: MessageLimits,
+        message_costs: MessageCosts,
     ) -> Self {
         Self {
             max_memory,
@@ -53,6 +58,7 @@ impl WasmConfig {
             storage_costs,
             host_function_costs,
             messages_limits,
+            message_costs,
         }
     }
 
@@ -75,6 +81,11 @@ impl WasmConfig {
     pub fn messages_limits(&self) -> MessageLimits {
         self.messages_limits
     }
+
+    /// Returns the costs for emitting messages.
+    pub fn message_costs(&self) -> MessageCosts {
+        self.message_costs
+    }
 }
 
 impl Default for WasmConfig {
@@ -86,6 +97,7 @@ impl Default for WasmConfig {
             storage_costs: StorageCosts::default(),
             host_function_costs: HostFunctionCosts::default(),
             messages_limits: MessageLimits::default(),
+            message_costs: MessageCosts::default(),
         }
     }
 }
@@ -100,6 +112,7 @@ impl ToBytes for WasmConfig {
         ret.append(&mut self.storage_costs.to_bytes()?);
         ret.append(&mut self.host_function_costs.to_bytes()?);
         ret.append(&mut self.messages_limits.to_bytes()?);
+        ret.append(&mut self.message_costs.to_bytes()?);
 
         Ok(ret)
     }
@@ -111,6 +124,7 @@ impl ToBytes for WasmConfig {
             + self.storage_costs.serialized_length()
             + self.host_function_costs.serialized_length()
             + self.messages_limits.serialized_length()
+            + self.message_costs.serialized_length()
     }
 }
 
@@ -122,6 +136,7 @@ impl FromBytes for WasmConfig {
         let (storage_costs, rem) = FromBytes::from_bytes(rem)?;
         let (host_function_costs, rem) = FromBytes::from_bytes(rem)?;
         let (messages_limits, rem) = FromBytes::from_bytes(rem)?;
+        let (message_costs, rem) = FromBytes::from_bytes(rem)?;
 
         Ok((
             WasmConfig {
@@ -131,6 +146,7 @@ impl FromBytes for WasmConfig {
                 storage_costs,
                 host_function_costs,
                 messages_limits,
+                message_costs,
             },
             rem,
         ))
@@ -146,6 +162,7 @@ impl Distribution<WasmConfig> for Standard {
             storage_costs: rng.gen(),
             host_function_costs: rng.gen(),
             messages_limits: rng.gen(),
+            message_costs: rng.gen(),
         }
     }
 }
@@ -158,8 +175,8 @@ pub mod gens {
     use crate::{
         chainspec::vm_config::{
             host_function_costs::gens::host_function_costs_arb,
-            message_limits::gens::message_limits_arb, opcode_costs::gens::opcode_costs_arb,
-            storage_costs::gens::storage_costs_arb,
+            message_costs::gens::message_costs_arb, message_limits::gens::message_limits_arb,
+            opcode_costs::gens::opcode_costs_arb, storage_costs::gens::storage_costs_arb,
         },
         WasmConfig,
     };
@@ -172,6 +189,7 @@ pub mod gens {
             storage_costs in storage_costs_arb(),
             host_function_costs in host_function_costs_arb(),
             messages_limits in message_limits_arb(),
+            message_costs in message_costs_arb(),
         ) -> WasmConfig {
             WasmConfig {
                 max_memory,
@@ -180,6 +198,7 @@ pub mod gens {
                 storage_costs,
                 host_function_costs,
                 messages_limits,
+                message_costs,
             }
         }
     }

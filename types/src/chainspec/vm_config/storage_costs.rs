@@ -1,6 +1,9 @@
 //! Support for storage costs.
+use core::ops::Add;
+
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+use num_traits::Zero;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
 
@@ -74,6 +77,26 @@ impl FromBytes for StorageCosts {
         let (gas_per_byte, rem) = FromBytes::from_bytes(bytes)?;
 
         Ok((StorageCosts { gas_per_byte }, rem))
+    }
+}
+
+impl Add for StorageCosts {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        StorageCosts {
+            gas_per_byte: self.gas_per_byte + other.gas_per_byte,
+        }
+    }
+}
+
+impl Zero for StorageCosts {
+    fn zero() -> Self {
+        StorageCosts { gas_per_byte: 0 }
+    }
+
+    fn is_zero(&self) -> bool {
+        self.gas_per_byte.is_zero()
     }
 }
 

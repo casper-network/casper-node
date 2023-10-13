@@ -13,12 +13,14 @@ use casper_contract::{
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
     api_error::ApiError,
-    contract_messages::{MessagePayload, MessageTopicOperation},
-    CLType, CLTyped, ContractPackageHash, Parameter, RuntimeArgs,
+    contract_messages::MessageTopicOperation,
+    runtime_args, CLType, CLTyped, ContractPackageHash, Parameter, RuntimeArgs,
 };
 
 const ENTRY_POINT_INIT: &str = "init";
+const FIRST_VERSION_ENTRY_POINT_EMIT_MESSAGE: &str = "emit_message";
 const ENTRY_POINT_EMIT_MESSAGE: &str = "upgraded_emit_message";
+const ENTRY_POINT_EMIT_MESSAGE_FROM_EACH_VERSION: &str = "emit_message_from_each_version";
 const UPGRADED_MESSAGE_EMITTER_INITIALIZED: &str = "upgraded_message_emitter_initialized";
 const ARG_MESSAGE_SUFFIX_NAME: &str = "message_suffix";
 const PACKAGE_HASH_KEY_NAME: &str = "messages_emitter_package_hash";
@@ -32,7 +34,41 @@ pub extern "C" fn upgraded_emit_message() {
 
     runtime::emit_message(
         MESSAGE_EMITTER_GENERIC_TOPIC,
-        &MessagePayload::from_string(format!("{}{}", MESSAGE_PREFIX, suffix)),
+        &format!("{}{}", MESSAGE_PREFIX, suffix).into(),
+    )
+    .unwrap_or_revert();
+}
+
+#[no_mangle]
+pub extern "C" fn emit_message_from_each_version() {
+    let suffix: String = runtime::get_named_arg(ARG_MESSAGE_SUFFIX_NAME);
+    let contract_package_hash: ContractPackageHash = runtime::get_key(PACKAGE_HASH_KEY_NAME)
+        .expect("should have contract package key")
+        .into_hash()
+        .unwrap_or_revert()
+        .into();
+
+    // Emit a message from this contract.
+    runtime::emit_message(
+        MESSAGE_EMITTER_GENERIC_TOPIC,
+        &"emitting multiple messages".into(),
+    )
+    .unwrap_or_revert();
+
+    // Call previous contract version which will emit a message.
+    runtime::call_versioned_contract::<()>(
+        contract_package_hash,
+        Some(1),
+        FIRST_VERSION_ENTRY_POINT_EMIT_MESSAGE,
+        runtime_args! {
+            ARG_MESSAGE_SUFFIX_NAME => suffix.clone(),
+        },
+    );
+
+    // Emit another message from this version.
+    runtime::emit_message(
+        MESSAGE_EMITTER_GENERIC_TOPIC,
+        &format!("{}{}", MESSAGE_PREFIX, suffix).into(),
     )
     .unwrap_or_revert();
 }
@@ -69,6 +105,13 @@ pub extern "C" fn call() {
         EntryPointAccess::Public,
         EntryPointType::Contract,
     ));
+    emitter_entry_points.add_entry_point(EntryPoint::new(
+        ENTRY_POINT_EMIT_MESSAGE_FROM_EACH_VERSION,
+        vec![Parameter::new(ARG_MESSAGE_SUFFIX_NAME, String::cl_type())],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    ));
 
     let message_emitter_package_hash: ContractPackageHash = runtime::get_key(PACKAGE_HASH_KEY_NAME)
         .unwrap_or_revert()
@@ -76,10 +119,15 @@ pub extern "C" fn call() {
         .unwrap()
         .into();
 
+    let mut named_keys = NamedKeys::new();
+    named_keys.insert(
+        PACKAGE_HASH_KEY_NAME.into(),
+        message_emitter_package_hash.into(),
+    );
     let (contract_hash, _contract_version) = storage::add_contract_version(
         message_emitter_package_hash,
         emitter_entry_points,
-        NamedKeys::new(),
+        named_keys,
     );
 
     // Call contract to initialize it

@@ -13,8 +13,8 @@ use casper_execution_engine::{
 };
 use casper_types::{
     addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, ApiError, EraId, HostFunctionCosts,
-    MessageLimits, OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts, WasmConfig,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY,
+    MessageCosts, MessageLimits, OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts,
+    WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY,
 };
 
 const CONTRACT_EE_966_REGRESSION: &str = "ee_966_regression.wasm";
@@ -29,6 +29,7 @@ static DOUBLED_WASM_MEMORY_LIMIT: Lazy<WasmConfig> = Lazy::new(|| {
         StorageCosts::default(),
         HostFunctionCosts::default(),
         MessageLimits::default(),
+        MessageCosts::default(),
     )
 });
 static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {

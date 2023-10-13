@@ -13,15 +13,17 @@ use casper_contract::{
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
     api_error::ApiError,
-    contract_messages::{MessagePayload, MessageTopicOperation},
+    contract_messages::MessageTopicOperation,
     CLType, CLTyped, Parameter, RuntimeArgs,
 };
 
 const ENTRY_POINT_INIT: &str = "init";
 const ENTRY_POINT_EMIT_MESSAGE: &str = "emit_message";
+const ENTRY_POINT_EMIT_MULTIPLE_MESSAGES: &str = "emit_multiple_messages";
 const ENTRY_POINT_ADD_TOPIC: &str = "add_topic";
 const MESSAGE_EMITTER_INITIALIZED: &str = "message_emitter_initialized";
 const ARG_MESSAGE_SUFFIX_NAME: &str = "message_suffix";
+const ARG_NUM_MESSAGES_TO_EMIT: &str = "num_messages_to_emit";
 const ARG_TOPIC_NAME: &str = "topic_name";
 const PACKAGE_HASH_KEY_NAME: &str = "messages_emitter_package_hash";
 const ACCESS_KEY_NAME: &str = "messages_emitter_access";
@@ -35,9 +37,22 @@ pub extern "C" fn emit_message() {
 
     runtime::emit_message(
         MESSAGE_EMITTER_GENERIC_TOPIC,
-        &MessagePayload::from_string(format!("{}{}", MESSAGE_PREFIX, suffix)),
+        &format!("{}{}", MESSAGE_PREFIX, suffix).into(),
     )
     .unwrap_or_revert();
+}
+
+#[no_mangle]
+pub extern "C" fn emit_multiple_messages() {
+    let num_messages: u32 = runtime::get_named_arg(ARG_NUM_MESSAGES_TO_EMIT);
+
+    for i in 0..num_messages {
+        runtime::emit_message(
+            MESSAGE_EMITTER_GENERIC_TOPIC,
+            &format!("{}{}", MESSAGE_PREFIX, i).into(),
+        )
+        .unwrap_or_revert();
+    }
 }
 
 #[no_mangle]
@@ -80,6 +95,13 @@ pub extern "C" fn call() {
     emitter_entry_points.add_entry_point(EntryPoint::new(
         ENTRY_POINT_ADD_TOPIC,
         vec![Parameter::new(ARG_TOPIC_NAME, String::cl_type())],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    ));
+    emitter_entry_points.add_entry_point(EntryPoint::new(
+        ENTRY_POINT_EMIT_MULTIPLE_MESSAGES,
+        vec![Parameter::new(ARG_NUM_MESSAGES_TO_EMIT, u32::cl_type())],
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Contract,

@@ -37,7 +37,7 @@ use crate::{
     TransferAddr, U512,
 };
 #[cfg(any(feature = "testing", test))]
-use crate::{contract_messages::MessagePayload, crypto, testing::TestRng};
+use crate::{crypto, testing::TestRng};
 
 #[cfg(feature = "json-schema")]
 static EXECUTION_RESULT: Lazy<ExecutionResultV2> = Lazy::new(|| {
@@ -117,7 +117,7 @@ impl Distribution<ExecutionResultV2> for Standard {
                     let topic_name_hash = crypto::blake2b(&topic_name);
                     Some(Message::new(
                         addr.entity_addr(),
-                        MessagePayload::from_string(format!("random_msg: {}", rng.gen::<u64>())),
+                        format!("random_msg: {}", rng.gen::<u64>()).into(),
                         topic_name,
                         topic_name_hash.into(),
                         rng.gen::<u32>(),
@@ -168,7 +168,7 @@ impl ExecutionResultV2 {
                     let topic_name_hash = crypto::blake2b(&topic_name);
                     Some(Message::new(
                         addr.entity_addr(),
-                        MessagePayload::from_string(format!("random_msg: {}", rng.gen::<u64>())),
+                        format!("random_msg: {}", rng.gen::<u64>()).into(),
                         topic_name,
                         topic_name_hash.into(),
                         rng.gen::<u32>(),
