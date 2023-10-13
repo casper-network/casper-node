@@ -20,12 +20,7 @@ pub mod upgrade;
 
 use itertools::Itertools;
 
-use std::{
-    cell::RefCell,
-    collections::{btree_map::Entry, BTreeMap, BTreeSet},
-    convert::TryFrom,
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::BTreeSet, convert::TryFrom, rc::Rc};
 
 use num_rational::Ratio;
 use num_traits::Zero;
@@ -53,19 +48,19 @@ use casper_types::{
     package::{EntityVersions, Groups, PackageKind, PackageKindTag, PackageStatus},
     system::{
         auction::{
-            BidAddr, BidKind, EraValidators, UnbondingPurse, ValidatorBid, WithdrawPurse,
-            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, ARG_VALIDATOR,
-            ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY, ERA_ID_KEY, LOCKED_FUNDS_PERIOD_KEY,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+            BidAddr, BidKind, EraValidators, ValidatorBid, ARG_ERA_END_TIMESTAMP_MILLIS,
+            ARG_EVICTED_VALIDATORS, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
+            LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY,
+            VALIDATOR_SLOTS_KEY,
         },
         handle_payment::{self, ACCUMULATION_PURSE_KEY},
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, ApiError, BlockTime, ByteCodeHash,
-    CLValue, ChainspecRegistry, DeployHash, DeployInfo, Digest, EntryPoints, EraId,
-    ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Package, PackageHash, Phase,
-    ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Tagged, URef, UpgradeConfig, U512,
+    CLValue, ChainspecRegistry, DeployHash, DeployInfo, Digest, EntryPoints, ExecutableDeployItem,
+    FeeHandling, Gas, Key, KeyTag, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
+    RuntimeArgs, StoredValue, Tagged, URef, UpgradeConfig, U512,
 };
 
 use self::transfer::NewTransferTargetMode;
@@ -345,7 +340,7 @@ where
             return Err(Error::InvalidProtocolVersion(new_protocol_version));
         }
 
-        let registry = if let Ok(registry) = tracking_copy.borrow_mut().get_system_contracts() {
+        let mut registry = if let Ok(registry) = tracking_copy.borrow_mut().get_system_contracts() {
             registry
         } else {
             // Check the upgrade config for the registry
@@ -371,22 +366,38 @@ where
             }
         };
 
-        let mint_hash = registry.get(MINT).ok_or_else(|| {
+        let mint_hash = *registry.get(MINT).ok_or_else(|| {
             error!("Missing system mint contract hash");
             Error::MissingSystemContractHash(MINT.to_string())
         })?;
-        let auction_hash = registry.get(AUCTION).ok_or_else(|| {
+        let auction_hash = *registry.get(AUCTION).ok_or_else(|| {
             error!("Missing system auction contract hash");
             Error::MissingSystemContractHash(AUCTION.to_string())
         })?;
-        let standard_payment_hash = registry.get(STANDARD_PAYMENT).ok_or_else(|| {
-            error!("Missing system standard payment contract hash");
-            Error::MissingSystemContractHash(STANDARD_PAYMENT.to_string())
-        })?;
-        let handle_payment_hash = registry.get(HANDLE_PAYMENT).ok_or_else(|| {
+
+        let handle_payment_hash = *registry.get(HANDLE_PAYMENT).ok_or_else(|| {
             error!("Missing system handle payment contract hash");
             Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
         })?;
+
+        let standard_payment_hash = registry.remove_standard_payment().ok_or_else(|| {
+            error!("Missing system standard payment contract hash");
+            Error::MissingSystemContractHash(STANDARD_PAYMENT.to_string())
+        })?;
+
+        // Write the chainspec registry to global state
+        let cl_value_chainspec_registry =
+            CLValue::from_t(registry).map_err(|error| Error::Bytesrepr(error.to_string()))?;
+
+        tracking_copy.borrow_mut().write(
+            Key::SystemContractRegistry,
+            StoredValue::CLValue(cl_value_chainspec_registry),
+        );
+
+        // Prune away standard payment from global state.
+        tracking_copy
+            .borrow_mut()
+            .prune(Key::Hash(standard_payment_hash.value()));
 
         // Write the chainspec registry to global state
         let cl_value_chainspec_registry =
@@ -409,22 +420,19 @@ where
         system_upgrader.migrate_system_account(pre_state_hash)?;
 
         system_upgrader
-            .create_accumulation_purse_if_required(handle_payment_hash, &self.config)
+            .create_accumulation_purse_if_required(&handle_payment_hash, &self.config)
             .map_err(Error::ProtocolUpgrade)?;
 
         system_upgrader
-            .refresh_system_contracts(
-                mint_hash,
-                auction_hash,
-                handle_payment_hash,
-                standard_payment_hash,
-            )
+            .refresh_system_contracts(&mint_hash, &auction_hash, &handle_payment_hash)
             .map_err(Error::ProtocolUpgrade)?;
+
+        // Prune away the standard payment record.
 
         // 3.1.1.1.1.7 new total validator slots is optional
         if let Some(new_validator_slots) = upgrade_config.new_validator_slots() {
             // 3.1.2.4 if new total validator slots is provided, update auction contract state
-            let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
+            let auction_contract = tracking_copy.borrow_mut().get_contract(auction_hash)?;
 
             let validator_slots_key = auction_contract
                 .named_keys()
@@ -441,7 +449,7 @@ where
 
         if let Some(new_auction_delay) = upgrade_config.new_auction_delay() {
             debug!(%new_auction_delay, "Auction delay changed as part of the upgrade");
-            let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
+            let auction_contract = tracking_copy.borrow_mut().get_contract(auction_hash)?;
 
             let auction_delay_key = auction_contract
                 .named_keys()
@@ -455,7 +463,7 @@ where
         }
 
         if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period_millis() {
-            let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
+            let auction_contract = tracking_copy.borrow_mut().get_contract(auction_hash)?;
 
             let locked_funds_period_key = auction_contract
                 .named_keys()
@@ -476,7 +484,7 @@ where
                 Ratio::new(numer.into(), denom.into())
             };
 
-            let mint_contract = tracking_copy.borrow_mut().get_contract(*mint_hash)?;
+            let mint_contract = tracking_copy.borrow_mut().get_contract(mint_hash)?;
 
             let locked_funds_period_key = mint_contract
                 .named_keys()
@@ -549,92 +557,10 @@ where
             tracking_copy.borrow_mut().write(*key, value.clone());
         }
 
-        // This is a one time data transformation which will be removed
-        // in a following upgrade.
-        // TODO: CRef={https://github.com/casper-network/casper-node/issues/2479}
-        {
-            let withdraw_keys = tracking_copy
-                .borrow_mut()
-                .get_keys(&KeyTag::Withdraw)
-                .map_err(|_| Error::FailedToGetKeys(KeyTag::Withdraw))?;
-
-            let (unbonding_delay, current_era_id) = {
-                let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
-
-                let unbonding_delay_key = auction_contract
-                    .named_keys()
-                    .get(UNBONDING_DELAY_KEY)
-                    .expect("unbonding_delay key must exist in auction contract's named keys");
-                let delay = tracking_copy
-                    .borrow_mut()
-                    .read(unbonding_delay_key)
-                    .map_err(|error| error.into())?
-                    .ok_or(Error::FailedToRetrieveUnbondingDelay)?
-                    .into_cl_value()
-                    .ok_or_else(|| Error::Bytesrepr("unbonding_delay".to_string()))?
-                    .into_t::<u64>()
-                    .map_err(execution::Error::from)?;
-
-                let era_id_key = auction_contract
-                    .named_keys()
-                    .get(ERA_ID_KEY)
-                    .expect("era_id key must exist in auction contract's named keys");
-
-                let era_id = tracking_copy
-                    .borrow_mut()
-                    .read(era_id_key)
-                    .map_err(|error| error.into())?
-                    .ok_or(Error::FailedToRetrieveEraId)?
-                    .into_cl_value()
-                    .ok_or_else(|| Error::Bytesrepr("era_id".to_string()))?
-                    .into_t::<EraId>()
-                    .map_err(execution::Error::from)?;
-
-                (delay, era_id)
-            };
-
-            for key in withdraw_keys {
-                // Transform only those withdraw purses that are still to be
-                // processed in the unbonding queue.
-                let withdraw_purses = tracking_copy
-                    .borrow_mut()
-                    .read(&key)
-                    .map_err(|_| Error::FailedToGetKeys(KeyTag::Withdraw))?
-                    .ok_or(Error::FailedToGetStoredWithdraws)?
-                    .into_withdraw()
-                    .ok_or(Error::FailedToGetWithdrawPurses)?;
-
-                // Ensure that sufficient balance exists for all unbond purses that are to be
-                // migrated.
-                Self::fail_upgrade_if_withdraw_purses_lack_sufficient_balance(
-                    &withdraw_purses,
-                    &tracking_copy,
-                )?;
-
-                let unbonding_purses: Vec<UnbondingPurse> = withdraw_purses
-                    .into_iter()
-                    .filter_map(|purse| {
-                        if purse.era_of_creation() + unbonding_delay >= current_era_id {
-                            return Some(UnbondingPurse::from(purse));
-                        }
-                        None
-                    })
-                    .collect();
-
-                let unbonding_key = key
-                    .withdraw_to_unbond()
-                    .ok_or_else(|| Error::Bytesrepr("unbond".to_string()))?;
-
-                tracking_copy
-                    .borrow_mut()
-                    .write(unbonding_key, StoredValue::Unbonding(unbonding_purses));
-            }
-        }
-
         // We insert the new unbonding delay once the purses to be paid out have been transformed
         // based on the previous unbonding delay.
         if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
-            let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
+            let auction_contract = tracking_copy.borrow_mut().get_contract(auction_hash)?;
 
             let unbonding_delay_key = auction_contract
                 .named_keys()
@@ -2630,19 +2556,6 @@ where
         Ok(*handle_payment)
     }
 
-    /// Returns standard payment system contract hash.
-    pub fn get_standard_payment_hash(
-        &self,
-        state_hash: Digest,
-    ) -> Result<AddressableEntityHash, Error> {
-        let registry = self.get_system_contract_registry(state_hash)?;
-        let standard_payment = registry.get(STANDARD_PAYMENT).ok_or_else(|| {
-            error!("Missing system standard payment contract hash");
-            Error::MissingSystemContractHash(STANDARD_PAYMENT.to_string())
-        })?;
-        Ok(*standard_payment)
-    }
-
     fn get_new_system_call_stack(&self) -> RuntimeStack {
         let max_height = self.config.max_runtime_call_stack_height() as usize;
         RuntimeStack::new_system_call_stack(max_height)
@@ -2681,48 +2594,6 @@ where
             .read_with_proof(&key)
             .map_err(Into::into)?;
         maybe_proof.ok_or(Error::MissingChecksumRegistry)
-    }
-
-    /// As the name suggests, used to ensure commit_upgrade fails if we lack sufficient balances.
-    fn fail_upgrade_if_withdraw_purses_lack_sufficient_balance(
-        withdraw_purses: &[WithdrawPurse],
-        tracking_copy: &Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-    ) -> Result<(), Error> {
-        let mut balances = BTreeMap::new();
-        for purse in withdraw_purses.iter() {
-            match balances.entry(*purse.bonding_purse()) {
-                Entry::Vacant(entry) => {
-                    entry.insert(*purse.amount());
-                }
-                Entry::Occupied(mut entry) => {
-                    let value = entry.get_mut();
-                    let new_val = value.checked_add(*purse.amount()).ok_or_else(|| {
-                        Error::Mint("overflowed a u512 during unbond migration".into())
-                    })?;
-                    *value = new_val;
-                }
-            }
-        }
-        for (unbond_purse_uref, unbond_amount) in balances {
-            let key = match tracking_copy
-                .borrow_mut()
-                .get_purse_balance_key(unbond_purse_uref.into())
-            {
-                Ok(key) => key,
-                Err(_) => return Err(Error::Mint("purse balance not found".into())),
-            };
-            let current_balance = tracking_copy.borrow_mut().get_purse_balance(key)?.value();
-
-            if unbond_amount > current_balance {
-                // If we don't have enough balance to migrate, the only thing we can do
-                // is to fail the upgrade.
-                error!(%current_balance, %unbond_purse_uref, %unbond_amount, "commit_upgrade failed during migration - insufficient in purse to unbond");
-                return Err(Error::Mint(
-                    "insufficient balance detected while migrating unbond purses".into(),
-                ));
-            }
-        }
-        Ok(())
     }
 }
 

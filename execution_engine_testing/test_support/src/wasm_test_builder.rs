@@ -1447,15 +1447,6 @@ where
             .expect("should have handle payment hash")
     }
 
-    /// Returns the [`AddressableEntityHash`] of the system standard payment contract, panics if it
-    /// can't be found.
-    pub fn get_system_standard_payment_hash(&self) -> AddressableEntityHash {
-        let state_root_hash = self.get_post_state_hash();
-        self.engine_state
-            .get_standard_payment_hash(state_root_hash)
-            .expect("should have standard payment hash")
-    }
-
     /// Resets the `exec_results`, `upgrade_results` and `transform` fields.
     pub fn clear_results(&mut self) -> &mut Self {
         self.exec_results = Vec::new();

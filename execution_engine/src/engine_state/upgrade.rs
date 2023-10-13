@@ -110,17 +110,12 @@ where
         mint_hash: &AddressableEntityHash,
         auction_hash: &AddressableEntityHash,
         handle_payment_hash: &AddressableEntityHash,
-        standard_payment_hash: &AddressableEntityHash,
     ) -> Result<(), ProtocolUpgradeError> {
         self.refresh_system_contract_entry_points(*mint_hash, SystemEntityType::Mint)?;
         self.refresh_system_contract_entry_points(*auction_hash, SystemEntityType::Auction)?;
         self.refresh_system_contract_entry_points(
             *handle_payment_hash,
             SystemEntityType::HandlePayment,
-        )?;
-        self.refresh_system_contract_entry_points(
-            *standard_payment_hash,
-            SystemEntityType::StandardPayment,
         )?;
 
         Ok(())

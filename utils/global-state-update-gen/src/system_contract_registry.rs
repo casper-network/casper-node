@@ -110,13 +110,11 @@ fn generate_system_contract_registry_using_global_state(data_dir: &Path, state_h
 
     let mint_hash = builder.get_system_mint_hash();
     let handle_payment_hash = builder.get_system_handle_payment_hash();
-    let standard_payment_hash = builder.get_system_standard_payment_hash();
     let auction_hash = builder.get_system_auction_hash();
 
     let mut registry = SystemContractRegistry::new();
     registry.insert(MINT.to_string(), mint_hash);
     registry.insert(HANDLE_PAYMENT.to_string(), handle_payment_hash);
-    registry.insert(STANDARD_PAYMENT.to_string(), standard_payment_hash);
     registry.insert(AUCTION.to_string(), auction_hash);
 
     print_entry(
