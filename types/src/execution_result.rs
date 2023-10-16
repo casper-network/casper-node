@@ -179,27 +179,6 @@ pub enum ExecutionResult {
 }
 
 impl ExecutionResult {
-    /// Returns all `Transform::WriteTransfer`s from the execution effects if this is an
-    /// `ExecutionResult::Success`, or an empty `Vec` if `ExecutionResult::Failure`.
-    pub fn successful_transfers(&self) -> Vec<Transfer> {
-        let effects = match self {
-            ExecutionResult::Success { effect, .. } => effect,
-            ExecutionResult::Failure { .. } => return vec![],
-        };
-
-        effects
-            .transforms
-            .iter()
-            .filter_map(|transform_entry| {
-                if let Transform::WriteTransfer(transfer) = transform_entry.transform {
-                    Some(transfer)
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
     #[cfg(feature = "json-schema")]

@@ -71,7 +71,7 @@ use tracing::{debug, error, info, trace, warn};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer,
+    EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, Transform,
 };
 
 use crate::{
@@ -1463,7 +1463,7 @@ impl Storage {
     ) -> Result<bool, FatalStorageError> {
         let mut transfers: Vec<Transfer> = vec![];
         for (deploy_hash, execution_result) in execution_results {
-            transfers.extend(execution_result.successful_transfers());
+            transfers.extend(successful_transfers(&execution_result));
 
             let mut metadata = self
                 .get_deploy_metadata(txn, &deploy_hash)?
@@ -2190,7 +2190,18 @@ impl Storage {
                 .get_deploy_metadata(&mut txn, deploy_hash)?
                 .unwrap_or_default();
 
-            transfers.extend(metadata.successful_transfers(block_hash));
+            let successful_xfers = match metadata.execution_results.get(block_hash) {
+                Some(exec_result) => successful_transfers(exec_result),
+                None => {
+                    error!(
+                        execution_results = ?metadata.execution_results,
+                        %block_hash,
+                        "should have exec result"
+                    );
+                    vec![]
+                }
+            };
+            transfers.extend(successful_xfers);
         }
         txn.put_value(self.transfer_db, block_hash, &transfers, true)?;
         txn.commit()?;
@@ -3026,4 +3037,25 @@ fn initialize_deploy_metadata_db(
 
     info!("deploy metadata database initialized");
     Ok(())
+}
+
+/// Returns all `Transform::WriteTransfer`s from the execution effects if this is an
+/// `ExecutionResult::Success`, or an empty `Vec` if `ExecutionResult::Failure`.
+pub fn successful_transfers(execution_result: &ExecutionResult) -> Vec<Transfer> {
+    let effects = match execution_result {
+        ExecutionResult::Success { effect, .. } => effect,
+        ExecutionResult::Failure { .. } => return vec![],
+    };
+
+    effects
+        .transforms
+        .iter()
+        .filter_map(|transform_entry| {
+            if let Transform::WriteTransfer(transfer) = transform_entry.transform {
+                Some(transfer)
+            } else {
+                None
+            }
+        })
+        .collect()
 }

@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use tracing::error;
 
-use casper_types::{ExecutionResult, Transfer};
+use casper_types::ExecutionResult;
 
 use crate::types::{BlockHash, BlockHashAndHeight};
 
@@ -16,22 +15,6 @@ pub(crate) struct Metadata {
     /// The block hashes of blocks containing the related deploy, along with the results of
     /// executing the related deploy in the context of one or more blocks.
     pub(crate) execution_results: HashMap<BlockHash, ExecutionResult>,
-}
-
-impl Metadata {
-    pub(crate) fn successful_transfers(&self, block_hash: &BlockHash) -> Vec<Transfer> {
-        match self.execution_results.get(block_hash) {
-            Some(exec_result) => exec_result.successful_transfers(),
-            None => {
-                error!(
-                    execution_results = ?self.execution_results,
-                    %block_hash,
-                    "should have exec result"
-                );
-                vec![]
-            }
-        }
-    }
 }
 
 /// Additional information describing a deploy.
