@@ -3300,10 +3300,10 @@ where
             prev_topic_summary.message_count()
         };
 
-        let new_topic_summary = MessageTopicSummary::new(
-            message_index + 1, //TODO[AS]: need checked add here
-            current_blocktime,
-        );
+        let Some(message_count) = message_index.checked_add(1) else {
+            return Ok(Err(ApiError::MessageTopicFull));
+        };
+        let new_topic_summary = MessageTopicSummary::new(message_count, current_blocktime);
 
         let message_key = Key::message(entity_addr, topic_name_hash, message_index);
         let message_checksum = MessageChecksum(crypto::blake2b(
