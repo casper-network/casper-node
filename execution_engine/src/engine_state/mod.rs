@@ -815,6 +815,7 @@ where
                         .borrow_mut()
                         .write(Key::Context(ctx), value.into());
                 }
+                (Some(StoredValue::URef(_, _)), _) => {}
                 _ => return Err(Error::KeyPointingAtUnexpectedType(*key)),
             }
         }
