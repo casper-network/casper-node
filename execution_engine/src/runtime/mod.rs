@@ -59,6 +59,7 @@ pub use wasm_prep::{
     DEFAULT_MAX_PARAMETER_COUNT, DEFAULT_MAX_TABLE_SIZE,
 };
 
+#[derive(Debug)]
 enum CallContractIdentifier {
     Contract {
         contract_hash: AddressableEntityHash,
@@ -1215,6 +1216,8 @@ where
                 expected: protocol_version.value().major,
             });
         }
+
+        println!("{:?}", identifier);
 
         let entry_point = entity
             .entry_point(entry_point_name)

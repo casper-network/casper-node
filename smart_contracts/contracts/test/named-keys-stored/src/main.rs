@@ -151,7 +151,7 @@ pub extern "C" fn call() {
             Parameters::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Session,
+            EntryPointType::AddressableEntity,
         );
         entry_points.add_entry_point(session_entrypoint);
         let contract_to_contract_entrypoint = EntryPoint::new(
@@ -167,7 +167,7 @@ pub extern "C" fn call() {
             Parameters::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Session,
+            EntryPointType::AddressableEntity,
         );
         entry_points.add_entry_point(contract_to_contract_entrypoint);
         entry_points

@@ -359,7 +359,7 @@ pub extern "C" fn call() {
             Vec::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Session,
+            EntryPointType::AddressableEntity,
         );
         entry_points.add_entry_point(entry_point);
 

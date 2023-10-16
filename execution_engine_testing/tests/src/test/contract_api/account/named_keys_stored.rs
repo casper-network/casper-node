@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{runtime_args, RuntimeArgs};
+use casper_types::{runtime_args, ApiError, RuntimeArgs};
 
 const CONTRACT_HASH_NAME: &str = "contract_stored";
 const ENTRY_POINT_CONTRACT: &str = "named_keys_contract";
@@ -64,28 +64,6 @@ fn should_run_stored_named_keys_contract_to_contract() {
 
 #[ignore]
 #[test]
-fn should_run_stored_named_keys_module_bytes_to_session() {
-    let mut builder = setup();
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        "named_keys_stored_call.wasm",
-        runtime_args! {
-            "entry_point" => ENTRY_POINT_SESSION,
-        },
-    )
-    .build();
-
-    builder.exec(exec_request_1).expect_failure();
-
-    let expected_error = casper_execution_engine::engine_state::Error::Exec(
-        casper_execution_engine::execution::Error::InvalidContext,
-    );
-
-    builder.assert_error(expected_error)
-}
-
-#[ignore]
-#[test]
 fn should_run_stored_named_keys_module_bytes_to_contract() {
     let mut builder = setup();
     let exec_request_1 = ExecuteRequestBuilder::standard(
@@ -114,28 +92,6 @@ fn should_run_stored_named_keys_module_bytes_to_contract_to_contract() {
     .build();
 
     builder.exec(exec_request_1).expect_success().commit();
-}
-
-#[ignore]
-#[test]
-fn should_run_stored_named_keys_module_bytes_to_session_to_session() {
-    let mut builder = setup();
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        "named_keys_stored_call.wasm",
-        runtime_args! {
-            "entry_point" => ENTRY_POINT_SESSION_TO_SESSION,
-        },
-    )
-    .build();
-
-    builder.exec(exec_request_1).expect_failure();
-
-    let expected_error = casper_execution_engine::engine_state::Error::Exec(
-        casper_execution_engine::execution::Error::InvalidContext,
-    );
-
-    builder.assert_error(expected_error)
 }
 
 fn setup() -> LmdbWasmTestBuilder {

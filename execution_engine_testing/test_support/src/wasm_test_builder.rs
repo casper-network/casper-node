@@ -1,4 +1,7 @@
+use std::cell::RefCell;
+use std::collections::BTreeSet;
 use std::{
+    borrow::BorrowMut,
     collections::BTreeMap,
     convert::{TryFrom, TryInto},
     ffi::OsStr,
@@ -26,7 +29,7 @@ use casper_execution_engine::{
         GetBidsRequest, PruneConfig, PruneResult, QueryRequest, QueryResult, StepError,
         SystemContractRegistry, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
     },
-    execution,
+    execution::{self, AddressGenerator},
 };
 use casper_storage::{
     data_access_layer::{BlockStore, DataAccessLayer},
@@ -40,6 +43,8 @@ use casper_storage::{
         trie_store::lmdb::LmdbTrieStore,
     },
 };
+use casper_types::addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys};
+use casper_types::package::{PackageKind, PackageStatus};
 use casper_types::{
     account::AccountHash,
     bytesrepr::{self, FromBytes},
@@ -56,10 +61,11 @@ use casper_types::{
         mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, ByteCodeHash, ByteCodeKind,
-    CLTyped, CLValue, Contract, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts,
-    Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolVersion, PublicKey,
-    RefundHandling, StoredValue, Transfer, TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, ByteCodeHash,
+    ByteCodeKind, CLTyped, CLValue, Contract, DeployHash, DeployInfo, Digest, EntityVersions,
+    EntryPoints, EraId, Gas, Groups, HandlePaymentCosts, Key, KeyTag, MintCosts, Motes, Package,
+    PackageHash, Phase, ProtocolVersion, PublicKey, RefundHandling, StoredValue, Tagged, Transfer,
+    TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 
@@ -1608,5 +1614,111 @@ where
         (refundable_amount * refund_ratio)
             .ceil() // assumes possible dust amounts are always transferred to the user
             .to_integer()
+    }
+
+    pub fn insert_stored_session(
+        &mut self,
+        entry_points: EntryPoints,
+        maybe_named_keys: Option<NamedKeys>,
+        protocol_version: ProtocolVersion,
+        entity_account: AccountHash,
+        package_hash_named_key: &str,
+        entity_hash_named_key: &str,
+    ) {
+        let state_root_hash = self.get_post_state_hash();
+
+        let mut new_named_keys = NamedKeys::new();
+
+        let mut address_generator =
+            { AddressGenerator::new(state_root_hash.as_ref(), Phase::System) };
+
+        let byte_code_hash = ByteCodeHash::new(address_generator.borrow_mut().new_hash_address());
+
+        let entity_hash =
+            AddressableEntityHash::new(address_generator.borrow_mut().new_hash_address());
+
+        new_named_keys.insert(
+            entity_hash_named_key.to_string(),
+            Key::AddressableEntity((PackageKindTag::SmartContract, entity_hash.value())),
+        );
+
+        let package_hash = PackageHash::new(address_generator.borrow_mut().new_hash_address());
+
+        new_named_keys.insert(package_hash_named_key.to_string(), Key::from(package_hash));
+
+        let byte_code = ByteCode::new(ByteCodeKind::V1CasperWasm, vec![]);
+
+        let entity = AddressableEntity::new(
+            package_hash,
+            byte_code_hash,
+            maybe_named_keys.unwrap_or_default(),
+            entry_points,
+            protocol_version,
+            URef::default(),
+            AssociatedKeys::default(),
+            ActionThresholds::default(),
+        );
+
+        let access_key = address_generator
+            .borrow_mut()
+            .new_uref(AccessRights::READ_ADD_WRITE);
+
+        let package_kind = PackageKind::SmartContract;
+
+        // Genesis contracts can be versioned contracts.
+        let contract_package = {
+            let mut package = Package::new(
+                access_key,
+                EntityVersions::new(),
+                BTreeSet::default(),
+                Groups::default(),
+                PackageStatus::default(),
+                package_kind,
+            );
+            package.insert_entity_version(protocol_version.value().major, entity_hash);
+            package
+        };
+
+        let byte_code_key = Key::ByteCode((ByteCodeKind::V1CasperWasm, byte_code_hash.value()));
+
+        let mut tracking_copy = self
+            .engine_state
+            .tracking_copy(state_root_hash)
+            .unwrap()
+            .unwrap();
+
+        tracking_copy
+            .borrow_mut()
+            .write(byte_code_key, StoredValue::ByteCode(byte_code));
+
+        let entity_key = Key::AddressableEntity((package_kind.tag(), entity_hash.value()));
+
+        tracking_copy
+            .borrow_mut()
+            .write(entity_key, StoredValue::AddressableEntity(entity));
+
+        tracking_copy
+            .borrow_mut()
+            .write(package_hash.into(), StoredValue::Package(contract_package));
+
+        let account_entity_hash = self
+            .get_entity_hash_by_account_hash(entity_account)
+            .expect("must get entity hash");
+
+        let mut entity_account = self
+            .get_entity_by_account_hash(entity_account)
+            .expect("no account found");
+
+        entity_account.named_keys_append(new_named_keys);
+
+        let key = Key::addressable_entity_key(PackageKindTag::Account, account_entity_hash);
+
+        tracking_copy
+            .borrow_mut()
+            .write(key, StoredValue::AddressableEntity(entity_account));
+
+        let effects = tracking_copy.effects();
+
+        self.commit_transforms(state_root_hash, effects);
     }
 }

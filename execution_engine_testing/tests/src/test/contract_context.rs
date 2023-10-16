@@ -4,7 +4,11 @@ use casper_engine_test_support::{
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{engine_state::Error, execution};
-use casper_types::{package::ENTITY_INITIAL_VERSION, runtime_args, Key, RuntimeArgs};
+use casper_types::addressable_entity::NamedKeys;
+use casper_types::{
+    package::ENTITY_INITIAL_VERSION, runtime_args, CLType, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints, Key, ProtocolVersion, RuntimeArgs, URef,
+};
 
 const CONTRACT_HEADERS: &str = "contract_context.wasm";
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
@@ -21,14 +25,6 @@ const CONTRACT_VERSION: &str = "contract_version";
 #[ignore]
 #[test]
 fn should_enforce_intended_execution_contexts() {
-    // This test runs a contract that extends the same key with more data after every call.
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_HEADERS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
     let exec_request_2 = ExecuteRequestBuilder::versioned_contract_call_by_name(
         *DEFAULT_ACCOUNT_ADDR,
         PACKAGE_HASH_KEY,
@@ -56,11 +52,7 @@ fn should_enforce_intended_execution_contexts() {
     )
     .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = insert_contract_context();
 
     builder.exec(exec_request_2).expect_failure();
 
@@ -109,14 +101,6 @@ fn should_enforce_intended_execution_contexts() {
 #[ignore]
 #[test]
 fn should_enforce_intended_execution_context_direct_by_name() {
-    // This test runs a contract that extends the same key with more data after every call.
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_HEADERS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
     let exec_request_2 = ExecuteRequestBuilder::contract_call_by_name(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_HASH_KEY,
@@ -141,11 +125,7 @@ fn should_enforce_intended_execution_context_direct_by_name() {
     )
     .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = insert_contract_context();
 
     builder.exec(exec_request_2).expect_failure();
 
@@ -180,19 +160,7 @@ fn should_enforce_intended_execution_context_direct_by_name() {
 #[ignore]
 #[test]
 fn should_enforce_intended_execution_context_direct_by_hash() {
-    // This test runs a contract that extends the same key with more data after every call.
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_HEADERS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = insert_contract_context();
 
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -259,19 +227,7 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
 #[ignore]
 #[test]
 fn should_not_call_session_from_contract() {
-    // This test runs a contract that extends the same key with more data after every call.
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_HEADERS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = insert_contract_context();
 
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -312,4 +268,87 @@ fn should_not_call_session_from_contract() {
     let exec_response = response.last().expect("should have response");
     let error = exec_response.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(execution::Error::InvalidContext));
+}
+
+fn create_entrypoints_1() -> EntryPoints {
+    let mut entry_points = EntryPoints::new();
+    let session_code_test = EntryPoint::new(
+        SESSION_CODE_TEST.to_string(),
+        Vec::new(),
+        CLType::I32,
+        EntryPointAccess::Public,
+        EntryPointType::Session,
+    );
+    entry_points.add_entry_point(session_code_test);
+
+    let contract_code_test = EntryPoint::new(
+        CONTRACT_CODE_TEST.to_string(),
+        Vec::new(),
+        CLType::I32,
+        EntryPointAccess::Public,
+        EntryPointType::AddressableEntity,
+    );
+    entry_points.add_entry_point(contract_code_test);
+
+    let session_code_caller_as_session = EntryPoint::new(
+        "session_code_caller_as_session".to_string(),
+        Vec::new(),
+        CLType::I32,
+        EntryPointAccess::Public,
+        EntryPointType::Session,
+    );
+    entry_points.add_entry_point(session_code_caller_as_session);
+
+    let session_code_caller_as_contract = EntryPoint::new(
+        "session_code_caller_as_contract".to_string(),
+        Vec::new(),
+        CLType::I32,
+        EntryPointAccess::Public,
+        EntryPointType::AddressableEntity,
+    );
+    entry_points.add_entry_point(session_code_caller_as_contract);
+
+    let add_new_key = EntryPoint::new(
+        "add_new_key".to_string(),
+        Vec::new(),
+        CLType::I32,
+        EntryPointAccess::Public,
+        EntryPointType::Session,
+    );
+    entry_points.add_entry_point(add_new_key);
+    let add_new_key_as_session = EntryPoint::new(
+        "add_new_key_as_session".to_string(),
+        Vec::new(),
+        CLType::I32,
+        EntryPointAccess::Public,
+        EntryPointType::Session,
+    );
+    entry_points.add_entry_point(add_new_key_as_session);
+
+    entry_points
+}
+
+fn insert_contract_context() -> LmdbWasmTestBuilder {
+    let mut builder = LmdbWasmTestBuilder::default();
+
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+
+    let contract_named_keys = {
+        let contract_variable = URef::default();
+
+        let mut named_keys = NamedKeys::new();
+        named_keys.insert("contract_named_key".to_string(), contract_variable.into());
+        named_keys
+    };
+
+    builder.insert_stored_session(
+        create_entrypoints_1(),
+        Some(contract_named_keys),
+        ProtocolVersion::V1_0_0,
+        *DEFAULT_ACCOUNT_ADDR,
+        "package_hash_key",
+        "contract_hash_key",
+    );
+
+    builder
 }

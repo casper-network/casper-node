@@ -349,7 +349,13 @@ fn should_empty_account_using_stored_payment_code_by_hash() {
         builder.exec(exec_request_stored_payment).expect_failure();
     }
 
-    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
+    let error = builder.get_error().expect("must have error");
+
+    if let Error::Exec(execution::Error::ForgedReference(_)) = error {
+        return;
+    } else {
+        panic!("Unexpected error: {:?}", error)
+    }
 }
 
 #[ignore]
