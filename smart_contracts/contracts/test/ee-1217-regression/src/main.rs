@@ -141,7 +141,7 @@ pub extern "C" fn call() {
             vec![],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Session,
+            EntryPointType::AddressableEntity,
         );
         let add_bid_contract_entry_point = EntryPoint::new(
             METHOD_ADD_BID_CONTRACT_NAME.to_string(),
@@ -155,7 +155,7 @@ pub extern "C" fn call() {
             vec![],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Session,
+            EntryPointType::AddressableEntity,
         );
         let withdraw_bid_contract_entry_point = EntryPoint::new(
             METHOD_WITHDRAW_BID_CONTRACT_NAME.to_string(),
@@ -169,7 +169,7 @@ pub extern "C" fn call() {
             vec![],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Session,
+            EntryPointType::AddressableEntity,
         );
         let delegate_contract_entry_point = EntryPoint::new(
             METHOD_DELEGATE_CONTRACT_NAME.to_string(),
@@ -183,7 +183,7 @@ pub extern "C" fn call() {
             vec![],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Session,
+            EntryPointType::AddressableEntity,
         );
         let undelegate_contract_entry_point = EntryPoint::new(
             METHOD_UNDELEGATE_CONTRACT_NAME.to_string(),
@@ -197,7 +197,7 @@ pub extern "C" fn call() {
             vec![],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Session,
+            EntryPointType::AddressableEntity,
         );
         let activate_bid_contract_entry_point = EntryPoint::new(
             METHOD_ACTIVATE_BID_CONTRACT_NAME.to_string(),

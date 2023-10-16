@@ -380,24 +380,21 @@ where
             Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
         })?;
 
-        let standard_payment_hash = registry.remove_standard_payment().ok_or_else(|| {
-            error!("Missing system standard payment contract hash");
-            Error::MissingSystemContractHash(STANDARD_PAYMENT.to_string())
-        })?;
+        if let Some(standard_payment_hash) = registry.remove_standard_payment() {
+            // Write the chainspec registry to global state
+            let cl_value_chainspec_registry =
+                CLValue::from_t(registry).map_err(|error| Error::Bytesrepr(error.to_string()))?;
 
-        // Write the chainspec registry to global state
-        let cl_value_chainspec_registry =
-            CLValue::from_t(registry).map_err(|error| Error::Bytesrepr(error.to_string()))?;
+            tracking_copy.borrow_mut().write(
+                Key::SystemContractRegistry,
+                StoredValue::CLValue(cl_value_chainspec_registry),
+            );
 
-        tracking_copy.borrow_mut().write(
-            Key::SystemContractRegistry,
-            StoredValue::CLValue(cl_value_chainspec_registry),
-        );
-
-        // Prune away standard payment from global state.
-        tracking_copy
-            .borrow_mut()
-            .prune(Key::Hash(standard_payment_hash.value()));
+            // Prune away standard payment from global state.
+            tracking_copy
+                .borrow_mut()
+                .prune(Key::Hash(standard_payment_hash.value()));
+        };
 
         // Write the chainspec registry to global state
         let cl_value_chainspec_registry =

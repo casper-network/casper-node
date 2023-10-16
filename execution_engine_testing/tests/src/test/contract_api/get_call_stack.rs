@@ -10,6 +10,8 @@ use casper_types::{
     EntityAddr, EntryPointType, HashAddr, Key, PackageAddr, PackageHash, StoredValue, Tagged, U512,
 };
 
+use crate::lmdb_fixture;
+
 use get_call_stack_recursive_subcall::{
     Call, ContractAddress, ARG_CALLS, ARG_CURRENT_DEPTH, METHOD_FORWARDER_CONTRACT_NAME,
     METHOD_FORWARDER_SESSION_NAME,
@@ -26,6 +28,8 @@ const CONTRACT_FORWARDER_ENTRYPOINT_SESSION: &str = METHOD_FORWARDER_SESSION_NAM
 
 const IS_SESSION_ENTRY_POINT: bool = true;
 const IS_NOT_SESSION_ENTRY_POINT: bool = false;
+
+const CALL_STACK_FIXTURE: &str = "call_stack_fixture";
 
 fn stored_session(contract_hash: AddressableEntityHash) -> Call {
     Call {
@@ -196,9 +200,7 @@ impl BuilderExt for LmdbWasmTestBuilder {
 }
 
 fn setup() -> LmdbWasmTestBuilder {
-    let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-    store_contract(&mut builder, CONTRACT_RECURSIVE_SUBCALL);
+    let (builder, _, _) = lmdb_fixture::builder_from_global_state_fixture(CALL_STACK_FIXTURE);
     builder
 }
 
@@ -332,38 +334,6 @@ fn assert_call_stack_matches_calls(call_stack: Vec<CallStackElement>, calls: &[C
             ) if *entry_point_type == EntryPointType::AddressableEntity
                 && *contract_hash == *current_contract_hash => {}
 
-            // // Versioned Call with EntryPointType::Session
-            // (
-            //     Some(Call {
-            //         entry_point_type,
-            //         contract_address:
-            //             ContractAddress::ContractPackageHash(current_contract_package_hash),
-            //         ..
-            //     }),
-            //     CallStackElement::StoredSession {
-            //         account_hash,
-            //         package_hash: contract_package_hash,
-            //         ..
-            //     },
-            // ) if *entry_point_type == EntryPointType::Session
-            //     && *account_hash == *DEFAULT_ACCOUNT_ADDR
-            //     && *contract_package_hash == *current_contract_package_hash => {}
-            //
-            // // Unversioned Call with EntryPointType::Session
-            // (
-            //     Some(Call {
-            //         entry_point_type,
-            //         contract_address: ContractAddress::ContractHash(current_contract_hash),
-            //         ..
-            //     }),
-            //     CallStackElement::StoredSession {
-            //         account_hash,
-            //         contract_hash,
-            //         ..
-            //     },
-            // ) if *entry_point_type == EntryPointType::Session
-            //     && *account_hash == *DEFAULT_ACCOUNT_ADDR
-            //     && *contract_hash == *current_contract_hash => {}
             _ => panic!(
                 "call stack element {:#?} didn't match expected call {:#?} at index {}, {:#?}",
                 expected_call_stack_element, maybe_call, index, call_stack,

@@ -3,6 +3,7 @@
 
 extern crate alloc;
 
+use alloc::format;
 use alloc::string::String;
 
 use casper_contract::{
@@ -22,6 +23,7 @@ pub extern "C" fn call() {
     let entrypoint: String = runtime::get_named_arg(ARG_ENTRYPOINT);
 
     let contract_hash_key = runtime::get_key(CONTRACT_HASH_NAME).unwrap_or_revert();
+
     let contract_hash = contract_hash_key
         .into_entity_addr()
         .map(AddressableEntityHash::new)

@@ -1221,6 +1221,12 @@ where
             .cloned()
             .ok_or_else(|| Error::NoSuchMethod(entry_point_name.to_owned()))?;
 
+        let entry_point_type = entry_point.entry_point_type();
+
+        if entry_point_type.is_invalid_context() {
+            return Err(Error::InvalidContext);
+        }
+
         // Get contract entry point hash
         // if public, allowed
         // if not public, restricted to user group access
@@ -1275,11 +1281,6 @@ where
             &entry_point,
         )?;
 
-        let entry_point_type = entry_point.entry_point_type();
-
-        if entry_point_type.is_invalid_context() {
-            return Err(Error::InvalidContext);
-        }
         let (should_attenuate_urefs, should_validate_urefs) = {
             // Determines if this call originated from the system account based on a first
             // element of the call stack.

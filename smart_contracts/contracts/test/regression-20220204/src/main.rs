@@ -41,14 +41,6 @@ pub extern "C" fn call() {
         EntryPointType::AddressableEntity,
     ));
 
-    entry_points.add_entry_point(EntryPoint::new(
-        TRANSFER_AS_SESSION,
-        vec![Parameter::new(ARG_PURSE, URef::cl_type())],
-        CLType::Unit,
-        EntryPointAccess::Public,
-        EntryPointType::Session,
-    ));
-
     type NonTrivialArg = BTreeMap<String, Key>;
 
     entry_points.add_entry_point(EntryPoint::new(
@@ -57,22 +49,6 @@ pub extern "C" fn call() {
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::AddressableEntity,
-    ));
-
-    entry_points.add_entry_point(EntryPoint::new(
-        TRANSFER_MAIN_PURSE_AS_SESSION,
-        Parameters::new(),
-        CLType::Unit,
-        EntryPointAccess::Public,
-        EntryPointType::Session,
-    ));
-
-    entry_points.add_entry_point(EntryPoint::new(
-        TRANSFER_MAIN_PURSE_AS_SESSION,
-        Parameters::new(),
-        CLType::Unit,
-        EntryPointAccess::Public,
-        EntryPointType::Session,
     ));
 
     let named_keys = {
