@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 anyhow = "1"
 base16 = "0.2.1"
-casper-types = { path = "../../types", features = ["testing"] }
+casper-types = { path = "../../types", features = ["testing", "std"] }
 clap = { version ="3.0.0-rc.0", features = ["derive"] }
 derive_more = "0.99.13"
 hex = { version = "0.4.2", features = ["serde"] }

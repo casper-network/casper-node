@@ -10,8 +10,6 @@ use alloc::{string::String, vec::Vec};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(any(feature = "testing", test))]
-use itertools::Itertools;
 #[cfg(feature = "json-schema")]
 use once_cell::sync::Lazy;
 #[cfg(any(feature = "testing", test))]
@@ -108,7 +106,7 @@ impl Distribution<ExecutionResultV2> for Standard {
         }
 
         let effects = Effects::random(rng);
-        let messages = effects
+        let messages: Vec<Message> = effects
             .transforms()
             .iter()
             .filter_map(|transform| {
@@ -126,7 +124,7 @@ impl Distribution<ExecutionResultV2> for Standard {
                     None
                 }
             })
-            .collect_vec();
+            .collect();
 
         if rng.gen() {
             ExecutionResultV2::Failure {
@@ -159,7 +157,7 @@ impl ExecutionResultV2 {
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         let effects = Effects::random(rng);
-        let messages = effects
+        let messages: Vec<Message> = effects
             .transforms()
             .iter()
             .filter_map(|transform| {
@@ -177,7 +175,7 @@ impl ExecutionResultV2 {
                     None
                 }
             })
-            .collect_vec();
+            .collect();
 
         let transfer_count = rng.gen_range(0..6);
         let mut transfers = vec![];
