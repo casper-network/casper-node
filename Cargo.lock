@@ -3563,17 +3563,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "multiparty"
-version = "0.1.0"
+name = "multer"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed1ec6589a6d4a1e0b33b4c0a3f6ee96dfba88ebdb3da51403fd7cf0a24a4b04"
+checksum = "01acbdc23469fd8fe07ab135923371d5f5a422fbf9c522158677c8eb15bc51c2"
 dependencies = [
  "bytes",
- "futures-core",
+ "encoding_rs",
+ "futures-util",
+ "http",
  "httparse",
+ "log",
  "memchr",
- "pin-project-lite",
- "try-lock",
+ "mime",
+ "spin",
+ "version_check",
 ]
 
 [[package]]
@@ -5143,6 +5147,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "spin"
+version = "0.9.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
+
+[[package]]
 name = "spki"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6131,7 +6141,7 @@ dependencies = [
  "log",
  "mime",
  "mime_guess",
- "multiparty",
+ "multer",
  "percent-encoding",
  "pin-project",
  "rustls-pemfile",
