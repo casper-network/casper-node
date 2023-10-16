@@ -718,35 +718,50 @@ where
 
         for contract_key in all_contract_keys {
             let owner = ContractHash::new(contract_key.into_hash().unwrap());
-
-            let contract = match tracking_copy
+            let stored_value = tracking_copy
                 .borrow_mut()
                 .read(&contract_key)
                 .map_err(|_| Error::FailedToGetStoredContracts)?
-                .unwrap()
-            {
-                StoredValue::AddressableEntity(contract) => contract,
-                StoredValue::Contract(_) => todo!(),
+                .unwrap();
+
+            let named_keys = match &stored_value {
+                StoredValue::AddressableEntity(entity) => entity.named_keys(),
+                StoredValue::Contract(contract) => contract.named_keys(),
                 StoredValue::ContractPackage(_) | StoredValue::ContractWasm(_) => {
                     continue;
                 }
                 _ => return Err(Error::KeyPointingAtUnexpectedType(contract_key)),
             };
 
-            for key in contract
-                .named_keys()
+            for key in named_keys
                 .iter()
-                .filter_map(|(_, key)| key.as_uref().is_some().then_some(key.normalize()))
+                .filter_map(|(_, key)| key.as_uref().is_some().then_some(key))
             {
-                unreached_uref_keys.remove(&key);
+                unreached_uref_keys.remove(&key.normalize());
             }
 
-            self.migrate_urefs_on_entity(
+            let new_keys = self.migrate_urefs_on_entity(
                 owner,
-                contract,
+                named_keys,
                 system_contracts.has_contract_hash(&owner),
                 tracking_copy.clone(),
             )?;
+
+            let updated_stored_value = match stored_value {
+                StoredValue::AddressableEntity(mut entity) => {
+                    entity.named_keys_append(new_keys);
+                    StoredValue::AddressableEntity(entity)
+                }
+                StoredValue::Contract(mut contract) => {
+                    contract.append_named_keys(new_keys);
+                    StoredValue::Contract(contract)
+                }
+                _ => return Err(Error::KeyPointingAtUnexpectedType(contract_key)),
+            };
+
+            tracking_copy
+                .borrow_mut()
+                .write(Key::Hash(owner.value()), updated_stored_value);
         }
 
         for key in unreached_uref_keys {
@@ -759,13 +774,13 @@ where
     fn migrate_urefs_on_entity(
         &self,
         contract_hash: ContractHash,
-        mut entity: AddressableEntity,
+        named_keys: &NamedKeys,
         is_system_contract: bool,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-    ) -> Result<(), Error> {
-        let mut new_named_keys = NamedKeys::new();
+    ) -> Result<NamedKeys, Error> {
+        let mut new_keys = NamedKeys::new();
 
-        for (name, key) in entity.named_keys().iter() {
+        for (name, key) in named_keys.iter() {
             let value = tracking_copy
                 .borrow_mut()
                 .read(key)
@@ -780,13 +795,15 @@ where
                 .map_err(|_| Error::FailedToGetStoredBalance)?;
 
             match (value, balance) {
+                // we match on the balance to ensure that we only replace URefs with Context keys
+                // for keys that do not represent purses
                 (Some(StoredValue::CLValue(value)), None) if is_system_contract => {
                     let ctx = Context::new(contract_hash, uref.addr());
                     tracking_copy
                         .borrow_mut()
                         .write(Key::Context(ctx), value.into());
 
-                    new_named_keys.insert(name.clone(), Key::Context(ctx));
+                    new_keys.insert(name.clone(), Key::Context(ctx));
                 }
                 (Some(StoredValue::CLValue(value)), _) => {
                     let ctx = Context::new(contract_hash, uref.addr());
@@ -802,11 +819,7 @@ where
             }
         }
 
-        entity.named_keys_append(new_named_keys);
-        tracking_copy
-            .borrow_mut()
-            .write(Key::Hash(contract_hash.value()), entity.into());
-        Ok(())
+        Ok(new_keys)
     }
 
     /// Commit a prune of leaf nodes from the tip of the merkle trie.
