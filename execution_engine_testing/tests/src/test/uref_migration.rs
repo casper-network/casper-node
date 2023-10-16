@@ -163,7 +163,7 @@ fn should_prune_unreachable_urefs() {
         .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)
         .expect_upgrade_success();
 
-    let res = builder.query_uref_value(None, Key::from(key), &[]);
+    let res = builder.query_uref_value(None, key, &[]);
     assert_matches!(res, Err(_));
 }
 
