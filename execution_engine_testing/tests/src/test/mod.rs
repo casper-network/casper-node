@@ -20,4 +20,5 @@ mod system_contracts;
 mod system_costs;
 mod tutorial;
 mod upgrade;
+mod uref_migration;
 mod wasmless_transfer;

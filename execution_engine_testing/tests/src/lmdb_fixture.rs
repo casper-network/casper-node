@@ -22,6 +22,7 @@ pub const RELEASE_1_4_2: &str = "release_1_4_2";
 pub const RELEASE_1_4_3: &str = "release_1_4_3";
 pub const RELEASE_1_4_4: &str = "release_1_4_4";
 pub const RELEASE_1_4_5: &str = "release_1_4_5";
+pub const RELEASE_2_0_0: &str = "release_2_0_0";
 const STATE_JSON_FILE: &str = "state.json";
 const FIXTURES_DIRECTORY: &str = "fixtures";
 const GENESIS_PROTOCOL_VERSION_FIELD: &str = "protocol_version";

@@ -771,7 +771,9 @@ where
                 .read(key)
                 .map_err(|_| Error::FailedToGetStoredCLValues)?;
 
-            let uref = key.into_uref().unwrap();
+            let &Key::URef(uref) = key else {
+                continue;
+            };
             let balance = tracking_copy
                 .borrow_mut()
                 .get(&Key::Balance(uref.addr()))
