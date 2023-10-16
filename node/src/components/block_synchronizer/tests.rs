@@ -1886,7 +1886,7 @@ async fn fwd_have_strict_finality_requests_enqueue_when_finalized_block_is_creat
         .expect("Forward builder should have been initialized");
     assert_matches!(
         fwd_builder.block_acquisition_state(),
-        BlockAcquisitionState::HaveFinalizedBlock(actual_block, _, _) if *actual_block.hash() == *block.hash()
+        BlockAcquisitionState::HaveExecutableBlock(actual_block, _, _) if *actual_block.hash() == *block.hash()
     );
 
     // This is the first of two events created when `EffectBuilder::enqueue_block_for_execution` is
@@ -1956,13 +1956,13 @@ async fn fwd_builder_status_is_executing_when_block_is_enqueued_for_execution() 
     );
 
     // Register finalized block
-    fwd_builder.register_made_finalized_block(ExecutableBlock::from_block_and_deploys(
+    fwd_builder.register_made_executable_block(ExecutableBlock::from_block_and_deploys(
         block.clone(),
         Vec::new(),
     ));
     assert_matches!(
         fwd_builder.block_acquisition_state(),
-        BlockAcquisitionState::HaveFinalizedBlock(actual_block, _, _) if *actual_block.hash() == *block.hash()
+        BlockAcquisitionState::HaveExecutableBlock(actual_block, _, _) if *actual_block.hash() == *block.hash()
     );
 
     // Simulate that enqueuing the block for execution was successful
@@ -2025,7 +2025,7 @@ async fn fwd_sync_is_finished_when_block_is_marked_as_executed() {
     );
 
     // Register finalized block
-    fwd_builder.register_made_finalized_block(ExecutableBlock::from_block_and_deploys(
+    fwd_builder.register_made_executable_block(ExecutableBlock::from_block_and_deploys(
         block.clone(),
         Vec::new(),
     ));

@@ -119,7 +119,7 @@ pub(super) enum BlockAcquisitionState {
     // with execution are strictly forward sync states. Until a refactor splits
     // the `Complete` states for the historical and forward cases, we need to
     // keep the block around.
-    HaveFinalizedBlock(Box<Block>, Box<ExecutableBlock>, bool),
+    HaveExecutableBlock(Box<Block>, Box<ExecutableBlock>, bool),
     // The `Complete` state needs the block itself in order to produce a meta
     // block announcement in the historical sync flow. In the forward sync,
     // only the block hash and height are necessary. Therefore, we retain the
@@ -179,7 +179,7 @@ impl Display for BlockAcquisitionState {
                 block.height(),
                 block.hash()
             ),
-            BlockAcquisitionState::HaveFinalizedBlock(block, _, _) => write!(
+            BlockAcquisitionState::HaveExecutableBlock(block, _, _) => write!(
                 f,
                 "have finalized block({}) for: {}",
                 block.height(),
@@ -215,7 +215,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveApprovalsHashes(block, _, _)
             | BlockAcquisitionState::HaveAllDeploys(block, _)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(block, _)
-            | BlockAcquisitionState::HaveFinalizedBlock(block, ..)
+            | BlockAcquisitionState::HaveExecutableBlock(block, ..)
             | BlockAcquisitionState::Complete(block) => *block.hash(),
         }
     }
@@ -232,7 +232,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveGlobalState(block, _, _, _)
             | BlockAcquisitionState::HaveAllExecutionResults(block, _, _, _)
             | BlockAcquisitionState::HaveApprovalsHashes(block, _, _)
-            | BlockAcquisitionState::HaveFinalizedBlock(block, _, _)
+            | BlockAcquisitionState::HaveExecutableBlock(block, _, _)
             | BlockAcquisitionState::Complete(block) => Some(block.clone()),
         }
     }
@@ -477,7 +477,7 @@ impl BlockAcquisitionState {
                     ))
                 }
             }
-            BlockAcquisitionState::HaveFinalizedBlock(block, executable_block, enqueued) => {
+            BlockAcquisitionState::HaveExecutableBlock(block, executable_block, enqueued) => {
                 if is_historical {
                     Err(BlockAcquisitionError::InvalidStateTransition)
                 } else if *enqueued == false {
@@ -507,7 +507,7 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::Initialized(..) | BlockAcquisitionState::Failed(..) => None,
             BlockAcquisitionState::HaveBlockHeader(header, _)
             | BlockAcquisitionState::HaveWeakFinalitySignatures(header, _) => Some(header.height()),
-            BlockAcquisitionState::HaveFinalizedBlock(_, executable_block, _) => {
+            BlockAcquisitionState::HaveExecutableBlock(_, executable_block, _) => {
                 Some(executable_block.height)
             }
             BlockAcquisitionState::HaveBlock(block, _, _)
@@ -556,7 +556,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => return Ok(None),
         };
@@ -602,7 +602,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {
                 return Ok(None);
@@ -644,7 +644,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
             | BlockAcquisitionState::Initialized(..)
             | BlockAcquisitionState::Failed(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Complete(..) => None,
         };
         if let Some(new_state) = maybe_new_state {
@@ -667,7 +667,7 @@ impl BlockAcquisitionState {
                 acquired_signatures.register_pending(validator);
             }
             BlockAcquisitionState::Initialized(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {}
         };
@@ -679,7 +679,7 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::Initialized(..)
             | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => false,
             BlockAcquisitionState::HaveBlock(_, acquired_signatures, acquired_deploys) => {
@@ -842,7 +842,7 @@ impl BlockAcquisitionState {
                 None
             }
             BlockAcquisitionState::Initialized(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => return Ok(None),
         };
@@ -911,7 +911,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(_, _, _)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {
                 return Ok(None);
@@ -961,7 +961,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {
                 return Ok(());
@@ -1003,7 +1003,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {
                 return Ok(());
@@ -1086,7 +1086,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {
                 return Ok(RegisterExecResultsOutcome {
@@ -1134,7 +1134,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {
                 return Ok(());
@@ -1177,7 +1177,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveGlobalState(_, _, _, _)
             | BlockAcquisitionState::HaveAllExecutionResults(_, _, _, _)
             | BlockAcquisitionState::HaveAllDeploys(_, _)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
             | BlockAcquisitionState::Failed(_, _)
             | BlockAcquisitionState::Complete(..) => {
@@ -1210,7 +1210,7 @@ impl BlockAcquisitionState {
 
         let new_state = match self {
             BlockAcquisitionState::HaveStrictFinalitySignatures(block, _) => {
-                BlockAcquisitionState::HaveFinalizedBlock(
+                BlockAcquisitionState::HaveExecutableBlock(
                     block.clone(),
                     Box::new(executable_block),
                     false,
@@ -1224,7 +1224,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::HaveAllDeploys(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {
                 return Ok(());
@@ -1239,7 +1239,7 @@ impl BlockAcquisitionState {
         &mut self,
     ) -> Result<(), BlockAcquisitionError> {
         match self {
-            BlockAcquisitionState::HaveFinalizedBlock(block, _, enqueued) => {
+            BlockAcquisitionState::HaveExecutableBlock(block, _, enqueued) => {
                 info!(
                     "BlockAcquisition: registering block enqueued for execution for: {}",
                     block
@@ -1271,7 +1271,7 @@ impl BlockAcquisitionState {
         }
 
         let new_state = match self {
-            BlockAcquisitionState::HaveFinalizedBlock(block, _, _) => {
+            BlockAcquisitionState::HaveExecutableBlock(block, _, _) => {
                 info!(
                     "BlockAcquisition: registering block executed for: {}",
                     *block.hash()
@@ -1321,7 +1321,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::HaveAllDeploys(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {
                 return Ok(());

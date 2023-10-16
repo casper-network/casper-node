@@ -208,7 +208,7 @@ fn register_era_validator_weights() {
 }
 
 #[test]
-fn register_finalized_block() {
+fn register_executable_block() {
     let mut rng = TestRng::new();
     // Create a random block.
     let block = TestBlockBuilder::new().build(&mut rng);
@@ -239,7 +239,6 @@ fn register_finalized_block() {
         Acceptance::NeededIt
     );
     // Set the builder's state to `HaveStrictFinalitySignatures`.
-    //let finalized_block = FinalizedBlock::from(block.clone());
     let expected_deploys = vec![Deploy::random(&mut rng)];
     let executable_block =
         ExecutableBlock::from_block_and_deploys(block.clone(), expected_deploys.clone());
@@ -250,9 +249,9 @@ fn register_finalized_block() {
 
     // Register the finalized block.
     thread::sleep(Duration::from_millis(5));
-    builder.register_made_finalized_block(executable_block.clone());
+    builder.register_made_executable_block(executable_block.clone());
     match &builder.acquisition_state {
-        BlockAcquisitionState::HaveFinalizedBlock(actual_block, executable_block, enqueued) => {
+        BlockAcquisitionState::HaveExecutableBlock(actual_block, executable_block, enqueued) => {
             assert_eq!(actual_block.hash(), block.hash());
             assert_eq!(expected_deploys, *executable_block.deploys);
             assert!(!enqueued);
@@ -272,7 +271,7 @@ fn register_finalized_block() {
     );
     // Register the finalized block. This should fail on historical builders.
     thread::sleep(Duration::from_millis(5));
-    builder.register_made_finalized_block(executable_block);
+    builder.register_made_executable_block(executable_block);
     assert!(builder.is_failed());
     assert_ne!(latest_timestamp, builder.last_progress);
 }
@@ -314,7 +313,7 @@ fn register_block_execution() {
         vec![Deploy::random(&mut rng)],
     ));
     builder.acquisition_state =
-        BlockAcquisitionState::HaveFinalizedBlock(Box::new(block.into()), executable_block, false);
+        BlockAcquisitionState::HaveExecutableBlock(Box::new(block.into()), executable_block, false);
 
     assert_eq!(builder.execution_progress, ExecutionProgress::Idle);
     // Register the block execution enquement as successful. This should
@@ -324,7 +323,7 @@ fn register_block_execution() {
     assert_eq!(builder.execution_progress, ExecutionProgress::Started);
     assert!(matches!(
         builder.acquisition_state,
-        BlockAcquisitionState::HaveFinalizedBlock(_, _, true)
+        BlockAcquisitionState::HaveExecutableBlock(_, _, true)
     ));
     assert!(!builder.is_failed());
     assert_ne!(latest_timestamp, builder.last_progress);
@@ -337,7 +336,7 @@ fn register_block_execution() {
     assert_eq!(builder.execution_progress, ExecutionProgress::Started);
     assert!(matches!(
         builder.acquisition_state,
-        BlockAcquisitionState::HaveFinalizedBlock(_, _, true)
+        BlockAcquisitionState::HaveExecutableBlock(_, _, true)
     ));
     assert!(!builder.is_failed());
     assert_ne!(latest_timestamp, builder.last_progress);

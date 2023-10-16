@@ -388,7 +388,7 @@ impl BlockSynchronizer {
         match &mut self.forward {
             Some(builder) if builder.block_hash() == *block_hash => {
                 if let Some(executable_block) = result {
-                    builder.register_made_finalized_block(executable_block);
+                    builder.register_made_executable_block(executable_block);
                 } else {
                     // Could not create finalized block, abort
                     builder.abort();

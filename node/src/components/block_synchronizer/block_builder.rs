@@ -271,7 +271,7 @@ impl BlockBuilder {
             | BlockAcquisitionState::HaveApprovalsHashes(_, _, _)
             | BlockAcquisitionState::HaveAllDeploys(_, _)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
-            | BlockAcquisitionState::HaveFinalizedBlock(_, _, _)
+            | BlockAcquisitionState::HaveExecutableBlock(_, _, _)
             | BlockAcquisitionState::Failed(_, _) => {
                 //TODO: does failed also mean finished?
                 false
@@ -315,7 +315,7 @@ impl BlockBuilder {
         }
     }
 
-    pub(super) fn register_made_finalized_block(&mut self, executable_block: ExecutableBlock) {
+    pub(super) fn register_made_executable_block(&mut self, executable_block: ExecutableBlock) {
         if let Err(error) = self
             .acquisition_state
             .register_made_finalized_block(self.should_fetch_execution_state, executable_block)
@@ -469,7 +469,7 @@ impl BlockBuilder {
             | BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => false,
         }
@@ -504,7 +504,7 @@ impl BlockBuilder {
             | BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => false,
         }
@@ -539,7 +539,7 @@ impl BlockBuilder {
             | BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => false,
         }
@@ -643,7 +643,7 @@ impl BlockBuilder {
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => false,
         }
@@ -786,7 +786,7 @@ impl BlockBuilder {
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => false,
         }

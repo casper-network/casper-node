@@ -614,7 +614,7 @@ impl ContractRuntime {
                         info!(
                             "ContractRuntime: enqueuing finalized block({}) with {} deploys for execution",
                             finalized_block_height,
-                            executable_block.    deploys.len()
+                            executable_block.deploys.len()
                         );
                         exec_queue.insert(
                             finalized_block_height,
