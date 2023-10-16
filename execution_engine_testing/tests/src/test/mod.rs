@@ -12,6 +12,7 @@ mod host_function_costs;
 mod manage_groups;
 mod private_chain;
 mod regression;
+mod stack_overflow;
 mod step;
 mod storage_costs;
 mod system_contracts;

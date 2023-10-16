@@ -7,15 +7,15 @@ mod config;
 mod consensus_protocol;
 mod era_supervisor;
 #[macro_use]
-mod highway_core;
+pub mod highway_core;
 pub(crate) mod error;
 mod leader_sequence;
 mod metrics;
-mod protocols;
+pub mod protocols;
 #[cfg(test)]
 pub(crate) mod tests;
 mod traits;
-pub(crate) mod utils;
+pub mod utils;
 mod validator_change;
 
 use std::{
@@ -56,7 +56,7 @@ use crate::{
 use protocols::{highway::HighwayProtocol, zug::Zug};
 use traits::Context;
 
-pub(crate) use cl_context::ClContext;
+pub use cl_context::ClContext;
 pub(crate) use config::{ChainspecConsensusExt, Config};
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
 pub(crate) use era_supervisor::{debug::EraDump, EraSupervisor, SerializedMessage};
@@ -123,6 +123,7 @@ pub struct TimerId(pub u8);
 #[derive(DataSize, Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct ActionId(pub u8);
 
+/// Payload for a block to be proposed.
 #[derive(DataSize, Debug, From)]
 pub struct NewBlockPayload {
     pub(crate) era_id: EraId,
@@ -130,6 +131,7 @@ pub struct NewBlockPayload {
     pub(crate) block_context: BlockContext<ClContext>,
 }
 
+/// The result of validation of a ProposedBlock.
 #[derive(DataSize, Debug, From)]
 pub struct ResolveValidity {
     era_id: EraId,

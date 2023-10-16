@@ -1153,6 +1153,7 @@ async fn empty_block_validation_regression() {
 }
 
 #[tokio::test]
+#[ignore] // Disabled, until the issue with `TestFixture` and multiple `TestRng`s is fixed.
 async fn all_metrics_from_1_5_are_present() {
     testing::init_logging();
 
@@ -1217,6 +1218,7 @@ async fn all_metrics_from_1_5_are_present() {
 }
 
 #[tokio::test]
+#[ignore] // Disabled, until the issue with `TestFixture` and multiple `TestRng`s is fixed.
 async fn port_bound_components_report_ready() {
     testing::init_logging();
 
