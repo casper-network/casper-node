@@ -2,7 +2,7 @@
 
 # casper-node
 
-This is the core application for the Casper blockchain.
+Reference client for the Casper Blockchain Protocol.
 
 ## Casper Blockchain
 
