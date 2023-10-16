@@ -41,7 +41,7 @@ fn should_run_stored_named_keys_session() {
     builder.exec(exec_request_1).expect_failure();
 
     let expected_error = casper_execution_engine::engine_state::Error::Exec(
-        casper_execution_engine::execution::Error::InvalidContext,
+        casper_execution_engine::execution::Error::Revert(ApiError::User(0)),
     );
 
     builder.assert_error(expected_error)
