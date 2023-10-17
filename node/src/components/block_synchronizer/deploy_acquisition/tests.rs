@@ -8,6 +8,8 @@ use casper_types::{
     testing::TestRng, AccessRights, CLValue, Deploy, StoredValue, TestBlockBuilder, URef,
 };
 
+use crate::types::ApprovalsHashes;
+
 use super::*;
 
 fn gen_test_deploys(rng: &mut TestRng) -> BTreeMap<DeployHash, Deploy> {

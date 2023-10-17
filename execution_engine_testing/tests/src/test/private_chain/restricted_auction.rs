@@ -25,7 +25,8 @@ fn should_not_distribute_rewards_but_compute_next_set() {
             .distribute(
                 None,
                 *DEFAULT_PROTOCOL_VERSION,
-                VALIDATOR_1_PUBLIC_KEY.clone(),
+                &IntoIterator::into_iter([(VALIDATOR_1_PUBLIC_KEY.clone(), U512::from(0))])
+                    .collect(),
                 1,
                 DEFAULT_BLOCK_TIME,
             )
@@ -51,7 +52,7 @@ fn should_not_distribute_rewards_but_compute_next_set() {
         .distribute(
             None,
             *DEFAULT_PROTOCOL_VERSION,
-            VALIDATOR_1_PUBLIC_KEY.clone(),
+            &IntoIterator::into_iter([(VALIDATOR_1_PUBLIC_KEY.clone(), U512::from(0))]).collect(),
             0,
             DEFAULT_BLOCK_TIME,
         )

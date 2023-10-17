@@ -172,8 +172,12 @@ where
     }
 }
 
-fn distribute_rewards<S>(builder: &mut WasmTestBuilder<S>, block_height: u64, proposer: &PublicKey)
-where
+fn distribute_rewards<S>(
+    builder: &mut WasmTestBuilder<S>,
+    block_height: u64,
+    proposer: &PublicKey,
+    amount: U512,
+) where
     S: StateProvider + CommitProvider,
     engine_state::Error: From<S::Error>,
     S::Error: Into<execution::Error> + fmt::Debug,
@@ -182,7 +186,7 @@ where
         .distribute(
             None,
             ProtocolVersion::V1_0_0,
-            proposer.clone(),
+            &IntoIterator::into_iter([(proposer.clone(), amount)]).collect(),
             block_height,
             0,
         )
@@ -196,7 +200,7 @@ fn gh_3710_should_produce_era_summary_in_a_step() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     add_validator_and_wait_for_rotation(&mut builder, &DEFAULT_ACCOUNT_PUBLIC_KEY);
-    distribute_rewards(&mut builder, 1, &DEFAULT_ACCOUNT_PUBLIC_KEY);
+    distribute_rewards(&mut builder, 1, &DEFAULT_ACCOUNT_PUBLIC_KEY, 0.into());
 
     let era_info_keys = builder.get_keys(KeyTag::EraInfo).unwrap();
     assert_eq!(era_info_keys, Vec::new());
@@ -209,7 +213,7 @@ fn gh_3710_should_produce_era_summary_in_a_step() {
 
     // Reward another validator to observe that the summary changes.
     add_validator_and_wait_for_rotation(&mut builder, &DEFAULT_PROPOSER_PUBLIC_KEY);
-    distribute_rewards(&mut builder, 2, &DEFAULT_PROPOSER_PUBLIC_KEY);
+    distribute_rewards(&mut builder, 2, &DEFAULT_PROPOSER_PUBLIC_KEY, 1.into());
 
     let era_summary_2 = builder
         .query(None, Key::EraSummary, &[])
@@ -256,7 +260,7 @@ mod fixture {
             super::add_validator_and_wait_for_rotation(builder, &DEFAULT_ACCOUNT_PUBLIC_KEY);
 
             // N more eras that pays out rewards
-            super::distribute_rewards(builder, 0, &DEFAULT_ACCOUNT_PUBLIC_KEY);
+            super::distribute_rewards(builder, 0, &DEFAULT_ACCOUNT_PUBLIC_KEY, 0.into());
 
             let last_era_info = EraId::new(builder.get_auction_delay() + FIXTURE_N_ERAS as u64);
             let last_era_info_key = Key::EraInfo(last_era_info);

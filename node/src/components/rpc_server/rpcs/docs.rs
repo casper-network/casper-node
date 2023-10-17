@@ -456,7 +456,9 @@ impl RpcWithoutParams for ListRpcs {
 }
 
 mod doc_example_impls {
-    use casper_types::{account::Account, Deploy, EraEnd, EraReport, PublicKey, Timestamp};
+    use casper_types::{
+        account::Account, Deploy, EraEndV1, EraEndV2, EraReport, PublicKey, Timestamp,
+    };
 
     use super::DocExample;
 
@@ -472,9 +474,15 @@ mod doc_example_impls {
         }
     }
 
-    impl DocExample for EraEnd {
+    impl DocExample for EraEndV1 {
         fn doc_example() -> &'static Self {
-            EraEnd::example()
+            EraEndV1::example()
+        }
+    }
+
+    impl DocExample for EraEndV2 {
+        fn doc_example() -> &'static Self {
+            EraEndV2::example()
         }
     }
 

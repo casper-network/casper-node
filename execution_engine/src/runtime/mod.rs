@@ -925,8 +925,8 @@ where
                 runtime
                     .context
                     .charge_gas(auction_costs.distribute.into())?;
-                let proposer = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
-                runtime.distribute(proposer).map_err(Self::reverter)?;
+                let rewards = Self::get_named_argument(runtime_args, auction::ARG_REWARDS_MAP)?;
+                runtime.distribute(rewards).map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
 

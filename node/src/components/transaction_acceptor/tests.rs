@@ -864,7 +864,7 @@ fn inject_balance_check_for_peer(
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     let txn = txn.clone();
     let block = TestBlockBuilder::new().build(rng);
-    let block_header = Box::new(block.header().clone());
+    let block_header = Box::new(block.header().clone().into());
     |effect_builder: EffectBuilder<Event>| {
         let event_metadata = Box::new(EventMetadata::new(txn, source, Some(responder)));
         effect_builder

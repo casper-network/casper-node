@@ -10,6 +10,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    block::RewardedSignatures,
     bytesrepr::{self, FromBytes, ToBytes},
     DeployHash, Digest, PublicKey,
 };
@@ -25,6 +26,8 @@ pub struct BlockBodyV2 {
     pub(super) deploy_hashes: Vec<DeployHash>,
     /// The deploy hashes of the transfers within the block.
     pub(super) transfer_hashes: Vec<DeployHash>,
+    /// List of identifiers for finality signatures for a particular past block.
+    pub(super) rewarded_signatures: RewardedSignatures,
     #[serde(skip)]
     #[cfg_attr(
         all(any(feature = "once_cell", test), feature = "datasize"),
@@ -40,11 +43,13 @@ impl BlockBodyV2 {
         proposer: PublicKey,
         deploy_hashes: Vec<DeployHash>,
         transfer_hashes: Vec<DeployHash>,
+        rewarded_signatures: RewardedSignatures,
     ) -> Self {
         BlockBodyV2 {
             proposer,
             deploy_hashes,
             transfer_hashes,
+            rewarded_signatures,
             #[cfg(any(feature = "once_cell", test))]
             hash: OnceCell::new(),
         }
@@ -87,6 +92,11 @@ impl BlockBodyV2 {
             .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
         Digest::hash(serialized_body)
     }
+
+    /// Return the list of identifiers for finality signatures for a particular past block.
+    pub fn rewarded_signatures(&self) -> &RewardedSignatures {
+        &self.rewarded_signatures
+    }
 }
 
 impl PartialEq for BlockBodyV2 {
@@ -97,6 +107,7 @@ impl PartialEq for BlockBodyV2 {
             proposer,
             deploy_hashes,
             transfer_hashes,
+            rewarded_signatures,
             hash: _,
         } = self;
         #[cfg(not(any(feature = "once_cell", test)))]
@@ -104,10 +115,12 @@ impl PartialEq for BlockBodyV2 {
             proposer,
             deploy_hashes,
             transfer_hashes,
+            rewarded_signatures,
         } = self;
         *proposer == other.proposer
             && *deploy_hashes == other.deploy_hashes
             && *transfer_hashes == other.transfer_hashes
+            && *rewarded_signatures == other.rewarded_signatures
     }
 }
 
@@ -128,6 +141,7 @@ impl ToBytes for BlockBodyV2 {
         self.proposer.write_bytes(writer)?;
         self.deploy_hashes.write_bytes(writer)?;
         self.transfer_hashes.write_bytes(writer)?;
+        self.rewarded_signatures.write_bytes(writer)?;
         Ok(())
     }
 
@@ -141,6 +155,7 @@ impl ToBytes for BlockBodyV2 {
         self.proposer.serialized_length()
             + self.deploy_hashes.serialized_length()
             + self.transfer_hashes.serialized_length()
+            + self.rewarded_signatures.serialized_length()
     }
 }
 
@@ -149,10 +164,12 @@ impl FromBytes for BlockBodyV2 {
         let (proposer, bytes) = PublicKey::from_bytes(bytes)?;
         let (deploy_hashes, bytes) = Vec::<DeployHash>::from_bytes(bytes)?;
         let (transfer_hashes, bytes) = Vec::<DeployHash>::from_bytes(bytes)?;
+        let (rewarded_signatures, bytes) = RewardedSignatures::from_bytes(bytes)?;
         let body = BlockBodyV2 {
             proposer,
             deploy_hashes,
             transfer_hashes,
+            rewarded_signatures,
             #[cfg(any(feature = "once_cell", test))]
             hash: OnceCell::new(),
         };

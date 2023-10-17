@@ -7,9 +7,13 @@ use datasize::DataSize;
 use num_traits::Zero;
 use thiserror::Error;
 
-use casper_types::{DeployFootprint, DeployHash, Gas, PublicKey, Timestamp, TransactionConfig};
+use casper_types::{
+    DeployFootprint, DeployHash, Gas, PublicKey, RewardedSignatures, Timestamp, TransactionConfig,
+};
 
-use crate::types::{BlockPayload, DeployHashWithApprovals};
+use crate::types::DeployHashWithApprovals;
+
+use super::BlockPayload;
 
 #[derive(Debug, Error)]
 pub(crate) enum AddError {
@@ -175,12 +179,19 @@ impl AppendableBlock {
     pub(crate) fn into_block_payload(
         self,
         accusations: Vec<PublicKey>,
+        rewarded_signatures: RewardedSignatures,
         random_bit: bool,
     ) -> BlockPayload {
         let AppendableBlock {
             deploys, transfers, ..
         } = self;
-        BlockPayload::new(deploys, transfers, accusations, random_bit)
+        BlockPayload::new(
+            deploys,
+            transfers,
+            accusations,
+            rewarded_signatures,
+            random_bit,
+        )
     }
 
     pub(crate) fn timestamp(&self) -> Timestamp {

@@ -24,10 +24,13 @@ use rand_chacha::ChaCha20Rng;
 
 pub use available_block_range::AvailableBlockRange;
 pub(crate) use block::{
-    compute_approvals_checksum, ApprovalsHashes, BlockExecutionResultsOrChunkId, BlockPayload,
-    ForwardMetaBlock, MetaBlock, MetaBlockMergeError, MetaBlockState,
+    compute_approvals_checksum, create_single_block_rewarded_signatures, ApprovalsHashes,
+    BlockExecutionResultsOrChunkId, BlockPayload, BlockWithMetadata, ForwardMetaBlock, MetaBlock,
+    MetaBlockMergeError, MetaBlockState,
 };
-pub use block::{BlockExecutionResultsOrChunk, FinalizedBlock, SignedBlock};
+pub use block::{
+    BlockExecutionResultsOrChunk, ExecutableBlock, FinalizedBlock, InternalEraReport, SignedBlock,
+};
 pub use chunkable::Chunkable;
 pub use datasize::DataSize;
 pub use exit_code::ExitCode;

@@ -108,6 +108,7 @@ use std::{
 
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
+use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use serde::{Serialize, Serializer};
 use smallvec::{smallvec, SmallVec};
@@ -144,13 +145,16 @@ use crate::{
         transaction_acceptor,
         upgrade_watcher::NextUpgrade,
     },
-    contract_runtime::SpeculativeExecutionState,
+    contract_runtime::{
+        RoundSeigniorageRateRequest, SpeculativeExecutionState, TotalSupplyRequest,
+    },
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, DeployExecutionInfo,
-        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, LegacyDeploy, MetaBlock,
-        MetaBlockState, NodeId, SignedBlock, TrieOrChunk, TrieOrChunkId,
+        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
+        DeployExecutionInfo, DeployWithFinalizedApprovals, ExecutableBlock, FinalizedApprovals,
+        FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState, NodeId, SignedBlock, TrieOrChunk,
+        TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -872,15 +876,14 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
-    /// Request that a block be made executable (i.e. produce a FinalizedBlock plus any Deploys),
-    /// if able to.
+    /// Request that a block be made executable, if able to: `ExecutableBlock`.
     ///
     /// Completion means that the block can be enqueued for processing by the execution engine via
     /// the contract_runtime component.
     pub(crate) async fn make_block_executable(
         self,
         block_hash: BlockHash,
-    ) -> Option<(FinalizedBlock, Vec<Deploy>)>
+    ) -> Option<ExecutableBlock>
     where
         REv: From<MakeBlockExecutableRequest>,
     {
@@ -1193,6 +1196,20 @@ impl<REv> EffectBuilder<REv> {
                 only_from_available_block_range,
                 responder,
             },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_switch_block_header_by_era_id_from_storage(
+        self,
+        era_id: EraId,
+    ) -> Option<BlockHeader>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetSwitchBlockHeaderByEra { era_id, responder },
             QueueKind::FromStorage,
         )
         .await
@@ -1603,6 +1620,45 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Gets the requested block and its finality signatures.
+    pub(crate) async fn get_block_at_height_with_metadata_from_storage(
+        self,
+        block_height: u64,
+        only_from_available_block_range: bool,
+    ) -> Option<BlockWithMetadata>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockAndMetadataByHeight {
+                block_height,
+                only_from_available_block_range,
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
+    pub(crate) async fn collect_past_blocks_with_metadata(
+        self,
+        range: std::ops::Range<u64>,
+        only_from_available_block_range: bool,
+    ) -> Vec<Option<BlockWithMetadata>>
+    where
+        REv: From<StorageRequest>,
+    {
+        futures::future::join_all(range.into_iter().map(|block_height| {
+            self.get_block_at_height_with_metadata_from_storage(
+                block_height,
+                only_from_available_block_range,
+            )
+        }))
+        .await
+        .into_iter()
+        .collect()
+    }
+
     /// Gets the requested finality signature from storage.
     pub(crate) async fn get_finality_signature_from_storage(
         self,
@@ -1727,8 +1783,7 @@ impl<REv> EffectBuilder<REv> {
     /// Enqueues a finalized block execution.
     pub(crate) async fn enqueue_block_for_execution(
         self,
-        finalized_block: FinalizedBlock,
-        deploys: Vec<Deploy>,
+        executable_block: ExecutableBlock,
         meta_block_state: MetaBlockState,
     ) where
         REv: From<StorageRequest> + From<ContractRuntimeRequest>,
@@ -1749,8 +1804,7 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 ContractRuntimeRequest::EnqueueBlockForExecution {
-                    finalized_block,
-                    deploys,
+                    executable_block,
                     key_block_height_for_activation_point,
                     meta_block_state,
                 },
@@ -1962,6 +2016,50 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ContractRuntimeRequest::GetEraValidators { request, responder },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
+    /// Returns the total supply from the given `root_hash`.
+    ///
+    /// This operation is read only.
+    #[allow(unused)] //TODO remove in the next ticket implementation.
+    pub(crate) async fn get_total_supply(
+        self,
+        state_hash: Digest,
+    ) -> Result<U512, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        let total_supply_request = TotalSupplyRequest::new(state_hash);
+        self.make_request(
+            move |responder| ContractRuntimeRequest::GetTotalSupply {
+                total_supply_request,
+                responder,
+            },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
+    /// Returns the seigniorage rate from the given `root_hash`.
+    ///
+    /// This operation is read only.
+    #[allow(unused)] //TODO remove in the next ticket implementation.
+    pub(crate) async fn get_round_seigniorage_rate(
+        self,
+        state_hash: Digest,
+    ) -> Result<Ratio<U512>, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        let round_seigniorage_rate_request = RoundSeigniorageRateRequest::new(state_hash);
+        self.make_request(
+            move |responder| ContractRuntimeRequest::GetRoundSeigniorageRate {
+                round_seigniorage_rate_request,
+                responder,
+            },
             QueueKind::ContractRuntime,
         )
         .await

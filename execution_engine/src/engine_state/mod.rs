@@ -52,7 +52,7 @@ use casper_types::{
     system::{
         auction::{
             BidAddr, BidKind, EraValidators, UnbondingPurse, ValidatorBid, WithdrawPurse,
-            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, ARG_VALIDATOR,
+            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, ARG_REWARDS_MAP,
             ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY, ERA_ID_KEY, LOCKED_FUNDS_PERIOD_KEY,
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
@@ -2295,7 +2295,7 @@ where
         &self,
         pre_state_hash: Digest,
         protocol_version: ProtocolVersion,
-        proposer: PublicKey,
+        rewards: &BTreeMap<PublicKey, U512>,
         next_block_height: u64,
         time: u64,
     ) -> Result<Digest, StepError> {
@@ -2305,16 +2305,15 @@ where
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
 
-        let mut runtime_args = RuntimeArgs::new();
-        runtime_args.insert(ARG_VALIDATOR, proposer)?;
-
         let executor = Executor::new(self.config().clone());
 
-        let system_account_addr = PublicKey::System.to_account_hash();
+        let virtual_system_contract_by_account = {
+            let system_account_addr = PublicKey::System.to_account_hash();
 
-        let virtual_system_contract_by_account = tracking_copy
-            .borrow_mut()
-            .get_addressable_entity_by_account_hash(protocol_version, system_account_addr)?;
+            tracking_copy
+                .borrow_mut()
+                .get_addressable_entity_by_account_hash(protocol_version, system_account_addr)?
+        };
 
         let authorization_keys = {
             let mut ret = BTreeSet::new();
@@ -2331,52 +2330,61 @@ where
             DeployHash::new(Digest::hash(&bytes))
         };
 
-        let distribute_accumulated_fees_stack = self.get_new_system_call_stack();
         let system_account_hash = PublicKey::System.to_account_hash();
-        let (_, execution_result): (Option<()>, ExecutionResult) = executor.call_system_contract(
-            DirectSystemContractCall::DistributeAccumulatedFees,
-            RuntimeArgs::default(),
-            &virtual_system_contract_by_account,
-            ContractPackageKind::Account(system_account_hash),
-            authorization_keys.clone(),
-            system_account_hash,
-            BlockTime::default(),
-            deploy_hash,
-            gas_limit,
-            protocol_version,
-            Rc::clone(&tracking_copy),
-            Phase::Session,
-            distribute_accumulated_fees_stack,
-            // There should be no tokens transferred during rewards distribution.
-            U512::zero(),
-        );
 
-        if let Some(exec_error) = execution_result.take_error() {
-            return Err(StepError::DistributeAccumulatedFeesError(exec_error));
+        {
+            let distribute_accumulated_fees_stack = self.get_new_system_call_stack();
+            let (_, execution_result): (Option<()>, ExecutionResult) = executor
+                .call_system_contract(
+                    DirectSystemContractCall::DistributeAccumulatedFees,
+                    RuntimeArgs::default(),
+                    &virtual_system_contract_by_account,
+                    ContractPackageKind::Account(system_account_hash),
+                    authorization_keys.clone(),
+                    system_account_hash,
+                    BlockTime::default(),
+                    deploy_hash,
+                    gas_limit,
+                    protocol_version,
+                    Rc::clone(&tracking_copy),
+                    Phase::Session,
+                    distribute_accumulated_fees_stack,
+                    // There should be no tokens transferred during rewards distribution.
+                    U512::zero(),
+                );
+
+            if let Some(exec_error) = execution_result.take_error() {
+                return Err(StepError::DistributeAccumulatedFeesError(exec_error));
+            }
         }
 
-        let distribute_rewards_stack = self.get_new_system_call_stack();
+        {
+            let mut runtime_args = RuntimeArgs::new();
+            runtime_args.insert(ARG_REWARDS_MAP, rewards)?;
+            let distribute_rewards_stack = self.get_new_system_call_stack();
 
-        let (_, execution_result): (Option<()>, ExecutionResult) = executor.call_system_contract(
-            DirectSystemContractCall::DistributeRewards,
-            runtime_args,
-            &virtual_system_contract_by_account,
-            ContractPackageKind::Account(system_account_hash),
-            authorization_keys,
-            system_account_hash,
-            BlockTime::default(),
-            deploy_hash,
-            gas_limit,
-            protocol_version,
-            Rc::clone(&tracking_copy),
-            Phase::Session,
-            distribute_rewards_stack,
-            // There should be no tokens transferred during rewards distribution.
-            U512::zero(),
-        );
+            let (_, execution_result): (Option<()>, ExecutionResult) = executor
+                .call_system_contract(
+                    DirectSystemContractCall::DistributeRewards,
+                    runtime_args,
+                    &virtual_system_contract_by_account,
+                    ContractPackageKind::Account(system_account_hash),
+                    authorization_keys,
+                    system_account_hash,
+                    BlockTime::default(),
+                    deploy_hash,
+                    gas_limit,
+                    protocol_version,
+                    Rc::clone(&tracking_copy),
+                    Phase::Session,
+                    distribute_rewards_stack,
+                    // There should be no tokens transferred during rewards distribution.
+                    U512::zero(),
+                );
 
-        if let Some(exec_error) = execution_result.take_error() {
-            return Err(StepError::DistributeError(exec_error));
+            if let Some(exec_error) = execution_result.take_error() {
+                return Err(StepError::DistributeError(exec_error));
+            }
         }
 
         let effects = tracking_copy.borrow().effects();
