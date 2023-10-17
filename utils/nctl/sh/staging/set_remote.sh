@@ -53,6 +53,13 @@ function _main()
             curl -O "$_BASE_URL/v$PROTOCOL_VERSION/$REMOTE_FILE" > /dev/null 2>&1
         fi
     done
+
+    # Allow external hook for patching the downloaded binaries.
+    if [ ! -z "${NCTL_PATCH_REMOTE_CMD}" ]; then
+        $NCTL_PATCH_REMOTE_CMD ./casper-node
+        $NCTL_PATCH_REMOTE_CMD ./global-state-update-gen
+    fi
+
     chmod +x ./casper-node
     chmod +x ./global-state-update-gen
     if [ "${#PROTOCOL_VERSION}" = '3' ]; then

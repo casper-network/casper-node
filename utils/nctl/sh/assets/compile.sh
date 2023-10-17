@@ -6,6 +6,11 @@
 #   NCTL - path to nctl home directory.
 ########################################
 
+if [ "$NCTL_SKIP_COMPILATION" = "true" ]; then
+    echo "skipping nctl-compile as requested";
+    return;
+fi
+
 unset OPTIND #clean OPTIND envvar, otherwise getopts can break.
 COMPILE_MODE="release" #default compile mode to release.
 
