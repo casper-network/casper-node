@@ -44,8 +44,9 @@ use casper_storage::{
     },
 };
 use casper_types::{
-    bytesrepr::Bytes, BlockHash, BlockHeaderV2, Chainspec, ChainspecRawBytes, ChainspecRegistry,
-    Digest, EraId, ProtocolVersion, Timestamp, UpgradeConfig, U512,
+    bytesrepr::Bytes, package::PackageKindTag, BlockHash, BlockHeaderV2, Chainspec,
+    ChainspecRawBytes, ChainspecRegistry, Digest, EraId, Key, ProtocolVersion, Timestamp,
+    UpgradeConfig, U512,
 };
 
 use crate::{
@@ -1115,9 +1116,12 @@ fn query_total_supply(
     use engine_state::{Error, QueryResult::*};
 
     let mint = engine_state.get_system_mint_hash(state_hash)?;
+
+    let mint_key = Key::addressable_entity_key(PackageKindTag::System, mint);
+
     let request = QueryRequest::new(
         state_hash,
-        mint.into(),
+        mint_key,
         vec![mint::TOTAL_SUPPLY_KEY.to_owned()],
     );
 
@@ -1145,9 +1149,11 @@ fn query_round_seigniorage_rate(
     use engine_state::{Error, QueryResult::*};
 
     let mint = engine_state.get_system_mint_hash(state_hash)?;
+    let mint_key = Key::addressable_entity_key(PackageKindTag::System, mint);
+
     let request = QueryRequest::new(
         state_hash,
-        mint.into(),
+        mint_key,
         vec![mint::ROUND_SEIGNIORAGE_RATE_KEY.to_owned()],
     );
 

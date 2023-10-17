@@ -97,8 +97,8 @@ pub use block::{
 pub use block::{TestBlockBuilder, TestBlockV1Builder};
 
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
-#[cfg(any(feature = "std", test))]
 pub use byte_code::{ByteCode, ByteCodeHash, ByteCodeKind};
+#[cfg(any(feature = "std", test))]
 pub use chainspec::{
     AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,
     BrTableCost, Chainspec, ChainspecRawBytes, ChainspecRegistry, ConsensusProtocolName,

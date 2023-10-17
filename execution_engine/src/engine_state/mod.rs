@@ -20,7 +20,12 @@ pub mod upgrade;
 
 use itertools::Itertools;
 
-use std::{cell::RefCell, collections::BTreeSet, convert::TryFrom, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+    convert::TryFrom,
+    rc::Rc,
+};
 
 use num_rational::Ratio;
 use num_traits::Zero;

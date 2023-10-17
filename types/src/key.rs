@@ -60,7 +60,16 @@ const CHECKSUM_REGISTRY_PREFIX: &str = "checksum-registry-";
 const BID_ADDR_PREFIX: &str = "bid-addr-";
 const PACKAGE_ADDR_PREFIX: &str = "package-";
 const ENTITY_ADDR_PREFIX: &str = "addressable-entity-";
+
+const ACCOUNT_ENTITY_PREFIX: &str = "account-";
+const CONTRACT_ENTITY_PREFIX: &str = "contract-";
+const SYSTEM_ENTITY_PREFIX: &str = "system-";
+
 const BYTE_CODE_ADDR_PREFIX: &str = "byte-code-";
+
+const WASM_PREFIX: &str = "v1-wasm-";
+
+const EMPTY_PREFIX: &str = "empty-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -466,20 +475,50 @@ impl Key {
                     base16::encode_lower(&package_addr)
                 )
             }
-            Key::AddressableEntity((_, entity_addr)) => {
-                format!(
-                    "{}{}",
-                    ENTITY_ADDR_PREFIX,
-                    base16::encode_lower(&entity_addr)
-                )
-            }
-            Key::ByteCode((_, byte_code_addr)) => {
-                format!(
-                    "{}{}",
-                    BYTE_CODE_ADDR_PREFIX,
-                    base16::encode_lower(&byte_code_addr)
-                )
-            }
+            Key::AddressableEntity((package_tag, entity_addr)) => match package_tag {
+                PackageKindTag::System => {
+                    format!(
+                        "{}{}{}",
+                        ENTITY_ADDR_PREFIX,
+                        SYSTEM_ENTITY_PREFIX,
+                        base16::encode_lower(&entity_addr)
+                    )
+                }
+                PackageKindTag::Account => {
+                    format!(
+                        "{}{}{}",
+                        ENTITY_ADDR_PREFIX,
+                        ACCOUNT_ENTITY_PREFIX,
+                        base16::encode_lower(&entity_addr)
+                    )
+                }
+                PackageKindTag::SmartContract => {
+                    format!(
+                        "{}{}{}",
+                        ENTITY_ADDR_PREFIX,
+                        CONTRACT_ENTITY_PREFIX,
+                        base16::encode_lower(&entity_addr)
+                    )
+                }
+            },
+            Key::ByteCode((byte_code_kind, byte_code_addr)) => match byte_code_kind {
+                ByteCodeKind::Empty => {
+                    format!(
+                        "{}{}{}",
+                        BYTE_CODE_ADDR_PREFIX,
+                        EMPTY_PREFIX,
+                        base16::encode_lower(&byte_code_addr)
+                    )
+                }
+                ByteCodeKind::V1CasperWasm => {
+                    format!(
+                        "{}{}{}",
+                        BYTE_CODE_ADDR_PREFIX,
+                        WASM_PREFIX,
+                        base16::encode_lower(&byte_code_addr)
+                    )
+                }
+            },
         }
     }
 
@@ -641,6 +680,59 @@ impl Key {
                 )
             })?;
             return Ok(Key::ChecksumRegistry);
+        }
+
+        if let Some(entity_string) =
+            input.strip_prefix(&format!("{}{}", ENTITY_ADDR_PREFIX, ACCOUNT_ENTITY_PREFIX))
+        {
+            let addr = checksummed_hex::decode(entity_string)
+                .map_err(|error| FromStrError::AddressableEntity(error.to_string()))?;
+            let hash_addr = EntityAddr::try_from(addr.as_ref())
+                .map_err(|error| FromStrError::AddressableEntity(error.to_string()))?;
+            return Ok(Key::AddressableEntity((PackageKindTag::Account, hash_addr)));
+        }
+
+        if let Some(entity_string) =
+            input.strip_prefix(&format!("{}{}", ENTITY_ADDR_PREFIX, SYSTEM_ENTITY_PREFIX))
+        {
+            let addr = checksummed_hex::decode(entity_string)
+                .map_err(|error| FromStrError::AddressableEntity(error.to_string()))?;
+            let hash_addr = EntityAddr::try_from(addr.as_ref())
+                .map_err(|error| FromStrError::AddressableEntity(error.to_string()))?;
+            return Ok(Key::AddressableEntity((PackageKindTag::System, hash_addr)));
+        }
+
+        if let Some(entity_string) =
+            input.strip_prefix(&format!("{}{}", ENTITY_ADDR_PREFIX, CONTRACT_ENTITY_PREFIX))
+        {
+            let addr = checksummed_hex::decode(entity_string)
+                .map_err(|error| FromStrError::AddressableEntity(error.to_string()))?;
+            let hash_addr = EntityAddr::try_from(addr.as_ref())
+                .map_err(|error| FromStrError::AddressableEntity(error.to_string()))?;
+            return Ok(Key::AddressableEntity((
+                PackageKindTag::SmartContract,
+                hash_addr,
+            )));
+        }
+
+        if let Some(byte_code_string) =
+            input.strip_prefix(&format!("{}{}", BYTE_CODE_ADDR_PREFIX, EMPTY_PREFIX))
+        {
+            let addr = checksummed_hex::decode(byte_code_string)
+                .map_err(|error| FromStrError::ByteCode(error.to_string()))?;
+            let byte_code_addr = ByteCodeAddr::try_from(addr.as_ref())
+                .map_err(|error| FromStrError::ByteCode(error.to_string()))?;
+            return Ok(Key::ByteCode((ByteCodeKind::Empty, byte_code_addr)));
+        }
+
+        if let Some(byte_code_string) =
+            input.strip_prefix(&format!("{}{}", BYTE_CODE_ADDR_PREFIX, WASM_PREFIX))
+        {
+            let addr = checksummed_hex::decode(byte_code_string)
+                .map_err(|error| FromStrError::ByteCode(error.to_string()))?;
+            let byte_code_addr = ByteCodeAddr::try_from(addr.as_ref())
+                .map_err(|error| FromStrError::ByteCode(error.to_string()))?;
+            return Ok(Key::ByteCode((ByteCodeKind::V1CasperWasm, byte_code_addr)));
         }
 
         Err(FromStrError::UnknownPrefix)
