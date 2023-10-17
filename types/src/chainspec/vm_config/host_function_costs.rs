@@ -3,6 +3,7 @@ use core::ops::Add;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+use derive_more::Add;
 use num_traits::Zero;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use serde::{Deserialize, Serialize};
@@ -168,6 +169,16 @@ impl<const COUNT: usize> Add for HostFunction<[Cost; COUNT]> {
     }
 }
 
+impl<const COUNT: usize> Zero for HostFunction<[Cost; COUNT]> {
+    fn zero() -> Self {
+        HostFunction::new(0, [0; COUNT])
+    }
+
+    fn is_zero(&self) -> bool {
+        !self.arguments.iter().any(|cost| *cost != 0) && self.cost.is_zero()
+    }
+}
+
 impl<T> Distribution<HostFunction<T>> for Standard
 where
     Standard: Distribution<T>,
@@ -216,7 +227,7 @@ where
 }
 
 /// Definition of a host function cost table.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Add, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct HostFunctionCosts {
@@ -316,122 +327,105 @@ pub struct HostFunctionCosts {
     pub emit_message: HostFunction<[Cost; 4]>,
 }
 
-impl Add for HostFunctionCosts {
-    type Output = HostFunctionCosts;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Self {
-            read_value: self.read_value + rhs.read_value,
-            dictionary_get: self.dictionary_get + rhs.dictionary_get,
-            write: self.write + rhs.write,
-            dictionary_put: self.dictionary_put + rhs.dictionary_put,
-            add: self.add + rhs.add,
-            new_uref: self.new_uref + rhs.new_uref,
-            load_named_keys: self.load_named_keys + rhs.load_named_keys,
-            ret: self.ret + rhs.ret,
-            get_key: self.get_key + rhs.get_key,
-            has_key: self.has_key + rhs.has_key,
-            put_key: self.put_key + rhs.put_key,
-            remove_key: self.remove_key + rhs.remove_key,
-            revert: self.revert + rhs.revert,
-            is_valid_uref: self.is_valid_uref + rhs.is_valid_uref,
-            add_associated_key: self.add_associated_key + rhs.add_associated_key,
-            remove_associated_key: self.remove_associated_key + rhs.remove_associated_key,
-            update_associated_key: self.update_associated_key + rhs.update_associated_key,
-            set_action_threshold: self.set_action_threshold + rhs.set_action_threshold,
-            get_caller: self.get_caller + rhs.get_caller,
-            get_blocktime: self.get_blocktime + rhs.get_blocktime,
-            create_purse: self.create_purse + rhs.create_purse,
-            transfer_to_account: self.transfer_to_account + rhs.transfer_to_account,
-            transfer_from_purse_to_account: self.transfer_from_purse_to_account
-                + rhs.transfer_from_purse_to_account,
-            transfer_from_purse_to_purse: self.transfer_from_purse_to_purse
-                + rhs.transfer_from_purse_to_purse,
-            get_balance: self.get_balance + rhs.get_balance,
-            get_phase: self.get_phase + rhs.get_phase,
-            get_system_contract: self.get_system_contract + rhs.get_system_contract,
-            get_main_purse: self.get_main_purse + rhs.get_main_purse,
-            read_host_buffer: self.read_host_buffer + rhs.read_host_buffer,
-            create_contract_package_at_hash: self.create_contract_package_at_hash
-                + rhs.create_contract_package_at_hash,
-            create_contract_user_group: self.create_contract_user_group
-                + rhs.create_contract_user_group,
-            add_contract_version: self.add_contract_version + rhs.add_contract_version,
-            disable_contract_version: self.disable_contract_version + rhs.disable_contract_version,
-            call_contract: self.call_contract + rhs.call_contract,
-            call_versioned_contract: self.call_versioned_contract + rhs.call_versioned_contract,
-            get_named_arg_size: self.get_named_arg_size + rhs.get_named_arg_size,
-            get_named_arg: self.get_named_arg + rhs.get_named_arg,
-            remove_contract_user_group: self.remove_contract_user_group
-                + rhs.remove_contract_user_group,
-            provision_contract_user_group_uref: self.provision_contract_user_group_uref
-                + rhs.provision_contract_user_group_uref,
-            remove_contract_user_group_urefs: self.remove_contract_user_group_urefs
-                + rhs.remove_contract_user_group_urefs,
-            print: self.print + rhs.print,
-            blake2b: self.blake2b + rhs.blake2b,
-            random_bytes: self.random_bytes + rhs.random_bytes,
-            enable_contract_version: self.enable_contract_version + rhs.enable_contract_version,
-            manage_message_topic: self.manage_message_topic + rhs.manage_message_topic,
-            emit_message: self.emit_message + rhs.emit_message,
-        }
-    }
-}
-
 impl Zero for HostFunctionCosts {
     fn zero() -> Self {
         Self {
-            read_value: HostFunction::<[Cost; 3]>::new(0, [0; 3]),
-            dictionary_get: HostFunction::<[Cost; 3]>::new(0, [0; 3]),
-            write: HostFunction::<[Cost; 4]>::new(0, [0; 4]),
-            dictionary_put: HostFunction::<[Cost; 4]>::new(0, [0; 4]),
-            add: HostFunction::<[Cost; 4]>::new(0, [0; 4]),
-            new_uref: HostFunction::<[Cost; 3]>::new(0, [0; 3]),
-            load_named_keys: HostFunction::<[Cost; 2]>::new(0, [0; 2]),
-            ret: HostFunction::<[Cost; 2]>::new(0, [0; 2]),
-            get_key: HostFunction::<[Cost; 5]>::new(0, [0; 5]),
-            has_key: HostFunction::<[Cost; 2]>::new(0, [0; 2]),
-            put_key: HostFunction::<[Cost; 4]>::new(0, [0; 4]),
-            remove_key: HostFunction::<[Cost; 2]>::new(0, [0; 2]),
-            revert: HostFunction::<[Cost; 1]>::new(0, [0; 1]),
-            is_valid_uref: HostFunction::<[Cost; 2]>::new(0, [0; 2]),
-            add_associated_key: HostFunction::<[Cost; 3]>::new(0, [0; 3]),
-            remove_associated_key: HostFunction::<[Cost; 2]>::new(0, [0; 2]),
-            update_associated_key: HostFunction::<[Cost; 3]>::new(0, [0; 3]),
-            set_action_threshold: HostFunction::<[Cost; 2]>::new(0, [0; 2]),
-            get_caller: HostFunction::<[Cost; 1]>::new(0, [0; 1]),
-            get_blocktime: HostFunction::<[Cost; 1]>::new(0, [0; 1]),
-            create_purse: HostFunction::<[Cost; 2]>::new(0, [0; 2]),
-            transfer_to_account: HostFunction::<[Cost; 7]>::new(0, [0; 7]),
-            transfer_from_purse_to_account: HostFunction::<[Cost; 9]>::new(0, [0; 9]),
-            transfer_from_purse_to_purse: HostFunction::<[Cost; 8]>::new(0, [0; 8]),
-            get_balance: HostFunction::<[Cost; 3]>::new(0, [0; 3]),
-            get_phase: HostFunction::<[Cost; 1]>::new(0, [0; 1]),
-            get_system_contract: HostFunction::<[Cost; 3]>::new(0, [0; 3]),
-            get_main_purse: HostFunction::<[Cost; 1]>::new(0, [0; 1]),
-            read_host_buffer: HostFunction::<[Cost; 3]>::new(0, [0; 3]),
-            create_contract_package_at_hash: HostFunction::<[Cost; 2]>::new(0, [0; 2]),
-            create_contract_user_group: HostFunction::<[Cost; 8]>::new(0, [0; 8]),
-            add_contract_version: HostFunction::<[Cost; 10]>::new(0, [0; 10]),
-            disable_contract_version: HostFunction::<[Cost; 4]>::new(0, [0; 4]),
-            call_contract: HostFunction::<[Cost; 7]>::new(0, [0; 7]),
-            call_versioned_contract: HostFunction::<[Cost; 9]>::new(0, [0; 9]),
-            get_named_arg_size: HostFunction::<[Cost; 3]>::new(0, [0; 3]),
-            get_named_arg: HostFunction::<[Cost; 4]>::new(0, [0; 4]),
-            remove_contract_user_group: HostFunction::<[Cost; 4]>::new(0, [0; 4]),
-            provision_contract_user_group_uref: HostFunction::<[Cost; 5]>::new(0, [0; 5]),
-            remove_contract_user_group_urefs: HostFunction::<[Cost; 6]>::new(0, [0; 6]),
-            print: HostFunction::<[Cost; 2]>::new(0, [0; 2]),
-            blake2b: HostFunction::<[Cost; 4]>::new(0, [0; 4]),
-            random_bytes: HostFunction::<[Cost; 2]>::new(0, [0; 2]),
-            enable_contract_version: HostFunction::<[Cost; 4]>::new(0, [0; 4]),
-            manage_message_topic: HostFunction::<[Cost; 4]>::new(0, [0; 4]),
-            emit_message: HostFunction::<[Cost; 4]>::new(0, [0; 4]),
+            read_value: HostFunction::zero(),
+            dictionary_get: HostFunction::zero(),
+            write: HostFunction::zero(),
+            dictionary_put: HostFunction::zero(),
+            add: HostFunction::zero(),
+            new_uref: HostFunction::zero(),
+            load_named_keys: HostFunction::zero(),
+            ret: HostFunction::zero(),
+            get_key: HostFunction::zero(),
+            has_key: HostFunction::zero(),
+            put_key: HostFunction::zero(),
+            remove_key: HostFunction::zero(),
+            revert: HostFunction::zero(),
+            is_valid_uref: HostFunction::zero(),
+            add_associated_key: HostFunction::zero(),
+            remove_associated_key: HostFunction::zero(),
+            update_associated_key: HostFunction::zero(),
+            set_action_threshold: HostFunction::zero(),
+            get_caller: HostFunction::zero(),
+            get_blocktime: HostFunction::zero(),
+            create_purse: HostFunction::zero(),
+            transfer_to_account: HostFunction::zero(),
+            transfer_from_purse_to_account: HostFunction::zero(),
+            transfer_from_purse_to_purse: HostFunction::zero(),
+            get_balance: HostFunction::zero(),
+            get_phase: HostFunction::zero(),
+            get_system_contract: HostFunction::zero(),
+            get_main_purse: HostFunction::zero(),
+            read_host_buffer: HostFunction::zero(),
+            create_contract_package_at_hash: HostFunction::zero(),
+            create_contract_user_group: HostFunction::zero(),
+            add_contract_version: HostFunction::zero(),
+            disable_contract_version: HostFunction::zero(),
+            call_contract: HostFunction::zero(),
+            call_versioned_contract: HostFunction::zero(),
+            get_named_arg_size: HostFunction::zero(),
+            get_named_arg: HostFunction::zero(),
+            remove_contract_user_group: HostFunction::zero(),
+            provision_contract_user_group_uref: HostFunction::zero(),
+            remove_contract_user_group_urefs: HostFunction::zero(),
+            print: HostFunction::zero(),
+            blake2b: HostFunction::zero(),
+            random_bytes: HostFunction::zero(),
+            enable_contract_version: HostFunction::zero(),
+            manage_message_topic: HostFunction::zero(),
+            emit_message: HostFunction::zero(),
         }
     }
 
     fn is_zero(&self) -> bool {
-        todo!()
+        self.read_value.is_zero()
+            && self.dictionary_get.is_zero()
+            && self.write.is_zero()
+            && self.dictionary_put.is_zero()
+            && self.add.is_zero()
+            && self.new_uref.is_zero()
+            && self.load_named_keys.is_zero()
+            && self.ret.is_zero()
+            && self.get_key.is_zero()
+            && self.has_key.is_zero()
+            && self.put_key.is_zero()
+            && self.remove_key.is_zero()
+            && self.revert.is_zero()
+            && self.is_valid_uref.is_zero()
+            && self.add_associated_key.is_zero()
+            && self.remove_associated_key.is_zero()
+            && self.update_associated_key.is_zero()
+            && self.set_action_threshold.is_zero()
+            && self.get_caller.is_zero()
+            && self.get_blocktime.is_zero()
+            && self.create_purse.is_zero()
+            && self.transfer_to_account.is_zero()
+            && self.transfer_from_purse_to_account.is_zero()
+            && self.transfer_from_purse_to_purse.is_zero()
+            && self.get_balance.is_zero()
+            && self.get_phase.is_zero()
+            && self.get_system_contract.is_zero()
+            && self.get_main_purse.is_zero()
+            && self.read_host_buffer.is_zero()
+            && self.create_contract_package_at_hash.is_zero()
+            && self.create_contract_user_group.is_zero()
+            && self.add_contract_version.is_zero()
+            && self.disable_contract_version.is_zero()
+            && self.call_contract.is_zero()
+            && self.call_versioned_contract.is_zero()
+            && self.get_named_arg_size.is_zero()
+            && self.get_named_arg.is_zero()
+            && self.remove_contract_user_group.is_zero()
+            && self.provision_contract_user_group_uref.is_zero()
+            && self.remove_contract_user_group_urefs.is_zero()
+            && self.print.is_zero()
+            && self.blake2b.is_zero()
+            && self.random_bytes.is_zero()
+            && self.enable_contract_version.is_zero()
+            && self.manage_message_topic.is_zero()
+            && self.emit_message.is_zero()
     }
 }
 

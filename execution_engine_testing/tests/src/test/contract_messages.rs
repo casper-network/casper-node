@@ -30,6 +30,9 @@ const ARG_MESSAGE_SUFFIX_NAME: &str = "message_suffix";
 
 const EMITTER_MESSAGE_PREFIX: &str = "generic message: ";
 
+// Number of messages that will be emitted when calling `ENTRY_POINT_EMIT_MESSAGE_FROM_EACH_VERSION`
+const EMIT_MESSAGE_FROM_EACH_VERSION_NUM_MESSAGES: u32 = 3;
+
 fn install_messages_emitter_contract(builder: &RefCell<LmdbWasmTestBuilder>) -> ContractHash {
     // Request to install the contract that will be emitting messages.
     let install_request = ExecuteRequestBuilder::standard(
@@ -689,11 +692,15 @@ fn should_charge_expected_gas_for_storage() {
 fn should_charge_increasing_gas_cost_for_multiple_messages_emitted() {
     const FIRST_MESSAGE_EMIT_COST: u32 = 100;
     const COST_INCREASE_PER_MESSAGE: u32 = 50;
+    const fn emit_cost_per_execution(num_messages: u32) -> u32 {
+        FIRST_MESSAGE_EMIT_COST * num_messages
+            + (num_messages - 1) * num_messages / 2 * COST_INCREASE_PER_MESSAGE
+    }
+
     const MESSAGES_TO_EMIT: u32 = 4;
-    const EMIT_MULTIPLE_EXPECTED_COST: u32 = FIRST_MESSAGE_EMIT_COST * MESSAGES_TO_EMIT
-        + (MESSAGES_TO_EMIT - 1) * MESSAGES_TO_EMIT / 2 * COST_INCREASE_PER_MESSAGE;
+    const EMIT_MULTIPLE_EXPECTED_COST: u32 = emit_cost_per_execution(MESSAGES_TO_EMIT);
     const EMIT_MESSAGES_FROM_MULTIPLE_CONTRACTS: u32 =
-        FIRST_MESSAGE_EMIT_COST * 3 + 3 * COST_INCREASE_PER_MESSAGE; // simplification of above
+        emit_cost_per_execution(EMIT_MESSAGE_FROM_EACH_VERSION_NUM_MESSAGES);
 
     let wasm_config = WasmConfig::new(
         DEFAULT_WASM_MAX_MEMORY,

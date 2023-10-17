@@ -1,8 +1,7 @@
 //! Support for storage costs.
-use core::ops::Add;
-
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+use derive_more::Add;
 use num_traits::Zero;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
@@ -16,7 +15,7 @@ use crate::{
 pub const DEFAULT_GAS_PER_BYTE_COST: u32 = 630_000;
 
 /// Represents a cost table for storage costs.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Add, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct StorageCosts {
@@ -77,16 +76,6 @@ impl FromBytes for StorageCosts {
         let (gas_per_byte, rem) = FromBytes::from_bytes(bytes)?;
 
         Ok((StorageCosts { gas_per_byte }, rem))
-    }
-}
-
-impl Add for StorageCosts {
-    type Output = Self;
-
-    fn add(self, other: Self) -> Self {
-        StorageCosts {
-            gas_per_byte: self.gas_per_byte + other.gas_per_byte,
-        }
     }
 }
 

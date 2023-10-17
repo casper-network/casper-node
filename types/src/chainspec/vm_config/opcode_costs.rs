@@ -1,8 +1,7 @@
 //! Support for Wasm opcode costs.
-use core::ops::Add;
-
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+use derive_more::Add;
 use num_traits::Zero;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
@@ -77,7 +76,7 @@ pub const DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER: u32 = 100;
 /// cost + (len(br_table.targets) * size_multiplier)
 /// ```
 // This is done to encourage users to avoid writing code with very long `br_table`s.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Add, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct BrTableCost {
@@ -144,17 +143,6 @@ impl FromBytes for BrTableCost {
     }
 }
 
-impl Add for BrTableCost {
-    type Output = Self;
-
-    fn add(self, other: Self) -> Self {
-        BrTableCost {
-            cost: self.cost + other.cost,
-            size_multiplier: self.size_multiplier + other.size_multiplier,
-        }
-    }
-}
-
 impl Zero for BrTableCost {
     fn zero() -> Self {
         BrTableCost {
@@ -169,7 +157,7 @@ impl Zero for BrTableCost {
 }
 
 /// Definition of a cost table for a Wasm control flow opcodes.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Add, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct ControlFlowCosts {
@@ -384,32 +372,10 @@ impl Zero for ControlFlowCosts {
     }
 }
 
-impl Add for ControlFlowCosts {
-    type Output = Self;
-
-    fn add(self, other: Self) -> Self {
-        ControlFlowCosts {
-            block: self.block + other.block,
-            op_loop: self.op_loop + other.op_loop,
-            op_if: self.op_if + other.op_if,
-            op_else: self.op_else + other.op_else,
-            end: self.end + other.end,
-            br: self.br + other.br,
-            br_if: self.br_if + other.br_if,
-            op_return: self.op_return + other.op_return,
-            call: self.call + other.call,
-            call_indirect: self.call_indirect + other.call_indirect,
-            drop: self.drop + other.drop,
-            select: self.select + other.select,
-            br_table: self.br_table + other.br_table,
-        }
-    }
-}
-
 /// Definition of a cost table for Wasm opcodes.
 ///
 /// This is taken (partially) from parity-ethereum.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Add, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct OpcodeCosts {
@@ -613,31 +579,6 @@ impl FromBytes for OpcodeCosts {
             control_flow,
         };
         Ok((opcode_costs, bytes))
-    }
-}
-
-impl Add for OpcodeCosts {
-    type Output = OpcodeCosts;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Self {
-            bit: self.bit + rhs.bit,
-            add: self.add + rhs.add,
-            mul: self.mul + rhs.mul,
-            div: self.div + rhs.div,
-            load: self.load + rhs.load,
-            store: self.store + rhs.store,
-            op_const: self.op_const + rhs.op_const,
-            local: self.local + rhs.local,
-            global: self.global + rhs.global,
-            integer_comparison: self.integer_comparison + rhs.integer_comparison,
-            conversion: self.conversion + rhs.conversion,
-            unreachable: self.unreachable + rhs.unreachable,
-            nop: self.nop + rhs.nop,
-            current_memory: self.current_memory + rhs.current_memory,
-            grow_memory: self.grow_memory + rhs.grow_memory,
-            control_flow: self.control_flow + rhs.control_flow,
-        }
     }
 }
 

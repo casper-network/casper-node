@@ -1,14 +1,14 @@
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+use derive_more::Add;
 use num_traits::Zero;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
-use std::ops::Add;
 
 use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 /// Configuration for messages limits.
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, Add)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct MessageCosts {
@@ -49,18 +49,6 @@ impl Zero for MessageCosts {
 
     fn is_zero(&self) -> bool {
         self.first_message_cost == 0 && self.cost_increase_per_message == 0
-    }
-}
-
-impl Add for MessageCosts {
-    type Output = MessageCosts;
-
-    fn add(self, other: MessageCosts) -> MessageCosts {
-        MessageCosts {
-            first_message_cost: self.first_message_cost + other.first_message_cost,
-            cost_increase_per_message: self.cost_increase_per_message
-                + other.cost_increase_per_message,
-        }
     }
 }
 
