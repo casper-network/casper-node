@@ -865,7 +865,7 @@ where
         &mut self,
         pre_state_hash: Option<Digest>,
         protocol_version: ProtocolVersion,
-        proposer: PublicKey,
+        rewards: &BTreeMap<PublicKey, U512>,
         next_block_height: u64,
         time: u64,
     ) -> Result<Digest, StepError> {
@@ -873,7 +873,7 @@ where
         let post_state_hash = self.engine_state.distribute_block_rewards(
             pre_state_hash,
             protocol_version,
-            proposer,
+            rewards,
             next_block_height,
             time,
         )?;
@@ -884,6 +884,7 @@ where
     }
 
     /// Expects a successful run
+    #[track_caller]
     pub fn expect_success(&mut self) -> &mut Self {
         // Check first result, as only first result is interesting for a simple test
         let exec_results = self

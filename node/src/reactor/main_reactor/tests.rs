@@ -331,19 +331,15 @@ impl SwitchBlocks {
     /// Returns the list of equivocators in the given era.
     fn equivocators(&self, era_number: u64) -> &[PublicKey] {
         self.headers[era_number as usize]
-            .era_end()
+            .maybe_equivocators()
             .expect("era end")
-            .era_report()
-            .equivocators()
     }
 
     /// Returns the list of inactive validators in the given era.
     fn inactive_validators(&self, era_number: u64) -> &[PublicKey] {
         self.headers[era_number as usize]
-            .era_end()
+            .maybe_inactive_validators()
             .expect("era end")
-            .era_report()
-            .inactive_validators()
     }
 
     /// Returns the list of validators in the successor era.
@@ -943,21 +939,21 @@ async fn dont_upgrade_without_switch_block() {
         runner.reactor_mut().inner_mut().set_filter(move |event| {
             if let MainEvent::ContractRuntimeRequest(
                 ContractRuntimeRequest::EnqueueBlockForExecution {
-                    finalized_block, ..
+                    executable_block, ..
                 },
             ) = &event
             {
-                if finalized_block.era_report.is_some()
-                    && finalized_block.era_id == EraId::from(1)
+                if executable_block.era_report.is_some()
+                    && executable_block.era_id == EraId::from(1)
                     && !exec_request_received
                 {
-                    info!("delaying {}", finalized_block);
+                    info!("delaying {}", executable_block);
                     exec_request_received = true;
                     return Either::Left(
                         time::sleep(Duration::from_secs(10)).event(move |_| event),
                     );
                 }
-                info!("not delaying {}", finalized_block);
+                info!("not delaying {}", executable_block);
             }
             Either::Right(event)
         });
@@ -1194,6 +1190,7 @@ async fn empty_block_validation_regression() {
                             vec![],
                             vec![],
                             everyone_else.clone(),
+                            Default::default(),
                             false,
                         )),
                         block_context,

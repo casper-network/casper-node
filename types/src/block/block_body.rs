@@ -126,28 +126,16 @@ impl FromBytes for BlockBody {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        block::{
-            block_v1::BlockV1,
-            test_block_builder::{FromTestBlockBuilder, TestBlockBuilder},
-        },
-        bytesrepr,
-        testing::TestRng,
-    };
-
-    use super::*;
+    use crate::{bytesrepr, testing::TestRng, TestBlockBuilder, TestBlockV1Builder};
 
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
-        let block_body_v1 = BlockV1::build_for_test(TestBlockBuilder::new(), rng)
-            .body()
-            .clone();
-        let block_body = BlockBody::V1(block_body_v1);
-        bytesrepr::test_serialization_roundtrip(&block_body);
 
-        let block_body_v2 = TestBlockBuilder::new().build(rng).body().clone();
-        let block_body = BlockBody::V2(block_body_v2);
-        bytesrepr::test_serialization_roundtrip(&block_body);
+        let block_body_v1 = TestBlockV1Builder::new().build_versioned(rng).clone_body();
+        bytesrepr::test_serialization_roundtrip(&block_body_v1);
+
+        let block_body_v2 = TestBlockBuilder::new().build_versioned(rng).clone_body();
+        bytesrepr::test_serialization_roundtrip(&block_body_v2);
     }
 }

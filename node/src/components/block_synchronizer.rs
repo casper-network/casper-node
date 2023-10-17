@@ -55,7 +55,7 @@ use crate::{
     rpcs::docs::DocExample,
     types::{
         sync_leap_validation_metadata::SyncLeapValidationMetaData, ApprovalsHashes,
-        BlockExecutionResultsOrChunk, FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState,
+        BlockExecutionResultsOrChunk, ExecutableBlock, LegacyDeploy, MetaBlock, MetaBlockState,
         NodeId, SyncLeap, SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix,
     },
     NodeRng,
@@ -338,7 +338,7 @@ impl BlockSynchronizer {
             let era_id = block_header.era_id();
             if let Some(validator_weights) = self.validator_matrix.validator_weights(era_id) {
                 let mut builder = BlockBuilder::new_from_sync_leap(
-                    block_header,
+                    block_header.clone(),
                     maybe_sigs,
                     validator_weights,
                     peers,
@@ -377,7 +377,7 @@ impl BlockSynchronizer {
     fn register_made_finalized_block(
         &mut self,
         block_hash: &BlockHash,
-        result: Option<(FinalizedBlock, Vec<Deploy>)>,
+        result: Option<ExecutableBlock>,
     ) {
         if let Some(builder) = &self.historical {
             if builder.block_hash() == *block_hash {
@@ -387,8 +387,8 @@ impl BlockSynchronizer {
 
         match &mut self.forward {
             Some(builder) if builder.block_hash() == *block_hash => {
-                if let Some((finalized_block, deploys)) = result {
-                    builder.register_made_finalized_block(finalized_block, deploys);
+                if let Some(executable_block) = result {
+                    builder.register_made_executable_block(executable_block);
                 } else {
                     // Could not create finalized block, abort
                     builder.abort();
@@ -684,13 +684,12 @@ impl BlockSynchronizer {
                         )
                     }
                 }
-                NeedNext::EnqueueForExecution(block_hash, _, finalized_block, deploys) => {
+                NeedNext::EnqueueForExecution(block_hash, _, executable_block) => {
                     builder.latch();
                     results.extend(
                         effect_builder
                             .enqueue_block_for_execution(
-                                *finalized_block,
-                                deploys,
+                                *executable_block,
                                 MetaBlockState::new_already_stored(),
                             )
                             .event(move |_| Event::MarkBlockExecutionEnqueued(block_hash)),

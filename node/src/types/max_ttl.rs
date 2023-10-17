@@ -154,7 +154,7 @@ mod tests {
         };
         let synced = max_ttl.synced_to_ttl(
             latest_switch_block_timestamp,
-            &highest_orphaned_block_header,
+            &highest_orphaned_block_header.into(),
         );
         assert_eq!(synced, ttl_synced_expected, "{}", msg);
     }

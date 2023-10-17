@@ -252,7 +252,7 @@ where
 
                 // If a deploy is received for a given block that makes that block invalid somehow,
                 // mark it for removal.
-                let mut invalid = Vec::new();
+                let mut invalid: Vec<ProposedBlock<ClContext>> = Vec::new();
 
                 // Our first pass updates all validation states, crossing off the found deploy.
                 for (key, state) in self.validation_states.iter_mut() {

@@ -93,6 +93,23 @@ pub(crate) fn validate_core_config(core_config: &CoreConfig) -> bool {
         return false;
     }
 
+    if core_config.finality_signature_proportion <= Ratio::new(0, 1)
+        || core_config.finality_signature_proportion >= Ratio::new(1, 1)
+    {
+        error!(
+            fsp = %core_config.finality_signature_proportion,
+            "finality signature proportion is not in the range (0, 1)",
+        );
+        return false;
+    }
+    if core_config.finders_fee <= Ratio::new(0, 1) || core_config.finders_fee >= Ratio::new(1, 1) {
+        error!(
+            fsp = %core_config.finders_fee,
+            "finder's fee proportion is not in the range (0, 1)",
+        );
+        return false;
+    }
+
     if core_config.vesting_schedule_period > TimeDiff::from_millis(VESTING_SCHEDULE_LENGTH_MILLIS) {
         error!(
             vesting_schedule_millis = core_config.vesting_schedule_period.millis(),
