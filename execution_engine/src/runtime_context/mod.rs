@@ -66,7 +66,7 @@ pub struct RuntimeContext<'a, R> {
     // Original account/contract for read only tasks taken before execution
     entity: &'a AddressableEntity,
     // Key pointing to the entity we are currently running
-    entity_key: ContractHash,
+    entity_key: Key,
     package_kind: PackageKind,
     account_hash: AccountHash,
 }
@@ -83,7 +83,7 @@ where
     pub fn new(
         named_keys: &'a mut NamedKeys,
         entity: &'a AddressableEntity,
-        entity_address: ContractHash,
+        entity_key: Key,
         authorization_keys: BTreeSet<AccountHash>,
         access_rights: ContextAccessRights,
         package_kind: PackageKind,
@@ -109,7 +109,7 @@ where
             access_rights,
             args: runtime_args,
             entity,
-            entity_key: entity_address,
+            entity_key,
             authorization_keys,
             account_hash,
             blocktime,
@@ -130,7 +130,7 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn new_from_self(
         &self,
-        entity_address: ContractHash,
+        entity_key: Key,
         entry_point_type: EntryPointType,
         named_keys: &'a mut NamedKeys,
         access_rights: ContextAccessRights,
@@ -163,7 +163,7 @@ where
             access_rights,
             args: runtime_args,
             entity,
-            entity_key: entity_address,
+            entity_key,
             authorization_keys,
             account_hash,
             blocktime,
@@ -243,10 +243,10 @@ where
     /// also persistable map (one that is found in the
     /// TrackingCopy/GlobalState).
     pub fn remove_key(&mut self, name: &str) -> Result<(), Error> {
-        let contract_hash = self.get_entity_address();
-        let contract: AddressableEntity = self.read_gs_typed(&Key::from(contract_hash))?;
+        let entity_key = self.get_entity_key();
+        let contract: AddressableEntity = self.read_gs_typed(&entity_key)?;
         self.named_keys.remove(name);
-        self.remove_key_from_contract(Key::from(contract_hash), contract, name)
+        self.remove_key_from_entity(entity_key, contract, name)
     }
 
     /// Returns the block time.
@@ -308,11 +308,8 @@ where
         self.gas_counter = new_gas_counter;
     }
 
-    /// Returns the base key.
-    ///
-    /// This could be either a [`Key::Account`] or a [`Key::Hash`] depending on the entry point
-    /// type.
-    pub fn get_entity_key(&self) -> ContractHash {
+    /// Returns the base key of [`Key::AddressableEntity`]
+    pub fn get_entity_key(&self) -> Key {
         self.entity_key
     }
 
@@ -722,9 +719,9 @@ where
     /// Tests whether addition to `key` is valid.
     pub fn is_addable(&self, key: &Key) -> bool {
         match key {
-            Key::Hash(hash) => &self.get_entity_key().value() == hash, // ???
             Key::URef(uref) => uref.is_addable(),
-            Key::Account(_)
+            Key::Hash(_)
+            | Key::Account(_)
             | Key::Transfer(_)
             | Key::DeployInfo(_)
             | Key::EraInfo(_)
@@ -1092,11 +1089,9 @@ where
     pub(crate) fn get_entity_address_for_account_hash(
         &mut self,
         account_hash: AccountHash,
-    ) -> Result<ContractHash, Error> {
+    ) -> Result<Key, Error> {
         let cl_value = self.read_gs_typed::<CLValue>(&Key::Account(account_hash))?;
-        let key = CLValue::into_t::<Key>(cl_value).map_err(Error::CLValue)?;
-        key.into_contract_hash()
-            .ok_or(Error::UnexpectedKeyVariant(key))
+        CLValue::into_t::<Key>(cl_value).map_err(Error::CLValue)
     }
 
     pub(crate) fn read_addressable_entity_by_account_hash(
@@ -1120,8 +1115,8 @@ where
     }
 
     /// Checks if the account context is valid.
-    fn is_valid_context(&self, entity_address: ContractHash) -> bool {
-        self.get_entity_key() == entity_address
+    fn is_valid_context(&self, entity_key: Key) -> bool {
+        self.get_entity_key() == entity_key
     }
 
     /// Gets main purse id

@@ -276,7 +276,7 @@ impl Executor {
         &self,
         named_keys: &'a mut NamedKeys,
         entity: &'a AddressableEntity,
-        entity_address: ContractHash,
+        entity_key: Key,
         authorization_keys: BTreeSet<AccountHash>,
         access_rights: ContextAccessRights,
         package_kind: PackageKind,
@@ -302,7 +302,7 @@ impl Executor {
         RuntimeContext::new(
             named_keys,
             entity,
-            entity_address,
+            entity_key,
             authorization_keys,
             access_rights,
             package_kind,

@@ -967,8 +967,7 @@ impl AddressableEntity {
             .keys()
             .filter_map(|key| key.as_uref().copied())
             .chain(iter::once(self.main_purse));
-        let entity_key = Key::AddressableEntity((package_kind_tag, entity_hash.value()));
-        ContextAccessRights::new(entity_key, urefs_iter)
+        ContextAccessRights::new(entity_hash, urefs_iter)
     }
 
     /// Update the byte code hash for a given Entity associated with an Account.

@@ -472,12 +472,7 @@ where
     }
 
     /// Checks if a [`Key`] is a system contract.
-    fn is_system_contract(&self, key: Key) -> Result<bool, Error> {
-        let entity_hash = match key.into_entity_hash() {
-            Some(entity_hash) => entity_hash,
-            None => return Ok(false),
-        };
-
+    fn is_system_contract(&self, entity_hash: AddressableEntityHash) -> Result<bool, Error> {
         self.context.is_system_addressable_entity(&entity_hash)
     }
 
@@ -527,12 +522,12 @@ where
         let gas_counter = self.gas_counter();
 
         let mint_hash = self.context.get_system_contract(MINT)?;
-        let base_key = Key::addressable_entity_key(PackageKindTag::System, mint_hash);
+        let mint_key = Key::addressable_entity_key(PackageKindTag::System, mint_hash);
         let mint_contract = self.context.state().borrow_mut().get_contract(mint_hash)?;
         let mut named_keys = mint_contract.named_keys().to_owned();
 
         let runtime_context = self.context.new_from_self(
-            mint_hash,
+            mint_key,
             EntryPointType::AddressableEntity,
             &mut named_keys,
             access_rights,
@@ -654,7 +649,7 @@ where
         let gas_counter = self.gas_counter();
 
         let handle_payment_hash = self.context.get_system_contract(HANDLE_PAYMENT)?;
-        let base_key = Key::addressable_entity_key(PackageKindTag::System, handle_payment_hash);
+        let handle_payment_key = Key::addressable_entity_key(PackageKindTag::System, handle_payment_hash);
         let handle_payment_contract = self
             .context
             .state()
@@ -663,7 +658,7 @@ where
         let mut named_keys = handle_payment_contract.named_keys().to_owned();
 
         let runtime_context = self.context.new_from_self(
-            handle_payment_hash,
+            handle_payment_key,
             EntryPointType::AddressableEntity,
             &mut named_keys,
             access_rights,
@@ -764,7 +759,7 @@ where
         let gas_counter = self.gas_counter();
 
         let auction_hash = self.context.get_system_contract(AUCTION)?;
-        let entity_address = Key::addressable_entity_key(PackageKindTag::System, auction_hash);
+        let auction_key = Key::addressable_entity_key(PackageKindTag::System, auction_hash);
         let auction_contract = self
             .context
             .state()
@@ -773,7 +768,7 @@ where
         let mut named_keys = auction_contract.named_keys().to_owned();
 
         let runtime_context = self.context.new_from_self(
-            auction_hash,
+            auction_key,
             EntryPointType::AddressableEntity,
             &mut named_keys,
             access_rights,
@@ -1075,9 +1070,8 @@ where
     fn get_context_key_for_contract_call(
         &self,
         entity_hash: AddressableEntityHash,
-        package_kind: PackageKind,
         entry_point: &EntryPoint,
-    ) -> Result<ContractHash, Error> {
+    ) -> Result<AddressableEntityHash, Error> {
         let current = self.context.entry_point_type();
         let next = entry_point.entry_point_type();
         match (current, next) {
@@ -1091,15 +1085,18 @@ where
             }
             (EntryPointType::Session, EntryPointType::Session) => {
                 // Session code called from session reuses current base key
-                Ok(self.context.get_entity_key())
+                match self.context.get_entity_key().into_entity_hash() {
+                    Some(entity_hash) => Ok(entity_hash),
+                    None => Err(Error::InvalidEntity(entity_hash))
+                }
             }
             (EntryPointType::Session, EntryPointType::AddressableEntity)
             | (EntryPointType::AddressableEntity, EntryPointType::AddressableEntity) => {
-                Ok(Key::addressable_entity_key(package_kind.tag(), entity_hash))
+                Ok(entity_hash)
             }
             _ => {
                 // Any other combination (installer, normal, etc.) is a contract context.
-                Ok(Key::addressable_entity_key(package_kind.tag(), entity_hash))
+                Ok(entity_hash)
             }
         }
     }
@@ -1150,7 +1147,7 @@ where
 
                 // System contract hashes are disabled at upgrade point
                 let is_calling_system_contract = self.is_system_contract(
-                    Key::addressable_entity_key(package.get_package_kind().tag(), entity_hash),
+                    entity_hash,
                 )?;
 
                 // Check if provided contract hash is disabled
@@ -1278,10 +1275,9 @@ where
 
         // if session the caller's context
         // else the called contract's context
-        let context_contract_hash =
+        let context_entity_hash =
             self.get_context_key_for_contract_call(
             entity_hash,
-            package.get_package_kind(),
             &entry_point,
         )?;
 
@@ -1294,7 +1290,7 @@ where
             let is_caller_system_contract =
                 self.is_system_contract(self.context.access_rights().context_key())?;
             // Checks if the contract we're about to call is a system contract.
-            let is_calling_system_contract = self.is_system_contract(context_contract_hash)?;
+            let is_calling_system_contract = self.is_system_contract(context_entity_hash)?;
             // uref attenuation is necessary in the following circumstances:
             //   the originating account (aka the caller) is not the system account and
             //   the immediate caller is either a normal account or a normal contract and
@@ -1404,8 +1400,12 @@ where
 
         let mut named_keys = entity.take_named_keys();
 
+        let package_tag = package.get_package_kind().tag();
+
+        let context_entity_key = Key::addressable_entity_key(package_tag, entity_hash);
+
         let context = self.context.new_from_self(
-            context_contract_hash,
+            context_entity_key,
             entry_point.entry_point_type(),
             &mut named_keys,
             access_rights,
