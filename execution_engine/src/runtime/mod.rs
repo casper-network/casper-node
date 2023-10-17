@@ -532,7 +532,7 @@ where
         let mut named_keys = mint_contract.named_keys().to_owned();
 
         let runtime_context = self.context.new_from_self(
-            base_key,
+            mint_hash,
             EntryPointType::AddressableEntity,
             &mut named_keys,
             access_rights,
@@ -663,7 +663,7 @@ where
         let mut named_keys = handle_payment_contract.named_keys().to_owned();
 
         let runtime_context = self.context.new_from_self(
-            base_key,
+            handle_payment_hash,
             EntryPointType::AddressableEntity,
             &mut named_keys,
             access_rights,
@@ -773,7 +773,7 @@ where
         let mut named_keys = auction_contract.named_keys().to_owned();
 
         let runtime_context = self.context.new_from_self(
-            entity_address,
+            auction_hash,
             EntryPointType::AddressableEntity,
             &mut named_keys,
             access_rights,
@@ -1077,7 +1077,7 @@ where
         entity_hash: AddressableEntityHash,
         package_kind: PackageKind,
         entry_point: &EntryPoint,
-    ) -> Result<Key, Error> {
+    ) -> Result<ContractHash, Error> {
         let current = self.context.entry_point_type();
         let next = entry_point.entry_point_type();
         match (current, next) {
@@ -1278,7 +1278,8 @@ where
 
         // if session the caller's context
         // else the called contract's context
-        let context_key = self.get_context_key_for_contract_call(
+        let context_contract_hash =
+            self.get_context_key_for_contract_call(
             entity_hash,
             package.get_package_kind(),
             &entry_point,
@@ -1293,7 +1294,7 @@ where
             let is_caller_system_contract =
                 self.is_system_contract(self.context.access_rights().context_key())?;
             // Checks if the contract we're about to call is a system contract.
-            let is_calling_system_contract = self.is_system_contract(context_key)?;
+            let is_calling_system_contract = self.is_system_contract(context_contract_hash)?;
             // uref attenuation is necessary in the following circumstances:
             //   the originating account (aka the caller) is not the system account and
             //   the immediate caller is either a normal account or a normal contract and
@@ -1404,7 +1405,7 @@ where
         let mut named_keys = entity.take_named_keys();
 
         let context = self.context.new_from_self(
-            context_key,
+            context_contract_hash,
             entry_point.entry_point_type(),
             &mut named_keys,
             access_rights,

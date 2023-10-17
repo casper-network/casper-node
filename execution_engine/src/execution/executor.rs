@@ -276,7 +276,7 @@ impl Executor {
         &self,
         named_keys: &'a mut NamedKeys,
         entity: &'a AddressableEntity,
-        entity_address: Key,
+        entity_address: ContractHash,
         authorization_keys: BTreeSet<AccountHash>,
         access_rights: ContextAccessRights,
         package_kind: PackageKind,

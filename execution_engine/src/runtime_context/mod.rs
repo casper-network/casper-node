@@ -24,9 +24,9 @@ use casper_types::{
     bytesrepr::ToBytes,
     execution::Effects,
     package::{PackageKind, PackageKindTag},
-    system::auction::{BidKind, EraInfo},
+    system::auction::EraInfo,
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
-    ContextAccessRights, DeployHash, DeployInfo, EntryPointType, Gas, GrantedAccess, Key, KeyTag,
+    ContextAccessRights, DeployHash,  EntryPointType, Gas, GrantedAccess, Key, KeyTag,
     Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
     TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
@@ -66,7 +66,7 @@ pub struct RuntimeContext<'a, R> {
     // Original account/contract for read only tasks taken before execution
     entity: &'a AddressableEntity,
     // Key pointing to the entity we are currently running
-    entity_key: Key,
+    entity_key: ContractHash,
     package_kind: PackageKind,
     account_hash: AccountHash,
 }
@@ -83,7 +83,7 @@ where
     pub fn new(
         named_keys: &'a mut NamedKeys,
         entity: &'a AddressableEntity,
-        entity_address: Key,
+        entity_address: ContractHash,
         authorization_keys: BTreeSet<AccountHash>,
         access_rights: ContextAccessRights,
         package_kind: PackageKind,
@@ -130,7 +130,7 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn new_from_self(
         &self,
-        entity_address: Key,
+        entity_address: ContractHash,
         entry_point_type: EntryPointType,
         named_keys: &'a mut NamedKeys,
         access_rights: ContextAccessRights,
@@ -243,114 +243,10 @@ where
     /// also persistable map (one that is found in the
     /// TrackingCopy/GlobalState).
     pub fn remove_key(&mut self, name: &str) -> Result<(), Error> {
-        match self.get_entity_key() {
-            account_hash @ Key::Account(_) => {
-                let (contract, contract_key): (AddressableEntity, Key) = {
-                    let contract_key = self
-                        .read_gs_typed::<CLValue>(&account_hash)?
-                        .into_t::<Key>()?;
-
-                    let contract: AddressableEntity = self.read_gs_typed(&contract_key)?;
-                    (contract, contract_key)
-                };
-                self.named_keys.remove(name);
-                self.remove_key_from_entity(contract_key, contract, name)
-            }
-            contract_uref @ Key::URef(_) => {
-                println!("In this");
-                let entity: AddressableEntity = {
-                    let value: StoredValue = self
-                        .tracking_copy
-                        .borrow_mut()
-                        .read(&contract_uref)
-                        .map_err(Into::into)?
-                        .ok_or(Error::KeyNotFound(contract_uref))?;
-
-                    value.try_into().map_err(Error::TypeMismatch)?
-                };
-
-                self.named_keys.remove(name);
-                self.remove_key_from_entity(contract_uref, entity, name)
-            }
-            entity_hash @ Key::AddressableEntity(_) => {
-                let entity: AddressableEntity = self.read_gs_typed(&entity_hash)?;
-                self.named_keys.remove(name);
-                self.remove_key_from_entity(entity_hash, entity, name)
-            }
-            transfer_addr @ Key::Transfer(_) => {
-                let _transfer: Transfer = self.read_gs_typed(&transfer_addr)?;
-                self.named_keys.remove(name);
-                // Users cannot remove transfers from global state
-                Ok(())
-            }
-            deploy_info_addr @ Key::DeployInfo(_) => {
-                let _deploy_info: DeployInfo = self.read_gs_typed(&deploy_info_addr)?;
-                self.named_keys.remove(name);
-                // Users cannot remove deploy infos from global state
-                Ok(())
-            }
-            era_info_addr @ Key::EraInfo(_) => {
-                let _era_info: EraInfo = self.read_gs_typed(&era_info_addr)?;
-                self.named_keys.remove(name);
-                // Users cannot remove era infos from global state
-                Ok(())
-            }
-            Key::Balance(_) => {
-                self.named_keys.remove(name);
-                Ok(())
-            }
-            Key::Bid(_) => {
-                self.named_keys.remove(name);
-                Ok(())
-            }
-            Key::Withdraw(_) => {
-                self.named_keys.remove(name);
-                Ok(())
-            }
-            Key::Dictionary(_) => {
-                self.named_keys.remove(name);
-                Ok(())
-            }
-            Key::EraSummary => {
-                self.named_keys.remove(name);
-                Ok(())
-            }
-            Key::Unbond(_) => {
-                self.named_keys.remove(name);
-                Ok(())
-            }
-            Key::Hash(_) => {
-                self.named_keys.remove(name);
-                Ok(())
-            }
-            Key::SystemContractRegistry => {
-                error!("should not remove the system contract registry key");
-                Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
-            }
-            Key::ChainspecRegistry => {
-                error!("should not remove the chainspec registry key");
-                Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
-            }
-            Key::ChecksumRegistry => {
-                error!("should not remove the checksum registry key");
-                Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
-            }
-            bid_key @ Key::BidAddr(_) => {
-                let _bid_kind: BidKind = self.read_gs_typed(&bid_key)?;
-                self.named_keys.remove(name);
-                Ok(())
-            }
-            package_key @ Key::Package(_) => {
-                let _package: Package = self.read_gs_typed(&package_key)?;
-                self.named_keys.remove(name);
-                Ok(())
-            }
-            byte_code_key @ Key::ByteCode(_) => {
-                let _byte_code: ByteCode = self.read_gs_typed(&byte_code_key)?;
-                self.named_keys.remove(name);
-                Ok(())
-            }
-        }
+        let contract_hash = self.get_entity_address();
+        let contract: AddressableEntity = self.read_gs_typed(&Key::from(contract_hash))?;
+        self.named_keys.remove(name);
+        self.remove_key_from_contract(Key::from(contract_hash), contract, name)
     }
 
     /// Returns the block time.
@@ -416,7 +312,7 @@ where
     ///
     /// This could be either a [`Key::Account`] or a [`Key::Hash`] depending on the entry point
     /// type.
-    pub fn get_entity_key(&self) -> Key {
+    pub fn get_entity_key(&self) -> ContractHash {
         self.entity_key
     }
 
@@ -473,7 +369,7 @@ where
         // the element stored under `base_key`) is allowed to add new named keys to itself.
         let named_key_value = StoredValue::CLValue(CLValue::from_t((name.clone(), key))?);
         self.validate_value(&named_key_value)?;
-        self.metered_add_gs_unsafe(self.get_entity_key(), named_key_value)?;
+        self.metered_add_gs_unsafe(Key::from(self.get_entity_key()), named_key_value)?;
         self.insert_named_key(name, key);
         Ok(())
     }
@@ -826,7 +722,7 @@ where
     /// Tests whether addition to `key` is valid.
     pub fn is_addable(&self, key: &Key) -> bool {
         match key {
-            Key::Hash(_) => &self.get_entity_key() == key, // ???
+            Key::Hash(hash) => &self.get_entity_key().value() == hash, // ???
             Key::URef(uref) => uref.is_addable(),
             Key::Account(_)
             | Key::Transfer(_)
@@ -1042,11 +938,11 @@ where
         }
 
         // Converts an account's public key into a URef
-        let key: Key = self.get_entity_key();
+        let key = self.get_entity_key();
 
         // Take an addressable entity out of the global state
         let entity = {
-            let mut entity: AddressableEntity = self.read_gs_typed(&key)?;
+            let mut entity: AddressableEntity = self.read_gs_typed(&Key::from(key))?;
 
             if entity.associated_keys().len() >= (self.engine_config.max_associated_keys() as usize)
             {
@@ -1084,10 +980,10 @@ where
 
         // Converts an account's public key into a URef
         // let key = Key::Account(self.contract().account_hash());
-        let key: Key = self.get_entity_key();
+        let contract_hash = self.get_entity_key();
 
         // Take an account out of the global state
-        let mut entity: AddressableEntity = self.read_gs_typed(&key)?;
+        let mut entity: AddressableEntity = self.read_gs_typed(&Key::from(contract_hash))?;
 
         // Exit early in case of error without updating global state
         entity
@@ -1096,7 +992,7 @@ where
 
         let account_value = self.addressable_entity_to_validated_value(entity)?;
 
-        self.metered_write_gs_unsafe(key, account_value)?;
+        self.metered_write_gs_unsafe(contract_hash, account_value)?;
 
         Ok(())
     }
@@ -1121,10 +1017,10 @@ where
         }
 
         // Converts an account's public key into a URef
-        let key: Key = self.get_entity_key();
+        let key = self.get_entity_key();
 
         // Take an account out of the global state
-        let mut entity: AddressableEntity = self.read_gs_typed(&key)?;
+        let mut entity: AddressableEntity = self.read_gs_typed(&Key::from(key))?;
 
         // Exit early in case of error without updating global state
         entity
@@ -1164,10 +1060,10 @@ where
             return Err(SetThresholdFailure::PermissionDeniedError.into());
         }
 
-        let key: Key = self.get_entity_key();
+        let key = self.get_entity_key();
 
         // Take an addressable entity out of the global state
-        let mut entity: AddressableEntity = self.read_gs_typed(&key)?;
+        let mut entity: AddressableEntity = self.read_gs_typed(&Key::from(key))?;
 
         // Exit early in case of error without updating global state
         if self.is_authorized_by_admin() {
@@ -1196,9 +1092,11 @@ where
     pub(crate) fn get_entity_address_for_account_hash(
         &mut self,
         account_hash: AccountHash,
-    ) -> Result<Key, Error> {
+    ) -> Result<ContractHash, Error> {
         let cl_value = self.read_gs_typed::<CLValue>(&Key::Account(account_hash))?;
-        CLValue::into_t::<Key>(cl_value).map_err(Error::CLValue)
+        let key = CLValue::into_t::<Key>(cl_value).map_err(Error::CLValue)?;
+        key.into_contract_hash()
+            .ok_or(Error::UnexpectedKeyVariant(key))
     }
 
     pub(crate) fn read_addressable_entity_by_account_hash(
@@ -1222,7 +1120,7 @@ where
     }
 
     /// Checks if the account context is valid.
-    fn is_valid_context(&self, entity_address: Key) -> bool {
+    fn is_valid_context(&self, entity_address: ContractHash) -> bool {
         self.get_entity_key() == entity_address
     }
 
