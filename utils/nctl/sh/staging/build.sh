@@ -46,7 +46,7 @@ function _main()
 function set_stage_binaries()
 {
     # Allow for external overriding of binary staging step if necessary.
-    if [ -z $NCTL_OVERRIDE_STAGE_BINARIES ]; then
+    if [ ! -z $NCTL_OVERRIDE_STAGE_BINARIES ]; then
         $NCTL_OVERRIDE_STAGE_BINARIES
         return
     fi;
