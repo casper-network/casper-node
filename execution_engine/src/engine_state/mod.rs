@@ -60,7 +60,7 @@ use casper_types::{
     AccessRights, AddressableEntity, AddressableEntityHash, ApiError, BlockTime, ByteCodeHash,
     CLValue, ChainspecRegistry, DeployHash, DeployInfo, Digest, EntryPoints, ExecutableDeployItem,
     FeeHandling, Gas, Key, KeyTag, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
-    RuntimeArgs, StoredValue, Tagged, URef, UpgradeConfig, U512,
+    RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
 };
 
 use self::transfer::NewTransferTargetMode;
@@ -964,8 +964,8 @@ where
             }
         };
 
-        let mut handle_payment_access_rights = handle_payment_contract
-            .extract_access_rights( *handle_payment_contract_hash);
+        let mut handle_payment_access_rights =
+            handle_payment_contract.extract_access_rights(*handle_payment_contract_hash);
 
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
 
@@ -1652,8 +1652,7 @@ where
             );
 
             // payment_code_spec_2: execute payment code
-            let payment_access_rights =
-                entity.extract_access_rights( entity_hash);
+            let payment_access_rights = entity.extract_access_rights(entity_hash);
 
             let mut payment_named_keys = entity.named_keys().clone();
 
@@ -1836,7 +1835,7 @@ where
             self.config.max_runtime_call_stack_height() as usize,
         );
 
-        let session_access_rights = entity.extract_access_rights( entity_hash);
+        let session_access_rights = entity.extract_access_rights(entity_hash);
 
         let mut session_named_keys = entity.named_keys().clone();
 
@@ -1987,8 +1986,8 @@ where
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
             };
 
-            let mut handle_payment_access_rights = handle_payment_contract
-                .extract_access_rights(*handle_payment_contract_hash);
+            let mut handle_payment_access_rights =
+                handle_payment_contract.extract_access_rights(*handle_payment_contract_hash);
             handle_payment_access_rights.extend(&[payment_purse_uref, rewards_target_purse]);
 
             let gas_limit = Gas::new(U512::MAX);

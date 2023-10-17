@@ -8,7 +8,6 @@ const CONTRACT_HASH_NAME: &str = "contract_stored";
 const ENTRY_POINT_CONTRACT: &str = "named_keys_contract";
 const ENTRY_POINT_SESSION: &str = "named_keys_session";
 const ENTRY_POINT_CONTRACT_TO_CONTRACT: &str = "named_keys_contract_to_contract";
-const ENTRY_POINT_SESSION_TO_SESSION: &str = "named_keys_session_to_session";
 
 #[ignore]
 #[test]

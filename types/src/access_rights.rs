@@ -13,7 +13,7 @@ use rand::{
 };
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{AddressableEntityHash, bytesrepr, URef, URefAddr};
+use crate::{bytesrepr, AddressableEntityHash, URef, URefAddr};
 
 /// The number of bytes in a serialized [`AccessRights`].
 pub const ACCESS_RIGHTS_SERIALIZED_LENGTH: usize = 1;
@@ -346,10 +346,8 @@ mod tests {
 
     #[test]
     fn should_perform_union_of_access_rights_in_new() {
-        let context_rights = ContextAccessRights::new(
-            ENTITY_HASH,
-            vec![UREF_NO_PERMISSIONS, UREF_READ, UREF_ADD],
-        );
+        let context_rights =
+            ContextAccessRights::new(ENTITY_HASH, vec![UREF_NO_PERMISSIONS, UREF_READ, UREF_ADD]);
 
         // Expect the three discrete URefs' rights to be unioned into READ_ADD.
         let mut expected_rights = BTreeMap::new();

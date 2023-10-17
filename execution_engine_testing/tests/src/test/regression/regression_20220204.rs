@@ -2,19 +2,19 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{engine_state, engine_state::Error, execution};
+use casper_execution_engine::{engine_state, execution};
 use casper_types::{runtime_args, AccessRights, RuntimeArgs};
 
 const REGRESSION_20220204_CONTRACT: &str = "regression_20220204.wasm";
 const REGRESSION_20220204_CALL_CONTRACT: &str = "regression_20220204_call.wasm";
 const REGRESSION_20220204_NONTRIVIAL_CONTRACT: &str = "regression_20220204_nontrivial.wasm";
-const TRANSFER_MAIN_PURSE_AS_SESSION: &str = "transfer_main_purse_as_session";
+
 const NONTRIVIAL_ARG_AS_CONTRACT: &str = "nontrivial_arg_as_contract";
 const ARG_ENTRYPOINT: &str = "entrypoint";
 const ARG_PURSE: &str = "purse";
 const ARG_NEW_ACCESS_RIGHTS: &str = "new_access_rights";
 const TRANSFER_AS_CONTRACT: &str = "transfer_as_contract";
-const TRANSFER_AS_SESSION: &str = "transfer_as_session";
+
 const CONTRACT_HASH_NAME: &str = "regression-contract-hash";
 
 #[ignore]

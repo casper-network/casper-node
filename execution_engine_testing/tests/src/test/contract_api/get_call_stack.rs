@@ -1,13 +1,10 @@
 use num_traits::One;
 
-use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
-};
+use casper_engine_test_support::{LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR};
 use casper_execution_engine::engine_state::{Error as CoreError, ExecError, ExecuteRequest};
 use casper_types::{
-    runtime_args, system::CallStackElement, AddressableEntity, AddressableEntityHash, CLValue,
-    EntityAddr, EntryPointType, HashAddr, Key, PackageAddr, PackageHash, StoredValue, Tagged, U512,
+    system::CallStackElement, AddressableEntity, AddressableEntityHash, CLValue, EntityAddr,
+    EntryPointType, HashAddr, Key, PackageAddr, PackageHash, StoredValue, Tagged, U512,
 };
 
 use crate::lmdb_fixture;
@@ -17,7 +14,6 @@ use get_call_stack_recursive_subcall::{
     METHOD_FORWARDER_SESSION_NAME,
 };
 
-const CONTRACT_RECURSIVE_SUBCALL: &str = "get_call_stack_recursive_subcall.wasm";
 const CONTRACT_CALL_RECURSIVE_SUBCALL: &str = "get_call_stack_call_recursive_subcall.wasm";
 
 const CONTRACT_PACKAGE_NAME: &str = "forwarder";
@@ -61,16 +57,6 @@ fn stored_versioned_contract(contract_package_hash: PackageHash) -> Call {
         target_method: CONTRACT_FORWARDER_ENTRYPOINT_CONTRACT.to_string(),
         entry_point_type: EntryPointType::AddressableEntity,
     }
-}
-
-fn store_contract(builder: &mut LmdbWasmTestBuilder, session_filename: &str) {
-    let store_contract_request =
-        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, session_filename, runtime_args! {})
-            .build();
-    builder
-        .exec(store_contract_request)
-        .commit()
-        .expect_success();
 }
 
 fn execute_and_assert_result(

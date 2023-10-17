@@ -649,7 +649,8 @@ where
         let gas_counter = self.gas_counter();
 
         let handle_payment_hash = self.context.get_system_contract(HANDLE_PAYMENT)?;
-        let handle_payment_key = Key::addressable_entity_key(PackageKindTag::System, handle_payment_hash);
+        let handle_payment_key =
+            Key::addressable_entity_key(PackageKindTag::System, handle_payment_hash);
         let handle_payment_contract = self
             .context
             .state()
@@ -1087,7 +1088,7 @@ where
                 // Session code called from session reuses current base key
                 match self.context.get_entity_key().into_entity_hash() {
                     Some(entity_hash) => Ok(entity_hash),
-                    None => Err(Error::InvalidEntity(entity_hash))
+                    None => Err(Error::InvalidEntity(entity_hash)),
                 }
             }
             (EntryPointType::Session, EntryPointType::AddressableEntity)
@@ -1146,9 +1147,7 @@ where
                 let package: Package = self.context.read_gs_typed(&package)?;
 
                 // System contract hashes are disabled at upgrade point
-                let is_calling_system_contract = self.is_system_contract(
-                    entity_hash,
-                )?;
+                let is_calling_system_contract = self.is_system_contract(entity_hash)?;
 
                 // Check if provided contract hash is disabled
                 let is_contract_enabled = package.is_entity_enabled(&entity_hash);
@@ -1214,7 +1213,6 @@ where
             });
         }
 
-
         let entry_point = entity
             .entry_point(entry_point_name)
             .cloned()
@@ -1275,10 +1273,7 @@ where
         // if session the caller's context
         // else the called contract's context
         let context_entity_hash =
-            self.get_context_key_for_contract_call(
-            entity_hash,
-            &entry_point,
-        )?;
+            self.get_context_key_for_contract_call(entity_hash, &entry_point)?;
 
         let (should_attenuate_urefs, should_validate_urefs) = {
             // Determines if this call originated from the system account based on a first

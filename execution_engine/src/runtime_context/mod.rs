@@ -26,8 +26,8 @@ use casper_types::{
     package::{PackageKind, PackageKindTag},
     system::auction::EraInfo,
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
-    ContextAccessRights, DeployHash,  EntryPointType, Gas, GrantedAccess, Key, KeyTag,
-    Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
+    ContextAccessRights, DeployHash, EntryPointType, Gas, GrantedAccess, Key, KeyTag, Package,
+    PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
     TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
@@ -366,7 +366,7 @@ where
         // the element stored under `base_key`) is allowed to add new named keys to itself.
         let named_key_value = StoredValue::CLValue(CLValue::from_t((name.clone(), key))?);
         self.validate_value(&named_key_value)?;
-        self.metered_add_gs_unsafe(Key::from(self.get_entity_key()), named_key_value)?;
+        self.metered_add_gs_unsafe(self.get_entity_key(), named_key_value)?;
         self.insert_named_key(name, key);
         Ok(())
     }
@@ -719,12 +719,12 @@ where
     /// Tests whether addition to `key` is valid.
     pub fn is_addable(&self, key: &Key) -> bool {
         match key {
-            | Key::AddressableEntity((_, entity_addr)) => {
+            Key::AddressableEntity((_, entity_addr)) => {
                 match self.get_entity_key().into_entity_hash() {
                     Some(entity_hash) => entity_hash == AddressableEntityHash::new(*entity_addr),
                     None => false,
                 }
-            },
+            }
             Key::URef(uref) => uref.is_addable(),
             Key::Hash(_)
             | Key::Account(_)
@@ -944,7 +944,7 @@ where
 
         // Take an addressable entity out of the global state
         let entity = {
-            let mut entity: AddressableEntity = self.read_gs_typed(&Key::from(key))?;
+            let mut entity: AddressableEntity = self.read_gs_typed(&key)?;
 
             if entity.associated_keys().len() >= (self.engine_config.max_associated_keys() as usize)
             {
@@ -981,11 +981,10 @@ where
         }
 
         // Converts an account's public key into a URef
-        // let key = Key::Account(self.contract().account_hash());
         let contract_hash = self.get_entity_key();
 
         // Take an account out of the global state
-        let mut entity: AddressableEntity = self.read_gs_typed(&Key::from(contract_hash))?;
+        let mut entity: AddressableEntity = self.read_gs_typed(&contract_hash)?;
 
         // Exit early in case of error without updating global state
         entity
@@ -1022,7 +1021,7 @@ where
         let key = self.get_entity_key();
 
         // Take an account out of the global state
-        let mut entity: AddressableEntity = self.read_gs_typed(&Key::from(key))?;
+        let mut entity: AddressableEntity = self.read_gs_typed(&key)?;
 
         // Exit early in case of error without updating global state
         entity
@@ -1065,7 +1064,7 @@ where
         let key = self.get_entity_key();
 
         // Take an addressable entity out of the global state
-        let mut entity: AddressableEntity = self.read_gs_typed(&Key::from(key))?;
+        let mut entity: AddressableEntity = self.read_gs_typed(&key)?;
 
         // Exit early in case of error without updating global state
         if self.is_authorized_by_admin() {

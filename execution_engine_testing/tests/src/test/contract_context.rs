@@ -1,21 +1,19 @@
-use assert_matches::assert_matches;
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{engine_state::Error, execution};
+
 use casper_types::{package::ENTITY_INITIAL_VERSION, runtime_args, Key, RuntimeArgs};
 
 const CONTRACT_HEADERS: &str = "contract_context.wasm";
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
 const PACKAGE_ACCESS_KEY: &str = "package_access_key";
 const CONTRACT_HASH_KEY: &str = "contract_hash_key";
-const SESSION_CODE_TEST: &str = "session_code_test";
+
 const CONTRACT_CODE_TEST: &str = "contract_code_test";
-const ADD_NEW_KEY_AS_SESSION: &str = "add_new_key_as_session";
+
 const NEW_KEY: &str = "new_key";
-const SESSION_CODE_CALLER_AS_CONTRACT: &str = "session_code_caller_as_contract";
-const ARG_AMOUNT: &str = "amount";
+
 const CONTRACT_VERSION: &str = "contract_version";
 
 #[ignore]

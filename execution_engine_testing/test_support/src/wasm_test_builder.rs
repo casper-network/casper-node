@@ -1,6 +1,5 @@
 use std::{
-    borrow::BorrowMut,
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     convert::{TryFrom, TryInto},
     ffi::OsStr,
     fs,
@@ -27,7 +26,7 @@ use casper_execution_engine::{
         GetBidsRequest, PruneConfig, PruneResult, QueryRequest, QueryResult, StepError,
         SystemContractRegistry, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
     },
-    execution::{self, AddressGenerator},
+    execution,
 };
 use casper_storage::{
     data_access_layer::{BlockStore, DataAccessLayer},
@@ -41,8 +40,6 @@ use casper_storage::{
         trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_types::addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys};
-use casper_types::package::{PackageKind, PackageStatus};
 use casper_types::{
     account::AccountHash,
     bytesrepr::{self, FromBytes},
@@ -59,11 +56,10 @@ use casper_types::{
         mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, ByteCodeHash,
-    ByteCodeKind, CLTyped, CLValue, Contract, DeployHash, DeployInfo, Digest, EntityVersions,
-    EntryPoints, EraId, Gas, Groups, HandlePaymentCosts, Key, KeyTag, MintCosts, Motes, Package,
-    PackageHash, Phase, ProtocolVersion, PublicKey, RefundHandling, StoredValue, Tagged, Transfer,
-    TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
+    AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, ByteCodeHash, ByteCodeKind,
+    CLTyped, CLValue, Contract, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts,
+    Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolVersion, PublicKey,
+    RefundHandling, StoredValue, Transfer, TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 
