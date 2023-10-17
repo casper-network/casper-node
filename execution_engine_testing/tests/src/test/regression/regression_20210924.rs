@@ -9,7 +9,7 @@ use casper_execution_engine::{
     shared::opcode_costs::DEFAULT_NOP_COST,
 };
 use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, Gas, RuntimeArgs, U512};
-use parity_wasm::{
+use casper_wasm::{
     builder,
     elements::{Instruction, Instructions},
 };
@@ -37,7 +37,7 @@ pub fn do_minimum_bytes() -> Vec<u8> {
         .memory()
         .build()
         .build();
-    parity_wasm::serialize(module).expect("should serialize")
+    casper_wasm::serialize(module).expect("should serialize")
 }
 
 #[ignore]

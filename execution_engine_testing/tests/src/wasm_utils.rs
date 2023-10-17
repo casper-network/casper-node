@@ -1,7 +1,7 @@
 //! Wasm helpers.
 use std::fmt::Write;
 
-use parity_wasm::builder;
+use casper_wasm::builder;
 
 use casper_types::contracts::DEFAULT_ENTRY_POINT_NAME;
 
@@ -23,7 +23,7 @@ pub fn do_nothing_bytes() -> Vec<u8> {
         .memory()
         .build()
         .build();
-    parity_wasm::serialize(module).expect("should serialize")
+    casper_wasm::serialize(module).expect("should serialize")
 }
 
 /// Creates minimal session code that contains a function with arbitrary number of parameters.

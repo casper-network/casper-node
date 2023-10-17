@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, convert::TryFrom};
 
-use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
+use casper_wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
 use casper_types::{
     account::AccountHash,

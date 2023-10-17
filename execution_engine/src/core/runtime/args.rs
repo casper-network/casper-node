@@ -1,4 +1,4 @@
-use wasmi::{FromValue, RuntimeArgs, Trap};
+use casper_wasmi::{FromValue, RuntimeArgs, Trap};
 
 pub(crate) trait Args
 where

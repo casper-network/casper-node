@@ -16,9 +16,9 @@ use std::{
     iter::FromIterator,
 };
 
-use parity_wasm::elements::Module;
+use casper_wasm::elements::Module;
+use casper_wasmi::{MemoryRef, Trap, TrapCode};
 use tracing::error;
-use wasmi::{MemoryRef, Trap, TrapCode};
 
 use casper_types::{
     account::{Account, AccountHash, ActionType, Weight},
@@ -205,14 +205,14 @@ where
         self.try_get_memory()?
             .with_direct_access(|buffer| {
                 let end = offset.checked_add(size).ok_or_else(|| {
-                    wasmi::Error::Memory(format!(
+                    casper_wasmi::Error::Memory(format!(
                         "trying to access memory block of size {} from offset {}",
                         size, offset
                     ))
                 })?;
 
                 if end > buffer.len() {
-                    return Err(wasmi::Error::Memory(format!(
+                    return Err(casper_wasmi::Error::Memory(format!(
                         "trying to access region [{}..{}] in memory [0..{}]",
                         offset,
                         end,
@@ -1367,7 +1367,7 @@ where
                 None => return Err(Error::KeyNotFound(context_key)),
             };
 
-            parity_wasm::deserialize_buffer(contract_wasm.bytes())?
+            casper_wasm::deserialize_buffer(contract_wasm.bytes())?
         };
 
         let context = self.context.new_from_self(
