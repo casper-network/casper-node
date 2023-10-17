@@ -52,7 +52,6 @@ use crate::{
     checksummed_hex,
     contracts::{Contract, ContractHash},
     key::ByteCodeAddr,
-    package::PackageKindTag,
     uref::{self, URef},
     AccessRights, ApiError, CLType, CLTyped, ContextAccessRights, Group, HashAddr, Key,
     PackageHash, ProtocolVersion, KEY_HASH_LENGTH,
@@ -959,7 +958,6 @@ impl AddressableEntity {
     /// Extracts the access rights from the named keys of the addressable entity.
     pub fn extract_access_rights(
         &self,
-        package_kind_tag: PackageKindTag,
         entity_hash: AddressableEntityHash,
     ) -> ContextAccessRights {
         let urefs_iter = self
@@ -1547,7 +1545,7 @@ mod tests {
                 .expect("should create thresholds"),
         );
         let access_rights =
-            contract.extract_access_rights(PackageKindTag::SmartContract, entity_hash);
+            contract.extract_access_rights(entity_hash);
         let expected_uref = URef::new([42; UREF_ADDR_LENGTH], AccessRights::READ_ADD_WRITE);
         assert!(
             access_rights.has_access_rights_to_uref(&uref),

@@ -25,7 +25,7 @@ use casper_types::{
     execution::Effects,
     package::{PackageKind, PackageKindTag},
     system::auction::EraInfo,
-    AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
+    AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
     ContextAccessRights, DeployHash,  EntryPointType, Gas, GrantedAccess, Key, KeyTag,
     Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
     TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
@@ -719,6 +719,12 @@ where
     /// Tests whether addition to `key` is valid.
     pub fn is_addable(&self, key: &Key) -> bool {
         match key {
+            | Key::AddressableEntity((_, entity_addr)) => {
+                match self.get_entity_key().into_entity_hash() {
+                    Some(entity_hash) => entity_hash == AddressableEntityHash::new(*entity_addr),
+                    None => false,
+                }
+            },
             Key::URef(uref) => uref.is_addable(),
             Key::Hash(_)
             | Key::Account(_)
@@ -736,7 +742,6 @@ where
             | Key::ChecksumRegistry
             | Key::BidAddr(_)
             | Key::Package(_)
-            | Key::AddressableEntity(_)
             | Key::ByteCode(_) => false,
         }
     }

@@ -211,7 +211,7 @@ impl Executor {
         };
 
         let mut named_keys = contract.named_keys().clone();
-        let access_rights = contract.extract_access_rights(package_kind.tag(), entity_hash);
+        let access_rights = contract.extract_access_rights(entity_hash);
         let entity_address = Key::addressable_entity_key(package_kind.tag(), entity_hash);
 
         let runtime_context = self.create_runtime_context(

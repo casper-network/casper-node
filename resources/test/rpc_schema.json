@@ -4311,24 +4311,24 @@
             "description": "Context of method execution\n\nMost significant bit represents version i.e. - 0b0 -> 0.x/1.x (session & contracts) - 0b1 -> 2.x and later (introduced installer, utility entry points)",
             "oneOf": [
               {
-                "description": "Runs as session code",
+                "description": "Runs as session code (caller) Deprecated, retained to allow read back of legacy stored session.",
                 "type": "string",
                 "enum": [
                   "Session"
                 ]
               },
               {
-                "description": "Runs within contract's context",
+                "description": "Runs within called entity's context (called)",
                 "type": "string",
                 "enum": [
-                  "Contract"
+                  "AddressableEntity"
                 ]
               },
               {
-                "description": "Installer entry point.",
+                "description": "This entry point is intended to extract a subset of bytecode. Runs within called entity's context (called)",
                 "type": "string",
                 "enum": [
-                  "Install"
+                  "Factory"
                 ]
               }
             ]

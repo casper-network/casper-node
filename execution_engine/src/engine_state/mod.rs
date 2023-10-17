@@ -55,7 +55,7 @@ use casper_types::{
         },
         handle_payment::{self, ACCUMULATION_PURSE_KEY},
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
-        AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
+        AUCTION, HANDLE_PAYMENT, MINT,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, ApiError, BlockTime, ByteCodeHash,
     CLValue, ChainspecRegistry, DeployHash, DeployInfo, Digest, EntryPoints, ExecutableDeployItem,
@@ -965,7 +965,7 @@ where
         };
 
         let mut handle_payment_access_rights = handle_payment_contract
-            .extract_access_rights(PackageKindTag::System, *handle_payment_contract_hash);
+            .extract_access_rights( *handle_payment_contract_hash);
 
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
 
@@ -1653,7 +1653,7 @@ where
 
             // payment_code_spec_2: execute payment code
             let payment_access_rights =
-                entity.extract_access_rights(package_kind.tag(), entity_hash);
+                entity.extract_access_rights( entity_hash);
 
             let mut payment_named_keys = entity.named_keys().clone();
 
@@ -1836,7 +1836,7 @@ where
             self.config.max_runtime_call_stack_height() as usize,
         );
 
-        let session_access_rights = entity.extract_access_rights(package_kind.tag(), entity_hash);
+        let session_access_rights = entity.extract_access_rights( entity_hash);
 
         let mut session_named_keys = entity.named_keys().clone();
 
@@ -1988,7 +1988,7 @@ where
             };
 
             let mut handle_payment_access_rights = handle_payment_contract
-                .extract_access_rights(PackageKindTag::System, *handle_payment_contract_hash);
+                .extract_access_rights(*handle_payment_contract_hash);
             handle_payment_access_rights.extend(&[payment_purse_uref, rewards_target_purse]);
 
             let gas_limit = Gas::new(U512::MAX);

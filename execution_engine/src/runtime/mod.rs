@@ -1214,7 +1214,6 @@ where
             });
         }
 
-        println!("{:?}", identifier);
 
         let entry_point = entity
             .entry_point(entry_point_name)
@@ -1327,8 +1326,7 @@ where
         };
 
         let access_rights = {
-            let package_kind_tag = package.get_package_kind().tag();
-            let mut access_rights = entity.extract_access_rights(package_kind_tag, entity_hash);
+            let mut access_rights = entity.extract_access_rights(entity_hash);
             access_rights.extend(&extended_access_rights);
             access_rights
         };

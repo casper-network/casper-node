@@ -114,9 +114,9 @@ fn random_account_key<G: RngCore>(entropy_source: &mut G) -> Key {
 
 // create random contract key.
 fn random_contract_key<G: RngCore>(entropy_source: &mut G) -> Key {
-    let mut key = [0u8; 32];
-    entropy_source.fill_bytes(&mut key);
-    Key::Hash(key)
+    let mut key_hash = [0u8; 32];
+    entropy_source.fill_bytes(&mut key_hash);
+    Key::AddressableEntity((PackageKindTag::SmartContract, key_hash))
 }
 
 // Create URef Key.
@@ -222,7 +222,7 @@ where
 
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
     let access_rights =
-        addressable_entity.extract_access_rights(PackageKindTag::Account, entity_hash);
+        addressable_entity.extract_access_rights(entity_hash);
     let (runtime_context, _tempdir) = new_runtime_context(
         &addressable_entity,
         account_hash,
@@ -393,7 +393,7 @@ fn contract_key_addable_valid() {
         .as_addressable_entity()
         .unwrap()
         .extract_access_rights(
-            PackageKindTag::SmartContract,
+
             AddressableEntityHash::default(),
         );
 
@@ -487,7 +487,7 @@ fn contract_key_addable_invalid() {
         .as_addressable_entity()
         .unwrap()
         .extract_access_rights(
-            PackageKindTag::SmartContract,
+
             AddressableEntityHash::default(),
         );
     let (tracking_copy, _tempdir) = new_tracking_copy(account_hash, entity_key, entity.clone());
@@ -908,7 +908,7 @@ fn remove_uref_works() {
         new_addressable_entity(account_hash, entity_hash, named_keys.clone());
 
     let access_rights =
-        addressable_entity.extract_access_rights(PackageKindTag::Account, entity_hash);
+        addressable_entity.extract_access_rights(entity_hash);
 
     let (mut runtime_context, _tempdir) = new_runtime_context(
         &addressable_entity,
@@ -934,7 +934,7 @@ fn remove_uref_works() {
     // The next time the account is used, the access right is gone for the removed
     // named key.
     let next_session_access_rights =
-        entity.extract_access_rights(PackageKindTag::Account, entity_hash);
+        entity.extract_access_rights( entity_hash);
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
     let (runtime_context, _tempdir) = new_runtime_context(
         &entity,
@@ -965,7 +965,7 @@ fn an_accounts_access_rights_should_include_main_purse() {
         entity.named_keys().is_empty(),
         "Named keys does not contain main purse"
     );
-    let access_rights = entity.extract_access_rights(PackageKindTag::Account, entity_hash);
+    let access_rights = entity.extract_access_rights( entity_hash);
     assert!(
         access_rights.has_access_rights_to_uref(&test_main_purse),
         "Main purse should be included in access rights"
@@ -991,7 +991,7 @@ fn validate_valid_purse_of_an_account() {
         named_keys.clone(),
     );
 
-    let mut access_rights = entity.extract_access_rights(PackageKindTag::Account, entity_hash);
+    let mut access_rights = entity.extract_access_rights( entity_hash);
     access_rights.extend(&[test_main_purse]);
 
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
