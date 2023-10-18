@@ -641,7 +641,7 @@ where
         let result = self
             .query(maybe_post_state, Key::Context(context), &[])?
             .into_cl_value()
-            .expect("should be CLVlue");
+            .expect("should be CLValue");
         Ok(result)
     }
 

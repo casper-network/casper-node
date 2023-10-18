@@ -765,7 +765,6 @@ where
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Result<(), Error> {
         for (_, key) in named_keys.iter() {
-            dbg!(&key);
             let value = tracking_copy
                 .borrow_mut()
                 .read(key)

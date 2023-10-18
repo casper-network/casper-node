@@ -126,7 +126,7 @@ pub enum Error {
     /// Failed to prune listed keys.
     #[error("Pruning attempt failed.")]
     FailedToPrune(Vec<Key>),
-    /// Failed to write to a URef.
+    /// Failed to resolve a URef.
     #[error("Failed to resolve a URef")]
     FailedToResolveUref,
 }

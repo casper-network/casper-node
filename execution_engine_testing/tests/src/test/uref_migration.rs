@@ -4,12 +4,20 @@ use assert_matches::assert_matches;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    UpgradeRequestBuilder, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_PROTOCOL_VERSION,
+    LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_CHAINSPEC_REGISTRY,
+    DEFAULT_PROTOCOL_VERSION,
 };
 use casper_execution_engine::{engine_state::EngineConfig, tracking_copy::TrackingCopyQueryResult};
 use casper_types::{
-    system::{auction::ERA_ID_KEY, handle_payment::PAYMENT_PURSE_KEY},
-    AccessRights, CLValue, EraId, Key, KeyTag, ProtocolVersion, URef,
+    system::{
+        auction::{
+            AUCTION_DELAY_KEY, ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+        },
+        handle_payment::{ACCUMULATION_PURSE_KEY, PAYMENT_PURSE_KEY},
+        mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
+    },
+    AccessRights, CLValue, ContractHash, EraId, Key, KeyTag, ProtocolVersion, URef,
 };
 
 use crate::lmdb_fixture;
@@ -46,27 +54,34 @@ fn should_upgrade_urefs_in_system_contracts() {
         .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)
         .expect_upgrade_success();
 
-    assert_eq!(
-        builder.query_uref_value(
-            None,
-            Key::from(builder.get_system_auction_hash()),
-            &[ERA_ID_KEY.to_owned()],
-        ),
-        Ok(CLValue::from_t(EraId::new(0)).unwrap())
+    validate_urefs_behind_keys(
+        &builder,
+        builder.get_system_auction_hash(),
+        &[
+            ERA_ID_KEY,
+            ERA_END_TIMESTAMP_MILLIS_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+            VALIDATOR_SLOTS_KEY,
+            AUCTION_DELAY_KEY,
+            UNBONDING_DELAY_KEY,
+        ],
     );
 
-    assert_eq!(
-        builder.query_uref_value(
-            None,
-            Key::from(builder.get_handle_payment_contract_hash()),
-            &[PAYMENT_PURSE_KEY.to_owned()],
-        ),
-        Ok(CLValue::unit())
+    validate_urefs_behind_keys(
+        &builder,
+        builder.get_mint_contract_hash(),
+        &[ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY],
+    );
+
+    validate_urefs_behind_keys(
+        &builder,
+        builder.get_handle_payment_contract_hash(),
+        &[PAYMENT_PURSE_KEY, ACCUMULATION_PURSE_KEY],
     );
 }
 
 #[test]
-fn should_upgrade_urefs_in_non_system_contracts() {
+fn should_upgrade_urefs_in_a_non_system_contract() {
     let (mut builder, _lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_2_0_0);
 
@@ -138,7 +153,6 @@ fn should_upgrade_urefs_in_non_system_contracts() {
 fn should_prune_unreachable_urefs() {
     let (mut builder, _lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_2_0_0);
-
     let mut upgrade_request = UpgradeRequestBuilder::new()
         .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
         .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
@@ -154,15 +168,34 @@ fn should_prune_unreachable_urefs() {
         .expect("should read tracking copy at post state hash")
         .expect("should find tracking copy at post state hash");
 
-    let key = Key::URef(URef::new([12; 32], AccessRights::all()));
-    tc.borrow_mut()
-        .write(key, CLValue::from_t(1).unwrap().into());
+    let urefs: Vec<_> =
+        std::iter::repeat_with(|| URef::new(rand::random(), AccessRights::READ_ADD_WRITE))
+            .take(32)
+            .collect();
+
+    for &uref in &urefs {
+        let value = rand::random::<i32>();
+        tc.borrow_mut()
+            .write(Key::URef(uref), CLValue::from_t(value).unwrap().into());
+    }
+
     builder
         .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)
         .expect_upgrade_success();
 
-    let res = builder.query_uref_value(None, key, &[]);
-    assert_matches!(res, Err(_));
+    for &uref in &urefs {
+        let res = builder.query_uref_value(None, Key::URef(uref), &[]);
+        assert_matches!(res, Err(_));
+    }
+}
+
+fn validate_urefs_behind_keys(builder: &LmdbWasmTestBuilder, owner: ContractHash, keys: &[&str]) {
+    for &key in keys {
+        assert_matches!(
+            builder.query_uref_value(None, Key::from(owner), &[key.to_owned()],),
+            Ok(_)
+        );
+    }
 }
 
 mod fixture {
@@ -180,7 +213,7 @@ mod fixture {
         if !lmdb_fixture::is_fixture_generator_enabled() {
             return;
         }
-        // To generate this fixture again you have to re-run this code release-1.4.13.
+        // To generate this fixture again you have to re-run this code release-2.0.0.
         let genesis_request = PRODUCTION_RUN_GENESIS_REQUEST.clone();
         lmdb_fixture::generate_fixture(lmdb_fixture::RELEASE_2_0_0, genesis_request, |builder| {
             // Create contract package and store contract ver: 1.0.0 with "delegate" entry function
@@ -196,6 +229,6 @@ mod fixture {
 
             builder.exec(exec_request).expect_success().commit();
         })
-        .expect("should generate era info bloat fixture");
+        .expect("should generate uref migration fixture");
     }
 }
