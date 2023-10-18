@@ -9,8 +9,8 @@ use casper_execution_engine::engine_state::EngineConfigBuilder;
 use casper_types::{
     bytesrepr::ToBytes,
     contract_messages::{MessageChecksum, MessagePayload, MessageTopicSummary, TopicNameHash},
-    crypto, runtime_args, AddressableEntity, BlockTime, ContractHash, Digest, HostFunctionCosts,
-    Key, MessageCosts, MessageLimits, OpcodeCosts, RuntimeArgs, StorageCosts, StoredValue,
+    crypto, runtime_args, AddressableEntity, BlockTime, ContractHash, Digest, HostFunction,
+    HostFunctionCosts, Key, MessageLimits, OpcodeCosts, RuntimeArgs, StorageCosts, StoredValue,
     WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
@@ -457,7 +457,6 @@ fn should_not_exceed_configured_limits() {
                 max_message_size: 100,
                 max_topics_per_contract: 2,
             },
-            MessageCosts::default(),
         ))
         .build();
 
@@ -609,7 +608,6 @@ fn should_charge_expected_gas_for_storage() {
         StorageCosts::new(GAS_PER_BYTE_COST),
         HostFunctionCosts::zero(),
         MessageLimits::default(),
-        MessageCosts::zero(),
     );
     let custom_engine_config = EngineConfigBuilder::default()
         .with_wasm_config(wasm_config)
@@ -707,12 +705,12 @@ fn should_charge_increasing_gas_cost_for_multiple_messages_emitted() {
         DEFAULT_MAX_STACK_HEIGHT,
         OpcodeCosts::zero(),
         StorageCosts::zero(),
-        HostFunctionCosts::zero(),
-        MessageLimits::default(),
-        MessageCosts {
-            first_message_cost: FIRST_MESSAGE_EMIT_COST,
+        HostFunctionCosts {
+            emit_message: HostFunction::fixed(FIRST_MESSAGE_EMIT_COST),
             cost_increase_per_message: COST_INCREASE_PER_MESSAGE,
+            ..Zero::zero()
         },
+        MessageLimits::default(),
     );
 
     let custom_engine_config = EngineConfigBuilder::default()

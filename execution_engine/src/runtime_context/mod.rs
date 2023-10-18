@@ -72,7 +72,7 @@ pub struct RuntimeContext<'a, R> {
     entity_address: Key,
     package_kind: ContractPackageKind,
     account_hash: AccountHash,
-    last_message_cost: U512,
+    emit_message_cost: U512,
 }
 
 impl<'a, R> RuntimeContext<'a, R>
@@ -106,6 +106,12 @@ where
         remaining_spending_limit: U512,
         entry_point_type: EntryPointType,
     ) -> Self {
+        let emit_message_cost = engine_config
+            .wasm_config()
+            .take_host_function_costs()
+            .emit_message
+            .cost()
+            .into();
         RuntimeContext {
             tracking_copy,
             entry_point_type,
@@ -127,7 +133,7 @@ where
             transfers,
             remaining_spending_limit,
             package_kind,
-            last_message_cost: U512::from(0),
+            emit_message_cost,
         }
     }
 
@@ -182,7 +188,7 @@ where
             transfers,
             remaining_spending_limit,
             package_kind,
-            last_message_cost: self.last_message_cost,
+            emit_message_cost: self.emit_message_cost,
         }
     }
 
@@ -669,13 +675,13 @@ where
     }
 
     /// Returns the cost charged for the last emitted message.
-    pub fn last_message_cost(&self) -> U512 {
-        self.last_message_cost
+    pub fn emit_message_cost(&self) -> U512 {
+        self.emit_message_cost
     }
 
     /// Sets the cost charged for the last emitted message.
-    pub fn set_last_message_cost(&mut self, last_cost: U512) {
-        self.last_message_cost = last_cost
+    pub fn set_emit_message_cost(&mut self, cost: U512) {
+        self.emit_message_cost = cost
     }
 
     /// Returns list of transfers.

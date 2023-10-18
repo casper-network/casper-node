@@ -266,15 +266,12 @@ write_local = { cost = 9_500, arguments = [0, 1_800, 0, 520] }
 enable_contract_version = { cost = 200, arguments = [0, 0, 0, 0] }
 manage_message_topic = { cost = 200, arguments = [0, 0, 0, 0] }
 emit_message = { cost = 200, arguments = [0, 0, 0, 0] }
+cost_increase_per_message = 50
 
 [wasm.messages_limits]
 max_topic_name_size = 256
 max_topics_per_contract = 128
 max_message_size = 1_024
-
-[wasm.message_costs]
-first_message_cost = 100
-cost_increase_per_message = 50
 
 [system_costs]
 wasmless_transfer_cost = 100_000_000

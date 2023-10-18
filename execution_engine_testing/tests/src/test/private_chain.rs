@@ -21,9 +21,9 @@ use once_cell::sync::Lazy;
 
 use casper_types::{
     account::AccountHash, system::auction::DELEGATION_RATE_DENOMINATOR, AdministratorAccount,
-    FeeHandling, GenesisAccount, GenesisValidator, HostFunction, HostFunctionCosts, MessageCosts,
-    MessageLimits, Motes, OpcodeCosts, PublicKey, RefundHandling, SecretKey, StorageCosts,
-    WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
+    FeeHandling, GenesisAccount, GenesisValidator, HostFunction, HostFunctionCosts, MessageLimits,
+    Motes, OpcodeCosts, PublicKey, RefundHandling, SecretKey, StorageCosts, WasmConfig,
+    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 use tempfile::TempDir;
 
@@ -209,7 +209,6 @@ fn make_wasm_config() -> WasmConfig {
         StorageCosts::default(),
         host_functions,
         MessageLimits::default(),
-        MessageCosts::default(),
     )
 }
 

@@ -88,6 +88,10 @@ pub const DEFAULT_NEW_DICTIONARY_COST: u32 = DEFAULT_NEW_UREF_COST;
 pub const DEFAULT_HOST_FUNCTION_NEW_DICTIONARY: HostFunction<[Cost; 1]> =
     HostFunction::new(DEFAULT_NEW_DICTIONARY_COST, [NOT_USED]);
 
+/// Default value that the cost of calling `casper_emit_message` increases by for every new message
+/// emitted within an execution.
+pub const DEFAULT_COST_INCREASE_PER_MESSAGE_EMITTED: u32 = 50;
+
 /// Representation of a host function cost.
 ///
 /// The total gas cost is equal to `cost` + sum of each argument weight multiplied by the byte size
@@ -231,6 +235,8 @@ where
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct HostFunctionCosts {
+    /// Cost increase for successive calls to `casper_emit_message` within an execution.
+    pub cost_increase_per_message: u32,
     /// Cost of calling the `read_value` host function.
     pub read_value: HostFunction<[Cost; 3]>,
     /// Cost of calling the `dictionary_get` host function.
@@ -376,6 +382,7 @@ impl Zero for HostFunctionCosts {
             enable_contract_version: HostFunction::zero(),
             manage_message_topic: HostFunction::zero(),
             emit_message: HostFunction::zero(),
+            cost_increase_per_message: Zero::zero(),
         }
     }
 
@@ -426,6 +433,7 @@ impl Zero for HostFunctionCosts {
             && self.enable_contract_version.is_zero()
             && self.manage_message_topic.is_zero()
             && self.emit_message.is_zero()
+            && self.cost_increase_per_message.is_zero()
     }
 }
 
@@ -561,6 +569,7 @@ impl Default for HostFunctionCosts {
             enable_contract_version: HostFunction::default(),
             manage_message_topic: HostFunction::default(),
             emit_message: HostFunction::default(),
+            cost_increase_per_message: DEFAULT_COST_INCREASE_PER_MESSAGE_EMITTED,
         }
     }
 }
@@ -614,6 +623,7 @@ impl ToBytes for HostFunctionCosts {
         ret.append(&mut self.enable_contract_version.to_bytes()?);
         ret.append(&mut self.manage_message_topic.to_bytes()?);
         ret.append(&mut self.emit_message.to_bytes()?);
+        ret.append(&mut self.cost_increase_per_message.to_bytes()?);
         Ok(ret)
     }
 
@@ -664,6 +674,7 @@ impl ToBytes for HostFunctionCosts {
             + self.enable_contract_version.serialized_length()
             + self.manage_message_topic.serialized_length()
             + self.emit_message.serialized_length()
+            + self.cost_increase_per_message.serialized_length()
     }
 }
 
@@ -715,6 +726,7 @@ impl FromBytes for HostFunctionCosts {
         let (enable_contract_version, rem) = FromBytes::from_bytes(rem)?;
         let (manage_message_topic, rem) = FromBytes::from_bytes(rem)?;
         let (emit_message, rem) = FromBytes::from_bytes(rem)?;
+        let (cost_increase_per_message, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             HostFunctionCosts {
                 read_value,
@@ -763,6 +775,7 @@ impl FromBytes for HostFunctionCosts {
                 enable_contract_version,
                 manage_message_topic,
                 emit_message,
+                cost_increase_per_message,
             },
             rem,
         ))
@@ -818,6 +831,7 @@ impl Distribution<HostFunctionCosts> for Standard {
             enable_contract_version: rng.gen(),
             manage_message_topic: rng.gen(),
             emit_message: rng.gen(),
+            cost_increase_per_message: rng.gen(),
         }
     }
 }
@@ -825,7 +839,7 @@ impl Distribution<HostFunctionCosts> for Standard {
 #[doc(hidden)]
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
-    use proptest::prelude::*;
+    use proptest::{num, prelude::*};
 
     use crate::{HostFunction, HostFunctionCost, HostFunctionCosts};
 
@@ -883,6 +897,7 @@ pub mod gens {
             enable_contract_version in host_function_cost_arb(),
             manage_message_topic in host_function_cost_arb(),
             emit_message in host_function_cost_arb(),
+            cost_increase_per_message in num::u32::ANY,
         ) -> HostFunctionCosts {
             HostFunctionCosts {
                 read_value,
@@ -931,6 +946,7 @@ pub mod gens {
                 enable_contract_version,
                 manage_message_topic,
                 emit_message,
+                cost_increase_per_message,
             }
         }
     }
