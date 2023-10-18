@@ -29,7 +29,7 @@ use casper_types::{
     bytesrepr::Bytes,
     execution::{ExecutionResult, ExecutionResultV2},
     system::auction::EraValidators,
-    Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, Deploy, DeployHash,
+    Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash,
     DeployHeader, Digest, DisplayIter, EraId, FinalitySignature, FinalitySignatureId, Key,
     ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId,
     Transfer, URef, U512,
@@ -958,12 +958,12 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the result. Contains the hash of the stored trie.
         responder: Responder<Result<Digest, engine_state::Error>>,
     },
-    /// Execute deploys without committing results
-    SpeculativeDeployExecution {
-        /// Hash of a block on top of which to execute the deploy.
+    /// Execute transaction without committing results
+    SpeculativelyExecute {
+        /// Hash of a block on top of which to execute the transaction.
         execution_prestate: SpeculativeExecutionState,
-        /// Deploy to execute.
-        deploy: Arc<Deploy>,
+        /// Transaction to execute.
+        transaction: Box<Transaction>,
         /// Results
         responder: Responder<Result<Option<ExecutionResultV2>, engine_state::Error>>,
     },
@@ -1036,15 +1036,15 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::PutTrie { trie_bytes, .. } => {
                 write!(formatter, "trie: {:?}", trie_bytes)
             }
-            ContractRuntimeRequest::SpeculativeDeployExecution {
+            ContractRuntimeRequest::SpeculativelyExecute {
                 execution_prestate,
-                deploy,
+                transaction,
                 ..
             } => {
                 write!(
                     formatter,
                     "Execute {} on {}",
-                    deploy.hash(),
+                    transaction.hash(),
                     execution_prestate.state_root_hash
                 )
             }

@@ -126,7 +126,7 @@ use casper_types::{
     package::Package,
     system::auction::EraValidators,
     AddressableEntity, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes,
-    Deploy, DeployHash, DeployHeader, Digest, EraId, FinalitySignature, FinalitySignatureId, Key,
+    DeployHash, DeployHeader, Digest, EraId, FinalitySignature, FinalitySignatureId, Key,
     PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId, Transfer, U512,
 };
 
@@ -2240,20 +2240,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests execution of a single deploy, without commiting its effects.
-    /// Inteded to be used for debugging & discovery purposes.
-    pub(crate) async fn speculative_execute_deploy(
+    /// Requests execution of a single transaction, without committing its effects.  Intended to be
+    /// used for debugging & discovery purposes.
+    pub(crate) async fn speculatively_execute(
         self,
         execution_prestate: SpeculativeExecutionState,
-        deploy: Arc<Deploy>,
+        transaction: Box<Transaction>,
     ) -> Result<Option<ExecutionResultV2>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::SpeculativeDeployExecution {
+            |responder| ContractRuntimeRequest::SpeculativelyExecute {
                 execution_prestate,
-                deploy,
+                transaction,
                 responder,
             },
             QueueKind::ContractRuntime,
