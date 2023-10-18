@@ -56,7 +56,7 @@ use casper_types::{
             BidAddr, BidKind, EraValidators, ValidatorBid, ARG_ERA_END_TIMESTAMP_MILLIS,
             ARG_EVICTED_VALIDATORS, ARG_REWARDS_MAP, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
             LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY,
-            VALIDATOR_SLOTS_KEY
+            VALIDATOR_SLOTS_KEY,
         },
         handle_payment::{self, ACCUMULATION_PURSE_KEY},
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
@@ -683,11 +683,13 @@ where
 
         let tracking_copy = tracking_copy.borrow();
 
-        match tracking_copy
-            .query(self.config(), query_request.key(), query_request.path()) {
+        match tracking_copy.query(self.config(), query_request.key(), query_request.path()) {
             Ok(TrackingCopyQueryResult::ValueNotFound(_)) => {
                 let key = query_request.key();
-                let new_query_key = Key::Hash(key.into_entity_addr().ok_or_else(||Error::InvalidKeyVariant)?);
+                let new_query_key = Key::Hash(
+                    key.into_entity_addr()
+                        .ok_or_else(|| Error::InvalidKeyVariant)?,
+                );
                 info!("Compensating for AddressableEntity move");
                 let result = tracking_copy
                     .query(self.config(), new_query_key, query_request.path())
@@ -695,9 +697,7 @@ where
                 Ok(result.into())
             }
             Ok(result) => Ok(result.into()),
-            Err(error) => {
-                Err(Error::Exec(error.into()))
-            }
+            Err(error) => Err(Error::Exec(error.into())),
         }
     }
 
