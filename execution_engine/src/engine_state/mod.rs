@@ -30,7 +30,7 @@ use std::{
 use num_rational::Ratio;
 use num_traits::Zero;
 use once_cell::sync::Lazy;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use casper_storage::{
     data_access_layer::DataAccessLayer,
@@ -56,7 +56,7 @@ use casper_types::{
             BidAddr, BidKind, EraValidators, ValidatorBid, ARG_ERA_END_TIMESTAMP_MILLIS,
             ARG_EVICTED_VALIDATORS, ARG_REWARDS_MAP, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
             LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY,
-            VALIDATOR_SLOTS_KEY,
+            VALIDATOR_SLOTS_KEY
         },
         handle_payment::{self, ACCUMULATION_PURSE_KEY},
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
@@ -102,7 +102,7 @@ use crate::{
     execution::{self, AddressGenerator, DirectSystemContractCall, Executor},
     runtime::RuntimeStack,
     system::auction,
-    tracking_copy::{TrackingCopy, TrackingCopyExt},
+    tracking_copy::{TrackingCopy, TrackingCopyExt, TrackingCopyQueryResult},
 };
 
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
@@ -683,10 +683,22 @@ where
 
         let tracking_copy = tracking_copy.borrow();
 
-        Ok(tracking_copy
-            .query(self.config(), query_request.key(), query_request.path())
-            .map_err(|err| Error::Exec(err.into()))?
-            .into())
+        match tracking_copy
+            .query(self.config(), query_request.key(), query_request.path()) {
+            Ok(TrackingCopyQueryResult::ValueNotFound(_)) => {
+                let key = query_request.key();
+                let new_query_key = Key::Hash(key.into_entity_addr().ok_or_else(||Error::InvalidKeyVariant)?);
+                info!("Compensating for AddressableEntity move");
+                let result = tracking_copy
+                    .query(self.config(), new_query_key, query_request.path())
+                    .map_err(|err| Error::Exec(err.into()))?;
+                Ok(result.into())
+            }
+            Ok(result) => Ok(result.into()),
+            Err(error) => {
+                Err(Error::Exec(error.into()))
+            }
+        }
     }
 
     /// Runs a deploy execution request.
