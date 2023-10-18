@@ -247,6 +247,7 @@ impl SecretKey {
     }
 
     /// Attempts to write the key bytes to the configured file path.
+    /// No operation the sdk feature
     #[allow(unused_variables)]
     pub fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<(), ErrorExt> {
         #[cfg(not(any(feature = "sdk")))]
@@ -260,6 +261,7 @@ impl SecretKey {
     }
 
     /// Attempts to read the key bytes from configured file path.
+    /// No operation the sdk feature, use SecretKey::from_pem
     #[allow(unused_variables)]
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self, ErrorExt> {
         #[cfg(not(any(feature = "sdk")))]
@@ -545,6 +547,7 @@ impl PublicKey {
     }
 
     /// Attempts to write the key bytes to the configured file path.
+    /// No operation the sdk feature
     #[allow(unused_variables)]
     pub fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<(), ErrorExt> {
         #[cfg(not(any(feature = "sdk")))]
@@ -558,6 +561,7 @@ impl PublicKey {
     }
 
     /// Attempts to read the key bytes from configured file path.
+    /// No operation the sdk feature, use SecretKey::from_pem
     #[allow(unused_variables)]
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self, ErrorExt> {
         #[cfg(not(any(feature = "sdk")))]

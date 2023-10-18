@@ -36,6 +36,7 @@ pub struct WriteFileError {
 /// Read complete at `path` into memory.
 ///
 /// Wraps `fs::read`, but preserves the filename for better error printing.
+/// No operation the sdk feature
 #[allow(unused_variables)]
 pub fn read_file<P: AsRef<Path>>(filename: P) -> Result<Vec<u8>, ReadFileError> {
     #[cfg(feature = "sdk")]
@@ -55,6 +56,7 @@ pub fn read_file<P: AsRef<Path>>(filename: P) -> Result<Vec<u8>, ReadFileError> 
 /// Write data to `path`.
 ///
 /// Wraps `fs::write`, but preserves the filename for better error printing.
+/// No operation the sdk feature
 #[allow(unused_variables, unused)]
 pub(crate) fn write_file<P: AsRef<Path>, B: AsRef<[u8]>>(
     filename: P,
@@ -77,6 +79,7 @@ pub(crate) fn write_file<P: AsRef<Path>, B: AsRef<[u8]>>(
 /// Writes data to `path`, ensuring only the owner can read or write it.
 ///
 /// Otherwise functions like [`write_file`].
+/// No operation the sdk feature
 #[allow(unused_variables, unused)]
 pub(crate) fn write_private_file<P: AsRef<Path>, B: AsRef<[u8]>>(
     filename: P,
