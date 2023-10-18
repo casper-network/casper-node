@@ -26,7 +26,7 @@
       "methods": [
         {
           "name": "account_put_deploy",
-          "summary": "receives a Deploy to be executed by the network",
+          "summary": "receives a Deploy to be executed by the network (DEPRECATED: use `account_put_transaction` instead)",
           "params": [
             {
               "name": "deploy",
@@ -128,8 +128,137 @@
           ]
         },
         {
+          "name": "account_put_transaction",
+          "summary": "receives a Transaction to be executed by the network",
+          "params": [
+            {
+              "name": "transaction",
+              "schema": {
+                "description": "The `Transaction`.",
+                "$ref": "#/components/schemas/Transaction"
+              },
+              "required": true
+            }
+          ],
+          "result": {
+            "name": "account_put_transaction_result",
+            "schema": {
+              "description": "Result for \"account_put_transaction\" RPC response.",
+              "type": "object",
+              "required": [
+                "api_version",
+                "transaction_hash"
+              ],
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "transaction_hash": {
+                  "description": "The transaction hash.",
+                  "$ref": "#/components/schemas/TransactionHash"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "examples": [
+            {
+              "name": "account_put_transaction_example",
+              "params": [
+                {
+                  "name": "transaction",
+                  "value": {
+                    "V1": {
+                      "hash": "d1cb08851052c110a0df51c8b7ba8f3cbe3e5487a4e012f7db0d32ef02fdbde8",
+                      "header": {
+                        "account": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                        "timestamp": "2020-11-17T00:39:24.072Z",
+                        "ttl": "1h",
+                        "pricing_mode": {
+                          "GasPriceMultiplier": 1
+                        },
+                        "body_hash": "b4586835d0c02afdf0ed94d46d823cdf1f8d3fc0e29f8a0d6e7fdbc315c9ddd7",
+                        "chain_name": "casper-example"
+                      },
+                      "payment": null,
+                      "body": {
+                        "Native": {
+                          "MintTransfer": [
+                            [
+                              "source",
+                              {
+                                "cl_type": "URef",
+                                "bytes": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a07",
+                                "parsed": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007"
+                              }
+                            ],
+                            [
+                              "target",
+                              {
+                                "cl_type": "URef",
+                                "bytes": "1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b00",
+                                "parsed": "uref-1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b-000"
+                              }
+                            ],
+                            [
+                              "amount",
+                              {
+                                "cl_type": "U512",
+                                "bytes": "0500ac23fc06",
+                                "parsed": "30000000000"
+                              }
+                            ],
+                            [
+                              "to",
+                              {
+                                "cl_type": {
+                                  "Option": {
+                                    "ByteArray": 32
+                                  }
+                                },
+                                "bytes": "012828282828282828282828282828282828282828282828282828282828282828",
+                                "parsed": "2828282828282828282828282828282828282828282828282828282828282828"
+                              }
+                            ],
+                            [
+                              "id",
+                              {
+                                "cl_type": {
+                                  "Option": "U64"
+                                },
+                                "bytes": "01e703000000000000",
+                                "parsed": 999
+                              }
+                            ]
+                          ]
+                        }
+                      },
+                      "approvals": [
+                        {
+                          "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                          "signature": "011fc821cda1dfe388354ffc698e6ec82a2fa552cd8d29c819971e8e39e091eccd8b0201d835f46c474c2e37b3451132b5b15712183f02bd6c327638769c04d50d"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ],
+              "result": {
+                "name": "account_put_transaction_example_result",
+                "value": {
+                  "api_version": "1.5.2",
+                  "transaction_hash": {
+                    "V1": "d1cb08851052c110a0df51c8b7ba8f3cbe3e5487a4e012f7db0d32ef02fdbde8"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
           "name": "info_get_deploy",
-          "summary": "returns a Deploy from the network",
+          "summary": "returns a Deploy from the network (DEPRECATED: use `info_get_transaction` instead)",
           "params": [
             {
               "name": "deploy_hash",
@@ -255,6 +384,191 @@
                         "signature": "014c1a89f92e29dd74fc648f741137d9caf4edba97c5f9799ce0c9aa6b0c9b58db368c64098603dbecef645774c05dff057cb1f91f2cf390bbacce78aa6f084007"
                       }
                     ]
+                  },
+                  "block_hash": "24ec19bc9aee9726616271ccfb046e8a7ea6370a34f18d6fb54d7a8ae29bdb1b",
+                  "block_height": 10,
+                  "execution_result": {
+                    "Version2": {
+                      "Success": {
+                        "effects": [
+                          {
+                            "key": "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb",
+                            "kind": {
+                              "AddUInt64": 8
+                            }
+                          },
+                          {
+                            "key": "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
+                            "kind": "Identity"
+                          }
+                        ],
+                        "transfers": [
+                          "transfer-5959595959595959595959595959595959595959595959595959595959595959",
+                          "transfer-8282828282828282828282828282828282828282828282828282828282828282"
+                        ],
+                        "cost": "123456"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "info_get_transaction",
+          "summary": "returns a Transaction from the network",
+          "params": [
+            {
+              "name": "transaction_hash",
+              "schema": {
+                "description": "The transaction hash.",
+                "$ref": "#/components/schemas/TransactionHash"
+              },
+              "required": true
+            },
+            {
+              "name": "finalized_approvals",
+              "schema": {
+                "description": "Whether to return the transaction with the finalized approvals substituted. If `false` or omitted, returns the transaction with the approvals that were originally received by the node.",
+                "default": false,
+                "type": "boolean"
+              },
+              "required": false
+            }
+          ],
+          "result": {
+            "name": "info_get_transaction_result",
+            "schema": {
+              "description": "Result for \"info_get_transaction\" RPC response.",
+              "type": "object",
+              "required": [
+                "api_version",
+                "transaction"
+              ],
+              "properties": {
+                "api_version": {
+                  "description": "The RPC API version.",
+                  "type": "string"
+                },
+                "transaction": {
+                  "description": "The transaction.",
+                  "$ref": "#/components/schemas/Transaction"
+                },
+                "block_hash": {
+                  "$ref": "#/components/schemas/BlockHash"
+                },
+                "block_height": {
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0.0
+                },
+                "execution_result": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ExecutionResult"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "examples": [
+            {
+              "name": "info_get_transaction_example",
+              "params": [
+                {
+                  "name": "transaction_hash",
+                  "value": {
+                    "V1": "d1cb08851052c110a0df51c8b7ba8f3cbe3e5487a4e012f7db0d32ef02fdbde8"
+                  }
+                },
+                {
+                  "name": "finalized_approvals",
+                  "value": true
+                }
+              ],
+              "result": {
+                "name": "info_get_transaction_example_result",
+                "value": {
+                  "api_version": "1.5.2",
+                  "transaction": {
+                    "V1": {
+                      "hash": "d1cb08851052c110a0df51c8b7ba8f3cbe3e5487a4e012f7db0d32ef02fdbde8",
+                      "header": {
+                        "account": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                        "timestamp": "2020-11-17T00:39:24.072Z",
+                        "ttl": "1h",
+                        "pricing_mode": {
+                          "GasPriceMultiplier": 1
+                        },
+                        "body_hash": "b4586835d0c02afdf0ed94d46d823cdf1f8d3fc0e29f8a0d6e7fdbc315c9ddd7",
+                        "chain_name": "casper-example"
+                      },
+                      "payment": null,
+                      "body": {
+                        "Native": {
+                          "MintTransfer": [
+                            [
+                              "source",
+                              {
+                                "cl_type": "URef",
+                                "bytes": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a07",
+                                "parsed": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007"
+                              }
+                            ],
+                            [
+                              "target",
+                              {
+                                "cl_type": "URef",
+                                "bytes": "1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b00",
+                                "parsed": "uref-1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b-000"
+                              }
+                            ],
+                            [
+                              "amount",
+                              {
+                                "cl_type": "U512",
+                                "bytes": "0500ac23fc06",
+                                "parsed": "30000000000"
+                              }
+                            ],
+                            [
+                              "to",
+                              {
+                                "cl_type": {
+                                  "Option": {
+                                    "ByteArray": 32
+                                  }
+                                },
+                                "bytes": "012828282828282828282828282828282828282828282828282828282828282828",
+                                "parsed": "2828282828282828282828282828282828282828282828282828282828282828"
+                              }
+                            ],
+                            [
+                              "id",
+                              {
+                                "cl_type": {
+                                  "Option": "U64"
+                                },
+                                "bytes": "01e703000000000000",
+                                "parsed": 999
+                              }
+                            ]
+                          ]
+                        }
+                      },
+                      "approvals": [
+                        {
+                          "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                          "signature": "011fc821cda1dfe388354ffc698e6ec82a2fa552cd8d29c819971e8e39e091eccd8b0201d835f46c474c2e37b3451132b5b15712183f02bd6c327638769c04d50d"
+                        }
+                      ]
+                    }
                   },
                   "block_hash": "24ec19bc9aee9726616271ccfb046e8a7ea6370a34f18d6fb54d7a8ae29bdb1b",
                   "block_height": 10,
@@ -2364,6 +2678,803 @@
             "description": "Hex-encoded cryptographic signature, including the algorithm tag prefix.",
             "type": "string"
           },
+          "Transaction": {
+            "description": "A versioned wrapper for a transaction or deploy.",
+            "oneOf": [
+              {
+                "description": "A deploy.",
+                "type": "object",
+                "required": [
+                  "Deploy"
+                ],
+                "properties": {
+                  "Deploy": {
+                    "$ref": "#/components/schemas/Deploy"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A version 1 transaction.",
+                "type": "object",
+                "required": [
+                  "V1"
+                ],
+                "properties": {
+                  "V1": {
+                    "$ref": "#/components/schemas/TransactionV1"
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "TransactionV1": {
+            "description": "A unit of work sent by a client to the network, which when executed can cause global state to be altered.",
+            "type": "object",
+            "required": [
+              "approvals",
+              "body",
+              "hash",
+              "header"
+            ],
+            "properties": {
+              "hash": {
+                "$ref": "#/components/schemas/TransactionV1Hash"
+              },
+              "header": {
+                "$ref": "#/components/schemas/TransactionV1Header"
+              },
+              "payment": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "uint64",
+                "minimum": 0.0
+              },
+              "body": {
+                "$ref": "#/components/schemas/TransactionV1Kind"
+              },
+              "approvals": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TransactionV1Approval"
+                },
+                "uniqueItems": true
+              }
+            },
+            "additionalProperties": false
+          },
+          "TransactionV1Hash": {
+            "description": "Hex-encoded TransactionV1 hash.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Digest"
+              }
+            ]
+          },
+          "TransactionV1Header": {
+            "description": "The header portion of a TransactionV1.",
+            "type": "object",
+            "required": [
+              "account",
+              "body_hash",
+              "chain_name",
+              "pricing_mode",
+              "timestamp",
+              "ttl"
+            ],
+            "properties": {
+              "account": {
+                "$ref": "#/components/schemas/PublicKey"
+              },
+              "timestamp": {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              "ttl": {
+                "$ref": "#/components/schemas/TimeDiff"
+              },
+              "pricing_mode": {
+                "$ref": "#/components/schemas/PricingModeV1"
+              },
+              "body_hash": {
+                "$ref": "#/components/schemas/Digest"
+              },
+              "chain_name": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "PricingModeV1": {
+            "description": "Pricing mode of a TransactionV1.",
+            "oneOf": [
+              {
+                "description": "Multiplies the gas used by the given amount.\n\nThis is the same behaviour as for the `Deploy::gas_price`.",
+                "type": "object",
+                "required": [
+                  "GasPriceMultiplier"
+                ],
+                "properties": {
+                  "GasPriceMultiplier": {
+                    "type": "integer",
+                    "format": "uint64",
+                    "minimum": 0.0
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "First-in-first-out handling of transactions, i.e. pricing mode is irrelevant to ordering.",
+                "type": "string",
+                "enum": [
+                  "Fixed"
+                ]
+              },
+              {
+                "description": "The payment for this transaction was previously reserved.",
+                "type": "string",
+                "enum": [
+                  "Reserved"
+                ]
+              }
+            ]
+          },
+          "TransactionV1Kind": {
+            "description": "The high-level kind of a given TransactionV1.",
+            "oneOf": [
+              {
+                "description": "A transaction targeting native functionality.",
+                "type": "object",
+                "required": [
+                  "Native"
+                ],
+                "properties": {
+                  "Native": {
+                    "$ref": "#/components/schemas/NativeTransactionV1"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A transaction with userland (i.e. not native) functionality.",
+                "type": "object",
+                "required": [
+                  "Userland"
+                ],
+                "properties": {
+                  "Userland": {
+                    "$ref": "#/components/schemas/UserlandTransactionV1"
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "NativeTransactionV1": {
+            "description": "A TransactionV1 targeting native functionality.",
+            "oneOf": [
+              {
+                "description": "Calls the `transfer` entry point of the mint to transfer `Motes` from a source purse to a target purse.",
+                "type": "object",
+                "required": [
+                  "MintTransfer"
+                ],
+                "properties": {
+                  "MintTransfer": {
+                    "$ref": "#/components/schemas/RuntimeArgs"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A transaction targeting the auction.",
+                "type": "object",
+                "required": [
+                  "Auction"
+                ],
+                "properties": {
+                  "Auction": {
+                    "$ref": "#/components/schemas/AuctionTransactionV1"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A transaction reserving a future execution.",
+                "type": "object",
+                "required": [
+                  "Reservation"
+                ],
+                "properties": {
+                  "Reservation": {
+                    "$ref": "#/components/schemas/RuntimeArgs"
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "AuctionTransactionV1": {
+            "description": "A TransactionV1 targeting the auction.",
+            "oneOf": [
+              {
+                "description": "Calls the `add_bid` entry point to create or top off a bid purse.",
+                "type": "object",
+                "required": [
+                  "AddBid"
+                ],
+                "properties": {
+                  "AddBid": {
+                    "$ref": "#/components/schemas/RuntimeArgs"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Calls the `withdraw_bid` entry point to decrease a stake.",
+                "type": "object",
+                "required": [
+                  "WithdrawBid"
+                ],
+                "properties": {
+                  "WithdrawBid": {
+                    "$ref": "#/components/schemas/RuntimeArgs"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Calls the `delegate` entry point to add a new delegator or increase an existing delegator's stake.",
+                "type": "object",
+                "required": [
+                  "Delegate"
+                ],
+                "properties": {
+                  "Delegate": {
+                    "$ref": "#/components/schemas/RuntimeArgs"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Calls the `undelegate` entry point to reduce a delegator's stake or remove the delegator if the remaining stake is 0.",
+                "type": "object",
+                "required": [
+                  "Undelegate"
+                ],
+                "properties": {
+                  "Undelegate": {
+                    "$ref": "#/components/schemas/RuntimeArgs"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Calls the `redelegate` entry point to reduce a delegator's stake or remove the delegator if the remaining stake is 0, and after the unbonding delay, automatically delegate to a new validator.",
+                "type": "object",
+                "required": [
+                  "Redelegate"
+                ],
+                "properties": {
+                  "Redelegate": {
+                    "$ref": "#/components/schemas/RuntimeArgs"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Calls the `get_era_validators` entry point to provide the validators for the current era and configured number of future eras.",
+                "type": "object",
+                "required": [
+                  "GetEraValidators"
+                ],
+                "properties": {
+                  "GetEraValidators": {
+                    "$ref": "#/components/schemas/RuntimeArgs"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Calls the `read_era_id` entry point to provide the current era ID.",
+                "type": "object",
+                "required": [
+                  "ReadEraId"
+                ],
+                "properties": {
+                  "ReadEraId": {
+                    "$ref": "#/components/schemas/RuntimeArgs"
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "UserlandTransactionV1": {
+            "description": "A TransactionV1 with userland (i.e. not native) functionality.",
+            "oneOf": [
+              {
+                "description": "A general purpose transaction.",
+                "type": "object",
+                "required": [
+                  "Standard"
+                ],
+                "properties": {
+                  "Standard": {
+                    "type": "object",
+                    "required": [
+                      "args",
+                      "module_bytes"
+                    ],
+                    "properties": {
+                      "module_bytes": {
+                        "description": "Raw Wasm module bytes with 'call' exported as an entrypoint.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/Bytes"
+                          }
+                        ]
+                      },
+                      "args": {
+                        "description": "Runtime arguments.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "An installer or upgrader for a stored contract.",
+                "type": "object",
+                "required": [
+                  "InstallerUpgrader"
+                ],
+                "properties": {
+                  "InstallerUpgrader": {
+                    "type": "object",
+                    "required": [
+                      "args",
+                      "module_bytes"
+                    ],
+                    "properties": {
+                      "contract_package_id": {
+                        "description": "If `Some`, this is an upgrade for the given contract, otherwise it is an installer.",
+                        "anyOf": [
+                          {
+                            "$ref": "#/components/schemas/ContractPackageIdentifier"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "module_bytes": {
+                        "description": "Raw Wasm module bytes with 'call' exported as an entrypoint.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/Bytes"
+                          }
+                        ]
+                      },
+                      "args": {
+                        "description": "Runtime arguments.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A transaction targeting a stored contract.",
+                "type": "object",
+                "required": [
+                  "DirectCall"
+                ],
+                "properties": {
+                  "DirectCall": {
+                    "$ref": "#/components/schemas/DirectCallV1"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A transaction which doesn't modify global state.",
+                "type": "object",
+                "required": [
+                  "Noop"
+                ],
+                "properties": {
+                  "Noop": {
+                    "type": "object",
+                    "required": [
+                      "args",
+                      "module_bytes"
+                    ],
+                    "properties": {
+                      "module_bytes": {
+                        "description": "Raw Wasm module bytes with 'call' exported as an entrypoint.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/Bytes"
+                          }
+                        ]
+                      },
+                      "args": {
+                        "description": "Runtime arguments.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A transaction which doesn't call stored contracts.",
+                "type": "object",
+                "required": [
+                  "Closed"
+                ],
+                "properties": {
+                  "Closed": {
+                    "type": "object",
+                    "required": [
+                      "args",
+                      "module_bytes"
+                    ],
+                    "properties": {
+                      "module_bytes": {
+                        "description": "Raw Wasm module bytes with 'call' exported as an entrypoint.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/Bytes"
+                          }
+                        ]
+                      },
+                      "args": {
+                        "description": "Runtime arguments.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "Bytes": {
+            "description": "Hex-encoded bytes.",
+            "type": "string"
+          },
+          "ContractPackageIdentifier": {
+            "description": "Identifier for a contract package.",
+            "oneOf": [
+              {
+                "description": "The stored contract package within the deploy item is identified by its hash.",
+                "type": "object",
+                "required": [
+                  "Hash"
+                ],
+                "properties": {
+                  "Hash": {
+                    "type": "object",
+                    "required": [
+                      "contract_package_hash"
+                    ],
+                    "properties": {
+                      "contract_package_hash": {
+                        "description": "Hash of the contract package.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/ContractPackageHash"
+                          }
+                        ]
+                      },
+                      "version": {
+                        "description": "The version specified in the deploy item.",
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "uint32",
+                        "minimum": 0.0
+                      }
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "The stored contract package within the deploy item is identified by name.",
+                "type": "object",
+                "required": [
+                  "Name"
+                ],
+                "properties": {
+                  "Name": {
+                    "type": "object",
+                    "required": [
+                      "name"
+                    ],
+                    "properties": {
+                      "name": {
+                        "description": "Name of the contract package.",
+                        "type": "string"
+                      },
+                      "version": {
+                        "description": "The version specified in the deploy item.",
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "uint32",
+                        "minimum": 0.0
+                      }
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "ContractPackageHash": {
+            "description": "The hex-encoded address of the contract package.",
+            "type": "string"
+          },
+          "DirectCallV1": {
+            "description": "A TransactionV1 targeting a stored contract.",
+            "oneOf": [
+              {
+                "description": "Stored contract referenced by its hash.",
+                "type": "object",
+                "required": [
+                  "StoredContractByHash"
+                ],
+                "properties": {
+                  "StoredContractByHash": {
+                    "type": "object",
+                    "required": [
+                      "args",
+                      "entry_point",
+                      "hash"
+                    ],
+                    "properties": {
+                      "hash": {
+                        "description": "Contract hash.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/ContractHash"
+                          }
+                        ]
+                      },
+                      "entry_point": {
+                        "description": "Name of the entry point.",
+                        "type": "string"
+                      },
+                      "args": {
+                        "description": "Runtime arguments.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Stored contract referenced by the name of a named key in the signer's account context.",
+                "type": "object",
+                "required": [
+                  "StoredContractByName"
+                ],
+                "properties": {
+                  "StoredContractByName": {
+                    "type": "object",
+                    "required": [
+                      "args",
+                      "entry_point",
+                      "name"
+                    ],
+                    "properties": {
+                      "name": {
+                        "description": "Name of the named key.",
+                        "type": "string"
+                      },
+                      "entry_point": {
+                        "description": "Name of the entry point.",
+                        "type": "string"
+                      },
+                      "args": {
+                        "description": "Runtime arguments.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Stored versioned contract referenced by its hash.",
+                "type": "object",
+                "required": [
+                  "StoredVersionedContractByHash"
+                ],
+                "properties": {
+                  "StoredVersionedContractByHash": {
+                    "type": "object",
+                    "required": [
+                      "args",
+                      "entry_point",
+                      "hash"
+                    ],
+                    "properties": {
+                      "hash": {
+                        "description": "Contract package hash.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/ContractPackageHash"
+                          }
+                        ]
+                      },
+                      "version": {
+                        "description": "Version of the contract to call; defaults to highest enabled version if unspecified.",
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "uint32",
+                        "minimum": 0.0
+                      },
+                      "entry_point": {
+                        "description": "Name of the entry point.",
+                        "type": "string"
+                      },
+                      "args": {
+                        "description": "Runtime arguments.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Stored versioned contract referenced by the name of a named key in the signer's account context.",
+                "type": "object",
+                "required": [
+                  "StoredVersionedContractByName"
+                ],
+                "properties": {
+                  "StoredVersionedContractByName": {
+                    "type": "object",
+                    "required": [
+                      "args",
+                      "entry_point",
+                      "name"
+                    ],
+                    "properties": {
+                      "name": {
+                        "description": "Name of the named key.",
+                        "type": "string"
+                      },
+                      "version": {
+                        "description": "Version of the contract to call; defaults to highest enabled version if unspecified.",
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "uint32",
+                        "minimum": 0.0
+                      },
+                      "entry_point": {
+                        "description": "Name of the entry point.",
+                        "type": "string"
+                      },
+                      "args": {
+                        "description": "Runtime arguments.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/RuntimeArgs"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "ContractHash": {
+            "description": "The hex-encoded address of the addressable entity.",
+            "type": "string"
+          },
+          "TransactionV1Approval": {
+            "description": "A struct containing a signature of a transaction hash and the public key of the signer.",
+            "type": "object",
+            "required": [
+              "signature",
+              "signer"
+            ],
+            "properties": {
+              "signer": {
+                "$ref": "#/components/schemas/PublicKey"
+              },
+              "signature": {
+                "$ref": "#/components/schemas/Signature"
+              }
+            },
+            "additionalProperties": false
+          },
+          "TransactionHash": {
+            "description": "A versioned wrapper for a transaction hash or deploy hash.",
+            "oneOf": [
+              {
+                "description": "A deploy hash.",
+                "type": "object",
+                "required": [
+                  "Deploy"
+                ],
+                "properties": {
+                  "Deploy": {
+                    "$ref": "#/components/schemas/DeployHash"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A version 1 transaction hash.",
+                "type": "object",
+                "required": [
+                  "V1"
+                ],
+                "properties": {
+                  "V1": {
+                    "$ref": "#/components/schemas/TransactionV1Hash"
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
           "BlockHash": {
             "description": "Hex-encoded cryptographic hash of a block.",
             "type": "string"
@@ -4129,10 +5240,6 @@
               }
             }
           },
-          "Bytes": {
-            "description": "Hex-encoded bytes.",
-            "type": "string"
-          },
           "Contract": {
             "description": "Methods and type signatures supported by a contract.",
             "type": "object",
@@ -4160,10 +5267,6 @@
                 "$ref": "#/components/schemas/ProtocolVersion"
               }
             }
-          },
-          "ContractPackageHash": {
-            "description": "The hex-encoded address of the contract package.",
-            "type": "string"
           },
           "ContractWasmHash": {
             "description": "The hash address of the contract wasm",
@@ -4422,10 +5525,6 @@
                 "minimum": 0.0
               }
             }
-          },
-          "ContractHash": {
-            "description": "The hex-encoded address of the addressable entity.",
-            "type": "string"
           },
           "Array_of_NamedUserGroup": {
             "type": "array",

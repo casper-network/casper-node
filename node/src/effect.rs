@@ -130,7 +130,6 @@ use casper_types::{
     PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId, Transfer, U512,
 };
 
-use crate::types::TransactionWithFinalizedApprovals;
 use crate::{
     components::{
         block_synchronizer::{
@@ -154,7 +153,8 @@ use crate::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
         ExecutableBlock, ExecutionInfo, FinalizedApprovals, FinalizedBlock, LegacyDeploy,
-        MetaBlock, MetaBlockState, NodeId, SignedBlock, TrieOrChunk, TrieOrChunkId,
+        MetaBlock, MetaBlockState, NodeId, SignedBlock, TransactionWithFinalizedApprovals,
+        TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };

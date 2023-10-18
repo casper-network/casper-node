@@ -138,7 +138,7 @@ fn create_sync_leap_test_chain(
         blocks.push(block);
     });
     blocks.iter().for_each(|block| {
-        storage.write_block(block).unwrap();
+        storage.put_block(block).unwrap();
 
         let fs = FinalitySignature::create(*block.hash(), block.era_id(), &validator_secret_key);
         assert!(fs.is_verified().is_ok());
@@ -1790,7 +1790,7 @@ fn should_restrict_returned_blocks() {
             .switch_block(false)
             .build_versioned(&mut harness.rng);
 
-        storage.write_block(&block).unwrap();
+        storage.put_block(&block).unwrap();
         storage.completed_blocks.insert(height);
     });
 
