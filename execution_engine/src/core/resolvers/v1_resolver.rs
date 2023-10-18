@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use wasmi::{
+use casper_wasmi::{
     memory_units::Pages, Error as InterpreterError, FuncInstance, FuncRef, MemoryDescriptor,
     MemoryInstance, MemoryRef, ModuleImportResolver, Signature, ValueType,
 };

@@ -41,6 +41,3 @@ lto = true
 [profile.bench]
 codegen-units = 1
 lto = true
-
-[patch.crates-io]
-parity-wasm = { git = "https://github.com/casper-network/casper-wasm.git", branch = "casper-0.45.0" }

@@ -10,10 +10,19 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Security:   in case of vulnerabilities)
 
 
-## [Unreleased]
+
+## 6.0.0
 
 ### Changed
 * Default value for `max_stack_height` is increased to 500.
+* Replaced usage of `parity-wasm` and `wasmi` with Casper forks `casper-wasm` and `casper-wasmi` respectively.
+
+### Fixed
+* Fix incorrect handling of unbonding purses for validators that were also evicted in that era.
+* Fix issue with one-time code used for migrating data to support redelegations.
+
+### Security
+* Fix unbounded memory allocation issue while parsing Wasm.
 
 
 

@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## Unreleased
+## 1.5.3
 
 ### Added
 * Add `deploy_acceptor` section to config with a single option `timestamp_leeway` to allow a small leeway when deciding if a deploy is future-dated.
