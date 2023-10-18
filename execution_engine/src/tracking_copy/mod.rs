@@ -18,7 +18,7 @@ use thiserror::Error;
 use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
 use casper_types::{
     addressable_entity::NamedKeys,
-    bytesrepr::{self},
+    bytesrepr,
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
     CLType, CLValue, CLValueError, Digest, Key, KeyTag, StoredValue, StoredValueTypeMismatch,
     Tagged, U512,
@@ -567,6 +567,32 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                     return Ok(query.into_not_found_result("URef value found."));
                 }
             }
+        }
+    }
+
+    /// Internal convenience method for reading a value directly with a URef key.
+    pub(crate) fn read_uref_value(&mut self, key: &Key) -> Result<Option<StoredValue>, R::Error> {
+        let key = self.resolve_uref_indirection(*key)?;
+        let Some(res) = self.read(&key)? else { return Ok(None)};
+        Ok(Some(res))
+    }
+
+    /// Internal convenience method for writing a value directly with a URef key.
+    pub(crate) fn write_uref_value(
+        &mut self,
+        key: Key,
+        value: StoredValue,
+    ) -> Result<(), R::Error> {
+        let key = self.resolve_uref_indirection(key)?;
+        self.write(key, value);
+        Ok(())
+    }
+
+    /// Internal convenience method for resolving a key from underneath a URef.
+    pub(crate) fn resolve_uref_indirection(&mut self, key: Key) -> Result<Key, R::Error> {
+        match self.read(&key)? {
+            Some(StoredValue::URef(ctx, _)) => Ok(Key::Context(ctx)),
+            _ => Ok(key),
         }
     }
 }

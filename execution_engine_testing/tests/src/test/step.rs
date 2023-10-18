@@ -1,5 +1,3 @@
-use std::convert::TryFrom;
-
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 
@@ -15,8 +13,8 @@ use casper_types::{
         },
         mint::TOTAL_SUPPLY_KEY,
     },
-    CLValue, ContractHash, EraId, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion,
-    PublicKey, SecretKey, U512,
+    ContractHash, EraId, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion, PublicKey,
+    SecretKey, U512,
 };
 
 static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
@@ -137,14 +135,11 @@ fn should_adjust_total_supply() {
     // should check total supply before step
     let total_supply_key = get_named_key(&mut builder, mint_hash, TOTAL_SUPPLY_KEY);
 
-    let starting_total_supply = CLValue::try_from(
-        builder
-            .query(maybe_post_state_hash, total_supply_key, &[])
-            .expect("should have total supply"),
-    )
-    .expect("should be a CLValue")
-    .into_t::<U512>()
-    .expect("should be U512");
+    let starting_total_supply = builder
+        .query_uref_value(maybe_post_state_hash, total_supply_key, &[])
+        .expect("should have total supply")
+        .into_t::<U512>()
+        .expect("should be U512");
 
     // slash
     let step_request = StepRequestBuilder::new()
@@ -160,14 +155,11 @@ fn should_adjust_total_supply() {
     let maybe_post_state_hash = Some(builder.get_post_state_hash());
 
     // should check total supply after step
-    let modified_total_supply = CLValue::try_from(
-        builder
-            .query(maybe_post_state_hash, total_supply_key, &[])
-            .expect("should have total supply"),
-    )
-    .expect("should be a CLValue")
-    .into_t::<U512>()
-    .expect("should be U512");
+    let modified_total_supply = builder
+        .query_uref_value(maybe_post_state_hash, total_supply_key, &[])
+        .expect("should have total supply")
+        .into_t::<U512>()
+        .expect("should be U512");
 
     assert!(
         modified_total_supply < starting_total_supply,

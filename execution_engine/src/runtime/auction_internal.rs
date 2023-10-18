@@ -40,8 +40,8 @@ where
     R: StateReader<Key, StoredValue>,
     R::Error: Into<execution::Error>,
 {
-    fn read<T: FromBytes + CLTyped>(&mut self, key: Key) -> Result<Option<T>, Error> {
-        match self.context.read_gs(&key) {
+    fn read<T: FromBytes + CLTyped>(&mut self, uref: URef) -> Result<Option<T>, Error> {
+        match self.context.read_gs(&uref.into()) {
             Ok(Some(StoredValue::CLValue(cl_value))) => {
                 Ok(Some(cl_value.into_t().map_err(|_| Error::CLValue)?))
             }
@@ -61,10 +61,10 @@ where
         }
     }
 
-    fn write<T: ToBytes + CLTyped>(&mut self, key: Key, value: T) -> Result<(), Error> {
+    fn write<T: ToBytes + CLTyped>(&mut self, uref: URef, value: T) -> Result<(), Error> {
         let cl_value = CLValue::from_t(value).map_err(|_| Error::CLValue)?;
         self.context
-            .metered_write_gs(key, StoredValue::CLValue(cl_value))
+            .metered_write_gs(Key::URef(uref), StoredValue::CLValue(cl_value))
             .map_err(|exec_error| {
                 error!("StorageProvider::write: {:?}", exec_error);
                 <Option<Error>>::from(exec_error).unwrap_or(Error::Storage)

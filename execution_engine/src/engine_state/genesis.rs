@@ -547,6 +547,10 @@ pub enum GenesisError {
     ///
     /// This error can occur only on some private chains.
     DuplicatedAdministratorEntry,
+    /// An attempt to resolve a system URef has failed.
+    FailedToResolveSystemURef,
+    /// An attempt to write to a system URef has failed.
+    FailedToWriteToSystemURef,
 }
 
 pub(crate) struct GenesisInstaller<S>
@@ -617,18 +621,18 @@ where
                 round_seigniorage_rate_denom.into(),
             );
 
-            self.new_context_key(contract_hash, round_seigniorage_rate)?
+            self.new_system_uref(contract_hash, round_seigniorage_rate)?
         };
 
-        let total_supply_key = self.new_context_key(contract_hash, U512::zero())?;
+        let total_supply_key = self.new_system_uref(contract_hash, U512::zero())?;
 
         let named_keys = {
             let mut named_keys = NamedKeys::new();
             named_keys.insert(
                 ROUND_SEIGNIORAGE_RATE_KEY.to_string(),
-                Key::Context(round_seigniorage_rate_key),
+                Key::URef(round_seigniorage_rate_key),
             );
-            named_keys.insert(TOTAL_SUPPLY_KEY.to_string(), Key::Context(total_supply_key));
+            named_keys.insert(TOTAL_SUPPLY_KEY.to_string(), Key::URef(total_supply_key));
 
             named_keys
         };
@@ -657,7 +661,7 @@ where
             );
         }
 
-        Ok(Key::Context(total_supply_key))
+        Ok(Key::URef(total_supply_key))
     }
 
     fn create_handle_payment(
@@ -819,6 +823,11 @@ where
             staked
         };
 
+        let total_supply_key = self
+            .tracking_copy
+            .borrow_mut()
+            .resolve_uref_indirection(total_supply_key)
+            .map_err(|_| GenesisError::FailedToResolveSystemURef)?;
         let _ = self.tracking_copy.borrow_mut().add(
             total_supply_key,
             StoredValue::CLValue(
@@ -830,21 +839,21 @@ where
         let initial_seigniorage_recipients =
             self.initial_seigniorage_recipients(&staked, auction_delay);
 
-        let era_id_key = self.new_context_key(contract_hash, INITIAL_ERA_ID)?;
-        named_keys.insert(ERA_ID_KEY.into(), Key::Context(era_id_key));
+        let era_id_key = self.new_system_uref(contract_hash, INITIAL_ERA_ID)?;
+        named_keys.insert(ERA_ID_KEY.into(), Key::URef(era_id_key));
 
         let era_end_timestamp_millis_key =
-            self.new_context_key(contract_hash, INITIAL_ERA_END_TIMESTAMP_MILLIS)?;
+            self.new_system_uref(contract_hash, INITIAL_ERA_END_TIMESTAMP_MILLIS)?;
         named_keys.insert(
             ERA_END_TIMESTAMP_MILLIS_KEY.into(),
-            Key::Context(era_end_timestamp_millis_key),
+            Key::URef(era_end_timestamp_millis_key),
         );
 
         let initial_seigniorage_recipients_key =
-            self.new_context_key(contract_hash, initial_seigniorage_recipients)?;
+            self.new_system_uref(contract_hash, initial_seigniorage_recipients)?;
         named_keys.insert(
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.into(),
-            Key::Context(initial_seigniorage_recipients_key),
+            Key::URef(initial_seigniorage_recipients_key),
         );
 
         // store all delegator and validator bids
@@ -867,28 +876,22 @@ where
         }
 
         let validator_slots = self.exec_config.validator_slots();
-        let validator_slots_key = self.new_context_key(contract_hash, validator_slots)?;
-        named_keys.insert(
-            VALIDATOR_SLOTS_KEY.into(),
-            Key::Context(validator_slots_key),
-        );
+        let validator_slots_key = self.new_system_uref(contract_hash, validator_slots)?;
+        named_keys.insert(VALIDATOR_SLOTS_KEY.into(), Key::URef(validator_slots_key));
 
-        let auction_delay_key = self.new_context_key(contract_hash, auction_delay)?;
-        named_keys.insert(AUCTION_DELAY_KEY.into(), Key::Context(auction_delay_key));
+        let auction_delay_key = self.new_system_uref(contract_hash, auction_delay)?;
+        named_keys.insert(AUCTION_DELAY_KEY.into(), Key::URef(auction_delay_key));
 
         let locked_funds_period_key =
-            self.new_context_key(contract_hash, locked_funds_period_millis)?;
+            self.new_system_uref(contract_hash, locked_funds_period_millis)?;
         named_keys.insert(
             LOCKED_FUNDS_PERIOD_KEY.into(),
-            Key::Context(locked_funds_period_key),
+            Key::URef(locked_funds_period_key),
         );
 
         let unbonding_delay = self.exec_config.unbonding_delay();
-        let unbonding_delay_key = self.new_context_key(contract_hash, unbonding_delay)?;
-        named_keys.insert(
-            UNBONDING_DELAY_KEY.into(),
-            Key::Context(unbonding_delay_key),
-        );
+        let unbonding_delay_key = self.new_system_uref(contract_hash, unbonding_delay)?;
+        named_keys.insert(UNBONDING_DELAY_KEY.into(), Key::URef(unbonding_delay_key));
 
         let entry_points = auction::auction_entry_points();
         self.store_system_contract(
@@ -973,13 +976,16 @@ where
             total_supply += account_starting_balance;
         }
 
-        self.tracking_copy.borrow_mut().write(
-            total_supply_key,
-            StoredValue::CLValue(
-                CLValue::from_t(total_supply)
-                    .map_err(|_| GenesisError::CLValue(TOTAL_SUPPLY_KEY.to_string()))?,
-            ),
-        );
+        self.tracking_copy
+            .borrow_mut()
+            .write_uref_value(
+                total_supply_key,
+                StoredValue::CLValue(
+                    CLValue::from_t(total_supply)
+                        .map_err(|_| GenesisError::CLValue(TOTAL_SUPPLY_KEY.to_string()))?,
+                ),
+            )
+            .map_err(|_| GenesisError::FailedToWriteToSystemURef)?;
 
         Ok(())
     }
@@ -1147,19 +1153,26 @@ where
         Ok(())
     }
 
-    fn new_context_key(
+    fn new_system_uref(
         &self,
         owner: ContractHash,
         value: impl CLTyped + ToBytes,
-    ) -> Result<Context, Box<GenesisError>> {
-        let addr = self.address_generator.borrow_mut().create_address();
-        let ctx = Context::new(owner, addr);
+    ) -> Result<URef, Box<GenesisError>> {
+        let uref = self
+            .address_generator
+            .borrow_mut()
+            .new_uref(AccessRights::READ_ADD_WRITE);
+        let ctx = Context::new(owner, uref.addr());
         let encoded =
             CLValue::from_t(value).map_err(|error| GenesisError::CLValue(error.to_string()))?;
         self.tracking_copy
             .borrow_mut()
             .write(Key::Context(ctx), StoredValue::CLValue(encoded));
-        Ok(ctx)
+        self.tracking_copy.borrow_mut().write(
+            Key::URef(uref),
+            StoredValue::URef(ctx, Lifetime::Indefinite),
+        );
+        Ok(uref)
     }
 
     fn store_system_contract_registry(

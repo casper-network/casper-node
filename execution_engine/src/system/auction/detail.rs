@@ -25,7 +25,8 @@ where
     T: FromBytes + CLTyped,
 {
     let key = provider.named_keys_get(name).ok_or(Error::MissingKey)?;
-    let value: T = provider.read(key)?.ok_or(Error::MissingValue)?;
+    let uref = key.into_uref().ok_or(Error::InvalidKeyVariant)?;
+    let value: T = provider.read(uref)?.ok_or(Error::MissingValue)?;
     Ok(value)
 }
 
@@ -35,7 +36,8 @@ where
     T: ToBytes + CLTyped,
 {
     let key = provider.named_keys_get(name).ok_or(Error::MissingKey)?;
-    provider.write(key, value)
+    let uref = key.into_uref().ok_or(Error::InvalidKeyVariant)?;
+    provider.write(uref, value)
 }
 
 pub fn get_validator_bids<P>(provider: &mut P) -> Result<ValidatorBids, Error>

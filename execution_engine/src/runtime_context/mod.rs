@@ -1259,7 +1259,7 @@ where
         self.remaining_spending_limit = amount;
     }
 
-    fn resolve_uref_indirection(&mut self, key: Key) -> Result<Key, Error> {
+    pub(crate) fn resolve_uref_indirection(&mut self, key: Key) -> Result<Key, Error> {
         match key {
             Key::URef(uref) => match self.read_gs_direct(&Key::URef(uref))? {
                 Some(StoredValue::URef(context, lifetime))
@@ -1274,24 +1274,24 @@ where
     }
 
     fn get_current_era(&mut self) -> Result<EraId, Error> {
-        // TODO: kinda awful error handling
         let auction_hash = self.get_system_contract(AUCTION)?;
         let auction_contract = self
             .read_gs_direct(&Key::from(auction_hash))?
-            .ok_or_else(|| Error::Interpreter("auction contract not found".to_string()))?
+            .ok_or(Error::FailedToRetrieveAuctionContract)?
             .into_addressable_entity()
-            .ok_or_else(|| Error::Interpreter("auction contract is not a entity".to_string()))?;
+            .ok_or(Error::FailedToRetrieveAuctionContract)?;
         let era_id_key = auction_contract
             .named_keys()
             .get(ERA_ID_KEY)
-            .ok_or_else(|| Error::Interpreter("era id key not found".to_string()))?;
-        self.read_gs_direct(era_id_key)?
-            .ok_or_else(|| {
-                Error::Interpreter("era id key points to non-existent value".to_string())
-            })?
+            .ok_or(Error::FailedToReadCurrentEra)?;
+        self.tracking_copy
+            .borrow_mut()
+            .read_uref_value(era_id_key)
+            .map_err(|_| Error::FailedToReadCurrentEra)?
+            .ok_or(Error::FailedToReadCurrentEra)?
             .into_cl_value()
-            .ok_or_else(|| Error::Interpreter("era id key points to non-CLValue".to_string()))?
+            .ok_or(Error::FailedToReadCurrentEra)?
             .into_t()
-            .map_err(|e| Error::Interpreter(format!("era id key points to invalid CLValue: {}", e)))
+            .map_err(|_| Error::FailedToReadCurrentEra)
     }
 }

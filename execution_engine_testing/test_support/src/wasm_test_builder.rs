@@ -695,9 +695,10 @@ where
             .expect("should have mint_contract_hash")
             .into();
 
-        let result = self.query(maybe_post_state, mint_key, &[TOTAL_SUPPLY_KEY.to_string()]);
+        let result =
+            self.query_uref_value(maybe_post_state, mint_key, &[TOTAL_SUPPLY_KEY.to_string()]);
 
-        let total_supply: U512 = if let Ok(StoredValue::CLValue(total_supply)) = result {
+        let total_supply: U512 = if let Ok(total_supply) = result {
             total_supply.into_t().expect("total supply should be U512")
         } else {
             panic!("mint should track total supply");
@@ -729,18 +730,14 @@ where
             .expect("must track round seigniorage rate");
 
         let total_supply = self
-            .query(maybe_post_state, total_supply_key, &[])
+            .query_uref_value(maybe_post_state, total_supply_key, &[])
             .expect("must read value under total supply URef")
-            .into_cl_value()
-            .expect("must convert into CL value")
             .into_t::<U512>()
             .expect("must convert into U512");
 
         let rate = self
-            .query(maybe_post_state, round_seigniorage_rate_key, &[])
+            .query_uref_value(maybe_post_state, round_seigniorage_rate_key, &[])
             .expect("must read value")
-            .into_cl_value()
-            .expect("must conver to cl value")
             .into_t::<Ratio<U512>>()
             .expect("must conver to ratio");
 
@@ -1398,8 +1395,9 @@ where
             .named_keys()
             .get(name)
             .expect("should have named key");
-        let stored_value = self.query(None, *key, &[]).expect("should query");
-        let cl_value = stored_value.into_cl_value().expect("should be cl value");
+        let cl_value = self
+            .query_uref_value(None, *key, &[])
+            .expect("should query");
         let result: T = cl_value.into_t().expect("should convert");
         result
     }

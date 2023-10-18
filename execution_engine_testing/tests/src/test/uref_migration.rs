@@ -9,7 +9,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::{engine_state::EngineConfig, tracking_copy::TrackingCopyQueryResult};
 use casper_types::{
     system::{auction::ERA_ID_KEY, handle_payment::PAYMENT_PURSE_KEY},
-    AccessRights, CLValue, EraId, Key, KeyTag, ProtocolVersion, StoredValue, URef,
+    AccessRights, CLValue, EraId, Key, KeyTag, ProtocolVersion, URef,
 };
 
 use crate::lmdb_fixture;
@@ -47,14 +47,12 @@ fn should_upgrade_urefs_in_system_contracts() {
         .expect_upgrade_success();
 
     assert_eq!(
-        builder.query(
+        builder.query_uref_value(
             None,
             Key::from(builder.get_system_auction_hash()),
             &[ERA_ID_KEY.to_owned()],
         ),
-        Ok(StoredValue::CLValue(
-            CLValue::from_t(EraId::new(0)).unwrap()
-        ))
+        Ok(CLValue::from_t(EraId::new(0)).unwrap())
     );
 
     assert_eq!(

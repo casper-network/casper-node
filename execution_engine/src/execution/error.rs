@@ -191,6 +191,12 @@ pub enum Error {
     /// Failed to transfer tokens on a private chain.
     #[error("Failed to transfer with unrestricted transfers disabled")]
     DisabledUnrestrictedTransfers,
+    /// Failed to retrieve the auction contract.
+    #[error("Failed to retrieve the auction contract")]
+    FailedToRetrieveAuctionContract,
+    /// Failed to read the current era.
+    #[error("Failed to read the current era")]
+    FailedToReadCurrentEra,
 }
 
 impl From<PreprocessingError> for Error {

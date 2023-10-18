@@ -101,7 +101,7 @@ use crate::{
     execution::{self, AddressGenerator, DirectSystemContractCall, Executor},
     runtime::RuntimeStack,
     system::auction,
-    tracking_copy::{TrackingCopy, TrackingCopyExt},
+    tracking_copy::{TrackingCopy, TrackingCopyExt, TrackingCopyQueryResult},
 };
 
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
@@ -435,7 +435,8 @@ where
             );
             tracking_copy
                 .borrow_mut()
-                .write(*validator_slots_key, value);
+                .write_uref_value(*validator_slots_key, value)
+                .map_err(|err| err.into())?;
         }
 
         if let Some(new_auction_delay) = upgrade_config.new_auction_delay() {
@@ -450,7 +451,10 @@ where
                 CLValue::from_t(new_auction_delay)
                     .map_err(|_| Error::Bytesrepr("new_auction_delay".to_string()))?,
             );
-            tracking_copy.borrow_mut().write(*auction_delay_key, value);
+            tracking_copy
+                .borrow_mut()
+                .write_uref_value(*auction_delay_key, value)
+                .map_err(|err| err.into())?;
         }
 
         if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period_millis() {
@@ -466,7 +470,8 @@ where
             );
             tracking_copy
                 .borrow_mut()
-                .write(*locked_funds_period_key, value);
+                .write_uref_value(*locked_funds_period_key, value)
+                .map_err(|err| err.into())?;
         }
 
         if let Some(new_round_seigniorage_rate) = upgrade_config.new_round_seigniorage_rate() {
@@ -487,7 +492,8 @@ where
             );
             tracking_copy
                 .borrow_mut()
-                .write(*locked_funds_period_key, value);
+                .write_uref_value(*locked_funds_period_key, value)
+                .map_err(|err| err.into())?;
         }
 
         // One time upgrade of existing bids
@@ -545,7 +551,11 @@ where
 
         // apply accepted global state updates (if any)
         for (key, value) in upgrade_config.global_state_update() {
-            tracking_copy.borrow_mut().write(*key, value.clone());
+            let key = tracking_copy
+                .borrow_mut()
+                .resolve_uref_indirection(*key)
+                .map_err(|_| Error::FailedToResolveUref)?;
+            tracking_copy.borrow_mut().write(key, value.clone());
         }
 
         // This is a one time data transformation which will be removed
@@ -566,8 +576,8 @@ where
                     .expect("unbonding_delay key must exist in auction contract's named keys");
                 let delay = tracking_copy
                     .borrow_mut()
-                    .read(unbonding_delay_key)
-                    .map_err(|error| error.into())?
+                    .read_uref_value(unbonding_delay_key)
+                    .map_err(|err| err.into())?
                     .ok_or(Error::FailedToRetrieveUnbondingDelay)?
                     .into_cl_value()
                     .ok_or_else(|| Error::Bytesrepr("unbonding_delay".to_string()))?
@@ -578,11 +588,10 @@ where
                     .named_keys()
                     .get(ERA_ID_KEY)
                     .expect("era_id key must exist in auction contract's named keys");
-
                 let era_id = tracking_copy
                     .borrow_mut()
-                    .read(era_id_key)
-                    .map_err(|error| error.into())?
+                    .read_uref_value(era_id_key)
+                    .map_err(|err| err.into())?
                     .ok_or(Error::FailedToRetrieveEraId)?
                     .into_cl_value()
                     .ok_or_else(|| Error::Bytesrepr("era_id".to_string()))?
@@ -645,7 +654,8 @@ where
             );
             tracking_copy
                 .borrow_mut()
-                .write(*unbonding_delay_key, value);
+                .write_uref_value(*unbonding_delay_key, value)
+                .map_err(|err| err.into())?;
         }
 
         // EraInfo migration
@@ -702,8 +712,6 @@ where
         &self,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Result<(), Error> {
-        let system_contracts = tracking_copy.borrow_mut().get_system_contracts()?;
-
         let all_contract_keys = tracking_copy
             .borrow_mut()
             .get_keys(&KeyTag::Hash)
@@ -740,28 +748,7 @@ where
                 unreached_uref_keys.remove(&key.normalize());
             }
 
-            let new_keys = self.migrate_urefs_on_entity(
-                owner,
-                named_keys,
-                system_contracts.has_contract_hash(&owner),
-                tracking_copy.clone(),
-            )?;
-
-            let updated_stored_value = match stored_value {
-                StoredValue::AddressableEntity(mut entity) => {
-                    entity.named_keys_append(new_keys);
-                    StoredValue::AddressableEntity(entity)
-                }
-                StoredValue::Contract(mut contract) => {
-                    contract.append_named_keys(new_keys);
-                    StoredValue::Contract(contract)
-                }
-                _ => return Err(Error::KeyPointingAtUnexpectedType(contract_key)),
-            };
-
-            tracking_copy
-                .borrow_mut()
-                .write(Key::Hash(owner.value()), updated_stored_value);
+            self.migrate_urefs_on_entity(owner, named_keys, tracking_copy.clone())?;
         }
 
         for key in unreached_uref_keys {
@@ -775,12 +762,10 @@ where
         &self,
         contract_hash: ContractHash,
         named_keys: &NamedKeys,
-        is_system_contract: bool,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-    ) -> Result<NamedKeys, Error> {
-        let mut new_keys = NamedKeys::new();
-
-        for (name, key) in named_keys.iter() {
+    ) -> Result<(), Error> {
+        for (_, key) in named_keys.iter() {
+            dbg!(&key);
             let value = tracking_copy
                 .borrow_mut()
                 .read(key)
@@ -789,23 +774,9 @@ where
             let &Key::URef(uref) = key else {
                 continue;
             };
-            let balance = tracking_copy
-                .borrow_mut()
-                .get(&Key::Balance(uref.addr()))
-                .map_err(|_| Error::FailedToGetStoredBalance)?;
 
-            match (value, balance) {
-                // we match on the balance to ensure that we only replace URefs with Context keys
-                // for keys that do not represent purses
-                (Some(StoredValue::CLValue(value)), None) if is_system_contract => {
-                    let ctx = Context::new(contract_hash, uref.addr());
-                    tracking_copy
-                        .borrow_mut()
-                        .write(Key::Context(ctx), value.into());
-
-                    new_keys.insert(name.clone(), Key::Context(ctx));
-                }
-                (Some(StoredValue::CLValue(value)), _) => {
+            match value {
+                Some(StoredValue::CLValue(value)) => {
                     let ctx = Context::new(contract_hash, uref.addr());
                     let stored_uref = StoredValue::URef(ctx, Lifetime::Indefinite);
                     tracking_copy
@@ -815,12 +786,12 @@ where
                         .borrow_mut()
                         .write(Key::Context(ctx), value.into());
                 }
-                (Some(StoredValue::URef(_, _)), _) => {}
+                Some(StoredValue::URef(_, _)) => {}
                 _ => return Err(Error::KeyPointingAtUnexpectedType(*key)),
             }
         }
 
-        Ok(new_keys)
+        Ok(())
     }
 
     /// Commit a prune of leaf nodes from the tip of the merkle trie.
@@ -2353,41 +2324,53 @@ where
             .copied()
             .ok_or_else(|| Error::MissingSystemContractHash(AUCTION.to_string()))?;
 
-        let query_request = QueryRequest::new(
-            state_root_hash,
-            auction_hash.into(),
-            vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()],
-        );
-
-        let snapshot = match self.run_query(query_request)? {
-            QueryResult::RootNotFound => return Err(GetEraValidatorsError::RootNotFound),
-            QueryResult::ValueNotFound(error) => {
+        let mut tc = self
+            .tracking_copy(state_root_hash)?
+            .ok_or_else(|| GetEraValidatorsError::RootNotFound)?;
+        let stored_value = match tc
+            .query(
+                &self.config,
+                auction_hash.into(),
+                &[SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()],
+            )
+            .map_err(|err| Error::Exec(err.into()))?
+        {
+            TrackingCopyQueryResult::ValueNotFound(error) => {
                 error!(%error, "unexpected query failure; value not found");
                 return Err(GetEraValidatorsError::EraValidatorsMissing);
             }
-            QueryResult::CircularReference(error) => {
+            TrackingCopyQueryResult::CircularReference(error) => {
                 error!(%error, "unexpected query failure; circular reference");
                 return Err(GetEraValidatorsError::UnexpectedQueryFailure);
             }
-            QueryResult::DepthLimit { depth } => {
+            TrackingCopyQueryResult::DepthLimit { depth } => {
                 error!(%depth, "unexpected query failure; depth limit exceeded");
                 return Err(GetEraValidatorsError::UnexpectedQueryFailure);
             }
-            QueryResult::Success { value, proofs: _ } => {
-                let cl_value = match value.into_cl_value() {
-                    Some(snapshot_cl_value) => snapshot_cl_value,
-                    None => {
-                        error!("unexpected query failure; seigniorage recipients snapshot is not a CLValue");
-                        return Err(GetEraValidatorsError::UnexpectedQueryFailure);
-                    }
-                };
-
-                cl_value.into_t().map_err(|cl_value_error| {
-                    error!(%cl_value_error, "unexpected query failure; unable to parse seigniorage recipients");
-                    GetEraValidatorsError::CLValue
-                })?
-            }
+            TrackingCopyQueryResult::Success { value, .. } => value,
         };
+
+        let (ctx, _) = stored_value.into_uref().ok_or_else(|| {
+            error!("unexpected query failure; value not a URef");
+            GetEraValidatorsError::UnexpectedQueryFailure
+        })?;
+        let snapshot = tc
+            .read(&Key::Context(ctx))
+            .map_err(|_| {
+                error!("unexpected query failure; unable to read seigniorage recipients");
+                GetEraValidatorsError::UnexpectedQueryFailure
+            })?
+            .ok_or(GetEraValidatorsError::EraValidatorsMissing)?
+            .into_cl_value()
+            .ok_or_else(|| {
+                error!("unexpected query failure; seigniorage recipients is not a CLValue");
+                GetEraValidatorsError::UnexpectedQueryFailure
+            })?
+            .into_t()
+            .map_err(|err| {
+                error!(%err, "unexpected query failure; unable to parse seigniorage recipients");
+                GetEraValidatorsError::CLValue
+            })?;
 
         let era_validators_result = auction::detail::era_validators_from_snapshot(snapshot);
         Ok(era_validators_result)
@@ -2928,7 +2911,9 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::DisabledContract(_)
                 | ExecError::UnexpectedKeyVariant(_)
                 | ExecError::InvalidContractPackageKind(_)
-                | ExecError::Transform(_) => false,
+                | ExecError::Transform(_)
+                | ExecError::FailedToRetrieveAuctionContract
+                | ExecError::FailedToReadCurrentEra => false,
                 ExecError::DisabledUnrestrictedTransfers => false,
             },
             Error::WasmPreprocessing(_) => true,
@@ -2963,6 +2948,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
             | Error::FailedToGetWithdrawPurses
             | Error::FailedToRetrieveUnbondingDelay
             | Error::FailedToRetrieveEraId
+            | Error::FailedToResolveUref
             | Error::MissingTrieNodeChildren(_)
             | Error::FailedToRetrieveAccumulationPurse => false,
             Error::FailedToPrune(_) => false,

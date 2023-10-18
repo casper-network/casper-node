@@ -317,11 +317,8 @@ fn should_upgrade_only_validator_slots() {
         .unwrap();
 
     let before_validator_slots: u32 = builder
-        .query(None, validator_slot_key, &[])
+        .query_uref_value(None, validator_slot_key, &[])
         .expect("should have validator slots")
-        .as_cl_value()
-        .expect("should be CLValue")
-        .clone()
         .into_t()
         .expect("should be u32");
 
@@ -341,11 +338,8 @@ fn should_upgrade_only_validator_slots() {
         .expect_upgrade_success();
 
     let after_validator_slots: u32 = builder
-        .query(None, validator_slot_key, &[])
+        .query_uref_value(None, validator_slot_key, &[])
         .expect("should have validator slots")
-        .as_cl_value()
-        .expect("should be CLValue")
-        .clone()
         .into_t()
         .expect("should be u32");
 
@@ -374,11 +368,8 @@ fn should_upgrade_only_auction_delay() {
         .unwrap();
 
     let before_auction_delay: u64 = builder
-        .query(None, auction_delay_key, &[])
+        .query_uref_value(None, auction_delay_key, &[])
         .expect("should have auction delay")
-        .as_cl_value()
-        .expect("should be a CLValue")
-        .clone()
         .into_t()
         .expect("should be u64");
 
@@ -398,11 +389,8 @@ fn should_upgrade_only_auction_delay() {
         .expect_upgrade_success();
 
     let after_auction_delay: u64 = builder
-        .query(None, auction_delay_key, &[])
+        .query_uref_value(None, auction_delay_key, &[])
         .expect("should have auction delay")
-        .as_cl_value()
-        .expect("should be a CLValue")
-        .clone()
         .into_t()
         .expect("should be u64");
 
@@ -431,11 +419,8 @@ fn should_upgrade_only_locked_funds_period() {
         .unwrap();
 
     let before_locked_funds_period_millis: u64 = builder
-        .query(None, locked_funds_period_key, &[])
+        .query_uref_value(None, locked_funds_period_key, &[])
         .expect("should have locked funds period")
-        .as_cl_value()
-        .expect("should be a CLValue")
-        .clone()
         .into_t()
         .expect("should be u64");
 
@@ -455,11 +440,8 @@ fn should_upgrade_only_locked_funds_period() {
         .expect_upgrade_success();
 
     let after_locked_funds_period_millis: u64 = builder
-        .query(None, locked_funds_period_key, &[])
+        .query_uref_value(None, locked_funds_period_key, &[])
         .expect("should have locked funds period")
-        .as_cl_value()
-        .expect("should be a CLValue")
-        .clone()
         .into_t()
         .expect("should be u64");
 
@@ -488,11 +470,8 @@ fn should_upgrade_only_round_seigniorage_rate() {
         .unwrap();
 
     let before_round_seigniorage_rate: Ratio<U512> = builder
-        .query(None, round_seigniorage_rate_key, &[])
+        .query_uref_value(None, round_seigniorage_rate_key, &[])
         .expect("should have locked funds period")
-        .as_cl_value()
-        .expect("should be a CLValue")
-        .clone()
         .into_t()
         .expect("should be u64");
 
@@ -512,11 +491,8 @@ fn should_upgrade_only_round_seigniorage_rate() {
         .expect_upgrade_success();
 
     let after_round_seigniorage_rate: Ratio<U512> = builder
-        .query(None, round_seigniorage_rate_key, &[])
+        .query_uref_value(None, round_seigniorage_rate_key, &[])
         .expect("should have locked funds period")
-        .as_cl_value()
-        .expect("should be a CLValue")
-        .clone()
         .into_t()
         .expect("should be u64");
 
@@ -552,11 +528,8 @@ fn should_upgrade_only_unbonding_delay() {
         .unwrap();
 
     let before_unbonding_delay: u64 = builder
-        .query(None, unbonding_delay_key, &[])
+        .query_uref_value(None, unbonding_delay_key, &[])
         .expect("should have locked funds period")
-        .as_cl_value()
-        .expect("should be a CLValue")
-        .clone()
         .into_t()
         .expect("should be u64");
 
@@ -576,11 +549,8 @@ fn should_upgrade_only_unbonding_delay() {
         .expect_upgrade_success();
 
     let after_unbonding_delay: u64 = builder
-        .query(None, unbonding_delay_key, &[])
+        .query_uref_value(None, unbonding_delay_key, &[])
         .expect("should have locked funds period")
-        .as_cl_value()
-        .expect("should be a CLValue")
-        .clone()
         .into_t()
         .expect("should be u64");
 
@@ -612,11 +582,8 @@ fn should_apply_global_state_upgrade() {
         .unwrap();
 
     let before_unbonding_delay: u64 = builder
-        .query(None, unbonding_delay_key, &[])
+        .query_uref_value(None, unbonding_delay_key, &[])
         .expect("should have locked funds period")
-        .as_cl_value()
-        .expect("should be a CLValue")
-        .clone()
         .into_t()
         .expect("should be u64");
 
@@ -642,11 +609,8 @@ fn should_apply_global_state_upgrade() {
         .expect_upgrade_success();
 
     let after_unbonding_delay: u64 = builder
-        .query(None, unbonding_delay_key, &[])
+        .query_uref_value(None, unbonding_delay_key, &[])
         .expect("should have locked funds period")
-        .as_cl_value()
-        .expect("should be a CLValue")
-        .clone()
         .into_t()
         .expect("should be u64");
 
