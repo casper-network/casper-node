@@ -168,11 +168,11 @@ pub use transaction::{
     DeployConfigurationFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
     DeployFootprint, DeployHash, DeployHeader, DeployId, DirectCallV1, EntityIdentifier,
     ExecutableDeployItem, ExecutableDeployItemIdentifier, NativeTransactionV1, PackageIdentifier,
-    PricingModeV1, Transaction, TransactionApprovalsHash, TransactionHash, TransactionId,
-    TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash, TransactionV1ConfigFailure,
-    TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
-    TransactionV1Hash, TransactionV1Header, TransactionV1Kind, TransferTarget,
-    UserlandTransactionV1,
+    PricingModeV1, Transaction, TransactionApprovalsHash, TransactionHash, TransactionHeader,
+    TransactionId, TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash,
+    TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError, TransactionV1Error,
+    TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header, TransactionV1Kind,
+    TransferTarget, UserlandTransactionV1,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction::{

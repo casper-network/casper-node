@@ -26,7 +26,7 @@ use casper_types::testing::TestRng;
 
 use super::*;
 use crate::{logging, testing::assert_schema};
-use sse_server::{DeployAccepted, Id, QUERY_FIELD, SSE_API_PATH as ROOT_PATH};
+use sse_server::{Id, TransactionAccepted, QUERY_FIELD, SSE_API_PATH as ROOT_PATH};
 
 /// The total number of random events `EventStreamServer` will emit by default, excluding the
 /// initial `ApiVersion` event.
@@ -202,17 +202,17 @@ impl TestFixture {
         fs::create_dir_all(&storage_dir).unwrap();
         let protocol_version = ProtocolVersion::from_parts(1, 2, 3);
 
-        let mut deploys = HashMap::new();
+        let mut txns = HashMap::new();
         let events = (0..EVENT_COUNT)
             .map(|i| match i % DISTINCT_EVENTS_COUNT {
                 0 => SseData::random_block_added(rng),
                 1 => {
-                    let (event, deploy) = SseData::random_deploy_accepted(rng);
-                    assert!(deploys.insert(*deploy.hash(), deploy).is_none());
+                    let (event, txn) = SseData::random_transaction_accepted(rng);
+                    assert!(txns.insert(txn.hash(), txn).is_none());
                     event
                 }
-                2 => SseData::random_deploy_processed(rng),
-                3 => SseData::random_deploy_expired(rng),
+                2 => SseData::random_transaction_processed(rng),
+                3 => SseData::random_transaction_expired(rng),
                 4 => SseData::random_fault(rng),
                 5 => SseData::random_step(rng),
                 6 => SseData::random_finality_signature(rng),
@@ -355,10 +355,12 @@ impl TestFixture {
             }
 
             let data = match event {
-                SseData::DeployAccepted { deploy } => serde_json::to_string(&DeployAccepted {
-                    deploy_accepted: deploy.clone(),
-                })
-                .unwrap(),
+                SseData::TransactionAccepted { transaction } => {
+                    serde_json::to_string(&TransactionAccepted {
+                        transaction_accepted: Arc::clone(transaction),
+                    })
+                    .unwrap()
+                }
                 _ => serde_json::to_string(event).unwrap(),
             };
 

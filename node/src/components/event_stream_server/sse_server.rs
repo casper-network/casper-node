@@ -33,11 +33,14 @@ use warp::{
 };
 
 #[cfg(test)]
-use casper_types::{execution::ExecutionResultV2, testing::TestRng, TestBlockBuilder};
+use casper_types::{
+    execution::ExecutionResultV2, testing::TestRng, Deploy, TestBlockBuilder,
+    TestTransactionV1Builder,
+};
 use casper_types::{
     execution::{Effects, ExecutionResult},
-    Block, BlockHash, Deploy, DeployHash, EraId, FinalitySignature, ProtocolVersion, PublicKey,
-    TimeDiff, Timestamp,
+    Block, BlockHash, EraId, FinalitySignature, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+    Transaction, TransactionHash,
 };
 
 /// The URL root path.
@@ -60,24 +63,23 @@ pub enum SseData {
         block_hash: BlockHash,
         block: Box<Block>,
     },
-    /// The given deploy has been newly-accepted by this node.
-    DeployAccepted {
-        #[schemars(with = "Deploy", description = "a deploy")]
-        deploy: Arc<Deploy>,
+    /// The given transaction has been newly-accepted by this node.
+    TransactionAccepted {
+        #[schemars(with = "Transaction", description = "a transaction")]
+        transaction: Arc<Transaction>,
     },
-    /// The given deploy has been executed, committed and forms part of the given block.
-    DeployProcessed {
-        deploy_hash: Box<DeployHash>,
+    /// The given transaction has been executed, committed and forms part of the given block.
+    TransactionProcessed {
+        transaction_hash: Box<TransactionHash>,
         account: Box<PublicKey>,
         timestamp: Timestamp,
         ttl: TimeDiff,
-        dependencies: Vec<DeployHash>,
         block_hash: Box<BlockHash>,
         #[data_size(skip)]
         execution_result: Box<ExecutionResult>,
     },
-    /// The given deploy has expired.
-    DeployExpired { deploy_hash: DeployHash },
+    /// The given transaction has expired.
+    TransactionExpired { transaction_hash: TransactionHash },
     /// Generic representation of validator's fault in an era.
     Fault {
         era_id: EraId,
@@ -106,34 +108,48 @@ impl SseData {
         }
     }
 
-    /// Returns a random `SseData::DeployAccepted`, along with the random `Deploy`.
-    pub(super) fn random_deploy_accepted(rng: &mut TestRng) -> (Self, Deploy) {
-        let deploy = Deploy::random(rng);
-        let event = SseData::DeployAccepted {
-            deploy: Arc::new(deploy.clone()),
+    /// Returns a random `SseData::TransactionAccepted`, along with the random `Transaction`.
+    pub(super) fn random_transaction_accepted(rng: &mut TestRng) -> (Self, Transaction) {
+        let txn = Transaction::random(rng);
+        let event = SseData::TransactionAccepted {
+            transaction: Arc::new(txn.clone()),
         };
-        (event, deploy)
+        (event, txn)
     }
 
-    /// Returns a random `SseData::DeployProcessed`.
-    pub(super) fn random_deploy_processed(rng: &mut TestRng) -> Self {
-        let deploy = Deploy::random(rng);
-        SseData::DeployProcessed {
-            deploy_hash: Box::new(*deploy.hash()),
-            account: Box::new(deploy.header().account().clone()),
-            timestamp: deploy.header().timestamp(),
-            ttl: deploy.header().ttl(),
-            dependencies: deploy.header().dependencies().clone(),
+    /// Returns a random `SseData::TransactionProcessed`.
+    pub(super) fn random_transaction_processed(rng: &mut TestRng) -> Self {
+        let txn = Transaction::random(rng);
+        let (timestamp, ttl) = match &txn {
+            Transaction::Deploy(deploy) => (deploy.timestamp(), deploy.ttl()),
+            Transaction::V1(txn) => (txn.timestamp(), txn.ttl()),
+        };
+        SseData::TransactionProcessed {
+            transaction_hash: Box::new(txn.hash()),
+            account: Box::new(txn.account().clone()),
+            timestamp,
+            ttl,
             block_hash: Box::new(BlockHash::random(rng)),
             execution_result: Box::new(ExecutionResult::from(ExecutionResultV2::random(rng))),
         }
     }
 
-    /// Returns a random `SseData::DeployExpired`
-    pub(super) fn random_deploy_expired(rng: &mut TestRng) -> Self {
-        let deploy = crate::testing::create_expired_deploy(Timestamp::now(), rng);
-        SseData::DeployExpired {
-            deploy_hash: *deploy.hash(),
+    /// Returns a random `SseData::TransactionExpired`
+    pub(super) fn random_transaction_expired(rng: &mut TestRng) -> Self {
+        let timestamp = Timestamp::now() - TimeDiff::from_seconds(20);
+        let ttl = TimeDiff::from_seconds(10);
+        let txn = if rng.gen() {
+            Transaction::from(Deploy::random_with_timestamp_and_ttl(rng, timestamp, ttl))
+        } else {
+            let txn = TestTransactionV1Builder::new(rng)
+                .with_timestamp(timestamp)
+                .with_ttl(ttl)
+                .build();
+            Transaction::from(txn)
+        };
+
+        SseData::TransactionExpired {
+            transaction_hash: txn.hash(),
         }
     }
 
@@ -170,8 +186,8 @@ impl SseData {
 
 #[derive(Serialize)]
 #[serde(rename_all = "PascalCase")]
-pub(super) struct DeployAccepted {
-    pub(super) deploy_accepted: Arc<Deploy>,
+pub(super) struct TransactionAccepted {
+    pub(super) transaction_accepted: Arc<Transaction>,
 }
 
 /// The components of a single SSE.
@@ -246,8 +262,8 @@ async fn map_server_sent_event(
             }))),
 
         &SseData::BlockAdded { .. }
-        | &SseData::DeployProcessed { .. }
-        | &SseData::DeployExpired { .. }
+        | &SseData::TransactionProcessed { .. }
+        | &SseData::TransactionExpired { .. }
         | &SseData::Fault { .. }
         | &SseData::Step { .. }
         | &SseData::FinalitySignature(_)
@@ -259,9 +275,9 @@ async fn map_server_sent_event(
             })
             .id(id))),
 
-        SseData::DeployAccepted { deploy } => Some(Ok(WarpServerSentEvent::default()
-            .json_data(&DeployAccepted {
-                deploy_accepted: deploy.clone(),
+        SseData::TransactionAccepted { transaction } => Some(Ok(WarpServerSentEvent::default()
+            .json_data(&TransactionAccepted {
+                transaction_accepted: Arc::clone(transaction),
             })
             .unwrap_or_else(|error| {
                 warn!(%error, "failed to jsonify sse event");
