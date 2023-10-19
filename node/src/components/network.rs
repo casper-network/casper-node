@@ -250,6 +250,7 @@ where
         let rpc_builder = transport::create_rpc_builder(
             chain_info.maximum_net_message_size,
             cfg.max_in_flight_demands,
+            cfg.ack_timeout,
         );
 
         let context = Arc::new(NetworkContext::new(
@@ -459,7 +460,6 @@ where
         // Try to send the message.
         if let Some(connection) = self.outgoing_manager.get_route(dest) {
             let channel = msg.get_channel();
-            let timeout: Duration = self.cfg.ack_timeout.into();
 
             let payload = if let Some(payload) = serialize_network_message(&msg) {
                 payload
@@ -479,15 +479,13 @@ where
                 rpc_client: &JulietRpcClient<{ Channel::COUNT }>,
                 channel: Channel,
                 payload: Bytes,
-                timeout: Duration,
             ) -> juliet::rpc::JulietRpcRequestBuilder<'_, { Channel::COUNT }> {
                 rpc_client
                     .create_request(channel.into_channel_id())
                     .with_payload(payload)
-                    .with_timeout(timeout)
             }
 
-            let request = mk_request(&connection.rpc_client, channel, payload, timeout);
+            let request = mk_request(&connection.rpc_client, channel, payload);
 
             // Attempt to enqueue it directly, regardless of what `message_queued_responder` is.
             match request.try_queue_for_sending() {
@@ -514,7 +512,7 @@ where
                         // since the networking component usually controls its own futures, we are
                         // allowed to spawn these as well.
                         tokio::spawn(async move {
-                            let guard = mk_request(&client, channel, payload, timeout)
+                            let guard = mk_request(&client, channel, payload)
                                 .queue_for_sending()
                                 .await;
                             responder.respond(()).await;
