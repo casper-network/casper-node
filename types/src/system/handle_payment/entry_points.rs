@@ -19,7 +19,7 @@ pub fn handle_payment_entry_points() -> EntryPoints {
         vec![],
         CLType::URef,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(get_payment_purse);
 
@@ -28,7 +28,7 @@ pub fn handle_payment_entry_points() -> EntryPoints {
         vec![Parameter::new(ARG_PURSE, CLType::URef)],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(set_refund_purse);
 
@@ -37,7 +37,7 @@ pub fn handle_payment_entry_points() -> EntryPoints {
         vec![],
         CLType::Option(Box::new(CLType::URef)),
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(get_refund_purse);
 
@@ -49,7 +49,7 @@ pub fn handle_payment_entry_points() -> EntryPoints {
         ],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(finalize_payment);
 
@@ -58,7 +58,7 @@ pub fn handle_payment_entry_points() -> EntryPoints {
         vec![],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(distribute_accumulated_fees);
 

@@ -117,14 +117,14 @@ impl TransformKind {
                     let found = format!("{:?}", cl_value.cl_type());
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
-                StoredValue::ContractPackage(_) => {
+                StoredValue::Package(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "ContractPackage".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
-                StoredValue::ContractWasm(_) => {
+                StoredValue::ByteCode(_) => {
                     let expected = "Contract or Account".to_string();
-                    let found = "ContractWasm".to_string();
+                    let found = "ByteCode".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
                 StoredValue::Transfer(_) => {
@@ -160,6 +160,16 @@ impl TransformKind {
                 StoredValue::Unbonding(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "Unbonding".to_string();
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
+                }
+                StoredValue::ContractWasm(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "ContractWasm".to_string();
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
+                }
+                StoredValue::ContractPackage(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "ContractPackage".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
             },
@@ -378,7 +388,8 @@ mod tests {
     use num::{Bounded, Num};
 
     use crate::{
-        bytesrepr::Bytes, testing::TestRng, AccessRights, ContractWasm, Key, URef, U128, U256, U512,
+        byte_code::ByteCodeKind, bytesrepr::Bytes, testing::TestRng, AccessRights, ByteCode, Key,
+        URef, U128, U256, U512,
     };
 
     use super::*;
@@ -510,8 +521,8 @@ mod tests {
             };
         }
 
-        let contract = StoredValue::ContractWasm(ContractWasm::new(vec![]));
-        assert_yields_type_mismatch_error(contract);
+        let byte_code = StoredValue::ByteCode(ByteCode::new(ByteCodeKind::V1CasperWasm, vec![]));
+        assert_yields_type_mismatch_error(byte_code);
 
         let uref = URef::new(ZERO_ARRAY, AccessRights::READ);
 

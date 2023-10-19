@@ -7,7 +7,7 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{mint, standard_payment},
-    ContractHash, Key, U512,
+    AddressableEntityHash, Key, U512,
 };
 
 const RECURSE_ENTRYPOINT: &str = "recurse";
@@ -64,7 +64,7 @@ fn regression_20211110() {
         .get(CONTRACT_HASH_NAME)
         .unwrap()
     {
-        Key::Hash(addr) => ContractHash::new(*addr),
+        Key::AddressableEntity((_, addr)) => AddressableEntityHash::new(*addr),
         _ => panic!("Couldn't find regression contract."),
     };
 

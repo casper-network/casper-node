@@ -38,7 +38,7 @@ pub(crate) enum FunctionIndex {
     GetMainPurseIndex,
     ReadHostBufferIndex,
     CreateContractPackageAtHash,
-    AddContractVersion,
+    AddPackageVersion,
     DisableContractVersion,
     CallVersionedContract,
     CreateContractUserGroup,
@@ -60,6 +60,7 @@ pub(crate) enum FunctionIndex {
     RandomBytes,
     DictionaryReadFuncIndex,
     EnableContractVersion,
+    AddSessionVersion,
 }
 
 impl From<FunctionIndex> for usize {

@@ -1,6 +1,6 @@
 use std::mem;
 
-use casper_types::{account::Account, bytesrepr::ToBytes, ContractWasm, Key, StoredValue};
+use casper_types::{account::Account, bytesrepr::ToBytes, ByteCode, Key, StoredValue};
 
 /// Returns byte size of the element - both heap size and stack size.
 pub trait ByteSize {
@@ -26,13 +26,14 @@ impl ByteSize for StoredValue {
                 StoredValue::CLValue(cl_value) => cl_value.serialized_length(),
                 StoredValue::Account(account) => account.serialized_length(),
                 StoredValue::ContractWasm(contract_wasm) => contract_wasm.serialized_length(),
+                StoredValue::ContractPackage(contract_package) => {
+                    contract_package.serialized_length()
+                }
                 StoredValue::Contract(contract) => contract.serialized_length(),
                 StoredValue::AddressableEntity(contract_header) => {
                     contract_header.serialized_length()
                 }
-                StoredValue::ContractPackage(contract_package) => {
-                    contract_package.serialized_length()
-                }
+                StoredValue::Package(package) => package.serialized_length(),
                 StoredValue::DeployInfo(deploy_info) => deploy_info.serialized_length(),
                 StoredValue::Transfer(transfer) => transfer.serialized_length(),
                 StoredValue::EraInfo(era_info) => era_info.serialized_length(),
@@ -40,6 +41,7 @@ impl ByteSize for StoredValue {
                 StoredValue::BidKind(bid_kind) => bid_kind.serialized_length(),
                 StoredValue::Withdraw(withdraw_purses) => withdraw_purses.serialized_length(),
                 StoredValue::Unbonding(unbonding_purses) => unbonding_purses.serialized_length(),
+                StoredValue::ByteCode(byte_code) => byte_code.serialized_length(),
             }
     }
 }
@@ -67,7 +69,7 @@ impl HeapSizeOf for Account {
 }
 
 // TODO: contract has other fields (re protocol version) that are not repr here...on purpose?
-impl HeapSizeOf for ContractWasm {
+impl HeapSizeOf for ByteCode {
     fn heap_size(&self) -> usize {
         self.bytes().len()
     }

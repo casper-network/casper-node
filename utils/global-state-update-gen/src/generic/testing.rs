@@ -12,8 +12,8 @@ use casper_types::{
         WithdrawPurse, WithdrawPurses,
     },
     testing::TestRng,
-    AccessRights, AddressableEntity, CLValue, ContractPackageHash, ContractWasmHash, EntryPoints,
-    EraId, Key, ProtocolVersion, PublicKey, StoredValue, URef, URefAddr, U512,
+    AccessRights, AddressableEntity, ByteCodeHash, CLValue, EntryPoints, EraId, Key, PackageHash,
+    ProtocolVersion, PublicKey, StoredValue, URef, URefAddr, U512,
 };
 
 use super::{
@@ -60,8 +60,8 @@ impl MockStateReader {
     ) -> Self {
         let main_purse = URef::new(rng.gen(), AccessRights::READ_ADD_WRITE);
         let entity = AddressableEntity::new(
-            ContractPackageHash::new(rng.gen()),
-            ContractWasmHash::new(rng.gen()),
+            PackageHash::new(rng.gen()),
+            ByteCodeHash::new(rng.gen()),
             NamedKeys::new(),
             EntryPoints::new(),
             self.protocol_version,

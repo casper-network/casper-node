@@ -9,6 +9,4 @@ mod system_contract_type;
 
 pub use call_stack_element::{CallStackElement, CallStackElementTag};
 pub use error::Error;
-pub use system_contract_type::{
-    SystemContractType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
-};
+pub use system_contract_type::{SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT};

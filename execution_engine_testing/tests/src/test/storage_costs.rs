@@ -12,9 +12,9 @@ use casper_execution_engine::engine_state::EngineConfigBuilder;
 use casper_types::DEFAULT_ADD_BID_COST;
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
-    BrTableCost, CLValue, ContractHash, ControlFlowCosts, EraId, HostFunction, HostFunctionCosts,
-    OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts, StoredValue, WasmConfig,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
+    AddressableEntityHash, BrTableCost, CLValue, ControlFlowCosts, EraId, HostFunction,
+    HostFunctionCosts, OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts, StoredValue,
+    WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_types::{
@@ -133,6 +133,7 @@ static NEW_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> = Lazy::new(|| HostFunct
     blake2b: HostFunction::fixed(0),
     random_bytes: HostFunction::fixed(0),
     enable_contract_version: HostFunction::fixed(0),
+    add_session_version: HostFunction::fixed(0),
 });
 static STORAGE_COSTS_ONLY: Lazy<WasmConfig> = Lazy::new(|| {
     WasmConfig::new(
@@ -241,7 +242,7 @@ fn should_verify_isolated_auction_storage_is_free() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .unwrap()
             .into(),
         auction::METHOD_ADD_BID,
@@ -301,13 +302,12 @@ fn should_measure_gas_cost_for_storage_usage_write() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
-        .expect("should be hash")
-        .into();
+        .into_entity_hash()
+        .expect("should be hash");
 
     //
     // Measure  small write
@@ -413,13 +413,12 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
-        .expect("should be hash")
-        .into();
+        .into_entity_hash()
+        .expect("should be hash");
 
     //
     // Measure  small write
@@ -525,13 +524,12 @@ fn should_measure_gas_cost_for_storage_usage_add() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
-        .expect("should be hash")
-        .into();
+        .into_entity_hash()
+        .expect("should be hash");
 
     //
     // Measure small add
@@ -641,13 +639,12 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
-        .expect("should be hash")
-        .into();
+        .into_entity_hash()
+        .expect("should be hash");
 
     //
     // Measure small add
@@ -753,13 +750,12 @@ fn should_verify_new_uref_is_charging_for_storage() {
 
     let balance_before = builder.get_purse_balance(account.main_purse());
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
-        .expect("should be hash")
-        .into();
+        .into_entity_hash()
+        .expect("should be hash");
 
     let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -798,13 +794,12 @@ fn should_verify_put_key_is_charging_for_storage() {
 
     let balance_before = builder.get_purse_balance(account.main_purse());
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
-        .expect("should be hash")
-        .into();
+        .into_entity_hash()
+        .expect("should be hash");
 
     let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -843,13 +838,12 @@ fn should_verify_remove_key_is_charging_for_storage() {
 
     let balance_before = builder.get_purse_balance(account.main_purse());
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
-        .expect("should be hash")
-        .into();
+        .into_entity_hash()
+        .expect("should be hash");
 
     let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -888,13 +882,12 @@ fn should_verify_create_contract_at_hash_is_charging_for_storage() {
 
     let balance_before = builder.get_purse_balance(account.main_purse());
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
-        .expect("should be hash")
-        .into();
+        .into_entity_hash()
+        .expect("should be hash");
 
     let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -933,13 +926,12 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
 
     let balance_before = builder.get_purse_balance(account.main_purse());
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
-        .expect("should be hash")
-        .into();
+        .into_entity_hash()
+        .expect("should be hash");
 
     let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1012,13 +1004,12 @@ fn should_verify_subcall_new_uref_is_charging_for_storage() {
 
     let balance_before = builder.get_purse_balance(account.main_purse());
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
-        .expect("should be hash")
-        .into();
+        .into_entity_hash()
+        .expect("should be hash");
 
     let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,

@@ -9,13 +9,13 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AddressableEntity, AssociatedKeys, NamedKeys},
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    package::{ContractPackageKind, ContractPackageStatus},
+    package::{PackageKind, PackageStatus},
     system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
-    AccessRights, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash, ContractVersionKey,
-    ContractVersions, ContractWasmHash, DeployHash, DeployInfo, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, Group, Groups, Key, Package, Parameter, ProtocolVersion,
-    PublicKey, SecretKey, Transfer, TransferAddr, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH,
-    U128, U256, U512, UREF_ADDR_LENGTH,
+    AccessRights, AddressableEntityHash, ByteCodeHash, CLType, CLTyped, CLValue, DeployHash,
+    DeployInfo, EntityVersionKey, EntityVersions, EntryPoint, EntryPointAccess, EntryPointType,
+    EntryPoints, Group, Groups, Key, Package, PackageHash, Parameter, ProtocolVersion, PublicKey,
+    SecretKey, Transfer, TransferAddr, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, U128, U256,
+    U512, UREF_ADDR_LENGTH,
 };
 
 static KB: usize = 1024;
@@ -486,7 +486,7 @@ fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> AddressableEntit
                 args,
                 casper_types::CLType::U512,
                 EntryPointAccess::groups(&["Group 2"]),
-                EntryPointType::Contract,
+                EntryPointType::AddressableEntity,
             );
             tmp.add_entry_point(entry_point);
         });
@@ -494,8 +494,8 @@ fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> AddressableEntit
     };
 
     casper_types::addressable_entity::AddressableEntity::new(
-        ContractPackageHash::default(),
-        ContractWasmHash::default(),
+        PackageHash::default(),
+        ByteCodeHash::default(),
         named_keys,
         entry_points,
         ProtocolVersion::default(),
@@ -505,12 +505,12 @@ fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> AddressableEntit
     )
 }
 
-fn contract_version_key_fn(i: u8) -> ContractVersionKey {
-    ContractVersionKey::new(i as u32, i as u32)
+fn contract_version_key_fn(i: u8) -> EntityVersionKey {
+    EntityVersionKey::new(i as u32, i as u32)
 }
 
-fn contract_hash_fn(i: u8) -> ContractHash {
-    ContractHash::new([i; KEY_HASH_LENGTH])
+fn contract_hash_fn(i: u8) -> AddressableEntityHash {
+    AddressableEntityHash::new([i; KEY_HASH_LENGTH])
 }
 
 fn sample_map<K: Ord, V, FK, FV>(key_fn: FK, value_fn: FV, count: u8) -> BTreeMap<K, V>
@@ -548,7 +548,7 @@ fn sample_contract_package(
     groups_len: u8,
 ) -> Package {
     let access_key = URef::default();
-    let versions = ContractVersions::from(sample_map(
+    let versions = EntityVersions::from(sample_map(
         contract_version_key_fn,
         contract_hash_fn,
         contract_versions_len,
@@ -565,8 +565,8 @@ fn sample_contract_package(
         versions,
         disabled_versions,
         groups,
-        ContractPackageStatus::Locked,
-        ContractPackageKind::Wasm,
+        PackageStatus::Locked,
+        PackageKind::SmartContract,
     )
 }
 

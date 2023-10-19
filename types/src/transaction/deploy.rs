@@ -37,7 +37,7 @@ use {
             ARG_PUBLIC_KEY as ARG_AUCTION_PUBLIC_KEY, ARG_VALIDATOR, METHOD_DELEGATE,
             METHOD_REDELEGATE, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
         },
-        ContractHash,
+        AddressableEntityHash,
         {system::mint::ARG_AMOUNT, TransactionConfig, U512},
         {testing::TestRng, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES},
     },
@@ -65,8 +65,8 @@ pub use error::{
     Error as DeployError, ExcessiveSizeError as DeployExcessiveSizeError,
 };
 pub use executable_deploy_item::{
-    ContractIdentifier, ContractPackageIdentifier, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, TransferTarget,
+    EntityIdentifier, ExecutableDeployItem, ExecutableDeployItemIdentifier, PackageIdentifier,
+    TransferTarget,
 };
 pub use runtime_args::RuntimeArgs;
 
@@ -944,7 +944,7 @@ impl Deploy {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn withdraw_bid(
         chain_name: String,
-        auction_contract_hash: ContractHash,
+        auction_contract_hash: AddressableEntityHash,
         public_key: PublicKey,
         amount: U512,
         timestamp: Timestamp,
@@ -980,7 +980,7 @@ impl Deploy {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn delegate(
         chain_name: String,
-        auction_contract_hash: ContractHash,
+        auction_contract_hash: AddressableEntityHash,
         validator_public_key: PublicKey,
         delegator_public_key: PublicKey,
         amount: U512,
@@ -1018,7 +1018,7 @@ impl Deploy {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn undelegate(
         chain_name: String,
-        auction_contract_hash: ContractHash,
+        auction_contract_hash: AddressableEntityHash,
         validator_public_key: PublicKey,
         delegator_public_key: PublicKey,
         amount: U512,
@@ -1057,7 +1057,7 @@ impl Deploy {
     #[allow(clippy::too_many_arguments)]
     pub fn redelegate(
         chain_name: String,
-        auction_contract_hash: ContractHash,
+        auction_contract_hash: AddressableEntityHash,
         validator_public_key: PublicKey,
         delegator_public_key: PublicKey,
         redelegate_validator_public_key: PublicKey,

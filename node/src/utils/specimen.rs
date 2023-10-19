@@ -22,13 +22,12 @@ use casper_types::{
     bytesrepr::Bytes,
     crypto::{sign, PublicKey, Signature},
     AccessRights, AsymmetricType, Block, BlockHash, BlockHeader, BlockHeaderV1, BlockHeaderV2,
-    BlockSignatures, BlockV2, ChunkWithProof, ContractPackageHash, Deploy, DeployApproval,
-    DeployApprovalsHash, DeployHash, DeployId, Digest, EraEndV1, EraEndV2, EraId, EraReport,
-    ExecutableDeployItem, FinalitySignature, FinalitySignatureId, ProtocolVersion,
-    RewardedSignatures, RuntimeArgs, SecretKey, SemVer, SignedBlockHeader,
-    SingleBlockRewardedSignatures, TimeDiff, Timestamp, Transaction, TransactionId, TransactionV1,
-    TransactionV1ApprovalsHash, TransactionV1Builder, TransactionV1Hash, TransactionV1Kind, URef,
-    KEY_HASH_LENGTH, U512,
+    BlockSignatures, BlockV2, ChunkWithProof, Deploy, DeployApproval, DeployApprovalsHash,
+    DeployHash, DeployId, Digest, EraEndV1, EraEndV2, EraId, EraReport, ExecutableDeployItem,
+    FinalitySignature, FinalitySignatureId, PackageHash, ProtocolVersion, RewardedSignatures,
+    RuntimeArgs, SecretKey, SemVer, SignedBlockHeader, SingleBlockRewardedSignatures, TimeDiff,
+    Timestamp, Transaction, TransactionId, TransactionV1, TransactionV1ApprovalsHash,
+    TransactionV1Builder, TransactionV1Hash, TransactionV1Kind, URef, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{
@@ -992,11 +991,9 @@ impl LargestSpecimen for U512 {
     }
 }
 
-impl LargestSpecimen for ContractPackageHash {
+impl LargestSpecimen for PackageHash {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-        ContractPackageHash::new(
-            [LargestSpecimen::largest_specimen(estimator, cache); KEY_HASH_LENGTH],
-        )
+        PackageHash::new([LargestSpecimen::largest_specimen(estimator, cache); KEY_HASH_LENGTH])
     }
 }
 

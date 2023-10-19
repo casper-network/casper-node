@@ -12,12 +12,13 @@ use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    addressable_entity,
+    account,
+    addressable_entity::TryFromSliceForAccountHashError,
     bytesrepr::{Bytes, Error, FromBytes, ToBytes},
-    checksummed_hex, uref, CLType, CLTyped, HashAddr,
+    checksummed_hex, uref, ByteCode, ByteCodeKind, CLType, CLTyped, HashAddr,
 };
 
-const BYTE_CODE_MAX_DISPLAY_LEN: usize = 16;
+const CONTRACT_WASM_MAX_DISPLAY_LEN: usize = 16;
 const KEY_HASH_LENGTH: usize = 32;
 const WASM_STRING_PREFIX: &str = "contract-wasm-";
 
@@ -30,9 +31,9 @@ pub struct TryFromSliceForContractHashError(());
 pub enum FromStrError {
     InvalidPrefix,
     Hex(base16::DecodeError),
-    // Account(TryFromSliceForAccountHashError),
+    Account(TryFromSliceForAccountHashError),
     Hash(TryFromSliceError),
-    AccountHash(addressable_entity::FromAccountHashStrError),
+    AccountHash(account::FromStrError),
     URef(uref::FromStrError),
 }
 
@@ -42,14 +43,20 @@ impl From<base16::DecodeError> for FromStrError {
     }
 }
 
+impl From<TryFromSliceForAccountHashError> for FromStrError {
+    fn from(error: TryFromSliceForAccountHashError) -> Self {
+        FromStrError::Account(error)
+    }
+}
+
 impl From<TryFromSliceError> for FromStrError {
     fn from(error: TryFromSliceError) -> Self {
         FromStrError::Hash(error)
     }
 }
 
-impl From<addressable_entity::FromAccountHashStrError> for FromStrError {
-    fn from(error: addressable_entity::FromAccountHashStrError) -> Self {
+impl From<account::FromStrError> for FromStrError {
+    fn from(error: account::FromStrError) -> Self {
         FromStrError::AccountHash(error)
     }
 }
@@ -65,7 +72,7 @@ impl Display for FromStrError {
         match self {
             FromStrError::InvalidPrefix => write!(f, "invalid prefix"),
             FromStrError::Hex(error) => write!(f, "decode from hex: {}", error),
-            // FromStrError::Account(error) => write!(f, "account from string error: {:?}", error),
+            FromStrError::Account(error) => write!(f, "account from string error: {:?}", error),
             FromStrError::Hash(error) => write!(f, "hash from string error: {}", error),
             FromStrError::AccountHash(error) => {
                 write!(f, "account hash from string error: {:?}", error)
@@ -227,42 +234,36 @@ impl JsonSchema for ContractWasmHash {
 
 /// A container for contract's WASM bytes.
 #[derive(PartialEq, Eq, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractWasm {
     bytes: Bytes,
 }
 
-impl Debug for ContractWasm {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        if self.bytes.len() > BYTE_CODE_MAX_DISPLAY_LEN {
-            write!(
-                f,
-                "ContractWasm(0x{}...)",
-                base16::encode_lower(&self.bytes[..BYTE_CODE_MAX_DISPLAY_LEN])
-            )
-        } else {
-            write!(f, "ContractWasm(0x{})", base16::encode_lower(&self.bytes))
-        }
-    }
-}
-
 impl ContractWasm {
-    /// Creates new WASM object from bytes.
+    #[cfg(test)]
     pub fn new(bytes: Vec<u8>) -> Self {
-        ContractWasm {
+        Self {
             bytes: bytes.into(),
         }
     }
 
-    /// Consumes instance of [`ContractWasm`] and returns its bytes.
-    pub fn take_bytes(self) -> Vec<u8> {
+    fn take_bytes(self) -> Vec<u8> {
         self.bytes.into()
     }
+}
 
-    /// Returns a slice of contained WASM bytes.
-    pub fn bytes(&self) -> &[u8] {
-        self.bytes.as_ref()
+impl Debug for ContractWasm {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if self.bytes.len() > CONTRACT_WASM_MAX_DISPLAY_LEN {
+            write!(
+                f,
+                "ContractWasm(0x{}...)",
+                base16::encode_lower(&self.bytes[..CONTRACT_WASM_MAX_DISPLAY_LEN])
+            )
+        } else {
+            write!(f, "ContractWasm(0x{})", base16::encode_lower(&self.bytes))
+        }
     }
 }
 
@@ -285,6 +286,12 @@ impl FromBytes for ContractWasm {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let (bytes, rem1) = FromBytes::from_bytes(bytes)?;
         Ok((ContractWasm { bytes }, rem1))
+    }
+}
+
+impl From<ContractWasm> for ByteCode {
+    fn from(value: ContractWasm) -> Self {
+        ByteCode::new(ByteCodeKind::V1CasperWasm, value.take_bytes())
     }
 }
 

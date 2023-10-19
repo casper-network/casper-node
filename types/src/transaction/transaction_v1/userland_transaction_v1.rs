@@ -19,7 +19,7 @@ use crate::{
         DEFAULT_ENTRY_POINT_NAME, INSTALL_ENTRY_POINT_NAME, UPGRADE_ENTRY_POINT_NAME,
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    ContractPackageIdentifier, RuntimeArgs,
+    PackageIdentifier, RuntimeArgs,
 };
 
 const STANDARD_TAG: u8 = 0;
@@ -48,7 +48,7 @@ pub enum UserlandTransactionV1 {
     /// An installer or upgrader for a stored contract.
     InstallerUpgrader {
         /// If `Some`, this is an upgrade for the given contract, otherwise it is an installer.
-        contract_package_id: Option<ContractPackageIdentifier>,
+        contract_package_id: Option<PackageIdentifier>,
         /// Raw Wasm module bytes with 'call' exported as an entrypoint.
         module_bytes: Bytes,
         /// Runtime arguments.
@@ -89,7 +89,7 @@ impl UserlandTransactionV1 {
 
     /// Returns a new `UserlandTransactionV1::InstallerUpgrader` for upgrading.
     pub fn new_upgrader(
-        contract_package_id: ContractPackageIdentifier,
+        contract_package_id: PackageIdentifier,
         module_bytes: Bytes,
         args: RuntimeArgs,
     ) -> Self {
@@ -175,9 +175,7 @@ impl UserlandTransactionV1 {
                 args: RuntimeArgs::random(rng),
             },
             1 => {
-                let contract_package = rng
-                    .gen::<bool>()
-                    .then(|| ContractPackageIdentifier::random(rng));
+                let contract_package = rng.gen::<bool>().then(|| PackageIdentifier::random(rng));
                 UserlandTransactionV1::InstallerUpgrader {
                     contract_package_id: contract_package,
                     module_bytes: random_bytes(rng),
@@ -299,7 +297,7 @@ impl FromBytes for UserlandTransactionV1 {
             }
             INSTALLER_UPGRADER_TAG => {
                 let (contract_package, remainder) =
-                    Option::<ContractPackageIdentifier>::from_bytes(remainder)?;
+                    Option::<PackageIdentifier>::from_bytes(remainder)?;
                 let (module_bytes, remainder) = Bytes::from_bytes(remainder)?;
                 let (args, remainder) = RuntimeArgs::from_bytes(remainder)?;
                 let txn = UserlandTransactionV1::InstallerUpgrader {

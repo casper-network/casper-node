@@ -5,14 +5,7 @@ use casper_types::{
     ApiError, Key, RuntimeArgs, StoredValue, TransferredTo, URef, U512,
 };
 
-use crate::{
-    execution,
-    runtime::Runtime,
-    system::standard_payment::{
-        account_provider::AccountProvider, handle_payment_provider::HandlePaymentProvider,
-        mint_provider::MintProvider, StandardPayment,
-    },
-};
+use crate::{execution, runtime::Runtime};
 
 pub(crate) const METHOD_GET_PAYMENT_PURSE: &str = "get_payment_purse";
 

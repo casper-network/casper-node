@@ -11,8 +11,8 @@ use casper_contract::{
 };
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
-    package::CONTRACT_INITIAL_VERSION,
-    runtime_args, CLType, ContractHash, ContractPackageHash, ContractVersion, Key,
+    package::ENTITY_INITIAL_VERSION,
+    runtime_args, AddressableEntityHash, CLType, EntityVersion, Key, PackageHash,
 };
 
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
@@ -42,12 +42,12 @@ pub extern "C" fn contract_code_test() {
 pub extern "C" fn session_code_caller_as_session() {
     let contract_package_hash = runtime::get_key(PACKAGE_HASH_KEY)
         .expect("should have contract package key")
-        .into_hash()
+        .into_entity_addr()
         .unwrap_or_revert();
 
     runtime::call_versioned_contract::<()>(
         contract_package_hash.into(),
-        Some(CONTRACT_INITIAL_VERSION),
+        Some(ENTITY_INITIAL_VERSION),
         SESSION_CODE,
         runtime_args! {},
     );
@@ -63,14 +63,14 @@ pub extern "C" fn add_new_key() {
 pub extern "C" fn add_new_key_as_session() {
     let contract_package_hash = runtime::get_key(PACKAGE_HASH_KEY)
         .expect("should have package hash")
-        .into_hash()
+        .into_entity_addr()
         .unwrap_or_revert()
         .into();
 
     assert!(runtime::get_key(NEW_KEY).is_none());
     runtime::call_versioned_contract::<()>(
         contract_package_hash,
-        Some(CONTRACT_INITIAL_VERSION),
+        Some(ENTITY_INITIAL_VERSION),
         "add_new_key",
         runtime_args! {},
     );
@@ -80,10 +80,10 @@ pub extern "C" fn add_new_key_as_session() {
 #[no_mangle]
 pub extern "C" fn session_code_caller_as_contract() {
     let contract_package_key: Key = runtime::get_named_arg(PACKAGE_HASH_KEY);
-    let contract_package_hash = contract_package_key.into_hash().unwrap_or_revert().into();
+    let contract_package_hash = contract_package_key.into_package_hash().unwrap_or_revert();
     runtime::call_versioned_contract::<()>(
         contract_package_hash,
-        Some(CONTRACT_INITIAL_VERSION),
+        Some(ENTITY_INITIAL_VERSION),
         SESSION_CODE,
         runtime_args! {},
     );
@@ -91,63 +91,29 @@ pub extern "C" fn session_code_caller_as_contract() {
 
 fn create_entrypoints_1() -> EntryPoints {
     let mut entry_points = EntryPoints::new();
-    let session_code_test = EntryPoint::new(
-        SESSION_CODE.to_string(),
-        Vec::new(),
-        CLType::I32,
-        EntryPointAccess::Public,
-        EntryPointType::Session,
-    );
-    entry_points.add_entry_point(session_code_test);
 
     let contract_code_test = EntryPoint::new(
         CONTRACT_CODE.to_string(),
         Vec::new(),
         CLType::I32,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(contract_code_test);
-
-    let session_code_caller_as_session = EntryPoint::new(
-        "session_code_caller_as_session".to_string(),
-        Vec::new(),
-        CLType::I32,
-        EntryPointAccess::Public,
-        EntryPointType::Session,
-    );
-    entry_points.add_entry_point(session_code_caller_as_session);
 
     let session_code_caller_as_contract = EntryPoint::new(
         "session_code_caller_as_contract".to_string(),
         Vec::new(),
         CLType::I32,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(session_code_caller_as_contract);
-
-    let add_new_key = EntryPoint::new(
-        "add_new_key".to_string(),
-        Vec::new(),
-        CLType::I32,
-        EntryPointAccess::Public,
-        EntryPointType::Session,
-    );
-    entry_points.add_entry_point(add_new_key);
-    let add_new_key_as_session = EntryPoint::new(
-        "add_new_key_as_session".to_string(),
-        Vec::new(),
-        CLType::I32,
-        EntryPointAccess::Public,
-        EntryPointType::Session,
-    );
-    entry_points.add_entry_point(add_new_key_as_session);
 
     entry_points
 }
 
-fn install_version_1(package_hash: ContractPackageHash) -> (ContractHash, ContractVersion) {
+fn install_version_1(package_hash: PackageHash) -> (AddressableEntityHash, EntityVersion) {
     let contract_named_keys = {
         let contract_variable = storage::new_uref(0);
 
@@ -169,5 +135,5 @@ pub extern "C" fn call() {
     runtime::put_key(PACKAGE_ACCESS_KEY, access_uref.into());
     let (contract_hash, contract_version) = install_version_1(contract_package_hash);
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
-    runtime::put_key(CONTRACT_HASH_KEY, Key::Hash(contract_hash.value()));
+    runtime::put_key(CONTRACT_HASH_KEY, Key::contract_entity_key(contract_hash));
 }

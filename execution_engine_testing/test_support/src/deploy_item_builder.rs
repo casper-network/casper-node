@@ -4,8 +4,8 @@ use rand::Rng;
 
 use casper_execution_engine::engine_state::deploy_item::DeployItem;
 use casper_types::{
-    account::AccountHash, ContractHash, ContractPackageHash, ContractVersion, DeployHash,
-    ExecutableDeployItem, HashAddr, RuntimeArgs,
+    account::AccountHash, AddressableEntityHash, DeployHash, EntityVersion, ExecutableDeployItem,
+    HashAddr, PackageHash, RuntimeArgs,
 };
 
 use crate::{utils, DEFAULT_GAS_PRICE};
@@ -60,7 +60,7 @@ impl DeployItemBuilder {
     /// Sets payment code of the deploy with contract hash.
     pub fn with_stored_payment_hash(
         mut self,
-        hash: ContractHash,
+        hash: AddressableEntityHash,
         entry_point: &str,
         args: RuntimeArgs,
     ) -> Self {
@@ -90,7 +90,7 @@ impl DeployItemBuilder {
     /// Sets the payment code of the deploy with a contract package hash.
     pub fn with_stored_versioned_payment_hash(
         mut self,
-        package_hash: ContractPackageHash,
+        package_hash: PackageHash,
         entry_point: &str,
         args: RuntimeArgs,
     ) -> Self {
@@ -144,7 +144,7 @@ impl DeployItemBuilder {
     /// arguments.
     pub fn with_stored_session_hash(
         mut self,
-        hash: ContractHash,
+        hash: AddressableEntityHash,
         entry_point: &str,
         args: RuntimeArgs,
     ) -> Self {
@@ -175,7 +175,7 @@ impl DeployItemBuilder {
     pub fn with_stored_versioned_contract_by_name(
         mut self,
         name: &str,
-        version: Option<ContractVersion>,
+        version: Option<EntityVersion>,
         entry_point: &str,
         args: RuntimeArgs,
     ) -> Self {
@@ -192,7 +192,7 @@ impl DeployItemBuilder {
     pub fn with_stored_versioned_contract_by_hash(
         mut self,
         hash: HashAddr,
-        version: Option<ContractVersion>,
+        version: Option<EntityVersion>,
         entry_point: &str,
         args: RuntimeArgs,
     ) -> Self {
@@ -209,7 +209,7 @@ impl DeployItemBuilder {
     pub fn with_stored_versioned_payment_contract_by_name(
         mut self,
         key_name: &str,
-        version: Option<ContractVersion>,
+        version: Option<EntityVersion>,
         entry_point: &str,
         args: RuntimeArgs,
     ) -> Self {
@@ -225,8 +225,9 @@ impl DeployItemBuilder {
     /// Sets the payment code of the deploy using a stored versioned contract by contract hash.
     pub fn with_stored_versioned_payment_contract_by_hash(
         mut self,
+        // TODO: Make this PackageHash
         hash: HashAddr,
-        version: Option<ContractVersion>,
+        version: Option<EntityVersion>,
         entry_point: &str,
         args: RuntimeArgs,
     ) -> Self {

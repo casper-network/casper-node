@@ -3,8 +3,8 @@ use serde::Serialize;
 use thiserror::Error;
 
 use casper_types::{
-    BlockHash, BlockHeader, ContractHash, ContractPackageHash, ContractVersion,
-    DeployConfigurationFailure, Digest, PublicKey, Timestamp, TransactionV1ConfigFailure,
+    AddressableEntityHash, BlockHash, BlockHeader, DeployConfigurationFailure, Digest,
+    EntityVersion, PackageHash, PublicKey, Timestamp, TransactionV1ConfigFailure,
 };
 
 // `allow` can be removed once https://github.com/casper-network/casper-node/issues/3063 is fixed.
@@ -76,16 +76,18 @@ pub(crate) enum ParameterFailure {
     NoSuchAddressableEntity { public_key: PublicKey },
     /// No such contract at given hash.
     #[error("contract at {contract_hash} does not exist")]
-    NoSuchContractAtHash { contract_hash: ContractHash },
+    NoSuchContractAtHash {
+        contract_hash: AddressableEntityHash,
+    },
     /// No such contract entrypoint.
     #[error("contract does not have entry point '{entry_point_name}'")]
     NoSuchEntryPoint { entry_point_name: String },
     /// No such package.
     #[error("package at {package_hash} does not exist")]
-    NoSuchPackageAtHash { package_hash: ContractPackageHash },
+    NoSuchPackageAtHash { package_hash: PackageHash },
     /// Invalid contract at given version.
     #[error("invalid contract at version: {contract_version}")]
-    InvalidContractAtVersion { contract_version: ContractVersion },
+    InvalidContractAtVersion { contract_version: EntityVersion },
     /// Invalid associated keys.
     #[error("account authorization invalid")]
     InvalidAssociatedKeys,

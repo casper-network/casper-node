@@ -15,8 +15,8 @@ use casper_types::{
     bytesrepr::FromBytes,
     runtime_args,
     system::auction::{self, DelegationRate},
-    CLType, CLTyped, CLValue, ContractPackageHash, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Key, Parameter, PublicKey, RuntimeArgs, U512,
+    CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
+    PackageHash, Parameter, PublicKey, RuntimeArgs, U512,
 };
 
 const METHOD_ADD_BID_PROXY_CALL_1: &str = "add_bid_proxy_call_1";
@@ -109,8 +109,8 @@ pub extern "C" fn withdraw_proxy_call_1() {
 
 fn forward_call_to_this<T: CLTyped + FromBytes>(entry_point: &str, runtime_args: RuntimeArgs) -> T {
     let this = runtime::get_key(PACKAGE_HASH_NAME)
-        .and_then(Key::into_hash)
-        .map(ContractPackageHash::new)
+        .and_then(Key::into_package_addr)
+        .map(PackageHash::new)
         .unwrap_or_revert();
     runtime::call_versioned_contract(this, None, entry_point, runtime_args)
 }
@@ -182,7 +182,7 @@ pub extern "C" fn call() {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(add_bid_proxy_call_1);
 
@@ -195,7 +195,7 @@ pub extern "C" fn call() {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(add_bid_proxy_call);
 
@@ -207,7 +207,7 @@ pub extern "C" fn call() {
         ],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
 
     let withdraw_proxy_call = EntryPoint::new(
@@ -218,7 +218,7 @@ pub extern "C" fn call() {
         ],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
 
     let delegate_proxy_call = EntryPoint::new(
@@ -230,7 +230,7 @@ pub extern "C" fn call() {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
 
     let delegate_proxy_call_1 = EntryPoint::new(
@@ -242,7 +242,7 @@ pub extern "C" fn call() {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
 
     let undelegate_proxy_call = EntryPoint::new(
@@ -254,7 +254,7 @@ pub extern "C" fn call() {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
 
     let undelegate_proxy_call_1 = EntryPoint::new(
@@ -266,7 +266,7 @@ pub extern "C" fn call() {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
 
     let activate_bid_proxy_call = EntryPoint::new(
@@ -277,7 +277,7 @@ pub extern "C" fn call() {
         )],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     let activate_bid_proxy_call_1 = EntryPoint::new(
         METHOD_ACTIVATE_BID_CALL_1,
@@ -287,7 +287,7 @@ pub extern "C" fn call() {
         )],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
 
     entry_points.add_entry_point(withdraw_proxy_call);
@@ -312,5 +312,5 @@ pub extern "C" fn call() {
 
     let (contract_hash, _version) =
         storage::add_contract_version(contract_package_hash, entry_points, named_keys);
-    runtime::put_key(CONTRACT_HASH_NAME, contract_hash.into());
+    runtime::put_key(CONTRACT_HASH_NAME, Key::contract_entity_key(contract_hash));
 }

@@ -9,7 +9,7 @@ use casper_contract::{
 };
 use casper_types::{
     addressable_entity::{NamedKeys, Parameters},
-    CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
+    CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
 };
 
 const CONTRACT_PACKAGE_HASH_KEY: &str = "contract_package_hash";
@@ -31,7 +31,7 @@ pub extern "C" fn call() {
             Parameters::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
 
         entry_points.add_entry_point(do_something);
@@ -52,8 +52,14 @@ pub extern "C" fn call() {
 
     runtime::put_key(CONTRACT_PACKAGE_HASH_KEY, contract_package_hash.into());
 
-    runtime::put_key(DISABLED_CONTRACT_HASH_KEY, disabled_contract_hash.into());
-    runtime::put_key(ENABLED_CONTRACT_HASH_KEY, enabled_contract_hash.into());
+    runtime::put_key(
+        DISABLED_CONTRACT_HASH_KEY,
+        Key::contract_entity_key(disabled_contract_hash),
+    );
+    runtime::put_key(
+        ENABLED_CONTRACT_HASH_KEY,
+        Key::contract_entity_key(enabled_contract_hash),
+    );
 
     storage::disable_contract_version(contract_package_hash, disabled_contract_hash)
         .unwrap_or_revert();

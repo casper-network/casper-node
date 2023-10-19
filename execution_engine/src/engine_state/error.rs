@@ -4,8 +4,8 @@ use thiserror::Error;
 
 use casper_storage::global_state::{self, state::CommitError};
 use casper_types::{
-    account::AccountHash, bytesrepr, system::mint, ApiError, ContractPackageHash, Digest, Key,
-    KeyTag, ProtocolVersion,
+    account::AccountHash, bytesrepr, system::mint, ApiError, Digest, Key, KeyTag, PackageHash,
+    ProtocolVersion,
 };
 
 use crate::{
@@ -107,7 +107,7 @@ pub enum Error {
     MissingContractByAccountHash(AccountHash),
     /// Failed to retrieve the entity's package
     #[error("Failed to retrieve the entity package as {0}")]
-    MissingEntityPackage(ContractPackageHash),
+    MissingEntityPackage(PackageHash),
     /// Failed to retrieve accumulation purse from handle payment system contract.
     #[error("Failed to retrieve accumulation purse from the handle payment contract")]
     FailedToRetrieveAccumulationPurse,

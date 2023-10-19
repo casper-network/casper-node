@@ -22,7 +22,7 @@ use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
     api_error,
     bytesrepr::{self, ToBytes},
-    ApiError, CLType, ContractPackageHash, Group, Key, Package, Parameter, URef,
+    ApiError, CLType, Group, Key, Package, PackageHash, Parameter, URef,
 };
 
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
@@ -39,8 +39,8 @@ const UREF_INDICES_ARG: &str = "uref_indices";
 
 #[no_mangle]
 pub extern "C" fn create_group() {
-    let package_hash_key: ContractPackageHash = runtime::get_key(PACKAGE_HASH_KEY)
-        .and_then(Key::into_hash)
+    let package_hash_key: PackageHash = runtime::get_key(PACKAGE_HASH_KEY)
+        .and_then(Key::into_package_addr)
         .unwrap_or_revert()
         .into();
     let group_name: String = runtime::get_named_arg(GROUP_NAME_ARG);
@@ -59,8 +59,8 @@ pub extern "C" fn create_group() {
 
 #[no_mangle]
 pub extern "C" fn remove_group() {
-    let package_hash_key: ContractPackageHash = runtime::get_key(PACKAGE_HASH_KEY)
-        .and_then(Key::into_hash)
+    let package_hash_key: PackageHash = runtime::get_key(PACKAGE_HASH_KEY)
+        .and_then(Key::into_package_addr)
         .unwrap_or_revert()
         .into();
     let group_name: String = runtime::get_named_arg(GROUP_NAME_ARG);
@@ -69,8 +69,8 @@ pub extern "C" fn remove_group() {
 
 #[no_mangle]
 pub extern "C" fn extend_group_urefs() {
-    let package_hash_key: ContractPackageHash = runtime::get_key(PACKAGE_HASH_KEY)
-        .and_then(Key::into_hash)
+    let package_hash_key: PackageHash = runtime::get_key(PACKAGE_HASH_KEY)
+        .and_then(Key::into_package_addr)
         .unwrap_or_revert()
         .into();
     let group_name: String = runtime::get_named_arg(GROUP_NAME_ARG);
@@ -95,7 +95,7 @@ fn read_host_buffer_into(dest: &mut [u8]) -> Result<usize, ApiError> {
     Ok(unsafe { bytes_written.assume_init() })
 }
 
-fn read_contract_package(package_hash: ContractPackageHash) -> Result<Option<Package>, ApiError> {
+fn read_contract_package(package_hash: PackageHash) -> Result<Option<Package>, ApiError> {
     let key = Key::from(package_hash);
     let (key_ptr, key_size, _bytes) = {
         let bytes = key.into_bytes().unwrap_or_revert();
@@ -130,8 +130,8 @@ fn read_contract_package(package_hash: ContractPackageHash) -> Result<Option<Pac
 
 #[no_mangle]
 pub extern "C" fn remove_group_urefs() {
-    let package_hash: ContractPackageHash = runtime::get_key(PACKAGE_HASH_KEY)
-        .and_then(Key::into_hash)
+    let package_hash: PackageHash = runtime::get_key(PACKAGE_HASH_KEY)
+        .and_then(Key::into_package_addr)
         .unwrap_or_revert()
         .into();
     let _package_access_key: URef = runtime::get_key(PACKAGE_ACCESS_KEY)
@@ -219,7 +219,7 @@ fn create_entry_points_1() -> EntryPoints {
     entry_points
 }
 
-fn install_version_1(package_hash: ContractPackageHash) {
+fn install_version_1(package_hash: PackageHash) {
     let contract_named_keys = NamedKeys::new();
 
     let entry_points = create_entry_points_1();

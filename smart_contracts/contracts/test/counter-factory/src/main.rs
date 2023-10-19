@@ -12,7 +12,7 @@ use casper_contract::{
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPoints, NamedKeys, Parameters},
     bytesrepr::FromBytes,
-    ApiError, CLType, CLTyped, EntryPointAccess, EntryPointType, URef, U512,
+    ApiError, CLType, CLTyped, EntryPointAccess, EntryPointType, Key, URef, U512,
 };
 
 const ACCESS_KEY_NAME: &str = "factory_access";
@@ -85,7 +85,7 @@ fn installer(name: String, initial_value: U512) {
             Parameters::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
         entry_points.add_entry_point(entry_point);
         let entry_point: EntryPoint = EntryPoint::new(
@@ -93,7 +93,7 @@ fn installer(name: String, initial_value: U512) {
             Parameters::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -108,7 +108,7 @@ fn installer(name: String, initial_value: U512) {
     );
 
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
-    runtime::put_key(&name, contract_hash.into());
+    runtime::put_key(&name, Key::contract_entity_key(contract_hash));
 }
 
 #[no_mangle]
@@ -121,7 +121,7 @@ pub extern "C" fn call() {
             Parameters::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Install,
+            EntryPointType::Factory,
         );
         entry_points.add_entry_point(entry_point);
         let entry_point: EntryPoint = EntryPoint::new(
@@ -129,7 +129,7 @@ pub extern "C" fn call() {
             Parameters::new(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Install,
+            EntryPointType::Factory,
         );
         entry_points.add_entry_point(entry_point);
         let entry_point: EntryPoint = EntryPoint::new(
@@ -137,7 +137,7 @@ pub extern "C" fn call() {
             Parameters::new(),
             CLType::Unit,
             EntryPointAccess::Template,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
         entry_points.add_entry_point(entry_point);
         let entry_point: EntryPoint = EntryPoint::new(
@@ -145,7 +145,7 @@ pub extern "C" fn call() {
             Parameters::new(),
             CLType::Unit,
             EntryPointAccess::Template,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
         entry_points.add_entry_point(entry_point);
 
@@ -160,5 +160,5 @@ pub extern "C" fn call() {
     );
 
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
-    runtime::put_key(HASH_KEY_NAME, contract_hash.into());
+    runtime::put_key(HASH_KEY_NAME, Key::contract_entity_key(contract_hash));
 }

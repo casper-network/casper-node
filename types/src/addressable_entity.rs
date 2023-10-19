@@ -47,13 +47,14 @@ pub use self::{
 
 use crate::{
     account::{Account, AccountHash},
+    byte_code::ByteCodeHash,
     bytesrepr::{self, FromBytes, ToBytes},
     checksummed_hex,
-    contract_wasm::ContractWasmHash,
-    contracts::Contract,
+    contracts::{Contract, ContractHash},
+    key::ByteCodeAddr,
     uref::{self, URef},
-    AccessRights, CLType, CLTyped, ContextAccessRights, ContractPackageHash, Group, HashAddr, Key,
-    ProtocolVersion, KEY_HASH_LENGTH,
+    AccessRights, ApiError, CLType, CLTyped, ContextAccessRights, Group, HashAddr, Key,
+    PackageHash, ProtocolVersion, KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -70,7 +71,7 @@ pub const PACKAGE_KIND_ACCOUNT_TAG: u8 = 2;
 /// The tag for Contract Packages associated with legacy packages.
 pub const PACKAGE_KIND_LEGACY_TAG: u8 = 3;
 
-const CONTRACT_STRING_PREFIX: &str = "contract-";
+const ADDRESSABLE_ENTITY_STRING_PREFIX: &str = "addressable-entity-";
 
 /// Set of errors which may happen when working with contract headers.
 #[derive(Debug, PartialEq, Eq)]
@@ -88,9 +89,9 @@ pub enum Error {
     /// Attempted to disable a contract that does not exist.
     /// ```
     /// # use casper_types::addressable_entity::Error;
-    /// assert_eq!(2, Error::ContractNotFound as u8);
+    /// assert_eq!(2, Error::EntityNotFound as u8);
     /// ```
-    ContractNotFound = 2,
+    EntityNotFound = 2,
     /// Attempted to create a user group which already exists (use the update
     /// function to change an existing user group).
     /// ```
@@ -145,7 +146,7 @@ impl TryFrom<u8> for Error {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         let error = match value {
             v if v == Self::PreviouslyUsedVersion as u8 => Self::PreviouslyUsedVersion,
-            v if v == Self::ContractNotFound as u8 => Self::ContractNotFound,
+            v if v == Self::EntityNotFound as u8 => Self::EntityNotFound,
             v if v == Self::GroupAlreadyExists as u8 => Self::GroupAlreadyExists,
             v if v == Self::MaxGroupsExceeded as u8 => Self::MaxGroupsExceeded,
             v if v == Self::MaxTotalURefsExceeded as u8 => Self::MaxTotalURefsExceeded,
@@ -225,14 +226,14 @@ impl Display for FromStrError {
     derive(JsonSchema),
     schemars(description = "The hex-encoded address of the addressable entity.")
 )]
-pub struct ContractHash(
+pub struct AddressableEntityHash(
     #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr,
 );
 
-impl ContractHash {
-    /// Constructs a new `ContractHash` from the raw bytes of the contract hash.
-    pub const fn new(value: HashAddr) -> ContractHash {
-        ContractHash(value)
+impl AddressableEntityHash {
+    /// Constructs a new `AddressableEntityHash` from the raw bytes of the contract hash.
+    pub const fn new(value: HashAddr) -> AddressableEntityHash {
+        AddressableEntityHash(value)
     }
 
     /// Returns the raw bytes of the contract hash as an array.
@@ -245,45 +246,55 @@ impl ContractHash {
         &self.0
     }
 
-    /// Formats the `ContractHash` for users getting and putting.
+    /// Formats the `AddressableEntityHash` for users getting and putting.
     pub fn to_formatted_string(self) -> String {
         format!(
             "{}{}",
-            CONTRACT_STRING_PREFIX,
+            ADDRESSABLE_ENTITY_STRING_PREFIX,
             base16::encode_lower(&self.0),
         )
     }
 
     /// Parses a string formatted as per `Self::to_formatted_string()` into a
-    /// `ContractHash`.
+    /// `AddressableEntityHash`.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         let remainder = input
-            .strip_prefix(CONTRACT_STRING_PREFIX)
+            .strip_prefix(ADDRESSABLE_ENTITY_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
         let bytes = HashAddr::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
-        Ok(ContractHash(bytes))
+        Ok(AddressableEntityHash(bytes))
     }
 }
 
-impl Display for ContractHash {
+impl From<ContractHash> for AddressableEntityHash {
+    fn from(contract_hash: ContractHash) -> Self {
+        AddressableEntityHash::new(contract_hash.value())
+    }
+}
+
+impl Display for AddressableEntityHash {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", base16::encode_lower(&self.0))
     }
 }
 
-impl Debug for ContractHash {
+impl Debug for AddressableEntityHash {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(f, "ContractHash({})", base16::encode_lower(&self.0))
+        write!(
+            f,
+            "AddressableEntityHash({})",
+            base16::encode_lower(&self.0)
+        )
     }
 }
 
-impl CLTyped for ContractHash {
+impl CLTyped for AddressableEntityHash {
     fn cl_type() -> CLType {
         CLType::ByteArray(KEY_HASH_LENGTH as u32)
     }
 }
 
-impl ToBytes for ContractHash {
+impl ToBytes for AddressableEntityHash {
     #[inline(always)]
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.0.to_bytes()
@@ -301,20 +312,32 @@ impl ToBytes for ContractHash {
     }
 }
 
-impl FromBytes for ContractHash {
+impl FromBytes for AddressableEntityHash {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (bytes, rem) = FromBytes::from_bytes(bytes)?;
-        Ok((ContractHash::new(bytes), rem))
+        Ok((AddressableEntityHash::new(bytes), rem))
     }
 }
 
-impl From<[u8; 32]> for ContractHash {
+impl From<[u8; 32]> for AddressableEntityHash {
     fn from(bytes: [u8; 32]) -> Self {
-        ContractHash(bytes)
+        AddressableEntityHash(bytes)
     }
 }
 
-impl Serialize for ContractHash {
+impl TryFrom<Key> for AddressableEntityHash {
+    type Error = ApiError;
+
+    fn try_from(value: Key) -> Result<Self, Self::Error> {
+        if let Key::AddressableEntity((_, entity_addr)) = value {
+            Ok(AddressableEntityHash::new(entity_addr))
+        } else {
+            Err(ApiError::Formatting)
+        }
+    }
+}
+
+impl Serialize for AddressableEntityHash {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
             self.to_formatted_string().serialize(serializer)
@@ -324,40 +347,40 @@ impl Serialize for ContractHash {
     }
 }
 
-impl<'de> Deserialize<'de> for ContractHash {
+impl<'de> Deserialize<'de> for AddressableEntityHash {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         if deserializer.is_human_readable() {
             let formatted_string = String::deserialize(deserializer)?;
-            ContractHash::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
+            AddressableEntityHash::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
         } else {
             let bytes = HashAddr::deserialize(deserializer)?;
-            Ok(ContractHash(bytes))
+            Ok(AddressableEntityHash(bytes))
         }
     }
 }
 
-impl AsRef<[u8]> for ContractHash {
+impl AsRef<[u8]> for AddressableEntityHash {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
     }
 }
 
-impl TryFrom<&[u8]> for ContractHash {
+impl TryFrom<&[u8]> for AddressableEntityHash {
     type Error = TryFromSliceForContractHashError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, TryFromSliceForContractHashError> {
         HashAddr::try_from(bytes)
-            .map(ContractHash::new)
+            .map(AddressableEntityHash::new)
             .map_err(|_| TryFromSliceForContractHashError(()))
     }
 }
 
-impl TryFrom<&Vec<u8>> for ContractHash {
+impl TryFrom<&Vec<u8>> for AddressableEntityHash {
     type Error = TryFromSliceForContractHashError;
 
     fn try_from(bytes: &Vec<u8>) -> Result<Self, Self::Error> {
         HashAddr::try_from(bytes as &[u8])
-            .map(ContractHash::new)
+            .map(AddressableEntityHash::new)
             .map_err(|_| TryFromSliceForContractHashError(()))
     }
 }
@@ -536,6 +559,15 @@ impl FromBytes for EntryPoints {
     }
 }
 
+impl Default for EntryPoints {
+    fn default() -> Self {
+        let mut entry_points = EntryPoints::new();
+        let entry_point = EntryPoint::default();
+        entry_points.add_entry_point(entry_point);
+        entry_points
+    }
+}
+
 impl EntryPoints {
     /// Constructs a new, empty `EntryPoints`.
     pub const fn new() -> EntryPoints {
@@ -584,6 +616,13 @@ impl EntryPoints {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
+
+    /// Checks if any of the entry points are of the type Session.
+    pub fn contains_stored_session(&self) -> bool {
+        self.0
+            .values()
+            .any(|entry_point| entry_point.entry_point_type == EntryPointType::Session)
+    }
 }
 
 impl From<Vec<EntryPoint>> for EntryPoints {
@@ -613,8 +652,8 @@ impl KeyValueJsonSchema for EntryPointLabels {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct AddressableEntity {
-    contract_package_hash: ContractPackageHash,
-    contract_wasm_hash: ContractWasmHash,
+    package_hash: PackageHash,
+    byte_code_hash: ByteCodeHash,
     named_keys: NamedKeys,
     entry_points: EntryPoints,
     protocol_version: ProtocolVersion,
@@ -625,8 +664,8 @@ pub struct AddressableEntity {
 
 impl From<AddressableEntity>
     for (
-        ContractPackageHash,
-        ContractWasmHash,
+        PackageHash,
+        ByteCodeHash,
         NamedKeys,
         EntryPoints,
         ProtocolVersion,
@@ -635,16 +674,16 @@ impl From<AddressableEntity>
         ActionThresholds,
     )
 {
-    fn from(contract: AddressableEntity) -> Self {
+    fn from(entity: AddressableEntity) -> Self {
         (
-            contract.contract_package_hash,
-            contract.contract_wasm_hash,
-            contract.named_keys,
-            contract.entry_points,
-            contract.protocol_version,
-            contract.main_purse,
-            contract.associated_keys,
-            contract.action_thresholds,
+            entity.package_hash,
+            entity.byte_code_hash,
+            entity.named_keys,
+            entity.entry_points,
+            entity.protocol_version,
+            entity.main_purse,
+            entity.associated_keys,
+            entity.action_thresholds,
         )
     }
 }
@@ -653,8 +692,8 @@ impl AddressableEntity {
     /// `AddressableEntity` constructor.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        contract_package_hash: ContractPackageHash,
-        contract_wasm_hash: ContractWasmHash,
+        package_hash: PackageHash,
+        byte_code_hash: ByteCodeHash,
         named_keys: NamedKeys,
         entry_points: EntryPoints,
         protocol_version: ProtocolVersion,
@@ -663,8 +702,8 @@ impl AddressableEntity {
         action_thresholds: ActionThresholds,
     ) -> Self {
         AddressableEntity {
-            contract_package_hash,
-            contract_wasm_hash,
+            package_hash,
+            byte_code_hash,
             named_keys,
             entry_points,
             protocol_version,
@@ -675,13 +714,13 @@ impl AddressableEntity {
     }
 
     /// Hash for accessing contract package
-    pub fn contract_package_hash(&self) -> ContractPackageHash {
-        self.contract_package_hash
+    pub fn package_hash(&self) -> PackageHash {
+        self.package_hash
     }
 
     /// Hash for accessing contract WASM
-    pub fn contract_wasm_hash(&self) -> ContractWasmHash {
-        self.contract_wasm_hash
+    pub fn byte_code_hash(&self) -> ByteCodeHash {
+        self.byte_code_hash
     }
 
     /// Checks whether there is a method with the given name
@@ -838,7 +877,7 @@ impl AddressableEntity {
         !authorization_keys.is_empty()
             && authorization_keys
                 .iter()
-                .all(|e| self.associated_keys.contains_key(e))
+                .any(|e| self.associated_keys.contains_key(e))
     }
 
     /// Checks whether the sum of the weights of all authorization keys is
@@ -861,14 +900,24 @@ impl AddressableEntity {
         total_weight >= *self.action_thresholds().key_management()
     }
 
+    /// Checks whether the sum of the weights of all authorization keys is
+    /// greater or equal to upgrade management threshold.
+    pub fn can_upgrade_with(&self, authorization_keys: &BTreeSet<AccountHash>) -> bool {
+        let total_weight = self
+            .associated_keys
+            .calculate_keys_weight(authorization_keys);
+
+        total_weight >= *self.action_thresholds().upgrade_management()
+    }
+
     /// Adds new entry point
     pub fn add_entry_point<T: Into<String>>(&mut self, entry_point: EntryPoint) {
         self.entry_points.add_entry_point(entry_point);
     }
 
-    /// Hash for accessing wasm bytes
-    pub fn contract_wasm_key(&self) -> Key {
-        self.contract_wasm_hash.into()
+    /// Addr for accessing wasm bytes
+    pub fn byte_code_addr(&self) -> ByteCodeAddr {
+        self.byte_code_hash.value()
     }
 
     /// Returns immutable reference to methods
@@ -907,21 +956,39 @@ impl AddressableEntity {
     }
 
     /// Extracts the access rights from the named keys of the addressable entity.
-    pub fn extract_access_rights(&self, contract_hash: ContractHash) -> ContextAccessRights {
+    pub fn extract_access_rights(&self, entity_hash: AddressableEntityHash) -> ContextAccessRights {
         let urefs_iter = self
             .named_keys
             .keys()
             .filter_map(|key| key.as_uref().copied())
             .chain(iter::once(self.main_purse));
-        ContextAccessRights::new(contract_hash, urefs_iter)
+        ContextAccessRights::new(entity_hash, urefs_iter)
+    }
+
+    /// Update the byte code hash for a given Entity associated with an Account.
+    pub fn update_session_entity(
+        self,
+        byte_code_hash: ByteCodeHash,
+        entry_points: EntryPoints,
+    ) -> Self {
+        Self {
+            package_hash: self.package_hash,
+            byte_code_hash,
+            named_keys: self.named_keys,
+            entry_points,
+            protocol_version: self.protocol_version,
+            main_purse: self.main_purse,
+            associated_keys: self.associated_keys,
+            action_thresholds: self.action_thresholds,
+        }
     }
 }
 
 impl ToBytes for AddressableEntity {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
-        self.contract_package_hash().write_bytes(&mut result)?;
-        self.contract_wasm_hash().write_bytes(&mut result)?;
+        self.package_hash().write_bytes(&mut result)?;
+        self.byte_code_hash().write_bytes(&mut result)?;
         self.named_keys().write_bytes(&mut result)?;
         self.entry_points().write_bytes(&mut result)?;
         self.protocol_version().write_bytes(&mut result)?;
@@ -933,8 +1000,8 @@ impl ToBytes for AddressableEntity {
 
     fn serialized_length(&self) -> usize {
         ToBytes::serialized_length(&self.entry_points)
-            + ToBytes::serialized_length(&self.contract_package_hash)
-            + ToBytes::serialized_length(&self.contract_wasm_hash)
+            + ToBytes::serialized_length(&self.package_hash)
+            + ToBytes::serialized_length(&self.byte_code_hash)
             + ToBytes::serialized_length(&self.protocol_version)
             + ToBytes::serialized_length(&self.named_keys)
             + ToBytes::serialized_length(&self.main_purse)
@@ -943,8 +1010,8 @@ impl ToBytes for AddressableEntity {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.contract_package_hash().write_bytes(writer)?;
-        self.contract_wasm_hash().write_bytes(writer)?;
+        self.package_hash().write_bytes(writer)?;
+        self.byte_code_hash().write_bytes(writer)?;
         self.named_keys().write_bytes(writer)?;
         self.entry_points().write_bytes(writer)?;
         self.protocol_version().write_bytes(writer)?;
@@ -957,8 +1024,8 @@ impl ToBytes for AddressableEntity {
 
 impl FromBytes for AddressableEntity {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (contract_package_hash, bytes) = ContractPackageHash::from_bytes(bytes)?;
-        let (contract_wasm_hash, bytes) = ContractWasmHash::from_bytes(bytes)?;
+        let (package_hash, bytes) = PackageHash::from_bytes(bytes)?;
+        let (contract_wasm_hash, bytes) = ByteCodeHash::from_bytes(bytes)?;
         let (named_keys, bytes) = NamedKeys::from_bytes(bytes)?;
         let (entry_points, bytes) = EntryPoints::from_bytes(bytes)?;
         let (protocol_version, bytes) = ProtocolVersion::from_bytes(bytes)?;
@@ -967,8 +1034,8 @@ impl FromBytes for AddressableEntity {
         let (action_thresholds, bytes) = ActionThresholds::from_bytes(bytes)?;
         Ok((
             AddressableEntity {
-                contract_package_hash,
-                contract_wasm_hash,
+                package_hash,
+                byte_code_hash: contract_wasm_hash,
                 named_keys,
                 entry_points,
                 protocol_version,
@@ -986,8 +1053,8 @@ impl Default for AddressableEntity {
         AddressableEntity {
             named_keys: NamedKeys::new(),
             entry_points: EntryPoints::new_with_default_entry_point(),
-            contract_wasm_hash: [0; KEY_HASH_LENGTH].into(),
-            contract_package_hash: [0; KEY_HASH_LENGTH].into(),
+            byte_code_hash: [0; KEY_HASH_LENGTH].into(),
+            package_hash: [0; KEY_HASH_LENGTH].into(),
             protocol_version: ProtocolVersion::V1_0_0,
             main_purse: URef::default(),
             action_thresholds: ActionThresholds::default(),
@@ -999,8 +1066,8 @@ impl Default for AddressableEntity {
 impl From<Contract> for AddressableEntity {
     fn from(value: Contract) -> Self {
         AddressableEntity::new(
-            value.contract_package_hash(),
-            value.contract_wasm_hash(),
+            PackageHash::new(value.contract_package_hash().value()),
+            ByteCodeHash::new(value.contract_wasm_hash().value()),
             value.named_keys().clone(),
             value.entry_points().clone(),
             value.protocol_version(),
@@ -1014,8 +1081,8 @@ impl From<Contract> for AddressableEntity {
 impl From<Account> for AddressableEntity {
     fn from(value: Account) -> Self {
         AddressableEntity::new(
-            ContractPackageHash::default(),
-            ContractWasmHash::new([0u8; 32]),
+            PackageHash::default(),
+            ByteCodeHash::new([0u8; 32]),
             value.named_keys().clone(),
             EntryPoints::new(),
             ProtocolVersion::default(),
@@ -1035,12 +1102,14 @@ impl From<Account> for AddressableEntity {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntryPointType {
-    /// Runs as session code
+    /// Runs as session code (caller)
+    /// Deprecated, retained to allow read back of legacy stored session.
     Session = 0b00000000,
-    /// Runs within contract's context
-    Contract = 0b00000001,
-    /// Installer entry point.
-    Install = 0b10000000,
+    /// Runs within called entity's context (called)
+    AddressableEntity = 0b00000001,
+    /// This entry point is intended to extract a subset of bytecode.
+    /// Runs within called entity's context (called)
+    Factory = 0b10000000,
 }
 
 impl EntryPointType {
@@ -1056,6 +1125,14 @@ impl EntryPointType {
     /// Get the bit pattern.
     pub fn bits(self) -> u8 {
         self as u8
+    }
+
+    /// Returns true if entry point type is invalid for the context.
+    pub fn is_invalid_context(&self) -> bool {
+        match self {
+            EntryPointType::Session => true,
+            EntryPointType::AddressableEntity | EntryPointType::Factory => false,
+        }
     }
 }
 
@@ -1391,57 +1468,58 @@ mod tests {
     use crate::{AccessRights, URef, UREF_ADDR_LENGTH};
 
     #[test]
-    fn contract_hash_from_slice() {
+    fn entity_hash_from_slice() {
         let bytes: Vec<u8> = (0..32).collect();
-        let contract_hash = HashAddr::try_from(&bytes[..]).expect("should create contract hash");
-        let contract_hash = ContractHash::new(contract_hash);
-        assert_eq!(&bytes, &contract_hash.as_bytes());
+        let entity_hash = HashAddr::try_from(&bytes[..]).expect("should create contract hash");
+        let entity_hash = AddressableEntityHash::new(entity_hash);
+        assert_eq!(&bytes, &entity_hash.as_bytes());
     }
 
     #[test]
-    fn contract_hash_from_str() {
-        let contract_hash = ContractHash([3; 32]);
-        let encoded = contract_hash.to_formatted_string();
-        let decoded = ContractHash::from_formatted_str(&encoded).unwrap();
-        assert_eq!(contract_hash, decoded);
+    fn entity_hash_from_str() {
+        let entity_hash = AddressableEntityHash([3; 32]);
+        let encoded = entity_hash.to_formatted_string();
+        let decoded = AddressableEntityHash::from_formatted_str(&encoded).unwrap();
+        assert_eq!(entity_hash, decoded);
 
         let invalid_prefix =
-            "contract--0000000000000000000000000000000000000000000000000000000000000000";
-        assert!(ContractHash::from_formatted_str(invalid_prefix).is_err());
+            "addressable-entity--0000000000000000000000000000000000000000000000000000000000000000";
+        assert!(AddressableEntityHash::from_formatted_str(invalid_prefix).is_err());
 
-        let short_addr = "contract-00000000000000000000000000000000000000000000000000000000000000";
-        assert!(ContractHash::from_formatted_str(short_addr).is_err());
+        let short_addr =
+            "addressable-entity-00000000000000000000000000000000000000000000000000000000000000";
+        assert!(AddressableEntityHash::from_formatted_str(short_addr).is_err());
 
         let long_addr =
-            "contract-000000000000000000000000000000000000000000000000000000000000000000";
-        assert!(ContractHash::from_formatted_str(long_addr).is_err());
+            "addressable-entity-000000000000000000000000000000000000000000000000000000000000000000";
+        assert!(AddressableEntityHash::from_formatted_str(long_addr).is_err());
 
         let invalid_hex =
-            "contract-000000000000000000000000000000000000000000000000000000000000000g";
-        assert!(ContractHash::from_formatted_str(invalid_hex).is_err());
+            "addressable-entity-000000000000000000000000000000000000000000000000000000000000000g";
+        assert!(AddressableEntityHash::from_formatted_str(invalid_hex).is_err());
     }
 
     #[test]
-    fn contract_hash_serde_roundtrip() {
-        let contract_hash = ContractHash([255; 32]);
-        let serialized = bincode::serialize(&contract_hash).unwrap();
+    fn entity_hash_serde_roundtrip() {
+        let entity_hash = AddressableEntityHash([255; 32]);
+        let serialized = bincode::serialize(&entity_hash).unwrap();
         let deserialized = bincode::deserialize(&serialized).unwrap();
-        assert_eq!(contract_hash, deserialized)
+        assert_eq!(entity_hash, deserialized)
     }
 
     #[test]
-    fn contract_hash_json_roundtrip() {
-        let contract_hash = ContractHash([255; 32]);
-        let json_string = serde_json::to_string_pretty(&contract_hash).unwrap();
+    fn entity_hash_json_roundtrip() {
+        let entity_hash = AddressableEntityHash([255; 32]);
+        let json_string = serde_json::to_string_pretty(&entity_hash).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
-        assert_eq!(contract_hash, decoded)
+        assert_eq!(entity_hash, decoded)
     }
 
     #[test]
     fn should_extract_access_rights() {
         const MAIN_PURSE: URef = URef::new([2; 32], AccessRights::READ_ADD_WRITE);
 
-        let contract_hash = ContractHash([255; 32]);
+        let entity_hash = AddressableEntityHash([255; 32]);
         let uref = URef::new([84; UREF_ADDR_LENGTH], AccessRights::READ_ADD);
         let uref_r = URef::new([42; UREF_ADDR_LENGTH], AccessRights::READ);
         let uref_a = URef::new([42; UREF_ADDR_LENGTH], AccessRights::ADD);
@@ -1453,17 +1531,17 @@ mod tests {
         named_keys.insert("d".to_string(), Key::URef(uref));
         let associated_keys = AssociatedKeys::new(AccountHash::new([254; 32]), Weight::new(1));
         let contract = AddressableEntity::new(
-            ContractPackageHash::new([254; 32]),
-            ContractWasmHash::new([253; 32]),
+            PackageHash::new([254; 32]),
+            ByteCodeHash::new([253; 32]),
             named_keys,
             EntryPoints::new_with_default_entry_point(),
             ProtocolVersion::V1_0_0,
             MAIN_PURSE,
             associated_keys,
-            ActionThresholds::new(Weight::new(1), Weight::new(1))
+            ActionThresholds::new(Weight::new(1), Weight::new(1), Weight::new(1))
                 .expect("should create thresholds"),
         );
-        let access_rights = contract.extract_access_rights(contract_hash);
+        let access_rights = contract.extract_access_rights(entity_hash);
         let expected_uref = URef::new([42; UREF_ADDR_LENGTH], AccessRights::READ_ADD_WRITE);
         assert!(
             access_rights.has_access_rights_to_uref(&uref),

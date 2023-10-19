@@ -907,7 +907,7 @@
           "additionalProperties": false
         },
         {
-          "description": "Stored contract referenced by its [`ContractHash`], entry point and an instance of [`RuntimeArgs`].",
+          "description": "Stored contract referenced by its [`AddressableEntityHash`], entry point and an instance of [`RuntimeArgs`].",
           "type": "object",
           "required": [
             "StoredContractByHash"
@@ -981,7 +981,7 @@
           "additionalProperties": false
         },
         {
-          "description": "Stored versioned contract referenced by its [`ContractPackageHash`], entry point and an instance of [`RuntimeArgs`].",
+          "description": "Stored versioned contract referenced by its [`PackageHash`], entry point and an instance of [`RuntimeArgs`].",
           "type": "object",
           "required": [
             "StoredVersionedContractByHash"

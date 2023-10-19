@@ -15,7 +15,8 @@ use casper_types::{
     addressable_entity::{
         EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys, Parameter,
     },
-    CLType, CLTyped, U512,
+    package::PackageKindTag,
+    CLType, CLTyped, Key, U512,
 };
 
 const ENTRY_FUNCTION_NAME: &str = "transfer";
@@ -56,7 +57,7 @@ pub extern "C" fn call() {
             ],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
         tmp.add_entry_point(entry_point);
         tmp
@@ -82,5 +83,8 @@ pub extern "C" fn call() {
     );
 
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
-    runtime::put_key(HASH_KEY_NAME, contract_hash.into());
+    runtime::put_key(
+        HASH_KEY_NAME,
+        Key::addressable_entity_key(PackageKindTag::SmartContract, contract_hash),
+    );
 }

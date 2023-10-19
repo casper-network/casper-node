@@ -16,13 +16,13 @@ use crate::{
     account::{self, action_thresholds::gens::account_action_thresholds_arb, AccountHash},
     addressable_entity::{NamedKeys, Parameters, Weight},
     crypto::gens::public_key_arb_no_system,
-    package::{ContractPackageStatus, ContractVersionKey, ContractVersions, Groups},
+    package::{EntityVersionKey, EntityVersions, Groups, PackageStatus},
     system::auction::{
         gens::era_info_arb, DelegationRate, Delegator, UnbondingPurse, WithdrawPurse,
         DELEGATION_RATE_DENOMINATOR,
     },
     transfer::TransferAddr,
-    AccessRights, AddressableEntity, CLType, CLValue, ContractHash, ContractWasm, EntryPoint,
+    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, CLType, CLValue, EntryPoint,
     EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg, Package, Parameter,
     Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
 };
@@ -32,9 +32,13 @@ use crate::{
     addressable_entity::{
         action_thresholds::gens::action_thresholds_arb, associated_keys::gens::associated_keys_arb,
     },
-    contracts::Contract,
+    byte_code::ByteCodeKind,
+    contracts::{
+        Contract, ContractHash, ContractPackage, ContractPackageStatus, ContractVersionKey,
+        ContractVersions,
+    },
     deploy_info::gens::{deploy_hash_arb, transfer_addr_arb},
-    package::ContractPackageKind,
+    package::PackageKind,
     system::auction::{Bid, BidAddr, BidKind, ValidatorBid},
 };
 pub use crate::{deploy_info::gens::deploy_info_arb, transfer::gens::transfer_arb};
@@ -307,8 +311,8 @@ pub fn entry_point_access_arb() -> impl Strategy<Value = EntryPointAccess> {
 pub fn entry_point_type_arb() -> impl Strategy<Value = EntryPointType> {
     prop_oneof![
         Just(EntryPointType::Session),
-        Just(EntryPointType::Contract),
-        Just(EntryPointType::Install),
+        Just(EntryPointType::AddressableEntity),
+        Just(EntryPointType::Factory),
     ]
 }
 
@@ -358,6 +362,24 @@ pub fn account_arb() -> impl Strategy<Value = Account> {
                 )
             },
         )
+}
+
+pub fn contract_package_arb() -> impl Strategy<Value = ContractPackage> {
+    (
+        uref_arb(),
+        contract_versions_arb(),
+        disabled_contract_versions_arb(),
+        groups_arb(),
+    )
+        .prop_map(|(access_key, versions, disabled_versions, groups)| {
+            ContractPackage::new(
+                access_key,
+                versions,
+                disabled_versions,
+                groups,
+                ContractPackageStatus::default(),
+            )
+        })
 }
 
 pub fn contract_arb() -> impl Strategy<Value = Contract> {
@@ -423,13 +445,19 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
         )
 }
 
-pub fn contract_wasm_arb() -> impl Strategy<Value = ContractWasm> {
-    collection::vec(any::<u8>(), 1..1000).prop_map(ContractWasm::new)
+pub fn byte_code_arb() -> impl Strategy<Value = ByteCode> {
+    collection::vec(any::<u8>(), 1..1000)
+        .prop_map(|byte_code| ByteCode::new(ByteCodeKind::V1CasperWasm, byte_code))
 }
 
 pub fn contract_version_key_arb() -> impl Strategy<Value = ContractVersionKey> {
     (1..32u32, 1..1000u32)
         .prop_map(|(major, contract_ver)| ContractVersionKey::new(major, contract_ver))
+}
+
+pub fn entity_version_key_arb() -> impl Strategy<Value = EntityVersionKey> {
+    (1..32u32, 1..1000u32)
+        .prop_map(|(major, contract_ver)| EntityVersionKey::new(major, contract_ver))
 }
 
 pub fn contract_versions_arb() -> impl Strategy<Value = ContractVersions> {
@@ -438,10 +466,22 @@ pub fn contract_versions_arb() -> impl Strategy<Value = ContractVersions> {
         u8_slice_32().prop_map(ContractHash::new),
         1..5,
     )
-    .prop_map(ContractVersions::from)
 }
 
-pub fn disabled_versions_arb() -> impl Strategy<Value = BTreeSet<ContractVersionKey>> {
+pub fn entity_versions_arb() -> impl Strategy<Value = EntityVersions> {
+    collection::btree_map(
+        entity_version_key_arb(),
+        u8_slice_32().prop_map(AddressableEntityHash::new),
+        1..5,
+    )
+    .prop_map(EntityVersions::from)
+}
+
+pub fn disabled_versions_arb() -> impl Strategy<Value = BTreeSet<EntityVersionKey>> {
+    collection::btree_set(entity_version_key_arb(), 0..5)
+}
+
+pub fn disabled_contract_versions_arb() -> impl Strategy<Value = BTreeSet<ContractVersionKey>> {
     collection::btree_set(contract_version_key_arb(), 0..5)
 }
 
@@ -450,10 +490,10 @@ pub fn groups_arb() -> impl Strategy<Value = Groups> {
         .prop_map(Groups::from)
 }
 
-pub fn contract_package_arb() -> impl Strategy<Value = Package> {
+pub fn package_arb() -> impl Strategy<Value = Package> {
     (
         uref_arb(),
-        contract_versions_arb(),
+        entity_versions_arb(),
         disabled_versions_arb(),
         groups_arb(),
     )
@@ -463,8 +503,8 @@ pub fn contract_package_arb() -> impl Strategy<Value = Package> {
                 versions,
                 disabled_versions,
                 groups,
-                ContractPackageStatus::default(),
-                ContractPackageKind::default(),
+                PackageStatus::default(),
+                PackageKind::SmartContract,
             )
         })
 }
@@ -624,10 +664,10 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
     prop_oneof![
         cl_value_arb().prop_map(StoredValue::CLValue),
         account_arb().prop_map(StoredValue::Account),
-        contract_wasm_arb().prop_map(StoredValue::ContractWasm),
+        byte_code_arb().prop_map(StoredValue::ByteCode),
         contract_arb().prop_map(StoredValue::Contract),
         addressable_entity_arb().prop_map(StoredValue::AddressableEntity),
-        contract_package_arb().prop_map(StoredValue::ContractPackage),
+        package_arb().prop_map(StoredValue::Package),
         transfer_arb().prop_map(StoredValue::Transfer),
         deploy_info_arb().prop_map(StoredValue::DeployInfo),
         era_info_arb(1..10).prop_map(StoredValue::EraInfo),
@@ -654,5 +694,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
             StoredValue::Unbonding(_) => stored_value,
             StoredValue::AddressableEntity(_) => stored_value,
             StoredValue::BidKind(_) => stored_value,
+            StoredValue::Package(_) => stored_value,
+            StoredValue::ByteCode(_) => stored_value,
         })
 }

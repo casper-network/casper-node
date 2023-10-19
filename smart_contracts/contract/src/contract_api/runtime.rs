@@ -8,9 +8,9 @@ use casper_types::{
     addressable_entity::NamedKeys,
     api_error,
     bytesrepr::{self, FromBytes},
-    package::ContractVersion,
+    package::EntityVersion,
     system::CallStackElement,
-    ApiError, BlockTime, CLTyped, CLValue, ContractHash, ContractPackageHash, Key, Phase,
+    AddressableEntityHash, ApiError, BlockTime, CLTyped, CLValue, Key, PackageHash, Phase,
     RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH, BLOCKTIME_SERIALIZED_LENGTH, PHASE_SERIALIZED_LENGTH,
 };
 
@@ -47,7 +47,7 @@ pub fn revert<T: Into<ApiError>>(error: T) -> ! {
 /// stored contract calls [`revert`], then execution stops and `call_contract` doesn't return.
 /// Otherwise `call_contract` returns `()`.
 pub fn call_contract<T: CLTyped + FromBytes>(
-    contract_hash: ContractHash,
+    contract_hash: AddressableEntityHash,
     entry_point_name: &str,
     runtime_args: RuntimeArgs,
 ) -> T {
@@ -83,8 +83,8 @@ pub fn call_contract<T: CLTyped + FromBytes>(
 /// `call_versioned_contract`.  If the stored contract calls [`revert`], then execution stops and
 /// `call_versioned_contract` doesn't return. Otherwise `call_versioned_contract` returns `()`.
 pub fn call_versioned_contract<T: CLTyped + FromBytes>(
-    contract_package_hash: ContractPackageHash,
-    contract_version: Option<ContractVersion>,
+    contract_package_hash: PackageHash,
+    contract_version: Option<EntityVersion>,
     entry_point_name: &str,
     runtime_args: RuntimeArgs,
 ) -> T {

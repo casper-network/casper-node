@@ -72,7 +72,7 @@ fn should_run_ee_572_regression() {
         ACCOUNT_2_ADDR,
         CONTRACT_ESCALATE,
         runtime_args! {
-            "contract_hash" => contract.into_hash().expect("should be hash"),
+            "contract_hash" => contract.into_entity_addr().expect("should be hash"),
         },
     )
     .build();

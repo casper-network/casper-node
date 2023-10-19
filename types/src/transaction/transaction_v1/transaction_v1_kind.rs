@@ -20,8 +20,8 @@ use crate::{
     account::AccountHash,
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     transaction::{AuctionTransactionV1, DirectCallV1},
-    CLTyped, CLValueError, ContractHash, ContractPackageHash, ContractPackageIdentifier,
-    ContractVersion, PublicKey, RuntimeArgs, URef, U512,
+    AddressableEntityHash, CLTyped, CLValueError, EntityVersion, PackageHash, PackageIdentifier,
+    PublicKey, RuntimeArgs, URef, U512,
 };
 
 const NATIVE_TAG: u8 = 0;
@@ -148,7 +148,7 @@ impl TransactionV1Kind {
 
     /// Returns a new upgrader transaction body.
     pub fn new_upgrader(
-        contract_package_id: ContractPackageIdentifier,
+        contract_package_id: PackageIdentifier,
         module_bytes: Bytes,
         args: RuntimeArgs,
     ) -> Self {
@@ -158,7 +158,7 @@ impl TransactionV1Kind {
 
     /// Returns a new stored-contract-by-hash transaction body.
     pub fn new_stored_contract_by_hash(
-        hash: ContractHash,
+        hash: AddressableEntityHash,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Self {
@@ -178,8 +178,8 @@ impl TransactionV1Kind {
 
     /// Returns a new stored-versioned-contract-by-hash transaction body.
     pub fn new_stored_versioned_contract_by_hash(
-        hash: ContractPackageHash,
-        version: Option<ContractVersion>,
+        hash: PackageHash,
+        version: Option<EntityVersion>,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Self {
@@ -191,7 +191,7 @@ impl TransactionV1Kind {
     /// Returns a new stored-versioned-contract-by-name transaction body.
     pub fn new_stored_versioned_contract_by_name(
         name: String,
-        version: Option<ContractVersion>,
+        version: Option<EntityVersion>,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Self {

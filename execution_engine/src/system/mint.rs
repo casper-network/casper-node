@@ -12,7 +12,7 @@ use casper_types::{
         mint::{Error, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         CallStackElement,
     },
-    Key, Phase, PublicKey, URef, U512,
+    Key, PublicKey, URef, U512,
 };
 
 use crate::{
@@ -105,13 +105,6 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         amount: U512,
         id: Option<u64>,
     ) -> Result<(), Error> {
-        if let (Phase::Session, Some(CallStackElement::StoredSession { .. })) =
-            (self.get_phase(), self.get_immediate_caller())
-        {
-            // stored session code is not allowed to call this method in the session phase
-            return Err(Error::InvalidContext);
-        }
-
         if !self.allow_unrestricted_transfers() {
             let registry = match self.get_system_contract_registry() {
                 Ok(registry) => registry,
@@ -122,24 +115,12 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             };
             let immediate_caller = self.get_immediate_caller().cloned();
             match immediate_caller {
-                Some(CallStackElement::StoredSession { contract_hash, .. })
-                | Some(CallStackElement::StoredContract { contract_hash, .. })
-                    if registry.has_contract_hash(&contract_hash) =>
-                {
+                Some(CallStackElement::AddressableEntity {
+                    entity_hash: contract_hash,
+                    ..
+                }) if registry.has_contract_hash(&contract_hash) => {
                     // System contract calling a mint is fine (i.e. standard payment calling mint's
                     // transfer)
-                }
-
-                Some(CallStackElement::StoredSession {
-                    account_hash,
-                    contract_package_hash: _,
-                    contract_hash: _,
-                }) => {
-                    if account_hash != PublicKey::System.to_account_hash()
-                        && !self.is_administrator(&account_hash)
-                    {
-                        return Err(Error::DisabledUnrestrictedTransfers);
-                    }
                 }
 
                 Some(CallStackElement::Session { account_hash: _ })
@@ -206,9 +187,9 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                     }
                 }
 
-                Some(CallStackElement::StoredContract {
-                    contract_package_hash: _,
-                    contract_hash: _,
+                Some(CallStackElement::AddressableEntity {
+                    package_hash: _,
+                    entity_hash: _,
                 }) => {
                     if self.get_caller() != PublicKey::System.to_account_hash()
                         && !self.is_administrator(&self.get_caller())

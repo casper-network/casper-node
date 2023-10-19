@@ -4,8 +4,8 @@ use std::{cell::RefCell, rc::Rc};
 
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
-    addressable_entity::NamedKeys, bytesrepr::Bytes, ContractHash, ContractPackageHash,
-    ContractVersionKey, ExecutableDeployItem, Key, Package, Phase, ProtocolVersion, StoredValue,
+    addressable_entity::NamedKeys, bytesrepr::Bytes, AddressableEntityHash, EntityVersionKey,
+    ExecutableDeployItem, Key, Package, PackageHash, Phase, ProtocolVersion, StoredValue,
 };
 
 use crate::{
@@ -21,8 +21,8 @@ pub(crate) enum ExecutionKind {
     Module(Bytes),
     /// Stored contract.
     Contract {
-        /// Contract's hash.
-        contract_hash: ContractHash,
+        /// AddressableEntity's hash.
+        entity_hash: AddressableEntityHash,
         /// Entry point's name.
         entry_point_name: String,
     },
@@ -35,9 +35,12 @@ impl ExecutionKind {
     }
 
     /// Returns a new contract variant of `ExecutionKind`.
-    pub fn new_contract(contract_hash: ContractHash, entry_point_name: String) -> Self {
+    pub fn new_addressable_entity(
+        entity_hash: AddressableEntityHash,
+        entry_point_name: String,
+    ) -> Self {
         ExecutionKind::Contract {
-            contract_hash,
+            entity_hash,
             entry_point_name,
         }
     }
@@ -56,8 +59,7 @@ impl ExecutionKind {
         R: StateReader<Key, StoredValue>,
         R::Error: Into<ExecError>,
     {
-        let contract_hash: ContractHash;
-        let contract_package: Package;
+        let package: Package;
 
         let is_payment_phase = phase == Phase::Payment;
 
@@ -77,18 +79,25 @@ impl ExecutionKind {
             }
             ExecutableDeployItem::StoredContractByHash {
                 hash, entry_point, ..
-            } => Ok(ExecutionKind::new_contract(hash, entry_point)),
+            } => Ok(ExecutionKind::new_addressable_entity(hash, entry_point)),
             ExecutableDeployItem::StoredContractByName {
                 name, entry_point, ..
             } => {
-                let contract_key = named_keys.get(&name).cloned().ok_or_else(|| {
+                let entity_key = named_keys.get(&name).cloned().ok_or_else(|| {
                     Error::Exec(execution::Error::NamedKeyNotFound(name.to_string()))
                 })?;
 
-                contract_hash =
-                    ContractHash::new(contract_key.into_hash().ok_or(Error::InvalidKeyVariant)?);
+                let entity_hash = match entity_key {
+                    Key::Hash(hash) | Key::AddressableEntity((_, hash)) => {
+                        AddressableEntityHash::new(hash)
+                    }
+                    _ => return Err(Error::InvalidKeyVariant),
+                };
 
-                Ok(ExecutionKind::new_contract(contract_hash, entry_point))
+                Ok(ExecutionKind::new_addressable_entity(
+                    entity_hash,
+                    entry_point,
+                ))
             }
             ExecutableDeployItem::StoredVersionedContractByName {
                 name,
@@ -96,82 +105,75 @@ impl ExecutionKind {
                 entry_point,
                 ..
             } => {
-                let contract_package_hash: ContractPackageHash = {
-                    named_keys
-                        .get(&name)
-                        .cloned()
-                        .ok_or_else(|| {
-                            Error::Exec(execution::Error::NamedKeyNotFound(name.to_string()))
-                        })?
-                        .into_hash()
-                        .ok_or(Error::InvalidKeyVariant)?
-                        .into()
+                let package_key = named_keys.get(&name).cloned().ok_or_else(|| {
+                    Error::Exec(execution::Error::NamedKeyNotFound(name.to_string()))
+                })?;
+
+                let package_hash = match package_key {
+                    Key::Hash(hash) | Key::Package(hash) => PackageHash::new(hash),
+                    _ => return Err(Error::InvalidKeyVariant),
                 };
 
-                contract_package = tracking_copy
-                    .borrow_mut()
-                    .get_contract_package(contract_package_hash)?;
+                package = tracking_copy.borrow_mut().get_package(package_hash)?;
 
                 let maybe_version_key =
-                    version.map(|ver| ContractVersionKey::new(protocol_version.value().major, ver));
+                    version.map(|ver| EntityVersionKey::new(protocol_version.value().major, ver));
 
                 let contract_version_key = maybe_version_key
-                    .or_else(|| contract_package.current_contract_version())
-                    .ok_or(Error::Exec(execution::Error::NoActiveContractVersions(
-                        contract_package_hash,
+                    .or_else(|| package.current_entity_version())
+                    .ok_or(Error::Exec(execution::Error::NoActiveEntityVersions(
+                        package_hash,
                     )))?;
 
-                if !contract_package.is_version_enabled(contract_version_key) {
-                    return Err(Error::Exec(execution::Error::InvalidContractVersion(
+                if !package.is_version_enabled(contract_version_key) {
+                    return Err(Error::Exec(execution::Error::InvalidEntityVersion(
                         contract_version_key,
                     )));
                 }
 
-                let looked_up_contract_hash: ContractHash = contract_package
-                    .lookup_contract_hash(contract_version_key)
-                    .ok_or(Error::Exec(execution::Error::InvalidContractVersion(
+                let looked_up_entity_hash: AddressableEntityHash = package
+                    .lookup_entity_hash(contract_version_key)
+                    .ok_or(Error::Exec(execution::Error::InvalidEntityVersion(
                         contract_version_key,
                     )))?
                     .to_owned();
 
-                Ok(ExecutionKind::new_contract(
-                    looked_up_contract_hash,
+                Ok(ExecutionKind::new_addressable_entity(
+                    looked_up_entity_hash,
                     entry_point,
                 ))
             }
             ExecutableDeployItem::StoredVersionedContractByHash {
-                hash: contract_package_hash,
+                hash: package_hash,
                 version,
                 entry_point,
                 ..
             } => {
-                contract_package = tracking_copy
-                    .borrow_mut()
-                    .get_contract_package(contract_package_hash)?;
+                package = tracking_copy.borrow_mut().get_package(package_hash)?;
 
                 let maybe_version_key =
-                    version.map(|ver| ContractVersionKey::new(protocol_version.value().major, ver));
+                    version.map(|ver| EntityVersionKey::new(protocol_version.value().major, ver));
 
                 let contract_version_key = maybe_version_key
-                    .or_else(|| contract_package.current_contract_version())
-                    .ok_or(Error::Exec(execution::Error::NoActiveContractVersions(
-                        contract_package_hash,
+                    .or_else(|| package.current_entity_version())
+                    .ok_or(Error::Exec(execution::Error::NoActiveEntityVersions(
+                        package_hash,
                     )))?;
 
-                if !contract_package.is_version_enabled(contract_version_key) {
-                    return Err(Error::Exec(execution::Error::InvalidContractVersion(
+                if !package.is_version_enabled(contract_version_key) {
+                    return Err(Error::Exec(execution::Error::InvalidEntityVersion(
                         contract_version_key,
                     )));
                 }
 
-                let looked_up_contract_hash = *contract_package
-                    .lookup_contract_hash(contract_version_key)
-                    .ok_or(Error::Exec(execution::Error::InvalidContractVersion(
+                let looked_up_entity_hash = *package
+                    .lookup_entity_hash(contract_version_key)
+                    .ok_or(Error::Exec(execution::Error::InvalidEntityVersion(
                         contract_version_key,
                     )))?;
 
-                Ok(ExecutionKind::new_contract(
-                    looked_up_contract_hash,
+                Ok(ExecutionKind::new_addressable_entity(
+                    looked_up_entity_hash,
                     entry_point,
                 ))
             }
