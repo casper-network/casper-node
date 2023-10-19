@@ -56,6 +56,8 @@ pub struct RpcBuilder<const N: usize> {
     core: IoCoreBuilder<N>,
     /// Whether or not to enable timeout bubbling.
     bubble_timeouts: bool,
+    /// The default timeout for created requests.
+    default_timeout: Option<Duration>,
 }
 
 impl<const N: usize> RpcBuilder<N> {
@@ -66,6 +68,7 @@ impl<const N: usize> RpcBuilder<N> {
         RpcBuilder {
             core,
             bubble_timeouts: false,
+            default_timeout: None,
         }
     }
 
@@ -83,6 +86,15 @@ impl<const N: usize> RpcBuilder<N> {
         self
     }
 
+    /// Sets a default timeout.
+    ///
+    /// If set, a default timeout will be applied to every request made through the created
+    /// [`JulietRpcClient`].
+    pub fn with_default_timeout(mut self, default_timeout: Duration) -> Self {
+        self.default_timeout = Some(default_timeout);
+        self
+    }
+
     /// Creates new RPC client and server instances.
     pub fn build<R, W>(
         &self,
@@ -96,6 +108,7 @@ impl<const N: usize> RpcBuilder<N> {
         let client = JulietRpcClient {
             new_request_sender,
             request_handle: core_handle.clone(),
+            default_timeout: self.default_timeout,
         };
         let server = JulietRpcServer {
             core,
@@ -115,8 +128,12 @@ impl<const N: usize> RpcBuilder<N> {
 /// The client is used to create new RPC calls through [`JulietRpcClient::create_request`].
 #[derive(Clone, Debug)]
 pub struct JulietRpcClient<const N: usize> {
+    /// Sender for requests to be send through.
     new_request_sender: UnboundedSender<NewOutgoingRequest>,
+    /// Handle to IO core.
     request_handle: RequestHandle<N>,
+    /// Default timeout for requests.
+    default_timeout: Option<Duration>,
 }
 
 /// Builder for an outgoing RPC request.
@@ -219,7 +236,7 @@ impl<const N: usize> JulietRpcClient<N> {
             client: self,
             channel,
             payload: None,
-            timeout: None,
+            timeout: self.default_timeout,
         }
     }
 }
@@ -1014,7 +1031,7 @@ mod tests {
         //       would be nice to have a test tailored to ensure this.
     }
 
-    // TODO: Tests for timeout bubbling.
+    // TODO: Tests for timeout bubbling and default timeouts.
 
     #[test]
     fn request_guard_polls_waiting_with_no_response() {
