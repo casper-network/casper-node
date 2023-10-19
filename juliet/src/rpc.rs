@@ -54,6 +54,8 @@ use crate::{
 pub struct RpcBuilder<const N: usize> {
     /// The IO core builder used.
     core: IoCoreBuilder<N>,
+    /// Whether or not to enable timeout bubbling.
+    bubble_timeouts: bool,
 }
 
 impl<const N: usize> RpcBuilder<N> {
@@ -61,7 +63,24 @@ impl<const N: usize> RpcBuilder<N> {
     ///
     /// The builder can be reused to create instances for multiple connections.
     pub fn new(core: IoCoreBuilder<N>) -> Self {
-        RpcBuilder { core }
+        RpcBuilder {
+            core,
+            bubble_timeouts: false,
+        }
+    }
+
+    /// Enable timeout bubbling.
+    ///
+    /// If enabled, any timeout from an RPC call will also cause an error in
+    /// [`JulietRpcServer::next_request`], specifically an [`RpcServerError::FatalTimeout`], which
+    /// will cause a severing of the connection.
+    ///
+    /// This feature can be used to implement a liveness check, causing any timed out request to be
+    /// considered fatal. Note that under high load a remote server may take time to answer, thus it
+    /// is best not to set too aggressive timeout values on requests if this setting is enabled.
+    pub fn bubble_timeouts(mut self, bubble_timeouts: bool) -> Self {
+        self.bubble_timeouts = bubble_timeouts;
+        self
     }
 
     /// Creates new RPC client and server instances.
@@ -84,6 +103,7 @@ impl<const N: usize> RpcBuilder<N> {
             pending: Default::default(),
             new_requests_receiver,
             timeouts: BinaryHeap::new(),
+            bubble_timeouts: self.bubble_timeouts,
         };
 
         (client, server)
@@ -134,6 +154,8 @@ pub struct JulietRpcServer<const N: usize, R, W> {
     new_requests_receiver: UnboundedReceiver<NewOutgoingRequest>,
     /// Heap of pending timeouts.
     timeouts: BinaryHeap<Reverse<(Instant, IoId)>>,
+    /// Whether or not to bubble up timed out requests, making them an [`RpcServerError`].
+    bubble_timeouts: bool,
 }
 
 /// Internal structure representing a new outgoing request.
@@ -208,6 +230,12 @@ pub enum RpcServerError {
     /// An [`IoCore`] error.
     #[error(transparent)]
     CoreError(#[from] CoreError),
+    /// At least `count` requests timed out, and the RPC layer is configured to bubble up timeouts.
+    #[error("connection error after {count} request(s) timed out")]
+    FatalTimeout {
+        /// Number of requests that timed out at once.
+        count: usize,
+    },
 }
 
 impl<const N: usize, R, W> JulietRpcServer<N, R, W>
@@ -233,7 +261,11 @@ where
             let now = Instant::now();
 
             // Process all the timeouts.
-            let deadline = self.process_timeouts(now);
+            let (deadline, timed_out) = self.process_timeouts(now);
+
+            if self.bubble_timeouts && timed_out > 0 {
+                return Err(RpcServerError::FatalTimeout { count: timed_out });
+            };
             let timeout_check = tokio::time::sleep_until(deadline);
 
             tokio::select! {
@@ -345,9 +377,12 @@ where
     /// Process all pending timeouts, setting and notifying `RequestError::TimedOut` on timeout.
     ///
     /// Returns the duration until the next timeout check needs to take place if timeouts are not
-    /// modified in the interim.
-    fn process_timeouts(&mut self, now: Instant) -> Instant {
+    /// modified in the interim, and the number of actual timeouts.
+    fn process_timeouts(&mut self, now: Instant) -> (Instant, usize) {
         let is_expired = |t: &Reverse<(Instant, IoId)>| t.0 .0 <= now;
+
+        // Track the number of actual timeouts hit.
+        let mut timed_out = 0;
 
         for item in drain_heap_while(&mut self.timeouts, is_expired) {
             let (_, io_id) = item.0;
@@ -363,16 +398,20 @@ where
                     #[cfg(feature = "tracing")]
                     tracing::debug!(%io_id, "dropping timeout cancellation, remote already closed");
                 }
+
+                // Increase timed out count.
+                timed_out += 1;
             }
         }
-
         // Calculate new delay for timeouts.
-        if let Some(Reverse((when, _))) = self.timeouts.peek() {
+        let deadline = if let Some(Reverse((when, _))) = self.timeouts.peek() {
             *when
         } else {
             // 1 hour dummy sleep, since we cannot have a conditional future.
             now + Duration::from_secs(3600)
-        }
+        };
+
+        (deadline, timed_out)
     }
 }
 
@@ -974,6 +1013,8 @@ mod tests {
         // TODO: Ensure cancellation was sent. Right now, we can verify this in the logs, but it
         //       would be nice to have a test tailored to ensure this.
     }
+
+    // TODO: Tests for timeout bubbling.
 
     #[test]
     fn request_guard_polls_waiting_with_no_response() {
