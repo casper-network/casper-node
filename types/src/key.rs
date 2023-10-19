@@ -913,6 +913,15 @@ impl Key {
             None
         }
     }
+
+    /// Returns if they inner Key is for a system contract entity.
+    pub fn is_system_key(&self) -> bool {
+        if let Self::AddressableEntity((PackageKindTag::System, _)) = self {
+            return true;
+        }
+
+        false
+    }
 }
 
 impl Display for Key {

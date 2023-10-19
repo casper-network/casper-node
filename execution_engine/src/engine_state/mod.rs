@@ -684,8 +684,13 @@ where
         let tracking_copy = tracking_copy.borrow();
 
         match tracking_copy.query(self.config(), query_request.key(), query_request.path()) {
-            Ok(TrackingCopyQueryResult::ValueNotFound(_)) => {
+            Ok(TrackingCopyQueryResult::ValueNotFound(result_string)) => {
                 let key = query_request.key();
+
+                if !key.is_system_key() {
+                    return Ok(TrackingCopyQueryResult::ValueNotFound(result_string).into());
+                }
+
                 let new_query_key = Key::Hash(
                     key.into_entity_addr()
                         .ok_or_else(|| Error::InvalidKeyVariant)?,
