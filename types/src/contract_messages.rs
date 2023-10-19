@@ -6,7 +6,9 @@ mod topics;
 
 pub use error::FromStrError;
 pub use messages::{Message, MessageChecksum, MessagePayload};
-pub use topics::{MessageTopicOperation, MessageTopicSummary, TopicNameHash};
+pub use topics::{
+    MessageTopicOperation, MessageTopicSummary, TopicNameHash, TOPIC_NAME_HASH_LENGTH,
+};
 
 use crate::{
     alloc::string::ToString,
@@ -104,7 +106,7 @@ impl MessageAddr {
         {
             Some(topic_string) => (topic_string, None),
             None => {
-                let (remainder, message_index_str) = input
+                let (remainder, message_index_str) = remainder
                     .rsplit_once('-')
                     .ok_or(FromStrError::MissingMessageIndex)?;
                 (remainder, Some(u32::from_str_radix(message_index_str, 16)?))

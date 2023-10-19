@@ -33,9 +33,12 @@ use crate::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity,
     addressable_entity::ContractHash,
-    bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
+    bytesrepr::{
+        self, Error, FromBytes, ToBytes, U32_SERIALIZED_LENGTH, U64_SERIALIZED_LENGTH,
+        U8_SERIALIZED_LENGTH,
+    },
     checksummed_hex,
-    contract_messages::{self, MessageAddr, TopicNameHash},
+    contract_messages::{self, MessageAddr, TopicNameHash, TOPIC_NAME_HASH_LENGTH},
     contract_wasm::ContractWasmHash,
     package::ContractPackageHash,
     system::auction::{BidAddr, BidAddrTag},
@@ -72,7 +75,6 @@ pub const KEY_DICTIONARY_LENGTH: usize = 32;
 pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 128;
 const PADDING_BYTES: [u8; 32] = [0u8; 32];
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
-const BID_TAG_SERIALIZED_LENGTH: usize = 1;
 // u8 used to determine the ID
 const KEY_HASH_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_UREF_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_SERIALIZED_LENGTH;
@@ -81,10 +83,6 @@ const KEY_DEPLOY_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_
 const KEY_ERA_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + U64_SERIALIZED_LENGTH;
 const KEY_BALANCE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_ADDR_LENGTH;
 const KEY_BID_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
-const KEY_VALIDATOR_BID_SERIALIZED_LENGTH: usize =
-    KEY_ID_SERIALIZED_LENGTH + BID_TAG_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
-const KEY_DELEGATOR_BID_SERIALIZED_LENGTH: usize =
-    KEY_VALIDATOR_BID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_WITHDRAW_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_UNBOND_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_DICTIONARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DICTIONARY_LENGTH;
@@ -95,8 +93,13 @@ const KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_CHECKSUM_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
+const KEY_MESSAGE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH
+    + KEY_HASH_LENGTH
+    + TOPIC_NAME_HASH_LENGTH
+    + U8_SERIALIZED_LENGTH
+    + U32_SERIALIZED_LENGTH;
 
-const MAX_SERIALIZED_LENGTH: usize = KEY_DELEGATOR_BID_SERIALIZED_LENGTH;
+const MAX_SERIALIZED_LENGTH: usize = KEY_MESSAGE_SERIALIZED_LENGTH;
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -1231,7 +1234,7 @@ mod tests {
     const MESSAGE_KEY: Key = Key::Message(MessageAddr::new_message_addr(
         [42; 32],
         TopicNameHash::new([2; 32]),
-        9,
+        15,
     ));
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
@@ -1256,6 +1259,9 @@ mod tests {
         MESSAGE_KEY,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
+    const TOPIC_NAME_HEX_STRING: &str =
+        "0202020202020202020202020202020202020202020202020202020202020202";
+    const MESSAGE_INDEX_HEX_STRING: &str = "f";
     const UNIFIED_HEX_STRING: &str =
         "002a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
     const VALIDATOR_HEX_STRING: &str =
@@ -1390,7 +1396,15 @@ mod tests {
         );
         assert_eq!(
             format!("{}", MESSAGE_TOPIC_KEY),
-            format!("Key::MessageTopic({}{})", HEX_STRING, HEX_STRING)
+            format!("Key::Message({}-{})", HEX_STRING, HEX_STRING)
+        );
+
+        assert_eq!(
+            format!("{}", MESSAGE_KEY),
+            format!(
+                "Key::Message({}-{}-{})",
+                HEX_STRING, TOPIC_NAME_HEX_STRING, MESSAGE_INDEX_HEX_STRING
+            )
         )
     }
 

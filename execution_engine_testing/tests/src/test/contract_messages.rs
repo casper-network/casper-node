@@ -1,3 +1,4 @@
+use num_traits::Zero;
 use std::cell::RefCell;
 
 use casper_engine_test_support::{
@@ -8,19 +9,29 @@ use casper_execution_engine::engine_state::EngineConfigBuilder;
 use casper_types::{
     bytesrepr::ToBytes,
     contract_messages::{MessageChecksum, MessagePayload, MessageTopicSummary, TopicNameHash},
-    crypto, runtime_args, AddressableEntity, ContractHash, Digest, Key, MessageLimits, RuntimeArgs,
-    StoredValue, WasmConfig,
+    crypto, runtime_args, AddressableEntity, BlockTime, ContractHash, Digest, HostFunction,
+    HostFunctionCosts, Key, MessageLimits, OpcodeCosts, RuntimeArgs, StorageCosts, StoredValue,
+    WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
 const MESSAGE_EMITTER_INSTALLER_WASM: &str = "contract_messages_emitter.wasm";
-const MESSAGE_EMITTER_PACKAGE_NAME: &str = "messages_emitter_package_name";
+const MESSAGE_EMITTER_UPGRADER_WASM: &str = "contract_messages_upgrader.wasm";
+const MESSAGE_EMITTER_FROM_ACCOUNT: &str = "contract_messages_from_account.wasm";
+const MESSAGE_EMITTER_PACKAGE_HASH_KEY_NAME: &str = "messages_emitter_package_hash";
 const MESSAGE_EMITTER_GENERIC_TOPIC: &str = "generic_messages";
+const MESSAGE_EMITTER_UPGRADED_TOPIC: &str = "new_topic_after_upgrade";
 const ENTRY_POINT_EMIT_MESSAGE: &str = "emit_message";
+const ENTRY_POINT_EMIT_MULTIPLE_MESSAGES: &str = "emit_multiple_messages";
+const ENTRY_POINT_EMIT_MESSAGE_FROM_EACH_VERSION: &str = "emit_message_from_each_version";
+const ARG_NUM_MESSAGES_TO_EMIT: &str = "num_messages_to_emit";
 const ARG_TOPIC_NAME: &str = "topic_name";
 const ENTRY_POINT_ADD_TOPIC: &str = "add_topic";
 const ARG_MESSAGE_SUFFIX_NAME: &str = "message_suffix";
 
 const EMITTER_MESSAGE_PREFIX: &str = "generic message: ";
+
+// Number of messages that will be emitted when calling `ENTRY_POINT_EMIT_MESSAGE_FROM_EACH_VERSION`
+const EMIT_MESSAGE_FROM_EACH_VERSION_NUM_MESSAGES: u32 = 3;
 
 fn install_messages_emitter_contract(builder: &RefCell<LmdbWasmTestBuilder>) -> ContractHash {
     // Request to install the contract that will be emitting messages.
@@ -45,7 +56,7 @@ fn install_messages_emitter_contract(builder: &RefCell<LmdbWasmTestBuilder>) -> 
         .query(
             None,
             Key::from(*DEFAULT_ACCOUNT_ADDR),
-            &[MESSAGE_EMITTER_PACKAGE_NAME.into()],
+            &[MESSAGE_EMITTER_PACKAGE_HASH_KEY_NAME.into()],
         )
         .expect("should query");
 
@@ -56,6 +67,46 @@ fn install_messages_emitter_contract(builder: &RefCell<LmdbWasmTestBuilder>) -> 
     };
 
     // Get the contract hash of the messages_emitter contract.
+    *message_emitter_package
+        .versions()
+        .contract_hashes()
+        .last()
+        .expect("Should have contract hash")
+}
+
+fn upgrade_messages_emitter_contract(builder: &RefCell<LmdbWasmTestBuilder>) -> ContractHash {
+    let upgrade_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        MESSAGE_EMITTER_UPGRADER_WASM,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    // Execute the request to upgrade the message emitting contract.
+    // This will also register a new topic for the contract to emit messages on.
+    builder
+        .borrow_mut()
+        .exec(upgrade_request)
+        .expect_success()
+        .commit();
+
+    // Get the contract package for the upgraded messages emitter contract.
+    let query_result = builder
+        .borrow_mut()
+        .query(
+            None,
+            Key::from(*DEFAULT_ACCOUNT_ADDR),
+            &[MESSAGE_EMITTER_PACKAGE_HASH_KEY_NAME.into()],
+        )
+        .expect("should query");
+
+    let message_emitter_package = if let StoredValue::ContractPackage(package) = query_result {
+        package
+    } else {
+        panic!("Stored value is not a contract package: {:?}", query_result);
+    };
+
+    // Get the contract hash of the latest version of the messages emitter contract.
     *message_emitter_package
         .versions()
         .contract_hashes()
@@ -189,8 +240,7 @@ fn should_emit_messages() {
 
     // Now call the entry point to emit some messages.
     emit_message_with_suffix(&builder, "test", &contract_hash, DEFAULT_BLOCK_TIME);
-    let expected_message =
-        MessagePayload::from_string(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test"));
+    let expected_message = MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "test"));
     let expected_message_hash = crypto::blake2b(expected_message.to_bytes().unwrap());
     let queried_message_summary = query_view
         .message_summary(*message_topic_hash, 0, None)
@@ -228,7 +278,7 @@ fn should_emit_messages() {
         DEFAULT_BLOCK_TIME + 1,
     );
     let expected_message =
-        MessagePayload::from_string(format!("{}{}", EMITTER_MESSAGE_PREFIX, "new block time"));
+        MessagePayload::from(format!("{}{}", EMITTER_MESSAGE_PREFIX, "new block time"));
     let expected_message_hash = crypto::blake2b(expected_message.to_bytes().unwrap());
     let queried_message_summary = query_view
         .message_summary(*message_topic_hash, 0, None)
@@ -493,4 +543,245 @@ fn should_not_exceed_configured_limits() {
         .exec(emit_message_request)
         .expect_failure()
         .commit();
+}
+
+#[ignore]
+#[test]
+fn should_carry_message_topics_on_upgraded_contract() {
+    let builder = RefCell::new(LmdbWasmTestBuilder::default());
+    builder
+        .borrow_mut()
+        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+
+    let _ = install_messages_emitter_contract(&builder);
+    let contract_hash = upgrade_messages_emitter_contract(&builder);
+    let query_view = ContractQueryView::new(&builder, contract_hash);
+
+    let entity = query_view.entity();
+    assert_eq!(entity.message_topics().len(), 2);
+    let mut expected_topic_names = 0;
+    for (topic_name, topic_hash) in entity.message_topics().iter() {
+        if topic_name == MESSAGE_EMITTER_GENERIC_TOPIC
+            || topic_name == MESSAGE_EMITTER_UPGRADED_TOPIC
+        {
+            expected_topic_names += 1;
+        }
+
+        assert_eq!(query_view.message_topic(*topic_hash).message_count(), 0);
+    }
+    assert_eq!(expected_topic_names, 2);
+}
+
+#[ignore]
+#[test]
+fn should_not_emit_messages_from_account() {
+    let builder = RefCell::new(LmdbWasmTestBuilder::default());
+    builder
+        .borrow_mut()
+        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+
+    // Request to run a deploy that tries to register a message topic without a stored contract.
+    let install_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        MESSAGE_EMITTER_FROM_ACCOUNT,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    // Expect to fail since topics can only be registered by stored contracts.
+    builder
+        .borrow_mut()
+        .exec(install_request)
+        .expect_failure()
+        .commit();
+}
+
+#[ignore]
+#[test]
+fn should_charge_expected_gas_for_storage() {
+    const GAS_PER_BYTE_COST: u32 = 100;
+
+    let wasm_config = WasmConfig::new(
+        DEFAULT_WASM_MAX_MEMORY,
+        DEFAULT_MAX_STACK_HEIGHT,
+        OpcodeCosts::zero(),
+        StorageCosts::new(GAS_PER_BYTE_COST),
+        HostFunctionCosts::zero(),
+        MessageLimits::default(),
+    );
+    let custom_engine_config = EngineConfigBuilder::default()
+        .with_wasm_config(wasm_config)
+        .build();
+
+    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(
+        custom_engine_config,
+    ));
+    builder
+        .borrow_mut()
+        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+
+    let contract_hash = install_messages_emitter_contract(&builder);
+    let query_view = ContractQueryView::new(&builder, contract_hash);
+
+    // check the cost of adding a new topic
+    let add_topic_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        ENTRY_POINT_ADD_TOPIC,
+        runtime_args! {
+            ARG_TOPIC_NAME => "cost_topic",
+        },
+    )
+    .build();
+
+    builder
+        .borrow_mut()
+        .exec(add_topic_request)
+        .expect_success()
+        .commit();
+
+    let add_topic_cost = builder.borrow().last_exec_gas_cost().value();
+
+    // cost depends on the entity size since we store the topic names in the entity record.
+    let entity = query_view.entity();
+    let default_topic_summary = MessageTopicSummary::new(0, BlockTime::new(0));
+    let written_size_expected = StoredValue::MessageTopic(default_topic_summary.clone())
+        .serialized_length()
+        + StoredValue::AddressableEntity(entity).serialized_length();
+    assert_eq!(
+        U512::from(written_size_expected * GAS_PER_BYTE_COST as usize),
+        add_topic_cost
+    );
+
+    // check that the storage cost charged is invariable with message size that is emitted.
+    let written_size_expected = StoredValue::Message(MessageChecksum([0; 32])).serialized_length()
+        + StoredValue::MessageTopic(default_topic_summary).serialized_length();
+
+    emit_message_with_suffix(&builder, "test", &contract_hash, DEFAULT_BLOCK_TIME);
+    let emit_message_gas_cost = builder.borrow().last_exec_gas_cost().value();
+    assert_eq!(
+        U512::from(written_size_expected * GAS_PER_BYTE_COST as usize),
+        emit_message_gas_cost
+    );
+
+    emit_message_with_suffix(&builder, "test 12345", &contract_hash, DEFAULT_BLOCK_TIME);
+    let emit_message_gas_cost = builder.borrow().last_exec_gas_cost().value();
+    assert_eq!(
+        U512::from(written_size_expected * GAS_PER_BYTE_COST as usize),
+        emit_message_gas_cost
+    );
+
+    // emitting messages in a different block will also prune the old entries so check the cost.
+    emit_message_with_suffix(
+        &builder,
+        "message in different block",
+        &contract_hash,
+        DEFAULT_BLOCK_TIME + 1,
+    );
+    let emit_message_gas_cost = builder.borrow().last_exec_gas_cost().value();
+    assert_eq!(
+        U512::from(written_size_expected * GAS_PER_BYTE_COST as usize),
+        emit_message_gas_cost
+    );
+}
+
+#[ignore]
+#[test]
+fn should_charge_increasing_gas_cost_for_multiple_messages_emitted() {
+    const FIRST_MESSAGE_EMIT_COST: u32 = 100;
+    const COST_INCREASE_PER_MESSAGE: u32 = 50;
+    const fn emit_cost_per_execution(num_messages: u32) -> u32 {
+        FIRST_MESSAGE_EMIT_COST * num_messages
+            + (num_messages - 1) * num_messages / 2 * COST_INCREASE_PER_MESSAGE
+    }
+
+    const MESSAGES_TO_EMIT: u32 = 4;
+    const EMIT_MULTIPLE_EXPECTED_COST: u32 = emit_cost_per_execution(MESSAGES_TO_EMIT);
+    const EMIT_MESSAGES_FROM_MULTIPLE_CONTRACTS: u32 =
+        emit_cost_per_execution(EMIT_MESSAGE_FROM_EACH_VERSION_NUM_MESSAGES);
+
+    let wasm_config = WasmConfig::new(
+        DEFAULT_WASM_MAX_MEMORY,
+        DEFAULT_MAX_STACK_HEIGHT,
+        OpcodeCosts::zero(),
+        StorageCosts::zero(),
+        HostFunctionCosts {
+            emit_message: HostFunction::fixed(FIRST_MESSAGE_EMIT_COST),
+            cost_increase_per_message: COST_INCREASE_PER_MESSAGE,
+            ..Zero::zero()
+        },
+        MessageLimits::default(),
+    );
+
+    let custom_engine_config = EngineConfigBuilder::default()
+        .with_wasm_config(wasm_config)
+        .build();
+
+    let builder = RefCell::new(LmdbWasmTestBuilder::new_temporary_with_config(
+        custom_engine_config,
+    ));
+    builder
+        .borrow_mut()
+        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+
+    let contract_hash = install_messages_emitter_contract(&builder);
+
+    // Emit one message in this execution. Cost should be `FIRST_MESSAGE_EMIT_COST`.
+    emit_message_with_suffix(&builder, "test", &contract_hash, DEFAULT_BLOCK_TIME);
+    let emit_message_gas_cost = builder.borrow().last_exec_gas_cost().value();
+    assert_eq!(emit_message_gas_cost, FIRST_MESSAGE_EMIT_COST.into());
+
+    // Emit multiple messages in this execution. Cost should increase for each message emitted.
+    let emit_messages_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        ENTRY_POINT_EMIT_MULTIPLE_MESSAGES,
+        runtime_args! {
+            ARG_NUM_MESSAGES_TO_EMIT => MESSAGES_TO_EMIT,
+        },
+    )
+    .build();
+    builder
+        .borrow_mut()
+        .exec(emit_messages_request)
+        .expect_success()
+        .commit();
+
+    let emit_multiple_messages_cost = builder.borrow().last_exec_gas_cost().value();
+    assert_eq!(
+        emit_multiple_messages_cost,
+        EMIT_MULTIPLE_EXPECTED_COST.into()
+    );
+
+    // Try another execution where we emit a single message.
+    // Cost should be `FIRST_MESSAGE_EMIT_COST`
+    emit_message_with_suffix(&builder, "test", &contract_hash, DEFAULT_BLOCK_TIME);
+    let emit_message_gas_cost = builder.borrow().last_exec_gas_cost().value();
+    assert_eq!(emit_message_gas_cost, FIRST_MESSAGE_EMIT_COST.into());
+
+    // Check gas cost when multiple messages are emitted from different contracts.
+    let contract_hash = upgrade_messages_emitter_contract(&builder);
+    let emit_message_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        ENTRY_POINT_EMIT_MESSAGE_FROM_EACH_VERSION,
+        runtime_args! {
+            ARG_MESSAGE_SUFFIX_NAME => "test message",
+        },
+    )
+    .build();
+
+    builder
+        .borrow_mut()
+        .exec(emit_message_request)
+        .expect_success()
+        .commit();
+
+    // 3 messages are emitted by this execution so the cost would be:
+    // `EMIT_MESSAGES_FROM_MULTIPLE_CONTRACTS`
+    let emit_message_gas_cost = builder.borrow().last_exec_gas_cost().value();
+    assert_eq!(
+        emit_message_gas_cost,
+        U512::from(EMIT_MESSAGES_FROM_MULTIPLE_CONTRACTS)
+    );
 }

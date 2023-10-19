@@ -1,6 +1,10 @@
 //! Support for host function gas cost tables.
+use core::ops::Add;
+
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+use derive_more::Add;
+use num_traits::Zero;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use serde::{Deserialize, Serialize};
 
@@ -84,6 +88,10 @@ pub const DEFAULT_NEW_DICTIONARY_COST: u32 = DEFAULT_NEW_UREF_COST;
 pub const DEFAULT_HOST_FUNCTION_NEW_DICTIONARY: HostFunction<[Cost; 1]> =
     HostFunction::new(DEFAULT_NEW_DICTIONARY_COST, [NOT_USED]);
 
+/// Default value that the cost of calling `casper_emit_message` increases by for every new message
+/// emitted within an execution.
+pub const DEFAULT_COST_INCREASE_PER_MESSAGE_EMITTED: u32 = 50;
+
 /// Representation of a host function cost.
 ///
 /// The total gas cost is equal to `cost` + sum of each argument weight multiplied by the byte size
@@ -153,6 +161,28 @@ where
     }
 }
 
+impl<const COUNT: usize> Add for HostFunction<[Cost; COUNT]> {
+    type Output = HostFunction<[Cost; COUNT]>;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        let mut result = HostFunction::new(self.cost + rhs.cost, [0; COUNT]);
+        for i in 0..COUNT {
+            result.arguments[i] = self.arguments[i] + rhs.arguments[i];
+        }
+        result
+    }
+}
+
+impl<const COUNT: usize> Zero for HostFunction<[Cost; COUNT]> {
+    fn zero() -> Self {
+        HostFunction::new(0, [0; COUNT])
+    }
+
+    fn is_zero(&self) -> bool {
+        !self.arguments.iter().any(|cost| *cost != 0) && self.cost.is_zero()
+    }
+}
+
 impl<T> Distribution<HostFunction<T>> for Standard
 where
     Standard: Distribution<T>,
@@ -201,10 +231,12 @@ where
 }
 
 /// Definition of a host function cost table.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Add, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct HostFunctionCosts {
+    /// Cost increase for successive calls to `casper_emit_message` within an execution.
+    pub cost_increase_per_message: u32,
     /// Cost of calling the `read_value` host function.
     pub read_value: HostFunction<[Cost; 3]>,
     /// Cost of calling the `dictionary_get` host function.
@@ -299,6 +331,110 @@ pub struct HostFunctionCosts {
     pub manage_message_topic: HostFunction<[Cost; 4]>,
     /// Cost of calling the `casper_emit_message` host function.
     pub emit_message: HostFunction<[Cost; 4]>,
+}
+
+impl Zero for HostFunctionCosts {
+    fn zero() -> Self {
+        Self {
+            read_value: HostFunction::zero(),
+            dictionary_get: HostFunction::zero(),
+            write: HostFunction::zero(),
+            dictionary_put: HostFunction::zero(),
+            add: HostFunction::zero(),
+            new_uref: HostFunction::zero(),
+            load_named_keys: HostFunction::zero(),
+            ret: HostFunction::zero(),
+            get_key: HostFunction::zero(),
+            has_key: HostFunction::zero(),
+            put_key: HostFunction::zero(),
+            remove_key: HostFunction::zero(),
+            revert: HostFunction::zero(),
+            is_valid_uref: HostFunction::zero(),
+            add_associated_key: HostFunction::zero(),
+            remove_associated_key: HostFunction::zero(),
+            update_associated_key: HostFunction::zero(),
+            set_action_threshold: HostFunction::zero(),
+            get_caller: HostFunction::zero(),
+            get_blocktime: HostFunction::zero(),
+            create_purse: HostFunction::zero(),
+            transfer_to_account: HostFunction::zero(),
+            transfer_from_purse_to_account: HostFunction::zero(),
+            transfer_from_purse_to_purse: HostFunction::zero(),
+            get_balance: HostFunction::zero(),
+            get_phase: HostFunction::zero(),
+            get_system_contract: HostFunction::zero(),
+            get_main_purse: HostFunction::zero(),
+            read_host_buffer: HostFunction::zero(),
+            create_contract_package_at_hash: HostFunction::zero(),
+            create_contract_user_group: HostFunction::zero(),
+            add_contract_version: HostFunction::zero(),
+            disable_contract_version: HostFunction::zero(),
+            call_contract: HostFunction::zero(),
+            call_versioned_contract: HostFunction::zero(),
+            get_named_arg_size: HostFunction::zero(),
+            get_named_arg: HostFunction::zero(),
+            remove_contract_user_group: HostFunction::zero(),
+            provision_contract_user_group_uref: HostFunction::zero(),
+            remove_contract_user_group_urefs: HostFunction::zero(),
+            print: HostFunction::zero(),
+            blake2b: HostFunction::zero(),
+            random_bytes: HostFunction::zero(),
+            enable_contract_version: HostFunction::zero(),
+            manage_message_topic: HostFunction::zero(),
+            emit_message: HostFunction::zero(),
+            cost_increase_per_message: Zero::zero(),
+        }
+    }
+
+    fn is_zero(&self) -> bool {
+        self.read_value.is_zero()
+            && self.dictionary_get.is_zero()
+            && self.write.is_zero()
+            && self.dictionary_put.is_zero()
+            && self.add.is_zero()
+            && self.new_uref.is_zero()
+            && self.load_named_keys.is_zero()
+            && self.ret.is_zero()
+            && self.get_key.is_zero()
+            && self.has_key.is_zero()
+            && self.put_key.is_zero()
+            && self.remove_key.is_zero()
+            && self.revert.is_zero()
+            && self.is_valid_uref.is_zero()
+            && self.add_associated_key.is_zero()
+            && self.remove_associated_key.is_zero()
+            && self.update_associated_key.is_zero()
+            && self.set_action_threshold.is_zero()
+            && self.get_caller.is_zero()
+            && self.get_blocktime.is_zero()
+            && self.create_purse.is_zero()
+            && self.transfer_to_account.is_zero()
+            && self.transfer_from_purse_to_account.is_zero()
+            && self.transfer_from_purse_to_purse.is_zero()
+            && self.get_balance.is_zero()
+            && self.get_phase.is_zero()
+            && self.get_system_contract.is_zero()
+            && self.get_main_purse.is_zero()
+            && self.read_host_buffer.is_zero()
+            && self.create_contract_package_at_hash.is_zero()
+            && self.create_contract_user_group.is_zero()
+            && self.add_contract_version.is_zero()
+            && self.disable_contract_version.is_zero()
+            && self.call_contract.is_zero()
+            && self.call_versioned_contract.is_zero()
+            && self.get_named_arg_size.is_zero()
+            && self.get_named_arg.is_zero()
+            && self.remove_contract_user_group.is_zero()
+            && self.provision_contract_user_group_uref.is_zero()
+            && self.remove_contract_user_group_urefs.is_zero()
+            && self.print.is_zero()
+            && self.blake2b.is_zero()
+            && self.random_bytes.is_zero()
+            && self.enable_contract_version.is_zero()
+            && self.manage_message_topic.is_zero()
+            && self.emit_message.is_zero()
+            && self.cost_increase_per_message.is_zero()
+    }
 }
 
 impl Default for HostFunctionCosts {
@@ -433,6 +569,7 @@ impl Default for HostFunctionCosts {
             enable_contract_version: HostFunction::default(),
             manage_message_topic: HostFunction::default(),
             emit_message: HostFunction::default(),
+            cost_increase_per_message: DEFAULT_COST_INCREASE_PER_MESSAGE_EMITTED,
         }
     }
 }
@@ -486,6 +623,7 @@ impl ToBytes for HostFunctionCosts {
         ret.append(&mut self.enable_contract_version.to_bytes()?);
         ret.append(&mut self.manage_message_topic.to_bytes()?);
         ret.append(&mut self.emit_message.to_bytes()?);
+        ret.append(&mut self.cost_increase_per_message.to_bytes()?);
         Ok(ret)
     }
 
@@ -536,6 +674,7 @@ impl ToBytes for HostFunctionCosts {
             + self.enable_contract_version.serialized_length()
             + self.manage_message_topic.serialized_length()
             + self.emit_message.serialized_length()
+            + self.cost_increase_per_message.serialized_length()
     }
 }
 
@@ -587,6 +726,7 @@ impl FromBytes for HostFunctionCosts {
         let (enable_contract_version, rem) = FromBytes::from_bytes(rem)?;
         let (manage_message_topic, rem) = FromBytes::from_bytes(rem)?;
         let (emit_message, rem) = FromBytes::from_bytes(rem)?;
+        let (cost_increase_per_message, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             HostFunctionCosts {
                 read_value,
@@ -635,6 +775,7 @@ impl FromBytes for HostFunctionCosts {
                 enable_contract_version,
                 manage_message_topic,
                 emit_message,
+                cost_increase_per_message,
             },
             rem,
         ))
@@ -690,6 +831,7 @@ impl Distribution<HostFunctionCosts> for Standard {
             enable_contract_version: rng.gen(),
             manage_message_topic: rng.gen(),
             emit_message: rng.gen(),
+            cost_increase_per_message: rng.gen(),
         }
     }
 }
@@ -697,7 +839,7 @@ impl Distribution<HostFunctionCosts> for Standard {
 #[doc(hidden)]
 #[cfg(any(feature = "gens", test))]
 pub mod gens {
-    use proptest::prelude::*;
+    use proptest::{num, prelude::*};
 
     use crate::{HostFunction, HostFunctionCost, HostFunctionCosts};
 
@@ -755,6 +897,7 @@ pub mod gens {
             enable_contract_version in host_function_cost_arb(),
             manage_message_topic in host_function_cost_arb(),
             emit_message in host_function_cost_arb(),
+            cost_increase_per_message in num::u32::ANY,
         ) -> HostFunctionCosts {
             HostFunctionCosts {
                 read_value,
@@ -803,6 +946,7 @@ pub mod gens {
                 enable_contract_version,
                 manage_message_topic,
                 emit_message,
+                cost_increase_per_message,
             }
         }
     }

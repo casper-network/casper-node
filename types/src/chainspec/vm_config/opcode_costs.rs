@@ -1,6 +1,8 @@
 //! Support for Wasm opcode costs.
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+use derive_more::Add;
+use num_traits::Zero;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
 
@@ -74,7 +76,7 @@ pub const DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER: u32 = 100;
 /// cost + (len(br_table.targets) * size_multiplier)
 /// ```
 // This is done to encourage users to avoid writing code with very long `br_table`s.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Add, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct BrTableCost {
@@ -141,8 +143,21 @@ impl FromBytes for BrTableCost {
     }
 }
 
+impl Zero for BrTableCost {
+    fn zero() -> Self {
+        BrTableCost {
+            cost: 0,
+            size_multiplier: 0,
+        }
+    }
+
+    fn is_zero(&self) -> bool {
+        self.cost.is_zero() && self.size_multiplier.is_zero()
+    }
+}
+
 /// Definition of a cost table for a Wasm control flow opcodes.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Add, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct ControlFlowCosts {
@@ -321,10 +336,46 @@ impl Distribution<ControlFlowCosts> for Standard {
     }
 }
 
+impl Zero for ControlFlowCosts {
+    fn zero() -> Self {
+        ControlFlowCosts {
+            block: 0,
+            op_loop: 0,
+            op_if: 0,
+            op_else: 0,
+            end: 0,
+            br: 0,
+            br_if: 0,
+            op_return: 0,
+            call: 0,
+            call_indirect: 0,
+            drop: 0,
+            select: 0,
+            br_table: BrTableCost::zero(),
+        }
+    }
+
+    fn is_zero(&self) -> bool {
+        self.block.is_zero()
+            && self.op_loop.is_zero()
+            && self.op_if.is_zero()
+            && self.op_else.is_zero()
+            && self.end.is_zero()
+            && self.br.is_zero()
+            && self.br_if.is_zero()
+            && self.op_return.is_zero()
+            && self.call.is_zero()
+            && self.call_indirect.is_zero()
+            && self.drop.is_zero()
+            && self.select.is_zero()
+            && self.br_table.is_zero()
+    }
+}
+
 /// Definition of a cost table for Wasm opcodes.
 ///
 /// This is taken (partially) from parity-ethereum.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Add, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct OpcodeCosts {
@@ -528,6 +579,48 @@ impl FromBytes for OpcodeCosts {
             control_flow,
         };
         Ok((opcode_costs, bytes))
+    }
+}
+
+impl Zero for OpcodeCosts {
+    fn zero() -> Self {
+        Self {
+            bit: 0,
+            add: 0,
+            mul: 0,
+            div: 0,
+            load: 0,
+            store: 0,
+            op_const: 0,
+            local: 0,
+            global: 0,
+            integer_comparison: 0,
+            conversion: 0,
+            unreachable: 0,
+            nop: 0,
+            current_memory: 0,
+            grow_memory: 0,
+            control_flow: ControlFlowCosts::zero(),
+        }
+    }
+
+    fn is_zero(&self) -> bool {
+        self.bit.is_zero()
+            && self.add.is_zero()
+            && self.mul.is_zero()
+            && self.div.is_zero()
+            && self.load.is_zero()
+            && self.store.is_zero()
+            && self.op_const.is_zero()
+            && self.local.is_zero()
+            && self.global.is_zero()
+            && self.integer_comparison.is_zero()
+            && self.conversion.is_zero()
+            && self.unreachable.is_zero()
+            && self.nop.is_zero()
+            && self.current_memory.is_zero()
+            && self.grow_memory.is_zero()
+            && self.control_flow.is_zero()
     }
 }
 

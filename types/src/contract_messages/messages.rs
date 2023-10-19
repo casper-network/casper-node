@@ -71,10 +71,12 @@ pub enum MessagePayload {
     String(String),
 }
 
-impl MessagePayload {
-    /// Creates a new [`MessagePayload`] from a [`String`].
-    pub fn from_string(message: String) -> Self {
-        Self::String(message)
+impl<T> From<T> for MessagePayload
+where
+    T: Into<String>,
+{
+    fn from(value: T) -> Self {
+        Self::String(value.into())
     }
 }
 
@@ -146,6 +148,31 @@ impl Message {
             index,
         }
     }
+
+    /// Returns a reference to the identity of the entity that produced the message.
+    pub fn entity_addr(&self) -> &HashAddr {
+        &self.entity_addr
+    }
+
+    /// Returns a reference to the payload of the message.
+    pub fn payload(&self) -> &MessagePayload {
+        &self.message
+    }
+
+    /// Returns a reference to the name of the topic on which the message was emitted on.
+    pub fn topic_name(&self) -> &String {
+        &self.topic_name
+    }
+
+    /// Returns a reference to the hash of the name of the topic.
+    pub fn topic_name_hash(&self) -> &TopicNameHash {
+        &self.topic_name_hash
+    }
+
+    /// Returns the index of the message in the topic.
+    pub fn index(&self) -> u32 {
+        self.index
+    }
 }
 
 impl ToBytes for Message {
@@ -199,7 +226,7 @@ mod tests {
         let message_checksum = MessageChecksum([1; MESSAGE_CHECKSUM_LENGTH]);
         bytesrepr::test_serialization_roundtrip(&message_checksum);
 
-        let message_payload = MessagePayload::from_string("message payload".to_string());
+        let message_payload = "message payload".into();
         bytesrepr::test_serialization_roundtrip(&message_payload);
 
         let message = Message::new(

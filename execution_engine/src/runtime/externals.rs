@@ -12,9 +12,9 @@ use casper_types::{
     crypto,
     package::{ContractPackageKind, ContractPackageStatus},
     system::auction::EraInfo,
-    ApiError, ContractHash, ContractPackageHash, ContractVersion, EraId, Gas, Group, HostFunction,
-    HostFunctionCost, Key, StoredValue, URef, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, U512,
-    UREF_SERIALIZED_LENGTH,
+    ApiError, ContractHash, ContractPackageHash, ContractVersion, EntryPointType, EraId, Gas,
+    Group, HostFunction, HostFunctionCost, Key, StoredValue, URef,
+    DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, U512, UREF_SERIALIZED_LENGTH,
 };
 
 use super::{args::Args, Error, Runtime};
@@ -1141,10 +1141,10 @@ where
                     .t_from_mem(operation_ptr, operation_size)
                     .map_err(|_e| Trap::from(Error::InvalidMessageTopicOperation))?;
 
-                // don't allow managing topics for accounts.
-                if let Key::Account(_) = self.context.get_entity_address() {
+                // only allow managing messages from stored contracts
+                let EntryPointType::Contract = self.context.entry_point_type() else {
                     return Err(Trap::from(Error::InvalidContext));
-                }
+                };
 
                 let result = match topic_operation {
                     MessageTopicOperation::Add => {
@@ -1161,9 +1161,15 @@ where
                 // args(3) = size of the serialized message payload in wasm memory
                 let (topic_name_ptr, topic_name_size, message_ptr, message_size) =
                     Args::parse(args)?;
+
+                // Charge for the call to emit message. This increases for every message emitted
+                // within an execution so we're not using the static value from the wasm config.
+                self.context
+                    .charge_gas(Gas::new(self.context.emit_message_cost()))?;
+                // Charge for parameter weights.
                 self.charge_host_function_call(
-                    &host_function_costs.emit_message,
-                    [topic_name_ptr, topic_name_size, message_ptr, message_size],
+                    &HostFunction::new(0, host_function_costs.emit_message.arguments()),
+                    &[topic_name_ptr, topic_name_size, message_ptr, message_size],
                 )?;
 
                 let limits = self.context.engine_config().wasm_config().messages_limits();
@@ -1184,6 +1190,15 @@ where
                 let message = self.t_from_mem(message_ptr, message_size)?;
 
                 let result = self.emit_message(topic_name, message)?;
+                if result.is_ok() {
+                    // Increase the cost for the next call to emit a message.
+                    let new_cost = self
+                        .context
+                        .emit_message_cost()
+                        .checked_add(host_function_costs.cost_increase_per_message.into())
+                        .ok_or(Error::GasLimit)?;
+                    self.context.set_emit_message_cost(new_cost);
+                }
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
             }
         }

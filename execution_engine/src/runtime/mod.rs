@@ -1396,8 +1396,10 @@ where
 
         // The `runtime`'s context was initialized with our counter from before the call and any gas
         // charged by the sub-call was added to its counter - so let's copy the correct value of the
-        // counter from there to our counter.
+        // counter from there to our counter. Do the same for the message cost tracking.
         self.context.set_gas_counter(runtime.context.gas_counter());
+        self.context
+            .set_emit_message_cost(runtime.context.emit_message_cost());
 
         {
             let transfers = self.context.transfers_mut();
@@ -3282,10 +3284,10 @@ where
             prev_topic_summary.message_count()
         };
 
-        let new_topic_summary = MessageTopicSummary::new(
-            message_index + 1, //TODO[AS]: need checked add here
-            current_blocktime,
-        );
+        let Some(message_count) = message_index.checked_add(1) else {
+            return Ok(Err(ApiError::MessageTopicFull));
+        };
+        let new_topic_summary = MessageTopicSummary::new(message_count, current_blocktime);
 
         let message_key = Key::message(entity_addr, topic_name_hash, message_index);
         let message_checksum = MessageChecksum(crypto::blake2b(

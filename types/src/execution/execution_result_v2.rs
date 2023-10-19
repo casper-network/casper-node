@@ -10,8 +10,6 @@ use alloc::{string::String, vec::Vec};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(any(feature = "testing", test))]
-use itertools::Itertools;
 #[cfg(feature = "json-schema")]
 use once_cell::sync::Lazy;
 #[cfg(any(feature = "testing", test))]
@@ -27,17 +25,17 @@ use serde::{Deserialize, Serialize};
 use super::Effects;
 #[cfg(feature = "json-schema")]
 use super::{Transform, TransformKind};
-#[cfg(any(feature = "testing", test))]
-use crate::crypto;
+#[cfg(any(feature = "testing", feature = "json-schema", test))]
+use crate::Key;
+#[cfg(feature = "json-schema")]
+use crate::KEY_HASH_LENGTH;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, RESULT_ERR_TAG, RESULT_OK_TAG, U8_SERIALIZED_LENGTH},
     contract_messages::Message,
     TransferAddr, U512,
 };
 #[cfg(any(feature = "testing", test))]
-use crate::{contract_messages::MessagePayload, testing::TestRng};
-#[cfg(feature = "json-schema")]
-use crate::{Key, KEY_HASH_LENGTH};
+use crate::{crypto, testing::TestRng};
 
 #[cfg(feature = "json-schema")]
 static EXECUTION_RESULT: Lazy<ExecutionResultV2> = Lazy::new(|| {
@@ -108,16 +106,16 @@ impl Distribution<ExecutionResultV2> for Standard {
         }
 
         let effects = Effects::random(rng);
-        let messages = effects
+        let messages: Vec<Message> = effects
             .transforms()
             .iter()
             .filter_map(|transform| {
                 if let Key::Message(addr) = transform.key() {
                     let topic_name = Alphanumeric.sample_string(rng, 32);
-                    let topic_name_hash = crypto::blake2b(AsRef::<[u8]>::as_ref(&topic_name));
+                    let topic_name_hash = crypto::blake2b(&topic_name);
                     Some(Message::new(
                         addr.entity_addr(),
-                        MessagePayload::from_string(format!("random_msg: {}", rng.gen::<u64>())),
+                        format!("random_msg: {}", rng.gen::<u64>()).into(),
                         topic_name,
                         topic_name_hash.into(),
                         rng.gen::<u32>(),
@@ -126,7 +124,7 @@ impl Distribution<ExecutionResultV2> for Standard {
                     None
                 }
             })
-            .collect_vec();
+            .collect();
 
         if rng.gen() {
             ExecutionResultV2::Failure {
@@ -159,7 +157,7 @@ impl ExecutionResultV2 {
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         let effects = Effects::random(rng);
-        let messages = effects
+        let messages: Vec<Message> = effects
             .transforms()
             .iter()
             .filter_map(|transform| {
@@ -168,7 +166,7 @@ impl ExecutionResultV2 {
                     let topic_name_hash = crypto::blake2b(&topic_name);
                     Some(Message::new(
                         addr.entity_addr(),
-                        MessagePayload::from_string(format!("random_msg: {}", rng.gen::<u64>())),
+                        format!("random_msg: {}", rng.gen::<u64>()).into(),
                         topic_name,
                         topic_name_hash.into(),
                         rng.gen::<u32>(),
@@ -177,7 +175,7 @@ impl ExecutionResultV2 {
                     None
                 }
             })
-            .collect_vec();
+            .collect();
 
         let transfer_count = rng.gen_range(0..6);
         let mut transfers = vec![];

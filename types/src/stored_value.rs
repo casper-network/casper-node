@@ -186,6 +186,24 @@ impl StoredValue {
         }
     }
 
+    /// Returns a reference to the wrapped `MessageTopicSummary` if this is a `MessageTopic`
+    /// variant.
+    pub fn as_message_topic_summary(&self) -> Option<&MessageTopicSummary> {
+        match self {
+            StoredValue::MessageTopic(summary) => Some(summary),
+            _ => None,
+        }
+    }
+
+    /// Returns a reference to the wrapped `MessageChecksum` if this is a `Message`
+    /// variant.
+    pub fn as_message_checksum(&self) -> Option<&MessageChecksum> {
+        match self {
+            StoredValue::Message(checksum) => Some(checksum),
+            _ => None,
+        }
+    }
+
     /// Returns a reference to the wrapped `BidKind` if this is a `BidKind` variant.
     pub fn as_bid_kind(&self) -> Option<&BidKind> {
         match self {

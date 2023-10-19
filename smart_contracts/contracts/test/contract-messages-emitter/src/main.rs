@@ -3,10 +3,7 @@
 
 #[macro_use]
 extern crate alloc;
-use alloc::{
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::{string::String, vec::Vec};
 
 use casper_contract::{
     contract_api::{runtime, storage},
@@ -16,16 +13,20 @@ use casper_contract::{
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
     api_error::ApiError,
-    contract_messages::{MessagePayload, MessageTopicOperation},
+    contract_messages::MessageTopicOperation,
     CLType, CLTyped, Parameter, RuntimeArgs,
 };
 
-pub const ENTRY_POINT_INIT: &str = "init";
-pub const ENTRY_POINT_EMIT_MESSAGE: &str = "emit_message";
-pub const ENTRY_POINT_ADD_TOPIC: &str = "add_topic";
-pub const MESSAGE_EMITTER_INITIALIZED: &str = "message_emitter_initialized";
-pub const ARG_MESSAGE_SUFFIX_NAME: &str = "message_suffix";
-pub const ARG_TOPIC_NAME: &str = "topic_name";
+const ENTRY_POINT_INIT: &str = "init";
+const ENTRY_POINT_EMIT_MESSAGE: &str = "emit_message";
+const ENTRY_POINT_EMIT_MULTIPLE_MESSAGES: &str = "emit_multiple_messages";
+const ENTRY_POINT_ADD_TOPIC: &str = "add_topic";
+const MESSAGE_EMITTER_INITIALIZED: &str = "message_emitter_initialized";
+const ARG_MESSAGE_SUFFIX_NAME: &str = "message_suffix";
+const ARG_NUM_MESSAGES_TO_EMIT: &str = "num_messages_to_emit";
+const ARG_TOPIC_NAME: &str = "topic_name";
+const PACKAGE_HASH_KEY_NAME: &str = "messages_emitter_package_hash";
+const ACCESS_KEY_NAME: &str = "messages_emitter_access";
 
 pub const MESSAGE_EMITTER_GENERIC_TOPIC: &str = "generic_messages";
 pub const MESSAGE_PREFIX: &str = "generic message: ";
@@ -36,9 +37,22 @@ pub extern "C" fn emit_message() {
 
     runtime::emit_message(
         MESSAGE_EMITTER_GENERIC_TOPIC,
-        &MessagePayload::from_string(format!("{}{}", MESSAGE_PREFIX, suffix)),
+        &format!("{}{}", MESSAGE_PREFIX, suffix).into(),
     )
     .unwrap_or_revert();
+}
+
+#[no_mangle]
+pub extern "C" fn emit_multiple_messages() {
+    let num_messages: u32 = runtime::get_named_arg(ARG_NUM_MESSAGES_TO_EMIT);
+
+    for i in 0..num_messages {
+        runtime::emit_message(
+            MESSAGE_EMITTER_GENERIC_TOPIC,
+            &format!("{}{}", MESSAGE_PREFIX, i).into(),
+        )
+        .unwrap_or_revert();
+    }
 }
 
 #[no_mangle]
@@ -85,12 +99,19 @@ pub extern "C" fn call() {
         EntryPointAccess::Public,
         EntryPointType::Contract,
     ));
+    emitter_entry_points.add_entry_point(EntryPoint::new(
+        ENTRY_POINT_EMIT_MULTIPLE_MESSAGES,
+        vec![Parameter::new(ARG_NUM_MESSAGES_TO_EMIT, u32::cl_type())],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    ));
 
     let (stored_contract_hash, _contract_version) = storage::new_contract(
         emitter_entry_points,
         Some(NamedKeys::new()),
-        Some("messages_emitter_package_name".to_string()),
-        Some("messages_emitter_access_uref".to_string()),
+        Some(PACKAGE_HASH_KEY_NAME.into()),
+        Some(ACCESS_KEY_NAME.into()),
     );
 
     // Call contract to initialize it

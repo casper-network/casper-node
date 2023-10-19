@@ -223,6 +223,7 @@ mod tests {
             enable_contract_version: HostFunction::new(142, [0, 1, 2, 3]),
             manage_message_topic: HostFunction::new(100, [0, 1, 2, 4]),
             emit_message: HostFunction::new(100, [0, 1, 2, 3]),
+            cost_increase_per_message: 50,
         });
     static EXPECTED_GENESIS_WASM_COSTS: Lazy<WasmConfig> = Lazy::new(|| {
         WasmConfig::new(
