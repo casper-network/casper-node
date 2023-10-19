@@ -62,7 +62,9 @@ use tracing_futures::Instrument;
 
 #[cfg(test)]
 use casper_types::testing::TestRng;
-use casper_types::{Block, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature};
+use casper_types::{
+    Block, BlockHeader, Chainspec, ChainspecRawBytes, FinalitySignature, Transaction,
+};
 
 #[cfg(target_os = "linux")]
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
@@ -1001,7 +1003,7 @@ where
         + From<fetcher::Event<BlockHeader>>
         + From<fetcher::Event<BlockExecutionResultsOrChunk>>
         + From<fetcher::Event<LegacyDeploy>>
-        + From<fetcher::Event<Deploy>>
+        + From<fetcher::Event<Transaction>>
         + From<fetcher::Event<SyncLeap>>
         + From<fetcher::Event<TrieOrChunk>>
         + From<fetcher::Event<ApprovalsHashes>>
@@ -1009,7 +1011,7 @@ where
         + From<PeerBehaviorAnnouncement>,
 {
     match *message {
-        NetResponse::Deploy(ref serialized_item) => handle_fetch_response::<R, Deploy>(
+        NetResponse::Transaction(ref serialized_item) => handle_fetch_response::<R, Transaction>(
             reactor,
             effect_builder,
             rng,

@@ -65,7 +65,6 @@ use lmdb::{
 };
 use prometheus::Registry;
 use smallvec::SmallVec;
-use thiserror::Error;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
@@ -74,15 +73,14 @@ use casper_types::{
         execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
     },
     Block, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures, BlockV2, Deploy,
-    DeployApprovalsHash, DeployConfigurationFailure, DeployHash, DeployHeader, Digest, EraId,
-    FinalitySignature, ProtocolVersion, PublicKey, SignedBlockHeader, StoredValue, Timestamp,
-    Transaction, TransactionApprovalsHash, TransactionHash, TransactionId,
-    TransactionV1ApprovalsHash, TransactionV1ConfigFailure, Transfer,
+    DeployApprovalsHash, DeployHash, DeployHeader, Digest, EraId, FinalitySignature,
+    ProtocolVersion, PublicKey, SignedBlockHeader, StoredValue, Timestamp, Transaction,
+    TransactionApprovalsHash, TransactionHash, TransactionId, TransactionV1ApprovalsHash, Transfer,
 };
 
 use crate::{
     components::{
-        fetcher::{EmptyValidationMetadata, FetchItem, FetchResponse, Tag},
+        fetcher::{FetchItem, FetchResponse},
         Component,
     },
     effect::{
@@ -613,16 +611,9 @@ impl Storage {
         }
 
         match *(incoming.message) {
-            NetRequest::Deploy(ref serialized_id) => {
-                let id = decode_item_id::<Deploy>(serialized_id)?;
-                let transaction_id = TransactionId::from(id);
-                let opt_item = self
-                    .get_transaction_by_id(transaction_id)
-                    .map_err(FatalStorageError::from)?
-                    .map(|transaction| match transaction {
-                        Transaction::Deploy(deploy) => deploy,
-                        Transaction::V1(_) => unreachable!(),
-                    });
+            NetRequest::Transaction(ref serialized_id) => {
+                let id = decode_item_id::<Transaction>(serialized_id)?;
+                let opt_item = self.get_transaction_by_id(id)?;
                 let fetch_response = FetchResponse::from_opt(id, opt_item);
 
                 Ok(self.update_pool_and_send(
@@ -2881,52 +2872,4 @@ fn initialize_execution_result_dbs(
     txn.commit()?;
     info!("execution result databases initialized");
     Ok(())
-}
-
-// TODO - move this to fetcher_impls::transaction_fetcher.rs once it exists.
-#[derive(Debug, Error)]
-pub(crate) enum TransactionConfigFailure {
-    #[error(transparent)]
-    Deploy(#[from] DeployConfigurationFailure),
-    #[error(transparent)]
-    V1(#[from] TransactionV1ConfigFailure),
-}
-
-// TODO - move this to fetcher_impls::transaction_fetcher.rs once it exists.
-impl FetchItem for Transaction {
-    type Id = TransactionId;
-    type ValidationError = TransactionConfigFailure;
-    type ValidationMetadata = EmptyValidationMetadata;
-
-    const TAG: Tag = Tag::Transaction;
-
-    fn fetch_id(&self) -> Self::Id {
-        match self {
-            Transaction::Deploy(deploy) => {
-                let deploy_hash = *deploy.hash();
-                let approvals_hash = deploy.compute_approvals_hash().unwrap_or_else(|error| {
-                    error!(%error, "failed to serialize approvals");
-                    DeployApprovalsHash::from(Digest::default())
-                });
-                TransactionId::new_deploy(deploy_hash, approvals_hash)
-            }
-            Transaction::V1(transaction) => {
-                let transaction_hash = *transaction.hash();
-                let approvals_hash = transaction
-                    .compute_approvals_hash()
-                    .unwrap_or_else(|error| {
-                        error!(%error, "failed to serialize approvals");
-                        TransactionV1ApprovalsHash::from(Digest::default())
-                    });
-                TransactionId::new_v1(transaction_hash, approvals_hash)
-            }
-        }
-    }
-
-    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
-        match self {
-            Transaction::Deploy(deploy) => Ok(deploy.is_valid()?),
-            Transaction::V1(transaction) => Ok(transaction.verify()?),
-        }
-    }
 }

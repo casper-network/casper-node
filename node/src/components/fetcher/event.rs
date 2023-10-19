@@ -3,7 +3,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 use serde::Serialize;
 use tracing::error;
 
-use casper_types::{Deploy, Transaction};
+use casper_types::Transaction;
 
 use super::{FetchItem, FetchResponder, FetchResponse};
 use crate::{
@@ -71,32 +71,24 @@ impl<T: FetchItem> From<FetcherRequest<T>> for Event<T> {
     }
 }
 
-// A deploy fetcher knows how to update its state if deploys are coming in via the transaction
+// A deploy fetcher knows how to update its state if transactions are coming in via the transaction
 // acceptor.
-impl Event<Deploy> {
-    // TODO: Remove `allow` as part of https://github.com/casper-network/roadmap/issues/189
-    #[allow(dead_code)]
-    pub(crate) fn maybe_from(announcement: TransactionAcceptorAnnouncement) -> Option<Self> {
+impl From<TransactionAcceptorAnnouncement> for Event<Transaction> {
+    fn from(announcement: TransactionAcceptorAnnouncement) -> Self {
         match announcement {
             TransactionAcceptorAnnouncement::AcceptedNewTransaction {
                 transaction,
                 source,
-            } => match &*transaction {
-                Transaction::Deploy(deploy) => Some(Event::GotRemotely {
-                    item: Box::new(deploy.clone()),
-                    source,
-                }),
-                Transaction::V1(_) => None,
+            } => Event::GotRemotely {
+                item: Box::new((*transaction).clone()),
+                source,
             },
             TransactionAcceptorAnnouncement::InvalidTransaction {
                 transaction,
                 source,
-            } => match &transaction {
-                Transaction::Deploy(deploy) => Some(Event::GotInvalidRemotely {
-                    id: deploy.fetch_id(),
-                    source,
-                }),
-                Transaction::V1(_) => None,
+            } => Event::GotInvalidRemotely {
+                id: transaction.fetch_id(),
+                source,
             },
         }
     }
