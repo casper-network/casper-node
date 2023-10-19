@@ -6,12 +6,12 @@ use once_cell::sync::Lazy;
 use tempfile::TempDir;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
-    DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
-    SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_CHAINSPEC_REGISTRY,
+    DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION, DEFAULT_UNBONDING_DELAY,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
+    TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::{
     engine_state::{
@@ -25,20 +25,19 @@ use casper_types::{
     self,
     account::AccountHash,
     api_error::ApiError,
+    package::PackageKindTag,
     runtime_args,
     system::{
         self,
         auction::{
             self, BidsExt, DelegationRate, EraValidators, Error as AuctionError, UnbondingPurses,
-            ValidatorWeights, WithdrawPurses, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
-            ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
+            ValidatorWeights, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_NEW_VALIDATOR,
+            ARG_PUBLIC_KEY, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
-    EraId, GenesisAccount, GenesisValidator, Motes, ProtocolVersion, PublicKey, SecretKey, U256,
-    U512,
+    EraId, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion, PublicKey, SecretKey,
+    U256, U512,
 };
-
-use crate::lmdb_fixture;
 
 const ARG_TARGET: &str = "target";
 
@@ -49,7 +48,6 @@ const CONTRACT_WITHDRAW_BID: &str = "withdraw_bid.wasm";
 const CONTRACT_DELEGATE: &str = "delegate.wasm";
 const CONTRACT_UNDELEGATE: &str = "undelegate.wasm";
 const CONTRACT_REDELEGATE: &str = "redelegate.wasm";
-const DO_NOTHING_WASM: &str = "do_nothing.wasm";
 
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE + 1000;
 
@@ -97,11 +95,6 @@ static ACCOUNT_2_PK: Lazy<PublicKey> = Lazy::new(|| {
 static ACCOUNT_2_ADDR: Lazy<AccountHash> = Lazy::new(|| AccountHash::from(&*ACCOUNT_2_PK));
 const ACCOUNT_2_BALANCE: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 const ACCOUNT_2_BOND: u64 = 200_000;
-
-static GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
-    let secret_key = SecretKey::ed25519_from_bytes([200; SecretKey::ED25519_LENGTH]).unwrap();
-    PublicKey::from(&secret_key)
-});
 
 static BID_ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([204; SecretKey::ED25519_LENGTH]).unwrap();
@@ -402,8 +395,10 @@ fn should_run_delegate_and_undelegate() {
     );
     assert_eq!(*active_bid.delegation_rate(), ADD_BID_DELEGATION_RATE_1);
 
+    let auction_key = Key::addressable_entity_key(PackageKindTag::System, auction_hash);
+
     let auction_stored_value = builder
-        .query(None, auction_hash.into(), &[])
+        .query(None, auction_key, &[])
         .expect("should query auction hash");
     let _auction = auction_stored_value
         .as_addressable_entity()
@@ -843,7 +838,7 @@ fn should_release_founder_stake() {
 
         let error = {
             let response = builder
-                .get_last_exec_results()
+                .get_last_exec_result()
                 .expect("should have last exec result");
             let exec_response = response.last().expect("should have response");
             exec_response
@@ -2366,7 +2361,7 @@ fn should_not_partially_undelegate_uninitialized_vesting_schedule() {
     builder.exec(partial_undelegate).commit();
     let error = {
         let response = builder
-            .get_last_exec_results()
+            .get_last_exec_result()
             .expect("should have last exec result");
         let exec_response = response.last().expect("should have response");
         exec_response
@@ -2440,7 +2435,7 @@ fn should_not_fully_undelegate_uninitialized_vesting_schedule() {
     builder.exec(full_undelegate).commit();
     let error = {
         let response = builder
-            .get_last_exec_results()
+            .get_last_exec_result()
             .expect("should have last exec result");
         let exec_response = response.last().expect("should have response");
         exec_response
@@ -2572,7 +2567,7 @@ fn should_not_undelegate_vfta_holder_stake() {
     builder.exec(partial_unbond).commit();
     let error = {
         let response = builder
-            .get_last_exec_results()
+            .get_last_exec_result()
             .expect("should have last exec result");
         let exec_response = response.last().expect("should have response");
         exec_response
@@ -2638,7 +2633,7 @@ fn should_release_vfta_holder_stake() {
 
         let error = {
             let response = builder
-                .get_last_exec_results()
+                .get_last_exec_result()
                 .expect("should have last exec result");
             let exec_response = response.last().expect("should have response");
             exec_response
@@ -3347,48 +3342,6 @@ fn should_delegate_and_redelegate() {
 
 #[ignore]
 #[test]
-fn should_upgrade_unbonding_purses_from_rel_1_4_2() {
-    // The `lmdb_fixture::RELEASE_1_4_2` has a single withdraw key
-    // present in the unbonding queue at the upgrade point
-    let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_4_2);
-
-    let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
-
-    let new_protocol_version = ProtocolVersion::from_parts(
-        previous_protocol_version.value().major,
-        previous_protocol_version.value().minor + 1,
-        0,
-    );
-
-    let mut upgrade_request = {
-        UpgradeRequestBuilder::new()
-            .with_current_protocol_version(previous_protocol_version)
-            .with_new_protocol_version(new_protocol_version)
-            .with_activation_point(EraId::new(1u64))
-            .build()
-    };
-
-    builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
-        .expect_upgrade_success();
-
-    let unbonding_purses: UnbondingPurses = builder.get_unbonds();
-    assert_eq!(unbonding_purses.len(), 1);
-
-    let unbond_list = unbonding_purses
-        .get(&NON_FOUNDER_VALIDATOR_1_ADDR)
-        .expect("should have unbonding purse for non founding validator");
-    assert_eq!(unbond_list.len(), 1);
-    assert_eq!(
-        unbond_list[0].validator_public_key(),
-        &*NON_FOUNDER_VALIDATOR_1_PK
-    );
-    assert!(unbond_list[0].new_validator().is_none())
-}
-
-#[ignore]
-#[test]
 fn should_handle_redelegation_to_inactive_validator() {
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -3565,431 +3518,6 @@ fn should_handle_redelegation_to_inactive_validator() {
     assert_eq!(
         delegator_2_purse_balance_before,
         delegator_2_purse_balance_after
-    );
-}
-
-#[ignore]
-#[test]
-fn should_continue_auction_state_from_release_1_4_x() {
-    // The `lmdb_fixture::RELEASE_1_4_3` has three withdraw keys
-    // in the unbonding queue which will each be processed
-    // in the three eras after the upgrade.
-    let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_4_3);
-
-    let withdraw_purses: WithdrawPurses = builder.get_withdraw_purses();
-
-    assert_eq!(withdraw_purses.len(), 1);
-
-    let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
-
-    let new_protocol_version = ProtocolVersion::from_parts(
-        previous_protocol_version.value().major,
-        previous_protocol_version.value().minor + 1,
-        0,
-    );
-
-    let mut upgrade_request = {
-        UpgradeRequestBuilder::new()
-            .with_current_protocol_version(previous_protocol_version)
-            .with_new_protocol_version(new_protocol_version)
-            .with_activation_point(EraId::new(20u64))
-            .with_new_unbonding_delay(DEFAULT_UNBONDING_DELAY)
-            .build()
-    };
-
-    builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
-        .expect_upgrade_success();
-
-    let unbonding_purses: UnbondingPurses = builder.get_unbonds();
-    assert_eq!(unbonding_purses.len(), 1);
-
-    let unbond_list = unbonding_purses
-        .get(&NON_FOUNDER_VALIDATOR_1_ADDR)
-        .expect("should have unbonding purse for non founding validator");
-    assert_eq!(unbond_list.len(), 3);
-    assert_eq!(
-        unbond_list[0].validator_public_key(),
-        &*NON_FOUNDER_VALIDATOR_1_PK
-    );
-    assert!(unbond_list[0].new_validator().is_none());
-    assert!(unbond_list[1].new_validator().is_none());
-    assert!(unbond_list[2].new_validator().is_none());
-
-    let accounts = vec![*BID_ACCOUNT_1_ADDR, *BID_ACCOUNT_2_ADDR, *DELEGATOR_1_ADDR];
-
-    for legacy_account in accounts {
-        let do_nothing_request =
-            ExecuteRequestBuilder::standard(legacy_account, DO_NOTHING_WASM, runtime_args! {})
-                .build();
-
-        builder.exec(do_nothing_request).expect_success().commit();
-    }
-
-    let delegator_1_undelegate_purse = builder
-        .get_entity_by_account_hash(*BID_ACCOUNT_1_ADDR)
-        .expect("should have account")
-        .main_purse();
-
-    let delegator_2_undelegate_purse = builder
-        .get_entity_by_account_hash(*BID_ACCOUNT_2_ADDR)
-        .expect("should have account")
-        .main_purse();
-
-    let delegator_3_undelegate_purse = builder
-        .get_entity_by_account_hash(*DELEGATOR_1_ADDR)
-        .expect("should have account")
-        .main_purse();
-
-    let delegator_1_purse_balance_pre_step =
-        builder.get_purse_balance(delegator_1_undelegate_purse);
-
-    let delegator_2_purse_balance_pre_step =
-        builder.get_purse_balance(delegator_2_undelegate_purse);
-
-    let delegator_3_purse_balance_pre_step =
-        builder.get_purse_balance(delegator_3_undelegate_purse);
-
-    builder.advance_era();
-
-    let delegator_1_purse_balance_post_step =
-        builder.get_purse_balance(delegator_1_undelegate_purse);
-
-    assert_eq!(
-        delegator_1_purse_balance_post_step,
-        delegator_1_purse_balance_pre_step + U512::from(UNDELEGATE_AMOUNT_1)
-    );
-
-    let delegator_2_purse_balance_post_step =
-        builder.get_purse_balance(delegator_2_undelegate_purse);
-
-    assert_eq!(
-        delegator_2_purse_balance_post_step,
-        delegator_2_purse_balance_pre_step + U512::from(UNDELEGATE_AMOUNT_1)
-    );
-
-    let delegator_3_purse_balance_post_step =
-        builder.get_purse_balance(delegator_3_undelegate_purse);
-
-    assert_eq!(
-        delegator_3_purse_balance_post_step,
-        delegator_3_purse_balance_pre_step + U512::from(UNDELEGATE_AMOUNT_1)
-    );
-
-    let delegator_4_fund_request = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_TRANSFER_TO_ACCOUNT,
-        runtime_args! {
-            ARG_TARGET => *DELEGATOR_2_ADDR,
-            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
-        },
-    )
-    .build();
-
-    builder
-        .exec(delegator_4_fund_request)
-        .expect_success()
-        .commit();
-
-    let delegator_4_validator_1_delegate_request = ExecuteRequestBuilder::standard(
-        *DELEGATOR_2_ADDR,
-        CONTRACT_DELEGATE,
-        runtime_args! {
-            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
-            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
-            ARG_DELEGATOR => DELEGATOR_2.clone(),
-        },
-    )
-    .build();
-
-    builder
-        .exec(delegator_4_validator_1_delegate_request)
-        .expect_success()
-        .commit();
-
-    let delegator_4_redelegate_request = ExecuteRequestBuilder::standard(
-        *DELEGATOR_2_ADDR,
-        CONTRACT_REDELEGATE,
-        runtime_args! {
-            ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1 + DEFAULT_MINIMUM_DELEGATION_AMOUNT),
-            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
-            ARG_DELEGATOR => DELEGATOR_2.clone(),
-            ARG_NEW_VALIDATOR => GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone()
-        },
-    )
-    .build();
-
-    builder
-        .exec(delegator_4_redelegate_request)
-        .expect_success()
-        .commit();
-
-    let delegator_4_purse = builder
-        .get_entity_by_account_hash(*DELEGATOR_2_ADDR)
-        .expect("must have account")
-        .main_purse();
-
-    let delegator_4_purse_balance_before = builder.get_purse_balance(delegator_4_purse);
-
-    let actual_unbonding_delay = builder.get_unbonding_delay();
-
-    assert_eq!(actual_unbonding_delay, DEFAULT_UNBONDING_DELAY);
-
-    for _ in 0..=actual_unbonding_delay {
-        let delegator_4_redelegate_purse_balance = builder.get_purse_balance(delegator_4_purse);
-        assert_eq!(
-            delegator_4_redelegate_purse_balance,
-            delegator_4_purse_balance_before
-        );
-
-        builder.advance_era();
-    }
-
-    let delegator_4_purse_balance_after = builder.get_purse_balance(delegator_4_purse);
-
-    // redelegation will not transfer funds back to the user
-    // therefore the balance must remain the same
-    assert_eq!(
-        delegator_4_purse_balance_before,
-        delegator_4_purse_balance_after
-    );
-
-    let bids = builder.get_bids();
-    assert_eq!(bids.len(), 8);
-
-    let delegator = bids
-        .delegator_by_public_keys(&NON_FOUNDER_VALIDATOR_1_PK, &DELEGATOR_2)
-        .expect("delegator should exist");
-    let delegated_amount_1 = delegator.staked_amount();
-    assert_eq!(
-        delegated_amount_1,
-        U512::from(DELEGATE_AMOUNT_1 - UNDELEGATE_AMOUNT_1 - DEFAULT_MINIMUM_DELEGATION_AMOUNT)
-    );
-
-    let delegator = bids
-        .delegator_by_public_keys(&GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY, &DELEGATOR_2)
-        .expect("delegator should exist");
-    let redelegated_amount_1 = delegator.staked_amount();
-    assert_eq!(
-        redelegated_amount_1,
-        U512::from(UNDELEGATE_AMOUNT_1 + DEFAULT_MINIMUM_DELEGATION_AMOUNT)
-    );
-}
-
-#[ignore]
-#[test]
-fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
-    let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_4_3);
-
-    let withdraw_purses: WithdrawPurses = builder.get_withdraw_purses();
-    assert_eq!(withdraw_purses.len(), 1);
-
-    let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
-    let new_protocol_version = ProtocolVersion::from_parts(
-        previous_protocol_version.value().major,
-        previous_protocol_version.value().minor + 1,
-        0,
-    );
-
-    let mut upgrade_request = {
-        UpgradeRequestBuilder::new()
-            .with_current_protocol_version(previous_protocol_version)
-            .with_new_protocol_version(new_protocol_version)
-            .with_activation_point(EraId::new(20u64))
-            .build()
-    };
-
-    builder
-        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
-        .expect_upgrade_success();
-
-    let unbonding_purses: UnbondingPurses = builder.get_unbonds();
-    assert_eq!(unbonding_purses.len(), 1);
-
-    let unbond_list = unbonding_purses
-        .get(&NON_FOUNDER_VALIDATOR_1_ADDR)
-        .expect("should have unbonding purses for non founding validator");
-    assert_eq!(unbond_list.len(), 3);
-    assert_eq!(
-        unbond_list[0].validator_public_key(),
-        &*NON_FOUNDER_VALIDATOR_1_PK
-    );
-    assert!(unbond_list[0].new_validator().is_none());
-    assert!(unbond_list[1].new_validator().is_none());
-    assert!(unbond_list[2].new_validator().is_none());
-
-    let do_nothing_request =
-        ExecuteRequestBuilder::standard(*BID_ACCOUNT_1_ADDR, DO_NOTHING_WASM, runtime_args! {})
-            .build();
-
-    builder.exec(do_nothing_request).expect_success().commit();
-
-    let delegator_1_undelegate_purse = builder
-        .get_entity_by_account_hash(*BID_ACCOUNT_1_ADDR)
-        .expect("should have account")
-        .main_purse();
-
-    let delegator_1_purse_balance_pre_step =
-        builder.get_purse_balance(delegator_1_undelegate_purse);
-
-    builder.advance_era();
-
-    let delegator_1_purse_balance_post_step =
-        builder.get_purse_balance(delegator_1_undelegate_purse);
-
-    assert_eq!(
-        delegator_1_purse_balance_post_step,
-        delegator_1_purse_balance_pre_step + U512::from(UNDELEGATE_AMOUNT_1)
-    );
-
-    let do_nothing_request =
-        ExecuteRequestBuilder::standard(*BID_ACCOUNT_2_ADDR, DO_NOTHING_WASM, runtime_args! {})
-            .build();
-
-    builder.exec(do_nothing_request).expect_success().commit();
-
-    let delegator_2_undelegate_purse = builder
-        .get_entity_by_account_hash(*BID_ACCOUNT_2_ADDR)
-        .expect("should have account")
-        .main_purse();
-
-    let delegator_2_purse_balance_pre_step =
-        builder.get_purse_balance(delegator_2_undelegate_purse);
-
-    builder.advance_era();
-
-    let delegator_2_purse_balance_post_step =
-        builder.get_purse_balance(delegator_2_undelegate_purse);
-
-    assert_eq!(
-        delegator_2_purse_balance_post_step,
-        delegator_2_purse_balance_pre_step + U512::from(UNDELEGATE_AMOUNT_1)
-    );
-
-    let do_nothing_request =
-        ExecuteRequestBuilder::standard(*DELEGATOR_1_ADDR, DO_NOTHING_WASM, runtime_args! {})
-            .build();
-
-    builder.exec(do_nothing_request).expect_success().commit();
-
-    let delegator_3_undelegate_purse = builder
-        .get_entity_by_account_hash(*DELEGATOR_1_ADDR)
-        .expect("should have account")
-        .main_purse();
-
-    let delegator_3_purse_balance_pre_step =
-        builder.get_purse_balance(delegator_3_undelegate_purse);
-
-    builder.advance_era();
-
-    let delegator_3_purse_balance_post_step =
-        builder.get_purse_balance(delegator_3_undelegate_purse);
-
-    assert_eq!(
-        delegator_3_purse_balance_post_step,
-        delegator_3_purse_balance_pre_step + U512::from(UNDELEGATE_AMOUNT_1)
-    );
-
-    let delegator_4_fund_request = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_TRANSFER_TO_ACCOUNT,
-        runtime_args! {
-            ARG_TARGET => *DELEGATOR_2_ADDR,
-            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
-        },
-    )
-    .build();
-
-    builder
-        .exec(delegator_4_fund_request)
-        .expect_success()
-        .commit();
-
-    let delegator_4_validator_1_delegate_request = ExecuteRequestBuilder::standard(
-        *DELEGATOR_2_ADDR,
-        CONTRACT_DELEGATE,
-        runtime_args! {
-            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
-            ARG_VALIDATOR => GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(),
-            ARG_DELEGATOR => DELEGATOR_2.clone(),
-        },
-    )
-    .build();
-
-    builder
-        .exec(delegator_4_validator_1_delegate_request)
-        .expect_success()
-        .commit();
-
-    let delegator_4_redelegate_request = ExecuteRequestBuilder::standard(
-        *DELEGATOR_2_ADDR,
-        CONTRACT_REDELEGATE,
-        runtime_args! {
-            ARG_AMOUNT => U512::from(UNDELEGATE_AMOUNT_1 + DEFAULT_MINIMUM_DELEGATION_AMOUNT),
-            ARG_VALIDATOR => GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(),
-            ARG_DELEGATOR => DELEGATOR_2.clone(),
-            ARG_NEW_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone()
-        },
-    )
-    .build();
-
-    builder
-        .exec(delegator_4_redelegate_request)
-        .expect_success()
-        .commit();
-
-    let withdraw_request = ExecuteRequestBuilder::standard(
-        *NON_FOUNDER_VALIDATOR_1_ADDR,
-        CONTRACT_WITHDRAW_BID,
-        runtime_args! {
-            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
-            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
-        },
-    )
-    .build();
-
-    builder.exec(withdraw_request).expect_success().commit();
-
-    builder.advance_eras_by_default_auction_delay();
-
-    let delegator_4_purse = builder
-        .get_entity_by_account_hash(*DELEGATOR_2_ADDR)
-        .expect("must have account")
-        .main_purse();
-
-    let delegator_4_purse_balance_before = builder.get_purse_balance(delegator_4_purse);
-
-    for _ in 0..(builder.get_unbonding_delay() - builder.get_auction_delay()) {
-        let delegator_4_redelegate_purse_balance = builder.get_purse_balance(delegator_4_purse);
-        assert_eq!(
-            delegator_4_redelegate_purse_balance,
-            delegator_4_purse_balance_before
-        );
-
-        builder.advance_era();
-    }
-
-    let delegator_4_purse_balance_after = builder.get_purse_balance(delegator_4_purse);
-
-    let bids = builder.get_bids();
-    assert!(bids.validator_bid(&NON_FOUNDER_VALIDATOR_1_PK).is_none());
-
-    // Since we have re-delegated to an inactive validator,
-    // the funds should cycle back to the delegator.
-    assert_eq!(
-        delegator_4_purse_balance_before + UNDELEGATE_AMOUNT_1 + DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        delegator_4_purse_balance_after
-    );
-
-    let delegator = bids
-        .delegator_by_public_keys(&GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY, &DELEGATOR_2)
-        .expect("should have delegator");
-    let delegated_amount_1 = delegator.staked_amount();
-    assert_eq!(
-        delegated_amount_1,
-        U512::from(DELEGATE_AMOUNT_1 - UNDELEGATE_AMOUNT_1 - DEFAULT_MINIMUM_DELEGATION_AMOUNT)
     );
 }
 

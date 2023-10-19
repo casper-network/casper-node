@@ -22,7 +22,7 @@ pub fn mint_entry_points() -> EntryPoints {
             err: Box::new(CLType::U8),
         },
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -34,7 +34,7 @@ pub fn mint_entry_points() -> EntryPoints {
             err: Box::new(CLType::U8),
         },
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -43,7 +43,7 @@ pub fn mint_entry_points() -> EntryPoints {
         Parameters::new(),
         CLType::URef,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -52,7 +52,7 @@ pub fn mint_entry_points() -> EntryPoints {
         vec![Parameter::new(ARG_PURSE, CLType::URef)],
         CLType::Option(Box::new(CLType::U512)),
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -70,7 +70,7 @@ pub fn mint_entry_points() -> EntryPoints {
             err: Box::new(CLType::U8),
         },
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -79,7 +79,7 @@ pub fn mint_entry_points() -> EntryPoints {
         Parameters::new(),
         CLType::U512,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -94,7 +94,7 @@ pub fn mint_entry_points() -> EntryPoints {
             err: Box::new(CLType::U8),
         },
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(entry_point);
 

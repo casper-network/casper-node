@@ -12,9 +12,9 @@ use tracing::{debug, error, trace};
 use casper_execution_engine::engine_state::{BalanceRequest, MAX_PAYMENT};
 use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, package::Package,
-    system::auction::ARG_AMOUNT, BlockHeader, Chainspec, ContractHash, ContractIdentifier,
-    ContractPackageHash, ContractPackageIdentifier, ContractVersion, ContractVersionKey,
-    DirectCallV1, ExecutableDeployItem, ExecutableDeployItemIdentifier, Key, ProtocolVersion,
+    system::auction::ARG_AMOUNT, AddressableEntityHash, BlockHeader, Chainspec, DirectCallV1,
+    EntityIdentifier, EntityVersion, EntityVersionKey, ExecutableDeployItem,
+    ExecutableDeployItemIdentifier, Key, PackageHash, PackageIdentifier, ProtocolVersion,
     Transaction, TransactionConfig, TransactionV1Kind, UserlandTransactionV1, U512,
 };
 
@@ -127,6 +127,7 @@ impl TransactionAcceptor {
                 )
                 .map_err(Error::from),
         };
+
         if let Err(error) = is_config_compliant {
             return self.reject_transaction(effect_builder, *event_metadata, error);
         }
@@ -305,12 +306,14 @@ impl TransactionAcceptor {
             // validation).
             ExecutableDeployItemIdentifier::Module
             | ExecutableDeployItemIdentifier::Transfer
-            | ExecutableDeployItemIdentifier::Contract(ContractIdentifier::Name(_))
-            | ExecutableDeployItemIdentifier::Package(ContractPackageIdentifier::Name { .. }) => {
+            | ExecutableDeployItemIdentifier::AddressableEntity(EntityIdentifier::Name(_))
+            | ExecutableDeployItemIdentifier::Package(PackageIdentifier::Name { .. }) => {
                 self.verify_body(effect_builder, event_metadata, block_header)
             }
-            ExecutableDeployItemIdentifier::Contract(ContractIdentifier::Hash(contract_hash)) => {
-                let query_key = Key::from(contract_hash);
+            ExecutableDeployItemIdentifier::AddressableEntity(EntityIdentifier::Hash(
+                contract_hash,
+            )) => {
+                let query_key = Key::contract_entity_key(contract_hash);
                 effect_builder
                     .get_addressable_entity(*block_header.state_root_hash(), query_key)
                     .event(move |maybe_contract| Event::GetContractResult {
@@ -322,12 +325,9 @@ impl TransactionAcceptor {
                     })
             }
             ExecutableDeployItemIdentifier::Package(
-                ref contract_package_identifier @ ContractPackageIdentifier::Hash {
-                    contract_package_hash,
-                    ..
-                },
+                ref contract_package_identifier @ PackageIdentifier::Hash { package_hash, .. },
             ) => {
-                let key = Key::from(contract_package_hash);
+                let key = Key::from(package_hash);
                 let maybe_package_version = contract_package_identifier.version();
                 effect_builder
                     .get_package(*block_header.state_root_hash(), key)
@@ -335,8 +335,8 @@ impl TransactionAcceptor {
                         event_metadata,
                         block_header,
                         is_payment: true,
-                        package_hash: contract_package_hash,
-                        maybe_contract_version: maybe_package_version,
+                        package_hash,
+                        maybe_package_version,
                         maybe_package,
                     })
             }
@@ -411,38 +411,37 @@ impl TransactionAcceptor {
             // validation).
             ExecutableDeployItemIdentifier::Module
             | ExecutableDeployItemIdentifier::Transfer
-            | ExecutableDeployItemIdentifier::Contract(ContractIdentifier::Name(_))
-            | ExecutableDeployItemIdentifier::Package(ContractPackageIdentifier::Name { .. }) => {
+            | ExecutableDeployItemIdentifier::AddressableEntity(EntityIdentifier::Name(_))
+            | ExecutableDeployItemIdentifier::Package(PackageIdentifier::Name { .. }) => {
                 self.validate_transaction_cryptography(effect_builder, event_metadata)
             }
-            ExecutableDeployItemIdentifier::Contract(ContractIdentifier::Hash(contract_hash)) => {
-                let key = Key::from(contract_hash);
+            ExecutableDeployItemIdentifier::AddressableEntity(EntityIdentifier::Hash(
+                entity_hash,
+            )) => {
+                let key = Key::contract_entity_key(entity_hash);
                 effect_builder
                     .get_addressable_entity(*block_header.state_root_hash(), key)
                     .event(move |maybe_contract| Event::GetContractResult {
                         event_metadata,
                         block_header,
                         is_payment: false,
-                        contract_hash,
+                        contract_hash: entity_hash,
                         maybe_contract,
                     })
             }
             ExecutableDeployItemIdentifier::Package(
-                ref package_identifier @ ContractPackageIdentifier::Hash {
-                    contract_package_hash,
-                    ..
-                },
+                ref package_identifier @ PackageIdentifier::Hash { package_hash, .. },
             ) => {
-                let key = Key::from(contract_package_hash);
-                let maybe_contract_version = package_identifier.version();
+                let key = Key::from(package_hash);
+                let maybe_package_version = package_identifier.version();
                 effect_builder
                     .get_package(*block_header.state_root_hash(), key)
                     .event(move |maybe_package| Event::GetPackageResult {
                         event_metadata,
                         block_header,
                         is_payment: false,
-                        package_hash: contract_package_hash,
-                        maybe_contract_version,
+                        package_hash,
+                        maybe_package_version,
                         maybe_package,
                     })
             }
@@ -456,8 +455,8 @@ impl TransactionAcceptor {
         block_header: Box<BlockHeader>,
     ) -> Effects<Event> {
         enum NextStep {
-            GetContract(ContractHash),
-            GetPackage(ContractPackageHash, Option<ContractVersion>),
+            GetContract(AddressableEntityHash),
+            GetPackage(PackageHash, Option<EntityVersion>),
             CryptoValidation,
         }
 
@@ -498,7 +497,7 @@ impl TransactionAcceptor {
 
         match next_step {
             NextStep::GetContract(contract_hash) => {
-                let key = Key::from(contract_hash);
+                let key = Key::contract_entity_key(contract_hash);
                 effect_builder
                     .get_addressable_entity(*block_header.state_root_hash(), key)
                     .event(move |maybe_contract| Event::GetContractResult {
@@ -509,7 +508,7 @@ impl TransactionAcceptor {
                         maybe_contract,
                     })
             }
-            NextStep::GetPackage(package_hash, maybe_contract_version) => {
+            NextStep::GetPackage(package_hash, maybe_package_version) => {
                 let key = Key::from(package_hash);
                 effect_builder
                     .get_package(*block_header.state_root_hash(), key)
@@ -518,7 +517,7 @@ impl TransactionAcceptor {
                         block_header,
                         is_payment: false,
                         package_hash,
-                        maybe_contract_version,
+                        maybe_package_version,
                         maybe_package,
                     })
             }
@@ -534,7 +533,7 @@ impl TransactionAcceptor {
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
         is_payment: bool,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
         maybe_contract: Option<AddressableEntity>,
     ) -> Effects<Event> {
         let contract = match maybe_contract {
@@ -583,9 +582,9 @@ impl TransactionAcceptor {
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
         is_payment: bool,
-        package_hash: ContractPackageHash,
-        maybe_contract_version: Option<ContractVersion>,
-        maybe_package: Option<Package>,
+        package_hash: PackageHash,
+        maybe_contract_version: Option<EntityVersion>,
+        maybe_package: Option<Box<Package>>,
     ) -> Effects<Event> {
         let package = match maybe_package {
             Some(package) => package,
@@ -611,10 +610,10 @@ impl TransactionAcceptor {
         };
 
         let contract_version_key =
-            ContractVersionKey::new(self.protocol_version.value().major, contract_version);
-        match package.lookup_contract_hash(contract_version_key) {
+            EntityVersionKey::new(self.protocol_version.value().major, contract_version);
+        match package.lookup_entity_hash(contract_version_key) {
             Some(&contract_hash) => {
-                let key = Key::from(contract_hash);
+                let key = Key::contract_entity_key(contract_hash);
                 effect_builder
                     .get_addressable_entity(*block_header.state_root_hash(), key)
                     .event(move |maybe_contract| Event::GetContractResult {
@@ -837,7 +836,7 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 block_header,
                 is_payment,
                 package_hash,
-                maybe_contract_version,
+                maybe_package_version,
                 maybe_package,
             } => self.handle_get_package_result(
                 effect_builder,
@@ -845,7 +844,7 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 block_header,
                 is_payment,
                 package_hash,
-                maybe_contract_version,
+                maybe_package_version,
                 maybe_package,
             ),
             Event::PutToStorageResult {

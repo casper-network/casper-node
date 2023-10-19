@@ -23,12 +23,12 @@ use casper_types::{
     },
     bytesrepr::ToBytes,
     execution::Effects,
-    package::ContractPackageKind,
+    package::{PackageKind, PackageKindTag},
     system::auction::EraInfo,
-    AccessRights, AddressableEntity, BlockTime, CLType, CLValue, ContextAccessRights, ContractHash,
-    ContractPackageHash, DeployHash, EntryPointType, Gas, GrantedAccess, Key, KeyTag, Package,
-    Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr, URef,
-    URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
+    ContextAccessRights, DeployHash, EntryPointType, Gas, GrantedAccess, Key, KeyTag, Package,
+    PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
+    TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{
@@ -66,8 +66,8 @@ pub struct RuntimeContext<'a, R> {
     // Original account/contract for read only tasks taken before execution
     entity: &'a AddressableEntity,
     // Key pointing to the entity we are currently running
-    entity_address: ContractHash,
-    package_kind: ContractPackageKind,
+    entity_key: Key,
+    package_kind: PackageKind,
     account_hash: AccountHash,
 }
 
@@ -83,10 +83,10 @@ where
     pub fn new(
         named_keys: &'a mut NamedKeys,
         entity: &'a AddressableEntity,
-        entity_address: ContractHash,
+        entity_key: Key,
         authorization_keys: BTreeSet<AccountHash>,
         access_rights: ContextAccessRights,
-        package_kind: ContractPackageKind,
+        package_kind: PackageKind,
         account_hash: AccountHash,
         address_generator: Rc<RefCell<AddressGenerator>>,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -109,7 +109,7 @@ where
             access_rights,
             args: runtime_args,
             entity,
-            entity_address,
+            entity_key,
             authorization_keys,
             account_hash,
             blocktime,
@@ -130,7 +130,7 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn new_from_self(
         &self,
-        entity_address: ContractHash,
+        entity_key: Key,
         entry_point_type: EntryPointType,
         named_keys: &'a mut NamedKeys,
         access_rights: ContextAccessRights,
@@ -139,7 +139,7 @@ where
         let entity = self.entity;
         let authorization_keys = self.authorization_keys.clone();
         let account_hash = self.account_hash;
-        let package_kind = self.package_kind.clone();
+        let package_kind = self.package_kind;
 
         let address_generator = self.address_generator.clone();
         let tracking_copy = self.state();
@@ -163,7 +163,7 @@ where
             access_rights,
             args: runtime_args,
             entity,
-            entity_address,
+            entity_key,
             authorization_keys,
             account_hash,
             blocktime,
@@ -211,8 +211,8 @@ where
     }
 
     /// Returns the package kind associated with the current context.
-    pub fn get_package_kind(&self) -> ContractPackageKind {
-        self.package_kind.clone()
+    pub fn get_package_kind(&self) -> PackageKind {
+        self.package_kind
     }
 
     /// Returns whether the current context is of the system addressable entity.
@@ -224,7 +224,7 @@ where
     }
 
     /// Helper function to avoid duplication in `remove_uref`.
-    fn remove_key_from_contract(
+    fn remove_key_from_entity(
         &mut self,
         key: Key,
         mut contract: AddressableEntity,
@@ -243,10 +243,10 @@ where
     /// also persistable map (one that is found in the
     /// TrackingCopy/GlobalState).
     pub fn remove_key(&mut self, name: &str) -> Result<(), Error> {
-        let contract_hash = self.get_entity_address();
-        let contract: AddressableEntity = self.read_gs_typed(&Key::from(contract_hash))?;
+        let entity_key = self.get_entity_key();
+        let contract: AddressableEntity = self.read_gs_typed(&entity_key)?;
         self.named_keys.remove(name);
-        self.remove_key_from_contract(Key::from(contract_hash), contract, name)
+        self.remove_key_from_entity(entity_key, contract, name)
     }
 
     /// Returns the block time.
@@ -308,12 +308,9 @@ where
         self.gas_counter = new_gas_counter;
     }
 
-    /// Returns the base key.
-    ///
-    /// This could be either a [`Key::Account`] or a [`Key::Hash`] depending on the entry point
-    /// type.
-    pub fn get_entity_address(&self) -> ContractHash {
-        self.entity_address
+    /// Returns the base key of [`Key::AddressableEntity`]
+    pub fn get_entity_key(&self) -> Key {
+        self.entity_key
     }
 
     /// Returns the initiater of the call chain.
@@ -369,7 +366,7 @@ where
         // the element stored under `base_key`) is allowed to add new named keys to itself.
         let named_key_value = StoredValue::CLValue(CLValue::from_t((name.clone(), key))?);
         self.validate_value(&named_key_value)?;
-        self.metered_add_gs_unsafe(Key::from(self.get_entity_address()), named_key_value)?;
+        self.metered_add_gs_unsafe(self.get_entity_key(), named_key_value)?;
         self.insert_named_key(name, key);
         Ok(())
     }
@@ -617,14 +614,14 @@ where
         match value {
             StoredValue::CLValue(cl_value) => self.validate_cl_value(cl_value),
             StoredValue::Account(_) => Ok(()),
-            StoredValue::ContractWasm(_) => Ok(()),
+            StoredValue::ByteCode(_) => Ok(()),
             StoredValue::Contract(_) => Ok(()),
             StoredValue::AddressableEntity(contract_header) => contract_header
                 .named_keys()
                 .keys()
                 .try_for_each(|key| self.validate_key(key)),
             // TODO: anything to validate here?
-            StoredValue::ContractPackage(_) => Ok(()),
+            StoredValue::Package(_) => Ok(()),
             StoredValue::Transfer(_) => Ok(()),
             StoredValue::DeployInfo(_) => Ok(()),
             StoredValue::EraInfo(_) => Ok(()),
@@ -632,6 +629,8 @@ where
             StoredValue::BidKind(_) => Ok(()),
             StoredValue::Withdraw(_) => Ok(()),
             StoredValue::Unbonding(_) => Ok(()),
+            StoredValue::ContractPackage(_) => Ok(()),
+            StoredValue::ContractWasm(_) => Ok(()),
         }
     }
 
@@ -710,16 +709,25 @@ where
             | Key::Unbond(_)
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry
-            | Key::BidAddr(_) => true,
+            | Key::BidAddr(_)
+            | Key::Package(_)
+            | Key::AddressableEntity(_)
+            | Key::ByteCode(_) => true,
         }
     }
 
     /// Tests whether addition to `key` is valid.
     pub fn is_addable(&self, key: &Key) -> bool {
         match key {
-            Key::Hash(hash) => &self.get_entity_address().value() == hash, // ???
+            Key::AddressableEntity((_, entity_addr)) => {
+                match self.get_entity_key().into_entity_hash() {
+                    Some(entity_hash) => entity_hash == AddressableEntityHash::new(*entity_addr),
+                    None => false,
+                }
+            }
             Key::URef(uref) => uref.is_addable(),
-            Key::Account(_)
+            Key::Hash(_)
+            | Key::Account(_)
             | Key::Transfer(_)
             | Key::DeployInfo(_)
             | Key::EraInfo(_)
@@ -732,7 +740,9 @@ where
             | Key::Unbond(_)
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry
-            | Key::BidAddr(_) => false,
+            | Key::BidAddr(_)
+            | Key::Package(_)
+            | Key::ByteCode(_) => false,
         }
     }
 
@@ -754,7 +764,10 @@ where
             | Key::Unbond(_)
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry
-            | Key::BidAddr(_) => false,
+            | Key::BidAddr(_)
+            | Key::Package(_)
+            | Key::AddressableEntity(_)
+            | Key::ByteCode(_) => false,
         }
     }
 
@@ -767,6 +780,7 @@ where
         let prev = self.gas_counter();
         let gas_limit = self.gas_limit();
         let is_system = self.package_kind.is_system();
+
         // gas charge overflow protection
         match prev.checked_add(gas.cost(is_system)) {
             None => {
@@ -774,6 +788,7 @@ where
                 Err(Error::GasLimit)
             }
             Some(val) if val > gas_limit => {
+                println!("Val/limit {}/{}", val, gas_limit);
                 self.set_gas_counter(gas_limit);
                 Err(Error::GasLimit)
             }
@@ -784,8 +799,11 @@ where
         }
     }
 
-    /// Checks if we are calling a system contract.
-    pub(crate) fn is_system_contract(&self, contract_hash: &ContractHash) -> Result<bool, Error> {
+    /// Checks if we are calling a system addressable entity.
+    pub(crate) fn is_system_addressable_entity(
+        &self,
+        contract_hash: &AddressableEntityHash,
+    ) -> Result<bool, Error> {
         Ok(self
             .system_contract_registry()?
             .has_contract_hash(contract_hash))
@@ -793,10 +811,12 @@ where
 
     /// Charges gas for specified amount of bytes used.
     fn charge_gas_storage(&mut self, bytes_count: usize) -> Result<(), Error> {
-        let contract_hash = self.get_entity_address();
-        if self.is_system_contract(&contract_hash)? {
-            // Don't charge storage used while executing a system contract.
-            return Ok(());
+        if let Some(base_key) = self.get_entity_key().into_entity_addr() {
+            let entity_hash = AddressableEntityHash::new(base_key);
+            if self.is_system_addressable_entity(&entity_hash)? {
+                // Don't charge storage used while executing a system contract.
+                return Ok(());
+            }
         }
 
         let storage_costs = self.engine_config.wasm_config().storage_costs();
@@ -906,7 +926,12 @@ where
         account_hash: AccountHash,
         weight: Weight,
     ) -> Result<(), Error> {
-        let entity_key = self.get_entity_address_for_account_hash(self.account_hash)?;
+        let entity_key = match self.entry_point_type {
+            EntryPointType::AddressableEntity => self.entity_key,
+            EntryPointType::Session | EntryPointType::Factory => {
+                self.get_entity_address_for_account_hash(self.account_hash)?
+            }
+        };
 
         // Check permission to modify associated keys
         if !self.is_valid_context(entity_key) {
@@ -915,11 +940,11 @@ where
         }
 
         // Converts an account's public key into a URef
-        let key = self.get_entity_address();
+        let key = self.get_entity_key();
 
         // Take an addressable entity out of the global state
         let entity = {
-            let mut entity: AddressableEntity = self.read_gs_typed(&Key::from(key))?;
+            let mut entity: AddressableEntity = self.read_gs_typed(&key)?;
 
             if entity.associated_keys().len() >= (self.engine_config.max_associated_keys() as usize)
             {
@@ -956,11 +981,10 @@ where
         }
 
         // Converts an account's public key into a URef
-        // let key = Key::Account(self.contract().account_hash());
-        let contract_hash = self.get_entity_address();
+        let contract_hash = self.get_entity_key();
 
         // Take an account out of the global state
-        let mut entity: AddressableEntity = self.read_gs_typed(&Key::from(contract_hash))?;
+        let mut entity: AddressableEntity = self.read_gs_typed(&contract_hash)?;
 
         // Exit early in case of error without updating global state
         entity
@@ -994,10 +1018,10 @@ where
         }
 
         // Converts an account's public key into a URef
-        let key = self.get_entity_address();
+        let key = self.get_entity_key();
 
         // Take an account out of the global state
-        let mut entity: AddressableEntity = self.read_gs_typed(&Key::from(key))?;
+        let mut entity: AddressableEntity = self.read_gs_typed(&key)?;
 
         // Exit early in case of error without updating global state
         entity
@@ -1025,17 +1049,22 @@ where
         action_type: ActionType,
         threshold: Weight,
     ) -> Result<(), Error> {
-        let entity_key = self.get_entity_address_for_account_hash(self.account_hash)?;
+        let entity_key = match self.entry_point_type {
+            EntryPointType::AddressableEntity => self.entity_key,
+            EntryPointType::Session | EntryPointType::Factory => {
+                self.get_entity_address_for_account_hash(self.account_hash)?
+            }
+        };
         // Check permission to modify associated keys
         if !self.is_valid_context(entity_key) {
             // Exit early with error to avoid mutations
             return Err(SetThresholdFailure::PermissionDeniedError.into());
         }
 
-        let key = self.get_entity_address();
+        let key = self.get_entity_key();
 
         // Take an addressable entity out of the global state
-        let mut entity: AddressableEntity = self.read_gs_typed(&Key::from(key))?;
+        let mut entity: AddressableEntity = self.read_gs_typed(&key)?;
 
         // Exit early in case of error without updating global state
         if self.is_authorized_by_admin() {
@@ -1064,11 +1093,9 @@ where
     pub(crate) fn get_entity_address_for_account_hash(
         &mut self,
         account_hash: AccountHash,
-    ) -> Result<ContractHash, Error> {
+    ) -> Result<Key, Error> {
         let cl_value = self.read_gs_typed::<CLValue>(&Key::Account(account_hash))?;
-        let key = CLValue::into_t::<Key>(cl_value).map_err(Error::CLValue)?;
-        key.into_contract_hash()
-            .ok_or(Error::UnexpectedKeyVariant(key))
+        CLValue::into_t::<Key>(cl_value).map_err(Error::CLValue)
     }
 
     pub(crate) fn read_addressable_entity_by_account_hash(
@@ -1092,8 +1119,8 @@ where
     }
 
     /// Checks if the account context is valid.
-    fn is_valid_context(&self, entity_address: ContractHash) -> bool {
-        self.get_entity_address() == entity_address
+    fn is_valid_context(&self, entity_key: Key) -> bool {
+        self.get_entity_key() == entity_key
     }
 
     /// Gets main purse id
@@ -1110,7 +1137,7 @@ where
     /// Gets given contract package with its access_key validated against current context.
     pub(crate) fn get_validated_package(
         &mut self,
-        package_hash: ContractPackageHash,
+        package_hash: PackageHash,
     ) -> Result<Package, Error> {
         let package_hash_key = Key::from(package_hash);
         self.validate_key(&package_hash_key)?;
@@ -1119,6 +1146,29 @@ where
             self.validate_uref(&contract_package.access_key())?;
         }
         Ok(contract_package)
+    }
+
+    pub(crate) fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Error> {
+        self.tracking_copy
+            .borrow_mut()
+            .get_package(package_hash)
+            .map_err(Into::into)
+    }
+
+    pub(crate) fn get_contract_entity(
+        &mut self,
+        entity_key: Key,
+    ) -> Result<(AddressableEntity, bool), Error> {
+        let entity_hash = if let Some(entity_hash) = entity_key.into_entity_hash() {
+            entity_hash
+        } else {
+            return Err(Error::UnexpectedKeyVariant(entity_key));
+        };
+
+        self.tracking_copy
+            .borrow_mut()
+            .get_contract_entity(entity_hash)
+            .map_err(Into::into)
     }
 
     /// Gets a dictionary item key from a dictionary referenced by a `uref`.
@@ -1192,13 +1242,21 @@ where
     }
 
     /// Gets system contract by name.
-    pub(crate) fn get_system_contract(&self, name: &str) -> Result<ContractHash, Error> {
+    pub(crate) fn get_system_contract(&self, name: &str) -> Result<AddressableEntityHash, Error> {
         let registry = self.system_contract_registry()?;
         let hash = registry.get(name).ok_or_else(|| {
             error!("Missing system contract hash: {}", name);
             Error::MissingSystemContractHash(name.to_string())
         })?;
         Ok(*hash)
+    }
+
+    pub(crate) fn get_system_entity_key(&self, name: &str) -> Result<Key, Error> {
+        let system_entity_hash = self.get_system_contract(name)?;
+        Ok(Key::addressable_entity_key(
+            PackageKindTag::System,
+            system_entity_hash,
+        ))
     }
 
     /// Returns system contract registry by querying the global state.

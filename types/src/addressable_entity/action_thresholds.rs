@@ -21,10 +21,10 @@ use crate::{
 pub struct ActionThresholds {
     /// Threshold for deploy execution.
     pub deployment: Weight,
+    /// Threshold for upgrading contracts.
+    pub upgrade_management: Weight,
     /// Threshold for managing action threshold.
     pub key_management: Weight,
-    // !TODO add this action threshold and gate the ability to upgrade a contract behind it.
-    // pub upgrade_management: Weight,
 }
 
 impl ActionThresholds {
@@ -34,6 +34,7 @@ impl ActionThresholds {
     /// key management threshold.
     pub fn new(
         deployment: Weight,
+        upgrade_management: Weight,
         key_management: Weight,
     ) -> Result<ActionThresholds, SetThresholdFailure> {
         if deployment > key_management {
@@ -41,6 +42,7 @@ impl ActionThresholds {
         }
         Ok(ActionThresholds {
             deployment,
+            upgrade_management,
             key_management,
         })
     }
@@ -75,6 +77,15 @@ impl ActionThresholds {
         }
     }
 
+    /// Sets new threshold for [ActionType::UpgradeManagement].
+    pub fn set_upgrade_management_threshold(
+        &mut self,
+        upgrade_management: Weight,
+    ) -> Result<(), SetThresholdFailure> {
+        self.upgrade_management = upgrade_management;
+        Ok(())
+    }
+
     /// Returns the deployment action threshold.
     pub fn deployment(&self) -> &Weight {
         &self.deployment
@@ -83,6 +94,11 @@ impl ActionThresholds {
     /// Returns key management action threshold.
     pub fn key_management(&self) -> &Weight {
         &self.key_management
+    }
+
+    /// Returns the upgrade management action threshold.
+    pub fn upgrade_management(&self) -> &Weight {
+        &self.upgrade_management
     }
 
     /// Unified function that takes an action type, and changes appropriate
@@ -95,6 +111,7 @@ impl ActionThresholds {
         match action_type {
             ActionType::Deployment => self.set_deployment_threshold(new_threshold),
             ActionType::KeyManagement => self.set_key_management_threshold(new_threshold),
+            ActionType::UpgradeManagement => self.set_upgrade_management_threshold(new_threshold),
         }
     }
 }
@@ -103,6 +120,7 @@ impl Default for ActionThresholds {
     fn default() -> Self {
         ActionThresholds {
             deployment: Weight::new(1),
+            upgrade_management: Weight::new(1),
             key_management: Weight::new(1),
         }
     }
@@ -113,6 +131,7 @@ impl From<AccountActionThresholds> for ActionThresholds {
         Self {
             deployment: Weight::new(value.deployment.value()),
             key_management: Weight::new(value.key_management.value()),
+            upgrade_management: Weight::new(1),
         }
     }
 }
@@ -121,16 +140,18 @@ impl ToBytes for ActionThresholds {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut result = bytesrepr::unchecked_allocate_buffer(self);
         result.append(&mut self.deployment.to_bytes()?);
+        result.append(&mut self.upgrade_management.to_bytes()?);
         result.append(&mut self.key_management.to_bytes()?);
         Ok(result)
     }
 
     fn serialized_length(&self) -> usize {
-        2 * WEIGHT_SERIALIZED_LENGTH
+        3 * WEIGHT_SERIALIZED_LENGTH
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.deployment().write_bytes(writer)?;
+        self.upgrade_management().write_bytes(writer)?;
         self.key_management().write_bytes(writer)?;
         Ok(())
     }
@@ -139,9 +160,11 @@ impl ToBytes for ActionThresholds {
 impl FromBytes for ActionThresholds {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let (deployment, rem) = Weight::from_bytes(bytes)?;
+        let (upgrade_management, rem) = Weight::from_bytes(rem)?;
         let (key_management, rem) = Weight::from_bytes(rem)?;
         let ret = ActionThresholds {
             deployment,
+            upgrade_management,
             key_management,
         };
         Ok((ret, rem))
@@ -166,20 +189,23 @@ mod tests {
 
     #[test]
     fn should_create_new_action_thresholds() {
-        let action_thresholds = ActionThresholds::new(Weight::new(1), Weight::new(42)).unwrap();
+        let action_thresholds =
+            ActionThresholds::new(Weight::new(1), Weight::new(1), Weight::new(42)).unwrap();
         assert_eq!(*action_thresholds.deployment(), Weight::new(1));
+        assert_eq!(*action_thresholds.upgrade_management(), Weight::new(1));
         assert_eq!(*action_thresholds.key_management(), Weight::new(42));
     }
 
     #[test]
     fn should_not_create_action_thresholds_with_invalid_deployment_threshold() {
         // deployment cant be greater than key management
-        assert!(ActionThresholds::new(Weight::new(5), Weight::new(1)).is_err());
+        assert!(ActionThresholds::new(Weight::new(5), Weight::new(1), Weight::new(1)).is_err());
     }
 
     #[test]
     fn serialization_roundtrip() {
-        let action_thresholds = ActionThresholds::new(Weight::new(1), Weight::new(42)).unwrap();
+        let action_thresholds =
+            ActionThresholds::new(Weight::new(1), Weight::new(1), Weight::new(42)).unwrap();
         bytesrepr::test_serialization_roundtrip(&action_thresholds);
     }
 }

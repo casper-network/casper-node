@@ -13,8 +13,9 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    addressable_entity::NamedKeys, api_error, bytesrepr::ToBytes, AccessRights, ApiError, CLType,
-    CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, URef,
+    addressable_entity::NamedKeys, api_error, bytesrepr::ToBytes, package::PackageKindTag,
+    AccessRights, ApiError, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType,
+    EntryPoints, Key, URef,
 };
 
 pub const DICTIONARY_NAME: &str = "local";
@@ -180,35 +181,35 @@ pub fn delegate() {
         Vec::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
     entry_points.add_entry_point(EntryPoint::new(
         SHARE_RO_ENTRYPOINT,
         Vec::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
     entry_points.add_entry_point(EntryPoint::new(
         SHARE_W_ENTRYPOINT,
         Vec::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
     entry_points.add_entry_point(EntryPoint::new(
         INVALID_PUT_DICTIONARY_ITEM_KEY_ENTRYPOINT,
         Vec::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
     entry_points.add_entry_point(EntryPoint::new(
         INVALID_GET_DICTIONARY_ITEM_KEY_ENTRYPOINT,
         Vec::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
     let named_keys = {
         let uref = {
@@ -230,11 +231,14 @@ pub fn delegate() {
         named_keys
     };
 
-    let (contract_hash, _version) = storage::new_contract(
+    let (entity_hash, _version) = storage::new_contract(
         entry_points,
         Some(named_keys),
         Some(CONTRACT_PACKAGE_HASH_NAME.to_string()),
         None,
     );
-    runtime::put_key(CONTRACT_HASH_NAME, contract_hash.into());
+
+    let entity_key = Key::addressable_entity_key(PackageKindTag::SmartContract, entity_hash);
+
+    runtime::put_key(CONTRACT_HASH_NAME, entity_key);
 }

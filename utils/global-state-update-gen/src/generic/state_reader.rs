@@ -1,6 +1,7 @@
 use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_types::{
     account::AccountHash,
+    contracts::ContractHash,
     system::{
         auction::{BidKind, UnbondingPurses, WithdrawPurses, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY},
         mint::TOTAL_SUPPLY_KEY,
@@ -79,7 +80,10 @@ impl StateReader for LmdbWasmTestBuilder {
                 .copied()
                 .expect("total_supply should exist in mint named keys")
         } else {
-            self.get_legacy_contract(mint_contract_hash)
+            let mint_legacy_contract_hash: ContractHash =
+                ContractHash::new(mint_contract_hash.value());
+
+            self.get_legacy_contract(mint_legacy_contract_hash)
                 .expect("mint should exist")
                 .named_keys()
                 .get(TOTAL_SUPPLY_KEY)
@@ -99,7 +103,9 @@ impl StateReader for LmdbWasmTestBuilder {
                 .copied()
                 .expect("seigniorage_recipients_snapshot should exist in auction named keys")
         } else {
-            self.get_legacy_contract(auction_contract_hash)
+            let auction_legacy_contract_hash = ContractHash::new(auction_contract_hash.value());
+
+            self.get_legacy_contract(auction_legacy_contract_hash)
                 .expect("auction should exist")
                 .named_keys()
                 .get(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)
@@ -127,10 +133,12 @@ impl StateReader for LmdbWasmTestBuilder {
     fn get_protocol_version(&mut self) -> ProtocolVersion {
         let mint_contract_hash = self.get_system_mint_hash();
 
+        let mint_legacy_contract_hash: ContractHash = ContractHash::new(mint_contract_hash.value());
+
         if let Some(entity) = self.get_addressable_entity(mint_contract_hash) {
             entity.protocol_version()
         } else {
-            self.get_legacy_contract(mint_contract_hash)
+            self.get_legacy_contract(mint_legacy_contract_hash)
                 .expect("mint should exist")
                 .protocol_version()
         }

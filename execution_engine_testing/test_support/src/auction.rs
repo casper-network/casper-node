@@ -348,7 +348,7 @@ pub fn create_delegate_request(
     next_validator_key: PublicKey,
     delegation_amount: U512,
     delegator_account_hash: AccountHash,
-    contract_hash: casper_types::ContractHash,
+    contract_hash: casper_types::AddressableEntityHash,
 ) -> ExecuteRequest {
     let entry_point = auction::METHOD_DELEGATE;
     let args = runtime_args! {

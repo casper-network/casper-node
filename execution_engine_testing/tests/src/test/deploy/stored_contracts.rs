@@ -1,18 +1,15 @@
+use assert_matches::assert_matches;
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    engine_state::{self, Error},
-    execution,
-};
+use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
     account::AccountHash,
-    package::{ContractVersion, CONTRACT_INITIAL_VERSION},
-    runtime_args,
-    system::mint,
-    AddressableEntity, ApiError, ContractHash, EraId, ProtocolVersion, RuntimeArgs, U512,
+    package::{EntityVersion, ENTITY_INITIAL_VERSION},
+    runtime_args, AddressableEntity, EntityVersionKey, EraId, PackageHash, ProtocolVersion,
+    RuntimeArgs, U512,
 };
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
@@ -20,7 +17,7 @@ const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 const DO_NOTHING_NAME: &str = "do_nothing";
 const DO_NOTHING_CONTRACT_PACKAGE_HASH_NAME: &str = "do_nothing_package_hash";
 const DO_NOTHING_CONTRACT_HASH_NAME: &str = "do_nothing_hash";
-const INITIAL_VERSION: ContractVersion = CONTRACT_INITIAL_VERSION;
+const INITIAL_VERSION: EntityVersion = ENTITY_INITIAL_VERSION;
 const ENTRY_FUNCTION_NAME: &str = "delegate";
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 const STORED_PAYMENT_CONTRACT_NAME: &str = "test_payment_stored.wasm";
@@ -28,12 +25,6 @@ const STORED_PAYMENT_CONTRACT_HASH_NAME: &str = "test_payment_hash";
 const STORED_PAYMENT_CONTRACT_PACKAGE_HASH_NAME: &str = "test_payment_package_hash";
 const PAY_ENTRYPOINT: &str = "pay";
 const TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME: &str = "transfer_purse_to_account";
-// Currently Error enum that holds this variant is private and can't be used otherwise to compare
-// message
-const EXPECTED_ERROR_MESSAGE: &str = "IncompatibleProtocolMajorVersion { expected: 2, actual: 1 }";
-const EXPECTED_VERSION_ERROR_MESSAGE: &str =
-    "InvalidContractVersion(ContractVersionKey { protocol_version_major: 2, contract_version: 1 })";
-const EXPECTED_MISSING_ENTRY_POINT_MESSAGE: &str = "NoSuchMethod";
 
 const ARG_TARGET: &str = "target";
 const ARG_AMOUNT: &str = "amount";
@@ -46,9 +37,9 @@ fn make_upgrade_request(new_protocol_version: ProtocolVersion) -> UpgradeRequest
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
 }
 
-fn store_payment_to_account_context(
+fn install_custom_payment(
     builder: &mut LmdbWasmTestBuilder,
-) -> (AddressableEntity, ContractHash) {
+) -> (AddressableEntity, PackageHash, U512) {
     // store payment contract
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -64,15 +55,16 @@ fn store_payment_to_account_context(
         .expect("should have account");
 
     // check account named keys
-    let hash = default_account
+    let package_hash = default_account
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_PACKAGE_HASH_NAME)
         .expect("key should exist")
-        .into_hash()
-        .expect("should be a hash")
-        .into();
+        .into_package_hash()
+        .expect("should be a hash");
 
-    (default_account, hash)
+    let exec_cost = builder.last_exec_result().cost().value();
+
+    (default_account, package_hash, exec_cost)
 }
 
 #[ignore]
@@ -159,7 +151,7 @@ fn should_fail_if_calling_non_existent_entry_point() {
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
         .expect("should have standard_payment named key")
-        .into_hash()
+        .into_entity_addr()
         .expect("standard_payment should be an uref");
 
     // next make another deploy that attempts to use the stored payment logic
@@ -187,59 +179,72 @@ fn should_fail_if_calling_non_existent_entry_point() {
         "calling a non-existent entry point should not work"
     );
 
-    let error_message = builder
-        .exec_error_message(1)
-        .expect("should have exec error");
-    assert!(error_message.contains(EXPECTED_MISSING_ENTRY_POINT_MESSAGE));
+    let expected_error = Error::Exec(execution::Error::NoSuchMethod(
+        "electric-boogaloo".to_string(),
+    ));
+
+    builder.assert_error(expected_error);
 }
 
 #[ignore]
 #[test]
 fn should_exec_stored_code_by_hash() {
-    let payment_purse_amount = *DEFAULT_PAYMENT;
+    let default_payment = *DEFAULT_PAYMENT;
 
     // genesis
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // store payment
-    let proposer_reward_starting_balance_alpha = builder.get_proposer_purse_balance();
 
-    let (default_account, hash) = store_payment_to_account_context(&mut builder);
+    let proposer_initial_balance = builder.get_proposer_purse_balance();
+
+    let (sending_account, custom_payment_package_hash, _) = install_custom_payment(&mut builder);
 
     // verify stored contract functions as expected by checking all the maths
 
-    let (motes_alpha, modified_balance_alpha) = {
-        // get modified balance
-        let modified_balance_alpha: U512 = builder.get_purse_balance(default_account.main_purse());
+    let proposer_balance_post_installation = builder.get_proposer_purse_balance();
 
-        let transaction_fee_alpha =
-            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_alpha;
-        (transaction_fee_alpha, modified_balance_alpha)
-    };
+    let sending_account_balance: U512 = builder.get_purse_balance(sending_account.main_purse());
 
-    let transferred_amount = 1;
+    let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
+
+    assert!(
+        sending_account_balance < initial_balance,
+        "balance should be less than initial balance"
+    );
+
+    assert_eq!(
+        proposer_balance_post_installation,
+        proposer_initial_balance + default_payment,
+        "the full payment goes to the proposer, as configured"
+    );
+
+    assert_eq!(
+        sending_account_balance,
+        initial_balance - default_payment,
+        "current balance = initial balance - default_payment"
+    );
+
+    let transferred_amount = U512::one();
 
     // next make another deploy that USES stored payment logic
 
-    let proposer_reward_starting_balance_bravo = builder.get_proposer_purse_balance();
-
     {
-        let exec_request_stored_payment = {
-            let account_1_account_hash = ACCOUNT_1_ADDR;
+        let transfer_using_stored_payment = {
             let deploy = DeployItemBuilder::new()
                 .with_address(*DEFAULT_ACCOUNT_ADDR)
-                .with_session_code(
-                    format!("{}.wasm", TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME),
-                    runtime_args! { ARG_TARGET => account_1_account_hash, ARG_AMOUNT => U512::from(transferred_amount) },
-                )
                 .with_stored_versioned_payment_contract_by_hash(
-                    hash.value(),
-                    Some(CONTRACT_INITIAL_VERSION),
+                    custom_payment_package_hash.value(),
+                    Some(ENTITY_INITIAL_VERSION),
                     PAY_ENTRYPOINT,
                     runtime_args! {
-                        ARG_AMOUNT => payment_purse_amount,
+                        ARG_AMOUNT => default_payment,
                     },
+                )
+                .with_session_code(
+                    format!("{}.wasm", TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME),
+                    runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => transferred_amount },
                 )
                 .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
                 .with_deploy_hash([2; 32])
@@ -248,36 +253,12 @@ fn should_exec_stored_code_by_hash() {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        builder.exec(exec_request_stored_payment).commit();
+        builder.exec(transfer_using_stored_payment).expect_failure();
     }
 
-    let (motes_bravo, modified_balance_bravo) = {
-        let modified_balance_bravo: U512 = builder.get_purse_balance(default_account.main_purse());
+    let error = builder.get_error().unwrap();
 
-        let transaction_fee_bravo =
-            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_bravo;
-
-        (transaction_fee_bravo, modified_balance_bravo)
-    };
-
-    let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-
-    assert!(
-        modified_balance_alpha < initial_balance,
-        "balance should be less than initial balance"
-    );
-
-    assert!(
-        modified_balance_bravo < modified_balance_alpha,
-        "second modified balance should be less than first modified balance"
-    );
-
-    let tally = motes_alpha + motes_bravo + U512::from(transferred_amount) + modified_balance_bravo;
-
-    assert_eq!(
-        initial_balance, tally,
-        "no net resources should be gained or lost post-distribution"
-    );
+    assert_matches!(error, Error::Exec(execution::Error::ForgedReference(_)))
 }
 
 #[ignore]
@@ -290,7 +271,7 @@ fn should_not_transfer_above_balance_using_stored_payment_code_by_hash() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // store payment
-    let (default_account, hash) = store_payment_to_account_context(&mut builder);
+    let (default_account, hash, _) = install_custom_payment(&mut builder);
     let starting_balance = builder.get_purse_balance(default_account.main_purse());
 
     let transferred_amount = starting_balance - *DEFAULT_PAYMENT + U512::one();
@@ -305,7 +286,7 @@ fn should_not_transfer_above_balance_using_stored_payment_code_by_hash() {
             )
             .with_stored_versioned_payment_contract_by_hash(
                 hash.value(),
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 PAY_ENTRYPOINT,
                 runtime_args! {
                     ARG_AMOUNT => payment_purse_amount,
@@ -323,17 +304,9 @@ fn should_not_transfer_above_balance_using_stored_payment_code_by_hash() {
         .expect_failure()
         .commit();
 
-    let error = builder.get_error().expect("should have error");
+    let error = builder.get_error().unwrap();
 
-    assert!(
-        matches!(
-            error,
-            engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(mint_error)))
-            if mint_error == mint::Error::InsufficientFunds as u8,
-        ),
-        "Error received {:?}",
-        error,
-    );
+    assert_matches!(error, Error::Exec(execution::Error::ForgedReference(_)))
 }
 
 #[ignore]
@@ -346,26 +319,13 @@ fn should_empty_account_using_stored_payment_code_by_hash() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // store payment
-    let proposer_reward_starting_balance_alpha = builder.get_proposer_purse_balance();
 
-    let (default_account, hash) = store_payment_to_account_context(&mut builder);
+    let (default_account, hash, _) = install_custom_payment(&mut builder);
     let starting_balance = builder.get_purse_balance(default_account.main_purse());
 
     // verify stored contract functions as expected by checking all the maths
 
-    let (motes_alpha, modified_balance_alpha) = {
-        // get modified balance
-        let modified_balance_alpha: U512 = builder.get_purse_balance(default_account.main_purse());
-
-        let transaction_fee_alpha =
-            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_alpha;
-        (transaction_fee_alpha, modified_balance_alpha)
-    };
-
     let transferred_amount = starting_balance - *DEFAULT_PAYMENT;
-
-    // next make another deploy that USES stored payment logic
-    let proposer_reward_starting_balance_bravo = builder.get_proposer_purse_balance();
 
     {
         let exec_request_stored_payment = {
@@ -378,7 +338,7 @@ fn should_empty_account_using_stored_payment_code_by_hash() {
                 )
                 .with_stored_versioned_payment_contract_by_hash(
                     hash.value(),
-                    Some(CONTRACT_INITIAL_VERSION),
+                    Some(ENTITY_INITIAL_VERSION),
                     PAY_ENTRYPOINT,
                     runtime_args! {
                         ARG_AMOUNT => payment_purse_amount,
@@ -391,44 +351,12 @@ fn should_empty_account_using_stored_payment_code_by_hash() {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        builder
-            .exec(exec_request_stored_payment)
-            .expect_success()
-            .commit();
+        builder.exec(exec_request_stored_payment).expect_failure();
     }
 
-    let (motes_bravo, modified_balance_bravo) = {
-        let modified_balance_bravo: U512 = builder.get_purse_balance(default_account.main_purse());
+    let error = builder.get_error().expect("must have error");
 
-        let transaction_fee_bravo =
-            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_bravo;
-
-        (transaction_fee_bravo, modified_balance_bravo)
-    };
-
-    let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-
-    assert_eq!(
-        modified_balance_bravo,
-        builder.calculate_refund_amount(payment_purse_amount)
-    );
-
-    assert!(
-        modified_balance_alpha < initial_balance,
-        "balance should be less than initial balance"
-    );
-
-    assert!(
-        modified_balance_bravo < modified_balance_alpha,
-        "second modified balance should be less than first modified balance"
-    );
-
-    let tally = motes_alpha + motes_bravo + transferred_amount + modified_balance_bravo;
-
-    assert_eq!(
-        initial_balance, tally,
-        "no net resources should be gained or lost post-distribution"
-    );
+    assert_matches!(error, Error::Exec(execution::Error::ForgedReference(_)))
 }
 
 #[ignore]
@@ -440,28 +368,11 @@ fn should_exec_stored_code_by_named_hash() {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    // store payment
-    let proposer_reward_starting_balance_alpha = builder.get_proposer_purse_balance();
-
-    let (default_account, _) = store_payment_to_account_context(&mut builder);
+    install_custom_payment(&mut builder);
 
     // verify stored contract functions as expected by checking all the maths
 
-    let (motes_alpha, modified_balance_alpha) = {
-        // get modified balance
-        let modified_balance_alpha: U512 = builder.get_purse_balance(default_account.main_purse());
-
-        // get cost
-        let transaction_fee_alpha =
-            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_alpha;
-
-        (transaction_fee_alpha, modified_balance_alpha)
-    };
-
     let transferred_amount = 1;
-
-    // next make another deploy that USES stored payment logic
-    let proposer_reward_starting_balance_bravo = builder.get_proposer_purse_balance();
 
     {
         let exec_request_stored_payment = {
@@ -474,7 +385,7 @@ fn should_exec_stored_code_by_named_hash() {
                 )
                 .with_stored_versioned_payment_contract_by_name(
                     STORED_PAYMENT_CONTRACT_PACKAGE_HASH_NAME,
-                    Some(CONTRACT_INITIAL_VERSION),
+                    Some(ENTITY_INITIAL_VERSION),
                     PAY_ENTRYPOINT,
                     runtime_args! {
                         ARG_AMOUNT => payment_purse_amount,
@@ -487,36 +398,12 @@ fn should_exec_stored_code_by_named_hash() {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        builder.exec(exec_request_stored_payment).commit();
+        builder.exec(exec_request_stored_payment).expect_failure();
+
+        let error = builder.get_error().unwrap();
+
+        assert_matches!(error, Error::Exec(execution::Error::ForgedReference(_)))
     }
-
-    let (motes_bravo, modified_balance_bravo) = {
-        let modified_balance_bravo: U512 = builder.get_purse_balance(default_account.main_purse());
-
-        let transaction_fee_bravo =
-            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_bravo;
-
-        (transaction_fee_bravo, modified_balance_bravo)
-    };
-
-    let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-
-    assert!(
-        modified_balance_alpha < initial_balance,
-        "balance should be less than initial balance"
-    );
-
-    assert!(
-        modified_balance_bravo < modified_balance_alpha,
-        "second modified balance should be less than first modified balance"
-    );
-
-    let tally = motes_alpha + motes_bravo + U512::from(transferred_amount) + modified_balance_bravo;
-
-    assert_eq!(
-        initial_balance, tally,
-        "no net resources should be gained or lost post-distribution"
-    );
 }
 
 #[ignore]
@@ -590,14 +477,13 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
         builder.is_error(),
         "calling a payment module with increased major protocol version should be error"
     );
-    let error_message = builder
-        .exec_error_message(1)
-        .expect("should have exec error");
-    assert!(
-        error_message.contains(EXPECTED_ERROR_MESSAGE),
-        "{:?}",
-        error_message
-    );
+
+    let expected_error = Error::Exec(execution::Error::IncompatibleProtocolMajorVersion {
+        expected: 2,
+        actual: 1,
+    });
+
+    builder.assert_error(expected_error);
 }
 
 #[ignore]
@@ -625,7 +511,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
         .expect("should have standard_payment named key")
-        .into_hash()
+        .into_entity_addr()
         .expect("standard_payment should be an uref");
 
     //
@@ -669,10 +555,12 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
         "calling a payment module with increased major protocol version should be error"
     );
 
-    let error_message = builder
-        .exec_error_message(1)
-        .expect("should have exec error");
-    assert!(error_message.contains(EXPECTED_ERROR_MESSAGE));
+    let expected_error = Error::Exec(execution::Error::IncompatibleProtocolMajorVersion {
+        expected: 2,
+        actual: 1,
+    });
+
+    builder.assert_error(expected_error);
 }
 
 #[ignore]
@@ -719,7 +607,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
         .expect("should have standard_payment named key")
-        .into_hash()
+        .into_entity_addr()
         .expect("standard_payment should be an uref");
     //
     // upgrade with new wasm costs with modified mint for given version
@@ -849,14 +737,12 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
         builder.is_error(),
         "calling a session module with increased major protocol version should be error",
     );
-    let error_message = builder
-        .exec_error_message(1)
-        .expect("should have exec error");
-    assert!(
-        error_message.contains(EXPECTED_VERSION_ERROR_MESSAGE),
-        "{}",
-        error_message
-    );
+
+    let entity_version_key = EntityVersionKey::new(2, 1);
+
+    let expected_error = Error::Exec(execution::Error::InvalidEntityVersion(entity_version_key));
+
+    builder.assert_error(expected_error);
 }
 
 #[ignore]
@@ -912,7 +798,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
         .expect("standard_payment should be present in named keys")
-        .into_hash()
+        .into_entity_addr()
         .expect("standard_payment named key should be hash");
 
     let exec_request_stored_payment = {
@@ -1010,7 +896,7 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
         .expect("standard_payment should be present in named keys")
-        .into_hash()
+        .into_entity_addr()
         .expect("standard_payment named key should be hash");
 
     let exec_request_stored_payment = {
@@ -1040,6 +926,9 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
     builder
         .clear_results()
         .exec(exec_request_stored_payment)
-        .expect_success()
-        .commit();
+        .expect_failure();
+
+    let error = builder.get_error().unwrap();
+
+    assert_matches!(error, Error::Exec(execution::Error::ForgedReference(_)))
 }

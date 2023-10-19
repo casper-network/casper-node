@@ -239,8 +239,12 @@ fn gh_3710_should_produce_era_summary_in_a_step() {
 mod fixture {
     use std::collections::BTreeMap;
 
-    use casper_engine_test_support::{DEFAULT_ACCOUNT_PUBLIC_KEY, PRODUCTION_RUN_GENESIS_REQUEST};
+    use casper_engine_test_support::{
+        ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
+        PRODUCTION_RUN_GENESIS_REQUEST,
+    };
     use casper_types::{
+        runtime_args,
         system::auction::{EraInfo, SeigniorageAllocation},
         EraId, Key, KeyTag, StoredValue, U512,
     };
@@ -250,8 +254,35 @@ mod fixture {
 
     #[ignore = "RUN_FIXTURE_GENERATORS env var should be enabled"]
     #[test]
+    fn generate_call_stack_fixture() {
+        const CALL_STACK_FIXTURE: &str = "call_stack_fixture";
+        const CONTRACT_RECURSIVE_SUBCALL: &str = "get_call_stack_recursive_subcall.wasm";
+
+        if !lmdb_fixture::is_fixture_generator_enabled() {
+            println!("Enable the RUN_FIXTURE_GENERATORS variable");
+            return;
+        }
+
+        let genesis_request = PRODUCTION_RUN_GENESIS_REQUEST.clone();
+
+        lmdb_fixture::generate_fixture(CALL_STACK_FIXTURE, genesis_request, |builder| {
+            let execute_request = ExecuteRequestBuilder::standard(
+                *DEFAULT_ACCOUNT_ADDR,
+                CONTRACT_RECURSIVE_SUBCALL,
+                runtime_args! {},
+            )
+            .build();
+
+            builder.exec(execute_request).expect_success().commit();
+        })
+        .unwrap();
+    }
+
+    #[ignore = "RUN_FIXTURE_GENERATORS env var should be enabled"]
+    #[test]
     fn generate_era_info_bloat_fixture() {
         if !lmdb_fixture::is_fixture_generator_enabled() {
+            println!("Enable the RUN_FIXTURE_GENERATORS variable");
             return;
         }
         // To generate this fixture again you have to re-run this code release-1.4.13.

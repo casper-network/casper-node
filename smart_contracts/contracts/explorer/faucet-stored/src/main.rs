@@ -10,8 +10,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    addressable_entity::NamedKeys, ApiError, CLType, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Parameter, PublicKey, URef, U512,
+    addressable_entity::NamedKeys, package::PackageKindTag, ApiError, CLType, EntryPoint,
+    EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter, PublicKey, URef, U512,
 };
 
 #[repr(u16)]
@@ -114,7 +114,7 @@ pub extern "C" fn call() {
             ],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
 
         let set_variables = EntryPoint::new(
@@ -135,7 +135,7 @@ pub extern "C" fn call() {
             ],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
 
         let authorize_to = EntryPoint::new(
@@ -146,7 +146,7 @@ pub extern "C" fn call() {
             )],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
 
         entry_points.add_entry_point(faucet);
@@ -223,7 +223,7 @@ pub extern "C" fn call() {
     );
     runtime::put_key(
         &format!("{}_{}", faucet::CONTRACT_NAME, id),
-        contract_hash.into(),
+        Key::addressable_entity_key(PackageKindTag::SmartContract, contract_hash),
     );
 
     // This is specifically for this installing account, which would allow one installing account

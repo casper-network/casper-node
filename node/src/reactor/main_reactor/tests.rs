@@ -16,8 +16,8 @@ use casper_types::{
     execution::{Effects, ExecutionResult, ExecutionResultV2, TransformKind},
     system::auction::{BidAddr, BidKind, BidsExt, DelegationRate},
     testing::TestRng,
-    AccountConfig, AccountsConfig, ActivationPoint, Block, BlockHash, BlockHeader, CLValue,
-    Chainspec, ChainspecRawBytes, ContractHash, Deploy, DeployHash, EraId, Key, Motes,
+    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, Block, BlockHash,
+    BlockHeader, CLValue, Chainspec, ChainspecRawBytes, Deploy, DeployHash, EraId, Key, Motes,
     ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, Timestamp, Transaction,
     TransactionHash, ValidatorConfig, U512,
 };
@@ -1278,7 +1278,7 @@ fn get_system_contract_hash_or_fail(
     net: &TestingNetwork<FilterReactor<MainReactor>>,
     public_key: &PublicKey,
     system_contract_name: String,
-) -> ContractHash {
+) -> AddressableEntityHash {
     let (_, runner) = net
         .nodes()
         .iter()

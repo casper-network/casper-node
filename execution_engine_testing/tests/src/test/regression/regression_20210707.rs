@@ -8,7 +8,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntity,
-    ContractHash, PublicKey, RuntimeArgs, SecretKey, URef, U512,
+    AddressableEntityHash, PublicKey, RuntimeArgs, SecretKey, URef, U512,
 };
 use once_cell::sync::Lazy;
 
@@ -65,14 +65,14 @@ fn transfer(sender: AccountHash, target: AccountHash, amount: u64) -> ExecuteReq
     .build()
 }
 
-fn get_account_contract_hash(contract: &AddressableEntity) -> ContractHash {
-    contract
+fn get_account_entity_hash(entity: &AddressableEntity) -> AddressableEntityHash {
+    entity
         .named_keys()
         .get(CONTRACT_HASH_NAME)
         .cloned()
         .expect("should have contract hash")
-        .into_hash()
-        .map(ContractHash::new)
+        .into_entity_addr()
+        .map(AddressableEntityHash::new)
         .unwrap()
 }
 
@@ -105,7 +105,7 @@ fn should_transfer_funds_from_contract_to_new_account() {
 
     let account = builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 
-    let contract_hash = get_account_contract_hash(&account);
+    let contract_hash = get_account_entity_hash(&account);
 
     assert!(builder.get_entity_by_account_hash(*BOB_ADDR).is_none());
 
@@ -150,7 +150,7 @@ fn should_transfer_funds_from_contract_to_existing_account() {
 
     let account = builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 
-    let contract_hash = get_account_contract_hash(&account);
+    let contract_hash = get_account_entity_hash(&account);
 
     let call_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -236,7 +236,7 @@ fn should_not_transfer_funds_from_forged_purse_to_owned_purse() {
     let bob = builder.get_expected_addressable_entity_by_account_hash(*BOB_ADDR);
     let bob_main_purse = bob.main_purse();
 
-    let contract_hash = get_account_contract_hash(&account);
+    let contract_hash = get_account_entity_hash(&account);
 
     let call_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -279,7 +279,7 @@ fn should_not_transfer_funds_into_bob_purse() {
     let bob = builder.get_expected_addressable_entity_by_account_hash(*BOB_ADDR);
     let bob_main_purse = bob.main_purse();
 
-    let contract_hash = get_account_contract_hash(&account);
+    let contract_hash = get_account_entity_hash(&account);
 
     let call_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -319,7 +319,7 @@ fn should_not_transfer_from_hardcoded_purse() {
 
     let account = builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 
-    let contract_hash = get_account_contract_hash(&account);
+    let contract_hash = get_account_entity_hash(&account);
 
     let call_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -368,7 +368,7 @@ fn should_not_refund_to_bob_and_charge_alice() {
     let bob = builder.get_expected_addressable_entity_by_account_hash(*BOB_ADDR);
     let bob_main_purse = bob.main_purse();
 
-    let contract_hash = get_account_contract_hash(&account);
+    let contract_hash = get_account_entity_hash(&account);
 
     let call_request = {
         let args = runtime_args! {
@@ -424,7 +424,7 @@ fn should_not_charge_alice_for_execution() {
     let bob = builder.get_expected_addressable_entity_by_account_hash(*BOB_ADDR);
     let bob_main_purse = bob.main_purse();
 
-    let contract_hash = get_account_contract_hash(&account);
+    let contract_hash = get_account_entity_hash(&account);
 
     let call_request = {
         let args = runtime_args! {
@@ -477,7 +477,7 @@ fn should_not_charge_for_execution_from_hardcoded_purse() {
 
     let account = builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 
-    let contract_hash = get_account_contract_hash(&account);
+    let contract_hash = get_account_entity_hash(&account);
 
     let call_request = {
         let args = runtime_args! {

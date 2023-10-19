@@ -44,7 +44,7 @@ pub extern "C" fn call() {
             Parameters::default(),
             CLType::String,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
 
         entry_points.add_entry_point(do_nothing_entry_point);
@@ -54,7 +54,7 @@ pub extern "C" fn call() {
             Parameters::default(),
             CLType::URef,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
 
         entry_points.add_entry_point(do_something_entry_point);

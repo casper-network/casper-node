@@ -6,7 +6,7 @@ compile_error!("target arch should be wasm32: compile with '--target wasm32-unkn
 
 extern crate alloc;
 
-use casper_types::{runtime_args::RuntimeArgs, ApiError, ContractHash, Key};
+use casper_types::{runtime_args::RuntimeArgs, AddressableEntityHash, ApiError, Key};
 
 use casper_contract::{contract_api::runtime, unwrap_or_revert::UnwrapOrRevert};
 
@@ -19,8 +19,8 @@ pub extern "C" fn call() {
     // Read the Counter smart contract's ContractHash.
     let contract_hash = {
         let counter_uref = runtime::get_key(COUNTER_KEY).unwrap_or_revert_with(ApiError::GetKey);
-        if let Key::Hash(hash) = counter_uref {
-            ContractHash::new(hash)
+        if let Key::AddressableEntity((_, hash)) = counter_uref {
+            AddressableEntityHash::new(hash)
         } else {
             runtime::revert(ApiError::User(66));
         }

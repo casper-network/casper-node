@@ -43,7 +43,9 @@ use casper_storage::{
 use casper_types::{
     account::AccountHash,
     bytesrepr::{self, FromBytes},
+    contracts::ContractHash,
     execution::Effects,
+    package::PackageKindTag,
     runtime_args,
     system::{
         auction::{
@@ -54,10 +56,10 @@ use casper_types::{
         mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AddressableEntity, AuctionCosts, CLTyped, CLValue, Contract, ContractHash, ContractPackageHash,
-    ContractWasm, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts, Key, KeyTag,
-    MintCosts, Motes, Package, ProtocolVersion, PublicKey, RefundHandling, StoredValue, Transfer,
-    TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
+    AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, ByteCodeHash, ByteCodeKind,
+    CLTyped, CLValue, Contract, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts,
+    Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolVersion, PublicKey,
+    RefundHandling, StoredValue, Transfer, TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 
@@ -671,11 +673,12 @@ where
     /// # Panics
     /// Panics if the total supply can't be found.
     pub fn total_supply(&self, maybe_post_state: Option<Digest>) -> U512 {
-        let mint_key: Key = self
-            .get_system_contract_hash(MINT)
+        let mint_entity_hash = self
+            .get_system_entity_hash(MINT)
             .cloned()
-            .expect("should have mint_contract_hash")
-            .into();
+            .expect("should have mint_contract_hash");
+
+        let mint_key = Key::addressable_entity_key(PackageKindTag::System, mint_entity_hash);
 
         let result = self.query(maybe_post_state, mint_key, &[TOTAL_SUPPLY_KEY.to_string()]);
 
@@ -692,7 +695,8 @@ where
     /// # Panics
     /// Panics if the total supply or seigniorage rate can't be found.
     pub fn base_round_reward(&mut self, maybe_post_state: Option<Digest>) -> U512 {
-        let mint_key: Key = self.get_mint_contract_hash().into();
+        let mint_key: Key =
+            Key::addressable_entity_key(PackageKindTag::System, self.get_mint_contract_hash());
 
         let mint_contract = self
             .query(maybe_post_state, mint_key, &[])
@@ -884,7 +888,7 @@ where
     pub fn expect_success(&mut self) -> &mut Self {
         // Check first result, as only first result is interesting for a simple test
         let exec_results = self
-            .get_last_exec_results()
+            .get_last_exec_result()
             .expect("Expected to be called after run()");
         let exec_result = exec_results
             .get(0)
@@ -903,7 +907,7 @@ where
     pub fn expect_failure(&mut self) -> &mut Self {
         // Check first result, as only first result is interesting for a simple test
         let exec_results = self
-            .get_last_exec_results()
+            .get_last_exec_result()
             .expect("Expected to be called after run()");
         let exec_result = exec_results
             .get(0)
@@ -921,7 +925,7 @@ where
 
     /// Returns `true` if the las exec had an error, otherwise returns false.
     pub fn is_error(&self) -> bool {
-        self.get_last_exec_results()
+        self.get_last_exec_result()
             .expect("Expected to be called after run()")
             .get(0)
             .expect("Unable to get first execution result")
@@ -930,7 +934,7 @@ where
 
     /// Returns an `Option<engine_state::Error>` if the last exec had an error.
     pub fn get_error(&self) -> Option<engine_state::Error> {
-        self.get_last_exec_results()
+        self.get_last_exec_result()
             .expect("Expected to be called after run()")
             .get(0)
             .expect("Unable to get first deploy result")
@@ -950,37 +954,39 @@ where
             .expect("Unable to obtain genesis account. Please run genesis first.")
     }
 
-    /// Returns the [`ContractHash`] of the mint, panics if it can't be found.
-    pub fn get_mint_contract_hash(&self) -> ContractHash {
-        self.get_system_contract_hash(MINT)
+    /// Returns the [`AddressableEntityHash`] of the mint, panics if it can't be found.
+    pub fn get_mint_contract_hash(&self) -> AddressableEntityHash {
+        self.get_system_entity_hash(MINT)
             .cloned()
             .expect("Unable to obtain mint contract. Please run genesis first.")
     }
 
-    /// Returns the [`ContractHash`] of the "handle payment" contract, panics if it can't be found.
-    pub fn get_handle_payment_contract_hash(&self) -> ContractHash {
-        self.get_system_contract_hash(HANDLE_PAYMENT)
+    /// Returns the [`AddressableEntityHash`] of the "handle payment" contract, panics if it can't
+    /// be found.
+    pub fn get_handle_payment_contract_hash(&self) -> AddressableEntityHash {
+        self.get_system_entity_hash(HANDLE_PAYMENT)
             .cloned()
             .expect("Unable to obtain handle payment contract. Please run genesis first.")
     }
 
-    /// Returns the [`ContractHash`] of the "standard payment" contract, panics if it can't be
-    /// found.
-    pub fn get_standard_payment_contract_hash(&self) -> ContractHash {
-        self.get_system_contract_hash(STANDARD_PAYMENT)
+    /// Returns the [`AddressableEntityHash`] of the "standard payment" contract, panics if it can't
+    /// be found.
+    pub fn get_standard_payment_contract_hash(&self) -> AddressableEntityHash {
+        self.get_system_entity_hash(STANDARD_PAYMENT)
             .cloned()
             .expect("Unable to obtain standard payment contract. Please run genesis first.")
     }
 
-    fn get_system_contract_hash(&self, contract_name: &str) -> Option<&ContractHash> {
+    fn get_system_entity_hash(&self, contract_name: &str) -> Option<&AddressableEntityHash> {
         self.system_contract_registry
             .as_ref()
             .and_then(|registry| registry.get(contract_name))
     }
 
-    /// Returns the [`ContractHash`] of the "auction" contract, panics if it can't be found.
-    pub fn get_auction_contract_hash(&self) -> ContractHash {
-        self.get_system_contract_hash(AUCTION)
+    /// Returns the [`AddressableEntityHash`] of the "auction" contract, panics if it can't be
+    /// found.
+    pub fn get_auction_contract_hash(&self) -> AddressableEntityHash {
+        self.get_system_entity_hash(AUCTION)
             .cloned()
             .expect("Unable to obtain auction contract. Please run genesis first.")
     }
@@ -1009,7 +1015,7 @@ where
     }
 
     /// Returns the last results execs.
-    pub fn get_last_exec_results(&self) -> Option<Vec<Rc<ExecutionResult>>> {
+    pub fn get_last_exec_result(&self) -> Option<Vec<Rc<ExecutionResult>>> {
         let exec_results = self.exec_results.last()?;
 
         Some(exec_results.iter().map(Rc::clone).collect())
@@ -1051,11 +1057,12 @@ where
 
     /// Returns the "handle payment" contract, panics if it can't be found.
     pub fn get_handle_payment_contract(&self) -> AddressableEntity {
-        let handle_payment_contract: Key = self
-            .get_system_contract_hash(HANDLE_PAYMENT)
-            .cloned()
-            .expect("should have handle payment contract uref")
-            .into();
+        let handle_payment_contract = Key::addressable_entity_key(
+            PackageKindTag::System,
+            self.get_system_entity_hash(HANDLE_PAYMENT)
+                .cloned()
+                .expect("should have handle payment contract uref"),
+        );
         self.query(None, handle_payment_contract, &[])
             .and_then(|v| v.try_into().map_err(|error| format!("{:?}", error)))
             .expect("should find handle payment URef")
@@ -1095,17 +1102,14 @@ where
     }
 
     /// Gets the contract hash associated with a given account hash.
-    pub fn get_contract_hash_by_account_hash(
+    pub fn get_entity_hash_by_account_hash(
         &self,
         account_hash: AccountHash,
-    ) -> Option<ContractHash> {
+    ) -> Option<AddressableEntityHash> {
         match self.query(None, Key::Account(account_hash), &[]).ok() {
             Some(StoredValue::CLValue(cl_value)) => {
-                let contract_key =
-                    CLValue::into_t::<Key>(cl_value).expect("must have contract hash");
-                Some(ContractHash::new(
-                    contract_key.into_hash().expect("must have hash addr"),
-                ))
+                let entity_key = CLValue::into_t::<Key>(cl_value).expect("must have contract hash");
+                entity_key.into_entity_hash()
             }
             Some(_) | None => None,
         }
@@ -1139,11 +1143,23 @@ where
             .expect("account to exist")
     }
 
-    /// Queries for an addressable entity by `ContractHash`.
-    pub fn get_addressable_entity(&self, contract_hash: ContractHash) -> Option<AddressableEntity> {
-        let contract_value: StoredValue = self
-            .query(None, contract_hash.into(), &[])
-            .expect("should have contract value");
+    /// Queries for an addressable entity by `AddressableEntityHash`.
+    pub fn get_addressable_entity(
+        &self,
+        entity_hash: AddressableEntityHash,
+    ) -> Option<AddressableEntity> {
+        let entity_key = Key::addressable_entity_key(PackageKindTag::SmartContract, entity_hash);
+
+        let contract_value: StoredValue = match self.query(None, entity_key, &[]) {
+            Ok(stored_value) => stored_value,
+            Err(_) => self
+                .query(
+                    None,
+                    Key::addressable_entity_key(PackageKindTag::System, entity_hash),
+                    &[],
+                )
+                .expect("must have value"),
+        };
 
         if let StoredValue::AddressableEntity(contract) = contract_value {
             Some(contract)
@@ -1165,29 +1181,28 @@ where
         }
     }
 
-    /// Queries for a contract by `ContractHash` and returns an `Option<ContractWasm>`.
-    pub fn get_contract_wasm(&self, contract_hash: ContractHash) -> Option<ContractWasm> {
-        let contract_value: StoredValue = self
-            .query(None, contract_hash.into(), &[])
+    /// Queries for byte code by `ByteCodeAddr` and returns an `Option<ByteCode>`.
+    pub fn get_byte_code(&self, byte_code_hash: ByteCodeHash) -> Option<ByteCode> {
+        let byte_code_key = Key::byte_code_key(ByteCodeKind::V1CasperWasm, byte_code_hash.value());
+
+        let byte_code_value: StoredValue = self
+            .query(None, byte_code_key, &[])
             .expect("should have contract value");
 
-        if let StoredValue::ContractWasm(contract_wasm) = contract_value {
-            Some(contract_wasm)
+        if let StoredValue::ByteCode(byte_code) = byte_code_value {
+            Some(byte_code)
         } else {
             None
         }
     }
 
-    /// Queries for a contract package by `ContractPackageHash`.
-    pub fn get_contract_package(
-        &self,
-        contract_package_hash: ContractPackageHash,
-    ) -> Option<Package> {
+    /// Queries for a contract package by `PackageHash`.
+    pub fn get_package(&self, package_hash: PackageHash) -> Option<Package> {
         let contract_value: StoredValue = self
-            .query(None, contract_package_hash.into(), &[])
+            .query(None, package_hash.into(), &[])
             .expect("should have package value");
 
-        if let StoredValue::ContractPackage(package) = contract_value {
+        if let StoredValue::Package(package) = contract_value {
             Some(package)
         } else {
             None
@@ -1231,7 +1246,7 @@ where
     /// Returns the `Gas` cost of the last exec.
     pub fn last_exec_gas_cost(&self) -> Gas {
         let exec_results = self
-            .get_last_exec_results()
+            .get_last_exec_result()
             .expect("Expected to be called after run()");
         let exec_result = exec_results.get(0).expect("should have result");
         exec_result.cost()
@@ -1372,12 +1387,12 @@ where
     }
 
     /// Gets a stored value from a contract's named keys.
-    pub fn get_value<T>(&mut self, contract_hash: ContractHash, name: &str) -> T
+    pub fn get_value<T>(&mut self, entity_hash: AddressableEntityHash, name: &str) -> T
     where
         T: FromBytes + CLTyped,
     {
         let contract = self
-            .get_addressable_entity(contract_hash)
+            .get_addressable_entity(entity_hash)
             .expect("should have contract");
         let key = contract
             .named_keys()
@@ -1407,38 +1422,30 @@ where
         self.get_value(auction_contract, UNBONDING_DELAY_KEY)
     }
 
-    /// Gets the [`ContractHash`] of the system auction contract, panics if it can't be found.
-    pub fn get_system_auction_hash(&self) -> ContractHash {
+    /// Gets the [`AddressableEntityHash`] of the system auction contract, panics if it can't be
+    /// found.
+    pub fn get_system_auction_hash(&self) -> AddressableEntityHash {
         let state_root_hash = self.get_post_state_hash();
         self.engine_state
             .get_system_auction_hash(state_root_hash)
             .expect("should have auction hash")
     }
 
-    /// Gets the [`ContractHash`] of the system mint contract, panics if it can't be found.
-    pub fn get_system_mint_hash(&self) -> ContractHash {
+    /// Gets the [`AddressableEntityHash`] of the system mint contract, panics if it can't be found.
+    pub fn get_system_mint_hash(&self) -> AddressableEntityHash {
         let state_root_hash = self.get_post_state_hash();
         self.engine_state
             .get_system_mint_hash(state_root_hash)
             .expect("should have mint hash")
     }
 
-    /// Gets the [`ContractHash`] of the system handle payment contract, panics if it can't be
-    /// found.
-    pub fn get_system_handle_payment_hash(&self) -> ContractHash {
+    /// Gets the [`AddressableEntityHash`] of the system handle payment contract, panics if it can't
+    /// be found.
+    pub fn get_system_handle_payment_hash(&self) -> AddressableEntityHash {
         let state_root_hash = self.get_post_state_hash();
         self.engine_state
             .get_handle_payment_hash(state_root_hash)
             .expect("should have handle payment hash")
-    }
-
-    /// Returns the [`ContractHash`] of the system standard payment contract, panics if it can't be
-    /// found.
-    pub fn get_system_standard_payment_hash(&self) -> ContractHash {
-        let state_root_hash = self.get_post_state_hash();
-        self.engine_state
-            .get_standard_payment_hash(state_root_hash)
-            .expect("should have standard payment hash")
     }
 
     /// Resets the `exec_results`, `upgrade_results` and `transform` fields.

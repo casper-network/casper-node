@@ -282,8 +282,9 @@ fn should_accumulate_fees_after_upgrade() {
 
     // Check handle payments has rewards purse
     let handle_payment_hash = builder.get_handle_payment_contract_hash();
+
     let handle_payment_contract = builder
-        .query(None, handle_payment_hash.into(), &[])
+        .query(None, Key::Hash(handle_payment_hash.value()), &[])
         .expect("should have handle payment contract")
         .into_contract()
         .expect("should have legacy Contract under the Key::Contract variant");

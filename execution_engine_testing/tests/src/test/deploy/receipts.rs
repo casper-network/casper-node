@@ -7,9 +7,8 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntity,
-    ContractHash, DeployHash, PublicKey, SecretKey, Transfer, TransferAddr,
-    DEFAULT_WASMLESS_TRANSFER_COST, U512,
+    account::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntity, DeployHash,
+    PublicKey, SecretKey, Transfer, TransferAddr, DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -436,16 +435,15 @@ fn should_record_wasm_transfers_with_subcall() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
-    let contract_hash = default_account
+    let entity_hash = default_account
         .named_keys()
         .get(HASH_KEY_NAME)
         .unwrap()
-        .into_hash()
-        .map(ContractHash::new)
+        .into_entity_hash()
         .expect("should have contract hash");
 
     let contract: AddressableEntity = builder
-        .get_addressable_entity(contract_hash)
+        .get_addressable_entity(entity_hash)
         .expect("should have stored contract");
 
     let contract_purse = contract

@@ -9,10 +9,10 @@ use rand::Rng;
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
-    package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
+    package::{EntityVersions, Groups, PackageKind, PackageKindTag, PackageStatus},
     system::auction::{BidAddr, BidKind, BidsExt, SeigniorageRecipientsSnapshot, UnbondingPurse},
-    AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, ContractWasmHash,
-    EntryPoints, Key, Package, ProtocolVersion, PublicKey, StoredValue, URef, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue, EntryPoints,
+    Key, Package, PackageHash, ProtocolVersion, PublicKey, StoredValue, URef, U512,
 };
 
 use super::{config::Transfer, state_reader::StateReader};
@@ -161,14 +161,14 @@ impl<T: StateReader> StateTracker<T> {
 
         let mut rng = rand::thread_rng();
 
-        let contract_hash = ContractHash::new(rng.gen());
-        let contract_package_hash = ContractPackageHash::new(rng.gen());
-        let contract_wasm_hash = ContractWasmHash::new([0u8; 32]);
+        let entity_hash = AddressableEntityHash::new(rng.gen());
+        let package_hash = PackageHash::new(rng.gen());
+        let contract_wasm_hash = ByteCodeHash::new([0u8; 32]);
 
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
 
         let addressable_entity = AddressableEntity::new(
-            contract_package_hash,
+            package_hash,
             contract_wasm_hash,
             NamedKeys::default(),
             EntryPoints::new(),
@@ -180,29 +180,28 @@ impl<T: StateReader> StateTracker<T> {
 
         let mut contract_package = Package::new(
             URef::new(rng.gen(), AccessRights::READ_ADD_WRITE),
-            ContractVersions::default(),
+            EntityVersions::default(),
             BTreeSet::default(),
             Groups::default(),
-            ContractPackageStatus::Locked,
-            ContractPackageKind::Account(account_hash),
+            PackageStatus::Locked,
+            PackageKind::Account(account_hash),
         );
 
-        contract_package
-            .insert_contract_version(self.protocol_version.value().major, contract_hash);
+        contract_package.insert_entity_version(self.protocol_version.value().major, entity_hash);
         self.write_entry(
-            contract_package_hash.into(),
-            StoredValue::ContractPackage(contract_package.clone()),
+            package_hash.into(),
+            StoredValue::Package(contract_package.clone()),
         );
 
+        let entity_key = Key::addressable_entity_key(PackageKindTag::Account, entity_hash);
+
         self.write_entry(
-            contract_hash.into(),
+            entity_key,
             StoredValue::AddressableEntity(addressable_entity.clone()),
         );
 
-        let addressable_entity_by_account_hash = {
-            let contract_key: Key = contract_hash.into();
-            CLValue::from_t(contract_key).expect("must convert to cl_value")
-        };
+        let addressable_entity_by_account_hash =
+            { CLValue::from_t(entity_key).expect("must convert to cl_value") };
 
         self.accounts_cache
             .insert(account_hash, addressable_entity.clone());
