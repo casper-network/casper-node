@@ -9,7 +9,7 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::engine_state::{self, QueryResult};
+use casper_storage::data_access_layer::QueryResult;
 use casper_types::{
     Block, BlockHash, BlockHeader, Digest, DigestError, JsonBlockWithSignatures, Key,
     ProtocolVersion, Transfer,
@@ -546,7 +546,7 @@ async fn get_era_summary<REv: ReactorEventT>(
     async fn handle_query_result<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         block: &Block,
-        result: Result<QueryResult, engine_state::Error>,
+        result: QueryResult,
     ) -> Result<EraSummary, Error> {
         let (value, proofs) =
             state::handle_query_result(effect_builder, *block.state_root_hash(), result).await?;
@@ -571,7 +571,8 @@ async fn get_era_summary<REv: ReactorEventT>(
             QueueKind::Api,
         )
         .await;
-    if !matches!(era_summary_query_result, Ok(QueryResult::ValueNotFound(_))) {
+
+    if let QueryResult::ValueNotFound(_) = era_summary_query_result {
         // The query succeeded or failed in a way not requiring trying under `Key::EraInfo`.
         return handle_query_result(effect_builder, block, era_summary_query_result).await;
     }

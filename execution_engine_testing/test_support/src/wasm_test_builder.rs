@@ -14,22 +14,17 @@ use lmdb::DatabaseFlags;
 use num_rational::Ratio;
 use num_traits::CheckedMul;
 
-use casper_execution_engine::{
-    engine_state::{
-        self,
-        era_validators::GetEraValidatorsRequest,
-        execute_request::ExecuteRequest,
-        execution_result::ExecutionResult,
-        run_genesis_request::RunGenesisRequest,
-        step::{StepRequest, StepSuccess},
-        BalanceResult, EngineConfig, EngineConfigBuilder, EngineState, Error, GenesisSuccess,
-        GetBidsRequest, PruneConfig, PruneResult, QueryRequest, QueryResult, StepError,
-        SystemContractRegistry, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
-    },
-    execution,
+use casper_execution_engine::engine_state::{
+    era_validators::GetEraValidatorsRequest,
+    execute_request::ExecuteRequest,
+    execution_result::ExecutionResult,
+    run_genesis_request::RunGenesisRequest,
+    step::{StepRequest, StepSuccess},
+    EngineConfig, EngineConfigBuilder, EngineState, Error, GenesisSuccess, GetBidsRequest,
+    PruneConfig, PruneResult, StepError, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
 };
 use casper_storage::{
-    data_access_layer::{BlockStore, DataAccessLayer},
+    data_access_layer::{BalanceResult, BlockStore, DataAccessLayer, QueryRequest, QueryResult},
     global_state::{
         state::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
@@ -56,8 +51,8 @@ use casper_types::{
     },
     AddressableEntity, AuctionCosts, CLTyped, CLValue, Contract, ContractHash, ContractPackageHash,
     ContractWasm, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts, Key, KeyTag,
-    MintCosts, Motes, Package, ProtocolVersion, PublicKey, RefundHandling, StoredValue, Transfer,
-    TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
+    MintCosts, Motes, Package, ProtocolVersion, PublicKey, RefundHandling, StoredValue,
+    SystemContractRegistry, Transfer, TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 
@@ -90,8 +85,8 @@ pub struct WasmTestBuilder<S> {
     engine_state: Rc<EngineState<S>>,
     /// [`ExecutionResult`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation.
     exec_results: Vec<Vec<Rc<ExecutionResult>>>,
-    upgrade_results: Vec<Result<UpgradeSuccess, engine_state::Error>>,
-    prune_results: Vec<Result<PruneResult, engine_state::Error>>,
+    upgrade_results: Vec<Result<UpgradeSuccess, Error>>,
+    prune_results: Vec<Result<PruneResult, Error>>,
     genesis_hash: Option<Digest>,
     /// Post state hash.
     post_state_hash: Option<Digest>,
@@ -225,12 +220,14 @@ impl LmdbWasmTestBuilder {
                 .expect("should create LmdbTrieStore"),
         );
 
-        let global_state =
-            LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
+        let max_query_depth = DEFAULT_MAX_QUERY_DEPTH;
+        let global_state = LmdbGlobalState::empty(environment, trie_store, max_query_depth)
+            .expect("should create LmdbGlobalState");
 
         let data_access_layer = DataAccessLayer {
             block_store: BlockStore::new(),
             state: global_state,
+            max_query_depth,
         };
         let engine_state = EngineState::new(data_access_layer, engine_config);
 
@@ -335,23 +332,31 @@ impl LmdbWasmTestBuilder {
         )
         .expect("should create LmdbEnvironment");
 
+        let max_query_depth = DEFAULT_MAX_QUERY_DEPTH;
+
         let global_state = match mode {
             GlobalStateMode::Create(database_flags) => {
                 let trie_store = LmdbTrieStore::new(&environment, None, database_flags)
                     .expect("should open LmdbTrieStore");
-                LmdbGlobalState::empty(Arc::new(environment), Arc::new(trie_store))
+                LmdbGlobalState::empty(Arc::new(environment), Arc::new(trie_store), max_query_depth)
                     .expect("should create LmdbGlobalState")
             }
             GlobalStateMode::Open(post_state_hash) => {
                 let trie_store =
                     LmdbTrieStore::open(&environment, None).expect("should open LmdbTrieStore");
-                LmdbGlobalState::new(Arc::new(environment), Arc::new(trie_store), post_state_hash)
+                LmdbGlobalState::new(
+                    Arc::new(environment),
+                    Arc::new(trie_store),
+                    post_state_hash,
+                    max_query_depth,
+                )
             }
         };
 
         let data_access_layer = DataAccessLayer {
             block_store: BlockStore::new(),
             state: global_state,
+            max_query_depth,
         };
 
         let engine_state = EngineState::new(data_access_layer, engine_config);
@@ -546,8 +551,6 @@ impl LmdbWasmTestBuilder {
 impl<S> WasmTestBuilder<S>
 where
     S: StateProvider + CommitProvider,
-    engine_state::Error: From<S::Error>,
-    S::Error: Into<execution::Error>,
 {
     /// Takes a [`RunGenesisRequest`], executes the request and returns Self.
     pub fn run_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
@@ -928,7 +931,7 @@ where
     }
 
     /// Returns an `Option<engine_state::Error>` if the last exec had an error.
-    pub fn get_error(&self) -> Option<engine_state::Error> {
+    pub fn get_error(&self) -> Option<Error> {
         self.get_last_exec_results()
             .expect("Expected to be called after run()")
             .get(0)
@@ -1027,10 +1030,7 @@ where
     }
 
     /// Returns a `Result` containing an [`UpgradeSuccess`].
-    pub fn get_upgrade_result(
-        &self,
-        index: usize,
-    ) -> Option<&Result<UpgradeSuccess, engine_state::Error>> {
+    pub fn get_upgrade_result(&self, index: usize) -> Option<&Result<UpgradeSuccess, Error>> {
         self.upgrade_results.get(index)
     }
 
@@ -1285,7 +1285,7 @@ where
     pub fn get_bids(&mut self) -> Vec<BidKind> {
         let get_bids_request = GetBidsRequest::new(self.get_post_state_hash());
 
-        let get_bids_result = self.engine_state.get_bids(get_bids_request).unwrap();
+        let get_bids_result = self.engine_state.get_bids(get_bids_request);
 
         get_bids_result.into_success().unwrap()
     }
@@ -1356,7 +1356,10 @@ where
     }
 
     /// Gets all keys in global state by a prefix.
-    pub fn get_keys(&self, tag: KeyTag) -> Result<Vec<Key>, S::Error> {
+    pub fn get_keys(
+        &self,
+        tag: KeyTag,
+    ) -> Result<Vec<Key>, casper_storage::global_state::error::Error> {
         let state_root_hash = self.get_post_state_hash();
 
         let tracking_copy = self
@@ -1522,10 +1525,7 @@ where
     }
 
     /// Returns a `Result` containing a [`PruneResult`].
-    pub fn get_prune_result(
-        &self,
-        index: usize,
-    ) -> Option<&Result<PruneResult, engine_state::Error>> {
+    pub fn get_prune_result(&self, index: usize) -> Option<&Result<PruneResult, Error>> {
         self.prune_results.get(index)
     }
 

@@ -9,7 +9,11 @@ use std::{
 use once_cell::sync::Lazy;
 use rand::RngCore;
 
-use casper_storage::global_state::state::{self, lmdb::LmdbGlobalStateView, StateProvider};
+use casper_storage::{
+    global_state::state::lmdb::LmdbGlobalStateView, tracking_copy::new_temporary_tracking_copy,
+    AddressGenerator, TrackingCopy,
+};
+
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity::{
@@ -22,17 +26,13 @@ use casper_types::{
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
     AccessRights, AddressableEntity, BlockTime, CLValue, ContextAccessRights, ContractHash,
     ContractPackageHash, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, Gas, Key,
-    Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef, KEY_HASH_LENGTH,
-    U256, U512,
+    Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, SystemContractRegistry,
+    URef, KEY_HASH_LENGTH, U256, U512,
 };
 use tempfile::TempDir;
 
 use super::{Error, RuntimeContext};
-use crate::{
-    engine_state::{EngineConfig, SystemContractRegistry},
-    execution::AddressGenerator,
-    tracking_copy::TrackingCopy,
-};
+use crate::engine_state::EngineConfig;
 
 const DEPLOY_HASH: [u8; 32] = [1u8; 32];
 const PHASE: Phase = Phase::Session;
@@ -51,20 +51,14 @@ fn new_tracking_copy(
 ) -> (TrackingCopy<LmdbGlobalStateView>, TempDir) {
     let entity_key_cl_value = CLValue::from_t(init_entity_key).expect("must convert to cl value");
 
-    let (global_state, state_root_hash, tempdir) = state::make_temporary_global_state([
+    let initial_data = [
         (init_entity_key, StoredValue::AddressableEntity(init_entity)),
         (
             Key::Account(account_hash),
             StoredValue::CLValue(entity_key_cl_value),
         ),
-    ]);
-
-    let reader = global_state
-        .checkout(state_root_hash)
-        .expect("Checkout should not throw errors.")
-        .expect("Root hash should exist.");
-
-    (TrackingCopy::new(reader), tempdir)
+    ];
+    new_temporary_tracking_copy(initial_data, None)
 }
 
 fn new_addressable_entity_with_purse(

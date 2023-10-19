@@ -3,7 +3,9 @@ use std::{cell::RefCell, collections::BTreeSet, fmt, rc::Rc};
 
 use thiserror::Error;
 
-use casper_storage::global_state::state::StateProvider;
+use casper_storage::{
+    global_state::state::StateProvider, tracking_copy::TrackingCopy, AddressGenerator,
+};
 use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
     bytesrepr::{self, ToBytes},
@@ -15,9 +17,7 @@ use casper_types::{
     PublicKey, StoredValue, URef, U512,
 };
 
-use crate::{
-    engine_state::ACCOUNT_WASM_HASH, execution::AddressGenerator, tracking_copy::TrackingCopy,
-};
+use crate::engine_state::ACCOUNT_WASM_HASH;
 
 use super::EngineConfig;
 

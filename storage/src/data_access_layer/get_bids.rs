@@ -1,5 +1,7 @@
 //! Support for obtaining current bids from the auction system.
-use casper_types::{system::auction::BidKind, Digest};
+use crate::{global_state::error::Error as GlobalStateError, tracking_copy::TrackingCopyError};
+
+use casper_types::{system::auction::BidKind, Digest, Key};
 
 /// Represents a request to obtain current bids in the auction system.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,6 +21,14 @@ impl GetBidsRequest {
     }
 }
 
+#[derive(Debug)]
+pub enum GetBidsError {
+    GlobalState(GlobalStateError),
+    TrackingCopyError(TrackingCopyError),
+    MissingBid(Key),
+    InvalidStoredValueVariant(Key),
+}
+
 /// Represents a result of a `get_bids` request.
 #[derive(Debug)]
 pub enum GetBidsResult {
@@ -29,6 +39,7 @@ pub enum GetBidsResult {
         /// Current bids.
         bids: Vec<BidKind>,
     },
+    Failure(GetBidsError),
 }
 
 impl GetBidsResult {

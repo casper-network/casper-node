@@ -5,7 +5,7 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    engine_state::{EngineConfigBuilder, Error, SystemContractRegistry},
+    engine_state::{EngineConfigBuilder, Error},
     execution,
 };
 use casper_types::{
@@ -13,7 +13,8 @@ use casper_types::{
     runtime_args,
     system::{auction, auction::DelegationRate, mint},
     AccessRights, CLTyped, CLValue, ContractHash, ContractPackageHash, Digest, EraId, Key,
-    ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
+    ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch, SystemContractRegistry,
+    URef, U512,
 };
 
 use crate::lmdb_fixture;

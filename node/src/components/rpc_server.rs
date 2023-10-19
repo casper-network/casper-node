@@ -24,9 +24,9 @@ use datasize::DataSize;
 use futures::join;
 use tracing::{error, info, warn};
 
-use casper_execution_engine::engine_state::{
-    self, BalanceRequest, BalanceResult, GetBidsRequest, GetEraValidatorsError, QueryRequest,
-    QueryResult,
+use casper_execution_engine::engine_state::GetEraValidatorsError;
+use casper_storage::data_access_layer::{
+    BalanceRequest, BalanceResult, GetBidsRequest, QueryRequest, QueryResult,
 };
 use casper_types::{system::auction::EraValidators, Digest, Key, ProtocolVersion, URef};
 
@@ -140,7 +140,7 @@ impl RpcServer {
         state_root_hash: Digest,
         base_key: Key,
         path: Vec<String>,
-        responder: Responder<Result<QueryResult, engine_state::Error>>,
+        responder: Responder<QueryResult>,
     ) -> Effects<Event> {
         let query = QueryRequest::new(state_root_hash, base_key, path);
         effect_builder
@@ -172,7 +172,7 @@ impl RpcServer {
         effect_builder: EffectBuilder<REv>,
         state_root_hash: Digest,
         purse_uref: URef,
-        responder: Responder<Result<BalanceResult, engine_state::Error>>,
+        responder: Responder<BalanceResult>,
     ) -> Effects<Event> {
         let query = BalanceRequest::new(state_root_hash, purse_uref);
         effect_builder

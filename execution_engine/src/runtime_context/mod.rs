@@ -14,7 +14,12 @@ use std::{
 
 use tracing::error;
 
-use casper_storage::global_state::state::StateReader;
+use casper_storage::{
+    global_state::{error::Error as GlobalStateError, state::StateReader},
+    tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
+    AddressGenerator,
+};
+
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
@@ -27,15 +32,12 @@ use casper_types::{
     system::auction::{BidKind, EraInfo},
     AccessRights, AddressableEntity, BlockTime, CLType, CLValue, ContextAccessRights, ContractHash,
     ContractPackageHash, DeployHash, DeployInfo, EntryPointType, Gas, GrantedAccess, Key, KeyTag,
-    Package, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr,
-    URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
+    Package, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, SystemContractRegistry,
+    Transfer, TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{
-    engine_state::{EngineConfig, SystemContractRegistry},
-    execution::{AddressGenerator, Error},
-    runtime_context::dictionary::DictionaryValue,
-    tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
+    engine_state::EngineConfig, execution::Error, runtime_context::dictionary::DictionaryValue,
 };
 
 /// Number of bytes returned from the `random_bytes` function.
@@ -73,8 +75,7 @@ pub struct RuntimeContext<'a, R> {
 
 impl<'a, R> RuntimeContext<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     /// Creates new runtime context where we don't already have one.
     ///
@@ -261,8 +262,7 @@ where
                     let value: StoredValue = self
                         .tracking_copy
                         .borrow_mut()
-                        .read(&contract_uref)
-                        .map_err(Into::into)?
+                        .read(&contract_uref)?
                         .ok_or(Error::KeyNotFound(contract_uref))?;
 
                     value.try_into().map_err(Error::TypeMismatch)?
@@ -477,7 +477,7 @@ where
             .tracking_copy
             .borrow_mut()
             .read(&Key::Hash(purse_uref.addr()))
-            .map_err(Into::into)?
+            .map_err(Error::TrackingCopy)?
         {
             Some(stored_value) => Ok(Some(stored_value.try_into().map_err(Error::TypeMismatch)?)),
             None => Ok(None),
@@ -498,11 +498,7 @@ where
         self.validate_readable(key)?;
         self.validate_key(key)?;
 
-        let maybe_stored_value = self
-            .tracking_copy
-            .borrow_mut()
-            .read(key)
-            .map_err(Into::into)?;
+        let maybe_stored_value = self.tracking_copy.borrow_mut().read(key)?;
 
         let stored_value = match maybe_stored_value {
             Some(stored_value) => dictionary::handle_stored_value(*key, stored_value)?,
@@ -1237,7 +1233,7 @@ where
             .tracking_copy
             .borrow_mut()
             .read(&dictionary_key)
-            .map_err(Into::into)?;
+            .map_err(Into::<Error>::into)?;
 
         if let Some(stored_value) = maybe_stored_value {
             let stored_value = dictionary::handle_stored_value(dictionary_key, stored_value)?;
@@ -1295,9 +1291,9 @@ where
         self.tracking_copy
             .borrow_mut()
             .get_system_contracts()
-            .map_err(|_| {
+            .map_err(|err| {
                 error!("Missing system contract registry");
-                Error::MissingSystemContractRegistry
+                Error::TrackingCopy(err)
             })
     }
 

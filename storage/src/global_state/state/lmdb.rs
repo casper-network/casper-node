@@ -1,15 +1,17 @@
 use std::{collections::HashMap, ops::Deref, sync::Arc};
 
 use lmdb::DatabaseFlags;
+
 use tempfile::TempDir;
 
+use crate::tracking_copy::TrackingCopy;
 use casper_types::{
     execution::{Effects, Transform, TransformKind},
     Digest, Key, StoredValue,
 };
 
 use crate::global_state::{
-    error,
+    error::Error as GlobalStateError,
     state::{
         commit, put_stored_values, scratch::ScratchGlobalState, CommitProvider, StateProvider,
         StateReader,
@@ -24,7 +26,7 @@ use crate::global_state::{
             PruneResult, ReadResult,
         },
     },
-    DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
+    DEFAULT_MAX_DB_SIZE, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_READERS,
 };
 
 /// Global state implemented against LMDB as a backing data store.
@@ -36,6 +38,8 @@ pub struct LmdbGlobalState {
     // TODO: make this a lazy-static
     /// Empty root hash used for a new trie.
     pub(crate) empty_root_hash: Digest,
+    /// Max query depth
+    pub max_query_depth: u64,
 }
 
 /// Represents a "view" of global state at a particular root hash.
@@ -53,7 +57,8 @@ impl LmdbGlobalState {
     pub fn empty(
         environment: Arc<LmdbEnvironment>,
         trie_store: Arc<LmdbTrieStore>,
-    ) -> Result<Self, error::Error> {
+        max_query_depth: u64,
+    ) -> Result<Self, GlobalStateError> {
         let root_hash: Digest = {
             let (root_hash, root) = compute_empty_root_hash()?;
             let mut txn = environment.create_read_write_txn()?;
@@ -62,7 +67,12 @@ impl LmdbGlobalState {
             environment.env().sync(true)?;
             root_hash
         };
-        Ok(LmdbGlobalState::new(environment, trie_store, root_hash))
+        Ok(LmdbGlobalState::new(
+            environment,
+            trie_store,
+            root_hash,
+            max_query_depth,
+        ))
     }
 
     /// Creates a state from an existing environment, store, and root_hash.
@@ -71,11 +81,13 @@ impl LmdbGlobalState {
         environment: Arc<LmdbEnvironment>,
         trie_store: Arc<LmdbTrieStore>,
         empty_root_hash: Digest,
+        max_query_depth: u64,
     ) -> Self {
         LmdbGlobalState {
             environment,
             trie_store,
             empty_root_hash,
+            max_query_depth,
         }
     }
 
@@ -85,6 +97,7 @@ impl LmdbGlobalState {
             Arc::clone(&self.environment),
             Arc::clone(&self.trie_store),
             self.empty_root_hash,
+            self.max_query_depth,
         )
     }
 
@@ -93,9 +106,9 @@ impl LmdbGlobalState {
         &self,
         prestate_hash: Digest,
         stored_values: HashMap<Key, StoredValue>,
-    ) -> Result<Digest, error::Error> {
+    ) -> Result<Digest, GlobalStateError> {
         let scratch_trie = self.get_scratch_store();
-        let new_state_root = put_stored_values::<_, _, error::Error>(
+        let new_state_root = put_stored_values::<_, _, GlobalStateError>(
             &scratch_trie,
             &scratch_trie,
             prestate_hash,
@@ -128,13 +141,13 @@ impl LmdbGlobalState {
     }
 }
 
-fn compute_empty_root_hash() -> Result<(Digest, Trie<Key, StoredValue>), error::Error> {
+fn compute_empty_root_hash() -> Result<(Digest, Trie<Key, StoredValue>), GlobalStateError> {
     let (root_hash, root) = create_hashed_empty_trie::<Key, StoredValue>()?;
     Ok((root_hash, root))
 }
 
 impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
-    type Error = error::Error;
+    type Error = GlobalStateError;
 
     fn read(&self, key: &Key) -> Result<Option<StoredValue>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
@@ -194,8 +207,8 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
 }
 
 impl CommitProvider for LmdbGlobalState {
-    fn commit(&self, prestate_hash: Digest, effects: Effects) -> Result<Digest, Self::Error> {
-        commit::<LmdbEnvironment, LmdbTrieStore, Self::Error>(
+    fn commit(&self, prestate_hash: Digest, effects: Effects) -> Result<Digest, GlobalStateError> {
+        commit::<LmdbEnvironment, LmdbTrieStore, GlobalStateError>(
             &self.environment,
             &self.trie_store,
             prestate_hash,
@@ -206,11 +219,9 @@ impl CommitProvider for LmdbGlobalState {
 }
 
 impl StateProvider for LmdbGlobalState {
-    type Error = error::Error;
-
     type Reader = LmdbGlobalStateView;
 
-    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, Self::Error> {
+    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, GlobalStateError> {
         let txn = self.environment.create_read_txn()?;
         let maybe_root: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, &state_hash)?;
         let maybe_state = maybe_root.map(|_| LmdbGlobalStateView {
@@ -222,11 +233,21 @@ impl StateProvider for LmdbGlobalState {
         Ok(maybe_state)
     }
 
+    fn tracking_copy(
+        &self,
+        hash: Digest,
+    ) -> Result<Option<TrackingCopy<Self::Reader>>, GlobalStateError> {
+        match self.checkout(hash)? {
+            Some(reader) => Ok(Some(TrackingCopy::new(reader, self.max_query_depth))),
+            None => Ok(None),
+        }
+    }
+
     fn empty_root(&self) -> Digest {
         self.empty_root_hash
     }
 
-    fn get_trie_full(&self, trie_key: &Digest) -> Result<Option<TrieRaw>, Self::Error> {
+    fn get_trie_full(&self, trie_key: &Digest) -> Result<Option<TrieRaw>, GlobalStateError> {
         let txn = self.environment.create_read_txn()?;
         let ret: Option<TrieRaw> =
             Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?
@@ -235,10 +256,10 @@ impl StateProvider for LmdbGlobalState {
         Ok(ret)
     }
 
-    fn put_trie(&self, trie: &[u8]) -> Result<Digest, Self::Error> {
+    fn put_trie(&self, trie: &[u8]) -> Result<Digest, GlobalStateError> {
         let mut txn = self.environment.create_read_write_txn()?;
         let trie_hash =
-            put_trie::<Key, StoredValue, lmdb::RwTransaction, LmdbTrieStore, Self::Error>(
+            put_trie::<Key, StoredValue, lmdb::RwTransaction, LmdbTrieStore, GlobalStateError>(
                 &mut txn,
                 &self.trie_store,
                 trie,
@@ -248,14 +269,15 @@ impl StateProvider for LmdbGlobalState {
     }
 
     /// Finds all of the keys of missing directly descendant `Trie<K,V>` values.
-    fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, Self::Error> {
+    fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, GlobalStateError> {
         let txn = self.environment.create_read_txn()?;
-        let missing_hashes =
-            missing_children::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
-                &txn,
-                self.trie_store.deref(),
-                trie_raw,
-            )?;
+        let missing_hashes = missing_children::<
+            Key,
+            StoredValue,
+            lmdb::RoTransaction,
+            LmdbTrieStore,
+            GlobalStateError,
+        >(&txn, self.trie_store.deref(), trie_raw)?;
         txn.commit()?;
         Ok(missing_hashes)
     }
@@ -265,13 +287,13 @@ impl StateProvider for LmdbGlobalState {
         &self,
         mut state_root_hash: Digest,
         keys: &[Key],
-    ) -> Result<PruneResult, Self::Error> {
+    ) -> Result<PruneResult, GlobalStateError> {
         let scratch_trie_store = self.get_scratch_store();
 
         let mut txn = scratch_trie_store.create_read_write_txn()?;
 
         for key in keys {
-            let prune_results = prune::<Key, StoredValue, _, _, Self::Error>(
+            let prune_results = prune::<Key, StoredValue, _, _, GlobalStateError>(
                 &mut txn,
                 &scratch_trie_store,
                 &state_root_hash,
@@ -303,15 +325,19 @@ pub fn make_temporary_global_state(
     let lmdb_global_state = {
         let lmdb_environment = LmdbEnvironment::new(
             tempdir.path(),
-            DEFAULT_TEST_MAX_DB_SIZE,
-            DEFAULT_TEST_MAX_READERS,
+            DEFAULT_MAX_DB_SIZE,
+            DEFAULT_MAX_READERS,
             false,
         )
         .expect("should create lmdb environment");
         let lmdb_trie_store = LmdbTrieStore::new(&lmdb_environment, None, DatabaseFlags::default())
             .expect("should create lmdb trie store");
-        LmdbGlobalState::empty(Arc::new(lmdb_environment), Arc::new(lmdb_trie_store))
-            .expect("should create lmdb global state")
+        LmdbGlobalState::empty(
+            Arc::new(lmdb_environment),
+            Arc::new(lmdb_trie_store),
+            DEFAULT_MAX_QUERY_DEPTH,
+        )
+        .expect("should create lmdb global state")
     };
 
     let mut root_hash = lmdb_global_state.empty_root_hash;

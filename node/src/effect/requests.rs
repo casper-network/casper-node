@@ -15,14 +15,14 @@ use serde::Serialize;
 use smallvec::SmallVec;
 use static_assertions::const_assert;
 
-use casper_execution_engine::engine_state::{
-    self,
-    balance::{BalanceRequest, BalanceResult},
-    era_validators::GetEraValidatorsError,
-    get_bids::{GetBidsRequest, GetBidsResult},
-    query::{QueryRequest, QueryResult},
+use casper_execution_engine::engine_state::{self, era_validators::GetEraValidatorsError};
+use casper_storage::{
+    data_access_layer::{
+        get_bids::{GetBidsRequest, GetBidsResult},
+        BalanceRequest, BalanceResult, QueryRequest, QueryResult,
+    },
+    global_state::trie::TrieRaw,
 };
-use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     addressable_entity::AddressableEntity,
     bytesrepr::Bytes,
@@ -709,7 +709,7 @@ pub(crate) enum RpcRequest {
         /// The path components starting from the key as base.
         path: Vec<String>,
         /// Responder to call with the result.
-        responder: Responder<Result<QueryResult, engine_state::Error>>,
+        responder: Responder<QueryResult>,
     },
     /// Query the global state at the given root hash.
     QueryEraValidators {
@@ -725,7 +725,7 @@ pub(crate) enum RpcRequest {
         /// The global state hash.
         state_root_hash: Digest,
         /// Responder to call with the result.
-        responder: Responder<Result<GetBidsResult, engine_state::Error>>,
+        responder: Responder<GetBidsResult>,
     },
 
     /// Query the global state at the given root hash.
@@ -735,7 +735,7 @@ pub(crate) enum RpcRequest {
         /// The purse URef.
         purse_uref: URef,
         /// Responder to call with the result.
-        responder: Responder<Result<BalanceResult, engine_state::Error>>,
+        responder: Responder<BalanceResult>,
     },
     /// Return the connected peers.
     GetPeers {
@@ -851,7 +851,7 @@ pub(crate) enum ContractRuntimeRequest {
         #[serde(skip_serializing)]
         query_request: QueryRequest,
         /// Responder to call with the query result.
-        responder: Responder<Result<QueryResult, engine_state::Error>>,
+        responder: Responder<QueryResult>,
     },
     /// A balance request.
     GetBalance {
@@ -859,7 +859,7 @@ pub(crate) enum ContractRuntimeRequest {
         #[serde(skip_serializing)]
         balance_request: BalanceRequest,
         /// Responder to call with the balance result.
-        responder: Responder<Result<BalanceResult, engine_state::Error>>,
+        responder: Responder<BalanceResult>,
     },
     /// Returns validator weights.
     GetEraValidators {
@@ -875,7 +875,7 @@ pub(crate) enum ContractRuntimeRequest {
         #[serde(skip_serializing)]
         get_bids_request: GetBidsRequest,
         /// Responder to call with the result.
-        responder: Responder<Result<GetBidsResult, engine_state::Error>>,
+        responder: Responder<GetBidsResult>,
     },
     /// Returns the value of the execution results checksum stored in the ChecksumRegistry for the
     /// given state root hash.

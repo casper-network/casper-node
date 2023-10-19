@@ -1,7 +1,7 @@
 //! Types for balance queries.
 use casper_types::{Digest, Key, StoredValue, URef, U512};
 
-use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
+use crate::{global_state::trie::merkle_proof::TrieMerkleProof, tracking_copy::TrackingCopyError};
 
 /// Result enum that represents all possible outcomes of a balance request.
 #[derive(Debug)]
@@ -15,6 +15,7 @@ pub enum BalanceResult {
         /// A proof that the given value is present in the Merkle trie.
         proof: Box<TrieMerkleProof<Key, StoredValue>>,
     },
+    Failure(TrackingCopyError),
 }
 
 impl BalanceResult {

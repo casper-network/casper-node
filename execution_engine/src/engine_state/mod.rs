@@ -1,6 +1,4 @@
 //!  This module contains all the execution related code.
-pub mod balance;
-pub mod checksum_registry;
 pub mod deploy_item;
 pub mod engine_config;
 pub mod era_validators;
@@ -9,12 +7,9 @@ pub mod execute_request;
 pub(crate) mod execution_kind;
 pub mod execution_result;
 pub mod genesis;
-pub mod get_bids;
 mod prune;
-pub mod query;
 pub mod run_genesis_request;
 pub mod step;
-pub mod system_contract_registry;
 mod transfer;
 pub mod upgrade;
 
@@ -31,8 +26,15 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 use tracing::{debug, error, trace, warn};
 
+pub use casper_storage::data_access_layer::get_bids::{
+    GetBidsError, GetBidsRequest, GetBidsResult,
+};
 use casper_storage::{
-    data_access_layer::DataAccessLayer,
+    data_access_layer::{
+        balance::BalanceResult,
+        query::{QueryRequest, QueryResult},
+        DataAccessLayer,
+    },
     global_state::{
         self,
         state::{
@@ -42,6 +44,9 @@ use casper_storage::{
         trie::{merkle_proof::TrieMerkleProof, TrieRaw},
         trie_store::operations::PruneResult as GlobalStatePruneResult,
     },
+    system::auction,
+    tracking_copy::{TrackingCopy, TrackingCopyExt},
+    AddressGenerator,
 };
 use casper_types::{
     account::{Account, AccountHash},
@@ -60,16 +65,15 @@ use casper_types::{
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, AddressableEntity, ApiError, BlockTime, CLValue, ChainspecRegistry, ContractHash,
-    ContractPackageHash, ContractWasmHash, DeployHash, DeployInfo, Digest, EntryPoints, EraId,
-    ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Package, Phase, ProtocolVersion,
-    PublicKey, RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
+    AccessRights, AddressableEntity, ApiError, BlockTime, CLValue, ChainspecRegistry,
+    ChecksumRegistry, ContractHash, ContractPackageHash, ContractWasmHash, DeployHash, DeployInfo,
+    Digest, EntryPoints, EraId, ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes,
+    Package, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, SystemContractRegistry,
+    URef, UpgradeConfig, U512,
 };
 
 use self::transfer::NewTransferTargetMode;
 pub use self::{
-    balance::{BalanceRequest, BalanceResult},
-    checksum_registry::ChecksumRegistry,
     deploy_item::DeployItem,
     engine_config::{
         EngineConfig, EngineConfigBuilder, DEFAULT_MAX_QUERY_DEPTH,
@@ -81,15 +85,13 @@ pub use self::{
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ForcedTransferResult},
     genesis::{ExecConfig, GenesisConfig, GenesisSuccess},
-    get_bids::{GetBidsRequest, GetBidsResult},
     prune::{PruneConfig, PruneResult},
-    query::{QueryRequest, QueryResult},
     run_genesis_request::RunGenesisRequest,
     step::{SlashItem, StepError, StepRequest, StepSuccess},
-    system_contract_registry::SystemContractRegistry,
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::UpgradeSuccess,
 };
+
 use crate::{
     engine_state::{
         execution_kind::ExecutionKind,
@@ -97,10 +99,8 @@ use crate::{
         genesis::GenesisInstaller,
         upgrade::{ProtocolUpgradeError, SystemUpgrader},
     },
-    execution::{self, AddressGenerator, DirectSystemContractCall, Executor},
+    execution::{self, DirectSystemContractCall, Executor},
     runtime::RuntimeStack,
-    system::auction,
-    tracking_copy::{TrackingCopy, TrackingCopyExt},
 };
 
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
@@ -242,7 +242,6 @@ impl EngineState<LmdbGlobalState> {
 impl<S> EngineState<S>
 where
     S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
 {
     /// Creates new engine state.
     pub fn new(state: S, config: EngineConfig) -> EngineState<S> {
@@ -495,7 +494,7 @@ where
             if let Ok(existing_bid_keys) = borrow.get_keys(&KeyTag::Bid) {
                 for key in existing_bid_keys {
                     if let Some(StoredValue::Bid(existing_bid)) =
-                        borrow.get(&key).map_err(|err| err.into())?
+                        borrow.get(&key).map_err(Into::<Error>::into)?
                     {
                         // prune away the original record, we don't need it anymore
                         borrow.prune(key);
@@ -566,7 +565,7 @@ where
                 let delay = tracking_copy
                     .borrow_mut()
                     .read(unbonding_delay_key)
-                    .map_err(|error| error.into())?
+                    .map_err(Into::<Error>::into)?
                     .ok_or(Error::FailedToRetrieveUnbondingDelay)?
                     .into_cl_value()
                     .ok_or_else(|| Error::Bytesrepr("unbonding_delay".to_string()))?
@@ -581,7 +580,7 @@ where
                 let era_id = tracking_copy
                     .borrow_mut()
                     .read(era_id_key)
-                    .map_err(|error| error.into())?
+                    .map_err(Into::<Error>::into)?
                     .ok_or(Error::FailedToRetrieveEraId)?
                     .into_cl_value()
                     .ok_or_else(|| Error::Bytesrepr("era_id".to_string()))?
@@ -686,7 +685,7 @@ where
         let post_state_hash = self
             .state
             .commit(pre_state_hash, effects.clone())
-            .map_err(Into::into)?;
+            .map_err(Into::<Error>::into)?;
 
         // return result and effects
         Ok(UpgradeSuccess {
@@ -734,9 +733,12 @@ where
 
     /// Creates a new tracking copy instance.
     pub fn tracking_copy(&self, hash: Digest) -> Result<Option<TrackingCopy<S::Reader>>, Error> {
-        match self.state.checkout(hash).map_err(Into::into)? {
-            Some(tc) => Ok(Some(TrackingCopy::new(tc))),
-            None => Ok(None),
+        match self.state.checkout(hash) {
+            Ok(ret) => match ret {
+                Some(tc) => Ok(Some(TrackingCopy::new(tc, self.config.max_query_depth))),
+                None => Ok(None),
+            },
+            Err(err) => Err(Error::Storage(err)),
         }
     }
 
@@ -754,7 +756,7 @@ where
         let tracking_copy = tracking_copy.borrow();
 
         Ok(tracking_copy
-            .query(self.config(), query_request.key(), query_request.path())
+            .query(query_request.key(), query_request.path())
             .map_err(|err| Error::Exec(err.into()))?
             .into())
     }
@@ -804,8 +806,8 @@ where
 
     fn get_authorized_addressable_entity(
         &self,
-        account_hash: AccountHash,
         protocol_version: ProtocolVersion,
+        account_hash: AccountHash,
         authorization_keys: &BTreeSet<AccountHash>,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Result<(AddressableEntity, ContractHash), Error> {
@@ -921,7 +923,7 @@ where
         let maybe_stored_value = tracking_copy
             .borrow_mut()
             .read(&Key::Account(account_hash))
-            .map_err(Into::into)?;
+            .map_err(Into::<Error>::into)?;
 
         match maybe_stored_value {
             Some(StoredValue::Account(account)) => self.create_addressable_entity_from_account(
@@ -964,7 +966,7 @@ where
         let entity_package = match tracking_copy
             .borrow_mut()
             .read(&entity_package_address.into())
-            .map_err(Into::into)?
+            .map_err(Into::<Error>::into)?
         {
             Some(StoredValue::ContractPackage(entity_package)) => entity_package,
             Some(_) | None => return Err(Error::MissingEntityPackage(entity_package_address)),
@@ -1007,8 +1009,8 @@ where
         }
 
         let (entity, _contract_hash) = match self.get_authorized_addressable_entity(
-            account_hash,
             protocol_version,
+            account_hash,
             &authorization_keys,
             Rc::clone(&tracking_copy),
         ) {
@@ -1075,7 +1077,11 @@ where
                 .get_purse_balance_key(rewards_target_purse.into())
             {
                 Ok(balance_key) => balance_key,
-                Err(error) => return Ok(ExecutionResult::precondition_failure(Error::Exec(error))),
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(Error::TrackingCopy(
+                        error,
+                    )))
+                }
             }
         };
 
@@ -1086,7 +1092,11 @@ where
             .get_purse_balance_key(account_main_purse.into())
         {
             Ok(balance_key) => balance_key,
-            Err(error) => return Ok(ExecutionResult::precondition_failure(Error::Exec(error))),
+            Err(error) => {
+                return Ok(ExecutionResult::precondition_failure(Error::TrackingCopy(
+                    error,
+                )))
+            }
         };
 
         let account_main_purse_balance = match tracking_copy
@@ -1094,7 +1104,11 @@ where
             .get_purse_balance(account_main_purse_balance_key)
         {
             Ok(balance_key) => balance_key,
-            Err(error) => return Ok(ExecutionResult::precondition_failure(Error::Exec(error))),
+            Err(error) => {
+                return Ok(ExecutionResult::precondition_failure(Error::TrackingCopy(
+                    error,
+                )))
+            }
         };
 
         if account_main_purse_balance < wasmless_transfer_motes {
@@ -1215,8 +1229,8 @@ where
         }
 
         let transfer_args = match runtime_args_builder.build(
-            &entity,
             protocol_version,
+            &entity,
             Rc::clone(&tracking_copy),
         ) {
             Ok(transfer_args) => transfer_args,
@@ -1235,7 +1249,9 @@ where
                     .get_purse_balance_key(Key::URef(source_uref))
                 {
                     Ok(purse_balance_key) => purse_balance_key,
-                    Err(error) => return Ok(make_charged_execution_failure(Error::Exec(error))),
+                    Err(error) => {
+                        return Ok(make_charged_execution_failure(Error::TrackingCopy(error)))
+                    }
                 };
 
                 match tracking_copy
@@ -1243,7 +1259,9 @@ where
                     .get_purse_balance(source_purse_balance_key)
                 {
                     Ok(purse_balance) => purse_balance,
-                    Err(error) => return Ok(make_charged_execution_failure(Error::Exec(error))),
+                    Err(error) => {
+                        return Ok(make_charged_execution_failure(Error::TrackingCopy(error)))
+                    }
                 }
             } else {
                 // If source purse is main purse then we already have the balance.
@@ -1355,7 +1373,9 @@ where
                     .get_purse_balance_key(Key::URef(payment_uref))
                 {
                     Ok(payment_purse_balance_key) => payment_purse_balance_key,
-                    Err(error) => return Ok(make_charged_execution_failure(Error::Exec(error))),
+                    Err(error) => {
+                        return Ok(make_charged_execution_failure(Error::TrackingCopy(error)))
+                    }
                 };
 
                 match tracking_copy
@@ -1363,7 +1383,9 @@ where
                     .get_purse_balance(payment_purse_balance_key)
                 {
                     Ok(payment_purse_balance) => payment_purse_balance,
-                    Err(error) => return Ok(make_charged_execution_failure(Error::Exec(error))),
+                    Err(error) => {
+                        return Ok(make_charged_execution_failure(Error::TrackingCopy(error)))
+                    }
                 }
             };
 
@@ -1565,8 +1587,8 @@ where
         // validation_spec_3: account validity
         let (entity, entity_hash) = {
             match self.get_authorized_addressable_entity(
-                account_hash,
                 protocol_version,
+                account_hash,
                 &authorization_keys,
                 Rc::clone(&tracking_copy),
             ) {
@@ -2176,20 +2198,20 @@ where
     }
 
     /// Gets a trie object for given state root hash.
-    pub fn get_trie_full(&self, trie_key: Digest) -> Result<Option<TrieRaw>, Error>
-    where
-        Error: From<S::Error>,
-    {
-        Ok(self.state.get_trie_full(&trie_key)?)
+    pub fn get_trie_full(&self, trie_key: Digest) -> Result<Option<TrieRaw>, Error> {
+        match self.state.get_trie_full(&trie_key) {
+            Ok(ret) => Ok(ret),
+            Err(err) => Err(err.into()),
+        }
     }
 
     /// Puts a trie if no children are missing from the global state; otherwise reports the missing
     /// children hashes via the `Error` enum.
-    pub fn put_trie_if_all_children_present(&self, trie_bytes: &[u8]) -> Result<Digest, Error>
-    where
-        Error: From<S::Error>,
-    {
-        let missing_children = self.state.missing_children(trie_bytes)?;
+    pub fn put_trie_if_all_children_present(&self, trie_bytes: &[u8]) -> Result<Digest, Error> {
+        let missing_children = match self.state.missing_children(trie_bytes) {
+            Ok(ret) => ret,
+            Err(err) => return Err(err.into()),
+        };
         if missing_children.is_empty() {
             Ok(self.state.put_trie(trie_bytes)?)
         } else {
@@ -2233,6 +2255,14 @@ where
 
         let snapshot = match self.run_query(query_request)? {
             QueryResult::RootNotFound => return Err(GetEraValidatorsError::RootNotFound),
+            QueryResult::StorageError(error) => {
+                error!(%error, "unexpected global storage error");
+                return Err(GetEraValidatorsError::Other(Error::Storage(error)));
+            }
+            QueryResult::TrackingCopyError(error) => {
+                error!(%error, "unexpected tracking copy error");
+                return Err(GetEraValidatorsError::Other(Error::TrackingCopy(error)));
+            }
             QueryResult::ValueNotFound(error) => {
                 error!(%error, "unexpected query failure; value not found");
                 return Err(GetEraValidatorsError::EraValidatorsMissing);
@@ -2266,28 +2296,46 @@ where
     }
 
     /// Gets current bids from the auction system.
-    pub fn get_bids(&self, get_bids_request: GetBidsRequest) -> Result<GetBidsResult, Error> {
+    pub fn get_bids(&self, get_bids_request: GetBidsRequest) -> GetBidsResult {
         let state_root_hash = get_bids_request.state_hash();
-        let tracking_copy = match self.tracking_copy(state_root_hash)? {
-            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
-            None => return Ok(GetBidsResult::RootNotFound),
+        let tracking_copy = match self.state.checkout(state_root_hash) {
+            Ok(ret) => match ret {
+                Some(tracking_copy) => Rc::new(RefCell::new(TrackingCopy::new(
+                    tracking_copy,
+                    self.config.max_query_depth,
+                ))),
+                None => return GetBidsResult::RootNotFound,
+            },
+            Err(err) => return GetBidsResult::Failure(GetBidsError::GlobalState(err)),
         };
 
-        let mut tracking_copy = tracking_copy.borrow_mut();
+        let mut tc = tracking_copy.borrow_mut();
 
-        let bid_keys = tracking_copy
-            .get_keys(&KeyTag::BidAddr)
-            .map_err(|err| Error::Exec(err.into()))?;
+        let bid_keys = match tc.get_keys(&KeyTag::BidAddr) {
+            Ok(ret) => ret,
+            Err(err) => return GetBidsResult::Failure(GetBidsError::TrackingCopyError(err)),
+        };
 
         let mut bids = vec![];
         for key in bid_keys.iter() {
-            if let Some(StoredValue::BidKind(bid_kind)) =
-                tracking_copy.get(key).map_err(Into::into)?
-            {
-                bids.push(bid_kind);
-            };
+            match tc.get(key) {
+                Ok(ret) => match ret {
+                    Some(StoredValue::BidKind(bid_kind)) => {
+                        bids.push(bid_kind);
+                    }
+                    Some(_) => {
+                        return GetBidsResult::Failure(GetBidsError::InvalidStoredValueVariant(
+                            *key,
+                        ))
+                    }
+                    None => return GetBidsResult::Failure(GetBidsError::MissingBid(*key)),
+                },
+                Err(error) => {
+                    return GetBidsResult::Failure(GetBidsError::TrackingCopyError(error))
+                }
+            }
         }
-        Ok(GetBidsResult::Success { bids })
+        GetBidsResult::Success { bids }
     }
 
     /// Distribute block rewards.
@@ -2300,9 +2348,9 @@ where
         time: u64,
     ) -> Result<Digest, StepError> {
         let tracking_copy = match self.tracking_copy(pre_state_hash) {
-            Err(error) => return Err(StepError::TrackingCopyError(error)),
-            Ok(None) => return Err(StepError::RootNotFound(pre_state_hash)),
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
+            Ok(None) => return Err(StepError::RootNotFound(pre_state_hash)),
+            Err(error) => return Err(StepError::OtherEngineStateError(error)),
         };
 
         let mut runtime_args = RuntimeArgs::new();
@@ -2314,7 +2362,8 @@ where
 
         let virtual_system_contract_by_account = tracking_copy
             .borrow_mut()
-            .get_addressable_entity_by_account_hash(protocol_version, system_account_addr)?;
+            .get_addressable_entity_by_account_hash(protocol_version, system_account_addr)
+            .map_err(|err| StepError::OtherEngineStateError(Error::TrackingCopy(err)))?;
 
         let authorization_keys = {
             let mut ret = BTreeSet::new();
@@ -2385,7 +2434,7 @@ where
         let post_state_hash = self
             .state
             .commit(pre_state_hash, effects)
-            .map_err(Into::into)?;
+            .map_err(Into::<Error>::into)?;
 
         Ok(post_state_hash)
     }
@@ -2393,9 +2442,9 @@ where
     /// Executes a step request.
     pub fn commit_step(&self, step_request: StepRequest) -> Result<StepSuccess, StepError> {
         let tracking_copy = match self.tracking_copy(step_request.pre_state_hash) {
-            Err(error) => return Err(StepError::TrackingCopyError(error)),
-            Ok(None) => return Err(StepError::RootNotFound(step_request.pre_state_hash)),
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
+            Ok(None) => return Err(StepError::RootNotFound(step_request.pre_state_hash)),
+            Err(error) => return Err(StepError::OtherEngineStateError(error)),
         };
 
         let executor = Executor::new(self.config().clone());
@@ -2406,7 +2455,8 @@ where
 
         let system_addressable_entity = tracking_copy
             .borrow_mut()
-            .get_addressable_entity_by_account_hash(protocol_version, system_account_addr)?;
+            .get_addressable_entity_by_account_hash(protocol_version, system_account_addr)
+            .map_err(|err| StepError::OtherEngineStateError(Error::TrackingCopy(err)))?;
 
         let authorization_keys = {
             let mut ret = BTreeSet::new();
@@ -2505,7 +2555,7 @@ where
         let post_state_hash = self
             .state
             .commit(step_request.pre_state_hash, effects.clone())
-            .map_err(Into::into)?;
+            .map_err(Into::<Error>::into)?;
 
         Ok(StepSuccess {
             post_state_hash,
@@ -2641,7 +2691,7 @@ where
         let maybe_checksum_registry = tracking_copy
             .borrow_mut()
             .get_checksum_registry()
-            .map_err(Error::Exec);
+            .map_err(Error::TrackingCopy);
         maybe_checksum_registry
     }
 
@@ -2656,11 +2706,7 @@ where
         };
 
         let key = Key::ChecksumRegistry;
-        let maybe_proof = tracking_copy
-            .borrow_mut()
-            .reader()
-            .read_with_proof(&key)
-            .map_err(Into::into)?;
+        let maybe_proof = tracking_copy.borrow_mut().reader().read_with_proof(&key)?;
         maybe_proof.ok_or(Error::MissingChecksumRegistry)
     }
 
@@ -2800,6 +2846,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::DisabledContract(_)
                 | ExecError::UnexpectedKeyVariant(_)
                 | ExecError::InvalidContractPackageKind(_)
+                | ExecError::TrackingCopy(_)
                 | ExecError::Transform(_) => false,
                 ExecError::DisabledUnrestrictedTransfers => false,
             },
@@ -2832,8 +2879,9 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
             | Error::FailedToRetrieveUnbondingDelay
             | Error::FailedToRetrieveEraId
             | Error::MissingTrieNodeChildren(_)
-            | Error::FailedToRetrieveAccumulationPurse => false,
-            Error::FailedToPrune(_) => false,
+            | Error::FailedToRetrieveAccumulationPurse
+            | Error::FailedToPrune(_)
+            | Error::TrackingCopy(_) => false,
         },
         ExecutionResult::Success { .. } => false,
     }

@@ -13,7 +13,7 @@ use casper_types::{
 };
 
 use crate::global_state::{
-    error,
+    error::Error as GlobalStateError,
     state::{CommitError, CommitProvider, StateProvider, StateReader},
     store::Store,
     transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
@@ -26,6 +26,8 @@ use crate::global_state::{
         },
     },
 };
+
+use crate::tracking_copy::TrackingCopy;
 
 type SharedCache = Arc<RwLock<Cache>>;
 
@@ -92,6 +94,8 @@ pub struct ScratchGlobalState {
     // TODO: make this a lazy-static
     /// Empty root hash used for a new trie.
     pub(crate) empty_root_hash: Digest,
+    /// Max query depth
+    pub max_query_depth: u64,
 }
 
 /// Represents a "view" of global state at a particular root hash.
@@ -112,12 +116,14 @@ impl ScratchGlobalState {
         environment: Arc<LmdbEnvironment>,
         trie_store: Arc<LmdbTrieStore>,
         empty_root_hash: Digest,
+        max_query_depth: u64,
     ) -> Self {
         ScratchGlobalState {
             cache: Arc::new(RwLock::new(Cache::new())),
             environment,
             trie_store,
             empty_root_hash,
+            max_query_depth,
         }
     }
 
@@ -129,7 +135,7 @@ impl ScratchGlobalState {
 }
 
 impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
-    type Error = error::Error;
+    type Error = GlobalStateError;
 
     fn read(&self, key: &Key) -> Result<Option<StoredValue>, Self::Error> {
         {
@@ -211,7 +217,7 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
 impl CommitProvider for ScratchGlobalState {
     /// State hash returned is the one provided, as we do not write to lmdb with this kind of global
     /// state. Note that the state hash is NOT used, and simply passed back to the caller.
-    fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, Self::Error> {
+    fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, GlobalStateError> {
         for (key, kind) in effects.value().into_iter().map(Transform::destructure) {
             let cached_value = self.cache.read().unwrap().get(&key).cloned();
             let instruction = match (cached_value, kind) {
@@ -225,7 +231,7 @@ impl CommitProvider for ScratchGlobalState {
                         StoredValue,
                         lmdb::RoTransaction,
                         LmdbTrieStore,
-                        Self::Error,
+                        GlobalStateError,
                     >(
                         &txn, self.trie_store.deref(), &state_hash, &key
                     )? {
@@ -279,11 +285,9 @@ impl CommitProvider for ScratchGlobalState {
 }
 
 impl StateProvider for ScratchGlobalState {
-    type Error = error::Error;
-
     type Reader = ScratchGlobalStateView;
 
-    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, Self::Error> {
+    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, GlobalStateError> {
         let txn = self.environment.create_read_txn()?;
         let maybe_root: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, &state_hash)?;
         let maybe_state = maybe_root.map(|_| ScratchGlobalStateView {
@@ -296,11 +300,21 @@ impl StateProvider for ScratchGlobalState {
         Ok(maybe_state)
     }
 
+    fn tracking_copy(
+        &self,
+        hash: Digest,
+    ) -> Result<Option<TrackingCopy<Self::Reader>>, GlobalStateError> {
+        match self.checkout(hash)? {
+            Some(tc) => Ok(Some(TrackingCopy::new(tc, self.max_query_depth))),
+            None => Ok(None),
+        }
+    }
+
     fn empty_root(&self) -> Digest {
         self.empty_root_hash
     }
 
-    fn get_trie_full(&self, trie_key: &Digest) -> Result<Option<TrieRaw>, Self::Error> {
+    fn get_trie_full(&self, trie_key: &Digest) -> Result<Option<TrieRaw>, GlobalStateError> {
         let txn = self.environment.create_read_txn()?;
         let ret: Option<TrieRaw> =
             Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?
@@ -309,10 +323,10 @@ impl StateProvider for ScratchGlobalState {
         Ok(ret)
     }
 
-    fn put_trie(&self, trie: &[u8]) -> Result<Digest, Self::Error> {
+    fn put_trie(&self, trie: &[u8]) -> Result<Digest, GlobalStateError> {
         let mut txn = self.environment.create_read_write_txn()?;
         let trie_hash =
-            put_trie::<Key, StoredValue, lmdb::RwTransaction, LmdbTrieStore, Self::Error>(
+            put_trie::<Key, StoredValue, lmdb::RwTransaction, LmdbTrieStore, GlobalStateError>(
                 &mut txn,
                 &self.trie_store,
                 trie,
@@ -322,14 +336,15 @@ impl StateProvider for ScratchGlobalState {
     }
 
     /// Finds all of the keys of missing directly descendant `Trie<K,V>` values
-    fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, Self::Error> {
+    fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, GlobalStateError> {
         let txn = self.environment.create_read_txn()?;
-        let missing_descendants =
-            missing_children::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
-                &txn,
-                self.trie_store.deref(),
-                trie_raw,
-            )?;
+        let missing_descendants = missing_children::<
+            Key,
+            StoredValue,
+            lmdb::RoTransaction,
+            LmdbTrieStore,
+            GlobalStateError,
+        >(&txn, self.trie_store.deref(), trie_raw)?;
         txn.commit()?;
         Ok(missing_descendants)
     }
@@ -338,10 +353,10 @@ impl StateProvider for ScratchGlobalState {
         &self,
         mut state_root_hash: Digest,
         keys_to_delete: &[Key],
-    ) -> Result<PruneResult, Self::Error> {
+    ) -> Result<PruneResult, GlobalStateError> {
         let mut txn = self.environment.create_read_write_txn()?;
         for key in keys_to_delete {
-            let prune_result = prune::<Key, StoredValue, _, _, Self::Error>(
+            let prune_result = prune::<Key, StoredValue, _, _, GlobalStateError>(
                 &mut txn,
                 self.trie_store.deref(),
                 &state_root_hash,
@@ -374,8 +389,10 @@ pub(crate) mod tests {
     use crate::global_state::{
         state::{lmdb::LmdbGlobalState, CommitProvider},
         trie_store::operations::{write, WriteResult},
-        DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
     };
+
+    #[cfg(test)]
+    use crate::global_state::{DEFAULT_MAX_DB_SIZE, DEFAULT_MAX_READERS};
 
     #[derive(Debug, Clone)]
     pub(crate) struct TestPair {
@@ -428,13 +445,14 @@ pub(crate) mod tests {
         root_hash: Digest,
     }
 
+    #[cfg(test)]
     pub(crate) fn create_test_state() -> TestState {
         let temp_dir = tempdir().unwrap();
         let environment = Arc::new(
             LmdbEnvironment::new(
                 temp_dir.path(),
-                DEFAULT_TEST_MAX_DB_SIZE,
-                DEFAULT_TEST_MAX_READERS,
+                DEFAULT_MAX_DB_SIZE,
+                DEFAULT_MAX_READERS,
                 true,
             )
             .unwrap(),
@@ -442,13 +460,18 @@ pub(crate) mod tests {
         let trie_store =
             Arc::new(LmdbTrieStore::new(&environment, None, DatabaseFlags::empty()).unwrap());
 
-        let state = LmdbGlobalState::empty(environment, trie_store).unwrap();
+        let state = LmdbGlobalState::empty(
+            environment,
+            trie_store,
+            crate::global_state::DEFAULT_MAX_QUERY_DEPTH,
+        )
+        .unwrap();
         let mut current_root = state.empty_root_hash;
         {
             let mut txn = state.environment.create_read_write_txn().unwrap();
 
             for TestPair { key, value } in &create_test_pairs() {
-                match write::<_, _, _, LmdbTrieStore, error::Error>(
+                match write::<_, _, _, LmdbTrieStore, GlobalStateError>(
                     &mut txn,
                     &state.trie_store,
                     &current_root,

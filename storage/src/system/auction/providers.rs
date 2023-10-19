@@ -51,7 +51,7 @@ pub trait StorageProvider {
     /// Writes data to [`URef].
     fn write<T: ToBytes + CLTyped>(&mut self, uref: URef, value: T) -> Result<(), Error>;
 
-    /// Reads [`Bid`] at account hash derived from given public key
+    /// Reads [`casper_types::system::auction::Bid`] at account hash derived from given public key
     fn read_bid(&mut self, key: &Key) -> Result<Option<BidKind>, Error>;
 
     /// Writes given [`BidKind`] at given key.

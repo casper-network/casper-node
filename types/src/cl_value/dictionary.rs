@@ -1,11 +1,13 @@
-use casper_types::{
+use alloc::vec::Vec;
+
+use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     CLType, CLTyped, CLValue, CLValueError, Key, StoredValue,
 };
 
 /// Wraps a [`CLValue`] for storage in a dictionary.
 ///
-/// Note that we include the dictionary [`casper_types::URef`] and key used to create the
+/// Note that we include the dictionary [`super::super::URef`] and key used to create the
 /// `Key::Dictionary` under which this value is stored.  This is to allow migration to a different
 /// key representation in the future.
 #[derive(Clone)]
@@ -19,6 +21,7 @@ pub struct DictionaryValue {
 }
 
 impl DictionaryValue {
+    /// Constructor.
     pub fn new(
         cl_value: CLValue,
         seed_uref_addr: Vec<u8>,
@@ -85,7 +88,7 @@ impl ToBytes for DictionaryValue {
 /// [`DictionaryValue`] and returns the real [`CLValue`] held by it.
 ///
 /// For any other combination of `key` and `stored_value` it returns its unmodified value.
-pub fn handle_stored_value(
+pub fn handle_stored_dictionary_value(
     key: Key,
     stored_value: StoredValue,
 ) -> Result<StoredValue, CLValueError> {

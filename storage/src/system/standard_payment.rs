@@ -1,6 +1,6 @@
-pub(crate) mod account_provider;
-pub(crate) mod handle_payment_provider;
-pub(crate) mod mint_provider;
+pub mod account_provider;
+pub mod handle_payment_provider;
+pub mod mint_provider;
 
 use casper_types::{account::Account, ApiError, PublicKey, U512};
 

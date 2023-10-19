@@ -2,7 +2,10 @@
 use datasize::DataSize;
 use thiserror::Error;
 
-use casper_storage::global_state::{self, state::CommitError};
+use casper_storage::{
+    global_state::{self, state::CommitError},
+    tracking_copy::TrackingCopyError,
+};
 use casper_types::{
     account::AccountHash, bytesrepr, system::mint, ApiError, ContractPackageHash, Digest, Key,
     KeyTag, ProtocolVersion,
@@ -114,6 +117,9 @@ pub enum Error {
     /// Failed to prune listed keys.
     #[error("Pruning attempt failed.")]
     FailedToPrune(Vec<Key>),
+    /// Storage error.
+    #[error("Tracking copy error: {0}")]
+    TrackingCopy(TrackingCopyError),
 }
 
 impl Error {
@@ -159,6 +165,12 @@ impl From<Box<GenesisError>> for Error {
 impl From<stack::RuntimeStackOverflow> for Error {
     fn from(_: stack::RuntimeStackOverflow) -> Self {
         Self::RuntimeStackOverflow
+    }
+}
+
+impl From<TrackingCopyError> for Error {
+    fn from(e: TrackingCopyError) -> Self {
+        Error::TrackingCopy(e)
     }
 }
 

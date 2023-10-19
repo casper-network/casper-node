@@ -1,20 +1,21 @@
 use std::{collections::BTreeSet, convert::TryInto};
 
-use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
-use casper_types::{
-    account::AccountHash,
-    package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
-    AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, ContractWasm,
-    ContractWasmHash, EntryPoints, Key, Motes, Package, Phase, ProtocolVersion, StoredValue,
-    StoredValueTypeMismatch, URef,
+use crate::{
+    global_state::{
+        error::Error as GlobalStateError, state::StateReader, trie::merkle_proof::TrieMerkleProof,
+    },
+    AddressGenerator,
 };
 
-use crate::{
-    engine_state::{ChecksumRegistry, SystemContractRegistry, ACCOUNT_WASM_HASH},
-    execution,
-    execution::AddressGenerator,
-    tracking_copy::TrackingCopy,
+use casper_types::{
+    account::AccountHash,
+    package::{ContractPackageKind, ContractPackageStatus},
+    AccessRights, AddressableEntity, CLValue, ChecksumRegistry, ContractHash, ContractPackageHash,
+    ContractVersions, ContractWasm, ContractWasmHash, EntryPoints, Groups, Key, Motes, Package,
+    Phase, ProtocolVersion, StoredValue, StoredValueTypeMismatch, SystemContractRegistry, URef,
 };
+
+use crate::tracking_copy::{TrackingCopy, TrackingCopyError};
 
 /// Higher-level operations on the state via a `TrackingCopy`.
 pub trait TrackingCopyExt<R> {
@@ -89,17 +90,16 @@ pub trait TrackingCopyExt<R> {
 
 impl<R> TrackingCopyExt<R> for TrackingCopy<R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
-    type Error = execution::Error;
+    type Error = TrackingCopyError;
 
     fn get_entity_hash_by_account_hash(
         &mut self,
         account_hash: AccountHash,
     ) -> Result<ContractHash, Self::Error> {
         let account_key = Key::Account(account_hash);
-        match self.get(&account_key).map_err(Into::into)? {
+        match self.get(&account_key)? {
             Some(StoredValue::CLValue(cl_value)) => {
                 let contract_hash = CLValue::into_t::<Key>(cl_value)?;
                 let contract_hash = contract_hash
@@ -109,10 +109,10 @@ where
 
                 Ok(contract_hash)
             }
-            Some(other) => Err(execution::Error::TypeMismatch(
+            Some(other) => Err(TrackingCopyError::TypeMismatch(
                 StoredValueTypeMismatch::new("CLValue".to_string(), other.type_name()),
             )),
-            None => Err(execution::Error::KeyNotFound(account_key)),
+            None => Err(TrackingCopyError::KeyNotFound(account_key)),
         }
     }
 
@@ -123,7 +123,7 @@ where
     ) -> Result<AddressableEntity, Self::Error> {
         let account_key = Key::Account(account_hash);
 
-        let contract_key = match self.get(&account_key).map_err(Into::into)? {
+        let contract_key = match self.get(&account_key)? {
             Some(StoredValue::CLValue(contract_key_as_cl_value)) => {
                 CLValue::into_t::<Key>(contract_key_as_cl_value)?
             }
@@ -131,7 +131,7 @@ where
                 let mut generator =
                     AddressGenerator::new(account.main_purse().addr().as_ref(), Phase::System);
 
-                let contract_wasm_hash = *ACCOUNT_WASM_HASH;
+                let contract_wasm_hash = ContractWasmHash::default();
                 let contract_hash = ContractHash::new(generator.new_hash_address());
                 let contract_package_hash = ContractPackageHash::new(generator.new_hash_address());
 
@@ -171,7 +171,7 @@ where
 
                 let contract_by_account = match CLValue::from_t(contract_key) {
                     Ok(cl_value) => cl_value,
-                    Err(error) => return Err(execution::Error::CLValue(error)),
+                    Err(error) => return Err(TrackingCopyError::CLValue(error)),
                 };
 
                 self.write(account_key, StoredValue::CLValue(contract_by_account));
@@ -180,29 +180,29 @@ where
             }
 
             Some(other) => {
-                return Err(execution::Error::TypeMismatch(
+                return Err(TrackingCopyError::TypeMismatch(
                     StoredValueTypeMismatch::new("Key".to_string(), other.type_name()),
                 ));
             }
-            None => return Err(execution::Error::KeyNotFound(account_key)),
+            None => return Err(TrackingCopyError::KeyNotFound(account_key)),
         };
-        match self.get(&contract_key).map_err(Into::into)? {
+        match self.get(&contract_key)? {
             Some(StoredValue::AddressableEntity(contract)) => Ok(contract),
-            Some(other) => Err(execution::Error::TypeMismatch(
+            Some(other) => Err(TrackingCopyError::TypeMismatch(
                 StoredValueTypeMismatch::new("Contract".to_string(), other.type_name()),
             )),
-            None => Err(execution::Error::KeyNotFound(contract_key)),
+            None => Err(TrackingCopyError::KeyNotFound(contract_key)),
         }
     }
 
     fn read_account(&mut self, account_hash: AccountHash) -> Result<Key, Self::Error> {
         let account_key = Key::Account(account_hash);
-        match self.read(&account_key).map_err(Into::into)? {
+        match self.read(&account_key)? {
             Some(StoredValue::CLValue(cl_value)) => Ok(CLValue::into_t(cl_value)?),
-            Some(other) => Err(execution::Error::TypeMismatch(
+            Some(other) => Err(TrackingCopyError::TypeMismatch(
                 StoredValueTypeMismatch::new("Account".to_string(), other.type_name()),
             )),
-            None => Err(execution::Error::KeyNotFound(account_key)),
+            None => Err(TrackingCopyError::KeyNotFound(account_key)),
         }
     }
 
@@ -217,18 +217,17 @@ where
     fn get_purse_balance_key(&self, purse_key: Key) -> Result<Key, Self::Error> {
         let balance_key: URef = purse_key
             .into_uref()
-            .ok_or(execution::Error::KeyIsNotAURef(purse_key))?;
+            .ok_or(TrackingCopyError::KeyIsNotAURef(purse_key))?;
         Ok(Key::Balance(balance_key.addr()))
     }
 
     fn get_purse_balance(&self, key: Key) -> Result<Motes, Self::Error> {
         let stored_value: StoredValue = self
-            .read(&key)
-            .map_err(Into::into)?
-            .ok_or(execution::Error::KeyNotFound(key))?;
+            .read(&key)?
+            .ok_or(TrackingCopyError::KeyNotFound(key))?;
         let cl_value: CLValue = stored_value
             .try_into()
-            .map_err(execution::Error::TypeMismatch)?;
+            .map_err(TrackingCopyError::TypeMismatch)?;
         let balance = Motes::new(cl_value.into_t()?);
         Ok(balance)
     }
@@ -239,16 +238,15 @@ where
     ) -> Result<(Key, TrieMerkleProof<Key, StoredValue>), Self::Error> {
         let balance_key: Key = purse_key
             .uref_to_hash()
-            .ok_or(execution::Error::KeyIsNotAURef(purse_key))?;
+            .ok_or(TrackingCopyError::KeyIsNotAURef(purse_key))?;
         let proof: TrieMerkleProof<Key, StoredValue> = self
-            .read_with_proof(&balance_key) // Key::Hash, so no need to normalize
-            .map_err(Into::into)?
-            .ok_or(execution::Error::KeyNotFound(purse_key))?;
+            .read_with_proof(&balance_key)?
+            .ok_or(TrackingCopyError::KeyNotFound(purse_key))?;
         let stored_value_ref: &StoredValue = proof.value();
         let cl_value: CLValue = stored_value_ref
             .to_owned()
             .try_into()
-            .map_err(execution::Error::TypeMismatch)?;
+            .map_err(TrackingCopyError::TypeMismatch)?;
         let balance_key: Key = cl_value.into_t()?;
         Ok((balance_key, proof))
     }
@@ -258,14 +256,13 @@ where
         key: Key,
     ) -> Result<(Motes, TrieMerkleProof<Key, StoredValue>), Self::Error> {
         let proof: TrieMerkleProof<Key, StoredValue> = self
-            .read_with_proof(&key.normalize())
-            .map_err(Into::into)?
-            .ok_or(execution::Error::KeyNotFound(key))?;
+            .read_with_proof(&key.normalize())?
+            .ok_or(TrackingCopyError::KeyNotFound(key))?;
         let cl_value: CLValue = proof
             .value()
             .to_owned()
             .try_into()
-            .map_err(execution::Error::TypeMismatch)?;
+            .map_err(TrackingCopyError::TypeMismatch)?;
         let balance = Motes::new(cl_value.into_t()?);
         Ok((balance, proof))
     }
@@ -276,12 +273,12 @@ where
         contract_wasm_hash: ContractWasmHash,
     ) -> Result<ContractWasm, Self::Error> {
         let key = contract_wasm_hash.into();
-        match self.get(&key).map_err(Into::into)? {
+        match self.get(&key)? {
             Some(StoredValue::ContractWasm(contract_wasm)) => Ok(contract_wasm),
-            Some(other) => Err(execution::Error::TypeMismatch(
+            Some(other) => Err(TrackingCopyError::TypeMismatch(
                 StoredValueTypeMismatch::new("ContractWasm".to_string(), other.type_name()),
             )),
-            None => Err(execution::Error::KeyNotFound(key)),
+            None => Err(TrackingCopyError::KeyNotFound(key)),
         }
     }
 
@@ -292,7 +289,7 @@ where
     ) -> Result<AddressableEntity, Self::Error> {
         let key = contract_hash.into();
 
-        match self.read(&key).map_err(Into::into)? {
+        match self.read(&key)? {
             Some(StoredValue::AddressableEntity(entity)) => Ok(entity),
             Some(StoredValue::Contract(contract)) => {
                 let contract_key: Key = contract_hash.into();
@@ -300,13 +297,13 @@ where
                 self.write(contract_key, StoredValue::AddressableEntity(entity.clone()));
                 Ok(entity)
             }
-            Some(other) => Err(execution::Error::TypeMismatch(
+            Some(other) => Err(TrackingCopyError::TypeMismatch(
                 StoredValueTypeMismatch::new(
                     "AddressableEntity or Contract".to_string(),
                     other.type_name(),
                 ),
             )),
-            None => Err(execution::Error::KeyNotFound(key)),
+            None => Err(TrackingCopyError::KeyNotFound(key)),
         }
     }
 
@@ -315,37 +312,37 @@ where
         contract_package_hash: ContractPackageHash,
     ) -> Result<Package, Self::Error> {
         let key = contract_package_hash.into();
-        match self.read(&key).map_err(Into::into)? {
+        match self.read(&key)? {
             Some(StoredValue::ContractPackage(contract_package)) => Ok(contract_package),
-            Some(other) => Err(execution::Error::TypeMismatch(
+            Some(other) => Err(TrackingCopyError::TypeMismatch(
                 StoredValueTypeMismatch::new("ContractPackage".to_string(), other.type_name()),
             )),
-            None => Err(execution::Error::KeyNotFound(key)),
+            None => Err(TrackingCopyError::KeyNotFound(key)),
         }
     }
 
     fn get_system_contracts(&mut self) -> Result<SystemContractRegistry, Self::Error> {
-        match self.get(&Key::SystemContractRegistry).map_err(Into::into)? {
+        match self.get(&Key::SystemContractRegistry)? {
             Some(StoredValue::CLValue(registry)) => {
                 let registry: SystemContractRegistry =
                     CLValue::into_t(registry).map_err(Self::Error::from)?;
                 Ok(registry)
             }
-            Some(other) => Err(execution::Error::TypeMismatch(
+            Some(other) => Err(TrackingCopyError::TypeMismatch(
                 StoredValueTypeMismatch::new("CLValue".to_string(), other.type_name()),
             )),
-            None => Err(execution::Error::KeyNotFound(Key::SystemContractRegistry)),
+            None => Err(TrackingCopyError::KeyNotFound(Key::SystemContractRegistry)),
         }
     }
 
     fn get_checksum_registry(&mut self) -> Result<Option<ChecksumRegistry>, Self::Error> {
-        match self.get(&Key::ChecksumRegistry).map_err(Into::into)? {
+        match self.get(&Key::ChecksumRegistry)? {
             Some(StoredValue::CLValue(registry)) => {
                 let registry: ChecksumRegistry =
                     CLValue::into_t(registry).map_err(Self::Error::from)?;
                 Ok(Some(registry))
             }
-            Some(other) => Err(execution::Error::TypeMismatch(
+            Some(other) => Err(TrackingCopyError::TypeMismatch(
                 StoredValueTypeMismatch::new("CLValue".to_string(), other.type_name()),
             )),
             None => Ok(None),

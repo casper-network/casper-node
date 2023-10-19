@@ -4,15 +4,11 @@ use lmdb::{Cursor, Transaction};
 use rand::Rng;
 use tempfile::TempDir;
 
-use casper_execution_engine::{
-    engine_state::{
-        self,
-        engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
-        genesis::ExecConfigBuilder,
-        run_genesis_request::RunGenesisRequest,
-        EngineState, ExecuteRequest,
-    },
-    execution,
+use casper_execution_engine::engine_state::{
+    engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
+    genesis::ExecConfigBuilder,
+    run_genesis_request::RunGenesisRequest,
+    EngineState, ExecuteRequest,
 };
 use casper_storage::global_state::{
     state::{CommitProvider, StateProvider},
@@ -214,8 +210,6 @@ fn find_necessary_tries<S>(
     state_root: Digest,
 ) where
     S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
-    engine_state::Error: From<S::Error>,
 {
     let mut queue = Vec::new();
     queue.push(state_root);

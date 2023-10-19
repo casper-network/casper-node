@@ -1,7 +1,7 @@
 mod internal;
-pub(crate) mod mint_provider;
-pub(crate) mod runtime_provider;
-pub(crate) mod storage_provider;
+pub mod mint_provider;
+pub mod runtime_provider;
+pub mod storage_provider;
 
 use casper_types::{account::AccountHash, system::handle_payment::Error, AccessRights, URef, U512};
 

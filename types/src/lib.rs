@@ -29,7 +29,7 @@ pub mod api_error;
 mod block;
 mod block_time;
 pub mod bytesrepr;
-#[cfg(feature = "std")]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 mod chainspec;
 pub mod checksummed_hex;
 mod cl_type;
@@ -126,7 +126,11 @@ pub use chainspec::{
     DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY,
 };
 pub use cl_type::{named_key_type, CLType, CLTyped};
-pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
+
+pub use cl_value::{
+    handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError, ChecksumRegistry,
+    DictionaryValue as CLValueDictionary, SystemContractRegistry,
+};
 pub use contract_wasm::{ContractWasm, ContractWasmHash};
 #[doc(inline)]
 pub use contracts::Contract;

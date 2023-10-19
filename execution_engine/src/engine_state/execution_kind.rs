@@ -2,7 +2,10 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use casper_storage::global_state::state::StateReader;
+use casper_storage::{
+    global_state::{error::Error as GlobalStateError, state::StateReader},
+    tracking_copy::{TrackingCopy, TrackingCopyExt},
+};
 use casper_types::{
     addressable_entity::NamedKeys, bytesrepr::Bytes, ContractHash, ContractPackageHash,
     ContractVersionKey, ExecutableDeployItem, Key, Package, Phase, ProtocolVersion, StoredValue,
@@ -10,8 +13,7 @@ use casper_types::{
 
 use crate::{
     engine_state::error::Error,
-    execution::{self, Error as ExecError},
-    tracking_copy::{TrackingCopy, TrackingCopyExt},
+    execution::{self},
 };
 
 /// The type of execution about to be performed.
@@ -53,8 +55,7 @@ impl ExecutionKind {
         phase: Phase,
     ) -> Result<ExecutionKind, Error>
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<ExecError>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         let contract_hash: ContractHash;
         let contract_package: Package;

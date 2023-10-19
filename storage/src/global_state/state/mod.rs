@@ -16,14 +16,25 @@ use casper_types::{
     Digest, Key, StoredValue,
 };
 
+#[cfg(test)]
 pub use self::lmdb::make_temporary_global_state;
-use crate::global_state::{
-    transaction_source::{Transaction, TransactionSource},
-    trie::{merkle_proof::TrieMerkleProof, Trie, TrieRaw},
-    trie_store::{
-        operations::{prune, read, write, ReadResult, WriteResult},
-        TrieStore,
+
+use crate::{
+    data_access_layer::{BalanceRequest, BalanceResult, QueryRequest, QueryResult},
+    global_state::{
+        error::Error as GlobalStateError,
+        transaction_source::{Transaction, TransactionSource},
+        trie::{merkle_proof::TrieMerkleProof, Trie, TrieRaw},
+        trie_store::{
+            operations::{prune, read, write, ReadResult, WriteResult},
+            TrieStore,
+        },
     },
+    system::{
+        auction::bidding::{BiddingRequest, BiddingResult},
+        mint::transfer::{TransferRequest, TransferResult},
+    },
+    tracking_copy::{TrackingCopy, TrackingCopyError, TrackingCopyExt},
 };
 
 use super::trie_store::operations::PruneResult;
@@ -70,34 +81,89 @@ pub enum CommitError {
 pub trait CommitProvider: StateProvider {
     /// Applies changes and returns a new post state hash.
     /// block_hash is used for computing a deterministic and unique keys.
-    fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, Self::Error>;
+    fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, GlobalStateError>;
 }
 
 /// A trait expressing operations over the trie.
 pub trait StateProvider {
-    /// Associated error type for `StateProvider`.
-    type Error;
-
     /// Associated reader type for `StateProvider`.
-    type Reader: StateReader<Key, StoredValue, Error = Self::Error>;
+    type Reader: StateReader<Key, StoredValue, Error = GlobalStateError>;
 
     /// Checkouts to the post state of a specific block.
-    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, Self::Error>;
+    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, GlobalStateError>;
+
+    /// Get a tracking copy.
+    fn tracking_copy(
+        &self,
+        hash: Digest,
+    ) -> Result<Option<TrackingCopy<Self::Reader>>, GlobalStateError>;
+
+    /// Query state.
+    fn query(&self, query_request: QueryRequest) -> QueryResult {
+        match self.tracking_copy(query_request.state_hash()) {
+            Ok(Some(tc)) => match tc.query(query_request.key(), query_request.path()) {
+                Ok(ret) => ret.into(),
+                Err(err) => QueryResult::TrackingCopyError(err),
+            },
+            Ok(None) => QueryResult::RootNotFound,
+            Err(err) => QueryResult::StorageError(err),
+        }
+    }
 
     /// Returns an empty root hash.
     fn empty_root(&self) -> Digest;
 
     /// Reads a full `Trie` (never chunked) from the state if it is present
-    fn get_trie_full(&self, trie_key: &Digest) -> Result<Option<TrieRaw>, Self::Error>;
+    fn get_trie_full(&self, trie_key: &Digest) -> Result<Option<TrieRaw>, GlobalStateError>;
 
     /// Insert a trie node into the trie
-    fn put_trie(&self, trie: &[u8]) -> Result<Digest, Self::Error>;
+    fn put_trie(&self, trie: &[u8]) -> Result<Digest, GlobalStateError>;
 
     /// Finds all the children of `trie_raw` which aren't present in the state.
-    fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, Self::Error>;
+    fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, GlobalStateError>;
 
     /// Prunes key from the global state.
-    fn prune_keys(&self, root: Digest, keys_to_delete: &[Key]) -> Result<PruneResult, Self::Error>;
+    fn prune_keys(
+        &self,
+        root: Digest,
+        keys_to_delete: &[Key],
+    ) -> Result<PruneResult, GlobalStateError>;
+
+    /// Query balance state.
+    fn balance(&self, balance_request: BalanceRequest) -> BalanceResult {
+        match self.tracking_copy(balance_request.state_hash()) {
+            Ok(Some(tracking_copy)) => {
+                let purse_uref = balance_request.purse_uref();
+                let purse_key = purse_uref.into();
+                // read the new hold records if any exist
+                // check their timestamps..if stale tc.prune(that item)
+                // total bal - sum(hold balance) == avail
+                match tracking_copy.get_purse_balance_key(purse_key) {
+                    Ok(purse_balance_key) => {
+                        match tracking_copy.get_purse_balance_with_proof(purse_balance_key) {
+                            Ok((balance, proof)) => {
+                                let proof = Box::new(proof);
+                                let motes = balance.value();
+                                BalanceResult::Success { motes, proof }
+                            }
+                            Err(err) => BalanceResult::Failure(err),
+                        }
+                    }
+                    Err(err) => BalanceResult::Failure(err),
+                }
+            }
+            Ok(None) => BalanceResult::RootNotFound,
+            Err(err) => BalanceResult::Failure(TrackingCopyError::Storage(err)),
+        }
+    }
+
+    fn transfer(&self, _transfer_request: TransferRequest) -> TransferResult {
+        unimplemented!()
+    }
+
+    fn bidding(&self, _bid_request: BiddingRequest) -> BiddingResult {
+        unimplemented!()
+    }
 }
 
 /// Write multiple key/stored value pairs to the store in a single rw transaction.

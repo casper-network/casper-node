@@ -1,16 +1,15 @@
 use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 
-use casper_storage::global_state::state::StateReader;
+use casper_storage::{
+    global_state::{error::Error as GlobalStateError, state::StateReader},
+    tracking_copy::{TrackingCopy, TrackingCopyExt},
+};
 use casper_types::{
     account::AccountHash, system::mint, AccessRights, AddressableEntity, ApiError, CLType,
     CLValueError, Key, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
-use crate::{
-    engine_state::Error,
-    execution::Error as ExecError,
-    tracking_copy::{TrackingCopy, TrackingCopyExt},
-};
+use crate::{engine_state::Error, execution::Error as ExecError};
 
 /// A target mode indicates if a native transfer's arguments will resolve to an existing purse, or
 /// will have to create a new account first.
@@ -130,8 +129,7 @@ impl TransferRuntimeArgsBuilder {
     /// Checks if a purse exists.
     fn purse_exists<R>(&self, uref: URef, tracking_copy: Rc<RefCell<TrackingCopy<R>>>) -> bool
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<ExecError>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         let key = match tracking_copy
             .borrow_mut()
@@ -155,8 +153,7 @@ impl TransferRuntimeArgsBuilder {
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<URef, Error>
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<ExecError>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         let imputed_runtime_args = &self.inner;
         let arg_name = mint::ARG_SOURCE;
@@ -221,8 +218,7 @@ impl TransferRuntimeArgsBuilder {
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<NewTransferTargetMode, Error>
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<ExecError>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         let imputed_runtime_args = &self.inner;
         let arg_name = mint::ARG_TARGET;
@@ -316,13 +312,12 @@ impl TransferRuntimeArgsBuilder {
     /// Creates new [`TransferArgs`] instance.
     pub fn build<R>(
         mut self,
-        from: &AddressableEntity,
         protocol_version: ProtocolVersion,
+        from: &AddressableEntity,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<TransferArgs, Error>
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<ExecError>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         let (to, target_uref) = match self
             .resolve_transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))?

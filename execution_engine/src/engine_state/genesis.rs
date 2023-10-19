@@ -15,7 +15,9 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
-use casper_storage::global_state::state::StateProvider;
+use casper_storage::{
+    global_state::state::StateProvider, tracking_copy::TrackingCopy, AddressGenerator,
+};
 use casper_types::{
     addressable_entity::{ActionThresholds, NamedKeys},
     execution::Effects,
@@ -40,8 +42,7 @@ use casper_types::{
 
 use crate::{
     engine_state::{SystemContractRegistry, DEFAULT_ADDRESS},
-    execution::{self, AddressGenerator},
-    tracking_copy::TrackingCopy,
+    execution::{self},
 };
 
 use super::engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING};
@@ -551,7 +552,6 @@ pub enum GenesisError {
 pub(crate) struct GenesisInstaller<S>
 where
     S: StateProvider,
-    S::Error: Into<execution::Error>,
 {
     protocol_version: ProtocolVersion,
     exec_config: ExecConfig,
@@ -562,7 +562,6 @@ where
 impl<S> GenesisInstaller<S>
 where
     S: StateProvider,
-    S::Error: Into<execution::Error>,
 {
     pub(crate) fn new(
         genesis_config_hash: Digest,

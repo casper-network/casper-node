@@ -1,6 +1,11 @@
 use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
-use casper_storage::global_state::state::StateReader;
+use casper_storage::{
+    global_state::{error::Error as GlobalStateError, state::StateReader},
+    tracking_copy::{TrackingCopy, TrackingCopyExt},
+    AddressGenerator,
+};
+
 use casper_types::{
     account::AccountHash,
     addressable_entity::NamedKeys,
@@ -13,10 +18,9 @@ use casper_types::{
 
 use crate::{
     engine_state::{execution_kind::ExecutionKind, EngineConfig, ExecutionResult},
-    execution::{address_generator::AddressGenerator, Error},
+    execution::Error,
     runtime::{Runtime, RuntimeStack},
     runtime_context::RuntimeContext,
-    tracking_copy::{TrackingCopy, TrackingCopyExt},
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -61,8 +65,7 @@ impl Executor {
         stack: RuntimeStack,
     ) -> ExecutionResult
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<Error>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         let spending_limit: U512 = match try_get_amount(&args) {
             Ok(spending_limit) => spending_limit,
@@ -157,8 +160,7 @@ impl Executor {
         stack: RuntimeStack,
     ) -> ExecutionResult
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<Error>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         let spending_limit: U512 = match try_get_amount(&payment_args) {
             Ok(spending_limit) => spending_limit,
@@ -234,8 +236,7 @@ impl Executor {
         remaining_spending_limit: U512,
     ) -> (Option<T>, ExecutionResult)
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<Error>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
         T: FromBytes + CLTyped,
     {
         let address_generator = {
@@ -370,8 +371,7 @@ impl Executor {
         entry_point_type: EntryPointType,
     ) -> RuntimeContext<'a, R>
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<Error>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         let gas_counter = Gas::default();
         let transfers = Vec::default();

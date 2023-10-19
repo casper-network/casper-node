@@ -8,9 +8,11 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
-use casper_execution_engine::engine_state::{self, BalanceResult, GetBidsResult, QueryResult};
 use casper_json_rpc::ReservedErrorCode;
-use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
+use casper_storage::{
+    data_access_layer::{get_bids::GetBidsResult, BalanceResult, QueryResult},
+    global_state::trie::merkle_proof::TrieMerkleProof,
+};
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{Bytes, ToBytes},
@@ -267,42 +269,33 @@ impl RpcWithParams for GetBalance {
             )
             .await;
 
-        let (balance_value, balance_proof) = match balance_result {
-            Ok(BalanceResult::Success { motes, proof }) => (motes, proof),
-            Ok(balance_result) => {
-                info!("get-balance failed: {:?}", balance_result);
-                return Err(Error::new(
-                    ErrorCode::FailedToGetBalance,
-                    format!("failed for purse {}: {:?}", purse_uref, balance_result),
-                ));
-            }
-            Err(error) => {
-                info!("get-balance failed to execute: {}", error);
-                return Err(Error::new(
-                    ErrorCode::GetBalanceFailedToExecute,
-                    format!("failed to execute for purse {}: {}", purse_uref, error),
-                ));
-            }
-        };
+        if let BalanceResult::Success { motes, proof } = balance_result {
+            let balance_value = motes;
+            let proof_bytes = match proof.to_bytes() {
+                Ok(proof_bytes) => proof_bytes,
+                Err(error) => {
+                    let message = format!("failed to encode proof: {}", error);
+                    info!("{}", message);
+                    return Err(Error::new(ReservedErrorCode::InternalError, message));
+                }
+            };
 
-        let proof_bytes = match balance_proof.to_bytes() {
-            Ok(proof_bytes) => proof_bytes,
-            Err(error) => {
-                let message = format!("failed to encode proof: {}", error);
-                info!("{}", message);
-                return Err(Error::new(ReservedErrorCode::InternalError, message));
-            }
-        };
+            let merkle_proof = base16::encode_lower(&proof_bytes);
 
-        let merkle_proof = base16::encode_lower(&proof_bytes);
-
-        // Return the result.
-        let result = Self::ResponseResult {
-            api_version,
-            balance_value,
-            merkle_proof,
-        };
-        Ok(result)
+            // Return the result.
+            let result = Self::ResponseResult {
+                api_version,
+                balance_value,
+                merkle_proof,
+            };
+            Ok(result)
+        } else {
+            info!("get-balance failed: {:?}", balance_result);
+            Err(Error::new(
+                ErrorCode::FailedToGetBalance,
+                format!("failed for purse {}: {:?}", purse_uref, balance_result),
+            ))
+        }
     }
 }
 
@@ -380,8 +373,8 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .await;
 
         let bids = match get_bids_result {
-            Ok(GetBidsResult::Success { bids }) => bids,
-            Ok(GetBidsResult::RootNotFound) => {
+            GetBidsResult::Success { bids } => bids,
+            GetBidsResult::RootNotFound => {
                 error!(
                     block_hash=?block.hash(),
                     ?state_root_hash,
@@ -395,7 +388,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
                     ),
                 ));
             }
-            Err(error) => {
+            GetBidsResult::Failure(error) => {
                 error!(
                     block_hash=?block.hash(),
                     ?state_root_hash,
@@ -405,7 +398,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
                 return Err(Error::new(
                     ReservedErrorCode::InternalError,
                     format!(
-                        "error getting bids at block {:?}: {}",
+                        "error getting bids at block {:?}: {:?}",
                         block.hash().inner(),
                         error
                     ),
@@ -963,8 +956,8 @@ impl RpcWithParams for QueryBalance {
             .await;
 
         let balance_value = match balance_result {
-            Ok(BalanceResult::Success { motes, .. }) => motes,
-            Ok(BalanceResult::RootNotFound) => {
+            BalanceResult::Success { motes, .. } => motes,
+            BalanceResult::RootNotFound => {
                 info!(
                     %state_root_hash,
                     %purse_uref,
@@ -978,7 +971,7 @@ impl RpcWithParams for QueryBalance {
                     ),
                 ));
             }
-            Err(error) => {
+            BalanceResult::Failure(error) => {
                 info!("query-balance failed to execute: {}", error);
                 return Err(Error::new(
                     ErrorCode::GetBalanceFailedToExecute,
@@ -1096,35 +1089,28 @@ pub(super) async fn run_query<REv: ReactorEventT>(
 pub(super) async fn handle_query_result<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
     state_root_hash: Digest,
-    query_result: Result<QueryResult, engine_state::Error>,
+    query_result: QueryResult,
 ) -> Result<QuerySuccess, Error> {
-    match query_result {
-        Ok(QueryResult::Success { value, proofs }) => Ok((*value, proofs)),
-        Ok(QueryResult::RootNotFound) => {
-            info!("query failed: root not found");
-            let error = common::missing_block_or_state_root_error(
-                effect_builder,
-                ErrorCode::NoSuchStateRoot,
-                format!("failed to get state root at {:?}", state_root_hash),
-            )
-            .await;
-            Err(error)
-        }
-        Ok(query_result) => {
-            debug!(?query_result, "query failed");
-            Err(Error::new(
-                ErrorCode::QueryFailed,
-                format!("{:?}", query_result),
-            ))
-        }
-        Err(error) => {
-            info!(?error, "query failed to execute");
-            Err(Error::new(
-                ErrorCode::QueryFailedToExecute,
-                format!("{:?}", error),
-            ))
-        }
+    if let QueryResult::RootNotFound = query_result {
+        info!("query failed: root not found");
+        let error = common::missing_block_or_state_root_error(
+            effect_builder,
+            ErrorCode::NoSuchStateRoot,
+            format!("failed to get state root at {:?}", state_root_hash),
+        )
+        .await;
+        return Err(error);
     }
+
+    if let QueryResult::Success { value, proofs } = query_result {
+        return Ok((*value, proofs));
+    }
+
+    debug!(?query_result, "query failed");
+    Err(Error::new(
+        ErrorCode::QueryFailed,
+        format!("{:?}", query_result),
+    ))
 }
 
 async fn get_main_purse_by_account_hash<REv: ReactorEventT>(

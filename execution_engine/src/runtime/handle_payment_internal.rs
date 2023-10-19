@@ -1,4 +1,4 @@
-use casper_storage::global_state::state::StateReader;
+use casper_storage::global_state::{error::Error as GlobalStateError, state::StateReader};
 use std::collections::BTreeSet;
 
 use casper_types::{
@@ -6,14 +6,12 @@ use casper_types::{
     Phase, RefundHandling, StoredValue, TransferredTo, URef, U512,
 };
 
-use crate::{
-    execution,
-    runtime::Runtime,
-    system::handle_payment::{
-        mint_provider::MintProvider, runtime_provider::RuntimeProvider,
-        storage_provider::StorageProvider, HandlePayment,
-    },
+use casper_storage::system::handle_payment::{
+    mint_provider::MintProvider, runtime_provider::RuntimeProvider,
+    storage_provider::StorageProvider, HandlePayment,
 };
+
+use crate::{execution, runtime::Runtime};
 
 impl From<execution::Error> for Option<Error> {
     fn from(exec_error: execution::Error) -> Self {
@@ -31,8 +29,7 @@ impl From<execution::Error> for Option<Error> {
 // TODO: Update MintProvider to better handle errors
 impl<'a, R> MintProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn transfer_purse_to_account(
         &mut self,
@@ -89,8 +86,7 @@ where
 // TODO: Update RuntimeProvider to better handle errors
 impl<'a, R> RuntimeProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn get_key(&self, name: &str) -> Option<Key> {
         self.context.named_keys_get(name).cloned()
@@ -135,8 +131,7 @@ where
 
 impl<'a, R> StorageProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn write_balance(&mut self, purse_uref: URef, amount: U512) -> Result<(), Error> {
         let cl_amount = CLValue::from_t(amount).map_err(|_| Error::Storage)?;
@@ -147,9 +142,7 @@ where
     }
 }
 
-impl<'a, R> HandlePayment for Runtime<'a, R>
-where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+impl<'a, R> HandlePayment for Runtime<'a, R> where
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>
 {
 }

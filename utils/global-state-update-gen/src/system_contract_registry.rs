@@ -4,11 +4,10 @@ use clap::ArgMatches;
 use lmdb::{self, Cursor, Environment, EnvironmentFlags, Transaction};
 
 use casper_engine_test_support::LmdbWasmTestBuilder;
-use casper_execution_engine::engine_state::SystemContractRegistry;
 use casper_types::{
     bytesrepr::FromBytes,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
-    CLValue, ContractHash, Key, StoredValue, KEY_HASH_LENGTH,
+    CLValue, ContractHash, Key, StoredValue, SystemContractRegistry, KEY_HASH_LENGTH,
 };
 
 use crate::utils::{hash_from_str, print_entry};

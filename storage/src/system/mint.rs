@@ -1,10 +1,10 @@
-pub(crate) mod runtime_provider;
-pub(crate) mod storage_provider;
-pub(crate) mod system_provider;
+pub mod runtime_provider;
+pub mod storage_provider;
+pub mod system_provider;
+pub mod transfer;
 
 use num_rational::Ratio;
 use num_traits::CheckedMul;
-use tracing::warn;
 
 use casper_types::{
     account::AccountHash,
@@ -12,15 +12,12 @@ use casper_types::{
         mint::{Error, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         CallStackElement,
     },
-    Key, Phase, PublicKey, URef, U512,
+    Key, Phase, PublicKey, SystemContractRegistry, URef, U512,
 };
 
-use crate::{
-    engine_state::SystemContractRegistry,
-    system::mint::{
-        runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
-        system_provider::SystemProvider,
-    },
+use crate::system::mint::{
+    runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+    system_provider::SystemProvider,
 };
 
 /// Mint trait.
@@ -115,10 +112,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         if !self.allow_unrestricted_transfers() {
             let registry = match self.get_system_contract_registry() {
                 Ok(registry) => registry,
-                Err(error) => {
-                    warn!(%error, "unable to obtain system contract registry during transfer");
-                    SystemContractRegistry::new()
-                }
+                Err(_) => SystemContractRegistry::new(),
             };
             let immediate_caller = self.get_immediate_caller().cloned();
             match immediate_caller {
@@ -191,9 +185,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                                         return Err(Error::DisabledUnrestrictedTransfers);
                                     }
                                 }
-                                Err(error) => {
-                                    warn!(%error, "error while reading account");
-                                    // dbg!(&error);
+                                Err(_) => {
                                     return Err(Error::Storage);
                                 }
                             }

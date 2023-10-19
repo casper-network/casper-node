@@ -114,11 +114,14 @@ use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 use tracing::{debug, error, warn};
 
-use casper_execution_engine::engine_state::{
-    self, era_validators::GetEraValidatorsError, BalanceRequest, BalanceResult, GetBidsRequest,
-    GetBidsResult, QueryRequest, QueryResult,
+use casper_execution_engine::engine_state::{self, era_validators::GetEraValidatorsError};
+use casper_storage::{
+    data_access_layer::{
+        BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
+    },
+    global_state::trie::TrieRaw,
 };
-use casper_storage::global_state::trie::TrieRaw;
+
 use casper_types::{
     bytesrepr::Bytes,
     execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},
@@ -1883,10 +1886,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests a query be executed on the Contract Runtime component.
-    pub(crate) async fn query_global_state(
-        self,
-        query_request: QueryRequest,
-    ) -> Result<QueryResult, engine_state::Error>
+    pub(crate) async fn query_global_state(self, query_request: QueryRequest) -> QueryResult
     where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1926,17 +1926,16 @@ impl<REv> EffectBuilder<REv> {
         REv: From<ContractRuntimeRequest>,
     {
         let query_request = QueryRequest::new(state_root_hash, key, vec![]);
-        match self.query_global_state(query_request).await {
-            Ok(QueryResult::Success { value, .. }) => value.into_contract_package(),
-            Ok(_) | Err(_) => None,
+
+        if let QueryResult::Success { value, .. } = self.query_global_state(query_request).await {
+            value.into_contract_package()
+        } else {
+            None
         }
     }
 
     /// Requests a query be executed on the Contract Runtime component.
-    pub(crate) async fn get_balance(
-        self,
-        balance_request: BalanceRequest,
-    ) -> Result<BalanceResult, engine_state::Error>
+    pub(crate) async fn get_balance(self, balance_request: BalanceRequest) -> BalanceResult
     where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1968,10 +1967,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests a query be executed on the Contract Runtime component.
-    pub(crate) async fn get_bids(
-        self,
-        get_bids_request: GetBidsRequest,
-    ) -> Result<GetBidsResult, engine_state::Error>
+    pub(crate) async fn get_bids(self, get_bids_request: GetBidsRequest) -> GetBidsResult
     where
         REv: From<ContractRuntimeRequest>,
     {

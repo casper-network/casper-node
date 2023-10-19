@@ -8,9 +8,7 @@ use tempfile::TempDir;
 use tokio::time;
 use tracing::{error, info};
 
-use casper_execution_engine::engine_state::{
-    GetBidsRequest, GetBidsResult, SystemContractRegistry,
-};
+use casper_execution_engine::engine_state::{GetBidsRequest, GetBidsResult};
 use casper_storage::global_state::state::{StateProvider, StateReader};
 use casper_types::{
     execution::{Effects, ExecutionResult, ExecutionResultV2, TransformKind},
@@ -18,8 +16,8 @@ use casper_types::{
     testing::TestRng,
     AccountConfig, AccountsConfig, ActivationPoint, Block, BlockHash, BlockHeader, CLValue,
     Chainspec, ChainspecRawBytes, ContractHash, Deploy, DeployHash, EraId, Key, Motes,
-    ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, Timestamp, Transaction,
-    TransactionHash, ValidatorConfig, U512,
+    ProtocolVersion, PublicKey, SecretKey, StoredValue, SystemContractRegistry, TimeDiff,
+    Timestamp, Transaction, TransactionHash, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -341,8 +339,7 @@ impl SwitchBlocks {
         for runner in nodes.values() {
             let request = GetBidsRequest::new(state_root_hash);
             let engine_state = runner.main_reactor().contract_runtime().engine_state();
-            let bids_result = engine_state.get_bids(request).expect("get_bids failed");
-            if let Some(bids) = bids_result.into_success() {
+            if let GetBidsResult::Success { bids } = engine_state.get_bids(request) {
                 return bids;
             }
         }
@@ -1203,8 +1200,7 @@ fn check_bid_existence_at_tip(
     let bids_result = runner
         .main_reactor()
         .contract_runtime
-        .auction_state(*state_hash)
-        .expect("should have bids result");
+        .auction_state(*state_hash);
 
     if let GetBidsResult::Success { bids } = bids_result {
         match bids.iter().find(|x| {
