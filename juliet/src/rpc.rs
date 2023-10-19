@@ -72,7 +72,7 @@ impl<const N: usize> RpcBuilder<N> {
         }
     }
 
-    /// Enable timeout bubbling.
+    /// Enables timeout bubbling.
     ///
     /// If enabled, any timeout from an RPC call will also cause an error in
     /// [`JulietRpcServer::next_request`], specifically an [`RpcServerError::FatalTimeout`], which
@@ -81,7 +81,7 @@ impl<const N: usize> RpcBuilder<N> {
     /// This feature can be used to implement a liveness check, causing any timed out request to be
     /// considered fatal. Note that under high load a remote server may take time to answer, thus it
     /// is best not to set too aggressive timeout values on requests if this setting is enabled.
-    pub fn bubble_timeouts(mut self, bubble_timeouts: bool) -> Self {
+    pub fn with_bubble_timeouts(mut self, bubble_timeouts: bool) -> Self {
         self.bubble_timeouts = bubble_timeouts;
         self
     }
