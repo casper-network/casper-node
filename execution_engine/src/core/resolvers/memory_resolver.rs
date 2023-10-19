@@ -1,5 +1,5 @@
 //! This module contains resolver of a memory section of the WASM code.
-use wasmi::MemoryRef;
+use casper_wasmi::MemoryRef;
 
 use super::error::ResolverError;
 

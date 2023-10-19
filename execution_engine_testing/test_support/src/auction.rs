@@ -161,6 +161,7 @@ pub fn run_blocks_with_transfers_and_step(
                         .iter()
                         .cloned()
                         .map(|id| RewardItem::new(id, 1)),
+                    Vec::new(),
                 );
                 builder.commit();
             }
