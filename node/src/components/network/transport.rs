@@ -3,6 +3,7 @@
 //! The low-level transport is built on top of an existing TLS stream, handling all multiplexing. It
 //! is based on a configuration of the Juliet protocol implemented in the `juliet` crate.
 
+use casper_types::TimeDiff;
 use juliet::{rpc::IncomingRequest, ChannelConfiguration};
 use strum::EnumCount;
 
@@ -14,6 +15,7 @@ use super::Channel;
 pub(super) fn create_rpc_builder(
     maximum_message_size: u32,
     max_in_flight_demands: u16,
+    ack_timeout: TimeDiff,
 ) -> juliet::rpc::RpcBuilder<{ Channel::COUNT }> {
     // Note: `maximum_message_size` is a bit misleading, since it is actually the maximum payload
     //       size. In the future, the chainspec setting should be overhauled and the
@@ -36,6 +38,8 @@ pub(super) fn create_rpc_builder(
     );
 
     juliet::rpc::RpcBuilder::new(io_core)
+        .with_bubble_timeouts(true)
+        .with_default_timeout(ack_timeout.into())
 }
 
 /// Adapter for incoming Juliet requests.

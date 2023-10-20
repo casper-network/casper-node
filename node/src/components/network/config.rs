@@ -49,6 +49,7 @@ impl Default for Config {
             tarpit_duration: TimeDiff::from_seconds(600),
             tarpit_chance: 0.2,
             max_in_flight_demands: 50,
+            ack_timeout: TimeDiff::from_seconds(30),
             blocklist_retain_duration: TimeDiff::from_seconds(600),
             identity: None,
         }
@@ -107,6 +108,8 @@ pub struct Config {
     pub tarpit_chance: f32,
     /// Maximum number of demands for objects that can be in-flight.
     pub max_in_flight_demands: u16,
+    /// Timeout for completing handling of a message before closing a connection to a peer.
+    pub ack_timeout: TimeDiff,
     /// Duration peers are kept on the block list, before being redeemed.
     pub blocklist_retain_duration: TimeDiff,
     /// Network identity configuration option.
