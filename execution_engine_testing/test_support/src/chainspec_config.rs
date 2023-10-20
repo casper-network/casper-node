@@ -58,7 +58,7 @@ pub struct CoreConfig {
     pub(crate) locked_funds_period: TimeDiff,
     /// The period in which genesis validator's bid is released over time
     pub(crate) vesting_schedule_period: TimeDiff,
-    /// The delay in number of eras for paying out the the unbonding amount.
+    /// The delay in number of eras for paying out the unbonding amount.
     pub(crate) unbonding_delay: u64,
     /// Round seigniorage rate represented as a fractional number.
     pub(crate) round_seigniorage_rate: Ratio<u64>,
