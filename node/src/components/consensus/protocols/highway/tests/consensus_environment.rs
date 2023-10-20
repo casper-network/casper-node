@@ -212,7 +212,8 @@ impl ConsensusEnvironment {
             self.add_vertices((self.current_round_start + min_round_len / 3 + 2).into());
 
             let post_confirmation_state = if self.is_slow() {
-                // if we're slow, the post confirmation state should not contain our own confirmation
+                // if we're slow, the post confirmation state should not contain our own
+                // confirmation
                 for unit in fast_confirmation_units {
                     post_proposal_state.add_valid_unit(unit);
                 }
