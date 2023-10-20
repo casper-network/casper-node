@@ -9,9 +9,9 @@ use casper_execution_engine::engine_state::EngineConfigBuilder;
 use casper_types::{
     bytesrepr::ToBytes,
     contract_messages::{MessageChecksum, MessagePayload, MessageTopicSummary, TopicNameHash},
-    crypto, runtime_args, AddressableEntity, BlockTime, ContractHash, Digest, HostFunction,
-    HostFunctionCosts, Key, MessageLimits, OpcodeCosts, RuntimeArgs, StorageCosts, StoredValue,
-    WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
+    crypto, runtime_args, AddressableEntity, AddressableEntityHash, BlockTime, Digest,
+    HostFunction, HostFunctionCosts, Key, MessageLimits, OpcodeCosts, RuntimeArgs, StorageCosts,
+    StoredValue, WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
 const MESSAGE_EMITTER_INSTALLER_WASM: &str = "contract_messages_emitter.wasm";
@@ -33,7 +33,9 @@ const EMITTER_MESSAGE_PREFIX: &str = "generic message: ";
 // Number of messages that will be emitted when calling `ENTRY_POINT_EMIT_MESSAGE_FROM_EACH_VERSION`
 const EMIT_MESSAGE_FROM_EACH_VERSION_NUM_MESSAGES: u32 = 3;
 
-fn install_messages_emitter_contract(builder: &RefCell<LmdbWasmTestBuilder>) -> ContractHash {
+fn install_messages_emitter_contract(
+    builder: &RefCell<LmdbWasmTestBuilder>,
+) -> AddressableEntityHash {
     // Request to install the contract that will be emitting messages.
     let install_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -60,7 +62,7 @@ fn install_messages_emitter_contract(builder: &RefCell<LmdbWasmTestBuilder>) -> 
         )
         .expect("should query");
 
-    let message_emitter_package = if let StoredValue::ContractPackage(package) = query_result {
+    let message_emitter_package = if let StoredValue::Package(package) = query_result {
         package
     } else {
         panic!("Stored value is not a contract package: {:?}", query_result);
@@ -74,7 +76,9 @@ fn install_messages_emitter_contract(builder: &RefCell<LmdbWasmTestBuilder>) -> 
         .expect("Should have contract hash")
 }
 
-fn upgrade_messages_emitter_contract(builder: &RefCell<LmdbWasmTestBuilder>) -> ContractHash {
+fn upgrade_messages_emitter_contract(
+    builder: &RefCell<LmdbWasmTestBuilder>,
+) -> AddressableEntityHash {
     let upgrade_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         MESSAGE_EMITTER_UPGRADER_WASM,
@@ -100,7 +104,7 @@ fn upgrade_messages_emitter_contract(builder: &RefCell<LmdbWasmTestBuilder>) -> 
         )
         .expect("should query");
 
-    let message_emitter_package = if let StoredValue::ContractPackage(package) = query_result {
+    let message_emitter_package = if let StoredValue::Package(package) = query_result {
         package
     } else {
         panic!("Stored value is not a contract package: {:?}", query_result);
@@ -117,7 +121,7 @@ fn upgrade_messages_emitter_contract(builder: &RefCell<LmdbWasmTestBuilder>) -> 
 fn emit_message_with_suffix(
     builder: &RefCell<LmdbWasmTestBuilder>,
     suffix: &str,
-    contract_hash: &ContractHash,
+    contract_hash: &AddressableEntityHash,
     block_time: u64,
 ) {
     let emit_message_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -140,11 +144,14 @@ fn emit_message_with_suffix(
 
 struct ContractQueryView<'a> {
     builder: &'a RefCell<LmdbWasmTestBuilder>,
-    contract_hash: ContractHash,
+    contract_hash: AddressableEntityHash,
 }
 
 impl<'a> ContractQueryView<'a> {
-    fn new(builder: &'a RefCell<LmdbWasmTestBuilder>, contract_hash: ContractHash) -> Self {
+    fn new(
+        builder: &'a RefCell<LmdbWasmTestBuilder>,
+        contract_hash: AddressableEntityHash,
+    ) -> Self {
         Self {
             builder,
             contract_hash,
@@ -155,7 +162,7 @@ impl<'a> ContractQueryView<'a> {
         let query_result = self
             .builder
             .borrow_mut()
-            .query(None, Key::from(self.contract_hash), &[])
+            .query(None, Key::contract_entity_key(self.contract_hash), &[])
             .expect("should query");
 
         let entity = if let StoredValue::AddressableEntity(entity) = query_result {
@@ -176,7 +183,7 @@ impl<'a> ContractQueryView<'a> {
             .borrow_mut()
             .query(
                 None,
-                Key::message_topic(self.contract_hash.value(), topic_name_hash),
+                Key::message_topic(self.contract_hash, topic_name_hash),
                 &[],
             )
             .expect("should query");
@@ -200,7 +207,7 @@ impl<'a> ContractQueryView<'a> {
     ) -> Result<MessageChecksum, String> {
         let query_result = self.builder.borrow_mut().query(
             state_hash,
-            Key::message(self.contract_hash.value(), topic_name_hash, message_index),
+            Key::message(self.contract_hash, topic_name_hash, message_index),
             &[],
         )?;
 

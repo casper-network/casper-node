@@ -7,9 +7,9 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, ContractHash, EraId, Gas, HostFunction,
-    HostFunctionCost, HostFunctionCosts, Key, MintCosts, Motes, ProtocolVersion, PublicKey,
-    SecretKey, SystemConfig, UpgradeConfig, WasmConfig, DEFAULT_MAX_STACK_HEIGHT,
+    account::AccountHash, runtime_args, system::mint, AddressableEntityHash, EraId, Gas,
+    HostFunction, HostFunctionCost, HostFunctionCosts, Key, MintCosts, Motes, ProtocolVersion,
+    PublicKey, SecretKey, SystemConfig, UpgradeConfig, WasmConfig, DEFAULT_MAX_STACK_HEIGHT,
     DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
@@ -696,7 +696,7 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
 }
 
 struct TestContext {
-    gh_2280_regression: ContractHash,
+    gh_2280_regression: AddressableEntityHash,
 }
 
 fn setup() -> (LmdbWasmTestBuilder, TestContext) {
@@ -723,8 +723,8 @@ fn setup() -> (LmdbWasmTestBuilder, TestContext) {
         .named_keys()
         .get(HASH_KEY_NAME)
         .cloned()
-        .and_then(Key::into_hash)
-        .map(ContractHash::new)
+        .and_then(Key::into_entity_addr)
+        .map(AddressableEntityHash::new)
         .expect("should have key");
 
     (builder, TestContext { gh_2280_regression })

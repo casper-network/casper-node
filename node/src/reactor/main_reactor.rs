@@ -1065,39 +1065,17 @@ impl reactor::Reactor for MainReactor {
             config.node.force_resync,
         )?;
 
-        let max_delegators_per_validator =
-            if chainspec.core_config.max_delegators_per_validator == 0 {
-                None
-            } else {
-                Some(chainspec.core_config.max_delegators_per_validator)
-            };
-
         let contract_runtime = ContractRuntime::new(
-            protocol_version,
             storage.root_path(),
             &config.contract_runtime,
-            chainspec.wasm_config,
-            chainspec.system_costs_config,
-            chainspec.core_config.max_associated_keys,
-            chainspec.core_config.max_runtime_call_stack_height,
-            chainspec.core_config.minimum_delegation_amount,
-            chainspec.protocol_config.activation_point,
-            chainspec.core_config.prune_batch_size,
-            chainspec.core_config.strict_argument_checking,
-            chainspec.core_config.vesting_schedule_period.millis(),
-            max_delegators_per_validator,
+            chainspec.clone(),
             registry,
-            chainspec.core_config.administrators.clone(),
-            chainspec.core_config.allow_auction_bids,
-            chainspec.core_config.allow_unrestricted_transfers,
-            chainspec.core_config.refund_handling,
-            chainspec.core_config.fee_handling,
         )?;
 
         let network = Network::new(
             config.network.clone(),
             network_identity,
-            Some((our_secret_key.clone(), our_public_key.clone())),
+            Some((our_secret_key, our_public_key)),
             registry,
             chainspec.as_ref(),
             validator_matrix.clone(),
@@ -1156,8 +1134,7 @@ impl reactor::Reactor for MainReactor {
         // consensus
         let consensus = EraSupervisor::new(
             storage.root_path(),
-            our_secret_key,
-            our_public_key,
+            validator_matrix.clone(),
             config.consensus,
             chainspec.clone(),
             registry,
@@ -1453,7 +1430,7 @@ impl MainReactor {
                             effect_builder,
                             rng,
                             consensus::Event::BlockAdded {
-                                header: Box::new(fwd_meta_block.block.header().clone()),
+                                header: Box::new(fwd_meta_block.block.header().clone().into()),
                                 header_hash: *fwd_meta_block.block.hash(),
                             },
                         ),
@@ -1469,7 +1446,7 @@ impl MainReactor {
                             effect_builder,
                             rng,
                             consensus::Event::BlockAdded {
-                                header: Box::new(historical_meta_block.block.header().clone()),
+                                header: Box::new(historical_meta_block.block.clone_header()),
                                 header_hash: *historical_meta_block.block.hash(),
                             },
                         ),

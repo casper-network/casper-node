@@ -25,10 +25,10 @@ use crate::{
 #[cfg(any(feature = "std", test))]
 use account_and_secret_key::AccountAndSecretKey;
 pub use deploy::{
-    runtime_args, ContractIdentifier, ContractPackageIdentifier, Deploy, DeployApproval,
-    DeployApprovalsHash, DeployConfigurationFailure, DeployDecodeFromJsonError, DeployError,
-    DeployExcessiveSizeError, DeployFootprint, DeployHash, DeployHeader, DeployId,
-    ExecutableDeployItem, ExecutableDeployItemIdentifier, TransferTarget,
+    runtime_args, Deploy, DeployApproval, DeployApprovalsHash, DeployConfigurationFailure,
+    DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash,
+    DeployHeader, DeployId, EntityIdentifier, ExecutableDeployItem, ExecutableDeployItemIdentifier,
+    PackageIdentifier, TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use deploy::{DeployBuilder, DeployBuilderError};

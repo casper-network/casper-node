@@ -12,7 +12,7 @@ use datasize::DataSize;
 use tracing::{debug, error, trace, warn};
 
 use casper_types::{
-    execution::ExecutionResult, Block, BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash,
+    execution::ExecutionResult, Block, BlockHash, BlockHeader, BlockSignatures, DeployHash,
     DeployId, Digest, EraId, FinalitySignature, LegacyRequiredFinality, ProtocolVersion, PublicKey,
     TimeDiff, Timestamp,
 };
@@ -28,8 +28,8 @@ use super::{
 use crate::{
     components::block_synchronizer::block_builder::latch::Latch,
     types::{
-        ApprovalsHashes, BlockExecutionResultsOrChunk, EraValidatorWeights, FinalizedBlock, NodeId,
-        ValidatorMatrix,
+        ApprovalsHashes, BlockExecutionResultsOrChunk, EraValidatorWeights, ExecutableBlock,
+        NodeId, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -135,7 +135,7 @@ impl BlockBuilder {
 
     #[allow(clippy::too_many_arguments)]
     pub(super) fn new_from_sync_leap(
-        block_header: &BlockHeader,
+        block_header: BlockHeader,
         maybe_sigs: Option<&BlockSignatures>,
         validator_weights: EraValidatorWeights,
         peers: Vec<NodeId>,
@@ -158,7 +158,7 @@ impl BlockBuilder {
             }
         }
         let acquisition_state = BlockAcquisitionState::HaveWeakFinalitySignatures(
-            Box::new(block_header.clone()),
+            Box::new(block_header),
             signature_acquisition,
         );
         let mut peer_list = PeerList::new(max_simultaneous_peers, peer_refresh_interval);
@@ -271,7 +271,7 @@ impl BlockBuilder {
             | BlockAcquisitionState::HaveApprovalsHashes(_, _, _)
             | BlockAcquisitionState::HaveAllDeploys(_, _)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
-            | BlockAcquisitionState::HaveFinalizedBlock(_, _, _, _)
+            | BlockAcquisitionState::HaveExecutableBlock(_, _, _)
             | BlockAcquisitionState::Failed(_, _) => {
                 //TODO: does failed also mean finished?
                 false
@@ -315,16 +315,11 @@ impl BlockBuilder {
         }
     }
 
-    pub(super) fn register_made_finalized_block(
-        &mut self,
-        block: FinalizedBlock,
-        deploys: Vec<Deploy>,
-    ) {
-        if let Err(error) = self.acquisition_state.register_made_finalized_block(
-            self.should_fetch_execution_state,
-            block,
-            deploys,
-        ) {
+    pub(super) fn register_made_executable_block(&mut self, executable_block: ExecutableBlock) {
+        if let Err(error) = self
+            .acquisition_state
+            .register_made_finalized_block(self.should_fetch_execution_state, executable_block)
+        {
             error!(%error, "register finalized block failed");
             self.abort()
         } else {
@@ -474,7 +469,7 @@ impl BlockBuilder {
             | BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => false,
         }
@@ -509,7 +504,7 @@ impl BlockBuilder {
             | BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => false,
         }
@@ -544,7 +539,7 @@ impl BlockBuilder {
             | BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => false,
         }
@@ -648,7 +643,7 @@ impl BlockBuilder {
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => false,
         }
@@ -791,7 +786,7 @@ impl BlockBuilder {
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => false,
         }

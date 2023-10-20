@@ -8,14 +8,14 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 
-use casper_types::{ContractHash, Key, RuntimeArgs, URef, U512};
+use casper_types::{AddressableEntityHash, Key, RuntimeArgs, URef, U512};
 
 const GET_PAYMENT_PURSE_NAME: &str = "get_payment_purse";
 const HASH_KEY_NAME: &str = "contract_own_funds_hash";
 const ARG_AMOUNT: &str = "amount";
 
 fn get_payment_purse() -> URef {
-    let contract_hash = get_contract_hash_name();
+    let contract_hash = get_entity_hash_name();
     runtime::call_contract(
         contract_hash,
         GET_PAYMENT_PURSE_NAME,
@@ -23,10 +23,10 @@ fn get_payment_purse() -> URef {
     )
 }
 
-fn get_contract_hash_name() -> ContractHash {
+fn get_entity_hash_name() -> AddressableEntityHash {
     runtime::get_key(HASH_KEY_NAME)
-        .and_then(Key::into_hash)
-        .map(ContractHash::new)
+        .and_then(Key::into_entity_addr)
+        .map(AddressableEntityHash::new)
         .unwrap_or_revert()
 }
 

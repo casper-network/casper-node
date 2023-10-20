@@ -446,7 +446,7 @@ fn ensure_efficient_serialization<T>() {
     debug_assert_ne!(
         any::type_name::<T>(),
         any::type_name::<u8>(),
-        "You should use Bytes newtype wrapper for efficiency"
+        "You should use `casper_types::bytesrepr::Bytes` newtype wrapper instead of `Vec<u8>` for efficiency"
     );
 }
 
@@ -1412,7 +1412,9 @@ mod tests {
 
     #[cfg(debug_assertions)]
     #[test]
-    #[should_panic(expected = "You should use Bytes newtype wrapper for efficiency")]
+    #[should_panic(
+        expected = "You should use `casper_types::bytesrepr::Bytes` newtype wrapper instead of `Vec<u8>` for efficiency"
+    )]
     fn should_fail_to_serialize_slice_of_u8() {
         let bytes = b"0123456789".to_vec();
         bytes.to_bytes().unwrap();

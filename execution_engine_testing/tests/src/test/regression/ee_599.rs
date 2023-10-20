@@ -75,7 +75,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_purse_to_purse() {
     let exec_request_3 = {
         let args = runtime_args! {
             "method" => "call",
-            "contract_key" => transfer_funds.into_hash().expect("should be hash"),
+            "contract_key" => transfer_funds.into_entity_addr().expect("should be hash"),
             "sub_contract_method_fwd" => "transfer_from_purse_to_purse_ext",
         };
         ExecuteRequestBuilder::standard(VICTIM_ADDR, CONTRACT_EE_599_REGRESSION, args).build()
@@ -135,7 +135,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_from_purse_to_account() {
     let exec_request_3 = {
         let args = runtime_args! {
             "method" => "call".to_string(),
-            "contract_key" => transfer_funds.into_hash().expect("should get key"),
+            "contract_key" => transfer_funds.into_entity_addr().expect("should get key"),
             "sub_contract_method_fwd" => "transfer_from_purse_to_account_ext",
         };
         ExecuteRequestBuilder::standard(VICTIM_ADDR, CONTRACT_EE_599_REGRESSION, args).build()
@@ -203,7 +203,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_to_account() {
     let exec_request_3 = {
         let args = runtime_args! {
             "method" => "call",
-            "contract_key" => transfer_funds.into_hash().expect("should be hash"),
+            "contract_key" => transfer_funds.into_entity_addr().expect("should be hash"),
             "sub_contract_method_fwd" => "transfer_to_account_ext",
         };
         ExecuteRequestBuilder::standard(VICTIM_ADDR, CONTRACT_EE_599_REGRESSION, args).build()
@@ -263,7 +263,7 @@ fn should_not_be_able_to_get_main_purse_in_invalid_builder() {
     let exec_request_3 = {
         let args = runtime_args! {
             "method" => "call".to_string(),
-            "contract_key" => transfer_funds.into_hash().expect("should be hash"),
+            "contract_key" => transfer_funds.into_entity_addr().expect("should be hash"),
             "sub_contract_method_fwd" => "transfer_to_account_ext",
         };
         ExecuteRequestBuilder::standard(VICTIM_ADDR, CONTRACT_EE_599_REGRESSION, args).build()

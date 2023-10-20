@@ -6,7 +6,7 @@ extern crate alloc;
 use alloc::string::String;
 
 use casper_contract::contract_api::runtime;
-use casper_types::{package::ContractVersion, runtime_args, ContractPackageHash};
+use casper_types::{package::EntityVersion, runtime_args, PackageHash};
 
 const ENTRY_FUNCTION_NAME: &str = "delegate";
 const PURSE_NAME_ARG_NAME: &str = "purse_name";
@@ -16,9 +16,9 @@ const ARG_VERSION: &str = "version";
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let contract_package_hash: ContractPackageHash = runtime::get_named_arg(ARG_CONTRACT_PACKAGE);
+    let contract_package_hash: PackageHash = runtime::get_named_arg(ARG_CONTRACT_PACKAGE);
     let new_purse_name: String = runtime::get_named_arg(ARG_NEW_PURSE_NAME);
-    let version_number: ContractVersion = runtime::get_named_arg(ARG_VERSION);
+    let version_number: EntityVersion = runtime::get_named_arg(ARG_VERSION);
     let contract_version = Some(version_number);
 
     let runtime_args = runtime_args! {

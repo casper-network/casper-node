@@ -12,7 +12,8 @@ use casper_contract::{
 };
 
 use casper_types::{
-    account::AccountHash, runtime_args, system::auction, ApiError, ContractHash, PublicKey, U512,
+    account::AccountHash, runtime_args, system::auction, AddressableEntityHash, ApiError,
+    PublicKey, U512,
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -47,7 +48,7 @@ fn bond() {
     call_bond(auction_contract_hash, public_key, amount);
 }
 
-fn call_bond(auction: ContractHash, public_key: PublicKey, bond_amount: U512) {
+fn call_bond(auction: AddressableEntityHash, public_key: PublicKey, bond_amount: U512) {
     let args = runtime_args! {
         auction::ARG_PUBLIC_KEY => public_key,
         auction::ARG_DELEGATION_RATE => DELEGATION_RATE,

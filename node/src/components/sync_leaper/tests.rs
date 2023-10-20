@@ -15,10 +15,10 @@ use crate::{
 use super::{Error, SyncLeaper};
 
 pub(crate) fn make_test_sync_leap(rng: &mut TestRng) -> SyncLeap {
-    let block = TestBlockBuilder::new().build(rng);
+    let block = TestBlockBuilder::new().build_versioned(rng);
     SyncLeap {
         trusted_ancestor_only: false,
-        trusted_block_header: block.header().clone(),
+        trusted_block_header: block.clone_header(),
         trusted_ancestor_headers: vec![],
         signed_block_headers: vec![],
     }

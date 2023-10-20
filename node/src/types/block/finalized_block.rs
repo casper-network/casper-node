@@ -7,15 +7,14 @@ use std::{
 
 use datasize::DataSize;
 use once_cell::sync::Lazy;
-#[cfg(test)]
-use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-#[cfg(test)]
-use casper_types::testing::TestRng;
 use casper_types::{
-    BlockV2, Deploy, DeployApproval, DeployHash, EraId, EraReport, PublicKey, SecretKey, Timestamp,
+    BlockV2, Deploy, DeployApproval, DeployHash, EraId, PublicKey, RewardedSignatures, SecretKey,
+    SingleBlockRewardedSignatures, Timestamp,
 };
+#[cfg(any(feature = "testing", test))]
+use {casper_types::testing::TestRng, rand::Rng};
 
 use super::BlockPayload;
 use crate::{rpcs::docs::DocExample, types::DeployHashWithApprovals};
@@ -26,6 +25,21 @@ static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
     let timestamp = *Timestamp::doc_example();
     let secret_key = SecretKey::example();
     let public_key = PublicKey::from(secret_key);
+    let validator_set = {
+        let mut validator_set = BTreeSet::new();
+        validator_set.insert(PublicKey::from(
+            &SecretKey::ed25519_from_bytes([5u8; SecretKey::ED25519_LENGTH]).unwrap(),
+        ));
+        validator_set.insert(PublicKey::from(
+            &SecretKey::ed25519_from_bytes([7u8; SecretKey::ED25519_LENGTH]).unwrap(),
+        ));
+        validator_set
+    };
+    let rewarded_signatures =
+        RewardedSignatures::new(vec![SingleBlockRewardedSignatures::from_validator_set(
+            &validator_set,
+            &validator_set,
+        )]);
     let block_payload = BlockPayload::new(
         vec![],
         transfer_hashes
@@ -38,9 +52,10 @@ static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
             })
             .collect(),
         vec![],
+        rewarded_signatures,
         random_bit,
     );
-    let era_report = Some(EraReport::<PublicKey>::doc_example().clone());
+    let era_report = Some(InternalEraReport::doc_example().clone());
     let era_id = EraId::from(1);
     let height = 10;
     FinalizedBlock::new(
@@ -53,24 +68,51 @@ static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
     )
 });
 
+static INTERNAL_ERA_REPORT: Lazy<InternalEraReport> = Lazy::new(|| {
+    let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
+    let public_key_1 = PublicKey::from(&secret_key_1);
+    let equivocators = vec![public_key_1];
+
+    let secret_key_3 = SecretKey::ed25519_from_bytes([2; 32]).unwrap();
+    let public_key_3 = PublicKey::from(&secret_key_3);
+    let inactive_validators = vec![public_key_3];
+
+    InternalEraReport {
+        equivocators,
+        inactive_validators,
+    }
+});
+
 /// The piece of information that will become the content of a future block after it was finalized
 /// and before execution happened yet.
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FinalizedBlock {
     pub(crate) deploy_hashes: Vec<DeployHash>,
     pub(crate) transfer_hashes: Vec<DeployHash>,
+    pub(crate) rewarded_signatures: RewardedSignatures,
     pub(crate) timestamp: Timestamp,
     pub(crate) random_bit: bool,
-    pub(crate) era_report: Option<Box<EraReport<PublicKey>>>,
+    pub(crate) era_report: Option<InternalEraReport>,
     pub(crate) era_id: EraId,
     pub(crate) height: u64,
     pub(crate) proposer: Box<PublicKey>,
 }
 
+/// `EraReport` used only internally. The one in types is a part of `EraEndV1`.
+#[derive(
+    Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Default,
+)]
+pub struct InternalEraReport {
+    /// The set of equivocators.
+    pub equivocators: Vec<PublicKey>,
+    /// Validators that haven't produced any unit during the era.
+    pub inactive_validators: Vec<PublicKey>,
+}
+
 impl FinalizedBlock {
     pub(crate) fn new(
         block_payload: BlockPayload,
-        era_report: Option<EraReport<PublicKey>>,
+        era_report: Option<InternalEraReport>,
         timestamp: Timestamp,
         era_id: EraId,
         height: u64,
@@ -79,9 +121,10 @@ impl FinalizedBlock {
         FinalizedBlock {
             deploy_hashes: block_payload.deploy_hashes().cloned().collect(),
             transfer_hashes: block_payload.transfer_hashes().cloned().collect(),
+            rewarded_signatures: block_payload.rewarded_signatures().clone(),
             timestamp,
             random_bit: block_payload.random_bit(),
-            era_report: era_report.map(Box::new),
+            era_report,
             era_id,
             height,
             proposer: Box::new(proposer),
@@ -138,11 +181,13 @@ impl FinalizedBlock {
                     .take(count),
             );
         }
+        let rewarded_signatures = Default::default();
         let random_bit = rng.gen();
-        let block_payload = BlockPayload::new(deploys, vec![], vec![], random_bit);
+        let block_payload =
+            BlockPayload::new(deploys, vec![], vec![], rewarded_signatures, random_bit);
 
         let era_report = if is_switch {
-            Some(EraReport::<PublicKey>::random(rng))
+            Some(InternalEraReport::random(rng))
         } else {
             None
         };
@@ -166,6 +211,12 @@ impl DocExample for FinalizedBlock {
     }
 }
 
+impl DocExample for InternalEraReport {
+    fn doc_example() -> &'static Self {
+        &INTERNAL_ERA_REPORT
+    }
+}
+
 impl From<BlockV2> for FinalizedBlock {
     fn from(block: BlockV2) -> Self {
         FinalizedBlock {
@@ -173,12 +224,14 @@ impl From<BlockV2> for FinalizedBlock {
             transfer_hashes: block.transfer_hashes().to_vec(),
             timestamp: block.timestamp(),
             random_bit: block.random_bit(),
-            era_report: block
-                .era_end()
-                .map(|era_end| Box::new(era_end.era_report().clone())),
+            era_report: block.era_end().map(|era_end| InternalEraReport {
+                equivocators: Vec::from(era_end.equivocators()),
+                inactive_validators: Vec::from(era_end.inactive_validators()),
+            }),
             era_id: block.era_id(),
             height: block.height(),
             proposer: Box::new(block.proposer().clone()),
+            rewarded_signatures: block.rewarded_signatures().clone(),
         }
     }
 }
@@ -195,8 +248,28 @@ impl Display for FinalizedBlock {
             self.transfer_hashes.len(),
         )?;
         if let Some(ref ee) = self.era_report {
-            write!(formatter, ", era_end: {}", ee)?;
+            write!(formatter, ", era_end: {:?}", ee)?;
         }
         Ok(())
+    }
+}
+
+impl InternalEraReport {
+    /// Returns a random `EraReport`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let equivocators_count = rng.gen_range(0..5);
+        let inactive_count = rng.gen_range(0..5);
+        let equivocators = core::iter::repeat_with(|| PublicKey::random(rng))
+            .take(equivocators_count)
+            .collect();
+        let inactive_validators = core::iter::repeat_with(|| PublicKey::random(rng))
+            .take(inactive_count)
+            .collect();
+
+        InternalEraReport {
+            equivocators,
+            inactive_validators,
+        }
     }
 }

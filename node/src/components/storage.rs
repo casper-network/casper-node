@@ -79,10 +79,10 @@ use casper_types::{
     execution::{
         execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
     },
-    Block, BlockBody, BlockBodyV1, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
-    BlockV2, Deploy, DeployApprovalsHash, DeployConfigurationFailure, DeployHash, DeployHeader,
-    Digest, EraId, FinalitySignature, ProtocolVersion, PublicKey, SignedBlockHeader, StoredValue,
-    Timestamp, Transaction, TransactionApprovalsHash, TransactionHash, TransactionId,
+    Block, BlockBody, BlockBodyV1, BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderV1,
+    BlockSignatures, BlockV2, Deploy, DeployApprovalsHash, DeployConfigurationFailure, DeployHash,
+    DeployHeader, Digest, EraId, FinalitySignature, ProtocolVersion, PublicKey, SignedBlockHeader,
+    StoredValue, Timestamp, Transaction, TransactionApprovalsHash, TransactionHash, TransactionId,
     TransactionV1ApprovalsHash, TransactionV1ConfigFailure, Transfer,
 };
 
@@ -103,9 +103,10 @@ use crate::{
     protocol::Message,
     types::{
         ApprovalsHashes, AvailableBlockRange, BlockExecutionResultsOrChunk,
-        BlockExecutionResultsOrChunkId, DeployExecutionInfo, DeployWithFinalizedApprovals,
-        FinalizedApprovals, FinalizedBlock, FinalizedDeployApprovals, LegacyDeploy, MaxTtl, NodeId,
-        NodeRng, SignedBlock, SyncLeap, SyncLeapIdentifier, TransactionWithFinalizedApprovals,
+        BlockExecutionResultsOrChunkId, BlockWithMetadata, DeployExecutionInfo,
+        DeployWithFinalizedApprovals, ExecutableBlock, FinalizedApprovals,
+        FinalizedDeployApprovals, LegacyDeploy, MaxTtl, NodeId, NodeRng, SignedBlock, SyncLeap,
+        SyncLeapIdentifier, TransactionWithFinalizedApprovals,
     },
     utils::{display_error, WithDir},
 };
@@ -138,7 +139,7 @@ const DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE: usize = 300 * GIB;
 /// Default max state store size.
 const DEFAULT_MAX_STATE_STORE_SIZE: usize = 10 * GIB;
 /// Maximum number of allowed dbs.
-const MAX_DB_COUNT: u32 = 13;
+const MAX_DB_COUNT: u32 = 14;
 /// Key under which completed blocks are to be stored.
 const COMPLETED_BLOCKS_STORAGE_KEY: &[u8] = b"completed_blocks_disjoint_sequences";
 /// Name of the file created when initializing a force resync.
@@ -156,8 +157,6 @@ const OS_FLAGS: EnvironmentFlags = EnvironmentFlags::empty();
 const _STORAGE_EVENT_SIZE: usize = mem::size_of::<Event>();
 const_assert!(_STORAGE_EVENT_SIZE <= 32);
 
-type FinalizedBlockAndDeploys = (FinalizedBlock, Vec<Deploy>);
-
 const STORAGE_FILES: [&str; 5] = [
     "data.lmdb",
     "data.lmdb-lock",
@@ -167,7 +166,7 @@ const STORAGE_FILES: [&str; 5] = [
 ];
 
 #[derive(DataSize, Debug)]
-struct BlockBodyDatabases {
+struct VersionedDatabases {
     /// The legacy block body database, storing [BlockBodyV1] objects.
     #[data_size(skip)]
     legacy: Database,
@@ -184,12 +183,12 @@ pub struct Storage {
     /// Environment holding LMDB databases.
     #[data_size(skip)]
     env: Rc<Environment>,
-    /// The block header database.
+    /// The block header databases.
     #[data_size(skip)]
-    block_header_db: Database,
-    /// Block body databases.
+    block_header_dbs: VersionedDatabases,
+    /// The block body databases.
     #[data_size(skip)]
-    block_body_dbs: BlockBodyDatabases,
+    block_body_dbs: VersionedDatabases,
     /// The approvals hashes database.
     #[data_size(skip)]
     approvals_hashes_db: Database,
@@ -434,7 +433,10 @@ impl Storage {
             .set_map_size(total_size)
             .open(&root.join(STORAGE_DB_FILENAME))?;
 
-        let block_header_db = env.create_db(Some("block_header"), DatabaseFlags::empty())?;
+        let block_header_dbs = VersionedDatabases {
+            legacy: env.create_db(Some("block_header"), DatabaseFlags::empty())?,
+            current: env.create_db(Some("block_header_v2"), DatabaseFlags::empty())?,
+        };
         let block_metadata_db = env.create_db(Some("block_metadata"), DatabaseFlags::empty())?;
         let deploy_db = env.create_db(Some("deploys"), DatabaseFlags::empty())?;
         let transaction_db = env.create_db(Some("transactions"), DatabaseFlags::empty())?;
@@ -446,8 +448,10 @@ impl Storage {
         let state_store_db = env.create_db(Some("state_store"), DatabaseFlags::empty())?;
         let finalized_deploy_approvals_db =
             env.create_db(Some("finalized_approvals"), DatabaseFlags::empty())?;
-        let block_body_legacy_db = env.create_db(Some("block_body"), DatabaseFlags::empty())?;
-        let block_body_db = env.create_db(Some("block_body_v2"), DatabaseFlags::empty())?;
+        let block_body_dbs = VersionedDatabases {
+            legacy: env.create_db(Some("block_body"), DatabaseFlags::empty())?,
+            current: env.create_db(Some("block_body_v2"), DatabaseFlags::empty())?,
+        };
         let finalized_transaction_approvals_db = env.create_db(
             Some("versioned_finalized_approvals"),
             DatabaseFlags::empty(),
@@ -461,7 +465,6 @@ impl Storage {
         let mut switch_block_era_id_index = BTreeMap::new();
         let mut deploy_hash_index = BTreeMap::new();
         let mut block_txn = env.begin_rw_txn()?;
-        let mut cursor = block_txn.open_rw_cursor(block_header_db)?;
 
         let mut deleted_block_hashes = HashSet::new();
         let mut deleted_block_body_hashes = HashSet::new();
@@ -469,18 +472,13 @@ impl Storage {
 
         // Note: `iter_start` has an undocumented panic if called on an empty database. We rely on
         //       the iterator being at the start when created.
+        let mut cursor = block_txn.open_rw_cursor(block_header_dbs.current)?;
         for row in cursor.iter() {
             let (_, raw_val) = row?;
             let mut body_txn = env.begin_ro_txn()?;
             let block_header: BlockHeader = lmdb_ext::deserialize(raw_val)?;
-            let maybe_block_body = get_body_for_block_header(
-                &mut body_txn,
-                block_header.body_hash(),
-                &BlockBodyDatabases {
-                    legacy: block_body_legacy_db,
-                    current: block_body_db,
-                },
-            );
+            let maybe_block_body =
+                get_body_for_block_hash(&mut body_txn, block_header.body_hash(), &block_body_dbs);
             if let Some(invalid_era) = hard_reset_to_start_of_era {
                 // Remove blocks that are in to-be-upgraded eras, but have obsolete protocol
                 // versions - they were most likely created before the upgrade and should be
@@ -517,16 +515,62 @@ impl Storage {
                 )?;
             }
         }
-        info!("block store reindexing complete");
         drop(cursor);
+        let mut cursor = block_txn.open_rw_cursor(block_header_dbs.legacy)?;
+        for row in cursor.iter() {
+            let (_, raw_val) = row?;
+            let mut body_txn = env.begin_ro_txn()?;
+            let block_header: BlockHeaderV1 = lmdb_ext::deserialize(raw_val)?;
+            let block_header = BlockHeader::from(block_header);
+            let maybe_block_body =
+                get_body_for_block_hash(&mut body_txn, block_header.body_hash(), &block_body_dbs);
+            if let Some(invalid_era) = hard_reset_to_start_of_era {
+                // Remove blocks that are in to-be-upgraded eras, but have obsolete protocol
+                // versions - they were most likely created before the upgrade and should be
+                // reverted.
+                if block_header.era_id() >= invalid_era
+                    && block_header.protocol_version() < protocol_version
+                {
+                    let _ = deleted_block_hashes.insert(block_header.block_hash());
+
+                    if let Some(block_body) = maybe_block_body? {
+                        deleted_deploy_hashes.extend(block_body.deploy_hashes());
+                        deleted_deploy_hashes.extend(block_body.transfer_hashes());
+                    }
+
+                    let _ = deleted_block_body_hashes.insert(*block_header.body_hash());
+
+                    cursor.del(WriteFlags::empty())?;
+                    continue;
+                }
+            }
+
+            Self::insert_to_block_header_indices(
+                &mut block_height_index,
+                &mut switch_block_era_id_index,
+                &block_header,
+            )?;
+
+            if let Some(block_body) = maybe_block_body? {
+                Self::insert_to_deploy_index(
+                    &mut deploy_hash_index,
+                    block_header.block_hash(),
+                    block_header.height(),
+                    block_body.deploy_and_transfer_hashes(),
+                )?;
+            }
+        }
+        drop(cursor);
+
+        info!("block store reindexing complete");
         block_txn.commit()?;
 
         let deleted_block_hashes_raw = deleted_block_hashes.iter().map(BlockHash::as_ref).collect();
 
         initialize_block_body_db(
             &env,
-            &block_header_db,
-            &[block_body_db, block_body_legacy_db],
+            &block_header_dbs,
+            &block_body_dbs,
             &deleted_block_body_hashes
                 .iter()
                 .map(Digest::as_ref)
@@ -552,11 +596,8 @@ impl Storage {
         let mut component = Self {
             root,
             env: Rc::new(env),
-            block_header_db,
-            block_body_dbs: BlockBodyDatabases {
-                legacy: block_body_legacy_db,
-                current: block_body_db,
-            },
+            block_header_dbs,
+            block_body_dbs,
             block_metadata_db,
             approvals_hashes_db,
             deploy_db,
@@ -1131,6 +1172,37 @@ impl Storage {
                     .unwrap_or(false);
                 responder.respond(has_signature).ignore()
             }
+            StorageRequest::GetBlockAndMetadataByHeight {
+                block_height,
+                only_from_available_block_range,
+                responder,
+            } => {
+                if !(self.should_return_block(block_height, only_from_available_block_range)?) {
+                    return Ok(responder.respond(None).ignore());
+                }
+
+                let mut txn = self.env.begin_ro_txn()?;
+
+                let block: Block = {
+                    if let Some(block) = self.get_block_by_height(&mut txn, block_height)? {
+                        block
+                    } else {
+                        return Ok(responder.respond(None).ignore());
+                    }
+                };
+
+                let hash = block.hash();
+                let block_signatures = match self.get_block_signatures(&mut txn, hash)? {
+                    Some(signatures) => signatures,
+                    None => BlockSignatures::new(*hash, block.era_id()),
+                };
+                responder
+                    .respond(Some(BlockWithMetadata {
+                        block,
+                        block_signatures,
+                    }))
+                    .ignore()
+            }
             StorageRequest::GetSignedBlockByHeight {
                 block_height,
                 only_from_available_block_range,
@@ -1262,6 +1334,10 @@ impl Storage {
             } => {
                 let maybe_header = self
                     .read_block_header_by_height(block_height, only_from_available_block_range)?;
+                responder.respond(maybe_header).ignore()
+            }
+            StorageRequest::GetSwitchBlockHeaderByEra { era_id, responder } => {
+                let maybe_header = self.read_switch_block_header_by_era_id(era_id)?;
                 responder.respond(maybe_header).ignore()
             }
             StorageRequest::PutBlockHeader {
@@ -1469,11 +1545,11 @@ impl Storage {
         self.get_blocks_while(&mut txn, |block| block.timestamp() >= timestamp)
     }
 
-    /// Make a finalized block from a executed block, respecting Deploy Approvals.
+    /// Returns an executable block.
     pub(crate) fn make_executable_block(
         &self,
         block_hash: &BlockHash,
-    ) -> Result<Option<FinalizedBlockAndDeploys>, FatalStorageError> {
+    ) -> Result<Option<ExecutableBlock>, FatalStorageError> {
         let (block, deploys) = match self.read_block_and_finalized_deploys_by_hash(*block_hash)? {
             Some(block_and_finalized_deploys) => block_and_finalized_deploys,
             None => {
@@ -1515,15 +1591,18 @@ impl Storage {
                 return Ok(None);
             }
         }
-        let finalized_block: FinalizedBlock = block.into();
+
         info!(
             ?block_hash,
             "Storage: created finalized_block({}) {} with {} deploys",
-            finalized_block.height,
+            block.height(),
             block_hash,
             deploys.len()
         );
-        Ok(Some((finalized_block, deploys)))
+
+        Ok(Some(ExecutableBlock::from_block_and_deploys(
+            block, deploys,
+        )))
     }
 
     fn write_execution_results(
@@ -1840,6 +1919,16 @@ impl Storage {
         ret
     }
 
+    /// Retrieves single switch block header by era ID by looking it up in the index and returning
+    /// it.
+    pub(crate) fn read_switch_block_header_by_era_id(
+        &self,
+        era_id: EraId,
+    ) -> Result<Option<BlockHeader>, FatalStorageError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        self.get_switch_block_header_by_era_id(&mut txn, era_id)
+    }
+
     /// Retrieves a single block header by deploy hash by looking it up in the index and returning
     /// it.
     fn get_block_header_by_deploy_hash<Tx: LmdbTransaction>(
@@ -1996,8 +2085,8 @@ impl Storage {
         block_hash: &BlockHash,
         only_from_available_block_range: bool,
     ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        let block_header: BlockHeader = match txn.get_value(self.block_header_db, &block_hash)? {
-            Some(block_header) => block_header,
+        let block_header = match self.get_single_block_header(txn, block_hash)? {
+            Some(header) => header,
             None => return Ok(None),
         };
 
@@ -2005,7 +2094,6 @@ impl Storage {
             return Ok(None);
         }
 
-        block_header.set_block_hash(*block_hash);
         Ok(Some(block_header))
     }
 
@@ -2025,7 +2113,7 @@ impl Storage {
         loop {
             let parent_hash = current_trusted_block_header.parent_hash();
             let parent_block_header: BlockHeader =
-                match txn.get_value(self.block_header_db, &parent_hash)? {
+                match self.get_single_block_header(txn, parent_hash)? {
                     Some(block_header) => block_header,
                     None => {
                         warn!(%parent_hash, "block header not found");
@@ -2088,11 +2176,19 @@ impl Storage {
         txn: &mut Tx,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        let block_header: BlockHeader = match txn.get_value(self.block_header_db, &block_hash)? {
-            Some(block_header) => block_header,
-            None => return Ok(None),
-        };
+        // Let's try to get a regular block header first:
+        let (block_header, _is_legacy): (BlockHeader, _) =
+            match txn.get_value(self.block_header_dbs.current, &block_hash)? {
+                Some(header) => (header, false),
+                // If there isn't any, let's look at the legacy database:
+                None => match txn.get_value(self.block_header_dbs.legacy, &block_hash)? {
+                    Some(legacy_header) => (BlockHeaderV1::into(legacy_header), true),
+                    None => return Ok(None),
+                },
+            };
+
         block_header.set_block_hash(*block_hash);
+
         Ok(Some(block_header))
     }
 
@@ -2102,7 +2198,7 @@ impl Storage {
         txn: &mut Tx,
         block_hash: &BlockHash,
     ) -> Result<Option<SignedBlockHeader>, FatalStorageError> {
-        let block_header: BlockHeader = match txn.get_value(self.block_header_db, &block_hash)? {
+        let block_header = match self.get_single_block_header(txn, block_hash)? {
             Some(block_header) => block_header,
             None => return Ok(None),
         };
@@ -2128,12 +2224,21 @@ impl Storage {
 
         for block_header in &block_headers {
             let block_header_hash = block_header.block_hash();
-            match txn.put_value(
-                self.block_header_db,
-                &block_header_hash,
-                block_header,
-                false,
-            ) {
+            let put_result = match block_header {
+                BlockHeader::V1(block_header) => txn.put_value(
+                    self.block_header_dbs.legacy,
+                    &block_header_hash,
+                    block_header,
+                    false,
+                ),
+                BlockHeader::V2(_) => txn.put_value(
+                    self.block_header_dbs.current,
+                    &block_header_hash,
+                    block_header,
+                    false,
+                ),
+            };
+            match put_result {
                 Ok(single_result) => {
                     result = result && single_result;
                 }
@@ -2185,7 +2290,7 @@ impl Storage {
         };
 
         let maybe_block_body =
-            get_body_for_block_header(txn, block_header.body_hash(), &self.block_body_dbs);
+            get_body_for_block_hash(txn, block_header.body_hash(), &self.block_body_dbs);
         let block_body = match maybe_block_body? {
             Some(block_body) => block_body,
             None => {
@@ -2663,7 +2768,7 @@ impl Storage {
                         match self.get_single_block(&mut txn, &block_hash) {
                             Ok(Some(block)) => match block {
                                 Block::V1(_) | Block::V2(_) => {
-                                    HighestOrphanedBlockResult::Orphan(block.header().clone())
+                                    HighestOrphanedBlockResult::Orphan(block.clone_header())
                                 }
                             },
                             Ok(None) | Err(_) => {
@@ -2686,7 +2791,7 @@ impl Storage {
             None => return Ok(None),
         };
         let maybe_block_body =
-            get_body_for_block_header(txn, block_header.body_hash(), &self.block_body_dbs);
+            get_body_for_block_hash(txn, block_header.body_hash(), &self.block_body_dbs);
 
         let Some(block_body) = maybe_block_body? else {
             debug!(
@@ -3014,36 +3119,42 @@ impl Storage {
     }
 }
 
-fn construct_block_body_to_block_header_reverse_lookup(
-    txn: &impl LmdbTransaction,
-    block_header_db: &Database,
-) -> Result<BTreeMap<Digest, BlockHeader>, LmdbExtError> {
-    let mut block_body_hash_to_header_map: BTreeMap<Digest, BlockHeader> = BTreeMap::new();
-    for row in txn.open_ro_cursor(*block_header_db)?.iter() {
-        let (_raw_key, raw_val) = row?;
-        let block_header: BlockHeader = lmdb_ext::deserialize(raw_val)?;
-        block_body_hash_to_header_map.insert(block_header.body_hash().to_owned(), block_header);
-    }
-    Ok(block_body_hash_to_header_map)
-}
-
 /// Purges stale entries from the block body database.
-fn initialize_block_body_db<'a, D>(
+fn initialize_block_body_db(
     env: &Environment,
-    block_header_db: &Database,
-    block_body_dbs: D,
+    block_header_dbs: &VersionedDatabases,
+    block_body_dbs: &VersionedDatabases,
     deleted_block_body_hashes_raw: &HashSet<&[u8]>,
-) -> Result<(), FatalStorageError>
-where
-    D: IntoIterator<Item = &'a Database>,
-{
+) -> Result<(), FatalStorageError> {
     info!("initializing block body database");
+
+    fn construct_block_body_to_block_header_reverse_lookup(
+        txn: &impl LmdbTransaction,
+        block_header_dbs: &VersionedDatabases,
+    ) -> Result<BTreeMap<Digest, BlockHeader>, LmdbExtError> {
+        let mut block_body_hash_to_header_map: BTreeMap<Digest, BlockHeader> = BTreeMap::new();
+
+        for row in txn.open_ro_cursor(block_header_dbs.current)?.iter() {
+            let (_raw_key, raw_val) = row?;
+            let block_header: BlockHeader = lmdb_ext::deserialize(raw_val)?;
+            block_body_hash_to_header_map.insert(block_header.body_hash().to_owned(), block_header);
+        }
+        for row in txn.open_ro_cursor(block_header_dbs.legacy)?.iter() {
+            let (_raw_key, raw_val) = row?;
+            let block_header: BlockHeaderV1 = lmdb_ext::deserialize(raw_val)?;
+            block_body_hash_to_header_map
+                .insert(block_header.body_hash().to_owned(), block_header.into());
+        }
+
+        Ok(block_body_hash_to_header_map)
+    }
+
     let mut txn = env.begin_rw_txn()?;
 
     let block_body_hash_to_header_map =
-        construct_block_body_to_block_header_reverse_lookup(&txn, block_header_db)?;
+        construct_block_body_to_block_header_reverse_lookup(&txn, block_header_dbs)?;
 
-    for db in block_body_dbs.into_iter() {
+    for db in &[block_body_dbs.current, block_body_dbs.legacy] {
         let mut cursor = txn.open_rw_cursor(*db)?;
 
         for row in cursor.iter() {
@@ -3069,11 +3180,11 @@ where
     Ok(())
 }
 
-/// Retrieves the block body for the given block header.
-fn get_body_for_block_header<Tx: LmdbTransaction>(
+/// Retrieves the block body for the given block hash.
+fn get_body_for_block_hash<Tx: LmdbTransaction>(
     txn: &mut Tx,
     block_body_hash: &Digest,
-    block_body_dbs: &BlockBodyDatabases,
+    block_body_dbs: &VersionedDatabases,
 ) -> Result<Option<BlockBody>, LmdbExtError> {
     let maybe_block_body: Option<BlockBody> =
         txn.get_value(block_body_dbs.current, block_body_hash)?;

@@ -23,7 +23,7 @@ use std::{
 
 use anyhow::Error;
 use datasize::DataSize;
-use futures::FutureExt;
+use futures::{Future, FutureExt};
 use itertools::Itertools;
 use prometheus::Registry;
 use rand::Rng;
@@ -32,7 +32,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
     AsymmetricType, BlockHash, BlockHeader, Chainspec, ConsensusProtocolName, Deploy, DeployHash,
-    Digest, DisplayIter, EraId, EraReport, PublicKey, SecretKey, TimeDiff, Timestamp,
+    Digest, DisplayIter, EraId, PublicKey, RewardedSignatures, TimeDiff, Timestamp,
 };
 
 use crate::{
@@ -57,7 +57,9 @@ use crate::{
     },
     fatal, protocol,
     types::{
-        DeployOrTransferHash, FinalizedBlock, FinalizedDeployApprovals, MetaBlockState, NodeId,
+        create_single_block_rewarded_signatures, BlockWithMetadata, DeployOrTransferHash,
+        ExecutableBlock, FinalizedBlock, FinalizedDeployApprovals, InternalEraReport,
+        MetaBlockState, NodeId, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -65,7 +67,7 @@ use crate::{
 pub use self::era::Era;
 use crate::components::consensus::error::CreateNewEraError;
 
-use super::traits::ConsensusNetworkMessage;
+use super::{traits::ConsensusNetworkMessage, BlockContext};
 
 /// The delay in milliseconds before we shutdown after the number of faulty validators exceeded the
 /// fault tolerance threshold.
@@ -96,8 +98,7 @@ pub struct EraSupervisor {
     /// Since eras at or before the most recent activation point are never instantiated, shortly
     /// after that there can temporarily be fewer than three entries in the map.
     open_eras: BTreeMap<EraId, Era>,
-    secret_signing_key: Arc<SecretKey>,
-    public_signing_key: PublicKey,
+    validator_matrix: ValidatorMatrix,
     chainspec: Arc<Chainspec>,
     config: Config,
     /// The height of the next block to be finalized.
@@ -128,21 +129,19 @@ impl EraSupervisor {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         storage_dir: &Path,
-        secret_signing_key: Arc<SecretKey>,
-        public_signing_key: PublicKey,
+        validator_matrix: ValidatorMatrix,
         config: Config,
         chainspec: Arc<Chainspec>,
         registry: &Registry,
     ) -> Result<Self, Error> {
         let unit_files_folder = storage_dir.join("unit_files");
         std::fs::create_dir_all(&unit_files_folder)?;
-        info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
+        info!(our_id = %validator_matrix.public_signing_key(), "EraSupervisor pubkey",);
         let metrics = Metrics::new(registry)?;
 
         let era_supervisor = Self {
             open_eras: Default::default(),
-            secret_signing_key,
-            public_signing_key,
+            validator_matrix,
             chainspec,
             config,
             next_block_height: 0,
@@ -160,7 +159,7 @@ impl EraSupervisor {
         if let Some(era_id) = self.current_era() {
             return self.open_eras[&era_id]
                 .validators()
-                .contains_key(&self.public_signing_key);
+                .contains_key(self.validator_matrix.public_signing_key());
         }
         false
     }
@@ -372,13 +371,16 @@ impl EraSupervisor {
         if self.era(era_id).consensus.is_active() {
             return Effects::new();
         }
-        let our_id = self.public_signing_key.clone();
+        let our_id = self.validator_matrix.public_signing_key().clone();
         let outcomes = if !self.era(era_id).validators().contains_key(&our_id) {
             info!(era = era_id.value(), %our_id, "not voting; not a validator");
             vec![]
         } else {
             info!(era = era_id.value(), %our_id, "start voting");
-            let secret = Keypair::new(self.secret_signing_key.clone(), our_id.clone());
+            let secret = Keypair::new(
+                self.validator_matrix.secret_signing_key().clone(),
+                our_id.clone(),
+            );
             let instance_id = self.era(era_id).consensus.instance_id();
             let unit_hash_file = self.unit_file(instance_id);
             self.era_mut(era_id).consensus.activate_validator(
@@ -412,7 +414,7 @@ impl EraSupervisor {
             return Ok((era_id, vec![]));
         }
 
-        let era_end = key_block.era_end().ok_or_else(|| {
+        let era_end = key_block.clone_era_end().ok_or_else(|| {
             CreateNewEraError::LastBlockHeaderNotASwitchBlock {
                 era_id,
                 last_block_header: Box::new(key_block.clone()),
@@ -437,7 +439,6 @@ impl EraSupervisor {
             }
         }
 
-        let report = era_end.era_report();
         let validators = era_end.next_era_validator_weights();
 
         if let Some(current_era) = self.current_era() {
@@ -468,14 +469,15 @@ impl EraSupervisor {
 
         // Validators that were inactive in the previous era will be excluded from leader selection
         // in the new era.
-        let inactive = report.inactive_validators().iter().cloned().collect();
+        let inactive = era_end.inactive_validators().iter().cloned().collect();
 
         // Validators that were only exposed as faulty after the booking block are still in the new
         // era's validator set but get banned.
         let blocks_after_booking_block = switch_blocks.iter().rev().take(auction_delay);
         let faulty = blocks_after_booking_block
-            .filter_map(|switch_block| switch_block.era_end())
-            .flat_map(|era_end| era_end.era_report().equivocators().iter().cloned())
+            .filter_map(|switch_block| switch_block.maybe_equivocators())
+            .flat_map(|equivocators| equivocators.iter())
+            .cloned()
             .collect();
 
         info!(
@@ -501,7 +503,7 @@ impl EraSupervisor {
             .collect();
 
         // Create and insert the new era instance.
-        let (consensus, outcomes) = match self.chainspec.core_config.consensus_protocol {
+        let (consensus, mut outcomes) = match self.chainspec.core_config.consensus_protocol {
             ConsensusProtocolName::Highway => HighwayProtocol::new_boxed(
                 instance_id,
                 validators.clone(),
@@ -541,6 +543,7 @@ impl EraSupervisor {
 
         // Activate the era if this node was already running when the era began, it is still
         // ongoing based on its minimum duration, and we are one of the validators.
+        let our_id = self.validator_matrix.public_signing_key().clone();
         if self
             .current_era()
             .map_or(false, |current_era| current_era > era_id)
@@ -555,6 +558,28 @@ impl EraSupervisor {
             if let Some(era) = self.open_eras.get_mut(&era_id) {
                 era.consensus.set_evidence_only();
             }
+        } else {
+            self.metrics
+                .consensus_current_era
+                .set(era_id.value() as i64);
+            self.next_block_height = self.next_block_height.max(start_height);
+            outcomes.extend(self.era_mut(era_id).consensus.handle_is_current(now));
+            if !self.era(era_id).validators().contains_key(&our_id) {
+                info!(era = era_id.value(), %our_id, "not voting; not a validator");
+            } else {
+                info!(era = era_id.value(), %our_id, "start voting");
+                let secret = Keypair::new(
+                    self.validator_matrix.secret_signing_key().clone(),
+                    our_id.clone(),
+                );
+                let unit_hash_file = self.unit_file(&instance_id);
+                outcomes.extend(self.era_mut(era_id).consensus.activate_validator(
+                    our_id,
+                    secret,
+                    now,
+                    Some(unit_hash_file),
+                ))
+            };
         }
 
         // Mark validators as faulty for which we have evidence in the previous era.
@@ -609,7 +634,7 @@ impl EraSupervisor {
         self.unit_files_folder.join(format!(
             "unit_{:?}_{}.dat",
             instance_id,
-            self.public_signing_key.to_hex()
+            self.validator_matrix.public_signing_key().to_hex()
         ))
     }
 
@@ -1019,6 +1044,24 @@ impl EraSupervisor {
                 .immediately()
                 .event(move |()| Event::Action { era_id, action_id }),
             ProtocolOutcome::CreateNewBlock(block_context) => {
+                let signature_rewards_max_delay =
+                    self.chainspec.core_config.signature_rewards_max_delay;
+                let initial_era_height = self.era(era_id).start_height;
+                let current_block_height =
+                    initial_era_height + block_context.ancestor_values().len() as u64;
+                let minimum_block_height =
+                    current_block_height.saturating_sub(signature_rewards_max_delay);
+
+                let awaitable_appendable_block =
+                    effect_builder.request_appendable_block(block_context.timestamp());
+                let awaitable_blocks_with_metadata = async move {
+                    effect_builder
+                        .collect_past_blocks_with_metadata(
+                            minimum_block_height..current_block_height,
+                            false,
+                        )
+                        .await
+                };
                 let accusations = self
                     .iter_past(era_id, PAST_EVIDENCE_ERAS)
                     .flat_map(|e_id| self.era(e_id).consensus.validators_with_evidence())
@@ -1027,18 +1070,31 @@ impl EraSupervisor {
                     .cloned()
                     .collect();
                 let random_bit = rng.gen();
-                effect_builder
-                    .request_appendable_block(block_context.timestamp())
-                    .map(move |appendable_block| {
-                        Arc::new(appendable_block.into_block_payload(accusations, random_bit))
-                    })
-                    .event(move |block_payload| {
+
+                let validator_matrix = self.validator_matrix.clone();
+
+                join_2(awaitable_appendable_block, awaitable_blocks_with_metadata).event(
+                    move |(appendable_block, maybe_past_blocks_with_metadata)| {
+                        let rewarded_signatures = create_rewarded_signatures(
+                            &maybe_past_blocks_with_metadata,
+                            validator_matrix,
+                            &block_context,
+                            signature_rewards_max_delay,
+                        );
+
+                        let block_payload = Arc::new(appendable_block.into_block_payload(
+                            accusations,
+                            rewarded_signatures,
+                            random_bit,
+                        ));
+
                         Event::NewBlockPayload(NewBlockPayload {
                             era_id,
                             block_payload,
                             block_context,
                         })
-                    })
+                    },
+                )
             }
             ProtocolOutcome::FinalizedBlock(CpFinalizedBlock {
                 value,
@@ -1069,7 +1125,10 @@ impl EraSupervisor {
                     //     }
                     // }
 
-                    EraReport::new(era.accusations(), BTreeMap::new(), tbd.inactive_validators)
+                    InternalEraReport {
+                        equivocators: era.accusations(),
+                        inactive_validators: tbd.inactive_validators,
+                    }
                 });
                 let proposed_block = Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone());
                 let finalized_approvals: HashMap<_, _> = proposed_block
@@ -1085,8 +1144,8 @@ impl EraSupervisor {
                     .collect();
                 if let Some(era_report) = report.as_ref() {
                     info!(
-                        inactive = %DisplayIter::new(era_report.inactive_validators()),
-                        faulty = %DisplayIter::new(era_report.equivocators()),
+                        inactive = %DisplayIter::new(&era_report.inactive_validators),
+                        faulty = %DisplayIter::new(&era_report.equivocators),
                         era_id = era_id.value(),
                         "era end: inactive and faulty validators"
                     );
@@ -1219,7 +1278,7 @@ impl EraSupervisor {
         &self,
         responder: Responder<Option<(PublicKey, Option<TimeDiff>)>>,
     ) -> Effects<Event> {
-        let public_key = self.public_signing_key.clone();
+        let public_key = self.validator_matrix.public_signing_key().clone();
         let round_length = self
             .open_eras
             .values()
@@ -1235,7 +1294,7 @@ impl EraSupervisor {
 
     /// This node's public signing key.
     pub(crate) fn public_key(&self) -> &PublicKey {
-        &self.public_signing_key
+        self.validator_matrix.public_signing_key()
     }
 }
 
@@ -1348,8 +1407,11 @@ async fn execute_finalized_block<REv>(
             return;
         }
     };
+
+    let executable_block =
+        ExecutableBlock::from_finalized_block_and_deploys(finalized_block, deploys);
     effect_builder
-        .enqueue_block_for_execution(finalized_block, deploys, MetaBlockState::new())
+        .enqueue_block_for_execution(executable_block, MetaBlockState::new())
         .await
 }
 
@@ -1425,4 +1487,70 @@ impl ProposedBlock<ClContext> {
             .find(|deploy| block_deploys_set.contains(deploy))
             .map(DeployOrTransferHash::into)
     }
+}
+
+/// When `async move { join!(…) }` is used inline, it prevents rustfmt
+/// to run on the chained `event` block.
+async fn join_2<T: Future, U: Future>(
+    t: T,
+    u: U,
+) -> (<T as Future>::Output, <U as Future>::Output) {
+    futures::join!(t, u)
+}
+
+fn create_rewarded_signatures(
+    maybe_past_blocks_with_metadata: &[Option<BlockWithMetadata>],
+    validator_matrix: ValidatorMatrix,
+    block_context: &BlockContext<ClContext>,
+    signature_rewards_max_delay: u64,
+) -> RewardedSignatures {
+    let num_ancestor_values = block_context.ancestor_values().len();
+    let mut rewarded_signatures =
+        RewardedSignatures::new(maybe_past_blocks_with_metadata.iter().rev().map(
+            |maybe_past_block_with_metadata| {
+                maybe_past_block_with_metadata
+                    .as_ref()
+                    .and_then(|past_block_with_metadata| {
+                        create_single_block_rewarded_signatures(
+                            &validator_matrix,
+                            past_block_with_metadata,
+                        )
+                    })
+                    .unwrap_or_default()
+            },
+        ));
+
+    // exclude the signatures that were already included in ancestor blocks
+    for (past_index, ancestor_rewarded_signatures) in block_context
+        .ancestor_values()
+        .iter()
+        .map(|value| value.rewarded_signatures().clone())
+        // the above will only cover the signatures from the same era - chain
+        // with signatures from the blocks read from storage
+        .chain(
+            maybe_past_blocks_with_metadata
+                .iter()
+                .rev()
+                // skip the blocks corresponding to heights covered by
+                // ancestor_values
+                .skip(num_ancestor_values)
+                .map(|maybe_past_block| {
+                    maybe_past_block.as_ref().map_or_else(
+                        // if we're missing a block, this could cause us to include duplicate
+                        // signatures and make our proposal invalid - but this is covered by the
+                        // requirement for a validator to have blocks spanning the max deploy TTL
+                        // in the past
+                        Default::default,
+                        |past_block| past_block.block.rewarded_signatures().clone(),
+                    )
+                }),
+        )
+        .enumerate()
+        .take(signature_rewards_max_delay as usize)
+    {
+        rewarded_signatures = rewarded_signatures
+            .difference(&ancestor_rewarded_signatures.left_padded(past_index.saturating_add(1)));
+    }
+
+    rewarded_signatures
 }

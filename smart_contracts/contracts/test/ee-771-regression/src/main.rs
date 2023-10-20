@@ -8,8 +8,8 @@ use alloc::string::ToString;
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
     addressable_entity::{NamedKeys, Parameters},
-    CLType, ContractHash, ContractVersion, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, RuntimeArgs,
+    AddressableEntityHash, CLType, EntityVersion, EntryPoint, EntryPointAccess, EntryPointType,
+    EntryPoints, Key, RuntimeArgs,
 };
 
 const ENTRY_POINT_NAME: &str = "contract_ext";
@@ -21,7 +21,10 @@ pub extern "C" fn contract_ext() {
         Some(contract_key) => {
             // Calls a stored contract if exists.
             runtime::call_contract(
-                contract_key.into_hash().expect("should be a hash").into(),
+                contract_key
+                    .into_entity_addr()
+                    .expect("should be a hash")
+                    .into(),
                 "contract_ext",
                 RuntimeArgs::default(),
             )
@@ -36,7 +39,7 @@ pub extern "C" fn contract_ext() {
                     Parameters::default(),
                     CLType::Unit,
                     EntryPointAccess::Public,
-                    EntryPointType::Contract,
+                    EntryPointType::AddressableEntity,
                 );
 
                 entry_points.add_entry_point(entry_point);
@@ -48,7 +51,7 @@ pub extern "C" fn contract_ext() {
     }
 }
 
-fn store(named_keys: NamedKeys) -> (ContractHash, ContractVersion) {
+fn store(named_keys: NamedKeys) -> (AddressableEntityHash, EntityVersion) {
     // extern "C" fn call(named_keys: NamedKeys) {
     let entry_points = {
         let mut entry_points = EntryPoints::new();
@@ -58,7 +61,7 @@ fn store(named_keys: NamedKeys) -> (ContractHash, ContractVersion) {
             Parameters::default(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
 
         entry_points.add_entry_point(entry_point);
@@ -68,23 +71,29 @@ fn store(named_keys: NamedKeys) -> (ContractHash, ContractVersion) {
     storage::new_contract(entry_points, Some(named_keys), None, None)
 }
 
-fn install() -> ContractHash {
+fn install() -> AddressableEntityHash {
     let (contract_hash, _contract_version) = store(NamedKeys::new());
 
     let mut keys = NamedKeys::new();
-    keys.insert(CONTRACT_KEY.to_string(), contract_hash.into());
+    keys.insert(
+        CONTRACT_KEY.to_string(),
+        Key::contract_entity_key(contract_hash),
+    );
     let (contract_hash, _contract_version) = store(keys);
 
     let mut keys_2 = NamedKeys::new();
-    keys_2.insert(CONTRACT_KEY.to_string(), contract_hash.into());
+    keys_2.insert(
+        CONTRACT_KEY.to_string(),
+        Key::contract_entity_key(contract_hash),
+    );
     let (contract_hash, _contract_version) = store(keys_2);
 
-    runtime::put_key(CONTRACT_KEY, contract_hash.into());
+    runtime::put_key(CONTRACT_KEY, Key::contract_entity_key(contract_hash));
 
     contract_hash
 }
 
-fn dispatch(contract_hash: ContractHash) {
+fn dispatch(contract_hash: AddressableEntityHash) {
     runtime::call_contract(contract_hash, "contract_ext", RuntimeArgs::default())
 }
 

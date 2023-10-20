@@ -241,7 +241,7 @@ fn should_distribute_accumulated_fees_to_admins() {
         .distribute(
             None,
             *DEFAULT_PROTOCOL_VERSION,
-            VALIDATOR_1_PUBLIC_KEY.clone(),
+            &IntoIterator::into_iter([(VALIDATOR_1_PUBLIC_KEY.clone(), U512::from(0))]).collect(),
             1,
             DEFAULT_BLOCK_TIME,
         )
@@ -282,8 +282,9 @@ fn should_accumulate_fees_after_upgrade() {
 
     // Check handle payments has rewards purse
     let handle_payment_hash = builder.get_handle_payment_contract_hash();
+
     let handle_payment_contract = builder
-        .query(None, handle_payment_hash.into(), &[])
+        .query(None, Key::Hash(handle_payment_hash.value()), &[])
         .expect("should have handle payment contract")
         .into_contract()
         .expect("should have legacy Contract under the Key::Contract variant");

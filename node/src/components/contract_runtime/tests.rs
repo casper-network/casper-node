@@ -7,8 +7,8 @@ use serde::Serialize;
 use tempfile::TempDir;
 
 use casper_types::{
-    runtime_args, Chainspec, ChainspecRawBytes, Deploy, EraId, EraReport, ExecutableDeployItem,
-    PublicKey, SecretKey, TimeDiff, U512,
+    runtime_args, Chainspec, ChainspecRawBytes, Deploy, EraId, ExecutableDeployItem, PublicKey,
+    SecretKey, TimeDiff, U512,
 };
 
 use super::*;
@@ -21,7 +21,7 @@ use crate::{
     protocol::Message,
     reactor::{self, EventQueueHandle, ReactorEvent, Runner},
     testing::{self, network::NetworkedReactor, ConditionCheckReactor},
-    types::{BlockPayload, DeployHashWithApprovals},
+    types::{BlockPayload, DeployHashWithApprovals, FinalizedBlock, InternalEraReport},
     utils::{Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
 };
@@ -106,27 +106,8 @@ impl reactor::Reactor for Reactor {
         )
         .unwrap();
 
-        let contract_runtime = ContractRuntime::new(
-            chainspec.protocol_version(),
-            storage.root_path(),
-            &config,
-            chainspec.wasm_config,
-            chainspec.system_costs_config,
-            chainspec.core_config.max_associated_keys,
-            chainspec.core_config.max_runtime_call_stack_height,
-            chainspec.core_config.minimum_delegation_amount,
-            chainspec.protocol_config.activation_point,
-            chainspec.core_config.prune_batch_size,
-            chainspec.core_config.strict_argument_checking,
-            chainspec.core_config.vesting_schedule_period.millis(),
-            Some(chainspec.core_config.max_delegators_per_validator),
-            registry,
-            chainspec.core_config.administrators.clone(),
-            chainspec.core_config.allow_auction_bids,
-            chainspec.core_config.allow_unrestricted_transfers,
-            chainspec.core_config.refund_handling,
-            chainspec.core_config.fee_handling,
-        )?;
+        let contract_runtime =
+            ContractRuntime::new(storage.root_path(), &config, chainspec, registry)?;
 
         let reactor = Reactor {
             storage,
@@ -179,12 +160,11 @@ impl NetworkedReactor for Reactor {}
 
 /// Schedule the given block and its deploys to be executed by the contract runtime.
 fn execute_block(
-    finalized_block: FinalizedBlock,
-    deploys: Vec<Deploy>,
+    executable_block: ExecutableBlock,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     |effect_builder| {
         effect_builder
-            .enqueue_block_for_execution(finalized_block, deploys, MetaBlockState::new())
+            .enqueue_block_for_execution(executable_block, MetaBlockState::new())
             .ignore()
     }
 }
@@ -249,33 +229,39 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
         .set_initial_state(initial_pre_state);
 
     // Create the genesis immediate switch block.
-    let block_0 = FinalizedBlock::new(
-        BlockPayload::default(),
-        Some(EraReport::default()),
-        Timestamp::now(),
-        EraId::new(0),
-        0,
-        PublicKey::System,
+    let block_0 = ExecutableBlock::from_finalized_block_and_deploys(
+        FinalizedBlock::new(
+            BlockPayload::default(),
+            Some(InternalEraReport::default()),
+            Timestamp::now(),
+            EraId::new(0),
+            0,
+            PublicKey::System,
+        ),
+        vec![],
     );
 
     runner
-        .process_injected_effects(execute_block(block_0, vec![]))
+        .process_injected_effects(execute_block(block_0))
         .await;
     runner
         .crank_until(rng, execution_completed, TEST_TIMEOUT)
         .await;
 
     // Create the first block of era 1.
-    let block_1 = FinalizedBlock::new(
-        BlockPayload::default(),
-        None,
-        Timestamp::now(),
-        EraId::new(1),
-        1,
-        PublicKey::System,
+    let block_1 = ExecutableBlock::from_finalized_block_and_deploys(
+        FinalizedBlock::new(
+            BlockPayload::default(),
+            None,
+            Timestamp::now(),
+            EraId::new(1),
+            1,
+            PublicKey::System,
+        ),
+        vec![],
     );
     runner
-        .process_injected_effects(execute_block(block_1, vec![]))
+        .process_injected_effects(execute_block(block_1))
         .await;
     runner
         .crank_until(rng, execution_completed, TEST_TIMEOUT)
@@ -341,18 +327,22 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
         vec![],
         deploys.iter().map(DeployHashWithApprovals::from).collect(),
         vec![],
+        Default::default(),
         true,
     );
-    let block_2 = FinalizedBlock::new(
-        block_payload,
-        None,
-        Timestamp::now(),
-        EraId::new(1),
-        2,
-        PublicKey::System,
+    let block_2 = ExecutableBlock::from_finalized_block_and_deploys(
+        FinalizedBlock::new(
+            block_payload,
+            None,
+            Timestamp::now(),
+            EraId::new(1),
+            2,
+            PublicKey::System,
+        ),
+        deploys,
     );
     runner
-        .process_injected_effects(execute_block(block_2, deploys))
+        .process_injected_effects(execute_block(block_2))
         .await;
 
     // Crank until execution is scheduled.

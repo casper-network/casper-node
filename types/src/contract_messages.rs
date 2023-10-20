@@ -13,7 +13,7 @@ pub use topics::{
 use crate::{
     alloc::string::ToString,
     bytesrepr::{self, FromBytes, ToBytes},
-    checksummed_hex, HashAddr, KEY_HASH_LENGTH,
+    checksummed_hex, AddressableEntityHash, KEY_HASH_LENGTH,
 };
 
 use core::convert::TryFrom;
@@ -40,7 +40,7 @@ const MESSAGE_ADDR_PREFIX: &str = "message-";
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct MessageAddr {
     /// The entity addr.
-    entity_addr: HashAddr,
+    entity_addr: AddressableEntityHash,
     /// The hash of the name of the message topic.
     topic_name_hash: TopicNameHash,
     /// The message index.
@@ -50,7 +50,10 @@ pub struct MessageAddr {
 impl MessageAddr {
     /// Constructs a new topic address based on the addressable entity addr and the hash of the
     /// message topic name.
-    pub const fn new_topic_addr(entity_addr: HashAddr, topic_name_hash: TopicNameHash) -> Self {
+    pub const fn new_topic_addr(
+        entity_addr: AddressableEntityHash,
+        topic_name_hash: TopicNameHash,
+    ) -> Self {
         Self {
             entity_addr,
             topic_name_hash,
@@ -61,7 +64,7 @@ impl MessageAddr {
     /// Constructs a new message address based on the addressable entity addr, the hash of the
     /// message topic name and the message index in the topic.
     pub const fn new_message_addr(
-        entity_addr: HashAddr,
+        entity_addr: AddressableEntityHash,
         topic_name_hash: TopicNameHash,
         message_index: u32,
     ) -> Self {
@@ -118,7 +121,7 @@ impl MessageAddr {
             .ok_or(FromStrError::MissingMessageIndex)?;
 
         let bytes = checksummed_hex::decode(entity_addr_str)?;
-        let entity_addr = <[u8; KEY_HASH_LENGTH]>::try_from(bytes[0..KEY_HASH_LENGTH].as_ref())
+        let entity_addr = <AddressableEntityHash>::try_from(bytes[0..KEY_HASH_LENGTH].as_ref())
             .map_err(|err| FromStrError::EntityHashParseError(err.to_string()))?;
 
         let topic_name_hash = TopicNameHash::from_formatted_str(topic_name_hash_str)?;
@@ -130,7 +133,7 @@ impl MessageAddr {
     }
 
     /// Returns the entity addr of this message topic.
-    pub fn entity_addr(&self) -> HashAddr {
+    pub fn entity_addr(&self) -> AddressableEntityHash {
         self.entity_addr
     }
 }
@@ -209,12 +212,14 @@ mod tests {
 
     #[test]
     fn serialization_roundtrip() {
-        let topic_addr =
-            MessageAddr::new_topic_addr([1; KEY_HASH_LENGTH], [2; TOPIC_NAME_HASH_LENGTH].into());
+        let topic_addr = MessageAddr::new_topic_addr(
+            [1; KEY_HASH_LENGTH].into(),
+            [2; TOPIC_NAME_HASH_LENGTH].into(),
+        );
         bytesrepr::test_serialization_roundtrip(&topic_addr);
 
         let message_addr = MessageAddr::new_message_addr(
-            [1; KEY_HASH_LENGTH],
+            [1; KEY_HASH_LENGTH].into(),
             [2; TOPIC_NAME_HASH_LENGTH].into(),
             3,
         );

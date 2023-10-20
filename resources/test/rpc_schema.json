@@ -256,7 +256,7 @@
                       }
                     ]
                   },
-                  "block_hash": "ca92fbeeb369f219189bad8f59bd2eca12ad569dcd36beed1d1c0e825d7ede28",
+                  "block_hash": "24ec19bc9aee9726616271ccfb046e8a7ea6370a34f18d6fb54d7a8ae29bdb1b",
                   "block_height": 10,
                   "execution_result": {
                     "Version2": {
@@ -561,7 +561,7 @@
                 {
                   "name": "state_identifier",
                   "value": {
-                    "BlockHash": "ca92fbeeb369f219189bad8f59bd2eca12ad569dcd36beed1d1c0e825d7ede28"
+                    "BlockHash": "24ec19bc9aee9726616271ccfb046e8a7ea6370a34f18d6fb54d7a8ae29bdb1b"
                   }
                 },
                 {
@@ -578,40 +578,40 @@
                 "value": {
                   "api_version": "1.5.2",
                   "block_header": {
-                    "parent_hash": "0707070707070707070707070707070707070707070707070707070707070707",
-                    "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
-                    "body_hash": "0505050505050505050505050505050505050505050505050505050505050505",
-                    "random_bit": true,
-                    "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
-                    "era_end": {
-                      "era_report": {
+                    "V2": {
+                      "parent_hash": "0707070707070707070707070707070707070707070707070707070707070707",
+                      "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
+                      "body_hash": "0505050505050505050505050505050505050505050505050505050505050505",
+                      "random_bit": true,
+                      "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
+                      "era_end": {
                         "equivocators": [
                           "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"
                         ],
-                        "rewards": [],
                         "inactive_validators": [
                           "018139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"
-                        ]
+                        ],
+                        "next_era_validator_weights": [
+                          {
+                            "validator": "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29",
+                            "weight": "123"
+                          },
+                          {
+                            "validator": "016e7a1cdd29b0b78fd13af4c5598feff4ef2a97166e3ca6f2e4fbfccd80505bf1",
+                            "weight": "456"
+                          },
+                          {
+                            "validator": "018a875fff1eb38451577acd5afee405456568dd7c89e090863a0557bc7af49f17",
+                            "weight": "789"
+                          }
+                        ],
+                        "rewards": {}
                       },
-                      "next_era_validator_weights": [
-                        {
-                          "validator": "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29",
-                          "weight": "123"
-                        },
-                        {
-                          "validator": "016e7a1cdd29b0b78fd13af4c5598feff4ef2a97166e3ca6f2e4fbfccd80505bf1",
-                          "weight": "456"
-                        },
-                        {
-                          "validator": "018a875fff1eb38451577acd5afee405456568dd7c89e090863a0557bc7af49f17",
-                          "weight": "789"
-                        }
-                      ]
-                    },
-                    "timestamp": "2020-11-17T00:39:24.072Z",
-                    "era_id": 1,
-                    "height": 10,
-                    "protocol_version": "1.0.0"
+                      "timestamp": "2020-11-17T00:39:24.072Z",
+                      "era_id": 1,
+                      "height": 10,
+                      "protocol_version": "1.0.0"
+                    }
                   },
                   "stored_value": {
                     "Account": {
@@ -890,7 +890,7 @@
                   "chainspec_name": "casper-example",
                   "starting_state_root_hash": "0000000000000000000000000000000000000000000000000000000000000000",
                   "last_added_block_info": {
-                    "hash": "ca92fbeeb369f219189bad8f59bd2eca12ad569dcd36beed1d1c0e825d7ede28",
+                    "hash": "24ec19bc9aee9726616271ccfb046e8a7ea6370a34f18d6fb54d7a8ae29bdb1b",
                     "timestamp": "2020-11-17T00:39:24.072Z",
                     "era_id": 1,
                     "height": 10,
@@ -1071,7 +1071,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "ca92fbeeb369f219189bad8f59bd2eca12ad569dcd36beed1d1c0e825d7ede28"
+                    "Hash": "24ec19bc9aee9726616271ccfb046e8a7ea6370a34f18d6fb54d7a8ae29bdb1b"
                   }
                 }
               ],
@@ -1082,23 +1082,20 @@
                   "block_with_signatures": {
                     "block": {
                       "Version2": {
-                        "hash": "ca92fbeeb369f219189bad8f59bd2eca12ad569dcd36beed1d1c0e825d7ede28",
+                        "hash": "24ec19bc9aee9726616271ccfb046e8a7ea6370a34f18d6fb54d7a8ae29bdb1b",
                         "header": {
                           "parent_hash": "0707070707070707070707070707070707070707070707070707070707070707",
                           "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
-                          "body_hash": "9703ac20bdd12ad4ce26e6ceac16cb9c0a092d8fd3a87d53850c49c527bf10f9",
+                          "body_hash": "1855b7a4c3743c589f89bb840d13099a11527e4bd21ef1a3b37441547f5f99dc",
                           "random_bit": true,
                           "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
                           "era_end": {
-                            "era_report": {
-                              "equivocators": [
-                                "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"
-                              ],
-                              "rewards": [],
-                              "inactive_validators": [
-                                "018139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"
-                              ]
-                            },
+                            "equivocators": [
+                              "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"
+                            ],
+                            "inactive_validators": [
+                              "018139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"
+                            ],
                             "next_era_validator_weights": [
                               {
                                 "validator": "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29",
@@ -1112,7 +1109,8 @@
                                 "validator": "018a875fff1eb38451577acd5afee405456568dd7c89e090863a0557bc7af49f17",
                                 "weight": "789"
                               }
-                            ]
+                            ],
+                            "rewards": {}
                           },
                           "timestamp": "2020-11-17T00:39:24.072Z",
                           "era_id": 1,
@@ -1126,14 +1124,15 @@
                           ],
                           "transfer_hashes": [
                             "1515151515151515151515151515151515151515151515151515151515151515"
-                          ]
+                          ],
+                          "rewarded_signatures": []
                         }
                       }
                     },
                     "proofs": [
                       {
                         "public_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                        "signature": "01e0141a10db26fe0880f6fc836a2dd8dd60089eb065790f6437f4827e8dd4995ea8c87ef62c1c99cc311bbf4284ddd28b861637006b75e7e29844c63aae64e10f"
+                        "signature": "0161b0fd1cc91e99bf8994eb9785d38a5e93fd7fe248ece6d4700a7b5574408874a822cf9317320bde08d9b15b10243e7000955239c19d18200cad704217ad800c"
                       }
                     ]
                   }
@@ -1504,7 +1503,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "ca92fbeeb369f219189bad8f59bd2eca12ad569dcd36beed1d1c0e825d7ede28"
+                    "Hash": "24ec19bc9aee9726616271ccfb046e8a7ea6370a34f18d6fb54d7a8ae29bdb1b"
                   }
                 }
               ],
@@ -1513,7 +1512,7 @@
                 "value": {
                   "api_version": "1.5.2",
                   "era_summary": {
-                    "block_hash": "ca92fbeeb369f219189bad8f59bd2eca12ad569dcd36beed1d1c0e825d7ede28",
+                    "block_hash": "24ec19bc9aee9726616271ccfb046e8a7ea6370a34f18d6fb54d7a8ae29bdb1b",
                     "era_id": 42,
                     "stored_value": {
                       "EraInfo": {
@@ -1679,7 +1678,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "ca92fbeeb369f219189bad8f59bd2eca12ad569dcd36beed1d1c0e825d7ede28"
+                    "Hash": "24ec19bc9aee9726616271ccfb046e8a7ea6370a34f18d6fb54d7a8ae29bdb1b"
                   }
                 }
               ],
@@ -1688,7 +1687,7 @@
                 "value": {
                   "api_version": "1.5.2",
                   "era_summary": {
-                    "block_hash": "ca92fbeeb369f219189bad8f59bd2eca12ad569dcd36beed1d1c0e825d7ede28",
+                    "block_hash": "24ec19bc9aee9726616271ccfb046e8a7ea6370a34f18d6fb54d7a8ae29bdb1b",
                     "era_id": 42,
                     "stored_value": {
                       "EraInfo": {
@@ -1855,7 +1854,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Stored contract referenced by its [`ContractHash`], entry point and an instance of [`RuntimeArgs`].",
+                "description": "Stored contract referenced by its [`AddressableEntityHash`], entry point and an instance of [`RuntimeArgs`].",
                 "type": "object",
                 "required": [
                   "StoredContractByHash"
@@ -1929,7 +1928,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Stored versioned contract referenced by its [`ContractPackageHash`], entry point and an instance of [`RuntimeArgs`].",
+                "description": "Stored versioned contract referenced by its [`PackageHash`], entry point and an instance of [`RuntimeArgs`].",
                 "type": "object",
                 "required": [
                   "StoredVersionedContractByHash"
@@ -4050,7 +4049,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "A contract Wasm.",
+                "description": "Contract wasm.",
                 "type": "object",
                 "required": [
                   "ContractWasm"
@@ -4076,14 +4075,14 @@
                 "additionalProperties": false
               },
               {
-                "description": "A `Package`.",
+                "description": "A contract package.",
                 "type": "object",
                 "required": [
                   "ContractPackage"
                 ],
                 "properties": {
                   "ContractPackage": {
-                    "$ref": "#/components/schemas/Package"
+                    "$ref": "#/components/schemas/ContractPackage"
                   }
                 },
                 "additionalProperties": false
@@ -4199,6 +4198,32 @@
                 "additionalProperties": false
               },
               {
+                "description": "A `Package`.",
+                "type": "object",
+                "required": [
+                  "Package"
+                ],
+                "properties": {
+                  "Package": {
+                    "$ref": "#/components/schemas/Package"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A record of byte code.",
+                "type": "object",
+                "required": [
+                  "ByteCode"
+                ],
+                "properties": {
+                  "ByteCode": {
+                    "$ref": "#/components/schemas/ByteCode"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
                 "description": "Variant that stores a message topic.",
                 "type": "object",
                 "required": [
@@ -4271,7 +4296,7 @@
             }
           },
           "ContractPackageHash": {
-            "description": "The hex-encoded address of the contract package.",
+            "description": "The hash address of the contract package",
             "type": "string"
           },
           "ContractWasmHash": {
@@ -4393,24 +4418,24 @@
             "description": "Context of method execution\n\nMost significant bit represents version i.e. - 0b0 -> 0.x/1.x (session & contracts) - 0b1 -> 2.x and later (introduced installer, utility entry points)",
             "oneOf": [
               {
-                "description": "Runs as session code",
+                "description": "Runs as session code (caller) Deprecated, retained to allow read back of legacy stored session.",
                 "type": "string",
                 "enum": [
                   "Session"
                 ]
               },
               {
-                "description": "Runs within contract's context",
+                "description": "Runs within called entity's context (called)",
                 "type": "string",
                 "enum": [
-                  "Contract"
+                  "AddressableEntity"
                 ]
               },
               {
-                "description": "Installer entry point.",
+                "description": "This entry point is intended to extract a subset of bytecode. Runs within called entity's context (called)",
                 "type": "string",
                 "enum": [
-                  "Install"
+                  "Factory"
                 ]
               }
             ]
@@ -4419,12 +4444,11 @@
             "description": "Casper Platform protocol version",
             "type": "string"
           },
-          "Package": {
+          "ContractPackage": {
             "description": "Contract definition, metadata, and security container.",
             "type": "object",
             "required": [
               "access_key",
-              "contract_package_kind",
               "disabled_versions",
               "groups",
               "lock_status",
@@ -4432,7 +4456,7 @@
             ],
             "properties": {
               "access_key": {
-                "description": "Key used to add or disable versions.",
+                "description": "Key used to add or disable versions",
                 "allOf": [
                   {
                     "$ref": "#/components/schemas/URef"
@@ -4440,15 +4464,14 @@
                 ]
               },
               "versions": {
-                "description": "All versions (enabled & disabled).",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/Array_of_ContractVersionAndHash"
-                  }
-                ]
+                "description": "All versions (enabled & disabled)",
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/ContractHash"
+                }
               },
               "disabled_versions": {
-                "description": "Collection of disabled contract versions. The runtime will not permit disabled contract versions to be executed.",
+                "description": "Disabled versions",
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/ContractVersionKey"
@@ -4470,71 +4493,30 @@
                     "$ref": "#/components/schemas/ContractPackageStatus"
                   }
                 ]
-              },
-              "contract_package_kind": {
-                "description": "The kind of package.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/ContractPackageKind"
-                  }
-                ]
-              }
-            }
-          },
-          "Array_of_ContractVersionAndHash": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ContractVersionAndHash"
-            }
-          },
-          "ContractVersionAndHash": {
-            "type": "object",
-            "required": [
-              "contract_hash",
-              "contract_version_key"
-            ],
-            "properties": {
-              "contract_version_key": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/ContractVersionKey"
-                  }
-                ]
-              },
-              "contract_hash": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/ContractHash"
-                  }
-                ]
-              }
-            }
-          },
-          "ContractVersionKey": {
-            "description": "Major element of `ProtocolVersion` combined with `ContractVersion`.",
-            "type": "object",
-            "required": [
-              "contract_version",
-              "protocol_version_major"
-            ],
-            "properties": {
-              "protocol_version_major": {
-                "description": "Major element of `ProtocolVersion` a `ContractVersion` is compatible with.",
-                "type": "integer",
-                "format": "uint32",
-                "minimum": 0.0
-              },
-              "contract_version": {
-                "description": "Automatically incremented value for a contract version within a major `ProtocolVersion`.",
-                "type": "integer",
-                "format": "uint32",
-                "minimum": 0.0
               }
             }
           },
           "ContractHash": {
-            "description": "The hex-encoded address of the addressable entity.",
+            "description": "The hash address of the contract",
             "type": "string"
+          },
+          "ContractVersionKey": {
+            "description": "Major element of `ProtocolVersion` combined with `ContractVersion`.",
+            "type": "array",
+            "items": [
+              {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0.0
+              },
+              {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0.0
+              }
+            ],
+            "maxItems": 2,
+            "minItems": 2
           },
           "Array_of_NamedUserGroup": {
             "type": "array",
@@ -4584,31 +4566,237 @@
               }
             ]
           },
-          "ContractPackageKind": {
-            "description": "The type of contract package.",
+          "AddressableEntity": {
+            "description": "Methods and type signatures supported by a contract.",
+            "type": "object",
+            "required": [
+              "action_thresholds",
+              "associated_keys",
+              "byte_code_hash",
+              "entry_points",
+              "main_purse",
+              "message_topics",
+              "named_keys",
+              "package_hash",
+              "protocol_version"
+            ],
+            "properties": {
+              "package_hash": {
+                "$ref": "#/components/schemas/PackageHash"
+              },
+              "byte_code_hash": {
+                "$ref": "#/components/schemas/ByteCodeHash"
+              },
+              "named_keys": {
+                "$ref": "#/components/schemas/NamedKeys"
+              },
+              "entry_points": {
+                "$ref": "#/components/schemas/Array_of_NamedEntryPoint"
+              },
+              "protocol_version": {
+                "$ref": "#/components/schemas/ProtocolVersion"
+              },
+              "main_purse": {
+                "$ref": "#/components/schemas/URef"
+              },
+              "associated_keys": {
+                "$ref": "#/components/schemas/AssociatedKeys"
+              },
+              "action_thresholds": {
+                "$ref": "#/components/schemas/ActionThresholds"
+              },
+              "message_topics": {
+                "$ref": "#/components/schemas/Array_of_MessageTopic"
+              }
+            }
+          },
+          "PackageHash": {
+            "description": "The hex-encoded address of the Package.",
+            "type": "string"
+          },
+          "ByteCodeHash": {
+            "description": "The hash address of the contract wasm",
+            "type": "string"
+          },
+          "Array_of_MessageTopic": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageTopic"
+            }
+          },
+          "MessageTopic": {
+            "type": "object",
+            "required": [
+              "topic_name",
+              "topic_name_hash"
+            ],
+            "properties": {
+              "topic_name": {
+                "type": "string"
+              },
+              "topic_name_hash": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/TopicNameHash"
+                  }
+                ]
+              }
+            }
+          },
+          "Package": {
+            "description": "Entity definition, metadata, and security container.",
+            "type": "object",
+            "required": [
+              "access_key",
+              "disabled_versions",
+              "groups",
+              "lock_status",
+              "package_kind",
+              "versions"
+            ],
+            "properties": {
+              "access_key": {
+                "description": "Key used to add or disable versions.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ]
+              },
+              "versions": {
+                "description": "All versions (enabled & disabled).",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Array_of_EntityVersionAndHash"
+                  }
+                ]
+              },
+              "disabled_versions": {
+                "description": "Collection of disabled entity versions. The runtime will not permit disabled entity versions to be executed.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/EntityVersionKey"
+                },
+                "uniqueItems": true
+              },
+              "groups": {
+                "description": "Mapping maintaining the set of URefs associated with each \"user group\". This can be used to control access to methods in a particular version of the entity. A method is callable by any context which \"knows\" any of the URefs associated with the method's user group.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Array_of_NamedUserGroup"
+                  }
+                ]
+              },
+              "lock_status": {
+                "description": "A flag that determines whether a entity is locked",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PackageStatus"
+                  }
+                ]
+              },
+              "package_kind": {
+                "description": "The kind of package.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PackageKind"
+                  }
+                ]
+              }
+            }
+          },
+          "Array_of_EntityVersionAndHash": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EntityVersionAndHash"
+            }
+          },
+          "EntityVersionAndHash": {
+            "type": "object",
+            "required": [
+              "addressable_entity_hash",
+              "entity_version_key"
+            ],
+            "properties": {
+              "entity_version_key": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EntityVersionKey"
+                  }
+                ]
+              },
+              "addressable_entity_hash": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/AddressableEntityHash"
+                  }
+                ]
+              }
+            }
+          },
+          "EntityVersionKey": {
+            "description": "Major element of `ProtocolVersion` combined with `EntityVersion`.",
+            "type": "object",
+            "required": [
+              "entity_version",
+              "protocol_version_major"
+            ],
+            "properties": {
+              "protocol_version_major": {
+                "description": "Major element of `ProtocolVersion` a `ContractVersion` is compatible with.",
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0.0
+              },
+              "entity_version": {
+                "description": "Automatically incremented value for a contract version within a major `ProtocolVersion`.",
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0.0
+              }
+            }
+          },
+          "AddressableEntityHash": {
+            "description": "The hex-encoded address of the addressable entity.",
+            "type": "string"
+          },
+          "PackageStatus": {
+            "description": "A enum to determine the lock status of the package.",
             "oneOf": [
               {
-                "description": "Contract Packages associated with Wasm stored on chain.",
+                "description": "The package is locked and cannot be versioned.",
                 "type": "string",
                 "enum": [
-                  "Wasm"
+                  "Locked"
                 ]
               },
               {
-                "description": "Contract Package associated with a native contract implementation.",
+                "description": "The package is unlocked and can be versioned.",
+                "type": "string",
+                "enum": [
+                  "Unlocked"
+                ]
+              }
+            ]
+          },
+          "PackageKind": {
+            "description": "The type of Package.",
+            "oneOf": [
+              {
+                "description": "Package associated with a native contract implementation.",
                 "type": "object",
                 "required": [
                   "System"
                 ],
                 "properties": {
                   "System": {
-                    "$ref": "#/components/schemas/SystemContractType"
+                    "$ref": "#/components/schemas/SystemEntityType"
                   }
                 },
                 "additionalProperties": false
               },
               {
-                "description": "Contract Package associated with an Account hash.",
+                "description": "Package associated with an Account hash.",
                 "type": "object",
                 "required": [
                   "Account"
@@ -4621,15 +4809,15 @@
                 "additionalProperties": false
               },
               {
-                "description": "Contract Packages from the previous format.",
+                "description": "Packages associated with Wasm stored on chain.",
                 "type": "string",
                 "enum": [
-                  "Legacy"
+                  "SmartContract"
                 ]
               }
             ]
           },
-          "SystemContractType": {
+          "SystemEntityType": {
             "description": "System contract types.\n\nUsed by converting to a `u32` and passing as the `system_contract_index` argument of `ext_ffi::casper_get_system_contract()`.",
             "oneOf": [
               {
@@ -4662,74 +4850,40 @@
               }
             ]
           },
-          "AddressableEntity": {
-            "description": "Methods and type signatures supported by a contract.",
+          "ByteCode": {
+            "description": "A container for contract's WASM bytes.",
             "type": "object",
             "required": [
-              "action_thresholds",
-              "associated_keys",
-              "contract_package_hash",
-              "contract_wasm_hash",
-              "entry_points",
-              "main_purse",
-              "message_topics",
-              "named_keys",
-              "protocol_version"
+              "byte_code_kind",
+              "bytes"
             ],
             "properties": {
-              "contract_package_hash": {
-                "$ref": "#/components/schemas/ContractPackageHash"
+              "byte_code_kind": {
+                "$ref": "#/components/schemas/ByteCodeKind"
               },
-              "contract_wasm_hash": {
-                "$ref": "#/components/schemas/ContractWasmHash"
-              },
-              "named_keys": {
-                "$ref": "#/components/schemas/NamedKeys"
-              },
-              "entry_points": {
-                "$ref": "#/components/schemas/Array_of_NamedEntryPoint"
-              },
-              "protocol_version": {
-                "$ref": "#/components/schemas/ProtocolVersion"
-              },
-              "main_purse": {
-                "$ref": "#/components/schemas/URef"
-              },
-              "associated_keys": {
-                "$ref": "#/components/schemas/AssociatedKeys"
-              },
-              "action_thresholds": {
-                "$ref": "#/components/schemas/ActionThresholds"
-              },
-              "message_topics": {
-                "$ref": "#/components/schemas/Array_of_MessageTopic"
+              "bytes": {
+                "$ref": "#/components/schemas/Bytes"
               }
             }
           },
-          "Array_of_MessageTopic": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MessageTopic"
-            }
-          },
-          "MessageTopic": {
-            "type": "object",
-            "required": [
-              "topic_name",
-              "topic_name_hash"
-            ],
-            "properties": {
-              "topic_name": {
-                "type": "string"
+          "ByteCodeKind": {
+            "description": "The type of Byte code.",
+            "oneOf": [
+              {
+                "description": "Empty byte code.",
+                "type": "string",
+                "enum": [
+                  "Empty"
+                ]
               },
-              "topic_name_hash": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/TopicNameHash"
-                  }
+              {
+                "description": "Byte code to be executed with the V1 Casper execution engine.",
+                "type": "string",
+                "enum": [
+                  "V1CasperWasm"
                 ]
               }
-            }
+            ]
           },
           "MessageTopicSummary": {
             "description": "Summary of a message topic that will be stored in global state.",
@@ -4812,6 +4966,37 @@
             ]
           },
           "BlockHeader": {
+            "description": "The versioned header portion of a block. It encapsulates different variants of the BlockHeader struct.",
+            "oneOf": [
+              {
+                "description": "The legacy, initial version of the header portion of a block.",
+                "type": "object",
+                "required": [
+                  "V1"
+                ],
+                "properties": {
+                  "V1": {
+                    "$ref": "#/components/schemas/BlockHeaderV1"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "The version 2 of the header portion of a block.",
+                "type": "object",
+                "required": [
+                  "V2"
+                ],
+                "properties": {
+                  "V2": {
+                    "$ref": "#/components/schemas/BlockHeaderV2"
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "BlockHeaderV1": {
             "description": "The header portion of a block.",
             "type": "object",
             "required": [
@@ -4866,7 +5051,7 @@
                 "description": "The `EraEnd` of a block if it is a switch block.",
                 "anyOf": [
                   {
-                    "$ref": "#/components/schemas/EraEnd"
+                    "$ref": "#/components/schemas/EraEndV1"
                   },
                   {
                     "type": "null"
@@ -4905,7 +5090,7 @@
               }
             }
           },
-          "EraEnd": {
+          "EraEndV1": {
             "description": "Information related to the end of an era, and validator weights for the following era.",
             "type": "object",
             "required": [
@@ -5023,6 +5208,141 @@
                     "$ref": "#/components/schemas/U512"
                   }
                 ]
+              }
+            }
+          },
+          "BlockHeaderV2": {
+            "description": "The header portion of a block.",
+            "type": "object",
+            "required": [
+              "accumulated_seed",
+              "body_hash",
+              "era_id",
+              "height",
+              "parent_hash",
+              "protocol_version",
+              "random_bit",
+              "state_root_hash",
+              "timestamp"
+            ],
+            "properties": {
+              "parent_hash": {
+                "description": "The parent block's hash.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/BlockHash"
+                  }
+                ]
+              },
+              "state_root_hash": {
+                "description": "The root hash of global state after the deploys in this block have been executed.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Digest"
+                  }
+                ]
+              },
+              "body_hash": {
+                "description": "The hash of the block's body.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Digest"
+                  }
+                ]
+              },
+              "random_bit": {
+                "description": "A random bit needed for initializing a future era.",
+                "type": "boolean"
+              },
+              "accumulated_seed": {
+                "description": "A seed needed for initializing a future era.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Digest"
+                  }
+                ]
+              },
+              "era_end": {
+                "description": "The `EraEnd` of a block if it is a switch block.",
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/EraEndV2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "timestamp": {
+                "description": "The timestamp from when the block was proposed.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Timestamp"
+                  }
+                ]
+              },
+              "era_id": {
+                "description": "The era ID in which this block was created.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                ]
+              },
+              "height": {
+                "description": "The height of this block, i.e. the number of ancestors.",
+                "type": "integer",
+                "format": "uint64",
+                "minimum": 0.0
+              },
+              "protocol_version": {
+                "description": "The protocol version of the network from when this block was created.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ProtocolVersion"
+                  }
+                ]
+              }
+            }
+          },
+          "EraEndV2": {
+            "description": "Information related to the end of an era, and validator weights for the following era.",
+            "type": "object",
+            "required": [
+              "equivocators",
+              "inactive_validators",
+              "next_era_validator_weights",
+              "rewards"
+            ],
+            "properties": {
+              "equivocators": {
+                "description": "The set of equivocators.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PublicKey"
+                }
+              },
+              "inactive_validators": {
+                "description": "Validators that haven't produced any unit during the era.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PublicKey"
+                }
+              },
+              "next_era_validator_weights": {
+                "description": "The validators for the upcoming era and their respective weights.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Array_of_ValidatorWeight"
+                  }
+                ]
+              },
+              "rewards": {
+                "description": "The rewards distributed to the validators.",
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/U512"
+                }
               }
             }
           },
@@ -5510,7 +5830,7 @@
                 "description": "The header portion of the block.",
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/BlockHeader"
+                    "$ref": "#/components/schemas/BlockHeaderV1"
                   }
                 ]
               },
@@ -5578,7 +5898,7 @@
                 "description": "The header portion of the block.",
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/BlockHeader"
+                    "$ref": "#/components/schemas/BlockHeaderV2"
                   }
                 ]
               },
@@ -5598,6 +5918,7 @@
             "required": [
               "deploy_hashes",
               "proposer",
+              "rewarded_signatures",
               "transfer_hashes"
             ],
             "properties": {
@@ -5622,7 +5943,31 @@
                 "items": {
                   "$ref": "#/components/schemas/DeployHash"
                 }
+              },
+              "rewarded_signatures": {
+                "description": "List of identifiers for finality signatures for a particular past block.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/RewardedSignatures"
+                  }
+                ]
               }
+            }
+          },
+          "RewardedSignatures": {
+            "description": "Describes finality signatures that will be rewarded in a block. Consists of a vector of `SingleBlockRewardedSignatures`, each of which describes signatures for a single ancestor block. The first entry represents the signatures for the parent block, the second for the parent of the parent, and so on.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SingleBlockRewardedSignatures"
+            }
+          },
+          "SingleBlockRewardedSignatures": {
+            "description": "List of identifiers for finality signatures for a particular past block.\n\nThat past block height is current_height - signature_rewards_max_delay, the latter being defined in the chainspec.\n\nWe need to wait for a few blocks to pass (`signature_rewards_max_delay`) to store the finality signers because we need a bit of time to get the block finality.",
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "uint8",
+              "minimum": 0.0
             }
           },
           "Array_of_BlockProof": {

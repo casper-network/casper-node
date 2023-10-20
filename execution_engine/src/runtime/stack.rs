@@ -11,7 +11,7 @@ use casper_types::{account::AccountHash, system::CallStackElement, PublicKey};
 pub type RuntimeStackFrame = CallStackElement;
 
 /// The runtime stack.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RuntimeStack {
     frames: Vec<RuntimeStackFrame>,
     max_height: usize,

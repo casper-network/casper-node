@@ -10,11 +10,11 @@ use casper_types::{
     bytesrepr::{self, ToBytes},
     contract_messages::MessageTopicOperation,
     crypto,
-    package::{ContractPackageKind, ContractPackageStatus},
+    package::{PackageKind, PackageStatus},
     system::auction::EraInfo,
-    ApiError, ContractHash, ContractPackageHash, ContractVersion, EntryPointType, EraId, Gas,
-    Group, HostFunction, HostFunctionCost, Key, StoredValue, URef,
-    DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, U512, UREF_SERIALIZED_LENGTH,
+    AddressableEntityHash, ApiError, EntityVersion, EraId, Gas, Group, HostFunction,
+    HostFunctionCost, Key, PackageHash, StoredValue, URef, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
+    U512, UREF_SERIALIZED_LENGTH,
 };
 
 use super::{args::Args, Error, Runtime};
@@ -546,9 +546,9 @@ where
                     &host_function_costs.create_contract_package_at_hash,
                     [hash_dest_ptr, access_dest_ptr],
                 )?;
-                let package_status = ContractPackageStatus::new(is_locked);
+                let package_status = PackageStatus::new(is_locked);
                 let (hash_addr, access_addr) = self
-                    .create_contract_package_at_hash(package_status, ContractPackageKind::Wasm)?;
+                    .create_contract_package_at_hash(package_status, PackageKind::SmartContract)?;
 
                 self.function_address(hash_addr, hash_dest_ptr)?;
                 self.function_address(access_addr, access_dest_ptr)?;
@@ -588,7 +588,7 @@ where
                     ],
                 )?;
 
-                let contract_package_hash: ContractPackageHash =
+                let contract_package_hash: PackageHash =
                     self.t_from_mem(package_key_ptr, package_key_size)?;
                 let label: String = self.t_from_mem(label_ptr, label_size)?;
                 let existing_urefs: BTreeSet<URef> =
@@ -603,17 +603,30 @@ where
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
+            FunctionIndex::AddSessionVersion => {
+                // args(0) = pointer to entrypoints in wasm memory
+                // args(1) = size of entrypoints in wasm memory
+                let (entry_points_ptr, entry_points_size) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.add_session_version,
+                    [entry_points_ptr, entry_points_size],
+                )?;
 
-            FunctionIndex::AddContractVersion => {
-                // args(0) = pointer to package key in wasm memory
-                // args(1) = size of package key in wasm memory
-                // args(2) = pointer to entrypoints in wasm memory
-                // args(3) = size of entrypoints in wasm memory
-                // args(4) = pointer to named keys in wasm memory
-                // args(5) = size of named keys in wasm memory
-                // args(6) = pointer to output buffer for serialized key
-                // args(7) = size of output buffer
-                // args(8) = pointer to bytes written
+                let entry_points: EntryPoints =
+                    self.t_from_mem(entry_points_ptr, entry_points_size)?;
+                let ret = self.add_session_version(entry_points)?;
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
+            }
+            FunctionIndex::AddPackageVersion => {
+                // args(0) = pointer to package hash in wasm memory
+                // args(1) = size of package hash in wasm memory
+                // args(2) = pointer to entity version in wasm memory
+                // args(3) = pointer to entrypoints in wasm memory
+                // args(4) = size of entrypoints in wasm memory
+                // args(5) = pointer to named keys in wasm memory
+                // args(6) = size of named keys in wasm memory
+                // args(7) = pointer to output buffer for serialized key
+                // args(8) = size of output buffer
                 let (
                     contract_package_hash_ptr,
                     contract_package_hash_size,
@@ -624,8 +637,8 @@ where
                     named_keys_size,
                     output_ptr,
                     output_size,
-                    bytes_written_ptr,
                 ) = Args::parse(args)?;
+
                 self.charge_host_function_call(
                     &host_function_costs.add_contract_version,
                     [
@@ -638,23 +651,28 @@ where
                         named_keys_size,
                         output_ptr,
                         output_size,
-                        bytes_written_ptr,
                     ],
                 )?;
 
-                let contract_package_hash: ContractPackageHash =
+                // Exit if unable to return output.
+                if output_size < 32 {
+                    // `output_size` must be >= actual length of serialized hash bytes
+                    return Ok(Some(RuntimeValue::I32(api_error::i32_from(Err(
+                        ApiError::BufferTooSmall,
+                    )))));
+                }
+
+                let package_hash: PackageHash =
                     self.t_from_mem(contract_package_hash_ptr, contract_package_hash_size)?;
                 let entry_points: EntryPoints =
                     self.t_from_mem(entry_points_ptr, entry_points_size)?;
                 let named_keys: NamedKeys = self.t_from_mem(named_keys_ptr, named_keys_size)?;
                 let ret = self.add_contract_version(
-                    contract_package_hash,
+                    package_hash,
+                    version_ptr,
                     entry_points,
                     named_keys,
                     output_ptr,
-                    output_size as usize,
-                    bytes_written_ptr,
-                    version_ptr,
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
@@ -713,7 +731,7 @@ where
                     ],
                 )?;
 
-                let contract_hash: ContractHash =
+                let contract_hash: AddressableEntityHash =
                     self.t_from_mem(contract_hash_ptr, contract_hash_size)?;
                 let entry_point_name: String =
                     self.t_from_mem(entry_point_name_ptr, entry_point_name_size)?;
@@ -767,9 +785,9 @@ where
                     ],
                 )?;
 
-                let contract_package_hash: ContractPackageHash =
+                let contract_package_hash: PackageHash =
                     self.t_from_mem(contract_package_hash_ptr, contract_package_hash_size)?;
-                let contract_version: Option<ContractVersion> =
+                let contract_version: Option<EntityVersion> =
                     self.t_from_mem(contract_version_ptr, contract_package_size)?;
                 let entry_point_name: String =
                     self.t_from_mem(entry_point_name_ptr, entry_point_name_size)?;
@@ -1142,9 +1160,9 @@ where
                     .map_err(|_e| Trap::from(Error::InvalidMessageTopicOperation))?;
 
                 // only allow managing messages from stored contracts
-                let EntryPointType::Contract = self.context.entry_point_type() else {
+                if !self.context.get_entity_key().is_smart_contract_key() {
                     return Err(Trap::from(Error::InvalidContext));
-                };
+                }
 
                 let result = match topic_operation {
                     MessageTopicOperation::Add => {

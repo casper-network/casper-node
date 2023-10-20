@@ -89,7 +89,7 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .unwrap()
             .into(),
         auction::METHOD_ADD_BID,
@@ -132,7 +132,7 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .unwrap()
             .into(),
         auction::METHOD_WITHDRAW_BID,
@@ -229,7 +229,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .unwrap()
             .into(),
         auction::METHOD_ADD_BID,
@@ -267,7 +267,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .unwrap()
             .into(),
         auction::METHOD_WITHDRAW_BID,
@@ -347,7 +347,7 @@ fn delegate_and_undelegate_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .unwrap()
             .into(),
         auction::METHOD_DELEGATE,
@@ -390,7 +390,7 @@ fn delegate_and_undelegate_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .unwrap()
             .into(),
         auction::METHOD_REDELEGATE,
@@ -422,7 +422,7 @@ fn delegate_and_undelegate_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .unwrap()
             .into(),
         auction::METHOD_UNDELEGATE,
@@ -546,7 +546,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .unwrap()
             .into(),
         auction::METHOD_DELEGATE,
@@ -582,7 +582,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .unwrap()
             .into(),
         auction::METHOD_REDELEGATE,
@@ -608,7 +608,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .unwrap()
             .into(),
         auction::METHOD_UNDELEGATE,
@@ -813,7 +813,7 @@ fn should_charge_for_erroneous_system_contract_calls() {
         builder.exec(exec_request).commit();
 
         let _error = builder
-            .get_last_exec_results()
+            .get_last_exec_result()
             .expect("should have results")
             .get(0)
             .expect("should have first result")

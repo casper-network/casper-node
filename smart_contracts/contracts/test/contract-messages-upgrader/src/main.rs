@@ -14,7 +14,7 @@ use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
     api_error::ApiError,
     contract_messages::MessageTopicOperation,
-    runtime_args, CLType, CLTyped, ContractPackageHash, Parameter, RuntimeArgs,
+    runtime_args, CLType, CLTyped, PackageHash, Parameter, RuntimeArgs,
 };
 
 const ENTRY_POINT_INIT: &str = "init";
@@ -42,9 +42,10 @@ pub extern "C" fn upgraded_emit_message() {
 #[no_mangle]
 pub extern "C" fn emit_message_from_each_version() {
     let suffix: String = runtime::get_named_arg(ARG_MESSAGE_SUFFIX_NAME);
-    let contract_package_hash: ContractPackageHash = runtime::get_key(PACKAGE_HASH_KEY_NAME)
+
+    let contract_package_hash: PackageHash = runtime::get_key(PACKAGE_HASH_KEY_NAME)
         .expect("should have contract package key")
-        .into_hash()
+        .into_package_addr()
         .unwrap_or_revert()
         .into();
 
@@ -96,26 +97,26 @@ pub extern "C" fn call() {
         Vec::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
     emitter_entry_points.add_entry_point(EntryPoint::new(
         ENTRY_POINT_EMIT_MESSAGE,
         vec![Parameter::new(ARG_MESSAGE_SUFFIX_NAME, String::cl_type())],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
     emitter_entry_points.add_entry_point(EntryPoint::new(
         ENTRY_POINT_EMIT_MESSAGE_FROM_EACH_VERSION,
         vec![Parameter::new(ARG_MESSAGE_SUFFIX_NAME, String::cl_type())],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
 
-    let message_emitter_package_hash: ContractPackageHash = runtime::get_key(PACKAGE_HASH_KEY_NAME)
+    let message_emitter_package_hash: PackageHash = runtime::get_key(PACKAGE_HASH_KEY_NAME)
         .unwrap_or_revert()
-        .into_hash()
+        .into_package_addr()
         .unwrap()
         .into();
 

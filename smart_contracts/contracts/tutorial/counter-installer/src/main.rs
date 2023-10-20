@@ -17,7 +17,7 @@ use casper_contract::{
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
     api_error::ApiError,
-    CLType, CLValue, URef,
+    CLType, CLValue, Key, URef,
 };
 
 const COUNT_KEY: &str = "count";
@@ -65,14 +65,14 @@ pub extern "C" fn call() {
         Vec::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
     counter_entry_points.add_entry_point(EntryPoint::new(
         COUNTER_GET,
         Vec::new(),
         CLType::I32,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
 
     let (stored_contract_hash, contract_version) = storage::new_contract(
@@ -92,5 +92,5 @@ pub extern "C" fn call() {
     runtime::put_key(CONTRACT_VERSION_KEY, version_uref.into());
 
     // Hash of the installed contract will be reachable through named keys
-    runtime::put_key(COUNTER_KEY, stored_contract_hash.into());
+    runtime::put_key(COUNTER_KEY, Key::contract_entity_key(stored_contract_hash));
 }

@@ -16,8 +16,8 @@ use casper_types::{
     execution::{Effects, ExecutionResult, ExecutionResultV2, TransformKind},
     system::auction::{BidAddr, BidKind, BidsExt, DelegationRate},
     testing::TestRng,
-    AccountConfig, AccountsConfig, ActivationPoint, Block, BlockHash, BlockHeader, CLValue,
-    Chainspec, ChainspecRawBytes, ContractHash, Deploy, DeployHash, EraId, Key, Motes,
+    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, Block, BlockHash,
+    BlockHeader, CLValue, Chainspec, ChainspecRawBytes, Deploy, DeployHash, EraId, Key, Motes,
     ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, Timestamp, Transaction,
     TransactionHash, ValidatorConfig, U512,
 };
@@ -331,19 +331,15 @@ impl SwitchBlocks {
     /// Returns the list of equivocators in the given era.
     fn equivocators(&self, era_number: u64) -> &[PublicKey] {
         self.headers[era_number as usize]
-            .era_end()
+            .maybe_equivocators()
             .expect("era end")
-            .era_report()
-            .equivocators()
     }
 
     /// Returns the list of inactive validators in the given era.
     fn inactive_validators(&self, era_number: u64) -> &[PublicKey] {
         self.headers[era_number as usize]
-            .era_end()
+            .maybe_inactive_validators()
             .expect("era end")
-            .era_report()
-            .inactive_validators()
     }
 
     /// Returns the list of validators in the successor era.
@@ -943,21 +939,21 @@ async fn dont_upgrade_without_switch_block() {
         runner.reactor_mut().inner_mut().set_filter(move |event| {
             if let MainEvent::ContractRuntimeRequest(
                 ContractRuntimeRequest::EnqueueBlockForExecution {
-                    finalized_block, ..
+                    executable_block, ..
                 },
             ) = &event
             {
-                if finalized_block.era_report.is_some()
-                    && finalized_block.era_id == EraId::from(1)
+                if executable_block.era_report.is_some()
+                    && executable_block.era_id == EraId::from(1)
                     && !exec_request_received
                 {
-                    info!("delaying {}", finalized_block);
+                    info!("delaying {}", executable_block);
                     exec_request_received = true;
                     return Either::Left(
                         time::sleep(Duration::from_secs(10)).event(move |_| event),
                     );
                 }
-                info!("not delaying {}", finalized_block);
+                info!("not delaying {}", executable_block);
             }
             Either::Right(event)
         });
@@ -1194,6 +1190,7 @@ async fn empty_block_validation_regression() {
                             vec![],
                             vec![],
                             everyone_else.clone(),
+                            Default::default(),
                             false,
                         )),
                         block_context,
@@ -1281,7 +1278,7 @@ fn get_system_contract_hash_or_fail(
     net: &TestingNetwork<FilterReactor<MainReactor>>,
     public_key: &PublicKey,
     system_contract_name: String,
-) -> ContractHash {
+) -> AddressableEntityHash {
     let (_, runner) = net
         .nodes()
         .iter()

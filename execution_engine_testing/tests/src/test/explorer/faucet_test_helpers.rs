@@ -6,8 +6,8 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::engine_state::ExecuteRequest;
 use casper_types::{
-    account::AccountHash, bytesrepr::FromBytes, runtime_args, system::mint, AddressableEntity,
-    CLTyped, ContractHash, Key, PublicKey, URef, U512,
+    account::AccountHash, bytesrepr::FromBytes, package::PackageKindTag, runtime_args,
+    system::mint, AddressableEntity, AddressableEntityHash, CLTyped, Key, PublicKey, URef, U512,
 };
 
 use super::{
@@ -128,7 +128,7 @@ impl Default for FaucetInstallSessionRequestBuilder {
 #[derive(Debug, Copy, Clone)]
 pub struct FaucetConfigRequestBuilder {
     installer_account: AccountHash,
-    faucet_contract_hash: Option<ContractHash>,
+    faucet_contract_hash: Option<AddressableEntityHash>,
     available_amount: Option<U512>,
     time_interval: Option<u64>,
     distributions_per_interval: Option<u64>,
@@ -140,7 +140,7 @@ impl FaucetConfigRequestBuilder {
         self
     }
 
-    pub fn with_faucet_contract_hash(mut self, contract_hash: ContractHash) -> Self {
+    pub fn with_faucet_contract_hash(mut self, contract_hash: AddressableEntityHash) -> Self {
         self.faucet_contract_hash = Some(contract_hash);
         self
     }
@@ -194,7 +194,7 @@ impl Default for FaucetConfigRequestBuilder {
 pub struct FaucetAuthorizeAccountRequestBuilder {
     installer_account: AccountHash,
     authorized_account_public_key: Option<PublicKey>,
-    faucet_contract_hash: Option<ContractHash>,
+    faucet_contract_hash: Option<AddressableEntityHash>,
 }
 
 impl FaucetAuthorizeAccountRequestBuilder {
@@ -202,7 +202,10 @@ impl FaucetAuthorizeAccountRequestBuilder {
         FaucetAuthorizeAccountRequestBuilder::default()
     }
 
-    pub fn with_faucet_contract_hash(mut self, faucet_contract_hash: Option<ContractHash>) -> Self {
+    pub fn with_faucet_contract_hash(
+        mut self,
+        faucet_contract_hash: Option<AddressableEntityHash>,
+    ) -> Self {
         self.faucet_contract_hash = faucet_contract_hash;
         self
     }
@@ -259,7 +262,7 @@ impl FaucetCallerAccount {
 }
 
 pub struct FaucetFundRequestBuilder {
-    faucet_contract_hash: Option<ContractHash>,
+    faucet_contract_hash: Option<AddressableEntityHash>,
     caller_account: FaucetCallerAccount,
     arg_target: Option<AccountHash>,
     arg_fund_amount: Option<U512>,
@@ -298,7 +301,10 @@ impl FaucetFundRequestBuilder {
         self
     }
 
-    pub fn with_faucet_contract_hash(mut self, faucet_contract_hash: ContractHash) -> Self {
+    pub fn with_faucet_contract_hash(
+        mut self,
+        faucet_contract_hash: AddressableEntityHash,
+    ) -> Self {
         self.faucet_contract_hash = Some(faucet_contract_hash);
         self
     }
@@ -377,31 +383,31 @@ pub fn query_stored_value<T: CLTyped + FromBytes>(
         .expect("must get value")
 }
 
-pub fn get_faucet_contract_hash(
+pub fn get_faucet_entity_hash(
     builder: &LmdbWasmTestBuilder,
     installer_account: AccountHash,
-) -> ContractHash {
+) -> AddressableEntityHash {
     builder
         .get_expected_addressable_entity_by_account_hash(installer_account)
         .named_keys()
         .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
         .cloned()
-        .and_then(Key::into_hash)
-        .map(ContractHash::new)
+        .and_then(Key::into_entity_addr)
+        .map(AddressableEntityHash::new)
         .expect("failed to find faucet contract")
 }
 
-pub fn get_faucet_contract(
+pub fn get_faucet_entity(
     builder: &LmdbWasmTestBuilder,
     installer_account: AccountHash,
 ) -> AddressableEntity {
     builder
-        .get_addressable_entity(get_faucet_contract_hash(builder, installer_account))
+        .get_addressable_entity(get_faucet_entity_hash(builder, installer_account))
         .expect("failed to find faucet contract")
 }
 
 pub fn get_faucet_purse(builder: &LmdbWasmTestBuilder, installer_account: AccountHash) -> URef {
-    get_faucet_contract(builder, installer_account)
+    get_faucet_entity(builder, installer_account)
         .named_keys()
         .get(FAUCET_PURSE_NAMED_KEY)
         .cloned()
@@ -411,12 +417,12 @@ pub fn get_faucet_purse(builder: &LmdbWasmTestBuilder, installer_account: Accoun
 
 pub fn get_available_amount(
     builder: &LmdbWasmTestBuilder,
-    faucet_contract_hash: ContractHash,
+    faucet_contract_hash: AddressableEntityHash,
 ) -> U512 {
     builder
         .query(
             None,
-            faucet_contract_hash.into(),
+            Key::addressable_entity_key(PackageKindTag::SmartContract, faucet_contract_hash),
             &[AVAILABLE_AMOUNT_NAMED_KEY.to_string()],
         )
         .expect("failed to find available amount named key")
@@ -429,12 +435,12 @@ pub fn get_available_amount(
 
 pub fn get_remaining_requests(
     builder: &LmdbWasmTestBuilder,
-    faucet_contract_hash: ContractHash,
+    faucet_contract_hash: AddressableEntityHash,
 ) -> U512 {
     builder
         .query(
             None,
-            faucet_contract_hash.into(),
+            Key::addressable_entity_key(PackageKindTag::SmartContract, faucet_contract_hash),
             &[REMAINING_REQUESTS_NAMED_KEY.to_string()],
         )
         .expect("failed to find available amount named key")
@@ -453,7 +459,7 @@ pub struct FaucetDeployHelper {
     faucet_purse_fund_amount: U512,
     faucet_installer_session: String,
     faucet_id: u64,
-    faucet_contract_hash: Option<ContractHash>,
+    faucet_contract_hash: Option<AddressableEntityHash>,
     faucet_distributions_per_interval: Option<u64>,
     faucet_available_amount: Option<U512>,
     faucet_time_interval: Option<u64>,
@@ -509,8 +515,8 @@ impl FaucetDeployHelper {
     pub fn query_and_set_faucet_contract_hash(
         &mut self,
         builder: &LmdbWasmTestBuilder,
-    ) -> ContractHash {
-        let contract_hash = get_faucet_contract_hash(builder, self.installer_account());
+    ) -> AddressableEntityHash {
+        let contract_hash = get_faucet_entity_hash(builder, self.installer_account());
         self.faucet_contract_hash = Some(contract_hash);
 
         contract_hash
@@ -529,7 +535,7 @@ impl FaucetDeployHelper {
         self.faucet_purse_fund_amount
     }
 
-    pub fn faucet_contract_hash(&self) -> Option<ContractHash> {
+    pub fn faucet_contract_hash(&self) -> Option<AddressableEntityHash> {
         self.faucet_contract_hash
     }
 

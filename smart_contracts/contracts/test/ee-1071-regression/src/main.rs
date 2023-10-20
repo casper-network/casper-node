@@ -3,8 +3,8 @@
 
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
-    addressable_entity::Parameters, CLType, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints,
+    addressable_entity::Parameters, package::PackageKindTag, CLType, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints, Key,
 };
 
 const CONTRACT_HASH_NAME: &str = "contract";
@@ -26,7 +26,7 @@ pub extern "C" fn call() {
             Parameters::default(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
 
         entry_points.add_entry_point(entry_point);
@@ -35,5 +35,8 @@ pub extern "C" fn call() {
     };
     let (contract_hash, _contract_version) = storage::new_contract(entry_points, None, None, None);
 
-    runtime::put_key(CONTRACT_HASH_NAME, contract_hash.into());
+    runtime::put_key(
+        CONTRACT_HASH_NAME,
+        Key::addressable_entity_key(PackageKindTag::SmartContract, contract_hash),
+    );
 }

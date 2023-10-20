@@ -64,9 +64,9 @@ enum TransformTag {
     Identity = 0,
     WriteCLValue = 1,
     WriteAccount = 2,
-    WriteContractWasm = 3,
+    WriteByteCode = 3,
     WriteContract = 4,
-    WriteContractPackage = 5,
+    WritePackage = 5,
     WriteDeployInfo = 6,
     WriteTransfer = 7,
     WriteEraInfo = 8,
@@ -509,12 +509,10 @@ impl ToBytes for Transform {
                 (TransformTag::WriteAccount as u8).write_bytes(writer)?;
                 account_hash.write_bytes(writer)
             }
-            Transform::WriteContractWasm => {
-                (TransformTag::WriteContractWasm as u8).write_bytes(writer)
-            }
+            Transform::WriteContractWasm => (TransformTag::WriteByteCode as u8).write_bytes(writer),
             Transform::WriteContract => (TransformTag::WriteContract as u8).write_bytes(writer),
             Transform::WriteContractPackage => {
-                (TransformTag::WriteContractPackage as u8).write_bytes(writer)
+                (TransformTag::WritePackage as u8).write_bytes(writer)
             }
             Transform::WriteDeployInfo(deploy_info) => {
                 (TransformTag::WriteDeployInfo as u8).write_bytes(writer)?;
@@ -630,9 +628,9 @@ impl FromBytes for Transform {
                 let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
                 Ok((Transform::WriteAccount(account_hash), remainder))
             }
-            TransformTag::WriteContractWasm => Ok((Transform::WriteContractWasm, remainder)),
+            TransformTag::WriteByteCode => Ok((Transform::WriteContractWasm, remainder)),
             TransformTag::WriteContract => Ok((Transform::WriteContract, remainder)),
-            TransformTag::WriteContractPackage => Ok((Transform::WriteContractPackage, remainder)),
+            TransformTag::WritePackage => Ok((Transform::WriteContractPackage, remainder)),
             TransformTag::WriteDeployInfo => {
                 let (deploy_info, remainder) = DeployInfo::from_bytes(remainder)?;
                 Ok((Transform::WriteDeployInfo(deploy_info), remainder))

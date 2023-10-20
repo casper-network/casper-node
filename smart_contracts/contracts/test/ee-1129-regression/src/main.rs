@@ -8,7 +8,7 @@ use alloc::string::ToString;
 use casper_contract::contract_api::{runtime, storage, system};
 use casper_types::{
     addressable_entity::Parameters, CLType, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints,
+    EntryPoints, Key,
 };
 
 const ENTRY_POINT_NAME: &str = "create_purse";
@@ -33,7 +33,7 @@ pub extern "C" fn call() {
             Parameters::default(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
 
         entry_points.add_entry_point(entry_point);
@@ -48,5 +48,5 @@ pub extern "C" fn call() {
         Some(ACCESS_KEY.to_string()),
     );
 
-    runtime::put_key(CONTRACT_KEY, contract_hash.into());
+    runtime::put_key(CONTRACT_KEY, Key::contract_entity_key(contract_hash));
 }

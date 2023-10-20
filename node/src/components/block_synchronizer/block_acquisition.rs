@@ -8,8 +8,8 @@ use derive_more::Display;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
-    execution::ExecutionResult, Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployId,
-    Digest, FinalitySignature, ProtocolVersion, PublicKey,
+    execution::ExecutionResult, Block, BlockHash, BlockHeader, DeployHash, DeployId, Digest, EraId,
+    FinalitySignature, ProtocolVersion, PublicKey,
 };
 
 use crate::{
@@ -19,7 +19,7 @@ use crate::{
         ExecutionResultsAcquisition, ExecutionResultsChecksum,
     },
     types::{
-        ApprovalsHashes, BlockExecutionResultsOrChunk, EraValidatorWeights, FinalizedBlock,
+        ApprovalsHashes, BlockExecutionResultsOrChunk, EraValidatorWeights, ExecutableBlock,
         SignatureWeight,
     },
     NodeRng,
@@ -119,7 +119,7 @@ pub(super) enum BlockAcquisitionState {
     // with execution are strictly forward sync states. Until a refactor splits
     // the `Complete` states for the historical and forward cases, we need to
     // keep the block around.
-    HaveFinalizedBlock(Box<Block>, Box<FinalizedBlock>, Vec<Deploy>, bool),
+    HaveExecutableBlock(Box<Block>, Box<ExecutableBlock>, bool),
     // The `Complete` state needs the block itself in order to produce a meta
     // block announcement in the historical sync flow. In the forward sync,
     // only the block hash and height are necessary. Therefore, we retain the
@@ -179,10 +179,10 @@ impl Display for BlockAcquisitionState {
                 block.height(),
                 block.hash()
             ),
-            BlockAcquisitionState::HaveFinalizedBlock(block, finalized_block, _, _) => write!(
+            BlockAcquisitionState::HaveExecutableBlock(block, _, _) => write!(
                 f,
                 "have finalized block({}) for: {}",
-                finalized_block.height,
+                block.height(),
                 *block.hash()
             ),
             BlockAcquisitionState::Complete(block) => {
@@ -215,7 +215,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveApprovalsHashes(block, _, _)
             | BlockAcquisitionState::HaveAllDeploys(block, _)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(block, _)
-            | BlockAcquisitionState::HaveFinalizedBlock(block, ..)
+            | BlockAcquisitionState::HaveExecutableBlock(block, ..)
             | BlockAcquisitionState::Complete(block) => *block.hash(),
         }
     }
@@ -232,7 +232,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveGlobalState(block, _, _, _)
             | BlockAcquisitionState::HaveAllExecutionResults(block, _, _, _)
             | BlockAcquisitionState::HaveApprovalsHashes(block, _, _)
-            | BlockAcquisitionState::HaveFinalizedBlock(block, _, _, _)
+            | BlockAcquisitionState::HaveExecutableBlock(block, _, _)
             | BlockAcquisitionState::Complete(block) => Some(block.clone()),
         }
     }
@@ -333,7 +333,8 @@ impl BlockAcquisitionState {
                     max_simultaneous_peers,
                     peer_list,
                     rng,
-                    block_header,
+                    block_header.era_id(),
+                    block_header.block_hash(),
                 ))
             }
             BlockAcquisitionState::HaveWeakFinalitySignatures(header, _) => Ok(
@@ -353,7 +354,8 @@ impl BlockAcquisitionState {
                     ))
                 } else if signatures.has_sufficient_finality(is_historical, true) {
                     Ok(BlockAcquisitionAction::switch_to_have_sufficient_finality(
-                        block.header(),
+                        *block.hash(),
+                        block.height(),
                     ))
                 } else {
                     Ok(signatures_from_missing_validators(
@@ -362,7 +364,8 @@ impl BlockAcquisitionState {
                         max_simultaneous_peers,
                         peer_list,
                         rng,
-                        block.header(),
+                        block.era_id(),
+                        *block.hash(),
                     ))
                 }
             }
@@ -383,7 +386,8 @@ impl BlockAcquisitionState {
                     )
                 } else if signatures.has_sufficient_finality(is_historical, true) {
                     Ok(BlockAcquisitionAction::switch_to_have_sufficient_finality(
-                        block.header(),
+                        *block.hash(),
+                        block.height(),
                     ))
                 } else {
                     Ok(signatures_from_missing_validators(
@@ -392,7 +396,8 @@ impl BlockAcquisitionState {
                         max_simultaneous_peers,
                         peer_list,
                         rng,
-                        block.header(),
+                        block.era_id(),
+                        *block.hash(),
                     ))
                 }
             }
@@ -410,7 +415,9 @@ impl BlockAcquisitionState {
                     ))
                 } else {
                     Ok(BlockAcquisitionAction::maybe_needs_deploy(
-                        block.header(),
+                        *block.hash(),
+                        block.height(),
+                        block.era_id(),
                         peer_list,
                         rng,
                         validator_weights,
@@ -426,7 +433,9 @@ impl BlockAcquisitionState {
             }
             BlockAcquisitionState::HaveApprovalsHashes(block, signatures, deploys) => {
                 Ok(BlockAcquisitionAction::maybe_needs_deploy(
-                    block.header(),
+                    *block.hash(),
+                    block.height(),
+                    block.era_id(),
                     peer_list,
                     rng,
                     validator_weights,
@@ -439,7 +448,8 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::HaveAllDeploys(block, signatures) => {
                 if signatures.has_sufficient_finality(is_historical, true) {
                     Ok(BlockAcquisitionAction::switch_to_have_sufficient_finality(
-                        block.header(),
+                        *block.hash(),
+                        block.height(),
                     ))
                 } else {
                     Ok(signatures_from_missing_validators(
@@ -448,7 +458,8 @@ impl BlockAcquisitionState {
                         max_simultaneous_peers,
                         peer_list,
                         rng,
-                        block.header(),
+                        block.era_id(),
+                        *block.hash(),
                     ))
                 }
             }
@@ -456,27 +467,23 @@ impl BlockAcquisitionState {
                 if is_historical {
                     // we have enough signatures; need to make sure we've stored the necessary bits
                     Ok(BlockAcquisitionAction::block_marked_complete(
-                        block.header(),
+                        *block.hash(),
+                        block.height(),
                     ))
                 } else {
                     Ok(BlockAcquisitionAction::make_executable_block(
-                        block.header(),
+                        *block.hash(),
+                        block.height(),
                     ))
                 }
             }
-            BlockAcquisitionState::HaveFinalizedBlock(
-                block,
-                finalized_block,
-                deploys,
-                enqueued,
-            ) => {
+            BlockAcquisitionState::HaveExecutableBlock(block, executable_block, enqueued) => {
                 if is_historical {
                     Err(BlockAcquisitionError::InvalidStateTransition)
                 } else if *enqueued == false {
                     Ok(BlockAcquisitionAction::enqueue_block_for_execution(
                         block.hash(),
-                        finalized_block.clone(),
-                        deploys.clone(),
+                        executable_block.clone(),
                     ))
                 } else {
                     // if the block was already enqueued for execution just wait, there's
@@ -500,8 +507,8 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::Initialized(..) | BlockAcquisitionState::Failed(..) => None,
             BlockAcquisitionState::HaveBlockHeader(header, _)
             | BlockAcquisitionState::HaveWeakFinalitySignatures(header, _) => Some(header.height()),
-            BlockAcquisitionState::HaveFinalizedBlock(_, finalized_block, _, _) => {
-                Some(finalized_block.height)
+            BlockAcquisitionState::HaveExecutableBlock(_, executable_block, _) => {
+                Some(executable_block.height)
             }
             BlockAcquisitionState::HaveBlock(block, _, _)
             | BlockAcquisitionState::HaveGlobalState(block, ..)
@@ -549,7 +556,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => return Ok(None),
         };
@@ -595,7 +602,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {
                 return Ok(None);
@@ -637,7 +644,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
             | BlockAcquisitionState::Initialized(..)
             | BlockAcquisitionState::Failed(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Complete(..) => None,
         };
         if let Some(new_state) = maybe_new_state {
@@ -660,7 +667,7 @@ impl BlockAcquisitionState {
                 acquired_signatures.register_pending(validator);
             }
             BlockAcquisitionState::Initialized(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {}
         };
@@ -672,7 +679,7 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::Initialized(..)
             | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => false,
             BlockAcquisitionState::HaveBlock(_, acquired_signatures, acquired_deploys) => {
@@ -835,7 +842,7 @@ impl BlockAcquisitionState {
                 None
             }
             BlockAcquisitionState::Initialized(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => return Ok(None),
         };
@@ -904,7 +911,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(_, _, _)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {
                 return Ok(None);
@@ -954,7 +961,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllDeploys(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {
                 return Ok(());
@@ -996,7 +1003,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {
                 return Ok(());
@@ -1079,7 +1086,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {
                 return Ok(RegisterExecResultsOutcome {
@@ -1127,7 +1134,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {
                 return Ok(());
@@ -1170,7 +1177,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveGlobalState(_, _, _, _)
             | BlockAcquisitionState::HaveAllExecutionResults(_, _, _, _)
             | BlockAcquisitionState::HaveAllDeploys(_, _)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
             | BlockAcquisitionState::Failed(_, _)
             | BlockAcquisitionState::Complete(..) => {
@@ -1195,8 +1202,7 @@ impl BlockAcquisitionState {
     pub(super) fn register_made_finalized_block(
         &mut self,
         need_execution_state: bool,
-        finalized_block: FinalizedBlock,
-        deploys: Vec<Deploy>,
+        executable_block: ExecutableBlock,
     ) -> Result<(), BlockAcquisitionError> {
         if need_execution_state {
             return Err(BlockAcquisitionError::InvalidAttemptToEnqueueBlockForExecution);
@@ -1204,10 +1210,9 @@ impl BlockAcquisitionState {
 
         let new_state = match self {
             BlockAcquisitionState::HaveStrictFinalitySignatures(block, _) => {
-                BlockAcquisitionState::HaveFinalizedBlock(
+                BlockAcquisitionState::HaveExecutableBlock(
                     block.clone(),
-                    Box::new(finalized_block),
-                    deploys,
+                    Box::new(executable_block),
                     false,
                 )
             }
@@ -1219,7 +1224,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::HaveAllDeploys(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {
                 return Ok(());
@@ -1234,10 +1239,10 @@ impl BlockAcquisitionState {
         &mut self,
     ) -> Result<(), BlockAcquisitionError> {
         match self {
-            BlockAcquisitionState::HaveFinalizedBlock(block_hash, _, _, enqueued) => {
+            BlockAcquisitionState::HaveExecutableBlock(block, _, enqueued) => {
                 info!(
                     "BlockAcquisition: registering block enqueued for execution for: {}",
-                    block_hash
+                    block
                 );
                 *enqueued = true;
             }
@@ -1266,7 +1271,7 @@ impl BlockAcquisitionState {
         }
 
         let new_state = match self {
-            BlockAcquisitionState::HaveFinalizedBlock(block, _, _, _) => {
+            BlockAcquisitionState::HaveExecutableBlock(block, _, _) => {
                 info!(
                     "BlockAcquisition: registering block executed for: {}",
                     *block.hash()
@@ -1316,7 +1321,7 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveAllExecutionResults(..)
             | BlockAcquisitionState::HaveApprovalsHashes(..)
             | BlockAcquisitionState::HaveAllDeploys(..)
-            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::HaveExecutableBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {
                 return Ok(());
@@ -1381,7 +1386,8 @@ pub(super) fn signatures_from_missing_validators(
     max_simultaneous_peers: u8,
     peer_list: &PeerList,
     rng: &mut NodeRng,
-    block_header: &BlockHeader,
+    era_id: EraId,
+    block_hash: BlockHash,
 ) -> BlockAcquisitionAction {
     let mut missing_signatures_in_random_order: HashSet<PublicKey> = validator_weights
         .missing_validators(signatures.not_vacant())
@@ -1398,7 +1404,8 @@ pub(super) fn signatures_from_missing_validators(
     BlockAcquisitionAction::finality_signatures(
         peer_list,
         rng,
-        block_header,
+        era_id,
+        block_hash,
         missing_signatures_in_random_order.into_iter().collect(),
     )
 }

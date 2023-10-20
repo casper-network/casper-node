@@ -6,7 +6,7 @@ use casper_execution_engine::engine_state::{
     deploy_item::DeployItem, execute_request::ExecuteRequest,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, ContractHash, ContractPackageHash, ContractVersion,
+    account::AccountHash, runtime_args, AddressableEntityHash, EntityVersion, PackageHash,
     ProtocolVersion, RuntimeArgs,
 };
 
@@ -113,7 +113,7 @@ impl ExecuteRequestBuilder {
     /// Returns an [`ExecuteRequest`] that will call a stored contract by hash.
     pub fn contract_call_by_hash(
         sender: AccountHash,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
         entry_point: &str,
         args: RuntimeArgs,
     ) -> Self {
@@ -155,8 +155,8 @@ impl ExecuteRequestBuilder {
     /// Returns an [`ExecuteRequest`] that will call a versioned stored contract by hash.
     pub fn versioned_contract_call_by_hash(
         sender: AccountHash,
-        contract_package_hash: ContractPackageHash,
-        version: Option<ContractVersion>,
+        contract_package_hash: PackageHash,
+        version: Option<EntityVersion>,
         entry_point_name: &str,
         args: RuntimeArgs,
     ) -> Self {
@@ -183,7 +183,7 @@ impl ExecuteRequestBuilder {
     pub fn versioned_contract_call_by_name(
         sender: AccountHash,
         contract_name: &str,
-        version: Option<ContractVersion>,
+        version: Option<EntityVersion>,
         entry_point_name: &str,
         args: RuntimeArgs,
     ) -> Self {
@@ -215,6 +215,30 @@ impl ExecuteRequestBuilder {
             .build();
 
         ExecuteRequestBuilder::from_deploy_item(deploy_item)
+    }
+
+    /// Returns an [`ExecuteRequest`] with standard dependencies and a specified set of
+    /// associated keys.
+    pub fn with_authorization_keys(
+        account_hash: AccountHash,
+        session_file: &str,
+        session_args: RuntimeArgs,
+        authorization_keys: &[AccountHash],
+    ) -> Self {
+        let mut rng = rand::thread_rng();
+        let deploy_hash: [u8; 32] = rng.gen();
+
+        let deploy = DeployItemBuilder::new()
+            .with_address(account_hash)
+            .with_session_code(session_file, session_args)
+            .with_empty_payment_bytes(runtime_args! {
+                ARG_AMOUNT => *DEFAULT_PAYMENT
+            })
+            .with_authorization_keys(authorization_keys)
+            .with_deploy_hash(deploy_hash)
+            .build();
+
+        ExecuteRequestBuilder::new().push_deploy(deploy)
     }
 }
 

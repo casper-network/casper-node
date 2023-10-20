@@ -20,43 +20,38 @@ use core::{
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(any(feature = "std", test))]
-use itertools::Itertools;
-#[cfg(feature = "json-schema")]
-use once_cell::sync::Lazy;
 #[cfg(any(feature = "once_cell", test))]
 use once_cell::sync::OnceCell;
+#[cfg(any(feature = "std", test))]
+use {
+    super::AccountAndSecretKey,
+    itertools::Itertools,
+    serde::{Deserialize, Serialize},
+};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
-use rand::{Rng, RngCore};
+use {
+    crate::{
+        bytesrepr::Bytes,
+        system::auction::{
+            ARG_AMOUNT as ARG_AUCTION_AMOUNT, ARG_DELEGATOR, ARG_NEW_VALIDATOR,
+            ARG_PUBLIC_KEY as ARG_AUCTION_PUBLIC_KEY, ARG_VALIDATOR, METHOD_DELEGATE,
+            METHOD_REDELEGATE, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
+        },
+        AddressableEntityHash,
+        {system::mint::ARG_AMOUNT, TransactionConfig, U512},
+        {testing::TestRng, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES},
+    },
+    rand::{Rng, RngCore},
+    tracing::{debug, warn},
+};
 #[cfg(feature = "json-schema")]
-use schemars::JsonSchema;
-#[cfg(any(feature = "std", test))]
-use serde::{Deserialize, Serialize};
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-use tracing::{debug, warn};
+use {once_cell::sync::Lazy, schemars::JsonSchema};
 
-#[cfg(any(feature = "std", test))]
-use super::AccountAndSecretKey;
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-use crate::bytesrepr::Bytes;
-
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-use crate::ContractHash;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, Digest, DisplayIter, PublicKey, SecretKey, TimeDiff, Timestamp,
 };
 
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-use crate::system::auction::{
-    ARG_AMOUNT as ARG_AUCTION_AMOUNT, ARG_DELEGATOR, ARG_NEW_VALIDATOR,
-    ARG_PUBLIC_KEY as ARG_AUCTION_PUBLIC_KEY, ARG_VALIDATOR, METHOD_DELEGATE, METHOD_REDELEGATE,
-    METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
-};
-#[cfg(any(feature = "std", test))]
-use crate::{system::mint::ARG_AMOUNT, TransactionConfig, U512};
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-use crate::{testing::TestRng, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES};
 pub use deploy_approval::DeployApproval;
 pub use deploy_approvals_hash::DeployApprovalsHash;
 #[cfg(any(feature = "std", test))]
@@ -70,8 +65,8 @@ pub use error::{
     Error as DeployError, ExcessiveSizeError as DeployExcessiveSizeError,
 };
 pub use executable_deploy_item::{
-    ContractIdentifier, ContractPackageIdentifier, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, TransferTarget,
+    EntityIdentifier, ExecutableDeployItem, ExecutableDeployItemIdentifier, PackageIdentifier,
+    TransferTarget,
 };
 pub use runtime_args::RuntimeArgs;
 
@@ -949,7 +944,7 @@ impl Deploy {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn withdraw_bid(
         chain_name: String,
-        auction_contract_hash: ContractHash,
+        auction_contract_hash: AddressableEntityHash,
         public_key: PublicKey,
         amount: U512,
         timestamp: Timestamp,
@@ -985,7 +980,7 @@ impl Deploy {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn delegate(
         chain_name: String,
-        auction_contract_hash: ContractHash,
+        auction_contract_hash: AddressableEntityHash,
         validator_public_key: PublicKey,
         delegator_public_key: PublicKey,
         amount: U512,
@@ -1023,7 +1018,7 @@ impl Deploy {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn undelegate(
         chain_name: String,
-        auction_contract_hash: ContractHash,
+        auction_contract_hash: AddressableEntityHash,
         validator_public_key: PublicKey,
         delegator_public_key: PublicKey,
         amount: U512,
@@ -1062,7 +1057,7 @@ impl Deploy {
     #[allow(clippy::too_many_arguments)]
     pub fn redelegate(
         chain_name: String,
-        auction_contract_hash: ContractHash,
+        auction_contract_hash: AddressableEntityHash,
         validator_public_key: PublicKey,
         delegator_public_key: PublicKey,
         redelegate_validator_public_key: PublicKey,

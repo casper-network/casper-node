@@ -5,7 +5,10 @@ use casper_types::{
 };
 
 use super::*;
-use crate::components::block_synchronizer::tests::test_utils::chunks_with_proof_from_data;
+use crate::{
+    components::block_synchronizer::tests::test_utils::chunks_with_proof_from_data,
+    types::BlockExecutionResultsOrChunkId,
+};
 
 const NUM_TEST_EXECUTION_RESULTS: u64 = 100000;
 

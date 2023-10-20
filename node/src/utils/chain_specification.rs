@@ -93,6 +93,23 @@ pub(crate) fn validate_core_config(core_config: &CoreConfig) -> bool {
         return false;
     }
 
+    if core_config.finality_signature_proportion <= Ratio::new(0, 1)
+        || core_config.finality_signature_proportion >= Ratio::new(1, 1)
+    {
+        error!(
+            fsp = %core_config.finality_signature_proportion,
+            "finality signature proportion is not in the range (0, 1)",
+        );
+        return false;
+    }
+    if core_config.finders_fee <= Ratio::new(0, 1) || core_config.finders_fee >= Ratio::new(1, 1) {
+        error!(
+            fsp = %core_config.finders_fee,
+            "finder's fee proportion is not in the range (0, 1)",
+        );
+        return false;
+    }
+
     if core_config.vesting_schedule_period > TimeDiff::from_millis(VESTING_SCHEDULE_LENGTH_MILLIS) {
         error!(
             vesting_schedule_millis = core_config.vesting_schedule_period.millis(),
@@ -208,7 +225,7 @@ mod tests {
             read_host_buffer: HostFunction::new(126, [0, 1, 2]),
             create_contract_package_at_hash: HostFunction::new(106, [0, 1]),
             create_contract_user_group: HostFunction::new(107, [0, 1, 2, 3, 4, 5, 6, 7]),
-            add_contract_version: HostFunction::new(102, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+            add_contract_version: HostFunction::new(102, [0, 1, 2, 3, 4, 5, 6, 7, 8]),
             disable_contract_version: HostFunction::new(109, [0, 1, 2, 3]),
             call_contract: HostFunction::new(104, [0, 1, 2, 3, 4, 5, 6]),
             call_versioned_contract: HostFunction::new(105, [0, 1, 2, 3, 4, 5, 6, 7, 8]),
@@ -221,6 +238,8 @@ mod tests {
             blake2b: HostFunction::new(133, [0, 1, 2, 3]),
             random_bytes: HostFunction::new(123, [0, 1]),
             enable_contract_version: HostFunction::new(142, [0, 1, 2, 3]),
+            // TODO: Update this cost.
+            add_session_version: HostFunction::default(),
             manage_message_topic: HostFunction::new(100, [0, 1, 2, 4]),
             emit_message: HostFunction::new(100, [0, 1, 2, 3]),
             cost_increase_per_message: 50,

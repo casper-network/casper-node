@@ -302,7 +302,7 @@ pub struct HostFunctionCosts {
     /// Cost of calling the `create_contract_user_group` host function.
     pub create_contract_user_group: HostFunction<[Cost; 8]>,
     /// Cost of calling the `add_contract_version` host function.
-    pub add_contract_version: HostFunction<[Cost; 10]>,
+    pub add_contract_version: HostFunction<[Cost; 9]>,
     /// Cost of calling the `disable_contract_version` host function.
     pub disable_contract_version: HostFunction<[Cost; 4]>,
     /// Cost of calling the `call_contract` host function.
@@ -327,6 +327,8 @@ pub struct HostFunctionCosts {
     pub random_bytes: HostFunction<[Cost; 2]>,
     /// Cost of calling the `enable_contract_version` host function.
     pub enable_contract_version: HostFunction<[Cost; 4]>,
+    /// Cost of calling the `add_session_version` host function.
+    pub add_session_version: HostFunction<[Cost; 2]>,
     /// Cost of calling the `casper_manage_message_topic` host function.
     pub manage_message_topic: HostFunction<[Cost; 4]>,
     /// Cost of calling the `casper_emit_message` host function.
@@ -380,6 +382,7 @@ impl Zero for HostFunctionCosts {
             blake2b: HostFunction::zero(),
             random_bytes: HostFunction::zero(),
             enable_contract_version: HostFunction::zero(),
+            add_session_version: HostFunction::zero(),
             manage_message_topic: HostFunction::zero(),
             emit_message: HostFunction::zero(),
             cost_increase_per_message: Zero::zero(),
@@ -431,6 +434,7 @@ impl Zero for HostFunctionCosts {
             && self.blake2b.is_zero()
             && self.random_bytes.is_zero()
             && self.enable_contract_version.is_zero()
+            && self.add_session_version.is_zero()
             && self.manage_message_topic.is_zero()
             && self.emit_message.is_zero()
             && self.cost_increase_per_message.is_zero()
@@ -567,6 +571,7 @@ impl Default for HostFunctionCosts {
             blake2b: HostFunction::default(),
             random_bytes: HostFunction::default(),
             enable_contract_version: HostFunction::default(),
+            add_session_version: HostFunction::default(),
             manage_message_topic: HostFunction::default(),
             emit_message: HostFunction::default(),
             cost_increase_per_message: DEFAULT_COST_INCREASE_PER_MESSAGE_EMITTED,
@@ -621,6 +626,7 @@ impl ToBytes for HostFunctionCosts {
         ret.append(&mut self.blake2b.to_bytes()?);
         ret.append(&mut self.random_bytes.to_bytes()?);
         ret.append(&mut self.enable_contract_version.to_bytes()?);
+        ret.append(&mut self.add_session_version.to_bytes()?);
         ret.append(&mut self.manage_message_topic.to_bytes()?);
         ret.append(&mut self.emit_message.to_bytes()?);
         ret.append(&mut self.cost_increase_per_message.to_bytes()?);
@@ -672,6 +678,7 @@ impl ToBytes for HostFunctionCosts {
             + self.blake2b.serialized_length()
             + self.random_bytes.serialized_length()
             + self.enable_contract_version.serialized_length()
+            + self.add_session_version.serialized_length()
             + self.manage_message_topic.serialized_length()
             + self.emit_message.serialized_length()
             + self.cost_increase_per_message.serialized_length()
@@ -724,6 +731,7 @@ impl FromBytes for HostFunctionCosts {
         let (blake2b, rem) = FromBytes::from_bytes(rem)?;
         let (random_bytes, rem) = FromBytes::from_bytes(rem)?;
         let (enable_contract_version, rem) = FromBytes::from_bytes(rem)?;
+        let (add_session_version, rem) = FromBytes::from_bytes(rem)?;
         let (manage_message_topic, rem) = FromBytes::from_bytes(rem)?;
         let (emit_message, rem) = FromBytes::from_bytes(rem)?;
         let (cost_increase_per_message, rem) = FromBytes::from_bytes(rem)?;
@@ -773,6 +781,7 @@ impl FromBytes for HostFunctionCosts {
                 blake2b,
                 random_bytes,
                 enable_contract_version,
+                add_session_version,
                 manage_message_topic,
                 emit_message,
                 cost_increase_per_message,
@@ -829,6 +838,7 @@ impl Distribution<HostFunctionCosts> for Standard {
             blake2b: rng.gen(),
             random_bytes: rng.gen(),
             enable_contract_version: rng.gen(),
+            add_session_version: rng.gen(),
             manage_message_topic: rng.gen(),
             emit_message: rng.gen(),
             cost_increase_per_message: rng.gen(),
@@ -895,6 +905,7 @@ pub mod gens {
             blake2b in host_function_cost_arb(),
             random_bytes in host_function_cost_arb(),
             enable_contract_version in host_function_cost_arb(),
+            add_session_version in host_function_cost_arb(),
             manage_message_topic in host_function_cost_arb(),
             emit_message in host_function_cost_arb(),
             cost_increase_per_message in num::u32::ANY,
@@ -944,6 +955,7 @@ pub mod gens {
                 blake2b,
                 random_bytes,
                 enable_contract_version,
+                add_session_version,
                 manage_message_topic,
                 emit_message,
                 cost_increase_per_message,

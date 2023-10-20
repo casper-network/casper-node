@@ -28,8 +28,9 @@ pub mod addressable_entity;
 pub mod api_error;
 mod block;
 mod block_time;
+mod byte_code;
 pub mod bytesrepr;
-#[cfg(feature = "std")]
+#[cfg(any(feature = "std", test))]
 mod chainspec;
 pub mod checksummed_hex;
 mod cl_type;
@@ -79,8 +80,8 @@ pub use access_rights::{
 };
 #[doc(inline)]
 pub use addressable_entity::{
-    AddressableEntity, ContractHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
-    Parameter,
+    AddressableEntity, AddressableEntityHash, EntryPoint, EntryPointAccess, EntryPointType,
+    EntryPoints, Parameter,
 };
 #[doc(inline)]
 pub use api_error::ApiError;
@@ -88,16 +89,16 @@ pub use api_error::ApiError;
 pub use block::JsonBlockWithSignatures;
 pub use block::{
     Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHashAndHeight, BlockHeader,
-    BlockSignatures, BlockSignaturesMergeError, BlockV1, BlockV2, BlockValidationError, EraEnd,
-    EraReport, FinalitySignature, FinalitySignatureId, SignedBlockHeader,
-    SignedBlockHeaderValidationError,
+    BlockHeaderV1, BlockHeaderV2, BlockSignatures, BlockSignaturesMergeError, BlockV1, BlockV2,
+    BlockValidationError, EraEnd, EraEndV1, EraEndV2, EraReport, FinalitySignature,
+    FinalitySignatureId, RewardedSignatures, Rewards, SignedBlockHeader,
+    SignedBlockHeaderValidationError, SingleBlockRewardedSignatures,
 };
 #[cfg(any(feature = "testing", test))]
-pub use block::{FromTestBlockBuilder, TestBlockBuilder};
+pub use block::{TestBlockBuilder, TestBlockV1Builder};
 
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
-#[cfg(feature = "std")]
-pub use chainspec::DEFAULT_HOST_FUNCTION_NEW_DICTIONARY;
+pub use byte_code::{ByteCode, ByteCodeHash, ByteCodeKind};
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{
     AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,
@@ -108,6 +109,7 @@ pub use chainspec::{
     LegacyRequiredFinality, MessageLimits, MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig,
     RefundHandling, StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig,
     TransactionV1Config, UpgradeConfig, ValidatorConfig, WasmConfig,
+    DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{
@@ -128,7 +130,7 @@ pub use chainspec::{
 };
 pub use cl_type::{named_key_type, CLType, CLTyped};
 pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
-pub use contract_wasm::{ContractWasm, ContractWasmHash};
+pub use contract_wasm::ContractWasm;
 #[doc(inline)]
 pub use contracts::Contract;
 pub use crypto::*;
@@ -143,13 +145,13 @@ pub use gas::Gas;
 pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]
 pub use key::{
-    DictionaryAddr, FromStrError as KeyFromStrError, HashAddr, Key, KeyTag, BLAKE2B_DIGEST_LENGTH,
-    DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
+    ByteCodeAddr, DictionaryAddr, EntityAddr, FromStrError as KeyFromStrError, HashAddr, Key,
+    KeyTag, PackageAddr, BLAKE2B_DIGEST_LENGTH, DICTIONARY_ITEM_KEY_MAX_LENGTH,
+    KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
 };
 pub use motes::Motes;
 pub use package::{
-    ContractPackageHash, ContractVersion, ContractVersionKey, ContractVersions, Group, Groups,
-    Package,
+    EntityVersion, EntityVersionKey, EntityVersions, Group, Groups, Package, PackageHash,
 };
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
@@ -164,10 +166,10 @@ pub use transaction::runtime_args::{NamedArg, RuntimeArgs};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use transaction::TestTransactionV1Builder;
 pub use transaction::{
-    runtime_args, AuctionTransactionV1, ContractIdentifier, ContractPackageIdentifier, Deploy,
-    DeployApproval, DeployApprovalsHash, DeployConfigurationFailure, DeployDecodeFromJsonError,
-    DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash, DeployHeader, DeployId,
-    DirectCallV1, ExecutableDeployItem, ExecutableDeployItemIdentifier, NativeTransactionV1,
+    runtime_args, AuctionTransactionV1, Deploy, DeployApproval, DeployApprovalsHash,
+    DeployConfigurationFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
+    DeployFootprint, DeployHash, DeployHeader, DeployId, DirectCallV1, EntityIdentifier,
+    ExecutableDeployItem, ExecutableDeployItemIdentifier, NativeTransactionV1, PackageIdentifier,
     PricingModeV1, Transaction, TransactionApprovalsHash, TransactionHash, TransactionId,
     TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash, TransactionV1ConfigFailure,
     TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,

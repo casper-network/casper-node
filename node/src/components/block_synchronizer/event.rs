@@ -15,7 +15,7 @@ use crate::{
     },
     effect::requests::BlockSynchronizerRequest,
     types::{
-        ApprovalsHashes, BlockExecutionResultsOrChunk, FinalizedBlock, LegacyDeploy, NodeId,
+        ApprovalsHashes, BlockExecutionResultsOrChunk, ExecutableBlock, LegacyDeploy, NodeId,
         SyncLeap,
     },
 };
@@ -29,7 +29,7 @@ pub(crate) enum Event {
     #[from]
     MadeFinalizedBlock {
         block_hash: BlockHash,
-        result: Option<(FinalizedBlock, Vec<Deploy>)>,
+        result: Option<ExecutableBlock>,
     },
     MarkBlockExecutionEnqueued(BlockHash),
     MarkBlockExecuted(BlockHash),

@@ -8,11 +8,13 @@ use casper_types::{
     addressable_entity::{
         ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
     },
-    bytesrepr, URef, UREF_SERIALIZED_LENGTH,
+    api_error, bytesrepr, EntryPoints, URef, UREF_SERIALIZED_LENGTH,
 };
 
 use super::to_ptr;
-use crate::{contract_api, ext_ffi, unwrap_or_revert::UnwrapOrRevert};
+use crate::{
+    contract_api, contract_api::runtime::revert, ext_ffi, unwrap_or_revert::UnwrapOrRevert,
+};
 
 /// Retrieves the ID of the account's main purse.
 pub fn get_main_purse() -> URef {
@@ -91,5 +93,17 @@ pub fn update_associated_key(
         Ok(())
     } else {
         Err(UpdateKeyFailure::try_from(result).unwrap_or_revert())
+    }
+}
+
+/// Add session code to an entity associated with an Account.
+pub fn add_session_version(entry_points: EntryPoints) {
+    let (entry_points_ptr, entry_points_size, _entry_point_bytes) = to_ptr(entry_points);
+
+    let result = unsafe { ext_ffi::casper_add_session_logic(entry_points_ptr, entry_points_size) };
+
+    match api_error::result_from(result) {
+        Ok(_) => {}
+        Err(e) => revert(e),
     }
 }

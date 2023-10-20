@@ -1,6 +1,6 @@
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    HashAddr,
+    AddressableEntityHash,
 };
 
 use alloc::{string::String, vec::Vec};
@@ -120,7 +120,7 @@ impl FromBytes for MessagePayload {
 pub struct Message {
     /// The identity of the entity that produced the message.
     #[cfg_attr(feature = "json-schema", schemars(with = "String"))]
-    entity_addr: HashAddr,
+    entity_addr: AddressableEntityHash,
     /// The payload of the message.
     message: MessagePayload,
     /// The name of the topic on which the message was emitted on.
@@ -134,7 +134,7 @@ pub struct Message {
 impl Message {
     /// Creates new instance of [`Message`] with the specified source and message payload.
     pub fn new(
-        source: HashAddr,
+        source: AddressableEntityHash,
         message: MessagePayload,
         topic_name: String,
         topic_name_hash: TopicNameHash,
@@ -150,7 +150,7 @@ impl Message {
     }
 
     /// Returns a reference to the identity of the entity that produced the message.
-    pub fn entity_addr(&self) -> &HashAddr {
+    pub fn entity_addr(&self) -> &AddressableEntityHash {
         &self.entity_addr
     }
 
@@ -230,7 +230,7 @@ mod tests {
         bytesrepr::test_serialization_roundtrip(&message_payload);
 
         let message = Message::new(
-            [1; KEY_HASH_LENGTH],
+            [1; KEY_HASH_LENGTH].into(),
             message_payload,
             "test_topic".to_string(),
             TopicNameHash::new([0x4du8; TOPIC_NAME_HASH_LENGTH]),
