@@ -58,17 +58,13 @@ const ERA_SUMMARY_PREFIX: &str = "era-summary-";
 const CHAINSPEC_REGISTRY_PREFIX: &str = "chainspec-registry-";
 const CHECKSUM_REGISTRY_PREFIX: &str = "checksum-registry-";
 const BID_ADDR_PREFIX: &str = "bid-addr-";
-const PACKAGE_ADDR_PREFIX: &str = "package-";
-const ENTITY_ADDR_PREFIX: &str = "addressable-entity-";
-
+const PACKAGE_PREFIX: &str = "package-";
+const ENTITY_PREFIX: &str = "addressable-entity-";
 const ACCOUNT_ENTITY_PREFIX: &str = "account-";
 const CONTRACT_ENTITY_PREFIX: &str = "contract-";
 const SYSTEM_ENTITY_PREFIX: &str = "system-";
-
-const BYTE_CODE_ADDR_PREFIX: &str = "byte-code-";
-
-const WASM_PREFIX: &str = "v1-wasm-";
-
+const BYTE_CODE_PREFIX: &str = "byte-code-";
+const V1_WASM_PREFIX: &str = "v1-wasm-";
 const EMPTY_PREFIX: &str = "empty-";
 
 /// The number of bytes in a Blake2b hash
@@ -193,38 +189,39 @@ pub enum Key {
     Hash(HashAddr),
     /// A `Key` which is a [`URef`], under which most types of data can be stored.
     URef(URef),
-    /// A `Key` under which we store a transfer.
+    /// A `Key` under which a transfer is stored.
     Transfer(TransferAddr),
-    /// A `Key` under which we store a deploy info.
+    /// A `Key` under which a deploy info is stored.
     DeployInfo(DeployHash),
-    /// A `Key` under which we store an era info.
+    /// A `Key` under which an era info is stored.
     EraInfo(EraId),
-    /// A `Key` under which we store a purse balance.
+    /// A `Key` under which a purse balance is stored.
     Balance(URefAddr),
-    /// A `Key` under which we store bid information
+    /// A `Key` under which bid information is stored.
     Bid(AccountHash),
-    /// A `Key` under which we store withdraw information.
+    /// A `Key` under which withdraw information is stored.
     Withdraw(AccountHash),
-    /// A `Key` variant whose value is derived by hashing [`URef`]s address and arbitrary data.
+    /// A `Key` whose value is derived by hashing a [`URef`] address and arbitrary data, under
+    /// which a dictionary is stored.
     Dictionary(DictionaryAddr),
-    /// A `Key` variant under which system contract hashes are stored.
+    /// A `Key` under which system contract hashes are stored.
     SystemContractRegistry,
-    /// A `Key` under which we store current era info.
+    /// A `Key` under which current era info is stored.
     EraSummary,
-    /// A `Key` under which we store unbond information.
+    /// A `Key` under which unbond information is stored.
     Unbond(AccountHash),
-    /// A `Key` variant under which chainspec and other hashes are stored.
+    /// A `Key` under which chainspec and other hashes are stored.
     ChainspecRegistry,
-    /// A `Key` variant under which we store a registry of checksums.
+    /// A `Key` under which a registry of checksums is stored.
     ChecksumRegistry,
-    /// A `Key` under which we store bid information
+    /// A `Key` under which bid information is stored.
     BidAddr(BidAddr),
-    /// A `Key` under which we store package information.
+    /// A `Key` under which package information is stored.
     Package(PackageAddr),
-    /// A `Key` under which we write an addressable entity.
-    AddressableEntity((PackageKindTag, EntityAddr)),
-    /// A `Key` under which we write a byte code record.
-    ByteCode((ByteCodeKind, ByteCodeAddr)),
+    /// A `Key` under which an addressable entity is stored.
+    AddressableEntity(PackageKindTag, EntityAddr),
+    /// A `Key` under which a byte code record is stored.
+    ByteCode(ByteCodeKind, ByteCodeAddr),
 }
 
 #[cfg(feature = "json-schema")]
@@ -380,8 +377,8 @@ impl Key {
             Key::ChecksumRegistry => String::from("Key::ChecksumRegistry"),
             Key::BidAddr(_) => String::from("Key::BidAddr"),
             Key::Package(_) => String::from("Key::Package"),
-            Key::AddressableEntity(_) => String::from("Key::AddressableEntity"),
-            Key::ByteCode(_) => String::from("Key::ByteCode"),
+            Key::AddressableEntity(..) => String::from("Key::AddressableEntity"),
+            Key::ByteCode(..) => String::from("Key::ByteCode"),
         }
     }
 
@@ -469,17 +466,13 @@ impl Key {
                 format!("{}{}", BID_ADDR_PREFIX, bid_addr)
             }
             Key::Package(package_addr) => {
-                format!(
-                    "{}{}",
-                    PACKAGE_ADDR_PREFIX,
-                    base16::encode_lower(&package_addr)
-                )
+                format!("{}{}", PACKAGE_PREFIX, base16::encode_lower(&package_addr))
             }
-            Key::AddressableEntity((package_tag, entity_addr)) => match package_tag {
+            Key::AddressableEntity(package_tag, entity_addr) => match package_tag {
                 PackageKindTag::System => {
                     format!(
                         "{}{}{}",
-                        ENTITY_ADDR_PREFIX,
+                        ENTITY_PREFIX,
                         SYSTEM_ENTITY_PREFIX,
                         base16::encode_lower(&entity_addr)
                     )
@@ -487,7 +480,7 @@ impl Key {
                 PackageKindTag::Account => {
                     format!(
                         "{}{}{}",
-                        ENTITY_ADDR_PREFIX,
+                        ENTITY_PREFIX,
                         ACCOUNT_ENTITY_PREFIX,
                         base16::encode_lower(&entity_addr)
                     )
@@ -495,17 +488,17 @@ impl Key {
                 PackageKindTag::SmartContract => {
                     format!(
                         "{}{}{}",
-                        ENTITY_ADDR_PREFIX,
+                        ENTITY_PREFIX,
                         CONTRACT_ENTITY_PREFIX,
                         base16::encode_lower(&entity_addr)
                     )
                 }
             },
-            Key::ByteCode((byte_code_kind, byte_code_addr)) => match byte_code_kind {
+            Key::ByteCode(byte_code_kind, byte_code_addr) => match byte_code_kind {
                 ByteCodeKind::Empty => {
                     format!(
                         "{}{}{}",
-                        BYTE_CODE_ADDR_PREFIX,
+                        BYTE_CODE_PREFIX,
                         EMPTY_PREFIX,
                         base16::encode_lower(&byte_code_addr)
                     )
@@ -513,8 +506,8 @@ impl Key {
                 ByteCodeKind::V1CasperWasm => {
                     format!(
                         "{}{}{}",
-                        BYTE_CODE_ADDR_PREFIX,
-                        WASM_PREFIX,
+                        BYTE_CODE_PREFIX,
+                        V1_WASM_PREFIX,
                         base16::encode_lower(&byte_code_addr)
                     )
                 }
@@ -682,57 +675,44 @@ impl Key {
             return Ok(Key::ChecksumRegistry);
         }
 
-        if let Some(entity_string) =
-            input.strip_prefix(&format!("{}{}", ENTITY_ADDR_PREFIX, ACCOUNT_ENTITY_PREFIX))
-        {
-            let addr = checksummed_hex::decode(entity_string)
-                .map_err(|error| FromStrError::AddressableEntity(error.to_string()))?;
-            let hash_addr = EntityAddr::try_from(addr.as_ref())
-                .map_err(|error| FromStrError::AddressableEntity(error.to_string()))?;
-            return Ok(Key::AddressableEntity((PackageKindTag::Account, hash_addr)));
+        if let Some(package_addr) = input.strip_prefix(PACKAGE_PREFIX) {
+            let package_addr_bytes = checksummed_hex::decode(package_addr)
+                .map_err(|error| FromStrError::Dictionary(error.to_string()))?;
+            let addr = PackageAddr::try_from(package_addr_bytes.as_ref())
+                .map_err(|error| FromStrError::Package(error.to_string()))?;
+            return Ok(Key::Package(addr));
         }
 
-        if let Some(entity_string) =
-            input.strip_prefix(&format!("{}{}", ENTITY_ADDR_PREFIX, SYSTEM_ENTITY_PREFIX))
-        {
-            let addr = checksummed_hex::decode(entity_string)
+        if let Some(entity) = input.strip_prefix(ENTITY_PREFIX) {
+            let (addr_str, tag) = if let Some(str) = entity.strip_prefix(ACCOUNT_ENTITY_PREFIX) {
+                (str, PackageKindTag::Account)
+            } else if let Some(str) = entity.strip_prefix(SYSTEM_ENTITY_PREFIX) {
+                (str, PackageKindTag::System)
+            } else if let Some(str) = entity.strip_prefix(CONTRACT_ENTITY_PREFIX) {
+                (str, PackageKindTag::SmartContract)
+            } else {
+                return Err(FromStrError::UnknownPrefix);
+            };
+            let addr = checksummed_hex::decode(addr_str)
                 .map_err(|error| FromStrError::AddressableEntity(error.to_string()))?;
-            let hash_addr = EntityAddr::try_from(addr.as_ref())
+            let entity_addr = EntityAddr::try_from(addr.as_ref())
                 .map_err(|error| FromStrError::AddressableEntity(error.to_string()))?;
-            return Ok(Key::AddressableEntity((PackageKindTag::System, hash_addr)));
+            return Ok(Key::AddressableEntity(tag, entity_addr));
         }
 
-        if let Some(entity_string) =
-            input.strip_prefix(&format!("{}{}", ENTITY_ADDR_PREFIX, CONTRACT_ENTITY_PREFIX))
-        {
-            let addr = checksummed_hex::decode(entity_string)
-                .map_err(|error| FromStrError::AddressableEntity(error.to_string()))?;
-            let hash_addr = EntityAddr::try_from(addr.as_ref())
-                .map_err(|error| FromStrError::AddressableEntity(error.to_string()))?;
-            return Ok(Key::AddressableEntity((
-                PackageKindTag::SmartContract,
-                hash_addr,
-            )));
-        }
-
-        if let Some(byte_code_string) =
-            input.strip_prefix(&format!("{}{}", BYTE_CODE_ADDR_PREFIX, EMPTY_PREFIX))
-        {
-            let addr = checksummed_hex::decode(byte_code_string)
+        if let Some(byte_code) = input.strip_prefix(BYTE_CODE_PREFIX) {
+            let (addr_str, tag) = if let Some(str) = byte_code.strip_prefix(EMPTY_PREFIX) {
+                (str, ByteCodeKind::Empty)
+            } else if let Some(str) = byte_code.strip_prefix(V1_WASM_PREFIX) {
+                (str, ByteCodeKind::V1CasperWasm)
+            } else {
+                return Err(FromStrError::UnknownPrefix);
+            };
+            let addr = checksummed_hex::decode(addr_str)
                 .map_err(|error| FromStrError::ByteCode(error.to_string()))?;
             let byte_code_addr = ByteCodeAddr::try_from(addr.as_ref())
                 .map_err(|error| FromStrError::ByteCode(error.to_string()))?;
-            return Ok(Key::ByteCode((ByteCodeKind::Empty, byte_code_addr)));
-        }
-
-        if let Some(byte_code_string) =
-            input.strip_prefix(&format!("{}{}", BYTE_CODE_ADDR_PREFIX, WASM_PREFIX))
-        {
-            let addr = checksummed_hex::decode(byte_code_string)
-                .map_err(|error| FromStrError::ByteCode(error.to_string()))?;
-            let byte_code_addr = ByteCodeAddr::try_from(addr.as_ref())
-                .map_err(|error| FromStrError::ByteCode(error.to_string()))?;
-            return Ok(Key::ByteCode((ByteCodeKind::V1CasperWasm, byte_code_addr)));
+            return Ok(Key::ByteCode(tag, byte_code_addr));
         }
 
         Err(FromStrError::UnknownPrefix)
@@ -760,7 +740,7 @@ impl Key {
     /// returns `None`.
     pub fn into_entity_addr(self) -> Option<EntityAddr> {
         match self {
-            Key::AddressableEntity((_, hash)) => Some(hash),
+            Key::AddressableEntity(_, hash) => Some(hash),
             _ => None,
         }
     }
@@ -867,7 +847,7 @@ impl Key {
         package_kind_tag: PackageKindTag,
         entity_hash: AddressableEntityHash,
     ) -> Self {
-        Key::AddressableEntity((package_kind_tag, entity_hash.value()))
+        Key::AddressableEntity(package_kind_tag, entity_hash.value())
     }
 
     /// Creates a new [`Key::AddressableEntity`] for a Smart contract.
@@ -877,7 +857,7 @@ impl Key {
 
     /// Creates a new [`Key::ByteCode`] variant from a byte code kind and an byte code addr.
     pub fn byte_code_key(byte_code_kind: ByteCodeKind, byte_code_addr: ByteCodeAddr) -> Self {
-        Key::ByteCode((byte_code_kind, byte_code_addr))
+        Key::ByteCode(byte_code_kind, byte_code_addr)
     }
 
     /// Returns true if the key is of type [`Key::Dictionary`].
@@ -916,7 +896,7 @@ impl Key {
 
     /// Returns if they inner Key is for a system contract entity.
     pub fn is_system_key(&self) -> bool {
-        if let Self::AddressableEntity((PackageKindTag::System, _)) = self {
+        if let Self::AddressableEntity(PackageKindTag::System, _) = self {
             return true;
         }
 
@@ -972,17 +952,17 @@ impl Display for Key {
             Key::Package(package_addr) => {
                 write!(f, "Key::Package({})", base16::encode_lower(package_addr))
             }
-            Key::AddressableEntity((kind_tag, entity_addr)) => write!(
+            Key::AddressableEntity(kind_tag, entity_addr) => write!(
                 f,
                 "Key::AddressableEntity({}-{})",
-                *kind_tag as u8,
+                kind_tag,
                 base16::encode_lower(entity_addr)
             ),
-            Key::ByteCode((kind, byte_code_addr)) => {
+            Key::ByteCode(kind, byte_code_addr) => {
                 write!(
                     f,
                     "Key::ByteCode({}-{})",
-                    *kind as u8,
+                    kind,
                     base16::encode_lower(byte_code_addr)
                 )
             }
@@ -1016,8 +996,8 @@ impl Tagged<KeyTag> for Key {
             Key::ChecksumRegistry => KeyTag::ChecksumRegistry,
             Key::BidAddr(_) => KeyTag::BidAddr,
             Key::Package(_) => KeyTag::Package,
-            Key::AddressableEntity(_) => KeyTag::AddressableEntity,
-            Key::ByteCode(_) => KeyTag::ByteCode,
+            Key::AddressableEntity(..) => KeyTag::AddressableEntity,
+            Key::ByteCode(..) => KeyTag::ByteCode,
         }
     }
 }
@@ -1104,12 +1084,10 @@ impl ToBytes for Key {
                 }
             },
             Key::Package(_) => KEY_PACKAGE_SERIALIZED_LENGTH,
-            Key::AddressableEntity(_) => {
+            Key::AddressableEntity(..) => {
                 U8_SERIALIZED_LENGTH + KEY_ID_SERIALIZED_LENGTH + ADDR_LENGTH
             }
-            Key::ByteCode((byte_code_kind, _)) => {
-                byte_code_kind.serialized_length() + KEY_ID_SERIALIZED_LENGTH + ADDR_LENGTH
-            }
+            Key::ByteCode(..) => U8_SERIALIZED_LENGTH + KEY_ID_SERIALIZED_LENGTH + ADDR_LENGTH,
         }
     }
 
@@ -1140,11 +1118,11 @@ impl ToBytes for Key {
                 BidAddrTag::Validator | BidAddrTag::Delegator => bid_addr.write_bytes(writer),
             },
             Key::Package(package_addr) => package_addr.write_bytes(writer),
-            Key::AddressableEntity((package_kind, entity_addr)) => {
-                writer.push(*package_kind as u8);
+            Key::AddressableEntity(package_kind_tag, entity_addr) => {
+                package_kind_tag.write_bytes(writer)?;
                 entity_addr.write_bytes(writer)
             }
-            Key::ByteCode((byte_code_kind, byte_code_addr)) => {
+            Key::ByteCode(byte_code_kind, byte_code_addr) => {
                 byte_code_kind.write_bytes(writer)?;
                 byte_code_addr.write_bytes(writer)
             }
@@ -1225,17 +1203,14 @@ impl FromBytes for Key {
                 Ok((Key::Package(package_addr), rem))
             }
             tag if tag == KeyTag::AddressableEntity as u8 => {
-                let (package_kind_tag, rem) = u8::from_bytes(remainder)?;
-                let package_kind_tag = PackageKindTag::try_from(package_kind_tag)?;
+                let (package_kind_tag, rem) = PackageKindTag::from_bytes(remainder)?;
                 let (entity_addr, rem) = EntityAddr::from_bytes(rem)?;
-                Ok((Key::AddressableEntity((package_kind_tag, entity_addr)), rem))
+                Ok((Key::AddressableEntity(package_kind_tag, entity_addr), rem))
             }
             tag if tag == KeyTag::ByteCode as u8 => {
-                let (byte_code_kind, remainder) = u8::from_bytes(remainder)?;
-                let byte_code_kind = ByteCodeKind::try_from(byte_code_kind)?;
-                let (byte_code_addr, rem) = ByteCodeAddr::from_bytes(remainder)?;
-
-                Ok((Key::ByteCode((byte_code_kind, byte_code_addr)), rem))
+                let (byte_code_kind, rem) = ByteCodeKind::from_bytes(remainder)?;
+                let (byte_code_addr, rem) = ByteCodeAddr::from_bytes(rem)?;
+                Ok((Key::ByteCode(byte_code_kind, byte_code_addr), rem))
             }
             _ => Err(Error::Formatting),
         }
@@ -1264,8 +1239,8 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::ChecksumRegistry => unimplemented!(),
         Key::BidAddr(_) => unimplemented!(),
         Key::Package(_) => unimplemented!(),
-        Key::AddressableEntity(_) => unimplemented!(),
-        Key::ByteCode(_) => unimplemented!(),
+        Key::AddressableEntity(..) => unimplemented!(),
+        Key::ByteCode(..) => unimplemented!(),
     }
 }
 
@@ -1290,8 +1265,8 @@ impl Distribution<Key> for Standard {
             14 => Key::ChecksumRegistry,
             15 => Key::BidAddr(rng.gen()),
             16 => Key::Package(rng.gen()),
-            17 => Key::AddressableEntity((rng.gen(), rng.gen())),
-            18 => Key::ByteCode((rng.gen(), rng.gen())),
+            17 => Key::AddressableEntity(rng.gen(), rng.gen()),
+            18 => Key::ByteCode(rng.gen(), rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -1320,8 +1295,8 @@ mod serde_helpers {
         ChecksumRegistry,
         BidAddr(&'a BidAddr),
         Package(&'a PackageAddr),
-        AddressableEntity((&'a PackageKindTag, &'a EntityAddr)),
-        ByteCode((&'a ByteCodeKind, &'a ByteCodeAddr)),
+        AddressableEntity(&'a PackageKindTag, &'a EntityAddr),
+        ByteCode(&'a ByteCodeKind, &'a ByteCodeAddr),
     }
 
     #[derive(Deserialize)]
@@ -1344,8 +1319,8 @@ mod serde_helpers {
         ChecksumRegistry,
         BidAddr(BidAddr),
         Package(PackageAddr),
-        AddressableEntity((PackageKindTag, EntityAddr)),
-        ByteCode((ByteCodeKind, ByteCodeAddr)),
+        AddressableEntity(PackageKindTag, EntityAddr),
+        ByteCode(ByteCodeKind, ByteCodeAddr),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -1368,11 +1343,11 @@ mod serde_helpers {
                 Key::ChecksumRegistry => BinarySerHelper::ChecksumRegistry,
                 Key::BidAddr(bid_addr) => BinarySerHelper::BidAddr(bid_addr),
                 Key::Package(package_addr) => BinarySerHelper::Package(package_addr),
-                Key::AddressableEntity((package_kind, entity_addr)) => {
-                    BinarySerHelper::AddressableEntity((package_kind, entity_addr))
+                Key::AddressableEntity(package_kind, entity_addr) => {
+                    BinarySerHelper::AddressableEntity(package_kind, entity_addr)
                 }
-                Key::ByteCode((byte_code_kind, byte_code_addr)) => {
-                    BinarySerHelper::ByteCode((byte_code_kind, byte_code_addr))
+                Key::ByteCode(byte_code_kind, byte_code_addr) => {
+                    BinarySerHelper::ByteCode(byte_code_kind, byte_code_addr)
                 }
             }
         }
@@ -1398,11 +1373,11 @@ mod serde_helpers {
                 BinaryDeserHelper::ChecksumRegistry => Key::ChecksumRegistry,
                 BinaryDeserHelper::BidAddr(bid_addr) => Key::BidAddr(bid_addr),
                 BinaryDeserHelper::Package(package_addr) => Key::Package(package_addr),
-                BinaryDeserHelper::AddressableEntity((package_kind, entity_addr)) => {
-                    Key::AddressableEntity((package_kind, entity_addr))
+                BinaryDeserHelper::AddressableEntity(package_kind, entity_addr) => {
+                    Key::AddressableEntity(package_kind, entity_addr)
                 }
-                BinaryDeserHelper::ByteCode((byte_kind, byte_code_addr)) => {
-                    Key::ByteCode((byte_kind, byte_code_addr))
+                BinaryDeserHelper::ByteCode(byte_kind, byte_code_addr) => {
+                    Key::ByteCode(byte_kind, byte_code_addr)
                 }
             }
         }
@@ -1462,6 +1437,15 @@ mod tests {
     const UNBOND_KEY: Key = Key::Unbond(AccountHash::new([42; 32]));
     const CHAINSPEC_REGISTRY_KEY: Key = Key::ChainspecRegistry;
     const CHECKSUM_REGISTRY_KEY: Key = Key::ChecksumRegistry;
+    const PACKAGE_KEY: Key = Key::Package([42; 32]);
+    const ADDRESSABLE_ENTITY_SYSTEM_KEY: Key =
+        Key::AddressableEntity(PackageKindTag::System, [42; 32]);
+    const ADDRESSABLE_ENTITY_ACCOUNT_KEY: Key =
+        Key::AddressableEntity(PackageKindTag::Account, [42; 32]);
+    const ADDRESSABLE_ENTITY_SMART_CONTRACT_KEY: Key =
+        Key::AddressableEntity(PackageKindTag::SmartContract, [42; 32]);
+    const BYTE_CODE_EMPTY_KEY: Key = Key::ByteCode(ByteCodeKind::Empty, [42; 32]);
+    const BYTE_CODE_V1_WASM_KEY: Key = Key::ByteCode(ByteCodeKind::V1CasperWasm, [42; 32]);
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
@@ -1481,6 +1465,12 @@ mod tests {
         UNIFIED_BID_KEY,
         VALIDATOR_BID_KEY,
         DELEGATOR_BID_KEY,
+        PACKAGE_KEY,
+        ADDRESSABLE_ENTITY_SYSTEM_KEY,
+        ADDRESSABLE_ENTITY_ACCOUNT_KEY,
+        ADDRESSABLE_ENTITY_SMART_CONTRACT_KEY,
+        BYTE_CODE_EMPTY_KEY,
+        BYTE_CODE_V1_WASM_KEY,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
     const UNIFIED_HEX_STRING: &str =
@@ -1615,6 +1605,30 @@ mod tests {
                 base16::encode_lower(&PADDING_BYTES),
             )
         );
+        assert_eq!(
+            format!("{}", PACKAGE_KEY),
+            format!("Key::Package({})", HEX_STRING)
+        );
+        assert_eq!(
+            format!("{}", ADDRESSABLE_ENTITY_SYSTEM_KEY),
+            format!("Key::AddressableEntity(system-{})", HEX_STRING)
+        );
+        assert_eq!(
+            format!("{}", ADDRESSABLE_ENTITY_ACCOUNT_KEY),
+            format!("Key::AddressableEntity(account-{})", HEX_STRING)
+        );
+        assert_eq!(
+            format!("{}", ADDRESSABLE_ENTITY_SMART_CONTRACT_KEY),
+            format!("Key::AddressableEntity(smart-contract-{})", HEX_STRING)
+        );
+        assert_eq!(
+            format!("{}", BYTE_CODE_EMPTY_KEY),
+            format!("Key::ByteCode(empty-{})", HEX_STRING)
+        );
+        assert_eq!(
+            format!("{}", BYTE_CODE_V1_WASM_KEY),
+            format!("Key::ByteCode(v1-casper-wasm-{})", HEX_STRING)
+        );
     }
 
     #[test]
@@ -1707,14 +1721,11 @@ mod tests {
         let parsed_bid_key =
             Key::from_formatted_str(&original_string).expect("{string} (key = {key:?})");
         if let Key::Bid(parsed_account_hash) = parsed_bid_key {
-            assert_eq!(
-                parsed_account_hash, account_hash,
-                "account hash should equal"
-            );
-            assert_eq!(legacy_bid_key, parsed_bid_key, "bid keys should equal");
+            assert_eq!(parsed_account_hash, account_hash,);
+            assert_eq!(legacy_bid_key, parsed_bid_key);
 
             let translated_string = parsed_bid_key.to_formatted_string();
-            assert_eq!(original_string, translated_string, "strings should equal");
+            assert_eq!(original_string, translated_string);
         } else {
             panic!("should have account hash");
         }
@@ -1724,102 +1735,58 @@ mod tests {
     fn should_parse_legacy_unified_bid_key_from_string() {
         let legacy_bid_addr = BidAddr::legacy([1; 32]);
         let legacy_bid_key = Key::BidAddr(legacy_bid_addr);
-        assert!(
-            legacy_bid_addr.tag() == BidAddrTag::Unified,
-            "legacy_bid_addr should be legacy"
-        );
+        assert_eq!(legacy_bid_addr.tag(), BidAddrTag::Unified,);
 
         let original_string = legacy_bid_key.to_formatted_string();
-        println!("{}", original_string);
-
         let parsed_key =
             Key::from_formatted_str(&original_string).expect("{string} (key = {key:?})");
         let parsed_bid_addr = parsed_key.as_bid_addr().expect("must have bid addr");
-        assert!(parsed_key.is_bid_addr_key(), "parsed_key should be bid key");
-        assert_eq!(
-            parsed_bid_addr.tag(),
-            legacy_bid_addr.tag(),
-            "bid addr tags should equal"
-        );
-        assert_eq!(*parsed_bid_addr, legacy_bid_addr, "bid addr's should equal");
+        assert!(parsed_key.is_bid_addr_key());
+        assert_eq!(parsed_bid_addr.tag(), legacy_bid_addr.tag(),);
+        assert_eq!(*parsed_bid_addr, legacy_bid_addr);
 
         let translated_string = parsed_key.to_formatted_string();
-        assert_eq!(original_string, translated_string, "strings should equal");
-
-        assert_eq!(
-            parsed_key.as_bid_addr(),
-            legacy_bid_key.as_bid_addr(),
-            "should equal"
-        );
+        assert_eq!(original_string, translated_string);
+        assert_eq!(parsed_key.as_bid_addr(), legacy_bid_key.as_bid_addr(),);
     }
 
     #[test]
     fn should_parse_validator_bid_key_from_string() {
         let validator_bid_addr = BidAddr::new_validator_addr([1; 32]);
         let validator_bid_key = Key::BidAddr(validator_bid_addr);
-        assert!(
-            validator_bid_addr.tag() == BidAddrTag::Validator,
-            "validator_bid_addr should be validator"
-        );
+        assert_eq!(validator_bid_addr.tag(), BidAddrTag::Validator,);
 
         let original_string = validator_bid_key.to_formatted_string();
         let parsed_key =
             Key::from_formatted_str(&original_string).expect("{string} (key = {key:?})");
         let parsed_bid_addr = parsed_key.as_bid_addr().expect("must have bid addr");
-        assert!(parsed_key.is_bid_addr_key(), "parsed_key should be bid key");
-        assert_eq!(
-            parsed_bid_addr.tag(),
-            validator_bid_addr.tag(),
-            "bid addr tags should equal"
-        );
-        assert_eq!(
-            *parsed_bid_addr, validator_bid_addr,
-            "bid addr's should equal"
-        );
+        assert!(parsed_key.is_bid_addr_key());
+        assert_eq!(parsed_bid_addr.tag(), validator_bid_addr.tag(),);
+        assert_eq!(*parsed_bid_addr, validator_bid_addr,);
 
         let translated_string = parsed_key.to_formatted_string();
-        assert_eq!(original_string, translated_string, "strings should equal");
-
-        assert_eq!(
-            parsed_key.as_bid_addr(),
-            validator_bid_key.as_bid_addr(),
-            "should equal"
-        );
+        assert_eq!(original_string, translated_string);
+        assert_eq!(parsed_key.as_bid_addr(), validator_bid_key.as_bid_addr(),);
     }
 
     #[test]
     fn should_parse_delegator_bid_key_from_string() {
         let delegator_bid_addr = BidAddr::new_delegator_addr(([1; 32], [9; 32]));
         let delegator_bid_key = Key::BidAddr(delegator_bid_addr);
-        assert!(
-            delegator_bid_addr.tag() == BidAddrTag::Delegator,
-            "delegator_bid_addr should be delegator"
-        );
+        assert_eq!(delegator_bid_addr.tag(), BidAddrTag::Delegator,);
 
         let original_string = delegator_bid_key.to_formatted_string();
 
         let parsed_key =
             Key::from_formatted_str(&original_string).expect("{string} (key = {key:?})");
         let parsed_bid_addr = parsed_key.as_bid_addr().expect("must have bid addr");
-        assert!(parsed_key.is_bid_addr_key(), "parsed_key should be bid key");
-        assert_eq!(
-            parsed_bid_addr.tag(),
-            delegator_bid_addr.tag(),
-            "bid addr tags should equal"
-        );
-        assert_eq!(
-            *parsed_bid_addr, delegator_bid_addr,
-            "bid addr's should equal"
-        );
+        assert!(parsed_key.is_bid_addr_key());
+        assert_eq!(parsed_bid_addr.tag(), delegator_bid_addr.tag(),);
+        assert_eq!(*parsed_bid_addr, delegator_bid_addr,);
 
         let translated_string = parsed_key.to_formatted_string();
-        assert_eq!(original_string, translated_string, "strings should equal");
-
-        assert_eq!(
-            parsed_key.as_bid_addr(),
-            delegator_bid_key.as_bid_addr(),
-            "should equal"
-        );
+        assert_eq!(original_string, translated_string);
+        assert_eq!(parsed_key.as_bid_addr(), delegator_bid_key.as_bid_addr(),);
     }
 
     #[test]
@@ -1905,6 +1872,22 @@ mod tests {
             "{}",
             bid_addr_err
         );
+        assert!(Key::from_formatted_str(PACKAGE_PREFIX)
+            .unwrap_err()
+            .to_string()
+            .starts_with("package-key from string error: "));
+        assert!(
+            Key::from_formatted_str(&format!("{}{}", ENTITY_PREFIX, ACCOUNT_ENTITY_PREFIX))
+                .unwrap_err()
+                .to_string()
+                .starts_with("addressable-entity-key from string error: ")
+        );
+        assert!(
+            Key::from_formatted_str(&format!("{}{}", BYTE_CODE_PREFIX, EMPTY_PREFIX))
+                .unwrap_err()
+                .to_string()
+                .starts_with("byte-code-key from string error: ")
+        );
         let invalid_prefix = "a-0000000000000000000000000000000000000000000000000000000000000000";
         assert_eq!(
             Key::from_formatted_str(invalid_prefix)
@@ -1977,10 +1960,15 @@ mod tests {
         round_trip(&Key::BidAddr(BidAddr::new_delegator_addr((zeros, nines))));
         round_trip(&Key::Withdraw(AccountHash::new(zeros)));
         round_trip(&Key::Dictionary(zeros));
-        round_trip(&Key::SystemContractRegistry);
-        round_trip(&Key::EraSummary);
         round_trip(&Key::Unbond(AccountHash::new(zeros)));
-        round_trip(&Key::ChainspecRegistry);
-        round_trip(&Key::ChecksumRegistry);
+        round_trip(&Key::Package(zeros));
+        round_trip(&Key::AddressableEntity(PackageKindTag::System, zeros));
+        round_trip(&Key::AddressableEntity(PackageKindTag::Account, zeros));
+        round_trip(&Key::AddressableEntity(
+            PackageKindTag::SmartContract,
+            zeros,
+        ));
+        round_trip(&Key::ByteCode(ByteCodeKind::Empty, zeros));
+        round_trip(&Key::ByteCode(ByteCodeKind::V1CasperWasm, zeros));
     }
 }

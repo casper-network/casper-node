@@ -19,7 +19,7 @@ pub extern "C" fn call() {
     // Read the Counter smart contract's ContractHash.
     let contract_hash = {
         let counter_uref = runtime::get_key(COUNTER_KEY).unwrap_or_revert_with(ApiError::GetKey);
-        if let Key::AddressableEntity((_, hash)) = counter_uref {
+        if let Key::AddressableEntity(_, hash) = counter_uref {
             AddressableEntityHash::new(hash)
         } else {
             runtime::revert(ApiError::User(66));

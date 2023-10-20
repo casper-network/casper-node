@@ -149,8 +149,7 @@ impl ToBytes for ByteCodeHash {
 
     #[inline(always)]
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
-        self.0.write_bytes(writer)?;
-        Ok(())
+        self.0.write_bytes(writer)
     }
 }
 
@@ -230,11 +229,11 @@ impl JsonSchema for ByteCodeHash {
     }
 }
 
+/// The type of Byte code.
 #[repr(u8)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[derive(PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-/// The type of Byte code.
 pub enum ByteCodeKind {
     /// Empty byte code.
     Empty = 0,
@@ -242,23 +241,9 @@ pub enum ByteCodeKind {
     V1CasperWasm = 1,
 }
 
-impl TryFrom<u8> for ByteCodeKind {
-    type Error = Error;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(ByteCodeKind::Empty),
-            1 => Ok(ByteCodeKind::V1CasperWasm),
-            _ => Err(Error::Formatting),
-        }
-    }
-}
-
 impl ToBytes for ByteCodeKind {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
+        (*self as u8).to_bytes()
     }
 
     fn serialized_length(&self) -> usize {
@@ -266,11 +251,35 @@ impl ToBytes for ByteCodeKind {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
-        match self {
-            ByteCodeKind::Empty => 0u8.write_bytes(writer)?,
-            ByteCodeKind::V1CasperWasm => 1u8.write_bytes(writer)?,
+        (*self as u8).write_bytes(writer)
+    }
+}
+
+impl FromBytes for ByteCodeKind {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (byte_code_kind, remainder) = u8::from_bytes(bytes)?;
+        match byte_code_kind {
+            byte_code_kind if byte_code_kind == ByteCodeKind::Empty as u8 => {
+                Ok((ByteCodeKind::Empty, remainder))
+            }
+            byte_code_kind if byte_code_kind == ByteCodeKind::V1CasperWasm as u8 => {
+                Ok((ByteCodeKind::V1CasperWasm, remainder))
+            }
+            _ => Err(Error::Formatting),
         }
-        Ok(())
+    }
+}
+
+impl Display for ByteCodeKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ByteCodeKind::Empty => {
+                write!(f, "empty")
+            }
+            ByteCodeKind::V1CasperWasm => {
+                write!(f, "v1-casper-wasm")
+            }
+        }
     }
 }
 
@@ -285,17 +294,17 @@ impl Distribution<ByteCodeKind> for Standard {
     }
 }
 
-/// A container for contract's WASM bytes.
+/// A container for contract's Wasm bytes.
 #[derive(PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct ByteCode {
-    byte_code_kind: ByteCodeKind,
+    kind: ByteCodeKind,
     bytes: Bytes,
 }
 
 impl Debug for ByteCode {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if self.bytes.len() > BYTE_CODE_MAX_DISPLAY_LEN {
             write!(
                 f,
@@ -309,10 +318,10 @@ impl Debug for ByteCode {
 }
 
 impl ByteCode {
-    /// Creates new WASM object from bytes.
-    pub fn new(byte_code_kind: ByteCodeKind, bytes: Vec<u8>) -> Self {
+    /// Creates new Wasm object from bytes.
+    pub fn new(kind: ByteCodeKind, bytes: Vec<u8>) -> Self {
         ByteCode {
-            byte_code_kind,
+            kind,
             bytes: bytes.into(),
         }
     }
@@ -322,14 +331,14 @@ impl ByteCode {
         self.bytes.into()
     }
 
-    /// Returns a slice of contained WASM bytes.
+    /// Returns a slice of contained Wasm bytes.
     pub fn bytes(&self) -> &[u8] {
         self.bytes.as_ref()
     }
 
     /// Return the type of byte code.
-    pub fn byte_code_tag(&self) -> ByteCodeKind {
-        self.byte_code_kind
+    pub fn kind(&self) -> ByteCodeKind {
+        self.kind
     }
 }
 
@@ -341,11 +350,11 @@ impl ToBytes for ByteCode {
     }
 
     fn serialized_length(&self) -> usize {
-        self.byte_code_kind.serialized_length() + self.bytes.serialized_length()
+        self.kind.serialized_length() + self.bytes.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
-        self.byte_code_kind.write_bytes(writer)?;
+        self.kind.write_bytes(writer)?;
         self.bytes.write_bytes(writer)?;
         Ok(())
     }
@@ -353,33 +362,29 @@ impl ToBytes for ByteCode {
 
 impl FromBytes for ByteCode {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (byte_code_kind, remainder) = u8::from_bytes(bytes)?;
-        let (bytes, rem1) = FromBytes::from_bytes(remainder)?;
-        let byte_code_kind = ByteCodeKind::try_from(byte_code_kind)?;
-        Ok((
-            ByteCode {
-                byte_code_kind,
-                bytes,
-            },
-            rem1,
-        ))
+        let (kind, remainder) = ByteCodeKind::from_bytes(bytes)?;
+        let (bytes, remainder) = Bytes::from_bytes(remainder)?;
+        Ok((ByteCode { kind, bytes }, remainder))
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use rand::RngCore;
+
     use super::*;
+    use crate::testing::TestRng;
+
     #[test]
-    fn test_debug_repr_of_short_wasm() {
+    fn debug_repr_of_short_wasm() {
         const SIZE: usize = 8;
         let wasm_bytes = vec![0; SIZE];
         let byte_code = ByteCode::new(ByteCodeKind::V1CasperWasm, wasm_bytes);
-        // String output is less than the bytes itself
         assert_eq!(format!("{:?}", byte_code), "ByteCode(0x0000000000000000)");
     }
 
     #[test]
-    fn test_debug_repr_of_long_wasm() {
+    fn debug_repr_of_long_wasm() {
         const SIZE: usize = 65;
         let wasm_bytes = vec![0; SIZE];
         let byte_code = ByteCode::new(ByteCodeKind::V1CasperWasm, wasm_bytes);
@@ -388,6 +393,18 @@ mod tests {
             format!("{:?}", byte_code),
             "ByteCode(0x00000000000000000000000000000000...)"
         );
+    }
+
+    #[test]
+    fn byte_code_bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+        let byte_code = ByteCode::new(rng.gen(), vec![]);
+        bytesrepr::test_serialization_roundtrip(&byte_code);
+
+        let mut buffer = vec![0u8; rng.gen_range(1..100)];
+        rng.fill_bytes(buffer.as_mut());
+        let byte_code = ByteCode::new(rng.gen(), buffer);
+        bytesrepr::test_serialization_roundtrip(&byte_code);
     }
 
     #[test]
@@ -424,8 +441,16 @@ mod tests {
     }
 
     #[test]
-    fn contract_wasm_hash_serde_roundtrip() {
-        let byte_code_hash = ByteCodeHash([255; 32]);
+    fn contract_wasm_hash_bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+        let byte_code_hash = ByteCodeHash(rng.gen());
+        bytesrepr::test_serialization_roundtrip(&byte_code_hash);
+    }
+
+    #[test]
+    fn contract_wasm_hash_bincode_roundtrip() {
+        let rng = &mut TestRng::new();
+        let byte_code_hash = ByteCodeHash(rng.gen());
         let serialized = bincode::serialize(&byte_code_hash).unwrap();
         let deserialized = bincode::deserialize(&serialized).unwrap();
         assert_eq!(byte_code_hash, deserialized)
@@ -433,7 +458,8 @@ mod tests {
 
     #[test]
     fn contract_wasm_hash_json_roundtrip() {
-        let byte_code_hash = ByteCodeHash([255; 32]);
+        let rng = &mut TestRng::new();
+        let byte_code_hash = ByteCodeHash(rng.gen());
         let json_string = serde_json::to_string_pretty(&byte_code_hash).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(byte_code_hash, decoded)
