@@ -29,7 +29,7 @@ use crate::{
     utils::{Loadable, WithDir},
 };
 
-// We override the standard allocator to gather metrics and tune the allocator via th MALLOC_CONF
+// We override the standard allocator to gather metrics and tune the allocator via the MALLOC_CONF
 // env var.
 #[global_allocator]
 static ALLOC: &StatsAlloc<System> = &INSTRUMENTED_SYSTEM;
