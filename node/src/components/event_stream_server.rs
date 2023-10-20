@@ -294,6 +294,7 @@ where
                     deploy_header,
                     block_hash,
                     execution_result,
+                    messages,
                 } => self.broadcast(SseData::DeployProcessed {
                     deploy_hash: Box::new(deploy_hash),
                     account: Box::new(deploy_header.account().clone()),
@@ -302,6 +303,7 @@ where
                     dependencies: deploy_header.dependencies().clone(),
                     block_hash: Box::new(block_hash),
                     execution_result,
+                    messages,
                 }),
                 Event::DeploysExpired(deploy_hashes) => deploy_hashes
                     .into_iter()

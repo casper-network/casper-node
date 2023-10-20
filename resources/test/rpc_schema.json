@@ -277,8 +277,7 @@
                           "transfer-5959595959595959595959595959595959595959595959595959595959595959",
                           "transfer-8282828282828282828282828282828282828282828282828282828282828282"
                         ],
-                        "cost": "123456",
-                        "messages": []
+                        "cost": "123456"
                       }
                     }
                   }
@@ -3571,7 +3570,6 @@
                       "cost",
                       "effects",
                       "error_message",
-                      "messages",
                       "transfers"
                     ],
                     "properties": {
@@ -3601,13 +3599,6 @@
                       "error_message": {
                         "description": "The error message associated with executing the deploy.",
                         "type": "string"
-                      },
-                      "messages": {
-                        "description": "Messages that were emitted during execution.",
-                        "type": "array",
-                        "items": {
-                          "$ref": "#/components/schemas/Message"
-                        }
                       }
                     },
                     "additionalProperties": false
@@ -3627,7 +3618,6 @@
                     "required": [
                       "cost",
                       "effects",
-                      "messages",
                       "transfers"
                     ],
                     "properties": {
@@ -3653,13 +3643,6 @@
                             "$ref": "#/components/schemas/U512"
                           }
                         ]
-                      },
-                      "messages": {
-                        "description": "Messages that were emitted during execution.",
-                        "type": "array",
-                        "items": {
-                          "$ref": "#/components/schemas/Message"
-                        }
                       }
                     },
                     "additionalProperties": false
@@ -3675,71 +3658,6 @@
             "items": {
               "$ref": "#/components/schemas/Transform"
             }
-          },
-          "Message": {
-            "description": "Message that was emitted by an addressable entity during execution.",
-            "type": "object",
-            "required": [
-              "entity_addr",
-              "index",
-              "message",
-              "topic_name",
-              "topic_name_hash"
-            ],
-            "properties": {
-              "entity_addr": {
-                "description": "The identity of the entity that produced the message.",
-                "type": "string"
-              },
-              "message": {
-                "description": "The payload of the message.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/MessagePayload"
-                  }
-                ]
-              },
-              "topic_name": {
-                "description": "The name of the topic on which the message was emitted on.",
-                "type": "string"
-              },
-              "topic_name_hash": {
-                "description": "The hash of the name of the topic.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/TopicNameHash"
-                  }
-                ]
-              },
-              "index": {
-                "description": "Message index in the topic.",
-                "type": "integer",
-                "format": "uint32",
-                "minimum": 0.0
-              }
-            }
-          },
-          "MessagePayload": {
-            "description": "The payload of the message emitted by an addressable entity during execution.",
-            "oneOf": [
-              {
-                "description": "Human readable string message.",
-                "type": "object",
-                "required": [
-                  "String"
-                ],
-                "properties": {
-                  "String": {
-                    "type": "string"
-                  }
-                },
-                "additionalProperties": false
-              }
-            ]
-          },
-          "TopicNameHash": {
-            "description": "The hash of the name of the message topic.",
-            "type": "string"
           },
           "AccountIdentifier": {
             "description": "Identifier of an account.",
@@ -4642,6 +4560,10 @@
                 ]
               }
             }
+          },
+          "TopicNameHash": {
+            "description": "The hash of the name of the message topic.",
+            "type": "string"
           },
           "Package": {
             "description": "Entity definition, metadata, and security container.",

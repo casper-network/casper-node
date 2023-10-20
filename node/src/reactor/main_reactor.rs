@@ -1457,6 +1457,7 @@ impl MainReactor {
 
         if let MetaBlock::Forward(forward_meta_block) = &meta_block {
             let block = forward_meta_block.block.clone();
+            let execution_results = forward_meta_block.execution_results.clone();
 
             if meta_block
                 .mut_state()
@@ -1470,7 +1471,7 @@ impl MainReactor {
                 );
                 let meta_block = ForwardMetaBlock {
                     block,
-                    execution_results: meta_block.execution_results().clone(),
+                    execution_results,
                     state: *meta_block.state(),
                 };
                 effects.extend(reactor::wrap_effects(
@@ -1584,19 +1585,44 @@ impl MainReactor {
             ),
         ));
 
-        for (deploy_hash, deploy_header, execution_result) in meta_block.execution_results().clone()
-        {
-            let event = event_stream_server::Event::DeployProcessed {
-                deploy_hash,
-                deploy_header: Box::new(deploy_header),
-                block_hash: meta_block.hash(),
-                execution_result: Box::new(execution_result),
-            };
-            effects.extend(reactor::wrap_effects(
-                MainEvent::EventStreamServer,
-                self.event_stream_server
-                    .handle_event(effect_builder, rng, event),
-            ));
+        match &meta_block {
+            MetaBlock::Forward(fwd_meta_block) => {
+                for (deploy_hash, deploy_header, execution_result, messages) in
+                    fwd_meta_block.execution_results.iter()
+                {
+                    let event = event_stream_server::Event::DeployProcessed {
+                        deploy_hash: *deploy_hash,
+                        deploy_header: Box::new(deploy_header.clone()),
+                        block_hash: *fwd_meta_block.block.hash(),
+                        execution_result: Box::new(execution_result.clone()),
+                        messages: messages.clone(),
+                    };
+
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::EventStreamServer,
+                        self.event_stream_server
+                            .handle_event(effect_builder, rng, event),
+                    ));
+                }
+            }
+            MetaBlock::Historical(historical_meta_block) => {
+                for (deploy_hash, deploy_header, execution_result) in
+                    historical_meta_block.execution_results.iter()
+                {
+                    let event = event_stream_server::Event::DeployProcessed {
+                        deploy_hash: *deploy_hash,
+                        deploy_header: Box::new(deploy_header.clone()),
+                        block_hash: *historical_meta_block.block.hash(),
+                        execution_result: Box::new(execution_result.clone()),
+                        messages: Vec::new(),
+                    };
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::EventStreamServer,
+                        self.event_stream_server
+                            .handle_event(effect_builder, rng, event),
+                    ));
+                }
+            }
         }
 
         debug!(

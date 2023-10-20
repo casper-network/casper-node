@@ -122,6 +122,7 @@ use casper_execution_engine::engine_state::{
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     bytesrepr::Bytes,
+    contract_messages::Messages,
     execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},
     package::Package,
     system::auction::EraValidators,
@@ -2248,7 +2249,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         execution_prestate: SpeculativeExecutionState,
         deploy: Arc<Deploy>,
-    ) -> Result<Option<ExecutionResultV2>, engine_state::Error>
+    ) -> Result<Option<(ExecutionResultV2, Messages)>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {

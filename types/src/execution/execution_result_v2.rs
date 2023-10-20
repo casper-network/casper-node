@@ -13,11 +13,7 @@ use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use once_cell::sync::Lazy;
 #[cfg(any(feature = "testing", test))]
-use rand::{
-    distributions::{Alphanumeric, DistString, Standard},
-    prelude::Distribution,
-    Rng,
-};
+use rand::{distributions::Standard, prelude::Distribution, Rng};
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -25,17 +21,16 @@ use serde::{Deserialize, Serialize};
 use super::Effects;
 #[cfg(feature = "json-schema")]
 use super::{Transform, TransformKind};
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 #[cfg(any(feature = "testing", feature = "json-schema", test))]
 use crate::Key;
 #[cfg(feature = "json-schema")]
 use crate::KEY_HASH_LENGTH;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, RESULT_ERR_TAG, RESULT_OK_TAG, U8_SERIALIZED_LENGTH},
-    contract_messages::Message,
     TransferAddr, U512,
 };
-#[cfg(any(feature = "testing", test))]
-use crate::{crypto, testing::TestRng};
 
 #[cfg(feature = "json-schema")]
 static EXECUTION_RESULT: Lazy<ExecutionResultV2> = Lazy::new(|| {
@@ -60,7 +55,6 @@ static EXECUTION_RESULT: Lazy<ExecutionResultV2> = Lazy::new(|| {
         effects,
         transfers,
         cost: U512::from(123_456),
-        messages: Vec::default(),
     }
 });
 
@@ -80,8 +74,6 @@ pub enum ExecutionResultV2 {
         cost: U512,
         /// The error message associated with executing the deploy.
         error_message: String,
-        /// Messages that were emitted during execution.
-        messages: Vec<Message>,
     },
     /// The result of a successful execution.
     Success {
@@ -91,8 +83,6 @@ pub enum ExecutionResultV2 {
         transfers: Vec<TransferAddr>,
         /// The cost in Motes of executing the deploy.
         cost: U512,
-        /// Messages that were emitted during execution.
-        messages: Vec<Message>,
     },
 }
 
@@ -106,25 +96,6 @@ impl Distribution<ExecutionResultV2> for Standard {
         }
 
         let effects = Effects::random(rng);
-        let messages: Vec<Message> = effects
-            .transforms()
-            .iter()
-            .filter_map(|transform| {
-                if let Key::Message(addr) = transform.key() {
-                    let topic_name = Alphanumeric.sample_string(rng, 32);
-                    let topic_name_hash = crypto::blake2b(&topic_name);
-                    Some(Message::new(
-                        addr.entity_addr(),
-                        format!("random_msg: {}", rng.gen::<u64>()).into(),
-                        topic_name,
-                        topic_name_hash.into(),
-                        rng.gen::<u32>(),
-                    ))
-                } else {
-                    None
-                }
-            })
-            .collect();
 
         if rng.gen() {
             ExecutionResultV2::Failure {
@@ -132,14 +103,12 @@ impl Distribution<ExecutionResultV2> for Standard {
                 transfers,
                 cost: rng.gen::<u64>().into(),
                 error_message: format!("Error message {}", rng.gen::<u64>()),
-                messages,
             }
         } else {
             ExecutionResultV2::Success {
                 effects,
                 transfers,
                 cost: rng.gen::<u64>().into(),
-                messages,
             }
         }
     }
@@ -157,25 +126,6 @@ impl ExecutionResultV2 {
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         let effects = Effects::random(rng);
-        let messages: Vec<Message> = effects
-            .transforms()
-            .iter()
-            .filter_map(|transform| {
-                if let Key::Message(addr) = transform.key() {
-                    let topic_name = Alphanumeric.sample_string(rng, 32);
-                    let topic_name_hash = crypto::blake2b(&topic_name);
-                    Some(Message::new(
-                        addr.entity_addr(),
-                        format!("random_msg: {}", rng.gen::<u64>()).into(),
-                        topic_name,
-                        topic_name_hash.into(),
-                        rng.gen::<u32>(),
-                    ))
-                } else {
-                    None
-                }
-            })
-            .collect();
 
         let transfer_count = rng.gen_range(0..6);
         let mut transfers = vec![];
@@ -191,14 +141,12 @@ impl ExecutionResultV2 {
                 transfers,
                 cost,
                 error_message: format!("Error message {}", rng.gen::<u64>()),
-                messages,
             }
         } else {
             ExecutionResultV2::Success {
                 effects,
                 transfers,
                 cost,
-                messages,
             }
         }
     }
@@ -212,26 +160,22 @@ impl ToBytes for ExecutionResultV2 {
                 transfers,
                 cost,
                 error_message,
-                messages,
             } => {
                 RESULT_ERR_TAG.write_bytes(writer)?;
                 effects.write_bytes(writer)?;
                 transfers.write_bytes(writer)?;
                 cost.write_bytes(writer)?;
-                error_message.write_bytes(writer)?;
-                messages.write_bytes(writer)
+                error_message.write_bytes(writer)
             }
             ExecutionResultV2::Success {
                 effects,
                 transfers,
                 cost,
-                messages,
             } => {
                 RESULT_OK_TAG.write_bytes(writer)?;
                 effects.write_bytes(writer)?;
                 transfers.write_bytes(writer)?;
-                cost.write_bytes(writer)?;
-                messages.write_bytes(writer)
+                cost.write_bytes(writer)
             }
         }
     }
@@ -250,24 +194,20 @@ impl ToBytes for ExecutionResultV2 {
                     transfers,
                     cost,
                     error_message,
-                    messages,
                 } => {
                     effects.serialized_length()
                         + transfers.serialized_length()
                         + cost.serialized_length()
                         + error_message.serialized_length()
-                        + messages.serialized_length()
                 }
                 ExecutionResultV2::Success {
                     effects,
                     transfers,
                     cost,
-                    messages,
                 } => {
                     effects.serialized_length()
                         + transfers.serialized_length()
                         + cost.serialized_length()
-                        + messages.serialized_length()
                 }
             }
     }
@@ -282,13 +222,11 @@ impl FromBytes for ExecutionResultV2 {
                 let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
                 let (cost, remainder) = U512::from_bytes(remainder)?;
                 let (error_message, remainder) = String::from_bytes(remainder)?;
-                let (messages, remainder) = Vec::<Message>::from_bytes(remainder)?;
                 let execution_result = ExecutionResultV2::Failure {
                     effects,
                     transfers,
                     cost,
                     error_message,
-                    messages,
                 };
                 Ok((execution_result, remainder))
             }
@@ -296,12 +234,10 @@ impl FromBytes for ExecutionResultV2 {
                 let (effects, remainder) = Effects::from_bytes(remainder)?;
                 let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
                 let (cost, remainder) = U512::from_bytes(remainder)?;
-                let (messages, remainder) = Vec::<Message>::from_bytes(remainder)?;
                 let execution_result = ExecutionResultV2::Success {
                     effects,
                     transfers,
                     cost,
-                    messages,
                 };
                 Ok((execution_result, remainder))
             }

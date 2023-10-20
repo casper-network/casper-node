@@ -32,13 +32,14 @@ use warp::{
     Filter, Reply,
 };
 
-#[cfg(test)]
-use casper_types::{execution::ExecutionResultV2, testing::TestRng, TestBlockBuilder};
 use casper_types::{
+    contract_messages::Messages,
     execution::{Effects, ExecutionResult},
     Block, BlockHash, Deploy, DeployHash, EraId, FinalitySignature, ProtocolVersion, PublicKey,
     TimeDiff, Timestamp,
 };
+#[cfg(test)]
+use casper_types::{execution::ExecutionResultV2, testing::TestRng, TestBlockBuilder};
 
 /// The URL root path.
 pub const SSE_API_PATH: &str = "events";
@@ -73,8 +74,9 @@ pub enum SseData {
         ttl: TimeDiff,
         dependencies: Vec<DeployHash>,
         block_hash: Box<BlockHash>,
-        #[data_size(skip)]
+        //#[data_size(skip)]
         execution_result: Box<ExecutionResult>,
+        messages: Messages,
     },
     /// The given deploy has expired.
     DeployExpired { deploy_hash: DeployHash },
@@ -118,6 +120,11 @@ impl SseData {
     /// Returns a random `SseData::DeployProcessed`.
     pub(super) fn random_deploy_processed(rng: &mut TestRng) -> Self {
         let deploy = Deploy::random(rng);
+        let message_count = rng.gen_range(0..6);
+        let messages = std::iter::repeat_with(|| rng.gen())
+            .take(message_count)
+            .collect();
+
         SseData::DeployProcessed {
             deploy_hash: Box::new(*deploy.hash()),
             account: Box::new(deploy.header().account().clone()),
@@ -126,6 +133,7 @@ impl SseData {
             dependencies: deploy.header().dependencies().clone(),
             block_hash: Box::new(BlockHash::random(rng)),
             execution_result: Box::new(ExecutionResult::from(ExecutionResultV2::random(rng))),
+            messages,
         }
     }
 

@@ -8,11 +8,19 @@ use core::fmt::Debug;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
+use rand::{
+    distributions::{Alphanumeric, DistString, Distribution, Standard},
+    Rng,
+};
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::TopicNameHash;
+
+/// Collection of multiple messages.
+pub type Messages = Vec<Message>;
 
 /// The length of a message digest
 pub const MESSAGE_CHECKSUM_LENGTH: usize = 32;
@@ -212,6 +220,23 @@ impl FromBytes for Message {
             },
             rem,
         ))
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl Distribution<Message> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Message {
+        let topic_name = Alphanumeric.sample_string(rng, 32);
+        let topic_name_hash = crate::crypto::blake2b(&topic_name).into();
+        let message = Alphanumeric.sample_string(rng, 64).into();
+
+        Message {
+            entity_addr: rng.gen(),
+            message,
+            topic_name,
+            topic_name_hash,
+            index: rng.gen(),
+        }
     }
 }
 

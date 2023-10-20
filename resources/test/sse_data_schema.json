@@ -82,6 +82,7 @@
             "dependencies",
             "deploy_hash",
             "execution_result",
+            "messages",
             "timestamp",
             "ttl"
           ],
@@ -109,6 +110,12 @@
             },
             "execution_result": {
               "$ref": "#/definitions/ExecutionResult"
+            },
+            "messages": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Message"
+              }
             }
           }
         }
@@ -2610,7 +2617,6 @@
                 "cost",
                 "effects",
                 "error_message",
-                "messages",
                 "transfers"
               ],
               "properties": {
@@ -2640,13 +2646,6 @@
                 "error_message": {
                   "description": "The error message associated with executing the deploy.",
                   "type": "string"
-                },
-                "messages": {
-                  "description": "Messages that were emitted during execution.",
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/definitions/Message"
-                  }
                 }
               },
               "additionalProperties": false
@@ -2666,7 +2665,6 @@
               "required": [
                 "cost",
                 "effects",
-                "messages",
                 "transfers"
               ],
               "properties": {
@@ -2692,13 +2690,6 @@
                       "$ref": "#/definitions/U512"
                     }
                   ]
-                },
-                "messages": {
-                  "description": "Messages that were emitted during execution.",
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/definitions/Message"
-                  }
                 }
               },
               "additionalProperties": false

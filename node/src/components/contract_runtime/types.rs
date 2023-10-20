@@ -4,6 +4,7 @@ use datasize::DataSize;
 
 use casper_execution_engine::engine_state::GetEraValidatorsRequest;
 use casper_types::{
+    contract_messages::Messages,
     execution::{Effects, ExecutionResult},
     BlockV2, DeployHash, DeployHeader, Digest, EraId, ProtocolVersion, PublicKey, U512,
 };
@@ -124,7 +125,7 @@ pub struct BlockAndExecutionResults {
     /// The [`ApprovalsHashes`] for the deploys in this block.
     pub(crate) approvals_hashes: Box<ApprovalsHashes>,
     /// The results from executing the deploys in the block.
-    pub(crate) execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
+    pub(crate) execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult, Messages)>,
     /// The [`Effects`] and the upcoming validator sets determined by the `step`
     pub(crate) maybe_step_effects_and_upcoming_era_validators:
         Option<StepEffectsAndUpcomingEraValidators>,

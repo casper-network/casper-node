@@ -27,6 +27,7 @@ use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     addressable_entity::AddressableEntity,
     bytesrepr::Bytes,
+    contract_messages::Messages,
     execution::{ExecutionResult, ExecutionResultV2},
     system::auction::EraValidators,
     Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, Deploy, DeployHash,
@@ -958,7 +959,7 @@ pub(crate) enum ContractRuntimeRequest {
         /// Deploy to execute.
         deploy: Arc<Deploy>,
         /// Results
-        responder: Responder<Result<Option<ExecutionResultV2>, engine_state::Error>>,
+        responder: Responder<Result<Option<(ExecutionResultV2, Messages)>, engine_state::Error>>,
     },
 }
 

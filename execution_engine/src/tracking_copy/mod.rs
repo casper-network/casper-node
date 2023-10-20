@@ -19,7 +19,7 @@ use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieM
 use casper_types::{
     addressable_entity::NamedKeys,
     bytesrepr::{self},
-    contract_messages::Message,
+    contract_messages::{Message, Messages},
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
     CLType, CLValue, CLValueError, Digest, Key, KeyTag, StoredValue, StoredValueTypeMismatch,
     Tagged, U512,
@@ -224,7 +224,7 @@ pub struct TrackingCopy<R> {
     reader: R,
     cache: TrackingCopyCache<HeapSize>,
     effects: Effects,
-    messages: Vec<Message>,
+    messages: Messages,
 }
 
 /// Result of executing an "add" operation on a value in the state.
@@ -457,7 +457,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     }
 
     /// Returns a copy of the messages cached by this instance.
-    pub fn messages(&self) -> Vec<Message> {
+    pub fn messages(&self) -> Messages {
         self.messages.clone()
     }
 

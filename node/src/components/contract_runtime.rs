@@ -977,7 +977,7 @@ impl ContractRuntime {
         let execution_results_map: HashMap<_, _> = execution_results
             .iter()
             .cloned()
-            .map(|(deploy_hash, _, execution_result)| (deploy_hash, execution_result))
+            .map(|(deploy_hash, _, execution_result, _)| (deploy_hash, execution_result))
             .collect();
         if meta_block_state.register_as_stored().was_updated() {
             effect_builder

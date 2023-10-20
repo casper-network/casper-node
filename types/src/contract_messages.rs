@@ -5,7 +5,7 @@ mod messages;
 mod topics;
 
 pub use error::FromStrError;
-pub use messages::{Message, MessageChecksum, MessagePayload};
+pub use messages::{Message, MessageChecksum, MessagePayload, Messages};
 pub use topics::{
     MessageTopicOperation, MessageTopicSummary, TopicNameHash, TOPIC_NAME_HASH_LENGTH,
 };

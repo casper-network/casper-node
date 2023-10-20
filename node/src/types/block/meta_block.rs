@@ -7,8 +7,8 @@ use datasize::DataSize;
 use serde::Serialize;
 
 use casper_types::{
-    execution::ExecutionResult, ActivationPoint, Block, BlockHash, BlockV2, DeployHash,
-    DeployHeader, EraId,
+    contract_messages::Messages, execution::ExecutionResult, ActivationPoint, Block, BlockHash,
+    BlockV2, DeployHash, DeployHeader, EraId,
 };
 
 pub(crate) use merge_mismatch_error::MergeMismatchError;
@@ -30,7 +30,7 @@ pub(crate) enum MetaBlock {
 impl MetaBlock {
     pub(crate) fn new_forward(
         block: Arc<BlockV2>,
-        execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
+        execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult, Messages)>,
         state: State,
     ) -> Self {
         Self::Forward(ForwardMetaBlock {
@@ -93,19 +93,12 @@ impl MetaBlock {
             MetaBlock::Historical(meta_block) => &meta_block.state,
         }
     }
-
-    pub(crate) fn execution_results(&self) -> &Vec<(DeployHash, DeployHeader, ExecutionResult)> {
-        match &self {
-            MetaBlock::Forward(meta_block) => &meta_block.execution_results,
-            MetaBlock::Historical(meta_block) => &meta_block.execution_results,
-        }
-    }
 }
 
 #[derive(Clone, Eq, PartialEq, Serialize, Debug, DataSize)]
 pub(crate) struct ForwardMetaBlock {
     pub(crate) block: Arc<BlockV2>,
-    pub(crate) execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
+    pub(crate) execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult, Messages)>,
     pub(crate) state: State,
 }
 
@@ -190,6 +183,7 @@ mod tests {
             *deploy.hash(),
             deploy.take_header(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
+            Vec::new(),
         )];
         let state = State::new_already_stored();
 
@@ -244,6 +238,7 @@ mod tests {
             *deploy.hash(),
             deploy.take_header(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
+            Vec::new(),
         )];
         let state = State::new_not_to_be_gossiped();
 
@@ -281,6 +276,7 @@ mod tests {
             *deploy.hash(),
             deploy.take_header(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
+            Vec::new(),
         )];
         let state = State::new();
 
@@ -313,12 +309,14 @@ mod tests {
             *deploy1.hash(),
             deploy1.take_header(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
+            Vec::new(),
         )];
         let deploy2 = Deploy::random(rng);
         let execution_results2 = vec![(
             *deploy2.hash(),
             deploy2.take_header(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
+            Vec::new(),
         )];
         let state = State::new();
 

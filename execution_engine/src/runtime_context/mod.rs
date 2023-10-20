@@ -23,7 +23,7 @@ use casper_types::{
     },
     bytesrepr::ToBytes,
     contract_messages::{
-        Message, MessageAddr, MessageChecksum, MessageTopicSummary, TopicNameHash,
+        Message, MessageAddr, MessageChecksum, MessageTopicSummary, Messages, TopicNameHash,
     },
     execution::Effects,
     package::{PackageKind, PackageKindTag},
@@ -574,7 +574,7 @@ where
     }
 
     /// Returns a copy of the current messages of a tracking copy.
-    pub fn messages(&self) -> Vec<Message> {
+    pub fn messages(&self) -> Messages {
         self.tracking_copy.borrow().messages()
     }
 

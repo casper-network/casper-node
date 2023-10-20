@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 
 use casper_types::{
     bytesrepr::FromBytes,
-    contract_messages::Message,
+    contract_messages::Messages,
     execution::{Effects, ExecutionResultV2 as TypesExecutionResult, Transform, TransformKind},
     CLTyped, CLValue, Gas, Key, Motes, StoredValue, TransferAddr,
 };
@@ -27,7 +27,7 @@ pub enum ExecutionResult {
         /// Execution effects.
         effects: Effects,
         /// Messages emitted during execution.
-        messages: Vec<Message>,
+        messages: Messages,
     },
     /// Execution was finished successfully
     Success {
@@ -38,7 +38,7 @@ pub enum ExecutionResult {
         /// Execution effects.
         effects: Effects,
         /// Messages emitted during execution.
-        messages: Vec<Message>,
+        messages: Messages,
     },
 }
 
@@ -330,7 +330,15 @@ impl ExecutionResult {
     }
 }
 
-impl From<ExecutionResult> for TypesExecutionResult {
+/// A versioned execution result and the messages produced by that execution.
+pub struct ExecutionResultAndMessages {
+    /// Execution result
+    pub execution_result: TypesExecutionResult,
+    /// Messages emitted during execution
+    pub messages: Messages,
+}
+
+impl From<ExecutionResult> for ExecutionResultAndMessages {
     fn from(execution_result: ExecutionResult) -> Self {
         match execution_result {
             ExecutionResult::Success {
@@ -338,10 +346,12 @@ impl From<ExecutionResult> for TypesExecutionResult {
                 cost,
                 effects,
                 messages,
-            } => TypesExecutionResult::Success {
-                effects,
-                transfers,
-                cost: cost.value(),
+            } => ExecutionResultAndMessages {
+                execution_result: TypesExecutionResult::Success {
+                    effects,
+                    transfers,
+                    cost: cost.value(),
+                },
                 messages,
             },
             ExecutionResult::Failure {
@@ -350,11 +360,13 @@ impl From<ExecutionResult> for TypesExecutionResult {
                 cost,
                 effects,
                 messages,
-            } => TypesExecutionResult::Failure {
-                effects,
-                transfers,
-                cost: cost.value(),
-                error_message: error.to_string(),
+            } => ExecutionResultAndMessages {
+                execution_result: TypesExecutionResult::Failure {
+                    effects,
+                    transfers,
+                    cost: cost.value(),
+                    error_message: error.to_string(),
+                },
                 messages,
             },
         }
