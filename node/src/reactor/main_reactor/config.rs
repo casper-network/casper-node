@@ -1,9 +1,12 @@
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use crate::{
-    logging::LoggingConfig, types::NodeConfig, BlockAccumulatorConfig, BlockSynchronizerConfig,
-    ConsensusConfig, ContractRuntimeConfig, DeployBufferConfig, DiagnosticsPortConfig,
+    logging::LoggingConfig,
+    types::{Chainspec, NodeConfig},
+    BlockAccumulatorConfig, BlockSynchronizerConfig, BlockValidatorConfig, ConsensusConfig,
+    ContractRuntimeConfig, DeployAcceptorConfig, DeployBufferConfig, DiagnosticsPortConfig,
     EventStreamServerConfig, FetcherConfig, GossipConfig, NetworkConfig, RestServerConfig,
     RpcServerConfig, SpeculativeExecConfig, StorageConfig, UpgradeWatcherConfig,
 };
@@ -37,6 +40,8 @@ pub struct Config {
     pub fetcher: FetcherConfig,
     /// Config values for the contract runtime.
     pub contract_runtime: ContractRuntimeConfig,
+    /// Config values for the deploy acceptor.
+    pub deploy_acceptor: DeployAcceptorConfig,
     /// Config values for the deploy buffer.
     pub deploy_buffer: DeployBufferConfig,
     /// Config values for the diagnostics port.
@@ -45,6 +50,24 @@ pub struct Config {
     pub block_accumulator: BlockAccumulatorConfig,
     /// Config values for the block synchronizer.
     pub block_synchronizer: BlockSynchronizerConfig,
+    /// Config values for the block validator.
+    pub block_validator: BlockValidatorConfig,
     /// Config values for the upgrade watcher.
     pub upgrade_watcher: UpgradeWatcherConfig,
+}
+
+impl Config {
+    /// This modifies `self` so that all configured options are within the bounds set in the
+    /// provided chainspec.
+    pub(crate) fn ensure_valid(&mut self, chainspec: &Chainspec) {
+        if self.deploy_acceptor.timestamp_leeway > chainspec.deploy_config.max_timestamp_leeway {
+            error!(
+                configured_timestamp_leeway = %self.deploy_acceptor.timestamp_leeway,
+                max_timestamp_leeway = %chainspec.deploy_config.max_timestamp_leeway,
+                "setting value for 'deploy_acceptor.timestamp_leeway' to maximum permitted by \
+                chainspec 'deploy_config.max_timestamp_leeway'",
+            );
+            self.deploy_acceptor.timestamp_leeway = chainspec.deploy_config.max_timestamp_leeway;
+        }
+    }
 }

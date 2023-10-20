@@ -1,7 +1,7 @@
 //! Wasm helpers.
 use std::fmt::Write;
 
-use parity_wasm::{
+use casper_wasm::{
     builder,
     elements::{Instruction, Instructions},
 };
@@ -26,7 +26,7 @@ pub fn do_nothing_bytes() -> Vec<u8> {
         .memory()
         .build()
         .build();
-    parity_wasm::serialize(module).expect("should serialize")
+    casper_wasm::serialize(module).expect("should serialize")
 }
 
 /// Creates minimal session code that does only one "nop" opcode
@@ -48,7 +48,7 @@ pub fn do_minimum_bytes() -> Vec<u8> {
         .memory()
         .build()
         .build();
-    parity_wasm::serialize(module).expect("should serialize")
+    casper_wasm::serialize(module).expect("should serialize")
 }
 
 /// Creates minimal session code that contains a function with arbitrary number of parameters.

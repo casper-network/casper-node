@@ -24,6 +24,26 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 1.5.3
+
+### Added
+* Add `deploy_acceptor` section to config with a single option `timestamp_leeway` to allow a small leeway when deciding if a deploy is future-dated.
+* Add `deploys.max_timestamp_leeway` chainspec option to define the upper limit for the new config option `deploy_acceptor.timestamp_leeway`.
+* Add `block_validator.max_completed_entries` config option to control the number of recently validated proposed blocks to retain.
+
+### Changed
+* Change the limit of the `core_config.simultaneous_peer_requests` chainspec parameter to 255.
+* Optimize the `BlockValidator` component to reduce the number of simultaneous fetch events created for a given proposed block.
+
+### Fixed
+* Fix issue in `chain_get_block_transfers` JSON-RPC where blocks with no deploys could be reported as having `null` transfers rather than `[]`.
+* Fix issue in `chain_get_block_transfers` JSON-RPC where blocks containing successful transfers could erroneously be reported as having none.
+
+### Removed
+* Remove the `block_synchronizer.stall_limit` node config parameter since it is no longer needed.
+
+
+
 ## 1.5.2
 
 ### Added

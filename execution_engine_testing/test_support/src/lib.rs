@@ -1,6 +1,6 @@
 //! A library to support testing of Wasm smart contracts for use on the Casper Platform.
 
-#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/5.0.0")]
+#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/6.0.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon_48.png",
     html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png",

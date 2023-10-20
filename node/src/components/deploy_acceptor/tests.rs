@@ -27,7 +27,7 @@ use casper_types::{
     account::{Account, ActionThresholds, AssociatedKeys, Weight},
     contracts::NamedKeys,
     testing::TestRng,
-    CLValue, EraId, PublicKey, SecretKey, StoredValue, URef, U512,
+    CLValue, EraId, PublicKey, SecretKey, StoredValue, TimeDiff, URef, U512,
 };
 
 use super::*;
@@ -165,6 +165,8 @@ enum TestScenario {
     FromPeerSessionContract(ContractScenario),
     FromPeerSessionContractPackage(ContractPackageScenario),
     FromClientInvalidDeploy,
+    FromClientSlightlyFutureDatedDeploy,
+    FromClientFutureDatedDeploy,
     FromClientMissingAccount,
     FromClientInsufficientBalance,
     FromClientValidDeploy,
@@ -214,6 +216,8 @@ impl TestScenario {
                 Source::Peer(NodeId::random(rng))
             }
             TestScenario::FromClientInvalidDeploy
+            | TestScenario::FromClientSlightlyFutureDatedDeploy
+            | TestScenario::FromClientFutureDatedDeploy
             | TestScenario::FromClientMissingAccount
             | TestScenario::FromClientInsufficientBalance
             | TestScenario::FromClientValidDeploy
@@ -354,6 +358,18 @@ impl TestScenario {
 
                 deploy
             }
+            TestScenario::FromClientSlightlyFutureDatedDeploy => {
+                let timestamp = Timestamp::now() + (Config::default().timestamp_leeway / 2);
+                let ttl = TimeDiff::from_seconds(300);
+                Deploy::random_valid_native_transfer_with_timestamp_and_ttl(rng, timestamp, ttl)
+            }
+            TestScenario::FromClientFutureDatedDeploy => {
+                let timestamp = Timestamp::now()
+                    + Config::default().timestamp_leeway
+                    + TimeDiff::from_millis(100);
+                let ttl = TimeDiff::from_seconds(300);
+                Deploy::random_valid_native_transfer_with_timestamp_and_ttl(rng, timestamp, ttl)
+            }
         }
     }
 
@@ -366,11 +382,13 @@ impl TestScenario {
             | TestScenario::FromPeerAccountWithInvalidAssociatedKeys // account check skipped if from peer
             | TestScenario::FromClientRepeatedValidDeploy
             | TestScenario::FromClientValidDeploy
+            | TestScenario::FromClientSlightlyFutureDatedDeploy
             | TestScenario::ShouldAcceptExpiredDeploySentByPeer=> true,
             TestScenario::FromPeerInvalidDeploy
             | TestScenario::FromClientInsufficientBalance
             | TestScenario::FromClientMissingAccount
             | TestScenario::FromClientInvalidDeploy
+            | TestScenario::FromClientFutureDatedDeploy
             | TestScenario::FromClientAccountWithInsufficientWeight
             | TestScenario::FromClientAccountWithInvalidAssociatedKeys
             | TestScenario::AccountWithUnknownBalance
@@ -493,6 +511,7 @@ impl reactor::Reactor for Reactor {
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
 
         let deploy_acceptor = DeployAcceptor::new(
+            Config::default(),
             &config.create_chainspec_for_test(Arc::clone(&chainspec)),
             registry,
         )
@@ -866,6 +885,7 @@ async fn run_deploy_acceptor_without_timeout(
             // Check that invalid deploys sent by a client raise the `InvalidDeploy` announcement
             // with the appropriate source.
             TestScenario::FromClientInvalidDeploy
+            | TestScenario::FromClientFutureDatedDeploy
             | TestScenario::FromClientMissingAccount
             | TestScenario::FromClientInsufficientBalance
             | TestScenario::FromClientAccountWithInvalidAssociatedKeys
@@ -971,7 +991,8 @@ async fn run_deploy_acceptor_without_timeout(
             }
             // Check that a, new and valid, deploy sent by a client raises an `AcceptedNewDeploy`
             // announcement with the appropriate source.
-            TestScenario::FromClientValidDeploy => {
+            TestScenario::FromClientValidDeploy
+            | TestScenario::FromClientSlightlyFutureDatedDeploy => {
                 matches!(
                     event,
                     Event::DeployAcceptorAnnouncement(
@@ -1103,6 +1124,23 @@ async fn should_reject_invalid_deploy_from_client() {
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployConfiguration(_))
+    ))
+}
+
+#[tokio::test]
+async fn should_accept_slightly_future_dated_deploy_from_client() {
+    let result = run_deploy_acceptor(TestScenario::FromClientSlightlyFutureDatedDeploy).await;
+    assert!(result.is_ok())
+}
+
+#[tokio::test]
+async fn should_reject_future_dated_deploy_from_client() {
+    let result = run_deploy_acceptor(TestScenario::FromClientFutureDatedDeploy).await;
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidDeployConfiguration(
+            DeployConfigurationFailure::TimestampInFuture { .. }
+        ))
     ))
 }
 

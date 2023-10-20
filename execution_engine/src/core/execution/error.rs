@@ -1,5 +1,5 @@
 //! Execution error and supporting code.
-use parity_wasm::elements;
+use casper_wasm::elements;
 use thiserror::Error;
 
 use casper_types::{
@@ -200,10 +200,10 @@ impl Error {
     }
 }
 
-impl wasmi::HostError for Error {}
+impl casper_wasmi::HostError for Error {}
 
-impl From<wasmi::Error> for Error {
-    fn from(error: wasmi::Error) -> Self {
+impl From<casper_wasmi::Error> for Error {
+    fn from(error: casper_wasmi::Error) -> Self {
         match error
             .as_host_error()
             .and_then(|host_error| host_error.downcast_ref::<Error>())

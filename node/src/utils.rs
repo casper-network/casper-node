@@ -270,6 +270,11 @@ impl<T> WithDir<T> {
         &self.value
     }
 
+    /// Get a mutable reference to the inner value.
+    pub fn value_mut(&mut self) -> &mut T {
+        &mut self.value
+    }
+
     /// Adds `self.dir` as a parent if `path` is relative, otherwise returns `path` unchanged.
     pub fn with_dir(&self, path: PathBuf) -> PathBuf {
         if path.is_relative() {
