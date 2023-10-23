@@ -27,7 +27,7 @@
 //! * The `Dialer` is expected to produce `DialOutcomes` for every dial [`DialRequest::Dial`]
 //!   eventually. These must be forwarded to the `OutgoingManager` via the `handle_dial_outcome`
 //!   function.
-//! * The `perform_housekeeping` method must be called periodically to give the the
+//! * The `perform_housekeeping` method must be called periodically to give the
 //!   `OutgoingManager` a chance to initiate reconnections and collect garbage.
 //! * When a connection is dropped, the connection manager must be notified via
 //!   `handle_connection_drop`.

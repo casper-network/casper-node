@@ -3649,7 +3649,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
         );
     }
 
-    // Receive the rest of the the missing signatures to get strict finality. This would switch the
+    // Receive the rest of the missing signatures to get strict finality. This would switch the
     // state to HaveStrictFinality and continue to request to make the block executable.
     {
         let mut generated_effects = Effects::new();
