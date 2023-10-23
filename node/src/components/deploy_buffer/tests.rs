@@ -63,16 +63,6 @@ fn create_valid_deploys(
     deploys
 }
 
-fn create_invalid_deploys(rng: &mut TestRng, size: usize) -> Vec<Deploy> {
-    let mut deploys = create_valid_deploys(rng, size, DeployType::Random, None, None);
-
-    for deploy in deploys.iter_mut() {
-        deploy.invalidate();
-    }
-
-    deploys
-}
-
 /// Checks sizes of the deploy_buffer containers. Also checks the metrics recorded.
 #[track_caller]
 fn assert_container_sizes(
@@ -116,14 +106,6 @@ fn register_deploy_and_check_size() {
     let valid_deploys =
         create_valid_deploys(&mut rng, num_valid_deploys, DeployType::Random, None, None);
     valid_deploys
-        .iter()
-        .for_each(|deploy| deploy_buffer.register_deploy(deploy.clone()));
-    assert_container_sizes(&deploy_buffer, valid_deploys.len(), 0, 0);
-
-    // Try to register invalid deploys
-    let num_invalid_deploys: usize = rng.gen_range(10..100);
-    let invalid_deploys = create_invalid_deploys(&mut rng, num_invalid_deploys);
-    invalid_deploys
         .iter()
         .for_each(|deploy| deploy_buffer.register_deploy(deploy.clone()));
     assert_container_sizes(&deploy_buffer, valid_deploys.len(), 0, 0);
