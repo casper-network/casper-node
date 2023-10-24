@@ -223,10 +223,10 @@ where
         if let Some(StoredValue::AddressableEntity(system_entity)) = self
             .tracking_copy
             .borrow_mut()
-            .read(&Key::AddressableEntity((
+            .read(&Key::AddressableEntity(
                 PackageKindTag::System,
                 contract_hash.value(),
-            )))
+            ))
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContract(
                     system_contract_type.to_string(),
@@ -315,7 +315,7 @@ where
             contract_package
         };
 
-        let byte_code_key = Key::ByteCode((ByteCodeKind::Empty, byte_code_hash.value()));
+        let byte_code_key = Key::ByteCode(ByteCodeKind::Empty, byte_code_hash.value());
         self.tracking_copy
             .borrow_mut()
             .write(byte_code_key, StoredValue::ByteCode(byte_code));

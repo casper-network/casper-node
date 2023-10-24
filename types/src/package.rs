@@ -634,15 +634,50 @@ pub enum PackageKindTag {
     SmartContract = 2,
 }
 
-impl TryFrom<u8> for PackageKindTag {
-    type Error = bytesrepr::Error;
+impl ToBytes for PackageKindTag {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        (*self as u8).to_bytes()
+    }
 
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(PackageKindTag::System),
-            1 => Ok(PackageKindTag::Account),
-            2 => Ok(PackageKindTag::SmartContract),
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        (*self as u8).write_bytes(writer)
+    }
+}
+
+impl FromBytes for PackageKindTag {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (package_kind_tag, remainder) = u8::from_bytes(bytes)?;
+        match package_kind_tag {
+            package_kind_tag if package_kind_tag == PackageKindTag::System as u8 => {
+                Ok((PackageKindTag::System, remainder))
+            }
+            package_kind_tag if package_kind_tag == PackageKindTag::Account as u8 => {
+                Ok((PackageKindTag::Account, remainder))
+            }
+            package_kind_tag if package_kind_tag == PackageKindTag::SmartContract as u8 => {
+                Ok((PackageKindTag::SmartContract, remainder))
+            }
             _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+impl Display for PackageKindTag {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            PackageKindTag::System => {
+                write!(f, "system")
+            }
+            PackageKindTag::Account => {
+                write!(f, "account")
+            }
+            PackageKindTag::SmartContract => {
+                write!(f, "smart-contract")
+            }
         }
     }
 }
@@ -795,14 +830,14 @@ impl FromBytes for PackageKind {
 impl Display for PackageKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            PackageKind::SmartContract => {
-                write!(f, "PackageKind:Wasm")
-            }
             PackageKind::System(system_entity) => {
-                write!(f, "PackageKind:System({})", system_entity)
+                write!(f, "PackageKind::System({})", system_entity)
             }
             PackageKind::Account(account_hash) => {
-                write!(f, "PackageKind:Account({})", account_hash)
+                write!(f, "PackageKind::Account({})", account_hash)
+            }
+            PackageKind::SmartContract => {
+                write!(f, "PackageKind::SmartContract")
             }
         }
     }

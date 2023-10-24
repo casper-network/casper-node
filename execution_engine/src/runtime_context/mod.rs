@@ -711,15 +711,15 @@ where
             | Key::ChecksumRegistry
             | Key::BidAddr(_)
             | Key::Package(_)
-            | Key::AddressableEntity(_)
-            | Key::ByteCode(_) => true,
+            | Key::AddressableEntity(..)
+            | Key::ByteCode(..) => true,
         }
     }
 
     /// Tests whether addition to `key` is valid.
     pub fn is_addable(&self, key: &Key) -> bool {
         match key {
-            Key::AddressableEntity((_, entity_addr)) => {
+            Key::AddressableEntity(_, entity_addr) => {
                 match self.get_entity_key().into_entity_hash() {
                     Some(entity_hash) => entity_hash == AddressableEntityHash::new(*entity_addr),
                     None => false,
@@ -742,7 +742,7 @@ where
             | Key::ChecksumRegistry
             | Key::BidAddr(_)
             | Key::Package(_)
-            | Key::ByteCode(_) => false,
+            | Key::ByteCode(..) => false,
         }
     }
 
@@ -766,8 +766,8 @@ where
             | Key::ChecksumRegistry
             | Key::BidAddr(_)
             | Key::Package(_)
-            | Key::AddressableEntity(_)
-            | Key::ByteCode(_) => false,
+            | Key::AddressableEntity(..)
+            | Key::ByteCode(..) => false,
         }
     }
 

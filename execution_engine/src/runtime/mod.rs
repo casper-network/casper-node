@@ -1375,10 +1375,10 @@ where
 
             let byte_code_key = match package.get_package_kind() {
                 PackageKind::System(_) | PackageKind::Account(_) => {
-                    Key::ByteCode((ByteCodeKind::Empty, byte_code_addr))
+                    Key::ByteCode(ByteCodeKind::Empty, byte_code_addr)
                 }
                 PackageKind::SmartContract => {
-                    Key::ByteCode((ByteCodeKind::V1CasperWasm, byte_code_addr))
+                    Key::ByteCode(ByteCodeKind::V1CasperWasm, byte_code_addr)
                 }
             };
 
@@ -1711,14 +1711,14 @@ where
             entity.update_session_entity(ByteCodeHash::new(byte_code_hash), entry_points);
 
         self.context.metered_write_gs_unsafe(
-            Key::ByteCode((ByteCodeKind::V1CasperWasm, byte_code_hash)),
+            Key::ByteCode(ByteCodeKind::V1CasperWasm, byte_code_hash),
             byte_code,
         )?;
 
         let package_kind = package.get_package_kind();
 
         self.context.metered_write_gs_unsafe(
-            Key::AddressableEntity((package_kind.tag(), entity_hash.value())),
+            Key::AddressableEntity(package_kind.tag(), entity_hash.value()),
             updated_session_entity,
         )?;
 
@@ -1773,11 +1773,11 @@ where
         };
 
         self.context.metered_write_gs_unsafe(
-            Key::ByteCode((ByteCodeKind::V1CasperWasm, byte_code_hash)),
+            Key::ByteCode(ByteCodeKind::V1CasperWasm, byte_code_hash),
             byte_code,
         )?;
 
-        let entity_key = Key::AddressableEntity((PackageKindTag::SmartContract, entity_hash));
+        let entity_key = Key::AddressableEntity(PackageKindTag::SmartContract, entity_hash);
 
         let entity = AddressableEntity::new(
             package_hash,
@@ -3303,8 +3303,7 @@ where
                 self.context
                     .metered_write_gs_unsafe(byte_code_key, StoredValue::ByteCode(byte_code))?;
 
-                let entity_key =
-                    Key::AddressableEntity((package_kind.tag(), contract_hash.value()));
+                let entity_key = Key::AddressableEntity(package_kind.tag(), contract_hash.value());
 
                 self.context
                     .metered_write_gs_unsafe(entity_key, updated_entity.clone())?;
