@@ -66,6 +66,6 @@ impl Config {
 
 impl From<&ConsensusConfig> for Config {
     fn from(config: &ConsensusConfig) -> Self {
-        config.highway.round_success_meter
+        config.highway.performance_meter
     }
 }

@@ -1,6 +1,6 @@
 pub(crate) mod config;
 mod participation;
-mod round_success_meter;
+mod performance_meter;
 #[cfg(test)]
 mod tests;
 
@@ -45,7 +45,7 @@ use crate::{
     NodeRng,
 };
 
-use self::round_success_meter::RoundSuccessMeter;
+use self::performance_meter::PerformanceMeter;
 
 /// Never allow more than this many units in a piece of evidence for conflicting endorsements,
 /// even if eras are longer than this.
@@ -77,7 +77,7 @@ where
     finality_detector: FinalityDetector<C>,
     highway: Highway<C>,
     /// A tracker for whether we are keeping up with the current round length or not.
-    round_success_meter: RoundSuccessMeter<C>,
+    round_success_meter: PerformanceMeter<C>,
     synchronizer: Synchronizer<C>,
     pvv_cache: HashMap<Dependency<C>, PreValidatedVertex<C>>,
     evidence_only: bool,
@@ -128,7 +128,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<C>>())
             .map(|highway_proto| highway_proto.next_era_round_succ_meter(era_start_time.max(now)))
             .unwrap_or_else(|| {
-                RoundSuccessMeter::new(
+                PerformanceMeter::new(
                     minimum_round_length,
                     minimum_round_length,
                     maximum_round_length,
@@ -424,7 +424,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
 
     /// Returns an instance of `RoundSuccessMeter` for the new era: resetting the counters where
     /// appropriate.
-    fn next_era_round_succ_meter(&self, timestamp: Timestamp) -> RoundSuccessMeter<C> {
+    fn next_era_round_succ_meter(&self, timestamp: Timestamp) -> PerformanceMeter<C> {
         self.round_success_meter.next_era(timestamp)
     }
 

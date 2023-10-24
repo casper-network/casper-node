@@ -1,3 +1,4 @@
+pub(crate) mod config;
 #[cfg(test)]
 mod tests;
 
@@ -14,11 +15,10 @@ use crate::components::consensus::{
     utils::Weight,
 };
 
-pub(crate) mod config;
 use config::*;
 
 #[derive(DataSize, Debug, Clone)]
-pub(crate) struct RoundSuccessMeter<C>
+pub(crate) struct PerformanceMeter<C>
 where
     C: Context,
 {
@@ -33,7 +33,7 @@ where
     config: Config,
 }
 
-impl<C: Context> RoundSuccessMeter<C> {
+impl<C: Context> PerformanceMeter<C> {
     pub fn new(
         round_len: TimeDiff,
         min_round_len: TimeDiff,
