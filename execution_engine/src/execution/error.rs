@@ -195,6 +195,9 @@ pub enum Error {
     /// Weight of all used associated keys does not meet entity's upgrade threshold.
     #[error("Deployment authorization failure")]
     UpgradeAuthorizationFailure,
+    /// The EntryPoints contains an invalid entry.
+    #[error("The EntryPoints contains an invalid entry")]
+    InvalidEntryPointType,
 }
 
 impl From<PreprocessingError> for Error {

@@ -39,7 +39,7 @@ pub extern "C" fn call() {
             vec![Parameter::new(ARG_PURSE_NAME, String::cl_type())],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
         entry_points.add_entry_point(delegate);
 

@@ -30,7 +30,7 @@ mod block;
 mod block_time;
 mod byte_code;
 pub mod bytesrepr;
-#[cfg(feature = "std")]
+#[cfg(any(feature = "std", test))]
 mod chainspec;
 pub mod checksummed_hex;
 mod cl_type;
@@ -88,17 +88,16 @@ pub use api_error::ApiError;
 pub use block::JsonBlockWithSignatures;
 pub use block::{
     Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHashAndHeight, BlockHeader,
-    BlockSignatures, BlockSignaturesMergeError, BlockV1, BlockV2, BlockValidationError, EraEnd,
-    EraReport, FinalitySignature, FinalitySignatureId, SignedBlockHeader,
-    SignedBlockHeaderValidationError,
+    BlockHeaderV1, BlockHeaderV2, BlockSignatures, BlockSignaturesMergeError, BlockV1, BlockV2,
+    BlockValidationError, EraEnd, EraEndV1, EraEndV2, EraReport, FinalitySignature,
+    FinalitySignatureId, RewardedSignatures, Rewards, SignedBlockHeader,
+    SignedBlockHeaderValidationError, SingleBlockRewardedSignatures,
 };
 #[cfg(any(feature = "testing", test))]
-pub use block::{FromTestBlockBuilder, TestBlockBuilder};
+pub use block::{TestBlockBuilder, TestBlockV1Builder};
 
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
 pub use byte_code::{ByteCode, ByteCodeHash, ByteCodeKind};
-#[cfg(feature = "std")]
-pub use chainspec::DEFAULT_HOST_FUNCTION_NEW_DICTIONARY;
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{
     AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,
@@ -108,7 +107,7 @@ pub use chainspec::{
     HandlePaymentCosts, HighwayConfig, HostFunction, HostFunctionCost, HostFunctionCosts,
     LegacyRequiredFinality, MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig, RefundHandling,
     StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig, TransactionV1Config,
-    UpgradeConfig, ValidatorConfig, WasmConfig,
+    UpgradeConfig, ValidatorConfig, WasmConfig, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{

@@ -230,7 +230,7 @@ impl Executor {
             runtime_args.clone(),
             gas_limit,
             remaining_spending_limit,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
 
         let mut runtime = Runtime::new(runtime_context);
@@ -275,7 +275,7 @@ impl Executor {
         &self,
         named_keys: &'a mut NamedKeys,
         entity: &'a AddressableEntity,
-        entity_address: Key,
+        entity_key: Key,
         authorization_keys: BTreeSet<AccountHash>,
         access_rights: ContextAccessRights,
         package_kind: EntityKind,
@@ -301,7 +301,7 @@ impl Executor {
         RuntimeContext::new(
             named_keys,
             entity,
-            entity_address,
+            entity_key,
             authorization_keys,
             access_rights,
             package_kind,

@@ -33,7 +33,7 @@ static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
     deploy: Deploy::doc_example().clone(),
     execution_info: Some(DeployExecutionInfo {
         block_hash: *Block::example().hash(),
-        block_height: Block::example().header().height(),
+        block_height: Block::example().height(),
         execution_result: Some(ExecutionResult::from(ExecutionResultV2::example().clone())),
     }),
 });

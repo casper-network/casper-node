@@ -65,14 +65,14 @@ pub extern "C" fn call() {
         Vec::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
     counter_entry_points.add_entry_point(EntryPoint::new(
         COUNTER_GET,
         Vec::new(),
         CLType::I32,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
 
     let (stored_contract_hash, contract_version) = storage::new_contract(

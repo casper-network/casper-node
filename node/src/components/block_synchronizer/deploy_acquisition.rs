@@ -11,8 +11,9 @@ use tracing::debug;
 
 use casper_types::{DeployHash, DeployId};
 
-use super::block_acquisition::Acceptance;
 use crate::types::ApprovalsHashes;
+
+use super::block_acquisition::Acceptance;
 
 #[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug)]
 pub(crate) enum Error {

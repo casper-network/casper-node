@@ -702,7 +702,7 @@ impl MainReactor {
                         ?highest_orphaned_block_header,
                         "KeepUp: historical sync in genesis era attempting correction for unmatrixed genesis validators"
                     );
-                    return Ok((switch.header().block_hash(), switch.header().era_id()));
+                    return Ok((*switch.hash(), switch.era_id()));
                 }
                 Ok(None) => return Err(
                     "In genesis era with no genesis validators and missing next era switch block"
@@ -844,19 +844,19 @@ mod tests {
             .era(100)
             .height(1000)
             .switch_block(true)
-            .build(rng);
+            .build_versioned(rng);
 
         let latest_orphaned_block = TestBlockBuilder::new()
             .era(0)
             .height(0)
             .switch_block(true)
-            .build(rng);
+            .build_versioned(rng);
 
         assert_eq!(latest_orphaned_block.height(), 0);
         assert_eq!(
             synced_to_ttl(
-                latest_switch_block.header(),
-                latest_orphaned_block.header(),
+                &latest_switch_block.clone_header(),
+                &latest_orphaned_block.clone_header(),
                 MAX_TTL
             ),
             Ok(true)

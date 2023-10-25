@@ -91,58 +91,24 @@ pub extern "C" fn session_code_caller_as_contract() {
 
 fn create_entrypoints_1() -> EntryPoints {
     let mut entry_points = EntryPoints::new();
-    let session_code_test = EntryPoint::new(
-        SESSION_CODE.to_string(),
-        Vec::new(),
-        CLType::I32,
-        EntryPointAccess::Public,
-        EntryPointType::Session,
-    );
-    entry_points.add_entry_point(session_code_test);
 
     let contract_code_test = EntryPoint::new(
         CONTRACT_CODE.to_string(),
         Vec::new(),
         CLType::I32,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(contract_code_test);
-
-    let session_code_caller_as_session = EntryPoint::new(
-        "session_code_caller_as_session".to_string(),
-        Vec::new(),
-        CLType::I32,
-        EntryPointAccess::Public,
-        EntryPointType::Session,
-    );
-    entry_points.add_entry_point(session_code_caller_as_session);
 
     let session_code_caller_as_contract = EntryPoint::new(
         "session_code_caller_as_contract".to_string(),
         Vec::new(),
         CLType::I32,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(session_code_caller_as_contract);
-
-    let add_new_key = EntryPoint::new(
-        "add_new_key".to_string(),
-        Vec::new(),
-        CLType::I32,
-        EntryPointAccess::Public,
-        EntryPointType::Session,
-    );
-    entry_points.add_entry_point(add_new_key);
-    let add_new_key_as_session = EntryPoint::new(
-        "add_new_key_as_session".to_string(),
-        Vec::new(),
-        CLType::I32,
-        EntryPointAccess::Public,
-        EntryPointType::Session,
-    );
-    entry_points.add_entry_point(add_new_key_as_session);
 
     entry_points
 }

@@ -105,13 +105,6 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         amount: U512,
         id: Option<u64>,
     ) -> Result<(), Error> {
-        // if let (Phase::Session, Some(CallStackElement::StoredSession { .. })) =
-        //     (self.get_phase(), self.get_immediate_caller())
-        // {
-        //     // stored session code is not allowed to call this method in the session phase
-        //     return Err(Error::InvalidContext);
-        // }
-
         if !self.allow_unrestricted_transfers() {
             let registry = match self.get_system_contract_registry() {
                 Ok(registry) => registry,
@@ -130,17 +123,6 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                     // transfer)
                 }
 
-                // Some(CallStackElement::StoredSession {
-                //     account_hash,
-                //     package_hash: _,
-                //     contract_hash: _,
-                // }) => {
-                //     if account_hash != PublicKey::System.to_account_hash()
-                //         && !self.is_administrator(&account_hash)
-                //     {
-                //         return Err(Error::DisabledUnrestrictedTransfers);
-                //     }
-                // }
                 Some(CallStackElement::Session { account_hash: _ })
                     if self.is_called_from_standard_payment() =>
                 {

@@ -19,8 +19,8 @@ use casper_storage::{
 use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
-    AddressableEntity, BlockV2, CLValue, Deploy, DeployHash, Digest, EraEnd, EraId, EraReport,
-    HashAddr, Key, ProtocolVersion, PublicKey, StoredValue, U512,
+    AddressableEntity, BlockV2, CLValue, DeployHash, Digest, EraEndV2, EraId, HashAddr, Key,
+    ProtocolVersion, PublicKey, StoredValue, U512,
 };
 
 use crate::{
@@ -32,7 +32,7 @@ use crate::{
         },
         fetcher::FetchItem,
     },
-    types::{self, ApprovalsHashes, Chunkable, FinalizedBlock},
+    types::{self, ApprovalsHashes, Chunkable, ExecutableBlock, InternalEraReport},
 };
 
 fn generate_range_by_index(
@@ -92,15 +92,14 @@ pub fn execute_finalized_block(
     metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
     execution_pre_state: ExecutionPreState,
-    finalized_block: FinalizedBlock,
-    deploys: Vec<Deploy>,
+    executable_block: ExecutableBlock,
     activation_point_era_id: EraId,
     key_block_height_for_activation_point: u64,
     prune_batch_size: u64,
 ) -> Result<BlockAndExecutionResults, BlockExecutionError> {
-    if finalized_block.height != execution_pre_state.next_block_height {
+    if executable_block.height != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
-            finalized_block: Box::new(finalized_block),
+            executable_block: Box::new(executable_block),
             execution_pre_state: Box::new(execution_pre_state),
         });
     }
@@ -111,10 +110,15 @@ pub fn execute_finalized_block(
         next_block_height,
     } = execution_pre_state;
     let mut state_root_hash = pre_state_root_hash;
+    let mut execution_results = Vec::with_capacity(executable_block.deploys.len());
     // Run any deploys that must be executed
-    let block_time = finalized_block.timestamp.millis();
+    let block_time = executable_block.timestamp.millis();
     let start = Instant::now();
-    let deploy_ids = deploys.iter().map(|deploy| deploy.fetch_id()).collect_vec();
+    let deploy_ids = executable_block
+        .deploys
+        .iter()
+        .map(|deploy| deploy.fetch_id())
+        .collect_vec();
     let approvals_checksum = types::compute_approvals_checksum(deploy_ids.clone())
         .map_err(BlockExecutionError::FailedToComputeApprovalsChecksum)?;
 
@@ -122,18 +126,18 @@ pub fn execute_finalized_block(
     let scratch_state = engine_state.get_scratch_engine_state();
 
     // Pay out block rewards
-    let proposer = *finalized_block.proposer.clone();
-    state_root_hash = scratch_state.distribute_block_rewards(
-        state_root_hash,
-        protocol_version,
-        proposer.clone(),
-        next_block_height,
-        block_time,
-    )?;
+    if let Some(rewards) = &executable_block.rewards {
+        state_root_hash = scratch_state.distribute_block_rewards(
+            state_root_hash,
+            protocol_version,
+            rewards,
+            next_block_height,
+            block_time,
+        )?;
+    }
 
-    let mut execution_results = Vec::with_capacity(deploys.len());
     // WARNING: Do not change the order of `deploys` as it will result in a different root hash.
-    for deploy in deploys {
+    for deploy in executable_block.deploys {
         let deploy_hash = *deploy.hash();
         let deploy_header = deploy.header().clone();
         let execute_request = ExecuteRequest::new(
@@ -141,7 +145,7 @@ pub fn execute_finalized_block(
             block_time,
             vec![DeployItem::from(deploy)],
             protocol_version,
-            proposer.clone(),
+            PublicKey::clone(&executable_block.proposer),
         );
 
         // TODO: this is currently working coincidentally because we are passing only one
@@ -189,7 +193,7 @@ pub fn execute_finalized_block(
     // If the finalized block has an era report, run the auction contract and get the upcoming era
     // validators.
     let maybe_step_effects_and_upcoming_era_validators =
-        if let Some(era_report) = finalized_block.era_report.as_deref() {
+        if let Some(era_report) = &executable_block.era_report {
             let StepSuccess {
                 post_state_hash: _, // ignore the post-state-hash returned from scratch
                 effects: step_effects,
@@ -198,9 +202,9 @@ pub fn execute_finalized_block(
                 metrics,
                 protocol_version,
                 state_root_hash,
-                era_report,
-                finalized_block.timestamp.millis(),
-                finalized_block.era_id.successor(),
+                era_report.clone(),
+                executable_block.timestamp.millis(),
+                executable_block.era_id.successor(),
             )?;
 
             state_root_hash =
@@ -230,7 +234,7 @@ pub fn execute_finalized_block(
     engine_state.flush_environment()?;
 
     // Pruning
-    if let Some(previous_block_height) = finalized_block.height.checked_sub(1) {
+    if let Some(previous_block_height) = executable_block.height.checked_sub(1) {
         if let Some(keys_to_prune) = calculate_prune_eras(
             activation_point_era_id,
             key_block_height_for_activation_point,
@@ -294,25 +298,35 @@ pub fn execute_finalized_block(
         }
     }
 
-    let maybe_next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> =
+    let maybe_next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> = {
+        let next_era_id = executable_block.era_id.successor();
         maybe_step_effects_and_upcoming_era_validators
             .as_ref()
             .and_then(
                 |StepEffectsAndUpcomingEraValidators {
                      upcoming_era_validators,
                      ..
-                 }| {
-                    upcoming_era_validators
-                        .get(&finalized_block.era_id.successor())
-                        .cloned()
-                },
-            );
+                 }| upcoming_era_validators.get(&next_era_id).cloned(),
+            )
+    };
 
-    let era_end = match (finalized_block.era_report, maybe_next_era_validator_weights) {
+    let era_end = match (
+        executable_block.era_report,
+        maybe_next_era_validator_weights,
+    ) {
         (None, None) => None,
-        (Some(era_report), Some(next_era_validator_weights)) => {
-            Some(EraEnd::new(*era_report, next_era_validator_weights))
-        }
+        (
+            Some(InternalEraReport {
+                equivocators,
+                inactive_validators,
+            }),
+            Some(next_era_validator_weights),
+        ) => Some(EraEndV2::new(
+            equivocators,
+            inactive_validators,
+            next_era_validator_weights,
+            executable_block.rewards.unwrap_or_default(),
+        )),
         (maybe_era_report, maybe_next_era_validator_weights) => {
             return Err(BlockExecutionError::FailedToCreateEraEnd {
                 maybe_era_report,
@@ -325,15 +339,16 @@ pub fn execute_finalized_block(
         parent_hash,
         parent_seed,
         state_root_hash,
-        finalized_block.random_bit,
+        executable_block.random_bit,
         era_end,
-        finalized_block.timestamp,
-        finalized_block.era_id,
-        finalized_block.height,
+        executable_block.timestamp,
+        executable_block.era_id,
+        executable_block.height,
         protocol_version,
-        proposer,
-        finalized_block.deploy_hashes,
-        finalized_block.transfer_hashes,
+        (*executable_block.proposer).clone(),
+        executable_block.deploy_hashes,
+        executable_block.transfer_hashes,
+        executable_block.rewarded_signatures,
     ));
 
     let approvals_hashes = deploy_ids
@@ -487,7 +502,10 @@ fn commit_step<S>(
     maybe_metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
     pre_state_root_hash: Digest,
-    era_report: &EraReport<PublicKey>,
+    InternalEraReport {
+        equivocators,
+        inactive_validators,
+    }: InternalEraReport,
     era_end_timestamp_millis: u64,
     next_era_id: EraId,
 ) -> Result<StepSuccess, StepError>
@@ -496,11 +514,9 @@ where
     S::Error: Into<execution::Error>,
 {
     // Both inactive validators and equivocators are evicted
-    let evict_items = era_report
-        .inactive_validators()
-        .iter()
-        .chain(era_report.equivocators())
-        .cloned()
+    let evict_items = inactive_validators
+        .into_iter()
+        .chain(equivocators)
         .map(EvictItem::new)
         .collect();
 

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
+    system::STANDARD_PAYMENT,
     AddressableEntityHash, CLType, CLTyped,
 };
 
@@ -36,6 +37,11 @@ impl SystemContractRegistry {
         self.0
             .values()
             .any(|system_contract_hash| system_contract_hash == contract_hash)
+    }
+
+    /// Remove standard payment from the contract registry.
+    pub fn remove_standard_payment(&mut self) -> Option<AddressableEntityHash> {
+        self.0.remove(STANDARD_PAYMENT)
     }
 }
 

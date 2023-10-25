@@ -21,8 +21,8 @@ use rand::Rng;
 use crate::U512;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    Block, BlockBodyV1, BlockHash, BlockHeader, BlockValidationError, DeployHash, Digest, EraEnd,
-    EraId, ProtocolVersion, PublicKey, Timestamp,
+    Block, BlockBodyV1, BlockHash, BlockHeaderV1, BlockValidationError, DeployHash, Digest,
+    EraEndV1, EraId, ProtocolVersion, PublicKey, Timestamp,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{testing::TestRng, EraReport};
@@ -37,7 +37,7 @@ pub struct BlockV1 {
     /// The block hash identifying this block.
     pub(super) hash: BlockHash,
     /// The header portion of the block.
-    pub(super) header: BlockHeader,
+    pub(super) header: BlockHeaderV1,
     /// The body portion of the block.
     pub(super) body: BlockBodyV1,
 }
@@ -51,7 +51,7 @@ impl BlockV1 {
         parent_seed: Digest,
         state_root_hash: Digest,
         random_bit: bool,
-        era_end: Option<EraEnd>,
+        era_end: Option<EraEndV1>,
         timestamp: Timestamp,
         era_id: EraId,
         height: u64,
@@ -63,7 +63,7 @@ impl BlockV1 {
         let body = BlockBodyV1::new(proposer, deploy_hashes, transfer_hashes);
         let body_hash = body.hash();
         let accumulated_seed = Digest::hash_pair(parent_seed, [random_bit as u8]);
-        let header = BlockHeader::new(
+        let header = BlockHeaderV1::new(
             parent_hash,
             state_root_hash,
             body_hash,
@@ -82,7 +82,7 @@ impl BlockV1 {
 
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
-    pub fn new_from_header_and_body(header: BlockHeader, body: BlockBodyV1) -> Self {
+    pub fn new_from_header_and_body(header: BlockHeaderV1, body: BlockBodyV1) -> Self {
         let hash = header.block_hash();
         BlockV1 { hash, header, body }
     }
@@ -93,12 +93,12 @@ impl BlockV1 {
     }
 
     /// Returns the block's header.
-    pub fn header(&self) -> &BlockHeader {
+    pub fn header(&self) -> &BlockHeaderV1 {
         &self.header
     }
 
     /// Returns the block's header, consuming `self`.
-    pub fn take_header(self) -> BlockHeader {
+    pub fn take_header(self) -> BlockHeaderV1 {
         self.header
     }
 
@@ -133,7 +133,7 @@ impl BlockV1 {
     }
 
     /// Returns the `EraEnd` of a block if it is a switch block.
-    pub fn era_end(&self) -> Option<&EraEnd> {
+    pub fn era_end(&self) -> Option<&EraEndV1> {
         self.header.era_end()
     }
 
@@ -234,7 +234,7 @@ impl BlockV1 {
             for i in 1_u64..6 {
                 let _ = next_era_validator_weights.insert(PublicKey::random(rng), U512::from(i));
             }
-            EraEnd::new(EraReport::random(rng), next_era_validator_weights)
+            EraEndV1::new(EraReport::random(rng), next_era_validator_weights)
         });
         let timestamp = Timestamp::now();
         let proposer = PublicKey::random(rng);
@@ -314,7 +314,7 @@ impl ToBytes for BlockV1 {
 impl FromBytes for BlockV1 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (hash, remainder) = BlockHash::from_bytes(bytes)?;
-        let (header, remainder) = BlockHeader::from_bytes(remainder)?;
+        let (header, remainder) = BlockHeaderV1::from_bytes(remainder)?;
         let (body, remainder) = BlockBodyV1::from_bytes(remainder)?;
         let block = BlockV1 { hash, header, body };
         Ok((block, remainder))
@@ -323,14 +323,14 @@ impl FromBytes for BlockV1 {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Block, FromTestBlockBuilder, TestBlockBuilder};
+    use crate::{Block, TestBlockV1Builder};
 
     use super::*;
 
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
-        let block = BlockV1::build_for_test(TestBlockBuilder::new(), rng);
+        let block = TestBlockV1Builder::new().build(rng);
         bytesrepr::test_serialization_roundtrip(&block);
     }
 
@@ -338,7 +338,7 @@ mod tests {
     fn block_check_bad_body_hash_sad_path() {
         let rng = &mut TestRng::new();
 
-        let mut block = BlockV1::build_for_test(TestBlockBuilder::new(), rng);
+        let mut block = TestBlockV1Builder::new().build(rng);
         let bogus_block_body_hash = Digest::hash([0xde, 0xad, 0xbe, 0xef]);
         block.header.set_body_hash(bogus_block_body_hash);
         block.hash = block.header.block_hash();
@@ -354,7 +354,7 @@ mod tests {
     fn block_check_bad_block_hash_sad_path() {
         let rng = &mut TestRng::new();
 
-        let mut block = BlockV1::build_for_test(TestBlockBuilder::new(), rng);
+        let mut block = TestBlockV1Builder::new().build(rng);
         let bogus_block_hash = BlockHash::from(Digest::hash([0xde, 0xad, 0xbe, 0xef]));
         block.hash = bogus_block_hash;
 

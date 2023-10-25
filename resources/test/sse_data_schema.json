@@ -272,7 +272,7 @@
           "description": "The header portion of the block.",
           "allOf": [
             {
-              "$ref": "#/definitions/BlockHeader"
+              "$ref": "#/definitions/BlockHeaderV1"
             }
           ]
         },
@@ -286,7 +286,7 @@
         }
       }
     },
-    "BlockHeader": {
+    "BlockHeaderV1": {
       "description": "The header portion of a block.",
       "type": "object",
       "required": [
@@ -341,7 +341,7 @@
           "description": "The `EraEnd` of a block if it is a switch block.",
           "anyOf": [
             {
-              "$ref": "#/definitions/EraEnd"
+              "$ref": "#/definitions/EraEndV1"
             },
             {
               "type": "null"
@@ -384,7 +384,7 @@
       "description": "Hex-encoded hash digest.",
       "type": "string"
     },
-    "EraEnd": {
+    "EraEndV1": {
       "description": "Information related to the end of an era, and validator weights for the following era.",
       "type": "object",
       "required": [
@@ -583,7 +583,7 @@
           "description": "The header portion of the block.",
           "allOf": [
             {
-              "$ref": "#/definitions/BlockHeader"
+              "$ref": "#/definitions/BlockHeaderV2"
             }
           ]
         },
@@ -597,12 +597,148 @@
         }
       }
     },
+    "BlockHeaderV2": {
+      "description": "The header portion of a block.",
+      "type": "object",
+      "required": [
+        "accumulated_seed",
+        "body_hash",
+        "era_id",
+        "height",
+        "parent_hash",
+        "protocol_version",
+        "random_bit",
+        "state_root_hash",
+        "timestamp"
+      ],
+      "properties": {
+        "parent_hash": {
+          "description": "The parent block's hash.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockHash"
+            }
+          ]
+        },
+        "state_root_hash": {
+          "description": "The root hash of global state after the deploys in this block have been executed.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Digest"
+            }
+          ]
+        },
+        "body_hash": {
+          "description": "The hash of the block's body.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Digest"
+            }
+          ]
+        },
+        "random_bit": {
+          "description": "A random bit needed for initializing a future era.",
+          "type": "boolean"
+        },
+        "accumulated_seed": {
+          "description": "A seed needed for initializing a future era.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Digest"
+            }
+          ]
+        },
+        "era_end": {
+          "description": "The `EraEnd` of a block if it is a switch block.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/EraEndV2"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timestamp": {
+          "description": "The timestamp from when the block was proposed.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Timestamp"
+            }
+          ]
+        },
+        "era_id": {
+          "description": "The era ID in which this block was created.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EraId"
+            }
+          ]
+        },
+        "height": {
+          "description": "The height of this block, i.e. the number of ancestors.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "protocol_version": {
+          "description": "The protocol version of the network from when this block was created.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ProtocolVersion"
+            }
+          ]
+        }
+      }
+    },
+    "EraEndV2": {
+      "description": "Information related to the end of an era, and validator weights for the following era.",
+      "type": "object",
+      "required": [
+        "equivocators",
+        "inactive_validators",
+        "next_era_validator_weights",
+        "rewards"
+      ],
+      "properties": {
+        "equivocators": {
+          "description": "The set of equivocators.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PublicKey"
+          }
+        },
+        "inactive_validators": {
+          "description": "Validators that haven't produced any unit during the era.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PublicKey"
+          }
+        },
+        "next_era_validator_weights": {
+          "description": "The validators for the upcoming era and their respective weights.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Array_of_ValidatorWeight"
+            }
+          ]
+        },
+        "rewards": {
+          "description": "The rewards distributed to the validators.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/U512"
+          }
+        }
+      }
+    },
     "BlockBodyV2": {
       "description": "The body portion of a block. Version 2.",
       "type": "object",
       "required": [
         "deploy_hashes",
         "proposer",
+        "rewarded_signatures",
         "transfer_hashes"
       ],
       "properties": {
@@ -627,7 +763,31 @@
           "items": {
             "$ref": "#/definitions/DeployHash"
           }
+        },
+        "rewarded_signatures": {
+          "description": "List of identifiers for finality signatures for a particular past block.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RewardedSignatures"
+            }
+          ]
         }
+      }
+    },
+    "RewardedSignatures": {
+      "description": "Describes finality signatures that will be rewarded in a block. Consists of a vector of `SingleBlockRewardedSignatures`, each of which describes signatures for a single ancestor block. The first entry represents the signatures for the parent block, the second for the parent of the parent, and so on.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/SingleBlockRewardedSignatures"
+      }
+    },
+    "SingleBlockRewardedSignatures": {
+      "description": "List of identifiers for finality signatures for a particular past block.\n\nThat past block height is current_height - signature_rewards_max_delay, the latter being defined in the chainspec.\n\nWe need to wait for a few blocks to pass (`signature_rewards_max_delay`) to store the finality signers because we need a bit of time to get the block finality.",
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "format": "uint8",
+        "minimum": 0.0
       }
     },
     "Deploy": {

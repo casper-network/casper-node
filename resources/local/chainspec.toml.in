@@ -78,7 +78,7 @@ finders_fee = [1, 5]
 # The proportion of baseline rewards going to reward finality signatures specifically.
 finality_signature_proportion = [1, 2]
 # Lookback interval indicating which past block we are looking at to reward.
-rewards_lag = 3
+signature_rewards_max_delay = 3
 # Setting this to false makes sense only on private chains which don't need to auction new validator slots.
 #
 # Changing this option makes sense only for private chains which dont need auctioning new validator slots.

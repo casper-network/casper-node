@@ -21,10 +21,11 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::Bytes,
     crypto::{sign, PublicKey, Signature},
-    AccessRights, AsymmetricType, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2,
-    ChunkWithProof, Deploy, DeployApproval, DeployApprovalsHash, DeployHash, DeployId, Digest,
-    EraEnd, EraId, EraReport, ExecutableDeployItem, FinalitySignature, FinalitySignatureId,
-    PackageHash, ProtocolVersion, RuntimeArgs, SecretKey, SemVer, SignedBlockHeader, TimeDiff,
+    AccessRights, AsymmetricType, Block, BlockHash, BlockHeader, BlockHeaderV1, BlockHeaderV2,
+    BlockSignatures, BlockV2, ChunkWithProof, Deploy, DeployApproval, DeployApprovalsHash,
+    DeployHash, DeployId, Digest, EraEndV1, EraEndV2, EraId, EraReport, ExecutableDeployItem,
+    FinalitySignature, FinalitySignatureId, PackageHash, ProtocolVersion, RewardedSignatures,
+    RuntimeArgs, SecretKey, SemVer, SignedBlockHeader, SingleBlockRewardedSignatures, TimeDiff,
     Timestamp, Transaction, TransactionId, TransactionV1, TransactionV1ApprovalsHash,
     TransactionV1Builder, TransactionV1Hash, TransactionV1Kind, URef, KEY_HASH_LENGTH, U512,
 };
@@ -37,7 +38,7 @@ use crate::{
     protocol::Message,
     types::{
         ApprovalsHashes, BlockExecutionResultsOrChunk, BlockPayload, DeployHashWithApprovals,
-        FinalizedBlock, LegacyDeploy, SyncLeap, TrieOrChunk,
+        FinalizedBlock, InternalEraReport, LegacyDeploy, SyncLeap, TrieOrChunk,
     },
 };
 
@@ -538,9 +539,9 @@ impl LargestSpecimen for TimeDiff {
     }
 }
 
-impl LargestSpecimen for BlockHeader {
+impl LargestSpecimen for BlockHeaderV1 {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-        BlockHeader::new(
+        BlockHeaderV1::new(
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
@@ -556,12 +557,63 @@ impl LargestSpecimen for BlockHeader {
     }
 }
 
-impl LargestSpecimen for EraEnd {
+impl LargestSpecimen for BlockHeaderV2 {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-        EraEnd::new(
+        BlockHeaderV2::new(
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            OnceCell::with_value(LargestSpecimen::largest_specimen(estimator, cache)),
+        )
+    }
+}
+
+impl LargestSpecimen for BlockHeader {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        let v1 = BlockHeaderV1::largest_specimen(estimator, cache);
+        let v2 = BlockHeaderV2::largest_specimen(estimator, cache);
+
+        if estimator.estimate(&v1) > estimator.estimate(&v2) {
+            BlockHeader::V1(v1)
+        } else {
+            BlockHeader::V2(v2)
+        }
+    }
+}
+
+impl LargestSpecimen for EraEndV1 {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        EraEndV1::new(
             LargestSpecimen::largest_specimen(estimator, cache),
             btree_map_distinct_from_prop(estimator, "validator_count", cache),
         )
+    }
+}
+
+impl LargestSpecimen for EraEndV2 {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        EraEndV2::new(
+            vec_prop_specimen(estimator, "validator_count", cache),
+            vec_prop_specimen(estimator, "validator_count", cache),
+            btree_map_distinct_from_prop(estimator, "validator_count", cache),
+            btree_map_distinct_from_prop(estimator, "validator_count", cache),
+        )
+    }
+}
+
+impl LargestSpecimen for InternalEraReport {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        InternalEraReport {
+            equivocators: vec_prop_specimen(estimator, "validator_count", cache),
+            inactive_validators: vec_prop_specimen(estimator, "validator_count", cache),
+        }
     }
 }
 
@@ -615,6 +667,7 @@ impl LargestSpecimen for BlockV2 {
             LargestSpecimen::largest_specimen(estimator, cache),
             deploy_hashes,
             transfer_hashes,
+            LargestSpecimen::largest_specimen(estimator, cache),
         )
     }
 }
@@ -643,6 +696,7 @@ impl LargestSpecimen for Block {
             LargestSpecimen::largest_specimen(estimator, cache),
             deploy_hashes,
             transfer_hashes,
+            LargestSpecimen::largest_specimen(estimator, cache),
         ))
     }
 }
@@ -730,6 +784,24 @@ impl LargestSpecimen for BlockPayload {
             transfers,
             vec_prop_specimen(estimator, "max_accusations_per_block", cache),
             LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+        )
+    }
+}
+
+impl LargestSpecimen for RewardedSignatures {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        RewardedSignatures::new(
+            std::iter::repeat(LargestSpecimen::largest_specimen(estimator, cache))
+                .take(estimator.parameter("signature_rewards_max_delay")),
+        )
+    }
+}
+
+impl LargestSpecimen for SingleBlockRewardedSignatures {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, _cache: &mut Cache) -> Self {
+        SingleBlockRewardedSignatures::pack(
+            std::iter::repeat(1).take(estimator.parameter("validator_count")),
         )
     }
 }

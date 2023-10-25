@@ -55,7 +55,7 @@ fn store() -> (AddressableEntityHash, EntityVersion) {
             vec![Parameter::new(ARG_GAS_AMOUNT, CLType::I32)],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
 
         entry_points.add_entry_point(entry_point);

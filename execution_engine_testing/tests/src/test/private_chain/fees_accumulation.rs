@@ -241,7 +241,7 @@ fn should_distribute_accumulated_fees_to_admins() {
         .distribute(
             None,
             *DEFAULT_PROTOCOL_VERSION,
-            VALIDATOR_1_PUBLIC_KEY.clone(),
+            &IntoIterator::into_iter([(VALIDATOR_1_PUBLIC_KEY.clone(), U512::from(0))]).collect(),
             1,
             DEFAULT_BLOCK_TIME,
         )

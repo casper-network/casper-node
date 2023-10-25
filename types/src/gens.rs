@@ -310,8 +310,8 @@ pub fn entry_point_access_arb() -> impl Strategy<Value = EntryPointAccess> {
 pub fn entry_point_type_arb() -> impl Strategy<Value = EntryPointType> {
     prop_oneof![
         Just(EntryPointType::Session),
-        Just(EntryPointType::Contract),
-        Just(EntryPointType::Install),
+        Just(EntryPointType::AddressableEntity),
+        Just(EntryPointType::Factory),
     ]
 }
 

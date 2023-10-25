@@ -20,11 +20,11 @@ use once_cell::sync::OnceCell;
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockHash, BlockHeader, BlockValidationError, DeployHash, Digest, EraEnd, EraId,
+    BlockHash, BlockHeaderV2, BlockValidationError, DeployHash, Digest, EraEndV2, EraId,
     ProtocolVersion, PublicKey, Timestamp,
 };
 
-use super::{Block, BlockBodyV2, BlockConversionError};
+use super::{Block, BlockBodyV2, BlockConversionError, RewardedSignatures};
 
 #[cfg(feature = "json-schema")]
 static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
@@ -32,7 +32,7 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
     let parent_seed = Digest::from([9; Digest::LENGTH]);
     let state_root_hash = Digest::from([8; Digest::LENGTH]);
     let random_bit = true;
-    let era_end = Some(EraEnd::example().clone());
+    let era_end = Some(EraEndV2::example().clone());
     let timestamp = *Timestamp::example();
     let era_id = EraId::from(1);
     let height = 10;
@@ -41,6 +41,7 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
     let proposer = PublicKey::from(secret_key);
     let deploy_hashes = vec![DeployHash::new(Digest::from([20; Digest::LENGTH]))];
     let transfer_hashes = vec![DeployHash::new(Digest::from([21; Digest::LENGTH]))];
+    let rewarded_signatures = RewardedSignatures::default();
     BlockV2::new(
         parent_hash,
         parent_seed,
@@ -54,6 +55,7 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
         proposer,
         deploy_hashes,
         transfer_hashes,
+        rewarded_signatures,
     )
 });
 
@@ -67,7 +69,7 @@ pub struct BlockV2 {
     /// The block hash identifying this block.
     pub(super) hash: BlockHash,
     /// The header portion of the block.
-    pub(super) header: BlockHeader,
+    pub(super) header: BlockHeaderV2,
     /// The body portion of the block.
     pub(super) body: BlockBodyV2,
 }
@@ -81,7 +83,7 @@ impl BlockV2 {
         parent_seed: Digest,
         state_root_hash: Digest,
         random_bit: bool,
-        era_end: Option<EraEnd>,
+        era_end: Option<EraEndV2>,
         timestamp: Timestamp,
         era_id: EraId,
         height: u64,
@@ -89,11 +91,17 @@ impl BlockV2 {
         proposer: PublicKey,
         deploy_hashes: Vec<DeployHash>,
         transfer_hashes: Vec<DeployHash>,
+        rewarded_signatures: RewardedSignatures,
     ) -> Self {
-        let body = BlockBodyV2::new(proposer, deploy_hashes, transfer_hashes);
+        let body = BlockBodyV2::new(
+            proposer,
+            deploy_hashes,
+            transfer_hashes,
+            rewarded_signatures,
+        );
         let body_hash = body.hash();
         let accumulated_seed = Digest::hash_pair(parent_seed, [random_bit as u8]);
-        let header = BlockHeader::new(
+        let header = BlockHeaderV2::new(
             parent_hash,
             state_root_hash,
             body_hash,
@@ -112,7 +120,7 @@ impl BlockV2 {
 
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
-    pub fn new_from_header_and_body(header: BlockHeader, body: BlockBodyV2) -> Self {
+    pub fn new_from_header_and_body(header: BlockHeaderV2, body: BlockBodyV2) -> Self {
         let hash = header.block_hash();
         BlockV2 { hash, header, body }
     }
@@ -123,12 +131,12 @@ impl BlockV2 {
     }
 
     /// Returns the block's header.
-    pub fn header(&self) -> &BlockHeader {
+    pub fn header(&self) -> &BlockHeaderV2 {
         &self.header
     }
 
     /// Returns the block's header, consuming `self`.
-    pub fn take_header(self) -> BlockHeader {
+    pub fn take_header(self) -> BlockHeaderV2 {
         self.header
     }
 
@@ -163,7 +171,7 @@ impl BlockV2 {
     }
 
     /// Returns the `EraEnd` of a block if it is a switch block.
-    pub fn era_end(&self) -> Option<&EraEnd> {
+    pub fn era_end(&self) -> Option<&EraEndV2> {
         self.header.era_end()
     }
 
@@ -200,6 +208,11 @@ impl BlockV2 {
     /// Returns the public key of the validator which proposed the block.
     pub fn proposer(&self) -> &PublicKey {
         self.body.proposer()
+    }
+
+    /// List of identifiers for finality signatures for a particular past block.
+    pub fn rewarded_signatures(&self) -> &RewardedSignatures {
+        self.body.rewarded_signatures()
     }
 
     /// Returns the deploy hashes within the block.
@@ -307,7 +320,7 @@ impl ToBytes for BlockV2 {
 impl FromBytes for BlockV2 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (hash, remainder) = BlockHash::from_bytes(bytes)?;
-        let (header, remainder) = BlockHeader::from_bytes(remainder)?;
+        let (header, remainder) = BlockHeaderV2::from_bytes(remainder)?;
         let (body, remainder) = BlockBodyV2::from_bytes(remainder)?;
         let block = BlockV2 { hash, header, body };
         Ok((block, remainder))
@@ -329,7 +342,7 @@ impl TryFrom<Block> for BlockV2 {
 
 #[cfg(test)]
 mod tests {
-    use crate::block::test_block_builder::TestBlockBuilder;
+    use crate::TestBlockBuilder;
 
     use super::*;
 

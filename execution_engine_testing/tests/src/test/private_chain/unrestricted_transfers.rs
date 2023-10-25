@@ -491,7 +491,7 @@ fn should_not_allow_payment_to_purse_in_stored_payment() {
 
     let error = builder.get_error().expect("should have error");
     assert!(
-        matches!(error, Error::Exec(execution::Error::InvalidContext)),
+        matches!(error, Error::Exec(execution::Error::ForgedReference(_))),
         "expected InvalidContext error, found {:?}",
         error
     );

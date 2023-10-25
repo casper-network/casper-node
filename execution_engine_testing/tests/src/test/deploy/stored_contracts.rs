@@ -1,3 +1,4 @@
+use assert_matches::assert_matches;
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT,
@@ -255,7 +256,9 @@ fn should_exec_stored_code_by_hash() {
         builder.exec(transfer_using_stored_payment).expect_failure();
     }
 
-    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
+    let error = builder.get_error().unwrap();
+
+    assert_matches!(error, Error::Exec(execution::Error::ForgedReference(_)))
 }
 
 #[ignore]
@@ -301,7 +304,9 @@ fn should_not_transfer_above_balance_using_stored_payment_code_by_hash() {
         .expect_failure()
         .commit();
 
-    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
+    let error = builder.get_error().unwrap();
+
+    assert_matches!(error, Error::Exec(execution::Error::ForgedReference(_)))
 }
 
 #[ignore]
@@ -349,7 +354,9 @@ fn should_empty_account_using_stored_payment_code_by_hash() {
         builder.exec(exec_request_stored_payment).expect_failure();
     }
 
-    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
+    let error = builder.get_error().expect("must have error");
+
+    assert_matches!(error, Error::Exec(execution::Error::ForgedReference(_)))
 }
 
 #[ignore]
@@ -392,7 +399,10 @@ fn should_exec_stored_code_by_named_hash() {
         };
 
         builder.exec(exec_request_stored_payment).expect_failure();
-        builder.assert_error(Error::Exec(execution::Error::InvalidContext))
+
+        let error = builder.get_error().unwrap();
+
+        assert_matches!(error, Error::Exec(execution::Error::ForgedReference(_)))
     }
 }
 
@@ -918,5 +928,7 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
         .exec(exec_request_stored_payment)
         .expect_failure();
 
-    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
+    let error = builder.get_error().unwrap();
+
+    assert_matches!(error, Error::Exec(execution::Error::ForgedReference(_)))
 }

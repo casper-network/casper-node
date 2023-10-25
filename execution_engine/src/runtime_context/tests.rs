@@ -114,9 +114,9 @@ fn random_account_key<G: RngCore>(entropy_source: &mut G) -> Key {
 
 // create random contract key.
 fn random_contract_key<G: RngCore>(entropy_source: &mut G) -> Key {
-    let mut key = [0u8; 32];
-    entropy_source.fill_bytes(&mut key);
-    Key::Hash(key)
+    let mut key_hash = [0u8; 32];
+    entropy_source.fill_bytes(&mut key_hash);
+    Key::AddressableEntity(PackageKindTag::SmartContract, key_hash)
 }
 
 // Create URef Key.

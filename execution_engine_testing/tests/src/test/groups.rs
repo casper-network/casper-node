@@ -3,16 +3,15 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
     account::AccountHash, package::ENTITY_INITIAL_VERSION, runtime_args, Key, RuntimeArgs, U512,
 };
 
-use crate::wasm_utils;
+use crate::{lmdb_fixture, wasm_utils};
 
-const CONTRACT_GROUPS: &str = "groups.wasm";
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
 const PACKAGE_ACCESS_KEY: &str = "package_access_key";
 const RESTRICTED_SESSION: &str = "restricted_session";
@@ -29,26 +28,21 @@ const CALL_RESTRICTED_ENTRY_POINTS: &str = "call_restricted_entry_points";
 const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
 
+const GROUPS_FIXTURE: &str = "groups";
+
 static TRANSFER_1_AMOUNT: Lazy<U512> =
     Lazy::new(|| U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE) + 1000);
+
+fn setup_from_lmdb_fixture() -> LmdbWasmTestBuilder {
+    let (builder, _, _) = lmdb_fixture::builder_from_global_state_fixture(GROUPS_FIXTURE);
+
+    builder
+}
 
 #[ignore]
 #[test]
 fn should_call_group_restricted_session() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
 
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -83,20 +77,7 @@ fn should_call_group_restricted_session() {
 #[ignore]
 #[test]
 fn should_call_group_restricted_session_caller() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
 
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -133,15 +114,6 @@ fn should_call_group_restricted_session_caller() {
 #[test]
 #[ignore]
 fn should_not_call_restricted_session_from_wrong_account() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -149,11 +121,7 @@ fn should_not_call_restricted_session_from_wrong_account() {
     )
     .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
 
     builder.exec(exec_request_2).expect_success().commit();
 
@@ -208,15 +176,6 @@ fn should_not_call_restricted_session_from_wrong_account() {
 #[test]
 #[ignore]
 fn should_not_call_restricted_session_caller_from_wrong_account() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -224,11 +183,7 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
     )
     .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
 
     builder.exec(exec_request_2).expect_success().commit();
 
@@ -286,20 +241,7 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
 #[ignore]
 #[test]
 fn should_call_group_restricted_contract() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
 
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -350,14 +292,6 @@ fn should_call_group_restricted_contract() {
 #[ignore]
 #[test]
 fn should_not_call_group_restricted_contract_from_wrong_account() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -365,11 +299,7 @@ fn should_not_call_group_restricted_contract_from_wrong_account() {
     )
     .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
@@ -422,20 +352,7 @@ fn should_not_call_group_restricted_contract_from_wrong_account() {
 #[ignore]
 #[test]
 fn should_call_group_unrestricted_contract_caller() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
 
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -482,12 +399,6 @@ fn should_call_group_unrestricted_contract_caller() {
 #[ignore]
 #[test]
 fn should_call_unrestricted_contract_caller_from_different_account() {
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -495,11 +406,7 @@ fn should_call_unrestricted_contract_caller_from_different_account() {
     )
     .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
@@ -537,14 +444,6 @@ fn should_call_unrestricted_contract_caller_from_different_account() {
 #[ignore]
 #[test]
 fn should_call_group_restricted_contract_as_session() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -552,11 +451,7 @@ fn should_call_group_restricted_contract_as_session() {
     )
     .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
@@ -596,14 +491,6 @@ fn should_call_group_restricted_contract_as_session() {
 #[ignore]
 #[test]
 fn should_call_group_restricted_contract_as_session_from_wrong_account() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -611,11 +498,7 @@ fn should_call_group_restricted_contract_as_session_from_wrong_account() {
     )
     .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
@@ -661,20 +544,7 @@ fn should_call_group_restricted_contract_as_session_from_wrong_account() {
 #[ignore]
 #[test]
 fn should_not_call_uncallable_contract_from_deploy() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
 
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -749,20 +619,7 @@ fn should_not_call_uncallable_contract_from_deploy() {
 #[ignore]
 #[test]
 fn should_not_call_uncallable_session_from_deploy() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
 
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -839,25 +696,13 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
     // This test calls a stored payment code that is restricted with a group access using an account
     // that does not have any of the group urefs in context.
 
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *TRANSFER_1_AMOUNT },
     )
     .build();
-
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
 
     builder.exec(exec_request_2).expect_success().commit();
 
@@ -919,12 +764,6 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
 fn should_call_group_restricted_stored_payment_code() {
     // This test calls a stored payment code that is restricted with a group access using an account
     // that contains urefs from the group.
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
 
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -933,11 +772,7 @@ fn should_call_group_restricted_stored_payment_code() {
     )
     .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
 
     builder.exec(exec_request_2).expect_success().commit();
 

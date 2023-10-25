@@ -453,7 +453,7 @@ proptest! {
             ActionThresholds::default(),
             EntityKind::SmartContract
         ));
-        let contract_key = Key::AddressableEntity((EntityKindTag::SmartContract,hash));
+        let contract_key = Key::AddressableEntity(EntityKindTag::SmartContract,hash);
 
         // create account which knows about contract
         let mut account_named_keys = NamedKeys::new();

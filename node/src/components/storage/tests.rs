@@ -19,10 +19,10 @@ use casper_types::{
     generate_ed25519_keypair,
     system::auction::UnbondingPurse,
     testing::TestRng,
-    AccessRights, Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures, BlockV1,
-    BlockV2, Chainspec, ChainspecRawBytes, Deploy, DeployApprovalsHash, DeployHash, Digest, EraId,
-    FinalitySignature, FromTestBlockBuilder, ProtocolVersion, PublicKey, SecretKey,
-    SignedBlockHeader, TestBlockBuilder, TimeDiff, Transaction, Transfer, URef, U512,
+    AccessRights, Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures, BlockV2,
+    Chainspec, ChainspecRawBytes, Deploy, DeployApprovalsHash, DeployHash, Digest, EraId,
+    FinalitySignature, ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TestBlockBuilder,
+    TestBlockV1Builder, TimeDiff, Transaction, Transfer, URef, U512,
 };
 use tempfile::tempdir;
 
@@ -85,7 +85,7 @@ fn create_sync_leap_test_chain(
     non_signed_blocks: &[u64], // indices of blocks to not be signed
     include_switch_block_at_tip: bool,
     maybe_recent_era_count: Option<u64>, // if Some, override default `RECENT_ERA_COUNT`
-) -> (Storage, Chainspec, Vec<BlockV2>) {
+) -> (Storage, Chainspec, Vec<Block>) {
     // Test chain:
     //      S0      S1 B2 B3 S4 B5 B6 S7 B8 B9 S10 B11 B12
     //  era 0 | era 1 | era 2  | era 3  | era 4   | era 5 ...
@@ -111,7 +111,7 @@ fn create_sync_leap_test_chain(
     let (validator_secret_key, validator_public_key) = generate_ed25519_keypair();
     trusted_validator_weights.insert(validator_public_key, U512::from(2000000000000u64));
 
-    let mut blocks: Vec<BlockV2> = vec![];
+    let mut blocks: Vec<Block> = vec![];
     let block_count = 13 + include_switch_block_at_tip as u64;
     (0_u64..block_count).for_each(|height| {
         let is_switch = height == 0 || height % 3 == 1;
@@ -133,12 +133,12 @@ fn create_sync_leap_test_chain(
             .parent_hash(parent_hash)
             .validator_weights(trusted_validator_weights.clone())
             .switch_block(is_switch)
-            .build(&mut harness.rng);
+            .build_versioned(&mut harness.rng);
 
         blocks.push(block);
     });
-    blocks.iter().map(Block::from).for_each(|block| {
-        storage.write_block(&block).unwrap();
+    blocks.iter().for_each(|block| {
+        storage.write_block(block).unwrap();
 
         let fs = FinalitySignature::create(*block.hash(), block.era_id(), &validator_secret_key);
         assert!(fs.is_verified().is_ok());
@@ -699,22 +699,22 @@ fn read_block_by_height_with_available_block_range() {
         .height(33)
         .protocol_version(ProtocolVersion::from_parts(1, 5, 0))
         .switch_block(true)
-        .build(&mut harness.rng);
+        .build_versioned(&mut harness.rng);
 
     let mut storage = storage_fixture(&harness);
     assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
     assert!(get_block_header_at_height(&mut storage, 0, true).is_none());
 
-    let was_new = put_complete_block(&mut harness, &mut storage, block_33.clone().into());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_33.clone());
     assert!(was_new);
 
     assert_eq!(
         get_block_header_at_height(&mut storage, 33, false).as_ref(),
-        Some(block_33.header())
+        Some(&block_33.clone_header())
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 33, true).as_ref(),
-        Some(block_33.header())
+        Some(&block_33.clone_header())
     );
 
     // Create a random block as a different height, load and store it.
@@ -723,14 +723,14 @@ fn read_block_by_height_with_available_block_range() {
         .height(14)
         .protocol_version(ProtocolVersion::from_parts(1, 5, 0))
         .switch_block(false)
-        .build(&mut harness.rng);
+        .build_versioned(&mut harness.rng);
 
-    let was_new = put_complete_block(&mut harness, &mut storage, block_14.clone().into());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_14.clone());
     assert!(was_new);
 
     assert_eq!(
         get_block_header_at_height(&mut storage, 14, false).as_ref(),
-        Some(block_14.header())
+        Some(&block_14.clone_header())
     );
     assert!(get_block_header_at_height(&mut storage, 14, true).is_none());
 }
@@ -745,19 +745,19 @@ fn can_retrieve_block_by_height() {
         .height(33)
         .protocol_version(ProtocolVersion::from_parts(1, 5, 0))
         .switch_block(true)
-        .build(&mut harness.rng);
+        .build_versioned(&mut harness.rng);
     let block_14 = TestBlockBuilder::new()
         .era(1)
         .height(14)
         .protocol_version(ProtocolVersion::from_parts(1, 5, 0))
         .switch_block(false)
-        .build(&mut harness.rng);
+        .build_versioned(&mut harness.rng);
     let block_99 = TestBlockBuilder::new()
         .era(2)
         .height(99)
         .protocol_version(ProtocolVersion::from_parts(1, 5, 0))
         .switch_block(true)
-        .build(&mut harness.rng);
+        .build_versioned(&mut harness.rng);
 
     let mut storage = storage_fixture(&harness);
 
@@ -774,16 +774,16 @@ fn can_retrieve_block_by_height() {
     assert!(get_block_header_at_height(&mut storage, 99, false).is_none());
 
     // Inserting 33 changes this.
-    let was_new = put_complete_block(&mut harness, &mut storage, block_33.clone().into());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_33.clone());
     assert!(was_new);
 
     assert_eq!(
         get_highest_complete_block(&mut harness, &mut storage).as_ref(),
-        Some(&Block::from(block_33.clone()))
+        Some(&block_33)
     );
     assert_eq!(
         get_highest_complete_block_header(&mut harness, &mut storage).as_ref(),
-        Some(block_33.header())
+        Some(&block_33.clone_header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
@@ -791,32 +791,32 @@ fn can_retrieve_block_by_height() {
     assert!(get_block_header_at_height(&mut storage, 14, false).is_none());
     assert_eq!(
         get_block_at_height(&mut storage, 33).as_ref(),
-        Some(&Block::from(block_33.clone()))
+        Some(&block_33)
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 33, true).as_ref(),
-        Some(block_33.header())
+        Some(&block_33.clone_header())
     );
     assert!(get_block_at_height(&mut storage, 99).is_none());
     assert!(get_block_header_at_height(&mut storage, 99, false).is_none());
 
     // Inserting block with height 14, no change in highest.
-    let was_new = put_complete_block(&mut harness, &mut storage, block_14.clone().into());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_14.clone());
     assert!(was_new);
 
     assert_eq!(
         get_highest_complete_block(&mut harness, &mut storage).as_ref(),
-        Some(&Block::from(block_33.clone()))
+        Some(&block_33)
     );
     assert_eq!(
         get_highest_complete_block_header(&mut harness, &mut storage).as_ref(),
-        Some(block_33.header())
+        Some(&block_33.clone_header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
     assert_eq!(
         get_block_at_height(&mut storage, 14).as_ref(),
-        Some(&Block::from(block_14.clone()))
+        Some(&block_14)
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 14, true).as_ref(),
@@ -824,58 +824,58 @@ fn can_retrieve_block_by_height() {
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 14, false).as_ref(),
-        Some(block_14.header())
+        Some(&block_14.clone_header())
     );
     assert_eq!(
         get_block_at_height(&mut storage, 33).as_ref(),
-        Some(&Block::from(block_33.clone()))
+        Some(&block_33)
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 33, false).as_ref(),
-        Some(block_33.header())
+        Some(&block_33.clone_header())
     );
     assert!(get_block_at_height(&mut storage, 99).is_none());
     assert!(get_block_header_at_height(&mut storage, 99, false).is_none());
 
     // Inserting block with height 99, changes highest.
-    let was_new = put_complete_block(&mut harness, &mut storage, block_99.clone().into());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_99.clone());
     // Mark block 99 as complete.
     storage.completed_blocks.insert(99);
     assert!(was_new);
 
     assert_eq!(
         get_highest_complete_block(&mut harness, &mut storage).as_ref(),
-        Some(&Block::from(block_99.clone()))
+        Some(&block_99)
     );
     assert_eq!(
         get_highest_complete_block_header(&mut harness, &mut storage).as_ref(),
-        Some(block_99.header())
+        Some(&block_99.clone_header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
     assert_eq!(
         get_block_at_height(&mut storage, 14).as_ref(),
-        Some(&Block::from(block_14.clone()))
+        Some(&block_14)
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 14, false).as_ref(),
-        Some(block_14.header())
+        Some(&block_14.clone_header())
     );
     assert_eq!(
         get_block_at_height(&mut storage, 33).as_ref(),
-        Some(&Block::from(block_33.clone()))
+        Some(&block_33)
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 33, false).as_ref(),
-        Some(block_33.header())
+        Some(&block_33.clone_header())
     );
     assert_eq!(
         get_block_at_height(&mut storage, 99).as_ref(),
-        Some(&Block::from(block_99.clone()))
+        Some(&block_99)
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 99, false).as_ref(),
-        Some(block_99.header())
+        Some(&block_99.clone_header())
     );
 }
 
@@ -890,21 +890,21 @@ fn different_block_at_height_is_fatal() {
         .era(1)
         .height(44)
         .switch_block(false)
-        .build(&mut harness.rng);
+        .build_versioned(&mut harness.rng);
     let block_44_b = TestBlockBuilder::new()
         .era(1)
         .height(44)
         .switch_block(false)
-        .build(&mut harness.rng);
+        .build_versioned(&mut harness.rng);
 
-    let was_new = put_complete_block(&mut harness, &mut storage, block_44_a.clone().into());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_44_a.clone());
     assert!(was_new);
 
-    let was_new = put_complete_block(&mut harness, &mut storage, block_44_a.into());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_44_a);
     assert!(was_new);
 
     // Putting a different block with the same height should now crash.
-    put_complete_block(&mut harness, &mut storage, block_44_b.into());
+    put_complete_block(&mut harness, &mut storage, block_44_b);
 }
 
 #[test]
@@ -1209,8 +1209,7 @@ fn persist_blocks_deploys_and_execution_info_across_instantiations() {
     let deploy = Deploy::random(&mut harness.rng);
     let block: Block = TestBlockBuilder::new()
         .deploys(Some(&deploy))
-        .build(&mut harness.rng)
-        .into();
+        .build_versioned(&mut harness.rng);
 
     let block_height = block.height();
     let execution_result = ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
@@ -1273,7 +1272,7 @@ fn should_hard_reset() {
         .collect();
 
     // Create and store 8 blocks, 0-2 in era 0, 3-5 in era 1, and 6,7 in era 2.
-    let blocks: Vec<BlockV2> = (0..blocks_count)
+    let blocks: Vec<_> = (0..blocks_count)
         .map(|height| {
             let is_switch = height % blocks_per_era == blocks_per_era - 1;
             TestBlockBuilder::new()
@@ -1283,12 +1282,16 @@ fn should_hard_reset() {
                 .deploys(iter::once(
                     random_deploys.get(height).expect("should_have_deploy"),
                 ))
-                .build(&mut harness.rng)
+                .build_versioned(&mut harness.rng)
         })
         .collect();
 
     for block in &blocks {
-        assert!(put_complete_block(&mut harness, &mut storage, block.into()));
+        assert!(put_complete_block(
+            &mut harness,
+            &mut storage,
+            block.clone()
+        ));
     }
 
     // Create and store signatures for these blocks.
@@ -1328,7 +1331,7 @@ fn should_hard_reset() {
 
     // Check the highest block is #7.
     assert_eq!(
-        Some(Block::from(blocks[blocks_count - 1].clone())),
+        Some(blocks[blocks_count - 1].clone()),
         get_highest_complete_block(&mut harness, &mut storage)
     );
 
@@ -1342,7 +1345,7 @@ fn should_hard_reset() {
         let highest_block = get_highest_complete_block(&mut harness, &mut storage);
         if reset_era > 0 {
             assert_eq!(
-                Block::from(blocks[blocks_per_era * reset_era - 1].clone()),
+                blocks[blocks_per_era * reset_era - 1].clone(),
                 highest_block.unwrap()
             );
         } else {
@@ -1538,7 +1541,7 @@ fn can_put_and_get_block() {
         .into()
     });
 
-    assert_eq!(response.as_ref(), Some(block.header()));
+    assert_eq!(response.as_ref(), Some(&block.header().clone().into()));
 }
 
 #[test]
@@ -1547,9 +1550,9 @@ fn should_get_trusted_ancestor_headers() {
 
     let get_results = |requested_height: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
-        let requested_block_header = blocks.get(requested_height).unwrap().header();
+        let requested_block_header = blocks.get(requested_height).unwrap().clone_header();
         storage
-            .get_trusted_ancestor_headers(&mut txn, requested_block_header)
+            .get_trusted_ancestor_headers(&mut txn, &requested_block_header)
             .unwrap()
             .unwrap()
             .iter()
@@ -1568,7 +1571,7 @@ fn should_get_signed_block_headers() {
 
     let get_results = |requested_height: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
-        let requested_block_header = blocks.get(requested_height).unwrap().header();
+        let requested_block_header = blocks.get(requested_height).unwrap().clone_header();
         let highest_block_header_with_sufficient_signatures = storage
             .get_highest_complete_signed_block_header(&mut txn)
             .unwrap()
@@ -1576,7 +1579,7 @@ fn should_get_signed_block_headers() {
         storage
             .get_signed_block_headers(
                 &mut txn,
-                requested_block_header,
+                &requested_block_header,
                 &highest_block_header_with_sufficient_signatures,
             )
             .unwrap()
@@ -1611,7 +1614,7 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
 
     let get_results = |requested_height: usize| -> Vec<u64> {
         let mut txn = storage.env.begin_ro_txn().unwrap();
-        let requested_block_header = blocks.get(requested_height).unwrap().header();
+        let requested_block_header = blocks.get(requested_height).unwrap().clone_header();
         let highest_block_header_with_sufficient_signatures = storage
             .get_highest_complete_signed_block_header(&mut txn)
             .unwrap()
@@ -1620,7 +1623,7 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
         storage
             .get_signed_block_headers(
                 &mut txn,
-                requested_block_header,
+                &requested_block_header,
                 &highest_block_header_with_sufficient_signatures,
             )
             .unwrap()
@@ -1754,9 +1757,9 @@ fn should_restrict_returned_blocks() {
             .height(height)
             .protocol_version(ProtocolVersion::from_parts(1, 5, 0))
             .switch_block(false)
-            .build(&mut harness.rng);
+            .build_versioned(&mut harness.rng);
 
-        storage.write_block(&block.into()).unwrap();
+        storage.write_block(&block).unwrap();
         storage.completed_blocks.insert(height);
     });
 
@@ -1814,14 +1817,14 @@ fn should_get_block_header_by_height() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    let block = TestBlockBuilder::new().build(&mut harness.rng);
-    let expected_header = block.header().clone();
+    let block = TestBlockBuilder::new().build_versioned(&mut harness.rng);
+    let expected_header = block.clone_header();
     let height = block.height();
 
     // Requesting the block header before it is in storage should return None.
     assert!(get_block_header_by_height(&mut harness, &mut storage, height).is_none());
 
-    let was_new = put_complete_block(&mut harness, &mut storage, block.into());
+    let was_new = put_complete_block(&mut harness, &mut storage, block);
     assert!(was_new);
 
     // Requesting the block header after it is in storage should return the block header.
@@ -1840,17 +1843,17 @@ fn check_force_resync_with_marker_file() {
     assert!(!force_resync_file_path.exists());
 
     // Add a couple of blocks into storage.
-    let first_block = TestBlockBuilder::new().build(&mut harness.rng);
-    put_complete_block(&mut harness, &mut storage, first_block.clone().into());
+    let first_block = TestBlockBuilder::new().build_versioned(&mut harness.rng);
+    put_complete_block(&mut harness, &mut storage, first_block.clone());
     let second_block = loop {
         // We need to make sure that the second random block has different height than the first
         // one.
-        let block = TestBlockBuilder::new().build(&mut harness.rng);
+        let block = TestBlockBuilder::new().build_versioned(&mut harness.rng);
         if block.height() != first_block.height() {
             break block;
         }
     };
-    put_complete_block(&mut harness, &mut storage, second_block.into());
+    put_complete_block(&mut harness, &mut storage, second_block);
     // Make sure the completed blocks are not the default anymore.
     assert_ne!(
         storage.get_available_block_range(),
@@ -1872,7 +1875,7 @@ fn check_force_resync_with_marker_file() {
     );
     let first_block_height = first_block.height();
     // Add a block into storage.
-    put_complete_block(&mut harness, &mut storage, first_block.into());
+    put_complete_block(&mut harness, &mut storage, first_block);
     assert_eq!(
         storage.get_available_block_range(),
         AvailableBlockRange::new(first_block_height, first_block_height)
@@ -1977,29 +1980,27 @@ fn can_retrieve_block_by_height_with_different_block_versions() {
     let mut harness = ComponentHarness::default();
 
     // BlockV1 as a versioned Block
-    let block_14 = BlockV1::build_for_test(
-        TestBlockBuilder::new()
-            .era(1)
-            .height(14)
-            .switch_block(false),
-        &mut harness.rng,
-    );
+    let block_14 = TestBlockV1Builder::new()
+        .era(1)
+        .height(14)
+        .switch_block(false)
+        .build(&mut harness.rng);
 
     // BlockV2 as a versioned Block
     let block_v2_33 = TestBlockBuilder::new()
         .era(1)
         .height(33)
         .switch_block(true)
-        .build(&mut harness.rng);
-    let block_33: Block = block_v2_33.clone().into();
+        .build_versioned(&mut harness.rng);
+    let block_33: Block = block_v2_33.clone();
 
     // BlockV2
     let block_v2_99 = TestBlockBuilder::new()
         .era(2)
         .height(99)
         .switch_block(true)
-        .build(&mut harness.rng);
-    let block_99: Block = block_v2_99.clone().into();
+        .build_versioned(&mut harness.rng);
+    let block_99: Block = block_v2_99.clone();
 
     let mut storage = storage_fixture(&harness);
 
@@ -2022,7 +2023,7 @@ fn can_retrieve_block_by_height_with_different_block_versions() {
         *block_v2_99.hash()
     ));
 
-    let was_new = put_block(&mut harness, &mut storage, block_33.clone().into());
+    let was_new = put_block(&mut harness, &mut storage, Arc::new(block_33.clone()));
     assert!(was_new);
     assert!(mark_block_complete(
         &mut harness,
@@ -2048,7 +2049,7 @@ fn can_retrieve_block_by_height_with_different_block_versions() {
     );
     assert_eq!(
         get_highest_complete_block_header(&mut harness, &mut storage).as_ref(),
-        Some(block_v2_33.header())
+        Some(&block_v2_33.clone_header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
@@ -2060,7 +2061,7 @@ fn can_retrieve_block_by_height_with_different_block_versions() {
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 33, true).as_ref(),
-        Some(block_v2_33.header())
+        Some(&block_v2_33.clone_header())
     );
     assert!(get_block_at_height(&mut storage, 99).is_none());
     assert!(get_block_header_at_height(&mut storage, 99, false).is_none());
@@ -2092,7 +2093,7 @@ fn can_retrieve_block_by_height_with_different_block_versions() {
     );
     assert_eq!(
         get_highest_complete_block_header(&mut harness, &mut storage).as_ref(),
-        Some(block_v2_33.header())
+        Some(&block_v2_33.clone_header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
@@ -2106,7 +2107,7 @@ fn can_retrieve_block_by_height_with_different_block_versions() {
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 14, false).as_ref(),
-        Some(block_14.header())
+        Some(&block_14.header().clone().into())
     );
     assert_eq!(
         get_block_at_height(&mut storage, 33).as_ref(),
@@ -2114,24 +2115,24 @@ fn can_retrieve_block_by_height_with_different_block_versions() {
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 33, false).as_ref(),
-        Some(block_v2_33.header())
+        Some(&block_v2_33.clone_header())
     );
     assert!(get_block_at_height(&mut storage, 99).is_none());
     assert!(get_block_header_at_height(&mut storage, 99, false).is_none());
 
     // Inserting block with height 99, changes highest.
-    let was_new = put_complete_block(&mut harness, &mut storage, block_v2_99.clone().into());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_v2_99.clone());
     // Mark block 99 as complete.
     storage.completed_blocks.insert(99);
     assert!(was_new);
 
     assert_eq!(
         get_highest_complete_block(&mut harness, &mut storage).as_ref(),
-        Some(&Block::from((block_v2_99).clone()))
+        Some(&(block_v2_99))
     );
     assert_eq!(
         get_highest_complete_block_header(&mut harness, &mut storage).as_ref(),
-        Some(block_v2_99.header())
+        Some(&block_v2_99.clone_header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
@@ -2141,7 +2142,7 @@ fn can_retrieve_block_by_height_with_different_block_versions() {
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 14, false).as_ref(),
-        Some(block_14.header())
+        Some(&block_14.header().clone().into())
     );
     assert_eq!(
         get_block_at_height(&mut storage, 33).as_ref(),
@@ -2149,7 +2150,7 @@ fn can_retrieve_block_by_height_with_different_block_versions() {
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 33, false).as_ref(),
-        Some(block_v2_33.header())
+        Some(&block_v2_33.clone_header())
     );
     assert_eq!(
         get_block_at_height(&mut storage, 99).as_ref(),
@@ -2157,7 +2158,7 @@ fn can_retrieve_block_by_height_with_different_block_versions() {
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 99, false).as_ref(),
-        Some(block_v2_99.header())
+        Some(&block_v2_99.clone_header())
     );
 }
 
@@ -2531,14 +2532,11 @@ fn check_block_operations_with_node_1_5_2_storage() {
     if let Some(new_lowest_height) = lowest_stored_block_height.checked_sub(1) {
         // Add a BlockV1 that precedes the lowest available block
         let new_lowest_block: Arc<Block> = Arc::new(
-            BlockV1::build_for_test(
-                TestBlockBuilder::new()
-                    .era(1)
-                    .height(new_lowest_height)
-                    .switch_block(false),
-                &mut harness.rng,
-            )
-            .into(),
+            TestBlockV1Builder::new()
+                .era(1)
+                .height(new_lowest_height)
+                .switch_block(false)
+                .build_versioned(&mut harness.rng),
         );
 
         // First check that the block doesn't exist.
@@ -2593,8 +2591,7 @@ fn check_block_operations_with_node_1_5_2_storage() {
                 .era(50)
                 .height(new_highest_block_height)
                 .switch_block(true)
-                .build(&mut harness.rng)
-                .into(),
+                .build_versioned(&mut harness.rng),
         );
 
         // First check that the block doesn't exist.

@@ -30,7 +30,7 @@ fn call() {
         Parameters::new(),
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
 
     let (contract_hash, _version) = storage::new_contract(

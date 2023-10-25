@@ -865,7 +865,7 @@ where
         &mut self,
         pre_state_hash: Option<Digest>,
         protocol_version: ProtocolVersion,
-        proposer: PublicKey,
+        rewards: &BTreeMap<PublicKey, U512>,
         next_block_height: u64,
         time: u64,
     ) -> Result<Digest, StepError> {
@@ -873,7 +873,7 @@ where
         let post_state_hash = self.engine_state.distribute_block_rewards(
             pre_state_hash,
             protocol_version,
-            proposer,
+            rewards,
             next_block_height,
             time,
         )?;
@@ -884,6 +884,7 @@ where
     }
 
     /// Expects a successful run
+    #[track_caller]
     pub fn expect_success(&mut self) -> &mut Self {
         // Check first result, as only first result is interesting for a simple test
         let exec_results = self
@@ -1445,15 +1446,6 @@ where
         self.engine_state
             .get_handle_payment_hash(state_root_hash)
             .expect("should have handle payment hash")
-    }
-
-    /// Returns the [`AddressableEntityHash`] of the system standard payment contract, panics if it
-    /// can't be found.
-    pub fn get_system_standard_payment_hash(&self) -> AddressableEntityHash {
-        let state_root_hash = self.get_post_state_hash();
-        self.engine_state
-            .get_standard_payment_hash(state_root_hash)
-            .expect("should have standard payment hash")
     }
 
     /// Resets the `exec_results`, `upgrade_results` and `transform` fields.

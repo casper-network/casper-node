@@ -77,7 +77,7 @@ pub extern "C" fn call() {
             Parameters::default(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
 
         let entrypoint_b = EntryPoint::new(
@@ -85,7 +85,7 @@ pub extern "C" fn call() {
             Parameters::default(),
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
 
         entry_points.add_entry_point(entrypoint_a);

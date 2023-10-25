@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(any(feature = "testing", test))]
 use casper_types::{testing::TestRng, DeployApproval};
-use casper_types::{DeployHash, PublicKey};
+use casper_types::{DeployHash, PublicKey, RewardedSignatures};
 
 use crate::types::{DeployHashWithApprovals, DeployOrTransferHash};
 
@@ -28,6 +28,7 @@ pub(crate) struct BlockPayload {
     deploys: Vec<DeployHashWithApprovals>,
     transfers: Vec<DeployHashWithApprovals>,
     accusations: Vec<PublicKey>,
+    rewarded_signatures: RewardedSignatures,
     random_bit: bool,
 }
 
@@ -36,12 +37,14 @@ impl BlockPayload {
         deploys: Vec<DeployHashWithApprovals>,
         transfers: Vec<DeployHashWithApprovals>,
         accusations: Vec<PublicKey>,
+        rewarded_signatures: RewardedSignatures,
         random_bit: bool,
     ) -> Self {
         BlockPayload {
             deploys,
             transfers,
             accusations,
+            rewarded_signatures,
             random_bit,
         }
     }
@@ -78,6 +81,11 @@ impl BlockPayload {
     /// The list of deploy hashes chained with the list of transfer hashes.
     pub fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
         self.deploy_hashes().chain(self.transfer_hashes())
+    }
+
+    /// The finality signatures for the past blocks that will be rewarded in this block.
+    pub(crate) fn rewarded_signatures(&self) -> &RewardedSignatures {
+        &self.rewarded_signatures
     }
 
     /// Returns an iterator over all deploys and transfers.
@@ -169,10 +177,16 @@ impl BlockPayload {
             .map(|_| PublicKey::random(rng))
             .collect();
 
+        let rewarded_signatures =
+            RewardedSignatures::new(vec![casper_types::SingleBlockRewardedSignatures::random(
+                rng, 20,
+            )]);
+
         Self {
             deploys,
             transfers,
             accusations,
+            rewarded_signatures,
             random_bit: rng.gen(),
         }
     }
