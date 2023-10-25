@@ -1378,11 +1378,11 @@ where
             parity_wasm::deserialize_buffer(byte_code.bytes())?
         };
 
+        let entity_tag = entity.entity_kind().tag();
+
         let mut named_keys = entity.take_named_keys();
 
-        let package_tag = package.get_package_kind().tag();
-
-        let context_entity_key = Key::addressable_entity_key(package_tag, entity_hash);
+        let context_entity_key = Key::addressable_entity_key(entity_tag, entity_hash);
 
         let context = self.context.new_from_self(
             context_entity_key,
@@ -1720,9 +1720,9 @@ where
         mut named_keys: NamedKeys,
         output_ptr: u32,
     ) -> Result<Result<(), ApiError>, Error> {
-        if entry_points.contains_stored_session() {
-            return Err(Error::InvalidEntryPointType);
-        }
+        // if entry_points.contains_stored_session() {
+        //     return Err(Error::InvalidEntryPointType);
+        // }
 
         let mut package = self.context.get_package(package_hash)?;
 

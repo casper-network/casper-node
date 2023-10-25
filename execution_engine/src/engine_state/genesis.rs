@@ -1179,7 +1179,7 @@ where
             .borrow_mut()
             .write(byte_code_key, StoredValue::ByteCode(byte_code));
 
-        let entity_key = Key::AddressableEntity((entity_kind.tag(), entity_hash.value()));
+        let entity_key = Key::AddressableEntity(entity_kind.tag(), entity_hash.value());
 
         self.tracking_copy
             .borrow_mut()

@@ -469,7 +469,7 @@ impl Key {
                 format!("{}{}", PACKAGE_PREFIX, base16::encode_lower(&package_addr))
             }
             Key::AddressableEntity(package_tag, entity_addr) => match package_tag {
-                PackageKindTag::System => {
+                EntityKindTag::System => {
                     format!(
                         "{}{}{}",
                         ENTITY_PREFIX,
@@ -477,7 +477,7 @@ impl Key {
                         base16::encode_lower(&entity_addr)
                     )
                 }
-                PackageKindTag::Account => {
+                EntityKindTag::Account => {
                     format!(
                         "{}{}{}",
                         ENTITY_PREFIX,
@@ -485,7 +485,7 @@ impl Key {
                         base16::encode_lower(&entity_addr)
                     )
                 }
-                PackageKindTag::SmartContract => {
+                EntityKindTag::SmartContract => {
                     format!(
                         "{}{}{}",
                         ENTITY_PREFIX,
@@ -685,11 +685,11 @@ impl Key {
 
         if let Some(entity) = input.strip_prefix(ENTITY_PREFIX) {
             let (addr_str, tag) = if let Some(str) = entity.strip_prefix(ACCOUNT_ENTITY_PREFIX) {
-                (str, PackageKindTag::Account)
+                (str, EntityKindTag::Account)
             } else if let Some(str) = entity.strip_prefix(SYSTEM_ENTITY_PREFIX) {
-                (str, PackageKindTag::System)
+                (str, EntityKindTag::System)
             } else if let Some(str) = entity.strip_prefix(CONTRACT_ENTITY_PREFIX) {
-                (str, PackageKindTag::SmartContract)
+                (str, EntityKindTag::SmartContract)
             } else {
                 return Err(FromStrError::UnknownPrefix);
             };
@@ -896,7 +896,7 @@ impl Key {
 
     /// Returns if they inner Key is for a system contract entity.
     pub fn is_system_key(&self) -> bool {
-        if let Self::AddressableEntity(PackageKindTag::System, _) = self {
+        if let Self::AddressableEntity(EntityKindTag::System, _) = self {
             return true;
         }
 
@@ -1439,11 +1439,11 @@ mod tests {
     const CHECKSUM_REGISTRY_KEY: Key = Key::ChecksumRegistry;
     const PACKAGE_KEY: Key = Key::Package([42; 32]);
     const ADDRESSABLE_ENTITY_SYSTEM_KEY: Key =
-        Key::AddressableEntity(PackageKindTag::System, [42; 32]);
+        Key::AddressableEntity(EntityKindTag::System, [42; 32]);
     const ADDRESSABLE_ENTITY_ACCOUNT_KEY: Key =
-        Key::AddressableEntity(PackageKindTag::Account, [42; 32]);
+        Key::AddressableEntity(EntityKindTag::Account, [42; 32]);
     const ADDRESSABLE_ENTITY_SMART_CONTRACT_KEY: Key =
-        Key::AddressableEntity(PackageKindTag::SmartContract, [42; 32]);
+        Key::AddressableEntity(EntityKindTag::SmartContract, [42; 32]);
     const BYTE_CODE_EMPTY_KEY: Key = Key::ByteCode(ByteCodeKind::Empty, [42; 32]);
     const BYTE_CODE_V1_WASM_KEY: Key = Key::ByteCode(ByteCodeKind::V1CasperWasm, [42; 32]);
     const KEYS: &[Key] = &[
@@ -1962,10 +1962,10 @@ mod tests {
         round_trip(&Key::Dictionary(zeros));
         round_trip(&Key::Unbond(AccountHash::new(zeros)));
         round_trip(&Key::Package(zeros));
-        round_trip(&Key::AddressableEntity(PackageKindTag::System, zeros));
-        round_trip(&Key::AddressableEntity(PackageKindTag::Account, zeros));
+        round_trip(&Key::AddressableEntity(EntityKindTag::System, zeros));
+        round_trip(&Key::AddressableEntity(EntityKindTag::Account, zeros));
         round_trip(&Key::AddressableEntity(
-            PackageKindTag::SmartContract,
+            EntityKindTag::SmartContract,
             zeros,
         ));
         round_trip(&Key::ByteCode(ByteCodeKind::Empty, zeros));

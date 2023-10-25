@@ -25,6 +25,7 @@ use casper_types::{
     URef, KEY_HASH_LENGTH, U256, U512,
 };
 use tempfile::TempDir;
+use casper_types::addressable_entity::EntityKindTag;
 
 use super::{Error, RuntimeContext};
 use crate::{
@@ -116,7 +117,7 @@ fn random_account_key<G: RngCore>(entropy_source: &mut G) -> Key {
 fn random_contract_key<G: RngCore>(entropy_source: &mut G) -> Key {
     let mut key_hash = [0u8; 32];
     entropy_source.fill_bytes(&mut key_hash);
-    Key::AddressableEntity(PackageKindTag::SmartContract, key_hash)
+    Key::AddressableEntity(EntityKindTag::SmartContract, key_hash)
 }
 
 // Create URef Key.

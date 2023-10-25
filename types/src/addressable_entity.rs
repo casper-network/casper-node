@@ -676,6 +676,56 @@ impl TryFrom<u8> for EntityKindTag {
     }
 }
 
+
+impl ToBytes for EntityKindTag {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        (*self as u8).to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        (*self as u8).write_bytes(writer)
+    }
+}
+
+impl FromBytes for EntityKindTag {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (package_kind_tag, remainder) = u8::from_bytes(bytes)?;
+        match package_kind_tag {
+            package_kind_tag if package_kind_tag == EntityKindTag::System as u8 => {
+                Ok((EntityKindTag::System, remainder))
+            }
+            package_kind_tag if package_kind_tag == EntityKindTag::Account as u8 => {
+                Ok((EntityKindTag::Account, remainder))
+            }
+            package_kind_tag if package_kind_tag == EntityKindTag::SmartContract as u8 => {
+                Ok((EntityKindTag::SmartContract, remainder))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+impl Display for EntityKindTag {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            EntityKindTag::System => {
+                write!(f, "system")
+            }
+            EntityKindTag::Account => {
+                write!(f, "account")
+            }
+            EntityKindTag::SmartContract => {
+                write!(f, "smart-contract")
+            }
+        }
+    }
+}
+
+
 #[cfg(any(feature = "testing", test))]
 impl Distribution<EntityKindTag> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EntityKindTag {
