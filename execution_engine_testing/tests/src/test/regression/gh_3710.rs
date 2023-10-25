@@ -297,11 +297,11 @@ mod fixture {
                 GROUPS_WASM,
                 runtime_args! {},
             )
-                .build();
+            .build();
 
             builder.exec(execute_request).expect_success().commit();
         })
-            .unwrap();
+        .unwrap();
     }
 
     #[ignore = "RUN_FIXTURE_GENERATORS env var should be enabled"]

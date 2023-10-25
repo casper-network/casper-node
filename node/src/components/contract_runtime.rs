@@ -44,7 +44,7 @@ use casper_storage::{
     },
 };
 use casper_types::{
-    bytesrepr::Bytes, addressable_entity::EntityKindTag, BlockHash, BlockHeaderV2, Chainspec,
+    addressable_entity::EntityKindTag, bytesrepr::Bytes, BlockHash, BlockHeaderV2, Chainspec,
     ChainspecRawBytes, ChainspecRegistry, Digest, EraId, Key, ProtocolVersion, Timestamp,
     UpgradeConfig, U512,
 };

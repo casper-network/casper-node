@@ -676,7 +676,6 @@ impl TryFrom<u8> for EntityKindTag {
     }
 }
 
-
 impl ToBytes for EntityKindTag {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         (*self as u8).to_bytes()
@@ -724,7 +723,6 @@ impl Display for EntityKindTag {
         }
     }
 }
-
 
 #[cfg(any(feature = "testing", test))]
 impl Distribution<EntityKindTag> for Standard {

@@ -1964,10 +1964,7 @@ mod tests {
         round_trip(&Key::Package(zeros));
         round_trip(&Key::AddressableEntity(EntityKindTag::System, zeros));
         round_trip(&Key::AddressableEntity(EntityKindTag::Account, zeros));
-        round_trip(&Key::AddressableEntity(
-            EntityKindTag::SmartContract,
-            zeros,
-        ));
+        round_trip(&Key::AddressableEntity(EntityKindTag::SmartContract, zeros));
         round_trip(&Key::ByteCode(ByteCodeKind::Empty, zeros));
         round_trip(&Key::ByteCode(ByteCodeKind::V1CasperWasm, zeros));
     }

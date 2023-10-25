@@ -13,8 +13,8 @@ use casper_storage::global_state::state::{self, lmdb::LmdbGlobalStateView, State
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity::{
-        ActionThresholds, ActionType, AddKeyFailure, AssociatedKeys, NamedKeys, RemoveKeyFailure,
-        SetThresholdFailure, Weight,
+        ActionThresholds, ActionType, AddKeyFailure, AssociatedKeys, EntityKindTag, NamedKeys,
+        RemoveKeyFailure, SetThresholdFailure, Weight,
     },
     bytesrepr::ToBytes,
     execution::TransformKind,
@@ -25,7 +25,6 @@ use casper_types::{
     URef, KEY_HASH_LENGTH, U256, U512,
 };
 use tempfile::TempDir;
-use casper_types::addressable_entity::EntityKindTag;
 
 use super::{Error, RuntimeContext};
 use crate::{
