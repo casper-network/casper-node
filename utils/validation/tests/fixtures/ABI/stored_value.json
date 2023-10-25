@@ -129,7 +129,7 @@
         "type": "StoredValue",
         "value": {
           "ByteCode": {
-            "byte_code_kind": "V1CasperWasm",
+            "kind": "V1CasperWasm",
             "bytes": "0061736d010000000104016000000302010005030100010708010463616c6c00000a040102000b"
           }
         }

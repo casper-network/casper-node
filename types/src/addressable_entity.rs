@@ -334,7 +334,7 @@ impl TryFrom<Key> for AddressableEntityHash {
     type Error = ApiError;
 
     fn try_from(value: Key) -> Result<Self, Self::Error> {
-        if let Key::AddressableEntity((_, entity_addr)) = value {
+        if let Key::AddressableEntity(_, entity_addr) = value {
             Ok(AddressableEntityHash::new(entity_addr))
         } else {
             Err(ApiError::Formatting)

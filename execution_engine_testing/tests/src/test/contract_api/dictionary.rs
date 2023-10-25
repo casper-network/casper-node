@@ -104,7 +104,7 @@ fn query_dictionary_item(
                 return Err("Provided base key is not an account".to_string());
             }
         }
-        Key::AddressableEntity(_) => {
+        Key::AddressableEntity(..) => {
             if let Some(name) = dictionary_name {
                 let stored_value = builder.query(None, key, &[])?;
 

@@ -4773,14 +4773,14 @@
             ]
           },
           "ByteCode": {
-            "description": "A container for contract's WASM bytes.",
+            "description": "A container for contract's Wasm bytes.",
             "type": "object",
             "required": [
-              "byte_code_kind",
-              "bytes"
+              "bytes",
+              "kind"
             ],
             "properties": {
-              "byte_code_kind": {
+              "kind": {
                 "$ref": "#/components/schemas/ByteCodeKind"
               },
               "bytes": {

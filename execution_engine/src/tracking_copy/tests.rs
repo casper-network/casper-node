@@ -455,7 +455,7 @@ proptest! {
             ActionThresholds::default(),
             MessageTopics::default(),
         ));
-        let contract_key = Key::AddressableEntity((PackageKindTag::SmartContract,hash));
+        let contract_key = Key::AddressableEntity(PackageKindTag::SmartContract,hash);
 
         // create account which knows about contract
         let mut account_named_keys = NamedKeys::new();

@@ -1174,13 +1174,13 @@ where
             package
         };
 
-        let byte_code_key = Key::ByteCode((ByteCodeKind::Empty, byte_code_hash.value()));
+        let byte_code_key = Key::ByteCode(ByteCodeKind::Empty, byte_code_hash.value());
 
         self.tracking_copy
             .borrow_mut()
             .write(byte_code_key, StoredValue::ByteCode(byte_code));
 
-        let entity_key = Key::AddressableEntity((package_kind.tag(), entity_hash.value()));
+        let entity_key = Key::AddressableEntity(package_kind.tag(), entity_hash.value());
 
         self.tracking_copy
             .borrow_mut()
