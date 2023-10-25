@@ -43,7 +43,7 @@ pub const DEFAULT_ALLOW_AUCTION_BIDS: bool = true;
 pub const DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS: bool = true;
 /// Default gas cost refund ratio.
 pub const DEFAULT_REFUND_HANDLING: RefundHandling = RefundHandling::Refund {
-    refund_ratio: Ratio::new_raw(0, 1),
+    refund_ratio: Ratio::new_raw(99, 100),
 };
 /// Default fee handling.
 pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::PayToProposer;
