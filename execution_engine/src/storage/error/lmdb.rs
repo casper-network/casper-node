@@ -28,7 +28,7 @@ pub enum Error {
     CommitError(#[from] CommitError),
 }
 
-impl wasmi::HostError for Error {}
+impl casper_wasmi::HostError for Error {}
 
 impl From<bytesrepr::Error> for Error {
     fn from(error: bytesrepr::Error) -> Self {

@@ -24,7 +24,7 @@ pub(crate) enum EndorsementError {
     serialize = "C::Hash: Serialize",
     deserialize = "C::Hash: Deserialize<'de>",
 ))]
-pub(crate) struct Endorsement<C>
+pub struct Endorsement<C>
 where
     C: Context,
 {
@@ -42,7 +42,8 @@ impl<C: Context> Endorsement<C> {
         }
     }
 
-    pub(crate) fn hash(&self) -> C::Hash {
+    /// Returns the hash of the endorsement.
+    pub fn hash(&self) -> C::Hash {
         <C as Context>::hash(
             &bincode::serialize(&(self.unit, self.creator)).expect("serialize endorsement"),
         )
@@ -74,7 +75,7 @@ mod specimen_support {
     serialize = "C::Signature: Serialize",
     deserialize = "C::Signature: Deserialize<'de>",
 ))]
-pub(crate) struct SignedEndorsement<C>
+pub struct SignedEndorsement<C>
 where
     C: Context,
 {
@@ -92,19 +93,23 @@ impl<C: Context> SignedEndorsement<C> {
         }
     }
 
-    pub(crate) fn unit(&self) -> &C::Hash {
+    /// Returns the unit being endorsed.
+    pub fn unit(&self) -> &C::Hash {
         &self.endorsement.unit
     }
 
-    pub(crate) fn validator_idx(&self) -> ValidatorIndex {
+    /// Returns the creator of the endorsement.
+    pub fn validator_idx(&self) -> ValidatorIndex {
         self.endorsement.creator
     }
 
-    pub(crate) fn signature(&self) -> &C::Signature {
+    /// Returns the signature of the endorsement.
+    pub fn signature(&self) -> &C::Signature {
         &self.signature
     }
 
-    pub(crate) fn hash(&self) -> C::Hash {
+    /// Returns the hash of the endorsement.
+    pub fn hash(&self) -> C::Hash {
         self.endorsement.hash()
     }
 }

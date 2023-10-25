@@ -196,7 +196,7 @@ multiple nodes provided all logs are available.
 Another helpful logging feature is ancestor logging. If the target `dispatch` is set to at least debug level, events
 being dispatched will be logged as well. Any event has an id (`ev`) and may have an ancestor (`a`), which is the previous
 event whose effects caused the resulting event to be scheduled. As an example, if an incoming network message gets
-asssigned an ID of `ev=123`, the first round of subsequent events will show `a=123` as their ancestor in the logs.
+assigned an ID of `ev=123`, the first round of subsequent events will show `a=123` as their ancestor in the logs.
 
 ### Changing the logging filter at runtime
 

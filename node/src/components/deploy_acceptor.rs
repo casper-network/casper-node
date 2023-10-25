@@ -1,5 +1,6 @@
 #![allow(clippy::boxed_local)] // We use boxed locals to pass on event data unchanged.
 
+mod config;
 mod event;
 mod metrics;
 mod tests;
@@ -42,6 +43,7 @@ use crate::{
     NodeRng,
 };
 
+pub(crate) use config::Config;
 pub(crate) use event::{Event, EventMetadata};
 
 const COMPONENT_NAME: &str = "deploy_acceptor";
@@ -203,6 +205,7 @@ impl<REv> ReactorEventT for REv where
 /// ```
 #[derive(Debug, DataSize)]
 pub struct DeployAcceptor {
+    acceptor_config: Config,
     chain_name: String,
     protocol_version: ProtocolVersion,
     deploy_config: DeployConfig,
@@ -214,10 +217,12 @@ pub struct DeployAcceptor {
 
 impl DeployAcceptor {
     pub(crate) fn new(
+        acceptor_config: Config,
         chainspec: &Chainspec,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(DeployAcceptor {
+            acceptor_config,
             chain_name: chainspec.network_config.name.clone(),
             protocol_version: chainspec.protocol_version(),
             deploy_config: chainspec.deploy_config,
@@ -244,6 +249,7 @@ impl DeployAcceptor {
             &self.chain_name,
             &self.deploy_config,
             self.max_associated_keys,
+            self.acceptor_config.timestamp_leeway,
             verification_start_timestamp,
         );
         // checks chainspec values
@@ -253,7 +259,7 @@ impl DeployAcceptor {
                 effect_builder,
                 Box::new(EventMetadata::new(deploy, source, maybe_responder)),
                 Error::InvalidDeployConfiguration(error),
-                verification_start_timestamp,
+                verification_start_timestamp + self.acceptor_config.timestamp_leeway,
             );
         }
 

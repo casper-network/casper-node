@@ -238,8 +238,12 @@ pub trait Auction:
 
         let bid = detail::read_bid_for_validator(self, validator_account_hash)?;
 
+        let delegator_already_exists = bid.delegators().contains_key(&delegator_public_key);
+
         if let Some(max_delegators_per_validator) = max_delegators_per_validator {
-            if bid.delegators().len() >= max_delegators_per_validator as usize {
+            if bid.delegators().len() >= max_delegators_per_validator as usize
+                && !delegator_already_exists
+            {
                 return Err(Error::ExceededDelegatorSizeLimit.into());
             }
         }
@@ -437,10 +441,11 @@ pub trait Auction:
         let auction_delay = detail::get_auction_delay(self)?;
         let snapshot_size = auction_delay as usize + 1;
         let mut era_id: EraId = detail::get_era_id(self)?;
-        let mut bids = detail::get_bids(self)?;
 
         // Process unbond requests
         detail::process_unbond_requests(self, max_delegators_per_validator)?;
+
+        let mut bids = detail::get_bids(self)?;
 
         // Process bids
         let mut bids_modified = false;

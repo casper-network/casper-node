@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use parity_wasm::{
+use casper_wasm::{
     builder,
     elements::{Instruction, Instructions},
 };
@@ -275,7 +275,7 @@ fn should_not_allow_more_than_one_table() {
         .memory()
         .build()
         .build();
-    let module_bytes = parity_wasm::serialize(module).expect("should serialize");
+    let module_bytes = casper_wasm::serialize(module).expect("should serialize");
 
     let exec_request = ExecuteRequestBuilder::module_bytes(
         *DEFAULT_ACCOUNT_ADDR,

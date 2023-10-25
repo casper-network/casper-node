@@ -1,7 +1,9 @@
+//! The implementation of the Highway consensus protocol.
+
 mod vertex;
 
 pub(crate) use crate::components::consensus::highway_core::state::Params;
-pub(crate) use vertex::{
+pub use vertex::{
     Dependency, Endorsements, HashedWireUnit, Ping, SignedWireUnit, Vertex, WireUnit,
 };
 

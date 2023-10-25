@@ -1,4 +1,4 @@
-use parity_wasm::{self, builder};
+use casper_wasm::{self, builder};
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
@@ -32,7 +32,7 @@ fn make_do_nothing_with_start() -> Vec<u8> {
         .build()
         .build();
 
-    parity_wasm::serialize(module).expect("should serialize")
+    casper_wasm::serialize(module).expect("should serialize")
 }
 
 #[ignore]

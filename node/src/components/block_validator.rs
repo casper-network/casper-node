@@ -7,28 +7,23 @@
 //! true if valid, but only fail if all sources have been exhausted. This is only relevant when
 //! calling for validation of the same proposed block multiple times at the same time.
 
-mod keyed_counter;
+mod config;
+mod event;
+mod state;
 #[cfg(test)]
 mod tests;
 
-use std::{
-    collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap},
-    fmt::Debug,
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use datasize::DataSize;
-use derive_more::{Display, From};
-use itertools::Itertools;
-use smallvec::{smallvec, SmallVec};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, warn};
 
 use casper_types::Timestamp;
 
 use crate::{
     components::{
         consensus::{ClContext, ProposedBlock},
-        fetcher::{EmptyValidationMetadata, FetchedData},
+        fetcher::{self, EmptyValidationMetadata, FetchResult, FetchedData},
         Component,
     },
     effect::{
@@ -36,12 +31,14 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     types::{
-        appendable_block::AppendableBlock, Approval, Chainspec, Deploy, DeployFootprint,
-        DeployHash, DeployHashWithApprovals, DeployOrTransferHash, LegacyDeploy, NodeId,
+        ApprovalsHash, Chainspec, Deploy, DeployHashWithApprovals, DeployId, DeployOrTransferHash,
+        NodeId,
     },
     NodeRng,
 };
-use keyed_counter::KeyedCounter;
+pub use config::Config;
+pub(crate) use event::Event;
+use state::{AddResponderResult, BlockValidationState, MaybeStartFetching};
 
 const COMPONENT_NAME: &str = "block_validator";
 
@@ -50,77 +47,21 @@ impl ProposedBlock<ClContext> {
         self.context().timestamp()
     }
 
-    fn deploy_hashes(&self) -> impl Iterator<Item = &DeployHash> + '_ {
-        self.value().deploy_hashes()
+    fn deploys(&self) -> &Vec<DeployHashWithApprovals> {
+        self.value().deploys()
     }
 
-    fn transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> + '_ {
-        self.value().transfer_hashes()
-    }
-
-    fn deploys_and_transfers_iter(
-        &self,
-    ) -> impl Iterator<Item = (DeployOrTransferHash, BTreeSet<Approval>)> + '_ {
-        let deploys = self.value().deploys().iter().map(|dwa| {
-            (
-                DeployOrTransferHash::Deploy(*dwa.deploy_hash()),
-                dwa.approvals().clone(),
-            )
-        });
-        let transfers = self.value().transfers().iter().map(|dwa| {
-            (
-                DeployOrTransferHash::Transfer(*dwa.deploy_hash()),
-                dwa.approvals().clone(),
-            )
-        });
-        deploys.chain(transfers)
+    fn transfers(&self) -> &Vec<DeployHashWithApprovals> {
+        self.value().transfers()
     }
 }
 
-/// Block validator component event.
-#[derive(Debug, From, Display)]
-pub(crate) enum Event {
-    /// A request made of the block validator component.
-    #[from]
-    Request(BlockValidationRequest),
-
-    /// A deploy has been successfully found.
-    #[display(fmt = "{} found", dt_hash)]
-    DeployFound {
-        dt_hash: DeployOrTransferHash,
-        deploy_footprint: Box<DeployFootprint>,
-    },
-
-    /// A request to find a specific deploy, potentially from a peer, failed.
-    #[display(fmt = "{} missing", _0)]
-    DeployMissing(DeployOrTransferHash),
-
-    /// Deploy was invalid. Unable to convert to a deploy type.
-    #[display(fmt = "{} invalid", _0)]
-    CannotConvertDeploy(DeployOrTransferHash),
-}
-
-/// State of the current process of block validation.
-///
-/// Tracks whether or not there are deploys still missing and who is interested in the final result.
-#[derive(DataSize, Debug)]
-pub(crate) struct BlockValidationState {
-    /// Appendable block ensuring that the deploys satisfy the validity conditions.
-    appendable_block: AppendableBlock,
-    /// The set of approvals contains approvals from deploys that would be finalized with the
-    /// block.
-    missing_deploys: HashMap<DeployOrTransferHash, BTreeSet<Approval>>,
-    /// A list of responders that are awaiting an answer.
-    responders: SmallVec<[Responder<bool>; 2]>,
-}
-
-impl BlockValidationState {
-    fn respond<REv>(&mut self, value: bool) -> Effects<REv> {
-        self.responders
-            .drain(..)
-            .flat_map(|responder| responder.respond(value).ignore())
-            .collect()
-    }
+/// The return type of trying to handle a validation request as an already-existing request.
+enum MaybeHandled {
+    /// The request is already being handled - return the wrapped effects and finish.
+    Handled(Effects<Event>),
+    /// The request is new - it still needs to be handled.
+    NotHandled(BlockValidationRequest),
 }
 
 #[derive(DataSize, Debug)]
@@ -128,38 +69,261 @@ pub(crate) struct BlockValidator {
     /// Chainspec loaded for deploy validation.
     #[data_size(skip)]
     chainspec: Arc<Chainspec>,
+    config: Config,
     /// State of validation of a specific block.
     validation_states: HashMap<ProposedBlock<ClContext>, BlockValidationState>,
-    /// Number of requests for a specific deploy hash still in flight.
-    in_flight: KeyedCounter<DeployHash>,
 }
 
 impl BlockValidator {
     /// Creates a new block validator instance.
-    pub(crate) fn new(chainspec: Arc<Chainspec>) -> Self {
+    pub(crate) fn new(chainspec: Arc<Chainspec>, config: Config) -> Self {
         BlockValidator {
             chainspec,
+            config,
             validation_states: HashMap::new(),
-            in_flight: KeyedCounter::default(),
         }
     }
 
-    /// Prints a log message about an invalid block with duplicated deploys.
-    fn log_block_with_replay(&self, sender: NodeId, block: &ProposedBlock<ClContext>) {
-        let mut deploy_counts = BTreeMap::new();
-        for (dt_hash, _) in block.deploys_and_transfers_iter() {
-            *deploy_counts.entry(dt_hash).or_default() += 1;
+    /// If the request is already being handled, we record the new info and return effects.  If not,
+    /// the request is returned for processing as a new request.
+    fn try_handle_as_existing_request<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        request: BlockValidationRequest,
+    ) -> MaybeHandled
+    where
+        REv: From<Event> + From<FetcherRequest<Deploy>> + Send,
+    {
+        if let Some(state) = self.validation_states.get_mut(&request.block) {
+            let BlockValidationRequest {
+                block,
+                sender,
+                responder,
+            } = request;
+            debug!(%sender, %block, "already validating proposed block");
+            match state.add_responder(responder) {
+                AddResponderResult::Added => {}
+                AddResponderResult::ValidationCompleted {
+                    responder,
+                    response_to_send,
+                } => {
+                    debug!(%response_to_send, "proposed block validation already completed");
+                    return MaybeHandled::Handled(responder.respond(response_to_send).ignore());
+                }
+            }
+            state.add_holder(sender);
+
+            let effects = match state.start_fetching() {
+                MaybeStartFetching::Start {
+                    holder,
+                    missing_deploys,
+                } => fetch_deploys(effect_builder, holder, missing_deploys),
+                MaybeStartFetching::Ongoing => {
+                    debug!("ongoing fetches while validating proposed block - noop");
+                    Effects::new()
+                }
+                MaybeStartFetching::Unable => {
+                    debug!("no new info while validating proposed block - responding `false`");
+                    respond(false, state.take_responders())
+                }
+                MaybeStartFetching::ValidationSucceeded | MaybeStartFetching::ValidationFailed => {
+                    // If validation is already completed, we should have exited in the
+                    // `AddResponderResult::ValidationCompleted` branch above.
+                    error!("proposed block validation already completed - noop");
+                    Effects::new()
+                }
+            };
+            MaybeHandled::Handled(effects)
+        } else {
+            MaybeHandled::NotHandled(request)
         }
-        let duplicates = deploy_counts
-            .into_iter()
-            .filter_map(|(dt_hash, count): (DeployOrTransferHash, usize)| {
-                (count > 1).then(|| format!("{} * {}", count, dt_hash))
-            })
-            .join(", ");
-        info!(
-            peer_id=?sender, %duplicates,
-            "received invalid block containing duplicated deploys"
-        );
+    }
+
+    fn handle_new_request<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        BlockValidationRequest {
+            block,
+            sender,
+            responder,
+        }: BlockValidationRequest,
+    ) -> Effects<Event>
+    where
+        REv: From<Event> + From<FetcherRequest<Deploy>> + Send,
+    {
+        debug!(%sender, %block, "validating new proposed block");
+        debug_assert!(!self.validation_states.contains_key(&block));
+        let (mut state, maybe_responder) =
+            BlockValidationState::new(&block, sender, responder, self.chainspec.as_ref());
+        let effects = match state.start_fetching() {
+            MaybeStartFetching::Start {
+                holder,
+                missing_deploys,
+            } => fetch_deploys(effect_builder, holder, missing_deploys),
+            MaybeStartFetching::ValidationSucceeded => {
+                debug!("no deploys - block validation complete");
+                debug_assert!(maybe_responder.is_some());
+                respond(true, maybe_responder)
+            }
+            MaybeStartFetching::ValidationFailed => {
+                debug_assert!(maybe_responder.is_some());
+                respond(false, maybe_responder)
+            }
+            MaybeStartFetching::Ongoing | MaybeStartFetching::Unable => {
+                // This `MaybeStartFetching` variant should never be returned here.
+                error!(%state, "invalid state while handling new block validation");
+                debug_assert!(false, "invalid state {}", state);
+                respond(false, state.take_responders())
+            }
+        };
+        self.validation_states.insert(block, state);
+        self.purge_oldest_complete();
+        effects
+    }
+
+    fn purge_oldest_complete(&mut self) {
+        let mut completed_times: Vec<_> = self
+            .validation_states
+            .values()
+            .filter_map(BlockValidationState::block_timestamp_if_completed)
+            .collect();
+        // Sort from newest (highest timestamp) to oldest.
+        completed_times.sort_unstable_by(|lhs, rhs| rhs.cmp(lhs));
+
+        // Normally we'll only need to remove a maximum of a single entry, but loop until we don't
+        // exceed the completed limit to cover any edge cases.
+        let max_completed_entries = self.config.max_completed_entries as usize;
+        while completed_times.len() > max_completed_entries {
+            self.validation_states.retain(|_block, state| {
+                if completed_times.len() <= max_completed_entries {
+                    return true;
+                }
+                if state.block_timestamp_if_completed().as_ref() == completed_times.last() {
+                    debug!(
+                        %state,
+                        num_completed_remaining = (completed_times.len() - 1),
+                        "purging completed block validation state"
+                    );
+                    let _ = completed_times.pop();
+                    return false;
+                }
+                true
+            });
+        }
+    }
+
+    fn handle_deploy_fetched<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        dt_hash: DeployOrTransferHash,
+        result: FetchResult<Deploy>,
+    ) -> Effects<Event>
+    where
+        REv: From<Event> + From<FetcherRequest<Deploy>> + Send,
+    {
+        match &result {
+            Ok(FetchedData::FromPeer { peer, .. }) => {
+                debug!(%dt_hash, %peer, "fetched deploy from peer")
+            }
+            Ok(FetchedData::FromStorage { .. }) => debug!(%dt_hash, "fetched deploy locally"),
+            Err(error) => warn!(%dt_hash, %error, "could not fetch deploy"),
+        }
+        match result {
+            Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => {
+                if item.deploy_or_transfer_hash() != dt_hash {
+                    warn!(
+                        deploy = %item,
+                        expected_deploy_or_transfer_hash = %dt_hash,
+                        actual_deploy_or_transfer_hash = %item.deploy_or_transfer_hash(),
+                        "deploy has incorrect deploy-or-transfer hash"
+                    );
+                    // Hard failure - change state to Invalid.
+                    let responders = self
+                        .validation_states
+                        .values_mut()
+                        .flat_map(|state| state.try_mark_invalid(&dt_hash));
+                    return respond(false, responders);
+                }
+                let deploy_footprint = match item.footprint() {
+                    Ok(footprint) => footprint,
+                    Err(error) => {
+                        warn!(
+                            deploy = %item,
+                            %dt_hash,
+                            %error,
+                            "could not convert deploy",
+                        );
+                        // Hard failure - change state to Invalid.
+                        let responders = self
+                            .validation_states
+                            .values_mut()
+                            .flat_map(|state| state.try_mark_invalid(&dt_hash));
+                        return respond(false, responders);
+                    }
+                };
+
+                let mut effects = Effects::new();
+                for state in self.validation_states.values_mut() {
+                    let responders = state.try_add_deploy_footprint(&dt_hash, &deploy_footprint);
+                    if !responders.is_empty() {
+                        let is_valid = matches!(state, BlockValidationState::Valid(_));
+                        effects.extend(respond(is_valid, responders));
+                    }
+                }
+                effects
+            }
+            Err(error) => {
+                match error {
+                    fetcher::Error::Absent { peer, .. }
+                    | fetcher::Error::Rejected { peer, .. }
+                    | fetcher::Error::TimedOut { peer, .. } => {
+                        // Soft failure - just mark the holder as failed and see if we can start
+                        // fetching using a different holder.
+                        let mut effects = Effects::new();
+                        self.validation_states.values_mut().for_each(|state| {
+                            state.try_mark_holder_failed(&peer);
+                            match state.start_fetching() {
+                                MaybeStartFetching::Start {
+                                    holder,
+                                    missing_deploys,
+                                } => {
+                                    debug!(
+                                        %holder,
+                                        missing_deploys_len = missing_deploys.len(),
+                                        "fetching missing deploys from different peer"
+                                    );
+                                    effects.extend(fetch_deploys(
+                                        effect_builder,
+                                        holder,
+                                        missing_deploys,
+                                    ))
+                                }
+                                MaybeStartFetching::Unable => {
+                                    debug!(
+                                        "exhausted peers while validating proposed block - \
+                                        responding `false`"
+                                    );
+                                    effects.extend(respond(false, state.take_responders()));
+                                }
+                                MaybeStartFetching::Ongoing
+                                | MaybeStartFetching::ValidationSucceeded
+                                | MaybeStartFetching::ValidationFailed => {}
+                            }
+                        });
+                        effects
+                    }
+                    fetcher::Error::CouldNotConstructGetRequest { .. }
+                    | fetcher::Error::ValidationMetadataMismatch { .. } => {
+                        // Hard failure - change state to Invalid.
+                        let responders = self
+                            .validation_states
+                            .values_mut()
+                            .flat_map(|state| state.try_mark_invalid(&dt_hash));
+                        respond(false, responders)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -167,7 +331,7 @@ impl<REv> Component<REv> for BlockValidator
 where
     REv: From<Event>
         + From<BlockValidationRequest>
-        + From<FetcherRequest<LegacyDeploy>>
+        + From<FetcherRequest<Deploy>>
         + From<StorageRequest>
         + Send,
 {
@@ -179,182 +343,19 @@ where
         _rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event> {
-        let mut effects = Effects::new();
         match event {
-            Event::Request(BlockValidationRequest {
-                block,
-                sender,
-                responder,
-            }) => {
-                debug!(?block, "validating proposed block");
-                if block.deploy_hashes().count()
-                    > self.chainspec.deploy_config.block_max_deploy_count as usize
-                {
-                    return responder.respond(false).ignore();
-                }
-                if block.transfer_hashes().count()
-                    > self.chainspec.deploy_config.block_max_transfer_count as usize
-                {
-                    return responder.respond(false).ignore();
-                }
-
-                let deploy_count = block.deploy_hashes().count() + block.transfer_hashes().count();
-                if deploy_count == 0 {
-                    // If there are no deploys, return early.
-                    return responder.respond(true).ignore();
-                }
-
-                // Collect the deploys in a map. If they are fewer now, then there was a duplicate!
-                let block_deploys: HashMap<_, _> = block.deploys_and_transfers_iter().collect();
-                if block_deploys.len() != deploy_count {
-                    self.log_block_with_replay(sender, &block);
-                    return responder.respond(false).ignore();
-                }
-
-                let block_timestamp = block.timestamp();
-                let state = match self.validation_states.entry(block) {
-                    Entry::Occupied(entry) => {
-                        let state = entry.into_mut();
-                        debug!(?state, "already validating this proposed block");
-                        state
+            Event::Request(request) => {
+                match self.try_handle_as_existing_request(effect_builder, request) {
+                    MaybeHandled::Handled(effects) => effects,
+                    MaybeHandled::NotHandled(request) => {
+                        self.handle_new_request(effect_builder, request)
                     }
-                    Entry::Vacant(entry) => {
-                        let state = BlockValidationState {
-                            appendable_block: AppendableBlock::new(
-                                self.chainspec.deploy_config,
-                                block_timestamp,
-                            ),
-                            missing_deploys: block_deploys.clone(),
-                            responders: smallvec![],
-                        };
-                        entry.insert(state)
-                    }
-                };
-
-                if state.missing_deploys.is_empty() {
-                    debug!(
-                        block_timestamp = %state.appendable_block.timestamp(),
-                        "no missing deploys - block validation complete"
-                    );
-                    // Block has already been validated successfully or has no deploys.
-                    return responder.respond(true).ignore();
                 }
-
-                // We register ourselves as someone interested in the ultimate validation result.
-                state.responders.push(responder);
-
-                effects.extend(block_deploys.into_iter().flat_map(|(dt_hash, _)| {
-                    // For every request, increase the number of in-flight...
-                    self.in_flight.inc(&dt_hash.into());
-                    // ...then request it.
-                    fetch_deploy(effect_builder, dt_hash, sender)
-                }));
             }
-            Event::DeployFound {
-                dt_hash,
-                deploy_footprint,
-            } => {
-                // We successfully found a hash. Decrease the number of outstanding requests.
-                self.in_flight.dec(&dt_hash.into());
-
-                // If a deploy is received for a given block that makes that block invalid somehow,
-                // mark it for removal.
-                let mut invalid = Vec::new();
-
-                // Our first pass updates all validation states, crossing off the found deploy.
-                for (key, state) in self.validation_states.iter_mut() {
-                    if let Some(approvals) = state.missing_deploys.remove(&dt_hash) {
-                        // If the deploy is of the wrong type or would be invalid for this block,
-                        // notify everyone still waiting on it that all is lost.
-                        let add_result = match dt_hash {
-                            DeployOrTransferHash::Deploy(hash) => {
-                                state.appendable_block.add_deploy(
-                                    DeployHashWithApprovals::new(hash, approvals.clone()),
-                                    &deploy_footprint,
-                                )
-                            }
-                            DeployOrTransferHash::Transfer(hash) => {
-                                state.appendable_block.add_transfer(
-                                    DeployHashWithApprovals::new(hash, approvals.clone()),
-                                    &deploy_footprint,
-                                )
-                            }
-                        };
-                        if let Err(err) = add_result {
-                            info!(block = ?key, %dt_hash, ?deploy_footprint, ?err, "block invalid");
-                            invalid.push(key.clone());
-                        }
-                        debug!(
-                            block_timestamp = %state.appendable_block.timestamp(),
-                            deploy_hash = %dt_hash,
-                            missing_deploy_count = %state.missing_deploys.len(),
-                            "found deploy for block validation"
-                        );
-                    }
-                }
-
-                // Now we remove all states that have finished and notify the requesters.
-                self.validation_states.retain(|key, state| {
-                    if invalid.contains(key) {
-                        effects.extend(state.respond(false));
-                        return false;
-                    }
-                    if state.missing_deploys.is_empty() {
-                        // This one is done and valid.
-                        effects.extend(state.respond(true));
-                        debug!(
-                            block_timestamp = %state.appendable_block.timestamp(),
-                            "no further missing deploys - block validation complete"
-                        );
-                        return false;
-                    }
-                    true
-                });
-            }
-            Event::DeployMissing(dt_hash) => {
-                info!(%dt_hash, "request to download deploy timed out");
-                // A deploy failed to fetch. If there is still hope (i.e. other outstanding
-                // requests), we just ignore this little accident.
-                if self.in_flight.dec(&dt_hash.into()) != 0 {
-                    return Effects::new();
-                }
-
-                self.validation_states.retain(|key, state| {
-                    if !state.missing_deploys.contains_key(&dt_hash) {
-                        return true;
-                    }
-
-                    // Notify everyone still waiting on it that all is lost.
-                    info!(block = ?key, %dt_hash, "could not validate the deploy. block is invalid");
-                    // This validation state contains a deploy hash we failed to fetch from all
-                    // sources, it can never succeed.
-                    effects.extend(state.respond(false));
-                    false
-                });
-            }
-            Event::CannotConvertDeploy(dt_hash) => {
-                // Deploy is invalid. There's no point waiting for other in-flight requests to
-                // finish.
-                self.in_flight.dec(&dt_hash.into());
-
-                self.validation_states.retain(|key, state| {
-                    if state.missing_deploys.contains_key(&dt_hash) {
-                        // Notify everyone still waiting on it that all is lost.
-                        info!(
-                            block = ?key, %dt_hash,
-                            "could not convert deploy to deploy type. block is invalid"
-                        );
-                        // This validation state contains a failed deploy hash, it can never
-                        // succeed.
-                        effects.extend(state.respond(false));
-                        false
-                    } else {
-                        true
-                    }
-                });
+            Event::DeployFetched { dt_hash, result } => {
+                self.handle_deploy_fetched(effect_builder, dt_hash, result)
             }
         }
-        effects
     }
 
     fn name(&self) -> &str {
@@ -362,56 +363,31 @@ where
     }
 }
 
-/// Returns effects that fetch the deploy and validate it.
-fn fetch_deploy<REv>(
+fn fetch_deploys<REv>(
     effect_builder: EffectBuilder<REv>,
-    dt_hash: DeployOrTransferHash,
-    sender: NodeId,
+    holder: NodeId,
+    missing_deploys: HashMap<DeployOrTransferHash, ApprovalsHash>,
 ) -> Effects<Event>
 where
-    REv: From<Event> + From<FetcherRequest<LegacyDeploy>> + Send,
+    REv: From<Event> + From<FetcherRequest<Deploy>> + Send,
 {
-    async move {
-        let deploy_hash: DeployHash = dt_hash.into();
-        let deploy = match effect_builder
-            .fetch::<LegacyDeploy>(deploy_hash, sender, Box::new(EmptyValidationMetadata))
-            .await
-        {
-            Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => {
-                Deploy::from(*item)
-            }
-            Err(fetcher_error) => {
-                warn!(
-                    "Could not fetch deploy with deploy hash {}: {}",
-                    deploy_hash, fetcher_error
-                );
-                return Event::DeployMissing(dt_hash);
-            }
-        };
-        if deploy.deploy_or_transfer_hash() != dt_hash {
-            warn!(
-                deploy = ?deploy,
-                expected_deploy_or_transfer_hash = ?dt_hash,
-                actual_deploy_or_transfer_hash = ?deploy.deploy_or_transfer_hash(),
-                "Deploy has incorrect transfer hash"
-            );
-            return Event::CannotConvertDeploy(dt_hash);
-        }
-        match deploy.footprint() {
-            Ok(deploy_footprint) => Event::DeployFound {
-                dt_hash,
-                deploy_footprint: Box::new(deploy_footprint),
-            },
-            Err(error) => {
-                warn!(
-                    deploy = ?deploy,
-                    deploy_or_transfer_hash = ?dt_hash,
-                    ?error,
-                    "Could not convert deploy",
-                );
-                Event::CannotConvertDeploy(dt_hash)
-            }
-        }
-    }
-    .event(std::convert::identity)
+    missing_deploys
+        .into_iter()
+        .flat_map(|(dt_hash, approvals_hash)| {
+            let deploy_id = DeployId::new(dt_hash.into(), approvals_hash);
+            effect_builder
+                .fetch::<Deploy>(deploy_id, holder, Box::new(EmptyValidationMetadata))
+                .event(move |result| Event::DeployFetched { dt_hash, result })
+        })
+        .collect()
+}
+
+fn respond(
+    is_valid: bool,
+    responders: impl IntoIterator<Item = Responder<bool>>,
+) -> Effects<Event> {
+    responders
+        .into_iter()
+        .flat_map(|responder| responder.respond(is_valid).ignore())
+        .collect()
 }

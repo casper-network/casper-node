@@ -18,7 +18,7 @@ itertools = "0.10.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 tracing = "0.1.34"
-warp = "0.3.2"
+warp = "0.3.6"
 
 [dev-dependencies]
 env_logger = "0.9.0"
