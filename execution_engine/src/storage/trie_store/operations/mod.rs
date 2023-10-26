@@ -593,10 +593,11 @@ where
                                 let trie_key = new_extension.trie_hash()?;
                                 new_elements.push((trie_key, new_extension))
                             }
-                            // The single sibling is an extension.  We output an extension to replace
-                            // the parent, prepending the sibling index to the sibling's affix.  In
-                            // the next loop iteration, we will handle the case where this extension
-                            // might need to be combined with a grandparent extension.
+                            // The single sibling is an extension.  We output an extension to
+                            // replace the parent, prepending the sibling index to the sibling's
+                            // affix.  In the next loop iteration, we will handle the case where
+                            // this extension might need to be combined with a grandparent
+                            // extension.
                             Trie::Extension {
                                 affix: extension_affix,
                                 pointer,
