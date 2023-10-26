@@ -224,7 +224,7 @@ impl<C: Context> Highway<C> {
         self.active_validator = None;
     }
 
-    /// Gets the next round exponent
+    /// Gets the round exponent for the next message this instance will create.
     #[cfg(test)]
     #[allow(clippy::integer_arithmetic)]
     pub(crate) fn get_round_exp(&self) -> Option<u8> {
