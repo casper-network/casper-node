@@ -844,6 +844,66 @@ fn should_allow_funding_by_an_authorized_account() {
 
 #[ignore]
 #[test]
+fn should_refund_proper_amount() {
+    let user_account = AccountHash::new([7u8; 32]);
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+
+    let payment_amount = U512::from(10_000_000_000u64);
+
+    let mut helper = FaucetDeployHelper::default();
+    builder
+        .exec(helper.fund_installer_request())
+        .expect_success()
+        .commit();
+
+    let user_account_initial_balance = U512::from(15_000_000_000u64);
+
+    let fund_user_request = FundAccountRequestBuilder::new()
+        .with_target_account(user_account)
+        .with_fund_amount(user_account_initial_balance)
+        .build();
+
+    builder.exec(fund_user_request).expect_success().commit();
+
+    builder
+        .exec(helper.faucet_install_request())
+        .expect_success()
+        .commit();
+
+    helper.query_and_set_faucet_contract_hash(&builder);
+
+    builder
+        .exec(helper.faucet_config_request())
+        .expect_success()
+        .commit();
+
+    let user_purse_uref = builder.get_expected_account(user_account).main_purse();
+    let user_purse_balance_before = builder.get_purse_balance(user_purse_uref);
+
+    builder
+        .exec(
+            helper
+                .new_faucet_fund_request_builder()
+                .with_user_account(user_account)
+                .with_payment_amount(payment_amount)
+                .build(),
+        )
+        .expect_success()
+        .commit();
+
+    let refund = builder.calculate_refund_amount(payment_amount);
+    let user_purse_balance_after = builder.get_purse_balance(user_purse_uref);
+
+    assert_eq!(
+        user_purse_balance_after,
+        user_purse_balance_before - payment_amount + refund
+    );
+}
+
+#[ignore]
+#[test]
 fn faucet_costs() {
     // This test will fail if execution costs vary.  The expected costs should not be updated
     // without understanding why the cost has changed.  If the costs do change, it should be
