@@ -89,7 +89,7 @@ impl ConsensusEnvironment {
         self.slow_validators.contains(self.our_pub_key())
     }
 
-    fn round_len(&self) -> u64 {
+    fn min_round_len(&self) -> u64 {
         self.highway()
             .highway()
             .state()
@@ -103,7 +103,7 @@ impl ConsensusEnvironment {
     }
 
     pub(super) fn crank_round(&mut self) {
-        let min_round_len = self.round_len();
+        let min_round_len = self.min_round_len();
         let round_id = Timestamp::from(self.current_round_start);
         let leader = self.leaders.leader(round_id.millis());
         let leader_pub_key = self
@@ -143,11 +143,12 @@ impl ConsensusEnvironment {
         if leader_is_slow {
             // all validators will just send witness units, as they won't receive a proposal before
             // witness timeout
-            let witness_units: Vec<_> = self
+            let mut witness_units: Vec<_> = self
                 .validators
                 .iter()
                 .enumerate()
                 .skip(1)
+                .filter(|(vid, _)| *vid != leader.0 as usize)
                 .map(|(vid, (_, (keypair, _)))| {
                     self.create_swunit_from(
                         (vid as u32).into(),
@@ -158,6 +159,18 @@ impl ConsensusEnvironment {
                     )
                 })
                 .collect();
+            if leader.0 != 0 {
+                // the leader has to create a witness from the post-proposal state, or it will
+                // equivocate
+                let keypair = &self.validators.values().nth(leader.0 as usize).unwrap().0;
+                witness_units.push(self.create_swunit_from(
+                    leader.0.into(),
+                    keypair,
+                    &post_proposal_state,
+                    min_round_len * 2 / 3,
+                    None,
+                ));
+            }
             // we create a witness, too
             if !self.is_slow() {
                 let timestamp = (self.current_round_start + min_round_len * 2 / 3).into();
@@ -178,7 +191,7 @@ impl ConsensusEnvironment {
                 self.handle_message(msg, min_round_len * 3 / 4);
             }
 
-            self.add_vertices((self.current_round_start + min_round_len * 4 / 5).into());
+            self.add_vertices((self.current_round_start + min_round_len * 3 / 4 + 1).into());
         } else {
             // every fast validator creates a confirmation
             let fast_confirmation_units: Vec<_> = self
@@ -285,6 +298,13 @@ impl ConsensusEnvironment {
     }
 
     fn this_node_propose(&mut self) {
+        if (self.current_round_start / self.min_round_len()).trailing_zeros()
+            < self.our_round_exp() as u32
+        {
+            // we're not proposing if we shouldn't even be participating in this round
+            return;
+        }
+
         let now: Timestamp = self.current_round_start.into();
         // the timer triggers a request for block content
         let outcomes =
@@ -298,7 +318,10 @@ impl ConsensusEnvironment {
                 ProtocolOutcome::CreateNewBlock(context) => Some(context.clone()),
                 _ => None,
             })
-            .unwrap_or_else(|| panic!("outcomes didn't contain CreateNewBlock: {:?}", outcomes));
+            .unwrap_or_else(|| {
+                self.dump();
+                panic!("outcomes didn't contain CreateNewBlock: {:?}", outcomes)
+            });
         // this should create the proposal unit, add it to the state and create a message to be
         // broadcast - we can ignore the message, because we don't keep other consensus
         // instances
