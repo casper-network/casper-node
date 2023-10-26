@@ -2,10 +2,141 @@
 //!
 //! Failpoints can enabled on the node to inject faulty behavior at runtime, for testing and
 //! benchmarking purposes.
+//!
+//! # General usage
+//!
+//! Failpoints are created in code using `Failpoint`, and activated using a `FailpointActivation`.
+//! See the `failpoints::test::simple_usecase` test for an example.
 
 use std::fmt::{self, Debug, Display};
 
+use rand::{distributions::Uniform, prelude::Distribution, Rng};
+use serde::de::DeserializeOwned;
 use serde_json::Value;
+use tracing::{info, instrument, trace, warn};
+
+use crate::utils::opt_display::OptDisplay;
+
+/// A specific failpoint.
+#[derive(Debug)]
+pub(crate) struct Failpoint<T> {
+    /// Key that activates the given failpoint.
+    key: &'static str,
+    /// Subkey that potentially activates the given failpoint.
+    subkey: Option<String>,
+    /// The value of the failpoint, if any.
+    value: Option<T>,
+    /// Activation probability.
+    probability: Option<f32>,
+    /// Whether to trigger the failpoint only once.
+    once: bool,
+    /// Whether the failpoint has already fired.
+    fired: bool,
+}
+
+impl<T> Failpoint<T>
+where
+    T: Debug + DeserializeOwned,
+{
+    /// Creates a new failpoint with a given key.
+    #[inline(always)]
+    pub(crate) fn new(key: &'static str) -> Self {
+        Failpoint {
+            key,
+            subkey: None,
+            value: None,
+            probability: None,
+            once: false,
+            fired: false,
+        }
+    }
+
+    /// Creates a new failpoint with a given key and optional subkey.
+    #[inline]
+    pub(crate) fn new_with_subkey<S: ToString>(key: &'static str, subkey: S) -> Self {
+        Failpoint {
+            key,
+            subkey: Some(subkey.to_string()),
+            value: None,
+            probability: None,
+            once: false,
+            fired: false,
+        }
+    }
+
+    /// Update a failpoint from a given `FailpointActivation`.
+    ///
+    /// The failpoint will be changed if the given activation matches `key` and `subkey` only.
+    #[instrument(level = "error",
+                 fields(fp_key=self.key,
+                        fp_subkey=%OptDisplay::new(self.subkey.as_ref(), "")
+                       )
+                )]
+    fn update_from(&mut self, activation: &FailpointActivation) {
+        // Check if the failpoint matches.
+        if activation.key != self.key || activation.subkey != self.subkey {
+            trace!("not updating failpoint");
+            return;
+        }
+
+        // Values can fail, so update these first.
+        if let Some(value) = activation.value.as_ref() {
+            match serde_json::from_value::<T>(value.clone()) {
+                Ok(value) => self.value = Some(value),
+                Err(err) => warn!(%err, "failed to deserialize failpoint value"),
+            }
+        } else {
+            self.value = None;
+        }
+
+        self.probability = activation.probability;
+        self.once = self.once;
+
+        if self.value.is_some() {
+            info!("activated failpoint");
+        } else {
+            info!("cleared failpoint");
+        }
+    }
+
+    /// Fire the failpoint, if active.
+    ///
+    /// Returns the value of the failpoint, if it fired.
+    #[inline(always)]
+    pub(crate) fn fire<R: Rng>(&mut self, rng: &mut R) -> Option<&T> {
+        if self.value.is_some() {
+            self.do_fire(rng)
+        } else {
+            None
+        }
+    }
+
+    /// Inner `fire` implementation.
+    ///
+    /// `fire` is kept small for facilitate inlining and fast processing of disabled failpoints.
+    #[inline]
+    fn do_fire<R: Rng>(&mut self, rng: &mut R) -> Option<&T> {
+        if let Some(p) = self.probability {
+            let p_range = Uniform::new_inclusive(0.0, 1.0);
+            if p_range.sample(rng) > p as f64 {
+                return None;
+            }
+        }
+
+        if self.once && self.fired {
+            return None;
+        }
+
+        self.fired = true;
+        self.value()
+    }
+
+    /// Returns the value of the failpoint, if it is set.
+    #[inline]
+    fn value(&self) -> Option<&T> {
+        self.value.as_ref()
+    }
+}
 
 /// A parsed failpoint activation.
 #[derive(Clone, Debug, PartialEq)]
@@ -45,7 +176,7 @@ impl Display for FailpointActivation {
 impl FailpointActivation {
     /// Creates a new [`FailpointActivation`] with the given `key`.
     #[inline(always)]
-    pub fn new<S: ToString>(key: S) -> FailpointActivation {
+    pub(crate) fn new<S: ToString>(key: S) -> FailpointActivation {
         FailpointActivation {
             key: key.to_string(),
             subkey: None,
@@ -57,7 +188,7 @@ impl FailpointActivation {
 
     /// Sets the subkey.
     #[inline(always)]
-    pub fn subkey<S: ToString>(mut self, subkey: S) -> Self {
+    pub(crate) fn subkey<S: ToString>(mut self, subkey: S) -> Self {
         self.subkey = Some(subkey.to_string());
         self
     }
@@ -102,8 +233,10 @@ impl FailpointActivation {
 
     /// Parse a failpoint activation from a string definition.
     ///
-    /// Failpoint syntax is as follows: `key(,meta=meta_value)*:value`, with `key` being the
+    /// Failpoint syntax is as follows: `key(,meta=meta_value)*(:value)?`, with `key` being the
     /// identifier of the failpoint, `meta` being additional settings, and `value` JSON encoded.
+    ///
+    /// If `value` is not set, the failpoint is cleared instead of being set.
     ///
     /// The following `meta` values are understood:
     ///
@@ -115,7 +248,7 @@ impl FailpointActivation {
     ///
     /// Examples:
     ///
-    /// * `foobar` sets the failpoint with key "foobar".
+    /// * `foobar` clears the failpoint with key "foobar".
     /// * `foobar,sub=example value,p=0.123,once={"hello": "world"}` sets the failpoint "foobar",
     ///    with a subkey of "example value", a probability of 12.3%, to be fired only once, and a
     ///    JSON encoded value of `{"hello": "world"}`.
@@ -159,9 +292,15 @@ impl FailpointActivation {
     }
 }
 
+// TODO: Convert `parse` to `from_str`.
+
 #[cfg(test)]
 mod tests {
-    use super::FailpointActivation;
+    use std::str::FromStr;
+
+    use casper_types::{testing::TestRng, TimeDiff};
+
+    use super::{Failpoint, FailpointActivation};
 
     #[test]
     fn parse_failpoints() {
@@ -282,24 +421,45 @@ mod tests {
     #[test]
     fn display_works() {
         assert_eq!(
-            FailpointSetting::parse("foobar:{\"hello\": \"world\", \"count\": 1}")
+            FailpointActivation::parse("foobar:{\"hello\": \"world\", \"count\": 1}")
                 .expect("should parse")
                 .to_string(),
             "foobar:{\"hello\":\"world\",\"count\":1}"
         );
 
         assert_eq!(
-            FailpointSetting::parse("foobar,p=0.5,sub=xyz,once:true")
+            FailpointActivation::parse("foobar,p=0.5,sub=xyz,once:true")
                 .expect("should parse")
                 .to_string(),
             "foobar,sub=xyz,p=0.5,once:true"
         );
 
         assert_eq!(
-            FailpointSetting::parse("abc_123")
+            FailpointActivation::parse("abc_123")
                 .expect("should parse")
                 .to_string(),
             "abc_123"
         );
+    }
+
+    // TODO: Test for priming failpoints.
+    // TODO: Test triggering failpoint.
+
+    #[test]
+    fn simple_usecase() {
+        let mut rng = TestRng::new();
+        let mut delay_send_fp = Failpoint::<TimeDiff>::new("example.delay_send");
+
+        if let Some(_diff) = delay_send_fp.fire(&mut rng) {
+            panic!("should not reach disabled failpoint");
+        }
+
+        let activation = FailpointActivation::parse("example.delay_send=\"1s\"").unwrap();
+
+        delay_send_fp.update_from(&activation);
+
+        if let Some(diff) = delay_send_fp.fire(&mut rng) {
+            assert_eq!(*diff, TimeDiff::from_str("1s").unwrap());
+        }
     }
 }

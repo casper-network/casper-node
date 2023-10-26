@@ -27,6 +27,7 @@ pub(crate) mod components;
 mod config_migration;
 mod data_migration;
 pub(crate) mod effect;
+pub(crate) mod failpoints;
 pub mod logging;
 pub(crate) mod protocol;
 pub(crate) mod reactor;
