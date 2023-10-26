@@ -320,6 +320,10 @@ impl<REv: 'static> ComponentHarness<REv> {
                     ControlAnnouncement::QueueDumpRequest { .. } => {
                         panic!("queue dumps are not supported in the test harness")
                     }
+                    ControlAnnouncement::ActivateFailpoint { .. } => {
+                        panic!("currently no failpoint activations implemented in test harness")
+                        // TODO: forward to component instead
+                    },
                 }
             }
 

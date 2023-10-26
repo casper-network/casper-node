@@ -10,17 +10,22 @@
 
 use std::fmt::{self, Debug, Display};
 
+use datasize::DataSize;
 use rand::{distributions::Uniform, prelude::Distribution, Rng};
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 use tracing::{info, instrument, trace, warn};
 
 use crate::utils::opt_display::OptDisplay;
 
 /// A specific failpoint.
-#[derive(Debug)]
-pub(crate) struct Failpoint<T> {
+#[derive(DataSize, Debug)]
+pub(crate) struct Failpoint<T>
+where
+    T: DataSize,
+{
     /// Key that activates the given failpoint.
+    #[data_size(skip)]
     key: &'static str,
     /// Subkey that potentially activates the given failpoint.
     subkey: Option<String>,
@@ -36,7 +41,7 @@ pub(crate) struct Failpoint<T> {
 
 impl<T> Failpoint<T>
 where
-    T: Debug + DeserializeOwned,
+    T: Debug + DeserializeOwned + DataSize,
 {
     /// Creates a new failpoint with a given key.
     #[inline(always)]
@@ -139,10 +144,11 @@ where
 }
 
 /// A parsed failpoint activation.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, DataSize, Debug, PartialEq, Serialize)]
 pub(crate) struct FailpointActivation {
     key: String,
     subkey: Option<String>,
+    #[data_size(skip)] // TODO: Add a `DataSize` implementation for JSON `Value`s.
     value: Option<Value>,
     probability: Option<f32>,
     once: bool,
@@ -233,25 +239,7 @@ impl FailpointActivation {
 
     /// Parse a failpoint activation from a string definition.
     ///
-    /// Failpoint syntax is as follows: `key(,meta=meta_value)*(:value)?`, with `key` being the
-    /// identifier of the failpoint, `meta` being additional settings, and `value` JSON encoded.
-    ///
-    /// If `value` is not set, the failpoint is cleared instead of being set.
-    ///
-    /// The following `meta` values are understood:
-    ///
-    /// * `sub` sets the subkey (example: `sub=e4c2a1f`)
-    /// * `p` sets the probability, must be between `0.0` and `1.0` (example: `p=0.1`)
-    /// * `once` has no value and indicates the failpoint should only be fired once.
-    ///
-    /// No colons or commas are allowed in `key`, `meta` or `meta_value`.
-    ///
-    /// Examples:
-    ///
-    /// * `foobar` clears the failpoint with key "foobar".
-    /// * `foobar,sub=example value,p=0.123,once={"hello": "world"}` sets the failpoint "foobar",
-    ///    with a subkey of "example value", a probability of 12.3%, to be fired only once, and a
-    ///    JSON encoded value of `{"hello": "world"}`.
+    /// See `casper_node::components::diagnostics_port::command::Action` for a syntax description.
     pub(crate) fn parse(raw: &str) -> Option<Self> {
         let (raw_meta, value) = if let Some((left, right)) = raw.split_once(':') {
             (left, Some(serde_json::from_str::<Value>(right).ok()?))

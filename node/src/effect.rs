@@ -149,6 +149,7 @@ use crate::{
     contract_runtime::{
         RoundSeigniorageRateRequest, SpeculativeExecutionState, TotalSupplyRequest,
     },
+    failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
@@ -2159,6 +2160,19 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Control,
         )
         .await
+    }
+
+    /// Activates/deactivates a failpoint from a given activation.
+    pub(crate) async fn activate_failpoint(self, activation: FailpointActivation)
+    where
+        REv: From<ControlAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ControlAnnouncement::ActivateFailpoint { activation },
+                QueueKind::Control,
+            )
+            .await;
     }
 
     /// Announce that the node be shut down due to a request from a user.

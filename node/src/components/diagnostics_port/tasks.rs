@@ -36,6 +36,7 @@ use crate::{
         requests::{NetworkInfoRequest, SetNodeStopRequest},
         EffectBuilder,
     },
+    failpoints::FailpointActivation,
     logging,
     utils::{display_error, opt_display::OptDisplay},
 };
@@ -335,6 +336,26 @@ impl Session {
                             &OptDisplay::new(prev, "no previous stop-at spec"),
                         )
                         .await?;
+                    }
+                    Action::SetFailpoint { ref activation } => {
+                        match FailpointActivation::parse(activation) {
+                            Some(fp_activation) => {
+                                effect_builder.activate_failpoint(fp_activation).await;
+
+                                self.send_outcome(
+                                    writer,
+                                    &Outcome::success("failpoint activation sent".to_string()),
+                                )
+                                .await?;
+                            }
+                            None => {
+                                self.send_outcome(
+                                    writer,
+                                    &Outcome::failed("invalid failpoint activation".to_owned()),
+                                )
+                                .await?;
+                            }
+                        }
                     }
                     Action::Quit => {
                         self.send_outcome(writer, &Outcome::success("goodbye!"))
