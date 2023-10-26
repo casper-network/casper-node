@@ -74,6 +74,7 @@ use tracing::info;
 
 use crate::{
     effect::{EffectBuilder, Effects},
+    failpoints::FailpointActivation,
     NodeRng,
 };
 
@@ -140,6 +141,11 @@ pub(crate) trait Component<REv> {
 
     /// Name of the component.
     fn name(&self) -> &str;
+
+    /// Activate/deactivate a failpoint.
+    fn activate_failpoint(&mut self, activation: FailpointActivation) {
+        // Default is to ignore failpoints.
+    }
 }
 
 pub(crate) trait InitializedComponent<REv>: Component<REv> {
