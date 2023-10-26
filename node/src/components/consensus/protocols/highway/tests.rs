@@ -291,7 +291,6 @@ fn no_slow_down_when_all_nodes_fast() {
     assert_eq!(env.our_round_exp(), 0);
 }
 
-#[ignore = "TODO: unignore when exponent switching is improved"]
 #[test]
 fn slow_node_should_switch_own_round_exponent() {
     let mut validators = BTreeMap::new();
@@ -329,7 +328,6 @@ fn slow_node_should_switch_own_round_exponent() {
     assert!(env.our_round_exp() > 0);
 }
 
-#[ignore = "TODO: unignore when exponent switching is improved"]
 #[test]
 fn slow_down_when_majority_slow() {
     let mut validators = BTreeMap::new();
