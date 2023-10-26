@@ -3,14 +3,13 @@
 //! Failpoints can enabled on the node to inject faulty behavior at runtime, for testing and
 //! benchmarking purposes.
 
-use std::fmt::{self, Display};
+use std::fmt::{self, Debug, Display};
 
 use serde_json::Value;
 
-/// A parsed failpoint definition.
-///
+/// A parsed failpoint activation.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct FailpointSetting {
+pub(crate) struct FailpointActivation {
     key: String,
     subkey: Option<String>,
     value: Option<Value>,
@@ -18,7 +17,7 @@ pub(crate) struct FailpointSetting {
     once: bool,
 }
 
-impl Display for FailpointSetting {
+impl Display for FailpointActivation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.key)?;
 
@@ -43,11 +42,11 @@ impl Display for FailpointSetting {
     }
 }
 
-impl FailpointSetting {
-    /// Creates a new [`FailpointSetting`] with the given `key`.
+impl FailpointActivation {
+    /// Creates a new [`FailpointActivation`] with the given `key`.
     #[inline(always)]
-    pub fn new<S: ToString>(key: S) -> FailpointSetting {
-        FailpointSetting {
+    pub fn new<S: ToString>(key: S) -> FailpointActivation {
+        FailpointActivation {
             key: key.to_string(),
             subkey: None,
             value: None,
@@ -101,7 +100,7 @@ impl FailpointSetting {
         self
     }
 
-    /// Parse a failpoint from a string definition.
+    /// Parse a failpoint activation from a string definition.
     ///
     /// Failpoint syntax is as follows: `key(,meta=meta_value)*:value`, with `key` being the
     /// identifier of the failpoint, `meta` being additional settings, and `value` JSON encoded.
@@ -129,7 +128,7 @@ impl FailpointSetting {
 
         let mut fragments = raw_meta.split(',');
         let key = fragments.next()?;
-        let mut fps = FailpointSetting::new(key);
+        let mut fps = FailpointActivation::new(key);
 
         for fragment in fragments {
             let (meta, meta_value) = if let Some((left, right)) = fragment.split_once('=') {
@@ -162,13 +161,13 @@ impl FailpointSetting {
 
 #[cfg(test)]
 mod tests {
-    use super::FailpointSetting;
+    use super::FailpointActivation;
 
     #[test]
     fn parse_failpoints() {
         assert_eq!(
-            FailpointSetting::parse("foobar").expect("should parse"),
-            FailpointSetting {
+            FailpointActivation::parse("foobar").expect("should parse"),
+            FailpointActivation {
                 key: "foobar".to_owned(),
                 subkey: None,
                 value: None,
@@ -178,8 +177,8 @@ mod tests {
         );
 
         assert_eq!(
-            FailpointSetting::parse("foobar,once").expect("should parse"),
-            FailpointSetting {
+            FailpointActivation::parse("foobar,once").expect("should parse"),
+            FailpointActivation {
                 key: "foobar".to_owned(),
                 subkey: None,
                 value: None,
@@ -189,8 +188,8 @@ mod tests {
         );
 
         assert_eq!(
-            FailpointSetting::parse("foobar,sub=xyz").expect("should parse"),
-            FailpointSetting {
+            FailpointActivation::parse("foobar,sub=xyz").expect("should parse"),
+            FailpointActivation {
                 key: "foobar".to_owned(),
                 subkey: Some("xyz".to_owned()),
                 value: None,
@@ -200,8 +199,8 @@ mod tests {
         );
 
         assert_eq!(
-            FailpointSetting::parse("foobar,p=0.5,sub=xyz,once").expect("should parse"),
-            FailpointSetting {
+            FailpointActivation::parse("foobar,p=0.5,sub=xyz,once").expect("should parse"),
+            FailpointActivation {
                 key: "foobar".to_owned(),
                 subkey: Some("xyz".to_owned()),
                 value: None,
@@ -211,8 +210,8 @@ mod tests {
         );
 
         assert_eq!(
-            FailpointSetting::parse("foobar,p=0.5,sub=xyz,once:true").expect("should parse"),
-            FailpointSetting {
+            FailpointActivation::parse("foobar,p=0.5,sub=xyz,once:true").expect("should parse"),
+            FailpointActivation {
                 key: "foobar".to_owned(),
                 subkey: Some("xyz".to_owned()),
                 value: Some(serde_json::json!(true)),
@@ -222,9 +221,9 @@ mod tests {
         );
 
         assert_eq!(
-            FailpointSetting::parse("foobar:{\"hello\": \"world\", \"count\": 1}")
+            FailpointActivation::parse("foobar:{\"hello\": \"world\", \"count\": 1}")
                 .expect("should parse"),
-            FailpointSetting {
+            FailpointActivation {
                 key: "foobar".to_owned(),
                 subkey: None,
                 value: Some(serde_json::json!({"hello": "world", "count": 1})),
@@ -237,31 +236,45 @@ mod tests {
     #[test]
     fn clamping_works() {
         assert_eq!(
-            FailpointSetting::new("test").probability(-0.1).probability,
+            FailpointActivation::new("test")
+                .probability(-0.1)
+                .probability,
             Some(0.0)
         );
         assert_eq!(
-            FailpointSetting::new("test").probability(0.0).probability,
+            FailpointActivation::new("test")
+                .probability(0.0)
+                .probability,
             Some(0.0)
         );
         assert_eq!(
-            FailpointSetting::new("test").probability(0.1).probability,
+            FailpointActivation::new("test")
+                .probability(0.1)
+                .probability,
             Some(0.1)
         );
         assert_eq!(
-            FailpointSetting::new("test").probability(0.5).probability,
+            FailpointActivation::new("test")
+                .probability(0.5)
+                .probability,
             Some(0.5)
         );
         assert_eq!(
-            FailpointSetting::new("test").probability(0.9).probability,
+            FailpointActivation::new("test")
+                .probability(0.9)
+                .probability,
             Some(0.9)
         );
         assert_eq!(
-            FailpointSetting::new("test").probability(1.0).probability,
+            FailpointActivation::new("test")
+                .probability(1.0)
+                .probability,
             Some(1.0)
         );
         assert_eq!(
-            FailpointSetting::new("test").probability(1.1).probability,
+            FailpointActivation::new("test")
+                .probability(1.1)
+                .probability,
             Some(1.0)
         );
     }
