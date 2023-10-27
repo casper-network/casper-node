@@ -483,14 +483,17 @@ mod tests {
         let mut rng = TestRng::new();
         let mut fp = Failpoint::<()>::new("some_failpoint");
 
-        let activation = FailpointActivation::parse("some_failpoint:null").unwrap();
+        // Full activation.
+        fp.update_from(&FailpointActivation::parse("some_failpoint=null").unwrap());
+        assert!(fp.fire(&mut rng).is_some());
 
-        fp.update_from(&activation);
+        // p:1.0 should be the same
+        fp.update_from(&FailpointActivation::parse("some_failpoint,p:1.0=null").unwrap());
+        assert!(fp.fire(&mut rng).is_some());
 
-        // if let Some(diff) = fp.fire(&mut rng) {
-        //     assert_eq!(*diff, TimeDiff::from_str("1s").unwrap());
-        // } else {
-        // }
+        // p:0.0 essentially disables it
+        fp.update_from(&FailpointActivation::parse("some_failpoint,p:0.0=null").unwrap());
+        assert!(fp.fire(&mut rng).is_none());
     }
 
     #[test]
