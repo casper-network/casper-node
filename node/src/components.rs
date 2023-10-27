@@ -143,7 +143,7 @@ pub(crate) trait Component<REv> {
     fn name(&self) -> &str;
 
     /// Activate/deactivate a failpoint.
-    fn activate_failpoint(&mut self, activation: FailpointActivation) {
+    fn activate_failpoint(&mut self, _activation: &FailpointActivation) {
         // Default is to ignore failpoints.
     }
 }
