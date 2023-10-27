@@ -6,7 +6,7 @@
 //! # General usage
 //!
 //! Failpoints are created in code using `Failpoint`, and activated using a `FailpointActivation`.
-//! See the `failpoints::test::simple_usecase` test for an example.
+//! See the `failpoints::test::various_usecases` test for an example.
 
 use std::fmt::{self, Debug, Display};
 
@@ -202,8 +202,24 @@ impl FailpointActivation {
     }
 
     /// Sets the failpoint's value from JSON.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `value` does not cleanly serialize to a [`serde_json::Value`].
     #[inline(always)]
-    pub(crate) fn value(mut self, value: Value) -> Self {
+    pub(crate) fn value<T>(self, value: T) -> Self
+    where
+        T: Serialize,
+    {
+        let value_json: Value =
+            serde_json::to_value(value).expect("passed in value does not serialize to JSON");
+
+        self.value_json(value_json)
+    }
+
+    /// Sets the failpoint's value from JSON.
+    #[inline(always)]
+    pub(crate) fn value_json(mut self, value: Value) -> Self {
         self.value = Some(value);
         self
     }
@@ -261,7 +277,7 @@ impl FailpointActivation {
         }
 
         if let Some(value) = value {
-            fps = fps.value(value);
+            fps = fps.value_json(value);
         }
 
         Some(fps)
@@ -422,7 +438,11 @@ mod tests {
     }
 
     #[test]
-    fn simple_usecase() {
+    fn various_usecases() {
+        // Note: This function deliberately exerts different APIs of `FailpointActivation`. When
+        //       using `FailpointActivation` in tests, it is recommend to construct it using the
+        //       builder pattern as opposed to parsing it from strings.
+
         init_logging();
 
         let mut rng = TestRng::new();
@@ -441,7 +461,8 @@ mod tests {
             "failpoint should be disabled after unrelated activation"
         );
 
-        let activation = FailpointActivation::new("example.delay_send").value(json!("1s"));
+        let activation =
+            FailpointActivation::new("example.delay_send").value(TimeDiff::from_seconds(1));
 
         delay_send_fp.update_from(&activation);
 
@@ -471,7 +492,7 @@ mod tests {
 
         let once_activation = FailpointActivation::new("example.delay_send")
             .once()
-            .value(json!("2s"));
+            .value_json(json!("2s"));
         delay_send_fp.update_from(&once_activation);
 
         let diff = delay_send_fp
