@@ -31,6 +31,16 @@ use crate::{
 
 use super::new_test_highway_protocol_with_era_height;
 
+/// An environment that simulates a single instance of Highway and how it processes consensus
+/// messages.
+/// The consensus instance is assumed to be the one held by the validator at index 0. The other
+/// validators exist only as keypairs, and their activity is simulated by means of passing
+/// SignedWireUnits to the Highway instance. Some validators can be defined to be slow, which means
+/// they generate their units before they can receive units from other nodes, but the states are
+/// assumed to be consistent at the end of each consensus round.
+/// Since the only protocol state in this simulation is the one in the Highway instance of node 0,
+/// it is also used as the basis for generation of the simulated consensus messages sent from other
+/// nodes.
 pub(super) struct ConsensusEnvironment {
     highway: Box<dyn ConsensusProtocol<ClContext>>,
     leaders: LeaderSequence,
@@ -42,6 +52,9 @@ pub(super) struct ConsensusEnvironment {
 }
 
 impl ConsensusEnvironment {
+    /// Creates a new `ConsensusEnvironment` with the given set of validators and slow validators.
+    /// The public keys in `slow_validators` should exist in the `validators` map and have their
+    /// associated keypairs and weights.
     pub(super) fn new(
         validators: BTreeMap<PublicKey, (Keypair, u64)>,
         slow_validators: BTreeSet<PublicKey>,
@@ -77,18 +90,23 @@ impl ConsensusEnvironment {
         }
     }
 
+    /// Gets the node 0 Highway instance as a reference to the `HighwayProtocol` struct.
     fn highway(&self) -> &HighwayProtocol<ClContext> {
         self.highway.as_any().downcast_ref().unwrap()
     }
 
+    /// Gets the public key of node 0.
     fn our_pub_key(&self) -> &PublicKey {
         self.validators.keys().next().unwrap()
     }
 
+    /// Returns `true` if node 0 is a slow node.
     fn is_slow(&self) -> bool {
         self.slow_validators.contains(self.our_pub_key())
     }
 
+    /// Returns the minimum round length setting from the test chainspec generated for the
+    /// simulation.
     fn min_round_len(&self) -> u64 {
         self.highway()
             .highway()
@@ -98,10 +116,23 @@ impl ConsensusEnvironment {
             .millis()
     }
 
+    /// Clones the protocol state of the Highway instance of node 0.
+    /// This is used to save the state at some particular point, so that it can be used later for
+    /// creation of units sent by other nodes, while the simulated internal state of node 0
+    /// progresses.
     fn clone_state(&self) -> State<ClContext> {
         self.highway().highway().state().clone()
     }
 
+    /// Simulates a round of consensus.
+    /// In each round, the leader creates a proposal and a witness unit.
+    /// If the leader is a slow node, other nodes only receive the proposal at the end of the round
+    /// and create witness units without a proposal.
+    /// Otherwise, the fast nodes will create a confirmation unit and a witness unit. The slow
+    /// nodes will not receive the proposal and fast nodes' confirmation units before the witness
+    /// timeout, so they will create witness units without citing a proposal also in this case.
+    /// This makes it so that slow nodes effectively don't participate in the finalization of
+    /// proposals, making their participation metrics very low.
     pub(super) fn crank_round(&mut self) {
         let min_round_len = self.min_round_len();
         let round_id = Timestamp::from(self.current_round_start);
@@ -297,6 +328,9 @@ impl ConsensusEnvironment {
         self.current_round_start = self.current_round_start.saturating_add(min_round_len);
     }
 
+    /// Simulates a proposal being sent by node 0. This is done by triggering the active validator
+    /// timer at the timestamp when node 0 should make a proposal, and then calling
+    /// `self.highway.propose()` with the context returned by the timer handler.
     fn this_node_propose(&mut self) {
         if (self.current_round_start / self.min_round_len()).trailing_zeros()
             < self.our_round_exp() as u32
@@ -331,6 +365,10 @@ impl ConsensusEnvironment {
         self.finalize_blocks(&outcomes);
     }
 
+    /// Creates a simulated `SignedWireUnit` sent by `creator`. This is used to simulate other
+    /// nodes participating in consensus. The created unit uses `state.panorama()` as the cited
+    /// panorama, which enables simulating the creation of units at a particular point in time
+    /// (by passing a clone of the state from that point in time).
     fn create_swunit_from(
         &self,
         creator: ValidatorIndex,
@@ -356,6 +394,9 @@ impl ConsensusEnvironment {
         SignedWireUnit::new(wunit.into_hashed(), keypair)
     }
 
+    /// Simulates a proposal being sent by a node other than node 0. This is just a message
+    /// containing a `SignedWireUnit` with a default consensus value, with the timestamp at the
+    /// start of the current round.
     fn other_node_propose(
         &mut self,
         leader: ValidatorIndex,
@@ -374,6 +415,22 @@ impl ConsensusEnvironment {
         (state_clone, Some(msg))
     }
 
+    /// Handles a consensus message received from another node.
+    /// If the message is a vertex (which is the only simulated case in this environment), it will
+    /// become queued in the synchronizer, and will only be added to the protocol state once
+    /// `add_vertices` is called.
+    fn handle_message(&mut self, msg: SerializedMessage, delay: u64) {
+        let outcomes = self.highway.handle_message(
+            &mut self.rng,
+            *ALICE_NODE_ID,
+            msg,
+            (self.current_round_start + delay).into(),
+        );
+        self.finalize_blocks(&outcomes);
+    }
+
+    /// Processes the vertices queued in the synchronizer of the Highway instance and adds them to
+    /// the protocol state.
     fn add_vertices(&mut self, timestamp: Timestamp) {
         loop {
             let outcomes = self.highway.handle_action(ACTION_ID_VERTEX, timestamp);
@@ -387,16 +444,7 @@ impl ConsensusEnvironment {
         }
     }
 
-    fn handle_message(&mut self, msg: SerializedMessage, delay: u64) {
-        let outcomes = self.highway.handle_message(
-            &mut self.rng,
-            *ALICE_NODE_ID,
-            msg,
-            (self.current_round_start + delay).into(),
-        );
-        self.finalize_blocks(&outcomes);
-    }
-
+    /// Saves the finalized blocks that were output by the Highway instance.
     fn finalize_blocks(&mut self, outcomes: &[ProtocolOutcome<ClContext>]) {
         for outcome in outcomes {
             if let ProtocolOutcome::FinalizedBlock(block) = outcome {
@@ -405,6 +453,8 @@ impl ConsensusEnvironment {
         }
     }
 
+    /// Gets the current round exponent set in the Highway instance. It is being changed by the
+    /// instance itself internally in response to how the protocol state progresses.
     pub(super) fn our_round_exp(&self) -> u8 {
         self.highway().highway().get_round_exp().unwrap()
     }
