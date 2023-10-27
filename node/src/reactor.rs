@@ -300,7 +300,7 @@ pub(crate) trait Reactor: Sized {
     fn update_metrics(&mut self, _event_queue_handle: EventQueueHandle<Self::Event>) {}
 
     /// Activate/deactivate a failpoint.
-    fn activate_failpoint(&mut self, activation: FailpointActivation) {
+    fn activate_failpoint(&mut self, _activation: &FailpointActivation) {
         // Default is to ignore the failpoint. If failpoint support is enabled for a reactor, route
         // the activation to the respective components here.
     }
@@ -670,7 +670,7 @@ where
                     (Default::default(), None, QueueKind::Control)
                 }
                 Some(ControlAnnouncement::ActivateFailpoint { activation }) => {
-                    self.reactor.activate_failpoint(activation);
+                    self.reactor.activate_failpoint(&activation);
 
                     // No other effects, calling the method is all we had to do.
                     (Effects::new(), None, QueueKind::Control)
