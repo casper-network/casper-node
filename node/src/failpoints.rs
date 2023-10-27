@@ -58,6 +58,7 @@ where
 
     /// Creates a new failpoint with a given key and optional subkey.
     #[inline]
+    #[allow(dead_code)]
     pub(crate) fn new_with_subkey<S: ToString>(key: &'static str, subkey: S) -> Self {
         Failpoint {
             key,
@@ -208,6 +209,7 @@ impl FailpointActivation {
     /// Will panic if `value` does not parse into a [`serde_json::Value`].
     #[inline(always)]
     #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn value_json(self, value: &str) -> Self {
         let value = serde_json::from_str(value).expect("could not parse JSON value");
         self.value(value)
