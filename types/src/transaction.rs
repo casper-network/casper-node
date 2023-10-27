@@ -3,6 +3,7 @@ mod account_and_secret_key;
 mod deploy;
 mod transaction_approvals_hash;
 mod transaction_hash;
+mod transaction_header;
 mod transaction_id;
 mod transaction_v1;
 
@@ -42,6 +43,7 @@ pub use deploy::{
 pub use deploy::{DeployBuilder, DeployBuilderError};
 pub use transaction_approvals_hash::TransactionApprovalsHash;
 pub use transaction_hash::TransactionHash;
+pub use transaction_header::TransactionHeader;
 pub use transaction_id::TransactionId;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use transaction_v1::TestTransactionV1Builder;

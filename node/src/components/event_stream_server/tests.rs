@@ -1,7 +1,9 @@
 use std::{
     collections::HashMap,
     error::Error,
-    fs, io, iter, str,
+    fs, io,
+    iter::{self, FromIterator},
+    str,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -9,6 +11,7 @@ use std::{
     time::Duration,
 };
 
+use bytes::{Buf, Bytes};
 use futures::{join, StreamExt};
 use http::StatusCode;
 use pretty_assertions::assert_eq;
@@ -26,7 +29,7 @@ use casper_types::testing::TestRng;
 
 use super::*;
 use crate::{logging, testing::assert_schema};
-use sse_server::{DeployAccepted, Id, QUERY_FIELD, SSE_API_PATH as ROOT_PATH};
+use sse_server::{Id, TransactionAccepted, QUERY_FIELD, SSE_API_PATH as ROOT_PATH};
 
 /// The total number of random events `EventStreamServer` will emit by default, excluding the
 /// initial `ApiVersion` event.
@@ -202,17 +205,17 @@ impl TestFixture {
         fs::create_dir_all(&storage_dir).unwrap();
         let protocol_version = ProtocolVersion::from_parts(1, 2, 3);
 
-        let mut deploys = HashMap::new();
+        let mut txns = HashMap::new();
         let events = (0..EVENT_COUNT)
             .map(|i| match i % DISTINCT_EVENTS_COUNT {
                 0 => SseData::random_block_added(rng),
                 1 => {
-                    let (event, deploy) = SseData::random_deploy_accepted(rng);
-                    assert!(deploys.insert(*deploy.hash(), deploy).is_none());
+                    let (event, txn) = SseData::random_transaction_accepted(rng);
+                    assert!(txns.insert(txn.hash(), txn).is_none());
                     event
                 }
-                2 => SseData::random_deploy_processed(rng),
-                3 => SseData::random_deploy_expired(rng),
+                2 => SseData::random_transaction_processed(rng),
+                3 => SseData::random_transaction_expired(rng),
                 4 => SseData::random_fault(rng),
                 5 => SseData::random_step(rng),
                 6 => SseData::random_finality_signature(rng),
@@ -355,10 +358,12 @@ impl TestFixture {
             }
 
             let data = match event {
-                SseData::DeployAccepted { deploy } => serde_json::to_string(&DeployAccepted {
-                    deploy_accepted: deploy.clone(),
-                })
-                .unwrap(),
+                SseData::TransactionAccepted { transaction } => {
+                    serde_json::to_string(&TransactionAccepted {
+                        transaction_accepted: Arc::clone(transaction),
+                    })
+                    .unwrap()
+                }
                 _ => serde_json::to_string(event).unwrap(),
             };
 
@@ -464,6 +469,24 @@ async fn subscribe_no_sync(
     handle_response(response, final_event_id, client_id).await
 }
 
+/// Converts some bytes to a `String`.
+///
+/// If `maybe_previous_bytes` is `Some`, these bytes are prepended to `new_bytes`.  If a string
+/// cannot be constructed from the resulting bytes, the bytes are returned as an `Err`.
+fn bytes_to_string(
+    maybe_previous_bytes: &mut Option<Bytes>,
+    new_bytes: Bytes,
+) -> Result<String, Bytes> {
+    let bytes = if let Some(previous_bytes) = maybe_previous_bytes.take() {
+        Bytes::from_iter(previous_bytes.chain(new_bytes))
+    } else {
+        new_bytes
+    };
+    str::from_utf8(bytes.as_ref())
+        .map(ToString::to_string)
+        .map_err(|_| bytes)
+}
+
 /// Handles a response from the server.
 async fn handle_response(
     response: Response,
@@ -485,12 +508,21 @@ async fn handle_response(
     let mut stream = response.bytes_stream();
     let final_id_line = format!("id:{}", final_event_id);
     let keepalive = ":";
+    let mut temp_bytes: Option<Bytes> = None;
     while let Some(item) = stream.next().await {
-        // If the server crashes or returns an error in the stream, it is caught here as `item` will
-        // be an `Err`.
-        let bytes = item?;
-        let chunk = str::from_utf8(bytes.as_ref()).unwrap();
-        response_text.push_str(chunk);
+        // If the server crashes or returns an error in the stream, it is caught here as `item`
+        // will be an `Err`.
+        let new_bytes = item?;
+        let chunk = match bytes_to_string(&mut temp_bytes, new_bytes) {
+            Ok(chunk) => chunk,
+            Err(bytes) => {
+                // We got a chunk splitting a unicode scalar value - dump the data to `temp_bytes`
+                // and get the next chunk from the stream.
+                temp_bytes = Some(bytes);
+                continue;
+            }
+        };
+        response_text.push_str(&chunk);
         if let Some(line) = response_text
             .lines()
             .find(|&line| line == final_id_line || line == keepalive)
@@ -738,10 +770,17 @@ async fn lagging_clients_should_be_disconnected() {
 
         let mut stream = response.bytes_stream();
         let pause_between_events = Duration::from_secs(100) / MAX_EVENT_COUNT;
+        let mut temp_bytes: Option<Bytes> = None;
         while let Some(item) = stream.next().await {
             // The function is expected to exit here with an `UnexpectedEof` error.
-            let bytes = item?;
-            let chunk = str::from_utf8(bytes.as_ref()).unwrap();
+            let new_bytes = item?;
+            let chunk = match bytes_to_string(&mut temp_bytes, new_bytes) {
+                Ok(chunk) => chunk,
+                Err(bytes) => {
+                    temp_bytes = Some(bytes);
+                    continue;
+                }
+            };
             if chunk.lines().any(|line| line == ":") {
                 debug!("{} received keepalive: exiting", client_id);
                 break;
