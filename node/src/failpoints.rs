@@ -8,7 +8,10 @@
 //! Failpoints are created in code using `Failpoint`, and activated using a `FailpointActivation`.
 //! See the `failpoints::test::various_usecases` test for an example.
 
-use std::fmt::{self, Debug, Display};
+use std::{
+    fmt::{self, Debug, Display},
+    str::FromStr,
+};
 
 use datasize::DataSize;
 use rand::{distributions::Uniform, prelude::Distribution, Rng};
@@ -240,19 +243,23 @@ impl FailpointActivation {
         self.once = true;
         self
     }
+}
 
-    /// Parse a failpoint activation from a string definition.
-    ///
-    /// See `casper_node::components::diagnostics_port::command::Action` for a syntax description.
-    pub(crate) fn parse(raw: &str) -> Option<Self> {
+impl FromStr for FailpointActivation {
+    type Err = ();
+
+    fn from_str(raw: &str) -> Result<Self, Self::Err> {
         let (raw_meta, value) = if let Some((left, right)) = raw.split_once('=') {
-            (left, Some(serde_json::from_str::<Value>(right).ok()?))
+            (
+                left,
+                Some(serde_json::from_str::<Value>(right).map_err(|_| ())?),
+            )
         } else {
             (raw, None)
         };
 
         let mut fragments = raw_meta.split(',');
-        let key = fragments.next()?;
+        let key = fragments.next().ok_or(())?;
         let mut fps = FailpointActivation::new(key);
 
         for fragment in fragments {
@@ -267,12 +274,12 @@ impl FailpointActivation {
                     fps = fps.subkey(v);
                 }
                 ("p", Some(raw_p)) => {
-                    fps = fps.probability(raw_p.parse().ok()?);
+                    fps = fps.probability(raw_p.parse().map_err(|_| ())?);
                 }
                 ("once", None) => {
                     fps = fps.once();
                 }
-                _ => return None,
+                _ => return Err(()),
             }
         }
 
@@ -280,7 +287,7 @@ impl FailpointActivation {
             fps = fps.value_json(value);
         }
 
-        Some(fps)
+        Ok(fps)
     }
 }
 
@@ -300,7 +307,7 @@ mod tests {
     #[test]
     fn parse_failpoints() {
         assert_eq!(
-            FailpointActivation::parse("foobar").expect("should parse"),
+            FailpointActivation::from_str("foobar").expect("should parse"),
             FailpointActivation {
                 key: "foobar".to_owned(),
                 subkey: None,
@@ -311,7 +318,7 @@ mod tests {
         );
 
         assert_eq!(
-            FailpointActivation::parse("foobar,once").expect("should parse"),
+            FailpointActivation::from_str("foobar,once").expect("should parse"),
             FailpointActivation {
                 key: "foobar".to_owned(),
                 subkey: None,
@@ -322,7 +329,7 @@ mod tests {
         );
 
         assert_eq!(
-            FailpointActivation::parse("foobar,sub:xyz").expect("should parse"),
+            FailpointActivation::from_str("foobar,sub:xyz").expect("should parse"),
             FailpointActivation {
                 key: "foobar".to_owned(),
                 subkey: Some("xyz".to_owned()),
@@ -333,7 +340,7 @@ mod tests {
         );
 
         assert_eq!(
-            FailpointActivation::parse("foobar,p:0.5,sub:xyz,once").expect("should parse"),
+            FailpointActivation::from_str("foobar,p:0.5,sub:xyz,once").expect("should parse"),
             FailpointActivation {
                 key: "foobar".to_owned(),
                 subkey: Some("xyz".to_owned()),
@@ -344,7 +351,7 @@ mod tests {
         );
 
         assert_eq!(
-            FailpointActivation::parse("foobar,p:0.5,sub:xyz,once=true").expect("should parse"),
+            FailpointActivation::from_str("foobar,p:0.5,sub:xyz,once=true").expect("should parse"),
             FailpointActivation {
                 key: "foobar".to_owned(),
                 subkey: Some("xyz".to_owned()),
@@ -355,7 +362,7 @@ mod tests {
         );
 
         assert_eq!(
-            FailpointActivation::parse("foobar={\"hello\": \"world\", \"count\": 1}")
+            FailpointActivation::from_str("foobar={\"hello\": \"world\", \"count\": 1}")
                 .expect("should parse"),
             FailpointActivation {
                 key: "foobar".to_owned(),
@@ -416,21 +423,21 @@ mod tests {
     #[test]
     fn display_works() {
         assert_eq!(
-            FailpointActivation::parse("foobar={\"hello\": \"world\", \"count\": 1}")
+            FailpointActivation::from_str("foobar={\"hello\": \"world\", \"count\": 1}")
                 .expect("should parse")
                 .to_string(),
             "foobar={\"hello\":\"world\",\"count\":1}"
         );
 
         assert_eq!(
-            FailpointActivation::parse("foobar,p:0.5,sub:xyz,once=true")
+            FailpointActivation::from_str("foobar,p:0.5,sub:xyz,once=true")
                 .expect("should parse")
                 .to_string(),
             "foobar,sub:xyz,p:0.5,once=true"
         );
 
         assert_eq!(
-            FailpointActivation::parse("abc_123")
+            FailpointActivation::from_str("abc_123")
                 .expect("should parse")
                 .to_string(),
             "abc_123"
@@ -453,7 +460,8 @@ mod tests {
             "failpoint should be disabled"
         );
 
-        let unrelated_activation = FailpointActivation::parse("example.unrelated=\"1s\"").unwrap();
+        let unrelated_activation =
+            FailpointActivation::from_str("example.unrelated=\"1s\"").unwrap();
         delay_send_fp.update_from(&unrelated_activation);
 
         assert!(
@@ -481,7 +489,7 @@ mod tests {
             .expect("should trigger failpoint a third time");
         assert_eq!(*diff, TimeDiff::from_str("1s").unwrap());
 
-        let deactivation = FailpointActivation::parse("example.delay_send").unwrap();
+        let deactivation = FailpointActivation::from_str("example.delay_send").unwrap();
 
         delay_send_fp.update_from(&deactivation);
 
@@ -508,7 +516,7 @@ mod tests {
     fn activation_primes_properly() {
         let mut fp = Failpoint::<()>::new("some_failpoint");
 
-        fp.update_from(&FailpointActivation::parse("some_failpoint,p:0.5,once=null").unwrap());
+        fp.update_from(&FailpointActivation::from_str("some_failpoint,p:0.5,once=null").unwrap());
 
         assert_eq!(fp.probability, Some(0.5));
         assert_eq!(fp.once, true);
@@ -520,15 +528,15 @@ mod tests {
         let mut fp = Failpoint::<()>::new("some_failpoint");
 
         // Full activation.
-        fp.update_from(&FailpointActivation::parse("some_failpoint=null").unwrap());
+        fp.update_from(&FailpointActivation::from_str("some_failpoint=null").unwrap());
         assert!(fp.fire(&mut rng).is_some());
 
         // p:1.0 should be the same
-        fp.update_from(&FailpointActivation::parse("some_failpoint,p:1.0=null").unwrap());
+        fp.update_from(&FailpointActivation::from_str("some_failpoint,p:1.0=null").unwrap());
         assert!(fp.fire(&mut rng).is_some());
 
         // p:0.0 essentially disables it
-        fp.update_from(&FailpointActivation::parse("some_failpoint,p:0.0=null").unwrap());
+        fp.update_from(&FailpointActivation::from_str("some_failpoint,p:0.0=null").unwrap());
         assert!(fp.fire(&mut rng).is_none());
     }
 }

@@ -4,6 +4,7 @@ use std::{
     fs::{self, File},
     io,
     path::PathBuf,
+    str::FromStr,
 };
 
 use bincode::{
@@ -338,8 +339,8 @@ impl Session {
                         .await?;
                     }
                     Action::SetFailpoint { ref activation } => {
-                        match FailpointActivation::parse(activation) {
-                            Some(fp_activation) => {
+                        match FailpointActivation::from_str(activation) {
+                            Ok(fp_activation) => {
                                 effect_builder.activate_failpoint(fp_activation).await;
 
                                 self.send_outcome(
@@ -348,10 +349,13 @@ impl Session {
                                 )
                                 .await?;
                             }
-                            None => {
+                            Err(err) => {
                                 self.send_outcome(
                                     writer,
-                                    &Outcome::failed("invalid failpoint activation".to_owned()),
+                                    &Outcome::failed(format!(
+                                        "invalid failpoint activation: {:?}",
+                                        err
+                                    )),
                                 )
                                 .await?;
                             }
