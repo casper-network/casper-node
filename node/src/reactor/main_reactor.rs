@@ -67,6 +67,7 @@ use crate::{
         requests::{AcceptTransactionRequest, ChainspecRawBytesRequest},
         EffectBuilder, EffectExt, Effects, GossipTarget,
     },
+    failpoints::FailpointActivation,
     fatal,
     protocol::Message,
     reactor::{
@@ -1215,6 +1216,15 @@ impl reactor::Reactor for MainReactor {
         self.memory_metrics.estimate(self);
         self.event_queue_metrics
             .record_event_queue_counts(&event_queue_handle)
+    }
+
+    fn activate_failpoint(&mut self, activation: &FailpointActivation) {
+        if activation.key().starts_with("consensus") {
+            <EraSupervisor as Component<MainEvent>>::activate_failpoint(
+                &mut self.consensus,
+                activation,
+            );
+        }
     }
 }
 

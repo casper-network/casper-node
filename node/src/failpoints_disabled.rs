@@ -52,6 +52,12 @@ impl<T> Failpoint<T> {
 #[derive(Clone, DataSize, Debug, PartialEq, Serialize)]
 pub(crate) struct FailpointActivation;
 
+impl FailpointActivation {
+    pub(crate) fn key(&self) -> &str {
+        ""
+    }
+}
+
 impl Display for FailpointActivation {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str("(no failpoint support)")
