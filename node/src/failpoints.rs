@@ -201,22 +201,7 @@ impl FailpointActivation {
         self
     }
 
-    /// Sets value from JSON.
-    ///
-    /// Will parse `value` using a JSON parser.
-    ///
-    /// # Panics
-    ///
-    /// Will panic if `value` does not parse into a [`serde_json::Value`].
-    #[inline(always)]
-    #[cfg(test)]
-    #[allow(dead_code)]
-    pub(crate) fn value_json(self, value: &str) -> Self {
-        let value = serde_json::from_str(value).expect("could not parse JSON value");
-        self.value(value)
-    }
-
-    /// Sets the failpoint's value.
+    /// Sets the failpoint's value from JSON.
     #[inline(always)]
     pub(crate) fn value(mut self, value: Value) -> Self {
         self.value = Some(value);
@@ -290,6 +275,7 @@ mod tests {
     use std::str::FromStr;
 
     use casper_types::{testing::TestRng, TimeDiff};
+    use serde_json::json;
 
     use crate::testing::init_logging;
 
@@ -455,7 +441,7 @@ mod tests {
             "failpoint should be disabled after unrelated activation"
         );
 
-        let activation = FailpointActivation::parse("example.delay_send=\"1s\"").unwrap();
+        let activation = FailpointActivation::new("example.delay_send").value(json!("1s"));
 
         delay_send_fp.update_from(&activation);
 
@@ -483,7 +469,9 @@ mod tests {
             "failpoint should be disabled"
         );
 
-        let once_activation = FailpointActivation::parse("example.delay_send,once=\"2s\"").unwrap();
+        let once_activation = FailpointActivation::new("example.delay_send")
+            .once()
+            .value(json!("2s"));
         delay_send_fp.update_from(&once_activation);
 
         let diff = delay_send_fp
