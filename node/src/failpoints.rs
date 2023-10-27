@@ -199,6 +199,12 @@ impl FailpointActivation {
         }
     }
 
+    /// Gets the key of this [`FailpointActivation`].
+    #[inline(always)]
+    pub(crate) fn key(&self) -> &str {
+        &self.key
+    }
+
     /// Sets the subkey.
     #[inline(always)]
     pub(crate) fn subkey<S: ToString>(mut self, subkey: S) -> Self {
