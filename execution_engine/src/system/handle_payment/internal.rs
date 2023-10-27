@@ -316,8 +316,8 @@ mod proptests {
     prop_compose! {
       fn proper_fraction(max: u64)
                         (numerator in 0..=max)
-                        (numerator in Just(numerator), denum in numerator..=max) -> Ratio<u64> {
-        Ratio::new(numerator, denum)
+                        (numerator in Just(numerator), denom in numerator..=max) -> Ratio<u64> {
+        Ratio::new(numerator, denom)
       }
     }
 
@@ -333,10 +333,7 @@ mod proptests {
             let refund = RefundHandling::Refund { refund_ratio };
 
             let (refund, fee) = calculate_refund_and_fee(gas, balance, &refund).unwrap();
-            let refund = Ratio::from(refund);
-            let fee = Ratio::from(fee);
-
-            prop_assert_eq!(refund + fee, Ratio::from(balance));
+            prop_assert_eq!(refund + fee, balance);
         }
     }
 }
