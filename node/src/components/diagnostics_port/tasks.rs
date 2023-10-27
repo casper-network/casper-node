@@ -349,12 +349,12 @@ impl Session {
                                 )
                                 .await?;
                             }
-                            Err(err) => {
+                            Err(ref err) => {
                                 self.send_outcome(
                                     writer,
                                     &Outcome::failed(format!(
-                                        "invalid failpoint activation: {:?}",
-                                        err
+                                        "invalid failpoint activation: {}",
+                                        display_error(err)
                                     )),
                                 )
                                 .await?;

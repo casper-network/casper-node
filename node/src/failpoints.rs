@@ -10,6 +10,7 @@
 
 use std::{
     fmt::{self, Debug, Display},
+    num::ParseFloatError,
     str::FromStr,
 };
 
@@ -17,6 +18,7 @@ use datasize::DataSize;
 use rand::{distributions::Uniform, prelude::Distribution, Rng};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
+use thiserror::Error;
 use tracing::{info, instrument, trace, warn};
 
 use crate::utils::opt_display::OptDisplay;
@@ -245,21 +247,38 @@ impl FailpointActivation {
     }
 }
 
+/// Error parsing a failpoint activation.
+#[derive(Debug, Error)]
+pub(crate) enum ParseError {
+    /// The provided value for the failpoint was not valid JSON.
+    #[error("invalid json value")]
+    InvalidJson(#[source] serde_json::Error),
+    /// Left hand side contained no segments.
+    #[error("no key given")]
+    MissingKey,
+    /// Invalid floating literal for probability
+    #[error("invvalid probability value")]
+    InvalidProbability(#[source] ParseFloatError),
+    /// The given meta key is not valid.
+    #[error("not a known meta key: \"{0}\"")]
+    InvalidMeta(String),
+}
+
 impl FromStr for FailpointActivation {
-    type Err = ();
+    type Err = ParseError;
 
     fn from_str(raw: &str) -> Result<Self, Self::Err> {
         let (raw_meta, value) = if let Some((left, right)) = raw.split_once('=') {
             (
                 left,
-                Some(serde_json::from_str::<Value>(right).map_err(|_| ())?),
+                Some(serde_json::from_str::<Value>(right).map_err(ParseError::InvalidJson)?),
             )
         } else {
             (raw, None)
         };
 
         let mut fragments = raw_meta.split(',');
-        let key = fragments.next().ok_or(())?;
+        let key = fragments.next().ok_or(ParseError::MissingKey)?;
         let mut fps = FailpointActivation::new(key);
 
         for fragment in fragments {
@@ -274,12 +293,12 @@ impl FromStr for FailpointActivation {
                     fps = fps.subkey(v);
                 }
                 ("p", Some(raw_p)) => {
-                    fps = fps.probability(raw_p.parse().map_err(|_| ())?);
+                    fps = fps.probability(raw_p.parse().map_err(ParseError::InvalidProbability)?);
                 }
                 ("once", None) => {
                     fps = fps.once();
                 }
-                _ => return Err(()),
+                (invalid, _) => return Err(ParseError::InvalidMeta(invalid.to_string())),
             }
         }
 
