@@ -160,11 +160,11 @@ impl Display for FailpointActivation {
         f.write_str(&self.key)?;
 
         if let Some(subkey) = self.subkey.as_ref() {
-            write!(f, ",sub={}", subkey)?;
+            write!(f, ",sub:{}", subkey)?;
         }
 
         if let Some(p) = self.probability {
-            write!(f, ",p={}", p)?;
+            write!(f, ",p:{}", p)?;
         }
 
         if self.once {
@@ -173,7 +173,7 @@ impl Display for FailpointActivation {
 
         if let Some(value) = self.value.as_ref() {
             // Note on the unwrap: Serializing a `Value` should never fail.
-            write!(f, ":{}", serde_json::to_string(value).unwrap_or_default())?;
+            write!(f, "={}", serde_json::to_string(value).unwrap_or_default())?;
         }
 
         Ok(())
@@ -243,7 +243,7 @@ impl FailpointActivation {
     ///
     /// See `casper_node::components::diagnostics_port::command::Action` for a syntax description.
     pub(crate) fn parse(raw: &str) -> Option<Self> {
-        let (raw_meta, value) = if let Some((left, right)) = raw.split_once(':') {
+        let (raw_meta, value) = if let Some((left, right)) = raw.split_once('=') {
             (left, Some(serde_json::from_str::<Value>(right).ok()?))
         } else {
             (raw, None)
@@ -254,7 +254,7 @@ impl FailpointActivation {
         let mut fps = FailpointActivation::new(key);
 
         for fragment in fragments {
-            let (meta, meta_value) = if let Some((left, right)) = fragment.split_once('=') {
+            let (meta, meta_value) = if let Some((left, right)) = fragment.split_once(':') {
                 (left, Some(right))
             } else {
                 (fragment, None)
@@ -319,7 +319,7 @@ mod tests {
         );
 
         assert_eq!(
-            FailpointActivation::parse("foobar,sub=xyz").expect("should parse"),
+            FailpointActivation::parse("foobar,sub:xyz").expect("should parse"),
             FailpointActivation {
                 key: "foobar".to_owned(),
                 subkey: Some("xyz".to_owned()),
@@ -330,7 +330,7 @@ mod tests {
         );
 
         assert_eq!(
-            FailpointActivation::parse("foobar,p=0.5,sub=xyz,once").expect("should parse"),
+            FailpointActivation::parse("foobar,p:0.5,sub:xyz,once").expect("should parse"),
             FailpointActivation {
                 key: "foobar".to_owned(),
                 subkey: Some("xyz".to_owned()),
@@ -341,7 +341,7 @@ mod tests {
         );
 
         assert_eq!(
-            FailpointActivation::parse("foobar,p=0.5,sub=xyz,once:true").expect("should parse"),
+            FailpointActivation::parse("foobar,p:0.5,sub:xyz,once=true").expect("should parse"),
             FailpointActivation {
                 key: "foobar".to_owned(),
                 subkey: Some("xyz".to_owned()),
@@ -352,7 +352,7 @@ mod tests {
         );
 
         assert_eq!(
-            FailpointActivation::parse("foobar:{\"hello\": \"world\", \"count\": 1}")
+            FailpointActivation::parse("foobar={\"hello\": \"world\", \"count\": 1}")
                 .expect("should parse"),
             FailpointActivation {
                 key: "foobar".to_owned(),
@@ -413,17 +413,17 @@ mod tests {
     #[test]
     fn display_works() {
         assert_eq!(
-            FailpointActivation::parse("foobar:{\"hello\": \"world\", \"count\": 1}")
+            FailpointActivation::parse("foobar={\"hello\": \"world\", \"count\": 1}")
                 .expect("should parse")
                 .to_string(),
-            "foobar:{\"hello\":\"world\",\"count\":1}"
+            "foobar={\"hello\":\"world\",\"count\":1}"
         );
 
         assert_eq!(
-            FailpointActivation::parse("foobar,p=0.5,sub=xyz,once:true")
+            FailpointActivation::parse("foobar,p:0.5,sub:xyz,once=true")
                 .expect("should parse")
                 .to_string(),
-            "foobar,sub=xyz,p=0.5,once:true"
+            "foobar,sub:xyz,p:0.5,once=true"
         );
 
         assert_eq!(
@@ -454,7 +454,7 @@ mod tests {
             "failpoint should be disabled after unrelated activation"
         );
 
-        let activation = FailpointActivation::parse("example.delay_send:\"1s\"").unwrap();
+        let activation = FailpointActivation::parse("example.delay_send=\"1s\"").unwrap();
 
         delay_send_fp.update_from(&activation);
 
@@ -483,7 +483,7 @@ mod tests {
         let mut rng = TestRng::new();
         let mut fp = Failpoint::<()>::new("some_failpoint");
 
-        let activation = FailpointActivation::parse("some_failpoint=null").unwrap();
+        let activation = FailpointActivation::parse("some_failpoint:null").unwrap();
 
         fp.update_from(&activation);
 

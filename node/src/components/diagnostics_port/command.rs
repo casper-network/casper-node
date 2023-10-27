@@ -113,15 +113,15 @@ pub(super) enum Action {
     },
     /// Activate or clear a failpoint.
     ///
-    /// Failpoint syntax is as follows: `key(,meta=meta_value)*(:value)?`, with `key` being the
+    /// Failpoint syntax is as follows: `key(,meta:meta_value)*(=value)?`, with `key` being the
     /// identifier of the failpoint, `meta` being additional settings, and `value` JSON encoded.
     ///
     /// If `value` is not set, the failpoint is cleared instead of being set.
     ///
     /// The following `meta` values are understood:
     ///
-    /// * `sub` sets the subkey (example: `sub=e4c2a1f`)
-    /// * `p` sets the probability, must be between `0.0` and `1.0` (example: `p=0.1`)
+    /// * `sub` sets the subkey (example: `sub:e4c2a1f`)
+    /// * `p` sets the probability, must be between `0.0` and `1.0` (example: `p:0.1`)
     /// * `once` has no value and indicates the failpoint should only be fired once.
     ///
     /// No colons or commas are allowed in `key`, `meta` or `meta_value`.
@@ -129,7 +129,7 @@ pub(super) enum Action {
     /// Examples:
     ///
     /// * `foobar` clears the failpoint with key "foobar".
-    /// * `foobar,sub=example value,p=0.123,once:{"hello": "world"}` sets the failpoint "foobar",
+    /// * `foobar,sub:example value,p:0.123,once={"hello": "world"}` sets the failpoint "foobar",
     ///    with a subkey of "example value", a probability of 12.3%, to be fired only once, and a
     ///    JSON encoded value of `{"hello": "world"}`.
     SetFailpoint {
