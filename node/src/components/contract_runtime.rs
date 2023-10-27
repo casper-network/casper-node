@@ -46,7 +46,7 @@ use casper_storage::{
 use casper_types::{
     bytesrepr::Bytes, package::PackageKindTag, BlockHash, BlockHeaderV2, Chainspec,
     ChainspecRawBytes, ChainspecRegistry, Digest, EraId, Key, ProtocolVersion, Timestamp,
-    UpgradeConfig, U512,
+    Transaction, UpgradeConfig, U512,
 };
 
 use crate::{
@@ -674,19 +674,25 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::SpeculativeDeployExecution {
+            ContractRuntimeRequest::SpeculativelyExecute {
                 execution_prestate,
-                deploy,
+                transaction,
                 responder,
             } => {
+                let deploy_item = match *transaction {
+                    Transaction::Deploy(deploy) => DeployItem::from(deploy),
+                    Transaction::V1(_) => {
+                        return responder
+                            .respond(Err(engine_state::Error::InvalidDeployItemVariant(
+                                "temp error until EE handles transactions".to_string(),
+                            )))
+                            .ignore();
+                    }
+                };
                 let engine_state = Arc::clone(&self.engine_state);
                 async move {
                     let result = run_intensive_task(move || {
-                        execute_only(
-                            engine_state.as_ref(),
-                            execution_prestate,
-                            DeployItem::from((*deploy).clone()),
-                        )
+                        execute_only(engine_state.as_ref(), execution_prestate, deploy_item)
                     })
                     .await;
                     responder.respond(result).await

@@ -213,7 +213,7 @@ impl Block {
         Ok(block)
     }
 
-    /// Clones the header, put it in the versioning enum, and returns it.    
+    /// Clones the header, put it in the versioning enum, and returns it.
     pub fn clone_header(&self) -> BlockHeader {
         match self {
             Block::V1(v1) => BlockHeader::V1(v1.header().clone()),
@@ -317,14 +317,6 @@ impl Block {
         }
     }
 
-    /// Returns the deploy hashes within the block.
-    pub fn deploy_hashes(&self) -> &[DeployHash] {
-        match self {
-            Block::V1(v1) => v1.body.deploy_hashes(),
-            Block::V2(v2) => v2.body.deploy_hashes(),
-        }
-    }
-
     /// Returns the era ID in which this block was created.
     pub fn era_id(&self) -> EraId {
         match self {
@@ -333,7 +325,7 @@ impl Block {
         }
     }
 
-    /// Clones the era end, put it in the versioning enum, and returns it.    
+    /// Clones the era end, put it in the versioning enum, and returns it.
     pub fn clone_era_end(&self) -> Option<EraEnd> {
         match self {
             Block::V1(v1) => v1.header().era_end().cloned().map(EraEnd::V1),
@@ -354,6 +346,14 @@ impl Block {
         match self {
             Block::V1(v1) => v1.header.is_genesis(),
             Block::V2(v2) => v2.header.is_genesis(),
+        }
+    }
+
+    /// Returns the deploy hashes within the block.
+    pub fn deploy_hashes(&self) -> &[DeployHash] {
+        match self {
+            Block::V1(v1) => v1.body.deploy_hashes(),
+            Block::V2(v2) => v2.body.deploy_hashes(),
         }
     }
 

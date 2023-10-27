@@ -31,8 +31,9 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
-    AsymmetricType, BlockHash, BlockHeader, Chainspec, ConsensusProtocolName, Deploy, DeployHash,
-    Digest, DisplayIter, EraId, PublicKey, RewardedSignatures, TimeDiff, Timestamp,
+    AsymmetricType, BlockHash, BlockHeader, Chainspec, ConsensusProtocolName, DeployHash, Digest,
+    DisplayIter, EraId, PublicKey, RewardedSignatures, TimeDiff, Timestamp, Transaction,
+    TransactionHash,
 };
 
 use crate::{
@@ -1359,18 +1360,18 @@ impl SerializedMessage {
     }
 }
 
-async fn get_deploys<REv>(
+async fn get_transactions<REv>(
     effect_builder: EffectBuilder<REv>,
-    hashes: Vec<DeployHash>,
-) -> Option<Vec<Deploy>>
+    hashes: Vec<TransactionHash>,
+) -> Option<Vec<Transaction>>
 where
     REv: From<StorageRequest>,
 {
     effect_builder
-        .get_deploys_from_storage(hashes)
+        .get_transactions_from_storage(hashes)
         .await
         .into_iter()
-        .map(|maybe_deploy| maybe_deploy.map(|deploy| deploy.into_naive()))
+        .map(|maybe_transaction| maybe_transaction.map(|transaction| transaction.into_naive()))
         .collect()
 }
 
@@ -1386,21 +1387,21 @@ async fn execute_finalized_block<REv>(
             .store_finalized_approvals(deploy_hash.into(), finalized_approvals.into())
             .await;
     }
-    // Get all deploys in order they appear in the finalized block.
-    let deploys = match get_deploys(
+    // Get all transactions in order they appear in the finalized block.
+    let transactions = match get_transactions(
         effect_builder,
         finalized_block
             .deploy_and_transfer_hashes()
-            .cloned()
+            .map(|deploy_hash| TransactionHash::from(*deploy_hash))
             .collect_vec(),
     )
     .await
     {
-        Some(deploys) => deploys,
+        Some(transactions) => transactions,
         None => {
             fatal!(
                 effect_builder,
-                "Could not fetch deploys and transfers for finalized block: {:?}",
+                "Could not fetch transactions for finalized block: {:?}",
                 finalized_block
             )
             .await;
@@ -1408,6 +1409,13 @@ async fn execute_finalized_block<REv>(
         }
     };
 
+    let deploys = transactions
+        .into_iter()
+        .filter_map(|txn| match txn {
+            Transaction::Deploy(deploy) => Some(deploy),
+            Transaction::V1(_) => None,
+        })
+        .collect();
     let executable_block =
         ExecutableBlock::from_finalized_block_and_deploys(finalized_block, deploys);
     effect_builder
