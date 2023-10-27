@@ -49,6 +49,10 @@ pub(crate) fn get_refund_purse<R: RuntimeProvider>(
 }
 
 /// Returns tuple where 1st element is the refund, and 2nd element is the fee.
+///
+/// # Note
+///
+/// Any dust amounts are added to the fee.
 fn calculate_refund_and_fee(
     gas_spent: U512,
     payment_purse_balance: U512,
@@ -296,6 +300,40 @@ mod tests {
             let b = Ratio::from(b);
 
             assert_eq!(a + b, Ratio::from(purse_bal));
+        }
+    }
+}
+
+#[cfg(test)]
+mod proptests {
+    use proptest::prelude::*;
+
+    use super::*;
+
+    const DENOM_MAX: u64 = 1000;
+    const BALANCE_MAX: u64 = 100_000_000;
+
+    prop_compose! {
+      fn proper_fraction(max: u64)
+                        (numerator in 0..=max)
+                        (numerator in Just(numerator), denom in numerator..=max) -> Ratio<u64> {
+        Ratio::new(numerator, denom)
+      }
+    }
+
+    prop_compose! {
+      fn balance_and_gas(max_balance: u64)(balance in 100..=max_balance)(balance in Just(balance), gas in 1..=balance) -> (U512, U512) {
+        (U512::from(balance), U512::from(gas))
+      }
+    }
+
+    proptest! {
+        #[test]
+        fn refund_and_fee_equals_balance(refund_ratio in proper_fraction(DENOM_MAX), (balance, gas) in balance_and_gas(BALANCE_MAX)) {
+            let refund = RefundHandling::Refund { refund_ratio };
+
+            let (refund, fee) = calculate_refund_and_fee(gas, balance, &refund).unwrap();
+            prop_assert_eq!(refund + fee, balance);
         }
     }
 }
