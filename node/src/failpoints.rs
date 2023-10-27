@@ -97,6 +97,7 @@ where
 
         self.probability = activation.probability;
         self.once = activation.once;
+        self.fired = false;
 
         if self.value.is_some() {
             info!("activated failpoint");
@@ -481,6 +482,17 @@ mod tests {
             delay_send_fp.fire(&mut rng).is_none(),
             "failpoint should be disabled"
         );
+
+        let once_activation = FailpointActivation::parse("example.delay_send,once=\"2s\"").unwrap();
+        delay_send_fp.update_from(&once_activation);
+
+        let diff = delay_send_fp
+            .fire(&mut rng)
+            .expect("should trigger failpoint");
+        assert_eq!(*diff, TimeDiff::from_str("2s").unwrap());
+
+        // Repeat failpoint triggered once should not fire again.
+        assert!(delay_send_fp.fire(&mut rng).is_none());
     }
 
     #[test]
@@ -509,10 +521,5 @@ mod tests {
         // p:0.0 essentially disables it
         fp.update_from(&FailpointActivation::parse("some_failpoint,p:0.0=null").unwrap());
         assert!(fp.fire(&mut rng).is_none());
-    }
-
-    #[test]
-    fn failpoint_once_fires_once_only() {
-        todo!()
     }
 }
