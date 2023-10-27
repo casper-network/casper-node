@@ -129,7 +129,7 @@ pub(super) enum Action {
     /// Examples:
     ///
     /// * `foobar` clears the failpoint with key "foobar".
-    /// * `foobar,sub=example value,p=0.123,once={"hello": "world"}` sets the failpoint "foobar",
+    /// * `foobar,sub=example value,p=0.123,once:{"hello": "world"}` sets the failpoint "foobar",
     ///    with a subkey of "example value", a probability of 12.3%, to be fired only once, and a
     ///    JSON encoded value of `{"hello": "world"}`.
     SetFailpoint {
