@@ -60,6 +60,12 @@ impl StepRequestBuilder {
         self
     }
 
+    /// Pushes the given vector of [`EvictItem`] into `evict_items`.
+    pub fn with_evict_items(mut self, evict_items: impl IntoIterator<Item = EvictItem>) -> Self {
+        self.evict_items.extend(evict_items);
+        self
+    }
+
     /// Sets `run_auction`.
     pub fn with_run_auction(mut self, run_auction: bool) -> Self {
         self.run_auction = run_auction;

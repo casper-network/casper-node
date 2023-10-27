@@ -1867,7 +1867,7 @@ mod tests {
 
         let fault_tolerance_fraction = Ratio::new_raw(1, 3);
 
-        // Assert only if correct eras are selected, since the the
+        // Assert only if correct eras are selected, since the
         // `should_return_era_validator_weights_for_correct_sync_leap` test already covers the
         // actual weight validation.
 
@@ -1921,7 +1921,7 @@ mod tests {
 
         let fault_tolerance_fraction = Ratio::new_raw(1, 3);
 
-        // Assert only if correct eras are selected, since the the
+        // Assert only if correct eras are selected, since the
         // `should_return_era_validator_weights_for_correct_sync_leap` test already covers the
         // actual weight validation.
 

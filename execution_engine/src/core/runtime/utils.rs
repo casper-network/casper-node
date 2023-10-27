@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
-use parity_wasm::elements::Module;
-use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef};
+use casper_wasm::elements::Module;
+use casper_wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef};
 
 use casper_types::{
     contracts::NamedKeys, AccessRights, CLType, CLValue, Key, ProtocolVersion, PublicKey,
@@ -28,7 +28,7 @@ pub(super) fn instance_and_memory(
     protocol_version: ProtocolVersion,
     engine_config: &EngineConfig,
 ) -> Result<(ModuleRef, MemoryRef), Error> {
-    let module = wasmi::Module::from_parity_wasm_module(parity_module)?;
+    let module = casper_wasmi::Module::from_casper_wasm_module(parity_module)?;
     let resolver = resolvers::create_module_resolver(protocol_version, engine_config)?;
     let mut imports = ImportsBuilder::new();
     imports.push_resolver("env", &resolver);

@@ -365,9 +365,12 @@ impl DeployBuffer {
                             self.dead.insert(deploy_hash);
                         }
                         AddError::InvalidDeploy => {
-                            // it should not be possible for an invalid deploy to get buffered
-                            // in the first place, thus this should be unreachable
-                            error!(
+                            // It should not generally be possible for an invalid deploy to get
+                            // buffered in the first place, thus this should be unreachable.  There
+                            // is a small potential for a slightly future-dated deploy to be
+                            // accepted (if within `timestamp_leeway`) and still be future-dated by
+                            // the time we try and add it to a proposed block here.
+                            warn!(
                                 ?deploy_hash,
                                 "DeployBuffer: invalid deploy in deploy buffer"
                             );

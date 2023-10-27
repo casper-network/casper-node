@@ -31,7 +31,7 @@ mod relaxed {
         deserialize = "C::Hash: Deserialize<'de>",
     ))]
     #[strum_discriminants(derive(strum::EnumIter))]
-    pub(crate) enum Observation<C>
+    pub enum Observation<C>
     where
         C: Context,
     {
@@ -43,7 +43,7 @@ mod relaxed {
         Faulty,
     }
 }
-pub(crate) use relaxed::{Observation, ObservationDiscriminants};
+pub use relaxed::{Observation, ObservationDiscriminants};
 
 impl<C: Context> Debug for Observation<C>
 where
@@ -60,28 +60,31 @@ where
 
 impl<C: Context> Observation<C> {
     /// Returns the unit hash, if this is a correct observation.
-    pub(crate) fn correct(&self) -> Option<&C::Hash> {
+    pub fn correct(&self) -> Option<&C::Hash> {
         match self {
             Self::None | Self::Faulty => None,
             Self::Correct(hash) => Some(hash),
         }
     }
 
-    pub(crate) fn is_correct(&self) -> bool {
+    /// Returns `true` if this `Observation` is an `Observation::Correct`.
+    pub fn is_correct(&self) -> bool {
         match self {
             Self::None | Self::Faulty => false,
             Self::Correct(_) => true,
         }
     }
 
-    pub(crate) fn is_faulty(&self) -> bool {
+    /// Returns `true` if this `Observation` is an `Observation::Faulty`.
+    pub fn is_faulty(&self) -> bool {
         match self {
             Self::Faulty => true,
             Self::None | Self::Correct(_) => false,
         }
     }
 
-    pub(crate) fn is_none(&self) -> bool {
+    /// Returns `true` if this `Observation` is an `Observation::None`.
+    pub fn is_none(&self) -> bool {
         match self {
             Self::None => true,
             Self::Faulty | Self::Correct(_) => false,
@@ -110,7 +113,7 @@ impl<C: Context> Observation<C> {
 }
 
 /// The observed behavior of all validators at some point in time.
-pub(crate) type Panorama<C> = ValidatorMap<Observation<C>>;
+pub type Panorama<C> = ValidatorMap<Observation<C>>;
 
 impl<C: Context> Panorama<C> {
     /// Creates a new, empty panorama.
@@ -119,33 +122,30 @@ impl<C: Context> Panorama<C> {
     }
 
     /// Returns `true` if there is at least one correct observation.
-    pub(crate) fn has_correct(&self) -> bool {
+    pub fn has_correct(&self) -> bool {
         self.iter().any(Observation::is_correct)
     }
 
     /// Returns an iterator over all honest validators' latest units.
-    pub(crate) fn iter_correct<'a>(
-        &'a self,
-        state: &'a State<C>,
-    ) -> impl Iterator<Item = &'a Unit<C>> {
+    pub fn iter_correct<'a>(&'a self, state: &'a State<C>) -> impl Iterator<Item = &'a Unit<C>> {
         let to_unit = move |vh: &C::Hash| state.unit(vh);
         self.iter_correct_hashes().map(to_unit)
     }
 
     /// Returns an iterator over all honest validators' latest units' hashes.
-    pub(crate) fn iter_correct_hashes(&self) -> impl Iterator<Item = &C::Hash> {
+    pub fn iter_correct_hashes(&self) -> impl Iterator<Item = &C::Hash> {
         self.iter().filter_map(Observation::correct)
     }
 
     /// Returns an iterator over all faulty validators' indices.
-    pub(crate) fn iter_faulty(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
+    pub fn iter_faulty(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
         self.enumerate()
             .filter(|(_, obs)| obs.is_faulty())
             .map(|(i, _)| i)
     }
 
     /// Returns an iterator over all faulty validators' indices.
-    pub(crate) fn iter_none(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
+    pub fn iter_none(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
         self.enumerate()
             .filter(|(_, obs)| obs.is_none())
             .map(|(i, _)| i)
@@ -160,7 +160,7 @@ impl<C: Context> Panorama<C> {
     }
 
     /// Returns `true` if `self` sees the creator of `hash` as correct, and sees that unit.
-    pub(crate) fn sees_correct(&self, state: &State<C>, hash: &C::Hash) -> bool {
+    pub fn sees_correct(&self, state: &State<C>, hash: &C::Hash) -> bool {
         let unit = state.unit(hash);
         let can_see = |latest_hash: &C::Hash| {
             Some(hash) == state.find_in_swimlane(latest_hash, unit.seq_number)
@@ -171,7 +171,7 @@ impl<C: Context> Panorama<C> {
     }
 
     /// Returns `true` if `self` sees the unit with the specified `hash`.
-    pub(crate) fn sees(&self, state: &State<C>, hash_to_be_found: &C::Hash) -> bool {
+    pub fn sees(&self, state: &State<C>, hash_to_be_found: &C::Hash) -> bool {
         let unit_to_be_found = state.unit(hash_to_be_found);
         let mut visited = HashSet::new();
         let mut to_visit: Vec<_> = self.iter_correct_hashes().collect();
@@ -208,7 +208,7 @@ impl<C: Context> Panorama<C> {
 
     /// Returns the panorama seeing all units seen by `self` with a timestamp no later than
     /// `timestamp`. Accusations are preserved regardless of the evidence's timestamp.
-    pub(crate) fn cutoff(&self, state: &State<C>, timestamp: Timestamp) -> Panorama<C> {
+    pub fn cutoff(&self, state: &State<C>, timestamp: Timestamp) -> Panorama<C> {
         let obs_cutoff = |obs: &Observation<C>| match obs {
             Observation::Correct(vhash) => state
                 .swimlane(vhash)
@@ -228,7 +228,7 @@ impl<C: Context> Panorama<C> {
 
     /// Returns whether `self` can possibly come later in time than `other`, i.e. it can see
     /// every honest message and every fault seen by `other`.
-    pub(super) fn geq(&self, state: &State<C>, other: &Panorama<C>) -> bool {
+    pub fn geq(&self, state: &State<C>, other: &Panorama<C>) -> bool {
         let mut pairs_iter = self.iter().zip(other);
         pairs_iter.all(|(obs_self, obs_other)| obs_self.geq(state, obs_other))
     }

@@ -1,3 +1,4 @@
+[core]
 # Setting this to false makes sense only on private chains which don't need to auction new validator slots.
 #
 # Changing this option makes sense only for private chains which dont need auctioning new validator slots.

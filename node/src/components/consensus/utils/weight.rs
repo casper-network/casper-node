@@ -5,7 +5,7 @@ use std::{
 
 use datasize::DataSize;
 use derive_more::{Add, AddAssign, From, Sub, SubAssign, Sum};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// A vote weight.
 #[derive(
@@ -20,13 +20,14 @@ use serde::Serialize;
     Ord,
     Add,
     Serialize,
+    Deserialize,
     Sub,
     AddAssign,
     SubAssign,
     Sum,
     From,
 )]
-pub(crate) struct Weight(pub(crate) u64);
+pub struct Weight(pub u64);
 
 impl Weight {
     /// Checked addition. Returns `None` if overflow occurred.

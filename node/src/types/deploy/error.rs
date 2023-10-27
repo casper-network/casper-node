@@ -42,11 +42,14 @@ pub enum DeployConfigurationFailure {
 
     /// Deploy's timestamp is in the future.
     #[error(
-        "timestamp of {got} is later than node's validation timestamp of {validation_timestamp}"
+        "timestamp of {got} is later than node's validation timestamp of {validation_timestamp} \
+        plus leeway of {timestamp_leeway}"
     )]
     TimestampInFuture {
         /// The node's timestamp when validating the deploy.
         validation_timestamp: Timestamp,
+        /// Any configured leeway added to `validation_timestamp`.
+        timestamp_leeway: TimeDiff,
         /// The deploy's timestamp.
         got: Timestamp,
     },

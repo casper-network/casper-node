@@ -71,7 +71,7 @@ struct MockReactor {
 
 impl MockReactor {
     fn new() -> Self {
-        let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
+        let scheduler = utils::leak(Scheduler::new(QueueKind::weights(), None));
         let event_queue_handle = EventQueueHandle::without_shutdown(scheduler);
         let effect_builder = EffectBuilder::new(event_queue_handle);
         MockReactor {
@@ -3649,7 +3649,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
         );
     }
 
-    // Receive the rest of the the missing signatures to get strict finality. This would switch the
+    // Receive the rest of the missing signatures to get strict finality. This would switch the
     // state to HaveStrictFinality and continue to request to make the block executable.
     {
         let mut generated_effects = Effects::new();

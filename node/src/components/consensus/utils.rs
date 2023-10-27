@@ -1,5 +1,7 @@
+//! Various utilities relevant to consensus.
+
 mod validators;
 mod weight;
 
-pub(crate) use validators::{Validator, ValidatorIndex, ValidatorMap, Validators};
-pub(crate) use weight::Weight;
+pub use validators::{Validator, ValidatorIndex, ValidatorMap, Validators};
+pub use weight::Weight;

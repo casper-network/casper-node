@@ -302,7 +302,7 @@ impl<K, V> TrieScan<K, V> {
 
 /// Returns a [`TrieScan`] from the given key at a given root in a given store.
 /// A scan consists of the deepest trie variant found at that key, a.k.a. the
-/// "tip", along the with the parents of that variant. Parents are ordered by
+/// "tip", along with the parents of that variant. Parents are ordered by
 /// their depth from the root (shallow to deep).
 fn scan<K, V, T, S, E>(
     txn: &T,
@@ -593,8 +593,9 @@ where
                                 let trie_key = new_extension.trie_hash()?;
                                 new_elements.push((trie_key, new_extension))
                             }
-                            // The single sibling is a extension.  We output an extension to replace
-                            // the parent, prepending the sibling index to the sibling's affix.  In
+                            // The single sibling is an extension.  We output an extension to
+                            // replace the parent, prepending the
+                            // sibling index to the sibling's affix.  In
                             // the next loop iteration, we will handle the case where this extension
                             // might need to be combined with a grandparent extension.
                             Trie::Extension {
@@ -738,7 +739,7 @@ fn get_parents_path<K, V>(parents: &[(u8, Trie<K, V>)]) -> Vec<u8> {
 /// Takes a path to a leaf, that leaf's parent node, and the parents of that
 /// node, and adds the node to the parents.
 ///
-/// This function will panic if the the path to the leaf and the path to its
+/// This function will panic if the path to the leaf and the path to its
 /// parent node do not share a common prefix.
 fn add_node_to_parents<K, V>(
     path_to_leaf: &[u8],
@@ -837,7 +838,7 @@ struct SplitResult<K, V> {
 /// and child extensions.  The node pointer contained in the existing extension
 /// is repositioned in the new node or the possible child extension.  The
 /// possible parent extension is added to parents.  Returns the new node,
-/// parents, and the the possible child extension (paired with its hash).
+/// parents, and the possible child extension (paired with its hash).
 /// The new node and parents can be used by [`add_node_to_parents`], and the
 /// new hashed child extension can be added to the list of new trie elements.
 fn split_extension<K, V>(

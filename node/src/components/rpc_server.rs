@@ -477,8 +477,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use schemars::schema_for_value;
-
     use crate::{rpcs::docs::OPEN_RPC_SCHEMA, testing::assert_schema};
 
     #[test]
@@ -487,6 +485,9 @@ mod tests {
             "{}/../resources/test/rpc_schema_hashing.json",
             env!("CARGO_MANIFEST_DIR")
         );
-        assert_schema(schema_path, schema_for_value!(OPEN_RPC_SCHEMA.clone()));
+        assert_schema(
+            schema_path,
+            serde_json::to_string_pretty(&*OPEN_RPC_SCHEMA).unwrap(),
+        );
     }
 }

@@ -1,25 +1,29 @@
 //! Unit tests for the storage component.
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fs::{self, File},
-    iter,
+    iter::{self, FromIterator},
     rc::Rc,
     sync::Arc,
 };
 
+use lmdb::Transaction;
 use rand::{prelude::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
 use casper_types::{
     generate_ed25519_keypair, system::auction::UnbondingPurse, testing::TestRng, AccessRights,
-    EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, TimeDiff, URef, U512,
+    EraId, ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, SecretKey, TimeDiff,
+    Transfer, Transform, TransformEntry, URef, U512,
 };
 
 use super::{
+    initialize_block_metadata_db,
+    lmdb_ext::{deserialize_internal, serialize_internal, TransactionExt, WriteTransactionExt},
     move_storage_files_to_network_subdir, should_move_storage_files_to_network_subdir, Config,
-    Storage,
+    Storage, FORCE_RESYNC_FILE_NAME,
 };
 use crate::{
     components::fetcher::{FetchItem, FetchResponse},
@@ -27,16 +31,13 @@ use crate::{
         requests::{MarkBlockCompletedRequest, StorageRequest},
         Multiple,
     },
-    storage::{
-        lmdb_ext::{deserialize_internal, serialize_internal},
-        FORCE_RESYNC_FILE_NAME,
-    },
     testing::{ComponentHarness, UnitTestEvent},
     types::{
         sync_leap_validation_metadata::SyncLeapValidationMetaData, AvailableBlockRange, Block,
-        BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
-        Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployMetadata, DeployMetadataExt,
-        DeployWithFinalizedApprovals, FinalitySignature, LegacyDeploy, SyncLeapIdentifier,
+        BlockHash, BlockHashAndHeight, BlockHashHeightAndEra, BlockHeader, BlockHeaderWithMetadata,
+        BlockSignatures, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployMetadata,
+        DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature, LegacyDeploy,
+        SyncLeapIdentifier, TestBlockBuilder,
     },
     utils::{Loadable, WithDir},
 };
@@ -462,12 +463,12 @@ fn put_deploy(
 
 fn insert_to_deploy_index(
     storage: &mut Storage,
-    deploy: Deploy,
-    block_hash_and_height: BlockHashAndHeight,
+    deploy_hash: &DeployHash,
+    block_hash_height_and_era: BlockHashHeightAndEra,
 ) -> bool {
     storage
         .deploy_hash_index
-        .insert(*deploy.hash(), block_hash_and_height)
+        .insert(*deploy_hash, block_hash_height_and_era)
         .is_none()
 }
 
@@ -758,13 +759,13 @@ fn can_retrieve_store_and_load_deploys() {
     let deploy = Arc::new(Deploy::random(&mut harness.rng));
 
     let was_new = put_deploy(&mut harness, &mut storage, Arc::clone(&deploy));
-    let block_hash_and_height = BlockHashAndHeight::random(&mut harness.rng);
+    let block_hash_height_and_era = BlockHashHeightAndEra::random(&mut harness.rng);
     // Insert to the deploy hash index as well so that we can perform the GET later.
     // Also check that we don't have an entry there for this deploy.
     assert!(insert_to_deploy_index(
         &mut storage,
-        (*deploy).clone(),
-        block_hash_and_height
+        deploy.hash(),
+        block_hash_height_and_era
     ));
     assert!(was_new, "putting deploy should have returned `true`");
 
@@ -776,8 +777,8 @@ fn can_retrieve_store_and_load_deploys() {
     );
     assert!(!insert_to_deploy_index(
         &mut storage,
-        (*deploy).clone(),
-        block_hash_and_height
+        deploy.hash(),
+        block_hash_height_and_era
     ));
 
     // Retrieve the stored deploy.
@@ -802,7 +803,10 @@ fn can_retrieve_store_and_load_deploys() {
             panic!("We didn't store any metadata but we received it in the response.")
         }
         DeployMetadataExt::BlockInfo(recv_block_hash_and_height) => {
-            assert_eq!(block_hash_and_height, recv_block_hash_and_height)
+            assert_eq!(
+                BlockHashAndHeight::from(&block_hash_height_and_era),
+                recv_block_hash_and_height
+            )
         }
         DeployMetadataExt::Empty => panic!(
             "We stored block info in the deploy hash index \
@@ -838,6 +842,122 @@ fn can_retrieve_store_and_load_deploys() {
         }
         DeployMetadataExt::Empty => { /* We didn't store execution results or block info */ }
     }
+}
+
+#[test]
+fn should_retrieve_deploys_era_ids() {
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+
+    // Populate the `deploy_hash_index` with 5 deploys from a block in era 1.
+    let era_1_deploy_hashes: HashSet<DeployHash> =
+        iter::repeat_with(|| DeployHash::random(&mut harness.rng))
+            .take(5)
+            .collect();
+    let block_hash_height_and_era = BlockHashHeightAndEra::new(
+        BlockHash::random(&mut harness.rng),
+        harness.rng.gen(),
+        EraId::new(1),
+    );
+    for deploy_hash in &era_1_deploy_hashes {
+        assert!(insert_to_deploy_index(
+            &mut storage,
+            deploy_hash,
+            block_hash_height_and_era
+        ));
+    }
+
+    // Further populate the `deploy_hash_index` with 5 deploys from a block in era 2.
+    let era_2_deploy_hashes: HashSet<DeployHash> =
+        iter::repeat_with(|| DeployHash::random(&mut harness.rng))
+            .take(5)
+            .collect();
+    let block_hash_height_and_era = BlockHashHeightAndEra::new(
+        BlockHash::random(&mut harness.rng),
+        harness.rng.gen(),
+        EraId::new(2),
+    );
+    for deploy_hash in &era_2_deploy_hashes {
+        assert!(insert_to_deploy_index(
+            &mut storage,
+            deploy_hash,
+            block_hash_height_and_era
+        ));
+    }
+
+    // Check we get an empty set for deploys not yet executed.
+    let random_deploy_hashes: HashSet<DeployHash> =
+        iter::repeat_with(|| DeployHash::random(&mut harness.rng))
+            .take(5)
+            .collect();
+    assert!(storage
+        .get_deploys_era_ids(random_deploy_hashes.clone())
+        .is_empty());
+
+    // Check we get back only era 1 for all of the era 1 deploys and similarly for era 2 ones.
+    let era1: HashSet<EraId> = iter::once(EraId::new(1)).collect();
+    assert_eq!(
+        storage.get_deploys_era_ids(era_1_deploy_hashes.clone()),
+        era1
+    );
+    let era2: HashSet<EraId> = iter::once(EraId::new(2)).collect();
+    assert_eq!(
+        storage.get_deploys_era_ids(era_2_deploy_hashes.clone()),
+        era2
+    );
+
+    // Check we get back both eras if we use some from each collection.
+    let both_eras = vec![EraId::new(1), EraId::new(2)].into_iter().collect();
+    assert_eq!(
+        storage.get_deploys_era_ids(
+            era_1_deploy_hashes
+                .iter()
+                .take(3)
+                .chain(era_2_deploy_hashes.iter().take(3))
+                .copied()
+                .collect(),
+        ),
+        both_eras
+    );
+
+    // Check we get back only era 1 for era 1 deploys interspersed with unexecuted deploys, and
+    // similarly for era 2 ones.
+    assert_eq!(
+        storage.get_deploys_era_ids(
+            era_1_deploy_hashes
+                .iter()
+                .take(1)
+                .chain(random_deploy_hashes.iter().take(3))
+                .copied()
+                .collect(),
+        ),
+        era1
+    );
+    assert_eq!(
+        storage.get_deploys_era_ids(
+            era_2_deploy_hashes
+                .iter()
+                .take(1)
+                .chain(random_deploy_hashes.iter().take(3))
+                .copied()
+                .collect(),
+        ),
+        era2
+    );
+
+    // Check we get back both eras if we use some from each collection and also some unexecuted.
+    assert_eq!(
+        storage.get_deploys_era_ids(
+            era_1_deploy_hashes
+                .iter()
+                .take(3)
+                .chain(era_2_deploy_hashes.iter().take(3))
+                .chain(random_deploy_hashes.iter().take(3))
+                .copied()
+                .collect(),
+        ),
+        both_eras
+    );
 }
 
 #[test]
@@ -1056,21 +1176,168 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
     put_execution_results(&mut harness, &mut storage, block_hash, exec_result_2);
 }
 
+fn prepare_exec_result_with_transfer(
+    rng: &mut TestRng,
+    deploy_hash: &DeployHash,
+) -> (ExecutionResult, Transfer) {
+    let transfer = Transfer::new(
+        (*deploy_hash).into(),
+        rng.gen(),
+        Some(rng.gen()),
+        rng.gen(),
+        rng.gen(),
+        rng.gen(),
+        rng.gen(),
+        Some(rng.gen()),
+    );
+    let transform = TransformEntry {
+        key: Key::DeployInfo((*deploy_hash).into()).to_formatted_string(),
+        transform: Transform::WriteTransfer(transfer),
+    };
+    let effect = ExecutionEffect::new(vec![transform]);
+    let exec_result = ExecutionResult::Success {
+        effect,
+        transfers: vec![],
+        cost: rng.gen(),
+    };
+    (exec_result, transfer)
+}
+
 #[test]
 fn store_identical_execution_results() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    let block_hash = BlockHash::random(&mut harness.rng);
-    let deploy_hash = DeployHash::random(&mut harness.rng);
+    let deploy = Deploy::random_valid_native_transfer(&mut harness.rng);
+    let deploy_hash = *deploy.hash();
+    let block = Block::random_with_deploys(&mut harness.rng, Some(&deploy));
+    storage.write_block(&block).unwrap();
+    let block_hash = *block.hash();
 
-    let mut exec_result = HashMap::new();
-    exec_result.insert(deploy_hash, harness.rng.gen());
+    let (exec_result, transfer) = prepare_exec_result_with_transfer(&mut harness.rng, &deploy_hash);
+    let mut exec_results = HashMap::new();
+    exec_results.insert(deploy_hash, exec_result.clone());
 
-    put_execution_results(&mut harness, &mut storage, block_hash, exec_result.clone());
+    put_execution_results(&mut harness, &mut storage, block_hash, exec_results.clone());
+    {
+        let mut txn = storage.env.begin_ro_txn().unwrap();
+        let retrieved_results = storage
+            .get_execution_results(&mut txn, &block_hash)
+            .expect("should execute get")
+            .expect("should return Some");
+        assert_eq!(retrieved_results.len(), 1);
+        assert_eq!(retrieved_results[0].0, deploy_hash);
+        assert_eq!(retrieved_results[0].1, exec_result);
+    }
+    let retrieved_transfers = storage
+        .get_transfers(&block_hash)
+        .expect("should execute get")
+        .expect("should return Some");
+    assert_eq!(retrieved_transfers.len(), 1);
+    assert_eq!(retrieved_transfers[0], transfer);
 
     // We should be fine storing the exact same result twice.
-    put_execution_results(&mut harness, &mut storage, block_hash, exec_result);
+    put_execution_results(&mut harness, &mut storage, block_hash, exec_results);
+    {
+        let mut txn = storage.env.begin_ro_txn().unwrap();
+        let retrieved_results = storage
+            .get_execution_results(&mut txn, &block_hash)
+            .expect("should execute get")
+            .expect("should return Some");
+        assert_eq!(retrieved_results.len(), 1);
+        assert_eq!(retrieved_results[0].0, deploy_hash);
+        assert_eq!(retrieved_results[0].1, exec_result);
+    }
+    let retrieved_transfers = storage
+        .get_transfers(&block_hash)
+        .expect("should execute get")
+        .expect("should return Some");
+    assert_eq!(retrieved_transfers.len(), 1);
+    assert_eq!(retrieved_transfers[0], transfer);
+}
+
+/// This is a regression test for the issue where `Transfer`s under a block with no deploys could be
+/// returned as `None` rather than the expected `Some(vec![])`.  The fix should ensure that if no
+/// Transfers are found, storage will respond with an empty collection and store the correct value
+/// for future requests.
+///
+/// See https://github.com/casper-network/casper-node/issues/4255 for further info.
+#[test]
+fn should_provide_transfers_if_not_stored() {
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+
+    let block = TestBlockBuilder::new()
+        .deploys(None)
+        .build(&mut harness.rng);
+    assert_eq!(block.body().deploy_and_transfer_hashes().count(), 0);
+    storage.write_block(&block).unwrap();
+    let block_hash = *block.hash();
+
+    // Check an empty collection is returned.
+    let retrieved_transfers = storage
+        .get_transfers(&block_hash)
+        .expect("should execute get")
+        .expect("should return Some");
+    assert!(retrieved_transfers.is_empty());
+
+    // Check the empty collection has been stored.
+    let mut txn = storage.env.begin_ro_txn().unwrap();
+    let maybe_transfers = txn
+        .get_value::<_, Vec<Transfer>>(storage.transfer_db, &block_hash)
+        .unwrap();
+    assert_eq!(Some(vec![]), maybe_transfers);
+}
+
+/// This is a regression test for the issue where a valid collection of `Transfer`s under a given
+/// block could be erroneously replaced with an empty collection.  The fix should ensure that if an
+/// empty collection of Transfers is found, storage will replace it with the correct collection and
+/// store the correct value for future requests.
+///
+/// See https://github.com/casper-network/casper-node/issues/4268 for further info.
+#[test]
+fn should_provide_transfers_after_emptied() {
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+
+    let deploy = Deploy::random_valid_native_transfer(&mut harness.rng);
+    let deploy_hash = *deploy.hash();
+    let block = Block::random_with_deploys(&mut harness.rng, Some(&deploy));
+    storage.write_block(&block).unwrap();
+    let block_hash = *block.hash();
+
+    let (exec_result, transfer) = prepare_exec_result_with_transfer(&mut harness.rng, &deploy_hash);
+    let mut exec_results = HashMap::new();
+    exec_results.insert(deploy_hash, exec_result);
+
+    put_execution_results(&mut harness, &mut storage, block_hash, exec_results.clone());
+    // Replace the valid collection with an empty one.
+    {
+        let mut txn = storage.env.begin_rw_txn().unwrap();
+        txn.put_value(
+            storage.transfer_db,
+            &block_hash,
+            &Vec::<Transfer>::new(),
+            true,
+        )
+        .unwrap();
+        txn.commit().unwrap();
+    }
+
+    // Check the correct value is returned.
+    let retrieved_transfers = storage
+        .get_transfers(&block_hash)
+        .expect("should execute get")
+        .expect("should return Some");
+    assert_eq!(retrieved_transfers.len(), 1);
+    assert_eq!(retrieved_transfers[0], transfer);
+
+    // Check the correct value has been stored.
+    let mut txn = storage.env.begin_ro_txn().unwrap();
+    let maybe_transfers = txn
+        .get_value::<_, Vec<Transfer>>(storage.transfer_db, &block_hash)
+        .unwrap();
+    assert_eq!(Some(vec![transfer]), maybe_transfers);
 }
 
 /// Example state used in storage.
@@ -1848,4 +2115,123 @@ fn unbonding_purse_serialization_roundtrip() {
 
     // Explicitly assert that the `new_validator` is not `None`
     assert!(deserialized.new_validator().is_some())
+}
+
+// Clippy complains because there's a `OnceCell` in `FinalitySignature`, hence it should not be used
+// as a key in `BTreeSet`. However, we don't change the content of the cell during the course of the
+// test so there's no risk the hash or order of keys will change.
+#[allow(clippy::mutable_key_type)]
+fn assert_signatures(storage: &Storage, block_hash: BlockHash, expected: Vec<FinalitySignature>) {
+    let mut txn = storage.env.begin_ro_txn().unwrap();
+    let actual = storage
+        .get_block_signatures(&mut txn, &block_hash)
+        .expect("should be able to read signatures");
+    let actual = actual.map_or(BTreeSet::new(), |signatures| {
+        signatures.finality_signatures().collect()
+    });
+    let expected: BTreeSet<_> = expected.into_iter().collect();
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn should_initialize_block_metadata_db() {
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+
+    let block_1 = Block::random(&mut harness.rng);
+    let fs_1_1 =
+        FinalitySignature::random_for_block(*block_1.hash(), block_1.header().era_id().into());
+    let fs_1_2 =
+        FinalitySignature::random_for_block(*block_1.hash(), block_1.header().era_id().into());
+
+    let block_2 = Block::random(&mut harness.rng);
+    let fs_2_1 =
+        FinalitySignature::random_for_block(*block_2.hash(), block_2.header().era_id().into());
+    let fs_2_2 =
+        FinalitySignature::random_for_block(*block_2.hash(), block_2.header().era_id().into());
+
+    let block_3 = Block::random(&mut harness.rng);
+    let fs_3_1 =
+        FinalitySignature::random_for_block(*block_3.hash(), block_3.header().era_id().into());
+    let fs_3_2 =
+        FinalitySignature::random_for_block(*block_3.hash(), block_3.header().era_id().into());
+
+    let block_4 = Block::random(&mut harness.rng);
+
+    let _ = storage.put_finality_signature(Box::new(fs_1_1.clone()));
+    let _ = storage.put_finality_signature(Box::new(fs_1_2.clone()));
+    let _ = storage.put_finality_signature(Box::new(fs_2_1.clone()));
+    let _ = storage.put_finality_signature(Box::new(fs_2_2.clone()));
+    let _ = storage.put_finality_signature(Box::new(fs_3_1.clone()));
+    let _ = storage.put_finality_signature(Box::new(fs_3_2.clone()));
+
+    assert_signatures(
+        &storage,
+        *block_1.hash(),
+        vec![fs_1_1.clone(), fs_1_2.clone()],
+    );
+    assert_signatures(
+        &storage,
+        *block_2.hash(),
+        vec![fs_2_1.clone(), fs_2_2.clone()],
+    );
+    assert_signatures(
+        &storage,
+        *block_3.hash(),
+        vec![fs_3_1.clone(), fs_3_2.clone()],
+    );
+    assert_signatures(&storage, *block_4.hash(), vec![]);
+
+    // Purging empty set of blocks should not change state.
+    let to_be_purged = HashSet::new();
+    let _ = initialize_block_metadata_db(&storage.env, &storage.block_metadata_db, &to_be_purged);
+    assert_signatures(&storage, *block_1.hash(), vec![fs_1_1, fs_1_2]);
+    assert_signatures(
+        &storage,
+        *block_2.hash(),
+        vec![fs_2_1.clone(), fs_2_2.clone()],
+    );
+    assert_signatures(
+        &storage,
+        *block_3.hash(),
+        vec![fs_3_1.clone(), fs_3_2.clone()],
+    );
+
+    // Purging for block_1 should leave sigs for block_2 and block_3 intact.
+    let to_be_purged = HashSet::from_iter([block_1.hash().as_ref()]);
+    let _ = initialize_block_metadata_db(&storage.env, &storage.block_metadata_db, &to_be_purged);
+    assert_signatures(&storage, *block_1.hash(), vec![]);
+    assert_signatures(
+        &storage,
+        *block_2.hash(),
+        vec![fs_2_1.clone(), fs_2_2.clone()],
+    );
+    assert_signatures(
+        &storage,
+        *block_3.hash(),
+        vec![fs_3_1.clone(), fs_3_2.clone()],
+    );
+    assert_signatures(&storage, *block_4.hash(), vec![]);
+
+    // Purging for block_4 (which has no signatures) should not modify state.
+    let to_be_purged = HashSet::from_iter([block_4.hash().as_ref()]);
+    let _ = initialize_block_metadata_db(&storage.env, &storage.block_metadata_db, &to_be_purged);
+    assert_signatures(&storage, *block_1.hash(), vec![]);
+    assert_signatures(&storage, *block_2.hash(), vec![fs_2_1, fs_2_2]);
+    assert_signatures(&storage, *block_3.hash(), vec![fs_3_1, fs_3_2]);
+    assert_signatures(&storage, *block_4.hash(), vec![]);
+
+    // Purging for all blocks should leave no signatures.
+    let to_be_purged = HashSet::from_iter([
+        block_1.hash().as_ref(),
+        block_2.hash().as_ref(),
+        block_3.hash().as_ref(),
+        block_4.hash().as_ref(),
+    ]);
+
+    let _ = initialize_block_metadata_db(&storage.env, &storage.block_metadata_db, &to_be_purged);
+    assert_signatures(&storage, *block_1.hash(), vec![]);
+    assert_signatures(&storage, *block_2.hash(), vec![]);
+    assert_signatures(&storage, *block_3.hash(), vec![]);
+    assert_signatures(&storage, *block_4.hash(), vec![]);
 }

@@ -130,10 +130,19 @@ function call_config_gen() {
 
     OVERRIDE_SCRIPT="$NCTL/scripts/config_gen.py"
 
-    "$OVERRIDE_SCRIPT" --override_file "$OVERRIDE_FILE" \
-        --toml_file "$TOML_FILE" \
-        --output_file "$OUTPUT_FILE"
-    
+    # itst06_private_chain and itst07_private_chain tests need the `--no_skip` flag in order
+    # to pull the administrators section from the override toml. Without `--no_skip` the override
+    # mechanism will skip any fields that are missing from the base toml file.
+    if [ "$OVERRIDE_FILE" == "itst06_private_chain.accounts.toml.override" ] || [ "$OVERRIDE_FILE" == "itst07_private_chain.accounts.toml.override" ]; then
+        "$OVERRIDE_SCRIPT" --override_file "$OVERRIDE_FILE" \
+            --toml_file "$TOML_FILE" \
+            --output_file "$OUTPUT_FILE" \
+            --no_skip
+    else
+        "$OVERRIDE_SCRIPT" --override_file "$OVERRIDE_FILE" \
+            --toml_file "$TOML_FILE" \
+            --output_file "$OUTPUT_FILE"
+    fi
 }
 
 # ----------------------------------------------------------------
