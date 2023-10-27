@@ -96,7 +96,7 @@ where
         }
 
         self.probability = activation.probability;
-        self.once = self.once;
+        self.once = activation.once;
 
         if self.value.is_some() {
             info!("activated failpoint");
@@ -463,6 +463,16 @@ mod tests {
             .expect("should trigger failpoint");
         assert_eq!(*diff, TimeDiff::from_str("1s").unwrap());
 
+        // Repeat, since `once` is not enabled.
+        let diff = delay_send_fp
+            .fire(&mut rng)
+            .expect("should trigger failpoint a second time");
+        assert_eq!(*diff, TimeDiff::from_str("1s").unwrap());
+        let diff = delay_send_fp
+            .fire(&mut rng)
+            .expect("should trigger failpoint a third time");
+        assert_eq!(*diff, TimeDiff::from_str("1s").unwrap());
+
         let deactivation = FailpointActivation::parse("example.delay_send").unwrap();
 
         delay_send_fp.update_from(&deactivation);
@@ -474,8 +484,13 @@ mod tests {
     }
 
     #[test]
-    fn activation_primes_property() {
-        todo!()
+    fn activation_primes_properly() {
+        let mut fp = Failpoint::<()>::new("some_failpoint");
+
+        fp.update_from(&FailpointActivation::parse("some_failpoint,p:0.5,once=null").unwrap());
+
+        assert_eq!(fp.probability, Some(0.5));
+        assert_eq!(fp.once, true);
     }
 
     #[test]
