@@ -310,7 +310,7 @@ mod proptests {
 
     use super::*;
 
-    const DENUM_MAX: u64 = 1000;
+    const DENOM_MAX: u64 = 1000;
     const BALANCE_MAX: u64 = 100_000_000;
 
     prop_compose! {
@@ -329,7 +329,7 @@ mod proptests {
 
     proptest! {
         #[test]
-        fn refund_and_fee_equals_balance(refund_ratio in proper_fraction(DENUM_MAX), (balance, gas) in balance_and_gas(BALANCE_MAX)) {
+        fn refund_and_fee_equals_balance(refund_ratio in proper_fraction(DENOM_MAX), (balance, gas) in balance_and_gas(BALANCE_MAX)) {
             let refund = RefundHandling::Refund { refund_ratio };
 
             let (refund, fee) = calculate_refund_and_fee(gas, balance, &refund).unwrap();
