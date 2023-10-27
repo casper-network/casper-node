@@ -78,7 +78,7 @@ where
                         fp_subkey=%OptDisplay::new(self.subkey.as_ref(), "")
                        )
                 )]
-    fn update_from(&mut self, activation: &FailpointActivation) {
+    pub(crate) fn update_from(&mut self, activation: &FailpointActivation) {
         // Check if the failpoint matches.
         if activation.key != self.key || activation.subkey != self.subkey {
             trace!("not updating failpoint");
@@ -290,6 +290,8 @@ mod tests {
 
     use casper_types::{testing::TestRng, TimeDiff};
 
+    use crate::testing::init_logging;
+
     use super::{Failpoint, FailpointActivation};
 
     #[test]
@@ -432,24 +434,67 @@ mod tests {
         );
     }
 
-    // TODO: Test for priming failpoints.
-    // TODO: Test triggering failpoint.
-
     #[test]
     fn simple_usecase() {
+        init_logging();
+
         let mut rng = TestRng::new();
         let mut delay_send_fp = Failpoint::<TimeDiff>::new("example.delay_send");
 
-        if let Some(_diff) = delay_send_fp.fire(&mut rng) {
-            panic!("should not reach disabled failpoint");
-        }
+        assert!(
+            delay_send_fp.fire(&mut rng).is_none(),
+            "failpoint should be disabled"
+        );
 
-        let activation = FailpointActivation::parse("example.delay_send=\"1s\"").unwrap();
+        let unrelated_activation = FailpointActivation::parse("example.unrelated=\"1s\"").unwrap();
+        delay_send_fp.update_from(&unrelated_activation);
+
+        assert!(
+            delay_send_fp.fire(&mut rng).is_none(),
+            "failpoint should be disabled after unrelated activation"
+        );
+
+        let activation = FailpointActivation::parse("example.delay_send:\"1s\"").unwrap();
 
         delay_send_fp.update_from(&activation);
 
-        if let Some(diff) = delay_send_fp.fire(&mut rng) {
-            assert_eq!(*diff, TimeDiff::from_str("1s").unwrap());
-        }
+        let diff = delay_send_fp
+            .fire(&mut rng)
+            .expect("should trigger failpoint");
+        assert_eq!(*diff, TimeDiff::from_str("1s").unwrap());
+
+        let deactivation = FailpointActivation::parse("example.delay_send").unwrap();
+
+        delay_send_fp.update_from(&deactivation);
+
+        assert!(
+            delay_send_fp.fire(&mut rng).is_none(),
+            "failpoint should be disabled"
+        );
+    }
+
+    #[test]
+    fn activation_primes_property() {
+        todo!()
+    }
+
+    #[test]
+    fn failpoint_probability_affects_failpoint() {
+        let mut rng = TestRng::new();
+        let mut fp = Failpoint::<()>::new("some_failpoint");
+
+        let activation = FailpointActivation::parse("some_failpoint=null").unwrap();
+
+        fp.update_from(&activation);
+
+        // if let Some(diff) = fp.fire(&mut rng) {
+        //     assert_eq!(*diff, TimeDiff::from_str("1s").unwrap());
+        // } else {
+        // }
+    }
+
+    #[test]
+    fn failpoint_once_fires_once_only() {
+        todo!()
     }
 }
