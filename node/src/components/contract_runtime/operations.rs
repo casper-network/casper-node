@@ -25,13 +25,10 @@ use casper_types::{
 };
 
 use crate::{
-    components::{
-        contract_runtime::{
-            error::BlockExecutionError, types::StepEffectsAndUpcomingEraValidators,
-            BlockAndExecutionResults, ExecutionPreState, Metrics, PackageKindTag,
-            SpeculativeExecutionState, APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
-        },
-        fetcher::FetchItem,
+    components::contract_runtime::{
+        error::BlockExecutionError, types::StepEffectsAndUpcomingEraValidators,
+        BlockAndExecutionResults, ExecutionPreState, Metrics, PackageKindTag,
+        SpeculativeExecutionState, APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     types::{self, ApprovalsHashes, Chunkable, ExecutableBlock, InternalEraReport},
     utils::fetch_id,
