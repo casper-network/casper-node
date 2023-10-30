@@ -1061,7 +1061,6 @@ where
             min_round_len,
             max_round_len,
             now,
-            self.config.performance_meter,
         ));
 
         let av_effects = self

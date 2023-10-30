@@ -1,5 +1,3 @@
-pub(crate) mod config;
-
 use std::cmp::{max, min};
 
 use datasize::DataSize;
@@ -19,7 +17,17 @@ use crate::components::consensus::{
     utils::ValidatorIndex,
 };
 
-use config::*;
+/// The number of most recent blocks for which we average the max quorum in which we participated.
+const BLOCKS_TO_CONSIDER: usize = 5;
+/// The average max quorum that triggers us to slow down: with this big or smaller average max
+/// quorum per `BLOCKS_TO_CONSIDER`, we increase our round length.
+const SLOW_DOWN_THRESHOLD: f64 = 0.8;
+/// The average max quorum that triggers us to speed up: with this big or larger average max quorum
+/// per `BLOCKS_TO_CONSIDER`, we decrease our round length.
+const ACCELERATION_THRESHOLD: f64 = 0.9;
+/// We will try to accelerate (decrease our round length) every `ACCELERATION_PARAMETER` rounds if
+/// we have a big enough average max quorum.
+const ACCELERATION_PARAMETER: u64 = 40;
 
 #[derive(DataSize, Debug, Clone)]
 pub(crate) struct PerformanceMeter {
@@ -28,7 +36,6 @@ pub(crate) struct PerformanceMeter {
     max_round_len: TimeDiff,
     current_round_len: TimeDiff,
     last_switch_round_id: Timestamp,
-    config: Config,
 }
 
 impl PerformanceMeter {
@@ -38,7 +45,6 @@ impl PerformanceMeter {
         min_round_len: TimeDiff,
         max_round_len: TimeDiff,
         timestamp: Timestamp,
-        config: Config,
     ) -> Self {
         let current_round_id = state::round_id(timestamp, round_len);
         Self {
@@ -47,7 +53,6 @@ impl PerformanceMeter {
             max_round_len,
             current_round_len: round_len,
             last_switch_round_id: current_round_id,
-            config,
         }
     }
 
@@ -93,10 +98,10 @@ impl PerformanceMeter {
                     max_quorum.0 as f64 / assigned_weight.0 as f64
                 })
             })
-            .take(self.config.blocks_to_consider)
+            .take(BLOCKS_TO_CONSIDER)
             .collect();
 
-        if max_quora.len() < self.config.blocks_to_consider {
+        if max_quora.len() < BLOCKS_TO_CONSIDER {
             return self.current_round_len;
         }
 
@@ -106,11 +111,11 @@ impl PerformanceMeter {
         let current_round_index = round_index(current_round_id, self.current_round_len);
 
         #[allow(clippy::integer_arithmetic)]
-        if avg_max_quorum < self.config.slowdown_threshold {
+        if avg_max_quorum < SLOW_DOWN_THRESHOLD {
             self.current_round_len = min(self.current_round_len * 2, self.max_round_len);
             self.last_switch_round_id = current_round_id;
-        } else if avg_max_quorum > self.config.acceleration_threshold
-            && current_round_index % self.config.acceleration_parameter == 0
+        } else if avg_max_quorum > ACCELERATION_THRESHOLD
+            && current_round_index % ACCELERATION_PARAMETER == 0
         {
             self.current_round_len = max(self.current_round_len / 2, self.min_round_len);
             self.last_switch_round_id = current_round_id;
@@ -127,7 +132,6 @@ impl PerformanceMeter {
             max_round_len: self.max_round_len,
             current_round_len: self.current_round_len,
             last_switch_round_id: self.last_switch_round_id,
-            config: self.config,
         }
     }
 }
