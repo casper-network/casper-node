@@ -27,10 +27,9 @@ use casper_types::{
     addressable_entity::{AddressableEntity, NamedKeys},
     bytesrepr::Bytes,
     testing::TestRng,
-    Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy,
-    DeployConfigurationFailure, EraId, Package, PublicKey, RuntimeArgs, SecretKey, StoredValue,
-    TestBlockBuilder, TestTransactionV1Builder, Timestamp, Transaction, TransactionV1,
-    TransactionV1Kind, URef, U512,
+    Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, DeployConfigFailure,
+    EraId, Package, PublicKey, RuntimeArgs, SecretKey, StoredValue, TestBlockBuilder,
+    TestTransactionV1Builder, Timestamp, Transaction, TransactionV1, TransactionV1Kind, URef, U512,
 };
 
 use super::*;
@@ -753,7 +752,7 @@ impl reactor::Reactor for Reactor {
                     } else if let Key::Account(account_hash) = key {
                         let account = create_account(account_hash, self.test_scenario);
                         Some(AddressableEntity::from(account))
-                    } else if let Key::AddressableEntity(..) = key {
+                    } else if let Key::Hash(..) = key {
                         match self.test_scenario {
                             TestScenario::FromPeerCustomPaymentContract(
                                 ContractScenario::MissingContractAtHash,
@@ -2065,7 +2064,7 @@ async fn should_reject_deploy_without_transfer_amount() {
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployConfiguration(
-            DeployConfigurationFailure::MissingTransferAmount
+            DeployConfigFailure::MissingTransferAmount
         ))
     ))
 }
@@ -2090,7 +2089,7 @@ async fn should_reject_deploy_with_mangled_transfer_amount() {
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployConfiguration(
-            DeployConfigurationFailure::FailedToParseTransferAmount
+            DeployConfigFailure::FailedToParseTransferAmount
         ))
     ))
 }

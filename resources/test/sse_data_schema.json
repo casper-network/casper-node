@@ -42,23 +42,23 @@
       "additionalProperties": false
     },
     {
-      "description": "The given deploy has been newly-accepted by this node.",
+      "description": "The given transaction has been newly-accepted by this node.",
       "type": "object",
       "required": [
-        "DeployAccepted"
+        "TransactionAccepted"
       ],
       "properties": {
-        "DeployAccepted": {
+        "TransactionAccepted": {
           "type": "object",
           "required": [
-            "deploy"
+            "transaction"
           ],
           "properties": {
-            "deploy": {
-              "description": "a deploy",
+            "transaction": {
+              "description": "a transaction",
               "allOf": [
                 {
-                  "$ref": "#/definitions/Deploy"
+                  "$ref": "#/definitions/Transaction"
                 }
               ]
             }
@@ -68,27 +68,26 @@
       "additionalProperties": false
     },
     {
-      "description": "The given deploy has been executed, committed and forms part of the given block.",
+      "description": "The given transaction has been executed, committed and forms part of the given block.",
       "type": "object",
       "required": [
-        "DeployProcessed"
+        "TransactionProcessed"
       ],
       "properties": {
-        "DeployProcessed": {
+        "TransactionProcessed": {
           "type": "object",
           "required": [
             "account",
             "block_hash",
-            "dependencies",
-            "deploy_hash",
             "execution_result",
             "messages",
             "timestamp",
+            "transaction_hash",
             "ttl"
           ],
           "properties": {
-            "deploy_hash": {
-              "$ref": "#/definitions/DeployHash"
+            "transaction_hash": {
+              "$ref": "#/definitions/TransactionHash"
             },
             "account": {
               "$ref": "#/definitions/PublicKey"
@@ -98,12 +97,6 @@
             },
             "ttl": {
               "$ref": "#/definitions/TimeDiff"
-            },
-            "dependencies": {
-              "type": "array",
-              "items": {
-                "$ref": "#/definitions/DeployHash"
-              }
             },
             "block_hash": {
               "$ref": "#/definitions/BlockHash"
@@ -123,20 +116,20 @@
       "additionalProperties": false
     },
     {
-      "description": "The given deploy has expired.",
+      "description": "The given transaction has expired.",
       "type": "object",
       "required": [
-        "DeployExpired"
+        "TransactionExpired"
       ],
       "properties": {
-        "DeployExpired": {
+        "TransactionExpired": {
           "type": "object",
           "required": [
-            "deploy_hash"
+            "transaction_hash"
           ],
           "properties": {
-            "deploy_hash": {
-              "$ref": "#/definitions/DeployHash"
+            "transaction_hash": {
+              "$ref": "#/definitions/TransactionHash"
             }
           }
         }
@@ -797,6 +790,37 @@
         "minimum": 0.0
       }
     },
+    "Transaction": {
+      "description": "A versioned wrapper for a transaction or deploy.",
+      "oneOf": [
+        {
+          "description": "A deploy.",
+          "type": "object",
+          "required": [
+            "Deploy"
+          ],
+          "properties": {
+            "Deploy": {
+              "$ref": "#/definitions/Deploy"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A version 1 transaction.",
+          "type": "object",
+          "required": [
+            "V1"
+          ],
+          "properties": {
+            "V1": {
+              "$ref": "#/definitions/TransactionV1"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
     "Deploy": {
       "description": "A signed smart contract.",
       "type": "object",
@@ -1424,6 +1448,772 @@
     "Signature": {
       "description": "Hex-encoded cryptographic signature, including the algorithm tag prefix.",
       "type": "string"
+    },
+    "TransactionV1": {
+      "description": "A unit of work sent by a client to the network, which when executed can cause global state to be altered.",
+      "type": "object",
+      "required": [
+        "approvals",
+        "body",
+        "hash",
+        "header"
+      ],
+      "properties": {
+        "hash": {
+          "$ref": "#/definitions/TransactionV1Hash"
+        },
+        "header": {
+          "$ref": "#/definitions/TransactionV1Header"
+        },
+        "payment": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "body": {
+          "$ref": "#/definitions/TransactionV1Kind"
+        },
+        "approvals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TransactionV1Approval"
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "TransactionV1Hash": {
+      "description": "Hex-encoded TransactionV1 hash.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Digest"
+        }
+      ]
+    },
+    "TransactionV1Header": {
+      "description": "The header portion of a TransactionV1.",
+      "type": "object",
+      "required": [
+        "account",
+        "body_hash",
+        "chain_name",
+        "pricing_mode",
+        "timestamp",
+        "ttl"
+      ],
+      "properties": {
+        "account": {
+          "$ref": "#/definitions/PublicKey"
+        },
+        "timestamp": {
+          "$ref": "#/definitions/Timestamp"
+        },
+        "ttl": {
+          "$ref": "#/definitions/TimeDiff"
+        },
+        "pricing_mode": {
+          "$ref": "#/definitions/PricingModeV1"
+        },
+        "body_hash": {
+          "$ref": "#/definitions/Digest"
+        },
+        "chain_name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "PricingModeV1": {
+      "description": "Pricing mode of a TransactionV1.",
+      "oneOf": [
+        {
+          "description": "Multiplies the gas used by the given amount.\n\nThis is the same behaviour as for the `Deploy::gas_price`.",
+          "type": "object",
+          "required": [
+            "GasPriceMultiplier"
+          ],
+          "properties": {
+            "GasPriceMultiplier": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "First-in-first-out handling of transactions, i.e. pricing mode is irrelevant to ordering.",
+          "type": "string",
+          "enum": [
+            "Fixed"
+          ]
+        },
+        {
+          "description": "The payment for this transaction was previously reserved.",
+          "type": "string",
+          "enum": [
+            "Reserved"
+          ]
+        }
+      ]
+    },
+    "TransactionV1Kind": {
+      "description": "The high-level kind of a given TransactionV1.",
+      "oneOf": [
+        {
+          "description": "A transaction targeting native functionality.",
+          "type": "object",
+          "required": [
+            "Native"
+          ],
+          "properties": {
+            "Native": {
+              "$ref": "#/definitions/NativeTransactionV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A transaction with userland (i.e. not native) functionality.",
+          "type": "object",
+          "required": [
+            "Userland"
+          ],
+          "properties": {
+            "Userland": {
+              "$ref": "#/definitions/UserlandTransactionV1"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "NativeTransactionV1": {
+      "description": "A TransactionV1 targeting native functionality.",
+      "oneOf": [
+        {
+          "description": "Calls the `transfer` entry point of the mint to transfer `Motes` from a source purse to a target purse.",
+          "type": "object",
+          "required": [
+            "MintTransfer"
+          ],
+          "properties": {
+            "MintTransfer": {
+              "$ref": "#/definitions/RuntimeArgs"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A transaction targeting the auction.",
+          "type": "object",
+          "required": [
+            "Auction"
+          ],
+          "properties": {
+            "Auction": {
+              "$ref": "#/definitions/AuctionTransactionV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A transaction reserving a future execution.",
+          "type": "object",
+          "required": [
+            "Reservation"
+          ],
+          "properties": {
+            "Reservation": {
+              "$ref": "#/definitions/RuntimeArgs"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AuctionTransactionV1": {
+      "description": "A TransactionV1 targeting the auction.",
+      "oneOf": [
+        {
+          "description": "Calls the `add_bid` entry point to create or top off a bid purse.",
+          "type": "object",
+          "required": [
+            "AddBid"
+          ],
+          "properties": {
+            "AddBid": {
+              "$ref": "#/definitions/RuntimeArgs"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Calls the `withdraw_bid` entry point to decrease a stake.",
+          "type": "object",
+          "required": [
+            "WithdrawBid"
+          ],
+          "properties": {
+            "WithdrawBid": {
+              "$ref": "#/definitions/RuntimeArgs"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Calls the `delegate` entry point to add a new delegator or increase an existing delegator's stake.",
+          "type": "object",
+          "required": [
+            "Delegate"
+          ],
+          "properties": {
+            "Delegate": {
+              "$ref": "#/definitions/RuntimeArgs"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Calls the `undelegate` entry point to reduce a delegator's stake or remove the delegator if the remaining stake is 0.",
+          "type": "object",
+          "required": [
+            "Undelegate"
+          ],
+          "properties": {
+            "Undelegate": {
+              "$ref": "#/definitions/RuntimeArgs"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Calls the `redelegate` entry point to reduce a delegator's stake or remove the delegator if the remaining stake is 0, and after the unbonding delay, automatically delegate to a new validator.",
+          "type": "object",
+          "required": [
+            "Redelegate"
+          ],
+          "properties": {
+            "Redelegate": {
+              "$ref": "#/definitions/RuntimeArgs"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Calls the `get_era_validators` entry point to provide the validators for the current era and configured number of future eras.",
+          "type": "object",
+          "required": [
+            "GetEraValidators"
+          ],
+          "properties": {
+            "GetEraValidators": {
+              "$ref": "#/definitions/RuntimeArgs"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Calls the `read_era_id` entry point to provide the current era ID.",
+          "type": "object",
+          "required": [
+            "ReadEraId"
+          ],
+          "properties": {
+            "ReadEraId": {
+              "$ref": "#/definitions/RuntimeArgs"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "UserlandTransactionV1": {
+      "description": "A TransactionV1 with userland (i.e. not native) functionality.",
+      "oneOf": [
+        {
+          "description": "A general purpose transaction.",
+          "type": "object",
+          "required": [
+            "Standard"
+          ],
+          "properties": {
+            "Standard": {
+              "type": "object",
+              "required": [
+                "args",
+                "module_bytes"
+              ],
+              "properties": {
+                "module_bytes": {
+                  "description": "Raw Wasm module bytes with 'call' exported as an entrypoint.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/Bytes"
+                    }
+                  ]
+                },
+                "args": {
+                  "description": "Runtime arguments.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/RuntimeArgs"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "An installer or upgrader for a stored contract.",
+          "type": "object",
+          "required": [
+            "InstallerUpgrader"
+          ],
+          "properties": {
+            "InstallerUpgrader": {
+              "type": "object",
+              "required": [
+                "args",
+                "module_bytes"
+              ],
+              "properties": {
+                "contract_package_id": {
+                  "description": "If `Some`, this is an upgrade for the given contract, otherwise it is an installer.",
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/PackageIdentifier"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "module_bytes": {
+                  "description": "Raw Wasm module bytes with 'call' exported as an entrypoint.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/Bytes"
+                    }
+                  ]
+                },
+                "args": {
+                  "description": "Runtime arguments.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/RuntimeArgs"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A transaction targeting a stored contract.",
+          "type": "object",
+          "required": [
+            "DirectCall"
+          ],
+          "properties": {
+            "DirectCall": {
+              "$ref": "#/definitions/DirectCallV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A transaction which doesn't modify global state.",
+          "type": "object",
+          "required": [
+            "Noop"
+          ],
+          "properties": {
+            "Noop": {
+              "type": "object",
+              "required": [
+                "args",
+                "module_bytes"
+              ],
+              "properties": {
+                "module_bytes": {
+                  "description": "Raw Wasm module bytes with 'call' exported as an entrypoint.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/Bytes"
+                    }
+                  ]
+                },
+                "args": {
+                  "description": "Runtime arguments.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/RuntimeArgs"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A transaction which doesn't call stored contracts.",
+          "type": "object",
+          "required": [
+            "Closed"
+          ],
+          "properties": {
+            "Closed": {
+              "type": "object",
+              "required": [
+                "args",
+                "module_bytes"
+              ],
+              "properties": {
+                "module_bytes": {
+                  "description": "Raw Wasm module bytes with 'call' exported as an entrypoint.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/Bytes"
+                    }
+                  ]
+                },
+                "args": {
+                  "description": "Runtime arguments.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/RuntimeArgs"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Bytes": {
+      "description": "Hex-encoded bytes.",
+      "type": "string"
+    },
+    "PackageIdentifier": {
+      "description": "Identifier for a package.",
+      "oneOf": [
+        {
+          "description": "The stored contract package within the deploy item is identified by its hash.",
+          "type": "object",
+          "required": [
+            "Hash"
+          ],
+          "properties": {
+            "Hash": {
+              "type": "object",
+              "required": [
+                "package_hash"
+              ],
+              "properties": {
+                "package_hash": {
+                  "description": "Hash of the contract package.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/PackageHash"
+                    }
+                  ]
+                },
+                "version": {
+                  "description": "The version specified in the deploy item.",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint32",
+                  "minimum": 0.0
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The stored contract package within the deploy item is identified by name.",
+          "type": "object",
+          "required": [
+            "Name"
+          ],
+          "properties": {
+            "Name": {
+              "type": "object",
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "description": "Name of the contract package.",
+                  "type": "string"
+                },
+                "version": {
+                  "description": "The version specified in the deploy item.",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint32",
+                  "minimum": 0.0
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "PackageHash": {
+      "description": "The hex-encoded address of the Package.",
+      "type": "string"
+    },
+    "DirectCallV1": {
+      "description": "A TransactionV1 targeting a stored contract.",
+      "oneOf": [
+        {
+          "description": "Stored contract referenced by its hash.",
+          "type": "object",
+          "required": [
+            "StoredContractByHash"
+          ],
+          "properties": {
+            "StoredContractByHash": {
+              "type": "object",
+              "required": [
+                "args",
+                "entry_point",
+                "hash"
+              ],
+              "properties": {
+                "hash": {
+                  "description": "Contract hash.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/AddressableEntityHash"
+                    }
+                  ]
+                },
+                "entry_point": {
+                  "description": "Name of the entry point.",
+                  "type": "string"
+                },
+                "args": {
+                  "description": "Runtime arguments.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/RuntimeArgs"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Stored contract referenced by the name of a named key in the signer's account context.",
+          "type": "object",
+          "required": [
+            "StoredContractByName"
+          ],
+          "properties": {
+            "StoredContractByName": {
+              "type": "object",
+              "required": [
+                "args",
+                "entry_point",
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "description": "Name of the named key.",
+                  "type": "string"
+                },
+                "entry_point": {
+                  "description": "Name of the entry point.",
+                  "type": "string"
+                },
+                "args": {
+                  "description": "Runtime arguments.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/RuntimeArgs"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Stored versioned contract referenced by its hash.",
+          "type": "object",
+          "required": [
+            "StoredVersionedContractByHash"
+          ],
+          "properties": {
+            "StoredVersionedContractByHash": {
+              "type": "object",
+              "required": [
+                "args",
+                "entry_point",
+                "hash"
+              ],
+              "properties": {
+                "hash": {
+                  "description": "Contract package hash.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/PackageHash"
+                    }
+                  ]
+                },
+                "version": {
+                  "description": "Version of the contract to call; defaults to highest enabled version if unspecified.",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint32",
+                  "minimum": 0.0
+                },
+                "entry_point": {
+                  "description": "Name of the entry point.",
+                  "type": "string"
+                },
+                "args": {
+                  "description": "Runtime arguments.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/RuntimeArgs"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Stored versioned contract referenced by the name of a named key in the signer's account context.",
+          "type": "object",
+          "required": [
+            "StoredVersionedContractByName"
+          ],
+          "properties": {
+            "StoredVersionedContractByName": {
+              "type": "object",
+              "required": [
+                "args",
+                "entry_point",
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "description": "Name of the named key.",
+                  "type": "string"
+                },
+                "version": {
+                  "description": "Version of the contract to call; defaults to highest enabled version if unspecified.",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint32",
+                  "minimum": 0.0
+                },
+                "entry_point": {
+                  "description": "Name of the entry point.",
+                  "type": "string"
+                },
+                "args": {
+                  "description": "Runtime arguments.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/RuntimeArgs"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AddressableEntityHash": {
+      "description": "The hex-encoded address of the addressable entity.",
+      "type": "string"
+    },
+    "TransactionV1Approval": {
+      "description": "A struct containing a signature of a transaction hash and the public key of the signer.",
+      "type": "object",
+      "required": [
+        "signature",
+        "signer"
+      ],
+      "properties": {
+        "signer": {
+          "$ref": "#/definitions/PublicKey"
+        },
+        "signature": {
+          "$ref": "#/definitions/Signature"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TransactionHash": {
+      "description": "A versioned wrapper for a transaction hash or deploy hash.",
+      "oneOf": [
+        {
+          "description": "A deploy hash.",
+          "type": "object",
+          "required": [
+            "Deploy"
+          ],
+          "properties": {
+            "Deploy": {
+              "$ref": "#/definitions/DeployHash"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A version 1 transaction hash.",
+          "type": "object",
+          "required": [
+            "V1"
+          ],
+          "properties": {
+            "V1": {
+              "$ref": "#/definitions/TransactionV1Hash"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
     "ExecutionResult": {
       "description": "The versioned result of executing a single deploy.",

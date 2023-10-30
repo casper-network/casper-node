@@ -19,23 +19,22 @@ use casper_storage::{
     global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
 };
 use casper_types::{
+    account::AccountHash,
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
-    AddressableEntity, BlockV2, CLValue, DeployHash, Digest, EraEndV2, EraId, HashAddr, Key,
-    ProtocolVersion, PublicKey, StoredValue, U512,
+    AddressableEntity, AddressableEntityHash, BlockV2, CLValue, DeployHash, Digest, EraEndV2,
+    EraId, HashAddr, Key, ProtocolVersion, PublicKey, StoredValue, U512,
 };
 
 use crate::{
-    components::{
-        contract_runtime::{
-            error::BlockExecutionError, types::StepEffectsAndUpcomingEraValidators,
-            BlockAndExecutionResults, ExecutionPreState, Metrics, SpeculativeExecutionState,
-            APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
-        },
-        fetcher::FetchItem,
+    components::contract_runtime::{
+        error::BlockExecutionError, types::StepEffectsAndUpcomingEraValidators,
+        BlockAndExecutionResults, ExecutionPreState, Metrics, PackageKindTag,
+        SpeculativeExecutionState, APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     types::{self, ApprovalsHashes, Chunkable, ExecutableBlock, InternalEraReport},
+    utils::fetch_id,
 };
 
 fn generate_range_by_index(
@@ -117,11 +116,7 @@ pub fn execute_finalized_block(
     // Run any deploys that must be executed
     let block_time = executable_block.timestamp.millis();
     let start = Instant::now();
-    let deploy_ids = executable_block
-        .deploys
-        .iter()
-        .map(|deploy| deploy.fetch_id())
-        .collect_vec();
+    let deploy_ids = executable_block.deploys.iter().map(fetch_id).collect_vec();
     let approvals_checksum = types::compute_approvals_checksum(deploy_ids.clone())
         .map_err(BlockExecutionError::FailedToComputeApprovalsChecksum)?;
 
@@ -610,38 +605,97 @@ where
     S: StateProvider + CommitProvider,
     S::Error: Into<execution::Error>,
 {
-    let account_key = match key {
-        Key::Hash(hash_addr) => {
-            return get_addressable_entity_under_hash(engine_state, state_root_hash, hash_addr)
+    match key {
+        Key::AddressableEntity(package_kind_tag, entity_addr) => {
+            get_addressable_entity_under_entity_hash(
+                engine_state,
+                state_root_hash,
+                package_kind_tag,
+                entity_addr.into(),
+            )
         }
-        account_key @ Key::Account(_) => account_key,
+        Key::Account(account_hash) => {
+            get_addressable_entity_under_account_hash(engine_state, state_root_hash, account_hash)
+        }
+        Key::Hash(contract_hash) => {
+            get_addressable_entity_under_contract_hash(engine_state, state_root_hash, contract_hash)
+        }
         _ => {
-            warn!(%key, "expected a Key::Hash or Key::Account");
+            warn!(%key, "expected a Key::AddressableEntity, Key::Account, Key::Hash");
+            None
+        }
+    }
+}
+
+fn get_addressable_entity_under_entity_hash<S>(
+    engine_state: &EngineState<S>,
+    state_root_hash: Digest,
+    package_kind_tag: PackageKindTag,
+    entity_hash: AddressableEntityHash,
+) -> Option<AddressableEntity>
+where
+    S: StateProvider + CommitProvider,
+    S::Error: Into<execution::Error>,
+{
+    let key = Key::addressable_entity_key(package_kind_tag, entity_hash);
+    let query_request = QueryRequest::new(state_root_hash, key, vec![]);
+    let value = match engine_state.run_query(query_request) {
+        Ok(QueryResult::Success { value, .. }) => *value,
+        Ok(result) => {
+            debug!(?result, %key, "expected to find addressable entity");
+            return None;
+        }
+        Err(error) => {
+            warn!(%error, %key, "failed querying for addressable entity");
             return None;
         }
     };
+    match value {
+        StoredValue::AddressableEntity(addressable_entity) => Some(addressable_entity),
+        _ => {
+            debug!(type_name = %value.type_name(), %key, "expected an AddressableEntity");
+            None
+        }
+    }
+}
+
+fn get_addressable_entity_under_account_hash<S>(
+    engine_state: &EngineState<S>,
+    state_root_hash: Digest,
+    account_hash: AccountHash,
+) -> Option<AddressableEntity>
+where
+    S: StateProvider + CommitProvider,
+    S::Error: Into<execution::Error>,
+{
+    let account_key = Key::Account(account_hash);
     let query_request = QueryRequest::new(state_root_hash, account_key, vec![]);
     let value = match engine_state.run_query(query_request) {
         Ok(QueryResult::Success { value, .. }) => *value,
         Ok(result) => {
-            debug!(?result, %key, "expected to find stored value under account hash");
+            debug!(?result, %account_key, "expected to find stored value under account hash");
             return None;
         }
         Err(error) => {
-            warn!(%error, %key, "failed querying for stored value under account hash");
+            warn!(%error, %account_key, "failed querying for stored value under account hash");
             return None;
         }
     };
     match value {
         StoredValue::CLValue(cl_value) => match cl_value.into_t::<Key>() {
-            Ok(Key::Hash(hash_addr)) => {
-                get_addressable_entity_under_hash(engine_state, state_root_hash, hash_addr)
+            Ok(Key::AddressableEntity(package_kind_tag, entity_addr)) => {
+                get_addressable_entity_under_entity_hash(
+                    engine_state,
+                    state_root_hash,
+                    package_kind_tag,
+                    entity_addr.into(),
+                )
             }
             Ok(invalid_key) => {
                 warn!(
                     %account_key,
                     %invalid_key,
-                    "expected a Key::Hash to be stored under account hash"
+                    "expected a Key::AddressableEntity to be stored under account hash"
                 );
                 None
             }
@@ -662,35 +716,47 @@ where
     }
 }
 
-fn get_addressable_entity_under_hash<S>(
+fn get_addressable_entity_under_contract_hash<S>(
     engine_state: &EngineState<S>,
     state_root_hash: Digest,
-    hash_addr: HashAddr,
+    contract_hash: HashAddr,
 ) -> Option<AddressableEntity>
 where
     S: StateProvider + CommitProvider,
     S::Error: Into<execution::Error>,
 {
-    let key = Key::Hash(hash_addr);
-    let query_request = QueryRequest::new(state_root_hash, key, vec![]);
-    let value = match engine_state.run_query(query_request) {
-        Ok(QueryResult::Success { value, .. }) => *value,
-        Ok(result) => {
-            debug!(?result, %key, "expected to find addressable entity");
-            return None;
+    // First try with an `AddressableEntityHash` derived from the contract hash.
+    get_addressable_entity_under_entity_hash(
+        engine_state,
+        state_root_hash,
+        PackageKindTag::SmartContract,
+        contract_hash.into(),
+    ).or_else(|| {
+        // Didn't work; the contract was either not migrated yet or the `AddressableEntity`
+        // record was not available at this state root hash. Try to query with a
+        // contract key next.
+        let contract_key = Key::Hash(contract_hash);
+        let query_request = QueryRequest::new(state_root_hash, contract_key, vec![]);
+        let value = match engine_state.run_query(query_request) {
+            Ok(QueryResult::Success { value, .. }) => *value,
+            Ok(result) => {
+                debug!(?result, %contract_key, "expected to find a stored value for a contract hash");
+                return None;
+            }
+            Err(error) => {
+                warn!(%error, %contract_key, "failed querying for a contract hash");
+                return None;
+            }
+        };
+
+        match value {
+            StoredValue::Contract(contract) => Some(contract.into()),
+            _ => {
+                debug!(type_name = %value.type_name(), ?contract_hash, "expected a Contract");
+                None
+            }
         }
-        Err(error) => {
-            warn!(%error, %key, "failed querying for addressable entity");
-            return None;
-        }
-    };
-    match value {
-        StoredValue::AddressableEntity(addressable_entity) => Some(addressable_entity),
-        _ => {
-            debug!(type_name = %value.type_name(), %key, "expected an AddressableEntity");
-            None
-        }
-    }
+    })
 }
 
 #[cfg(test)]

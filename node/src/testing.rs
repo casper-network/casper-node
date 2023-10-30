@@ -32,7 +32,7 @@ use tempfile::TempDir;
 use tokio::runtime::{self, Runtime};
 use tracing::{debug, warn};
 
-use casper_types::{testing::TestRng, Deploy, TimeDiff, Timestamp};
+use casper_types::testing::TestRng;
 
 use crate::{
     components::Component,
@@ -360,38 +360,6 @@ pub(crate) async fn advance_time(duration: time::Duration) {
     tokio::time::advance(duration).await;
     tokio::time::resume();
     debug!("advanced time by {} secs", duration.as_secs());
-}
-
-/// Creates a test deploy created at given instant and with given ttl.
-pub(crate) fn create_test_deploy(
-    created_ago: TimeDiff,
-    ttl: TimeDiff,
-    now: Timestamp,
-    test_rng: &mut TestRng,
-) -> Deploy {
-    Deploy::random_with_timestamp_and_ttl(test_rng, now - created_ago, ttl)
-}
-
-/// Creates a random deploy that is considered expired.
-pub(crate) fn create_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> Deploy {
-    create_test_deploy(
-        TimeDiff::from_seconds(20),
-        TimeDiff::from_seconds(10),
-        now,
-        test_rng,
-    )
-}
-
-// TODO - remove `allow` once used in tests again.
-#[allow(dead_code)]
-/// Creates a random deploy that is considered not expired.
-pub(crate) fn create_not_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> Deploy {
-    create_test_deploy(
-        TimeDiff::from_seconds(20),
-        TimeDiff::from_seconds(60),
-        now,
-        test_rng,
-    )
 }
 
 /// Assert that the file at `schema_path` matches the provided `RootSchema`, which can be derived

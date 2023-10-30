@@ -334,7 +334,7 @@ pub(crate) enum MessageKind {
     /// Addresses being gossiped.
     AddressGossip,
     /// Deploys being transferred directly (via requests).
-    DeployTransfer,
+    TransactionTransfer,
     /// Blocks for finality signatures being transferred directly (via requests and other means).
     BlockTransfer,
     /// Tries transferred, usually as part of chain syncing.
@@ -352,7 +352,7 @@ impl Display for MessageKind {
             MessageKind::BlockGossip => f.write_str("block_gossip"),
             MessageKind::FinalitySignatureGossip => f.write_str("finality_signature_gossip"),
             MessageKind::AddressGossip => f.write_str("address_gossip"),
-            MessageKind::DeployTransfer => f.write_str("deploy_transfer"),
+            MessageKind::TransactionTransfer => f.write_str("deploy_transfer"),
             MessageKind::BlockTransfer => f.write_str("block_transfer"),
             MessageKind::TrieTransfer => f.write_str("trie_transfer"),
             MessageKind::Other => f.write_str("other"),
@@ -420,8 +420,8 @@ pub struct EstimatorWeights {
     pub finality_signature_gossip: u32,
     pub address_gossip: u32,
     pub finality_signature_broadcasts: u32,
-    pub deploy_requests: u32,
-    pub deploy_responses: u32,
+    pub transaction_requests: u32,
+    pub transaction_responses: u32,
     pub legacy_deploy_requests: u32,
     pub legacy_deploy_responses: u32,
     pub block_requests: u32,

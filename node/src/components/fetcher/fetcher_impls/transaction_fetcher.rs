@@ -2,12 +2,10 @@ use std::{collections::HashMap, time::Duration};
 
 use async_trait::async_trait;
 use futures::FutureExt;
+use thiserror::Error;
 use tracing::error;
 
-use casper_types::{
-    Deploy, DeployApprovalsHash, DeployConfigurationFailure, DeployId, Digest, Transaction,
-    TransactionId,
-};
+use casper_types::{DeployConfigFailure, Transaction, TransactionId, TransactionV1ConfigFailure};
 
 use crate::{
     components::fetcher::{
@@ -18,32 +16,40 @@ use crate::{
     types::{FinalizedApprovals, NodeId},
 };
 
-impl FetchItem for Deploy {
-    type Id = DeployId;
-    type ValidationError = DeployConfigurationFailure;
+#[derive(Debug, Error)]
+pub(crate) enum TransactionConfigFailure {
+    #[error(transparent)]
+    Deploy(#[from] DeployConfigFailure),
+    #[error(transparent)]
+    V1(#[from] TransactionV1ConfigFailure),
+}
+
+impl FetchItem for Transaction {
+    type Id = TransactionId;
+    type ValidationError = TransactionConfigFailure;
     type ValidationMetadata = EmptyValidationMetadata;
 
-    const TAG: Tag = Tag::Deploy;
+    const TAG: Tag = Tag::Transaction;
 
     fn fetch_id(&self) -> Self::Id {
-        let deploy_hash = *self.hash();
-        let approvals_hash = self.compute_approvals_hash().unwrap_or_else(|error| {
-            error!(%error, "failed to serialize approvals");
-            DeployApprovalsHash::from(Digest::default())
-        });
-        DeployId::new(deploy_hash, approvals_hash)
+        self.compute_id()
     }
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
-        self.is_valid()
+        match self {
+            Transaction::Deploy(deploy) => deploy.is_valid().map_err(Into::into),
+            Transaction::V1(txn) => txn.verify().map_err(Into::into),
+        }
     }
 }
 
 #[async_trait]
-impl ItemFetcher<Deploy> for Fetcher<Deploy> {
+impl ItemFetcher<Transaction> for Fetcher<Transaction> {
     const SAFE_TO_RESPOND_TO_ALL: bool = true;
 
-    fn item_handles(&mut self) -> &mut HashMap<DeployId, HashMap<NodeId, ItemHandle<Deploy>>> {
+    fn item_handles(
+        &mut self,
+    ) -> &mut HashMap<TransactionId, HashMap<NodeId, ItemHandle<Transaction>>> {
         &mut self.item_handles
     }
 
@@ -57,41 +63,26 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
 
     async fn get_locally<REv: From<StorageRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
-        id: DeployId,
-    ) -> Option<Deploy> {
-        effect_builder
-            .get_stored_transaction(TransactionId::from(id))
-            .await
-            .map(|txn| match txn {
-                Transaction::Deploy(deploy) => deploy,
-                Transaction::V1(_) => {
-                    todo!(
-                        "unreachable, but this code path will be removed as part of \
-                        https://github.com/casper-network/roadmap/issues/189"
-                    )
-                }
-            })
+        id: TransactionId,
+    ) -> Option<Transaction> {
+        effect_builder.get_stored_transaction(id).await
     }
 
     fn put_to_storage<'a, REv: From<StorageRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
-        item: Deploy,
-    ) -> StoringState<'a, Deploy> {
+        item: Transaction,
+    ) -> StoringState<'a, Transaction> {
         StoringState::Enqueued(
             async move {
-                let transaction = Transaction::from(item);
                 let is_new = effect_builder
-                    .put_transaction_to_storage(transaction.clone())
+                    .put_transaction_to_storage(item.clone())
                     .await;
                 // If `is_new` is `false`, the transaction was previously stored, and the incoming
                 // transaction could have a different set of approvals to the one already stored.
                 // We can treat the incoming approvals as finalized and now try and store them.
                 if !is_new {
                     effect_builder
-                        .store_finalized_approvals(
-                            transaction.hash(),
-                            FinalizedApprovals::new(&transaction),
-                        )
+                        .store_finalized_approvals(item.hash(), FinalizedApprovals::new(&item))
                         .await;
                 }
             }
@@ -101,7 +92,7 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
 
     async fn announce_fetched_new_item<REv: Send>(
         _effect_builder: EffectBuilder<REv>,
-        _item: Deploy,
+        _item: Transaction,
         _peer: NodeId,
     ) {
     }

@@ -6,7 +6,10 @@ use casper_types::ProtocolVersion;
 use super::ReactorEventT;
 use crate::{
     effect::EffectBuilder,
-    rpcs::{speculative_exec::SpeculativeExec, RpcWithParams},
+    rpcs::{
+        speculative_exec::{SpeculativeExec, SpeculativeExecTxn},
+        RpcWithParams,
+    },
 };
 
 /// The URL path for all JSON-RPC requests.
@@ -24,6 +27,7 @@ pub(super) async fn run<REv: ReactorEventT>(
     cors_origin: String,
 ) {
     let mut handlers = RequestHandlersBuilder::new();
+    SpeculativeExecTxn::register_as_handler(effect_builder, api_version, &mut handlers);
     SpeculativeExec::register_as_handler(effect_builder, api_version, &mut handlers);
     let handlers = handlers.build();
 

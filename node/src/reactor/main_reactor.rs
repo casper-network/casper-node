@@ -27,7 +27,8 @@ use tracing::{debug, error, info, warn};
 
 use casper_types::{
     Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, DeployId, EraId, FinalitySignature,
-    PublicKey, TimeDiff, Timestamp, Transaction, TransactionId, U512,
+    PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId,
+    U512,
 };
 
 #[cfg(test)]
@@ -740,22 +741,15 @@ impl reactor::Reactor for MainReactor {
                             }),
                         ));
                         // notify event stream
-                        match &*transaction {
-                            Transaction::Deploy(deploy) => {
-                                effects.extend(self.dispatch_event(
-                                    effect_builder,
-                                    rng,
-                                    MainEvent::EventStreamServer(
-                                        event_stream_server::Event::DeployAccepted(Arc::new(
-                                            deploy.clone(),
-                                        )),
-                                    ),
-                                ));
-                            }
-                            Transaction::V1(_txn) => {
-                                todo!("avoid match on `transaction` once sse handles transactions");
-                            }
-                        }
+                        effects.extend(self.dispatch_event(
+                            effect_builder,
+                            rng,
+                            MainEvent::EventStreamServer(
+                                event_stream_server::Event::TransactionAccepted(Arc::clone(
+                                    &transaction,
+                                )),
+                            ),
+                        ));
                     }
                     Source::SpeculativeExec(_) => {
                         error!(
@@ -837,9 +831,10 @@ impl reactor::Reactor for MainReactor {
             MainEvent::DeployBufferAnnouncement(DeployBufferAnnouncement::DeploysExpired(
                 hashes,
             )) => {
-                let reactor_event = MainEvent::EventStreamServer(
-                    event_stream_server::Event::DeploysExpired(hashes),
-                );
+                let reactor_event =
+                    MainEvent::EventStreamServer(event_stream_server::Event::TransactionsExpired(
+                        hashes.into_iter().map(TransactionHash::Deploy).collect(),
+                    ));
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
 
@@ -996,8 +991,8 @@ impl reactor::Reactor for MainReactor {
             | MainEvent::LegacyDeployFetcherRequest(..)
             | MainEvent::BlockFetcher(..)
             | MainEvent::BlockFetcherRequest(..)
-            | MainEvent::DeployFetcher(..)
-            | MainEvent::DeployFetcherRequest(..)
+            | MainEvent::TransactionFetcher(..)
+            | MainEvent::TransactionFetcherRequest(..)
             | MainEvent::BlockHeaderFetcher(..)
             | MainEvent::BlockHeaderFetcherRequest(..)
             | MainEvent::TrieOrChunkFetcher(..)
@@ -1590,9 +1585,11 @@ impl MainReactor {
                 for (deploy_hash, deploy_header, execution_result, messages) in
                     fwd_meta_block.execution_results.iter()
                 {
-                    let event = event_stream_server::Event::DeployProcessed {
-                        deploy_hash: *deploy_hash,
-                        deploy_header: Box::new(deploy_header.clone()),
+                    let event = event_stream_server::Event::TransactionProcessed {
+                        transaction_hash: TransactionHash::Deploy(*deploy_hash),
+                        transaction_header: Box::new(TransactionHeader::Deploy(
+                            deploy_header.clone(),
+                        )),
                         block_hash: *fwd_meta_block.block.hash(),
                         execution_result: Box::new(execution_result.clone()),
                         messages: messages.clone(),
@@ -1609,9 +1606,11 @@ impl MainReactor {
                 for (deploy_hash, deploy_header, execution_result) in
                     historical_meta_block.execution_results.iter()
                 {
-                    let event = event_stream_server::Event::DeployProcessed {
-                        deploy_hash: *deploy_hash,
-                        deploy_header: Box::new(deploy_header.clone()),
+                    let event = event_stream_server::Event::TransactionProcessed {
+                        transaction_hash: TransactionHash::Deploy(*deploy_hash),
+                        transaction_header: Box::new(TransactionHeader::Deploy(
+                            deploy_header.clone(),
+                        )),
                         block_hash: *historical_meta_block.block.hash(),
                         execution_result: Box::new(execution_result.clone()),
                         messages: Vec::new(),

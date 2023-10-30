@@ -26,6 +26,12 @@ pub enum ExecutionResult {
     V2(ExecutionResultV2),
 }
 
+impl From<ExecutionResultV1> for ExecutionResult {
+    fn from(value: ExecutionResultV1) -> Self {
+        ExecutionResult::V1(value)
+    }
+}
+
 impl From<ExecutionResultV2> for ExecutionResult {
     fn from(value: ExecutionResultV2) -> Self {
         ExecutionResult::V2(value)

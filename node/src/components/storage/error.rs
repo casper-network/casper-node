@@ -9,6 +9,7 @@ use casper_types::{
 };
 
 use super::lmdb_ext::LmdbExtError;
+use crate::types::VariantMismatch;
 
 /// A fatal storage component error.
 ///
@@ -39,11 +40,11 @@ pub enum FatalStorageError {
         /// Second block hash encountered at `era_id`.
         second: BlockHash,
     },
-    /// Found a duplicate switch-block-at-era-id index entry.
-    #[error("duplicate entries for blocks for deploy {deploy_hash}: {first} / {second}")]
-    DuplicateDeployIndex {
-        /// Deploy hash at which duplicate was found.
-        deploy_hash: DeployHash,
+    /// Found a duplicate transaction index entry.
+    #[error("duplicate entries for blocks for transaction {transaction_hash}: {first} / {second}")]
+    DuplicateTransactionIndex {
+        /// Transaction hash at which duplicate was found.
+        transaction_hash: TransactionHash,
         /// First block hash encountered at `deploy_hash`.
         first: BlockHashAndHeight,
         /// Second block hash encountered at `deploy_hash`.
@@ -213,8 +214,3 @@ pub(super) enum GetRequestError {
         finality_signature: Box<FinalitySignature>,
     },
 }
-
-/// The variants in the given types are expected to all be the same.
-#[derive(Debug, Error)]
-#[error("mismatch in variants: {0:?}")]
-pub struct VariantMismatch(pub(super) Box<dyn Debug + Send + Sync>);

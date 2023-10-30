@@ -5,10 +5,9 @@ use std::{
 
 use derive_more::From;
 use serde::Serialize;
-// use static_assertions::const_assert;
 
 use casper_types::{
-    system::auction::EraValidators, Block, BlockHeader, BlockV2, Deploy, EraId, FinalitySignature,
+    system::auction::EraValidators, Block, BlockHeader, BlockV2, EraId, FinalitySignature,
     Transaction,
 };
 
@@ -205,9 +204,9 @@ pub(crate) enum MainEvent {
     #[from]
     LegacyDeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<LegacyDeploy>),
     #[from]
-    DeployFetcher(#[serde(skip_serializing)] fetcher::Event<Deploy>),
+    TransactionFetcher(#[serde(skip_serializing)] fetcher::Event<Transaction>),
     #[from]
-    DeployFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Deploy>),
+    TransactionFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Transaction>),
     #[from]
     DeployBufferRequest(DeployBufferRequest),
     #[from]
@@ -277,11 +276,11 @@ impl ReactorEvent for MainEvent {
             MainEvent::EventStreamServer(_) => "EventStreamServer",
             MainEvent::UpgradeWatcher(_) => "UpgradeWatcher",
             MainEvent::Consensus(_) => "Consensus",
-            MainEvent::TransactionAcceptor(_) => "DeployAcceptor",
+            MainEvent::TransactionAcceptor(_) => "TransactionAcceptor",
             MainEvent::AcceptTransactionRequest(_) => "AcceptTransactionRequest",
             MainEvent::LegacyDeployFetcher(_) => "LegacyDeployFetcher",
-            MainEvent::DeployFetcher(_) => "DeployFetcher",
-            MainEvent::TransactionGossiper(_) => "DeployGossiper",
+            MainEvent::TransactionFetcher(_) => "TransactionFetcher",
+            MainEvent::TransactionGossiper(_) => "TransactionGossiper",
             MainEvent::FinalitySignatureGossiper(_) => "FinalitySignatureGossiper",
             MainEvent::AddressGossiper(_) => "AddressGossiper",
             MainEvent::BlockValidator(_) => "BlockValidator",
@@ -304,7 +303,7 @@ impl ReactorEvent for MainEvent {
                 "BlockExecutionResultsOrChunkFetcherRequest"
             }
             MainEvent::LegacyDeployFetcherRequest(_) => "LegacyDeployFetcherRequest",
-            MainEvent::DeployFetcherRequest(_) => "DeployFetcherRequest",
+            MainEvent::TransactionFetcherRequest(_) => "TransactionFetcherRequest",
             MainEvent::FinalitySignatureFetcherRequest(_) => "FinalitySignatureFetcherRequest",
             MainEvent::SyncLeapFetcherRequest(_) => "SyncLeapFetcherRequest",
             MainEvent::ApprovalsHashesFetcherRequest(_) => "ApprovalsHashesFetcherRequest",
@@ -318,10 +317,10 @@ impl ReactorEvent for MainEvent {
             MainEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             MainEvent::ControlAnnouncement(_) => "ControlAnnouncement",
             MainEvent::FatalAnnouncement(_) => "FatalAnnouncement",
-            MainEvent::TransactionAcceptorAnnouncement(_) => "DeployAcceptorAnnouncement",
+            MainEvent::TransactionAcceptorAnnouncement(_) => "TransactionAcceptorAnnouncement",
             MainEvent::ConsensusAnnouncement(_) => "ConsensusAnnouncement",
             MainEvent::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
-            MainEvent::TransactionGossiperAnnouncement(_) => "DeployGossiperAnnouncement",
+            MainEvent::TransactionGossiperAnnouncement(_) => "TransactionGossiperAnnouncement",
             MainEvent::AddressGossiperAnnouncement(_) => "AddressGossiperAnnouncement",
             MainEvent::UpgradeWatcherAnnouncement(_) => "UpgradeWatcherAnnouncement",
             MainEvent::NetworkPeerBehaviorAnnouncement(_) => "BlocklistAnnouncement",
@@ -332,7 +331,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::AddressGossiperCrank(_) => "BeginAddressGossipRequest",
             MainEvent::ConsensusMessageIncoming(_) => "ConsensusMessageIncoming",
             MainEvent::ConsensusDemand(_) => "ConsensusDemand",
-            MainEvent::TransactionGossiperIncoming(_) => "DeployGossiperIncoming",
+            MainEvent::TransactionGossiperIncoming(_) => "TransactionGossiperIncoming",
             MainEvent::FinalitySignatureGossiperIncoming(_) => "FinalitySignatureGossiperIncoming",
             MainEvent::AddressGossiperIncoming(_) => "AddressGossiperIncoming",
             MainEvent::NetworkPeerRequestingData(_) => "NetRequestIncoming",
@@ -383,11 +382,11 @@ impl Display for MainEvent {
             }
             MainEvent::UpgradeWatcher(event) => write!(f, "upgrade watcher: {}", event),
             MainEvent::Consensus(event) => write!(f, "consensus: {}", event),
-            MainEvent::TransactionAcceptor(event) => write!(f, "deploy acceptor: {}", event),
+            MainEvent::TransactionAcceptor(event) => write!(f, "transaction acceptor: {}", event),
             MainEvent::AcceptTransactionRequest(req) => write!(f, "{}", req),
             MainEvent::LegacyDeployFetcher(event) => write!(f, "legacy deploy fetcher: {}", event),
-            MainEvent::DeployFetcher(event) => write!(f, "deploy fetcher: {}", event),
-            MainEvent::TransactionGossiper(event) => write!(f, "deploy gossiper: {}", event),
+            MainEvent::TransactionFetcher(event) => write!(f, "transaction fetcher: {}", event),
+            MainEvent::TransactionGossiper(event) => write!(f, "transaction gossiper: {}", event),
             MainEvent::FinalitySignatureGossiper(event) => {
                 write!(f, "block signature gossiper: {}", event)
             }
@@ -461,8 +460,8 @@ impl Display for MainEvent {
             MainEvent::LegacyDeployFetcherRequest(request) => {
                 write!(f, "legacy deploy fetcher request: {}", request)
             }
-            MainEvent::DeployFetcherRequest(request) => {
-                write!(f, "deploy fetcher request: {}", request)
+            MainEvent::TransactionFetcherRequest(request) => {
+                write!(f, "transaction fetcher request: {}", request)
             }
             MainEvent::FinalitySignatureFetcherRequest(request) => {
                 write!(f, "finality signature fetcher request: {}", request)
@@ -489,7 +488,7 @@ impl Display for MainEvent {
                 write!(f, "dump consensus state: {}", req)
             }
             MainEvent::TransactionAcceptorAnnouncement(ann) => {
-                write!(f, "deploy acceptor announcement: {}", ann)
+                write!(f, "transaction acceptor announcement: {}", ann)
             }
             MainEvent::ConsensusAnnouncement(ann) => {
                 write!(f, "consensus announcement: {}", ann)
@@ -498,7 +497,7 @@ impl Display for MainEvent {
                 write!(f, "block-executor announcement: {}", ann)
             }
             MainEvent::TransactionGossiperAnnouncement(ann) => {
-                write!(f, "deploy gossiper announcement: {}", ann)
+                write!(f, "transaction gossiper announcement: {}", ann)
             }
             MainEvent::FinalitySignatureGossiperAnnouncement(ann) => {
                 write!(f, "block signature gossiper announcement: {}", ann)
