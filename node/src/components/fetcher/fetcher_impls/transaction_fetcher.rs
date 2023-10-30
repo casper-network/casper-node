@@ -5,9 +5,7 @@ use futures::FutureExt;
 use thiserror::Error;
 use tracing::error;
 
-use casper_types::{
-    DeployConfigurationFailure, Transaction, TransactionId, TransactionV1ConfigFailure,
-};
+use casper_types::{DeployConfigFailure, Transaction, TransactionId, TransactionV1ConfigFailure};
 
 use crate::{
     components::fetcher::{
@@ -21,7 +19,7 @@ use crate::{
 #[derive(Debug, Error)]
 pub(crate) enum TransactionConfigFailure {
     #[error(transparent)]
-    Deploy(#[from] DeployConfigurationFailure),
+    Deploy(#[from] DeployConfigFailure),
     #[error(transparent)]
     V1(#[from] TransactionV1ConfigFailure),
 }

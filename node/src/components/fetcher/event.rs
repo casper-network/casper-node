@@ -71,8 +71,8 @@ impl<T: FetchItem> From<FetcherRequest<T>> for Event<T> {
     }
 }
 
-// A deploy fetcher knows how to update its state if transactions are coming in via the transaction
-// acceptor.
+// A transaction fetcher knows how to update its state if transactions are coming in via the
+// transaction acceptor.
 impl From<TransactionAcceptorAnnouncement> for Event<Transaction> {
     fn from(announcement: TransactionAcceptorAnnouncement) -> Self {
         match announcement {

@@ -34,7 +34,7 @@ use crate::{account::ACCOUNT_HASH_LENGTH, SecretKey, TimeDiff, URef};
 #[cfg(any(feature = "std", test))]
 use account_and_secret_key::AccountAndSecretKey;
 pub use deploy::{
-    runtime_args, Deploy, DeployApproval, DeployApprovalsHash, DeployConfigurationFailure,
+    runtime_args, Deploy, DeployApproval, DeployApprovalsHash, DeployConfigFailure,
     DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash,
     DeployHeader, DeployId, EntityIdentifier, ExecutableDeployItem, ExecutableDeployItemIdentifier,
     PackageIdentifier, TransferTarget,
