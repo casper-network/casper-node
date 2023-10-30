@@ -11,9 +11,9 @@ use tracing::{debug, error, trace};
 
 use casper_execution_engine::engine_state::{BalanceRequest, MAX_PAYMENT};
 use casper_types::{
-    account::AccountHash, addressable_entity::AddressableEntity, package::Package,
-    system::auction::ARG_AMOUNT, AddressableEntityHash, BlockHeader, Chainspec, DirectCallV1,
-    EntityIdentifier, EntityVersion, EntityVersionKey, ExecutableDeployItem,
+    account::AccountHash, addressable_entity::AddressableEntity, contracts::ContractHash,
+    package::Package, system::auction::ARG_AMOUNT, AddressableEntityHash, BlockHeader, Chainspec,
+    DirectCallV1, EntityIdentifier, EntityVersion, EntityVersionKey, ExecutableDeployItem,
     ExecutableDeployItemIdentifier, Key, PackageHash, PackageIdentifier, ProtocolVersion,
     Transaction, TransactionConfig, TransactionV1Kind, UserlandTransactionV1, U512,
 };
@@ -313,7 +313,7 @@ impl TransactionAcceptor {
             ExecutableDeployItemIdentifier::AddressableEntity(EntityIdentifier::Hash(
                 contract_hash,
             )) => {
-                let query_key = Key::contract_entity_key(contract_hash);
+                let query_key = Key::from(ContractHash::new(contract_hash.value()));
                 effect_builder
                     .get_addressable_entity(*block_header.state_root_hash(), query_key)
                     .event(move |maybe_contract| Event::GetContractResult {
@@ -418,7 +418,7 @@ impl TransactionAcceptor {
             ExecutableDeployItemIdentifier::AddressableEntity(EntityIdentifier::Hash(
                 entity_hash,
             )) => {
-                let key = Key::contract_entity_key(entity_hash);
+                let key = Key::from(ContractHash::new(entity_hash.value()));
                 effect_builder
                     .get_addressable_entity(*block_header.state_root_hash(), key)
                     .event(move |maybe_contract| Event::GetContractResult {
@@ -497,7 +497,7 @@ impl TransactionAcceptor {
 
         match next_step {
             NextStep::GetContract(contract_hash) => {
-                let key = Key::contract_entity_key(contract_hash);
+                let key = Key::from(ContractHash::new(contract_hash.value()));
                 effect_builder
                     .get_addressable_entity(*block_header.state_root_hash(), key)
                     .event(move |maybe_contract| Event::GetContractResult {
@@ -613,7 +613,7 @@ impl TransactionAcceptor {
             EntityVersionKey::new(self.protocol_version.value().major, contract_version);
         match package.lookup_entity_hash(contract_version_key) {
             Some(&contract_hash) => {
-                let key = Key::contract_entity_key(contract_hash);
+                let key = Key::from(ContractHash::new(contract_hash.value()));
                 effect_builder
                     .get_addressable_entity(*block_header.state_root_hash(), key)
                     .event(move |maybe_contract| Event::GetContractResult {

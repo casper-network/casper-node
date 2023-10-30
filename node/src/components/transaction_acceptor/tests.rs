@@ -752,7 +752,7 @@ impl reactor::Reactor for Reactor {
                     } else if let Key::Account(account_hash) = key {
                         let account = create_account(account_hash, self.test_scenario);
                         Some(AddressableEntity::from(account))
-                    } else if let Key::AddressableEntity(..) = key {
+                    } else if let Key::Hash(..) = key {
                         match self.test_scenario {
                             TestScenario::FromPeerCustomPaymentContract(
                                 ContractScenario::MissingContractAtHash,
