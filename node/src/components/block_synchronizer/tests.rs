@@ -14,7 +14,7 @@ use rand::{seq::IteratorRandom, Rng};
 
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
-    testing::TestRng, AccessRights, BlockV2, CLValue, Chainspec, DeployId, EraId, Key,
+    testing::TestRng, AccessRights, BlockV2, CLValue, Chainspec, EraId, Key,
     LegacyRequiredFinality, ProtocolVersion, PublicKey, SecretKey, StoredValue, TestBlockBuilder,
     TimeDiff, URef, U512,
 };
@@ -44,7 +44,7 @@ enum MockReactorEvent {
     BlockFetcherRequest(FetcherRequest<Block>),
     BlockHeaderFetcherRequest(FetcherRequest<BlockHeader>),
     LegacyDeployFetcherRequest(FetcherRequest<LegacyDeploy>),
-    DeployFetcherRequest(FetcherRequest<Deploy>),
+    TransactionFetcherRequest(FetcherRequest<Transaction>),
     FinalitySignatureFetcherRequest(FetcherRequest<FinalitySignature>),
     TrieOrChunkFetcherRequest(FetcherRequest<TrieOrChunk>),
     BlockExecutionResultsOrChunkFetcherRequest(FetcherRequest<BlockExecutionResultsOrChunk>),
@@ -1664,13 +1664,13 @@ async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
     for event in mock_reactor.process_effects(effects).await {
         assert_matches!(
             event,
-            MockReactorEvent::DeployFetcherRequest(FetcherRequest {
+            MockReactorEvent::TransactionFetcherRequest(FetcherRequest {
                 id,
                 peer,
                 ..
             }) => {
                 assert!(peers.contains(&peer));
-                assert_eq!(id, DeployId::new(
+                assert_eq!(id, TransactionId::new_deploy(
                     *deploys[0].hash(),
                     approvals_hashes.approvals_hashes()[0],
                 ));
@@ -2589,7 +2589,7 @@ async fn historical_sync_no_legacy_block() {
     for event in events {
         assert_matches!(
             event,
-            MockReactorEvent::DeployFetcherRequest(FetcherRequest { .. })
+            MockReactorEvent::TransactionFetcherRequest(FetcherRequest { .. })
         );
     }
 
@@ -2598,7 +2598,9 @@ async fn historical_sync_no_legacy_block() {
         rng,
         Event::DeployFetched {
             block_hash: *block.hash(),
-            result: Either::Right(Ok(FetchedData::from_storage(Box::new(deploy)))),
+            result: Either::Right(Ok(FetchedData::from_storage(Box::new(
+                Transaction::Deploy(deploy),
+            )))),
         },
     );
     // ----- HaveAllDeploys -----
@@ -3557,13 +3559,13 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
         for event in mock_reactor.process_effects(effects).await {
             assert_matches!(
                 event,
-                MockReactorEvent::DeployFetcherRequest(FetcherRequest {
+                MockReactorEvent::TransactionFetcherRequest(FetcherRequest {
                     id,
                     peer,
                     ..
                 }) => {
                     assert!(peers.contains(&peer));
-                    assert_eq!(id, DeployId::new(
+                    assert_eq!(id, TransactionId::new_deploy(
                         *deploys[0].hash(),
                         approvals_hashes.approvals_hashes()[0],
                     ));
@@ -3611,7 +3613,9 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
             &mut rng,
             Event::DeployFetched {
                 block_hash: *block.hash(),
-                result: Either::Right(Ok(FetchedData::from_storage(Box::new(deploys[0].clone())))),
+                result: Either::Right(Ok(FetchedData::from_storage(Box::new(
+                    Transaction::Deploy(deploys[0].clone()),
+                )))),
             },
         );
         let events = mock_reactor.process_effects(effects).await;
@@ -3648,7 +3652,9 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
             &mut rng,
             Event::DeployFetched {
                 block_hash: *block.hash(),
-                result: Either::Right(Ok(FetchedData::from_storage(Box::new(deploys[0].clone())))),
+                result: Either::Right(Ok(FetchedData::from_storage(Box::new(
+                    Transaction::Deploy(deploys[0].clone()),
+                )))),
             },
         );
 
@@ -3838,7 +3844,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
     for event in events {
         assert_matches!(
             event,
-            MockReactorEvent::DeployFetcherRequest(FetcherRequest { .. })
+            MockReactorEvent::TransactionFetcherRequest(FetcherRequest { .. })
         );
     }
 
@@ -3859,7 +3865,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
         Event::DeployFetched {
             block_hash: *block.hash(),
             result: Either::Right(Ok(FetchedData::from_storage(Box::new(
-                first_deploy.clone(),
+                Transaction::Deploy(first_deploy.clone()),
             )))),
         },
     );
@@ -3869,7 +3875,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
     for event in mock_reactor.process_effects(effects).await {
         assert_matches!(
             event,
-            MockReactorEvent::DeployFetcherRequest(FetcherRequest { .. })
+            MockReactorEvent::TransactionFetcherRequest(FetcherRequest { .. })
         );
     }
     latch_count_check(
@@ -3889,7 +3895,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
         Event::DeployFetched {
             block_hash: *block.hash(),
             result: Either::Right(Ok(FetchedData::from_storage(Box::new(
-                second_deploy.clone(),
+                Transaction::Deploy(second_deploy.clone()),
             )))),
         },
     );
@@ -3899,7 +3905,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
     for event in mock_reactor.process_effects(effects).await {
         assert_matches!(
             event,
-            MockReactorEvent::DeployFetcherRequest(FetcherRequest { .. })
+            MockReactorEvent::TransactionFetcherRequest(FetcherRequest { .. })
         );
     }
     latch_count_check(
@@ -3933,7 +3939,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
             Event::DeployFetched {
                 block_hash: *block.hash(),
                 result: Either::Right(Ok(FetchedData::from_storage(Box::new(
-                    first_deploy.clone(),
+                    Transaction::Deploy(first_deploy.clone()),
                 )))),
             },
         );
@@ -3955,7 +3961,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
             Event::DeployFetched {
                 block_hash: *block.hash(),
                 result: Either::Right(Ok(FetchedData::from_storage(Box::new(
-                    second_deploy.clone(),
+                    Transaction::Deploy(second_deploy.clone()),
                 )))),
             },
         );
@@ -3975,7 +3981,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
         Event::DeployFetched {
             block_hash: *block.hash(),
             result: Either::Right(Ok(FetchedData::from_storage(Box::new(
-                third_deploy.clone(),
+                Transaction::Deploy(third_deploy.clone()),
             )))),
         },
     );

@@ -1025,9 +1025,9 @@ impl<T: LargestSpecimen> LargestSpecimen for ValidatorMap<T> {
 pub(crate) fn largest_get_request<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Message {
     largest_variant::<Message, Tag, _, _>(estimator, |variant| {
         match variant {
-            Tag::Deploy => Message::new_get_request::<Deploy>(&LargestSpecimen::largest_specimen(
-                estimator, cache,
-            )),
+            Tag::Transaction => Message::new_get_request::<Transaction>(
+                &LargestSpecimen::largest_specimen(estimator, cache),
+            ),
             Tag::LegacyDeploy => Message::new_get_request::<LegacyDeploy>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
@@ -1052,9 +1052,6 @@ pub(crate) fn largest_get_request<E: SizeEstimator>(estimator: &E, cache: &mut C
             Tag::BlockExecutionResults => Message::new_get_request::<BlockExecutionResultsOrChunk>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
-            Tag::Transaction => Message::new_get_request::<Deploy>(
-                &LargestSpecimen::largest_specimen(estimator, cache),
-            ),
         }
         .expect("did not expect new_get_request from largest deploy to fail")
     })
@@ -1064,9 +1061,9 @@ pub(crate) fn largest_get_request<E: SizeEstimator>(estimator: &E, cache: &mut C
 pub(crate) fn largest_get_response<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Message {
     largest_variant::<Message, Tag, _, _>(estimator, |variant| {
         match variant {
-            Tag::Deploy => Message::new_get_response::<Deploy>(&LargestSpecimen::largest_specimen(
-                estimator, cache,
-            )),
+            Tag::Transaction => Message::new_get_response::<Transaction>(
+                &LargestSpecimen::largest_specimen(estimator, cache),
+            ),
             Tag::LegacyDeploy => Message::new_get_response::<LegacyDeploy>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
@@ -1093,9 +1090,6 @@ pub(crate) fn largest_get_response<E: SizeEstimator>(estimator: &E, cache: &mut 
                     &LargestSpecimen::largest_specimen(estimator, cache),
                 )
             }
-            Tag::Transaction => Message::new_get_response::<Deploy>(
-                &LargestSpecimen::largest_specimen(estimator, cache),
-            ),
         }
         .expect("did not expect new_get_response from largest deploy to fail")
     })
