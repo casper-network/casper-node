@@ -13,6 +13,7 @@ use crate::{
 };
 
 #[derive(DataSize)]
+#[cfg_attr(test, derive(Clone))]
 pub struct Keypair {
     secret_key: Arc<SecretKey>,
     public_key: PublicKey,

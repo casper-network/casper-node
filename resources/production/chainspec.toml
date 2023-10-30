@@ -97,7 +97,7 @@ compute_rewards = true
 #   'refund': this causes excess payment amounts to be sent to either a pre-defined purse, or back to the sender.
 #             the refunded amount is calculated as the given ratio of the payment amount minus the execution costs.
 #   'burn': similar to what refund does; except the refund amount is burned.
-refund_handling = { type = 'refund', refund_ratio = [0, 1] }
+refund_handling = { type = 'refund', refund_ratio = [99, 100] }
 # Defines how fees are handled.
 #
 # Valid options are:
