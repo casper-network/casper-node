@@ -1,10 +1,13 @@
-use super::{FinalizedBlock, InternalEraReport};
-use casper_types::{
-    BlockV2, Deploy, DeployHash, EraId, PublicKey, RewardedSignatures, Timestamp, U512,
-};
+use std::{collections::BTreeMap, fmt};
+
 use datasize::DataSize;
 use serde::Serialize;
-use std::{collections::BTreeMap, fmt};
+
+use casper_types::{
+    BlockV2, EraId, PublicKey, RewardedSignatures, Timestamp, Transaction, TransactionHash, U512,
+};
+
+use super::{FinalizedBlock, InternalEraReport};
 
 /// Data necessary for a block to be executed.
 #[derive(DataSize, Debug, Clone, PartialEq, Serialize)]
@@ -16,35 +19,46 @@ pub struct ExecutableBlock {
     pub(crate) era_id: EraId,
     pub(crate) height: u64,
     pub(crate) proposer: Box<PublicKey>,
-    /// The deploys for that `FinalizedBlock`
-    pub(crate) deploys: Vec<Deploy>,
-    pub(crate) deploy_hashes: Vec<DeployHash>,
-    pub(crate) transfer_hashes: Vec<DeployHash>,
+    /// The transactions for the `FinalizedBlock`.
+    pub(crate) transactions: Vec<Transaction>,
+    /// The hashes of the transfer transactions within the `FinalizedBlock`.
+    pub(crate) transfer: Vec<TransactionHash>,
+    /// The hashes of the non-transfer, native transactions within the `FinalizedBlock`.
+    pub(crate) staking: Vec<TransactionHash>,
+    /// The hashes of the installer/upgrader userland transactions within the `FinalizedBlock`.
+    pub(crate) install_upgrade: Vec<TransactionHash>,
+    /// The hashes of all other transactions within the `FinalizedBlock`.
+    pub(crate) standard: Vec<TransactionHash>,
     /// `None` may indicate that the rewards have not been computed yet,
     /// or that the block is not a switch one.
     pub(crate) rewards: Option<BTreeMap<PublicKey, U512>>,
 }
 
 impl ExecutableBlock {
-    /// Creates a new `ExecutedBlock` from a `FinalizedBlock` and its deploys.
-    pub fn from_finalized_block_and_deploys(block: FinalizedBlock, deploys: Vec<Deploy>) -> Self {
+    /// Creates a new `ExecutedBlock` from a `FinalizedBlock` and its transactions.
+    pub fn from_finalized_block_and_transactions(
+        finalized_block: FinalizedBlock,
+        transactions: Vec<Transaction>,
+    ) -> Self {
         Self {
-            rewarded_signatures: block.rewarded_signatures,
-            timestamp: block.timestamp,
-            random_bit: block.random_bit,
-            era_report: block.era_report,
-            era_id: block.era_id,
-            height: block.height,
-            proposer: block.proposer,
-            deploys,
-            deploy_hashes: block.deploy_hashes,
-            transfer_hashes: block.transfer_hashes,
+            rewarded_signatures: finalized_block.rewarded_signatures,
+            timestamp: finalized_block.timestamp,
+            random_bit: finalized_block.random_bit,
+            era_report: finalized_block.era_report,
+            era_id: finalized_block.era_id,
+            height: finalized_block.height,
+            proposer: finalized_block.proposer,
+            transactions,
+            transfer: finalized_block.transfer,
+            staking: finalized_block.staking,
+            install_upgrade: finalized_block.install_upgrade,
+            standard: finalized_block.standard,
             rewards: None,
         }
     }
 
     /// Creates a new `ExecutedBlock` from a `BlockV2` and its deploys.
-    pub fn from_block_and_deploys(block: BlockV2, deploys: Vec<Deploy>) -> Self {
+    pub fn from_block_and_transactions(block: BlockV2, transactions: Vec<Transaction>) -> Self {
         let era_report = block.era_end().map(|ee| InternalEraReport {
             equivocators: ee.equivocators().into(),
             inactive_validators: ee.inactive_validators().into(),
@@ -58,9 +72,11 @@ impl ExecutableBlock {
             era_id: block.era_id(),
             height: block.height(),
             proposer: Box::new(block.proposer().clone()),
-            deploys,
-            deploy_hashes: block.deploy_hashes().into(),
-            transfer_hashes: block.transfer_hashes().into(),
+            transactions,
+            transfer: block.transfer().copied().collect(),
+            staking: block.staking().copied().collect(),
+            install_upgrade: block.install_upgrade().copied().collect(),
+            standard: block.standard().copied().collect(),
             rewards: block.era_end().map(|era_end| era_end.rewards().clone()),
         }
     }
@@ -70,12 +86,15 @@ impl fmt::Display for ExecutableBlock {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "finalized block #{} in {}, timestamp {}, {} deploys, {} transfers",
+            "executable block #{} in {}, timestamp {}, {} transfers, {} staking txns, {} \
+            install/upgrade txns, {} standard txns",
             self.height,
             self.era_id,
             self.timestamp,
-            self.deploy_hashes.len(),
-            self.transfer_hashes.len(),
+            self.transfer.len(),
+            self.staking.len(),
+            self.install_upgrade.len(),
+            self.standard.len(),
         )?;
         if let Some(ref ee) = self.era_report {
             write!(formatter, ", era_end: {:?}", ee)?;

@@ -31,9 +31,8 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
-    AsymmetricType, BlockHash, BlockHeader, Chainspec, ConsensusProtocolName, DeployHash, Digest,
-    DisplayIter, EraId, PublicKey, RewardedSignatures, TimeDiff, Timestamp, Transaction,
-    TransactionHash,
+    AsymmetricType, BlockHash, BlockHeader, Chainspec, ConsensusProtocolName, Digest, DisplayIter,
+    EraId, PublicKey, RewardedSignatures, TimeDiff, Timestamp, Transaction, TransactionHash,
 };
 
 use crate::{
@@ -58,15 +57,15 @@ use crate::{
     },
     fatal, protocol,
     types::{
-        create_single_block_rewarded_signatures, BlockWithMetadata, DeployOrTransferHash,
-        ExecutableBlock, FinalizedBlock, FinalizedDeployApprovals, InternalEraReport,
-        MetaBlockState, NodeId, ValidatorMatrix,
+        create_single_block_rewarded_signatures, BlockWithMetadata, ExecutableBlock,
+        FinalizedApprovals, FinalizedBlock, InternalEraReport, MetaBlockState, NodeId,
+        TypedTransactionHash, ValidatorMatrix,
     },
     NodeRng,
 };
 
 pub use self::era::Era;
-use crate::components::consensus::error::CreateNewEraError;
+use crate::{components::consensus::error::CreateNewEraError, types::TransactionHashWithApprovals};
 
 use super::{traits::ConsensusNetworkMessage, BlockContext};
 
@@ -1133,15 +1132,9 @@ impl EraSupervisor {
                 });
                 let proposed_block = Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone());
                 let finalized_approvals: HashMap<_, _> = proposed_block
-                    .deploys()
-                    .iter()
-                    .chain(proposed_block.transfers().iter())
-                    .map(|dwa| {
-                        (
-                            *dwa.deploy_hash(),
-                            FinalizedDeployApprovals::new(dwa.approvals().clone()),
-                        )
-                    })
+                    .all_transactions()
+                    .cloned()
+                    .map(TransactionHashWithApprovals::into_hash_and_finalized_approvals)
                     .collect();
                 if let Some(era_report) = report.as_ref() {
                     info!(
@@ -1219,7 +1212,7 @@ impl EraSupervisor {
                 }
                 effects.extend(
                     async move {
-                        check_deploys_for_replay_in_previous_eras_and_validate_block(
+                        check_txns_for_replay_in_previous_eras_and_validate_block(
                             effect_builder,
                             era_id,
                             sender,
@@ -1377,23 +1370,20 @@ where
 
 async fn execute_finalized_block<REv>(
     effect_builder: EffectBuilder<REv>,
-    finalized_approvals: HashMap<DeployHash, FinalizedDeployApprovals>,
+    finalized_approvals: HashMap<TransactionHash, FinalizedApprovals>,
     finalized_block: FinalizedBlock,
 ) where
     REv: From<StorageRequest> + From<FatalAnnouncement> + From<ContractRuntimeRequest>,
 {
-    for (deploy_hash, finalized_approvals) in finalized_approvals {
+    for (txn_hash, finalized_approvals) in finalized_approvals {
         effect_builder
-            .store_finalized_approvals(deploy_hash.into(), finalized_approvals.into())
+            .store_finalized_approvals(txn_hash, finalized_approvals)
             .await;
     }
     // Get all transactions in order they appear in the finalized block.
     let transactions = match get_transactions(
         effect_builder,
-        finalized_block
-            .deploy_and_transfer_hashes()
-            .map(|deploy_hash| TransactionHash::from(*deploy_hash))
-            .collect_vec(),
+        finalized_block.all_transactions().copied().collect(),
     )
     .await
     {
@@ -1409,15 +1399,8 @@ async fn execute_finalized_block<REv>(
         }
     };
 
-    let deploys = transactions
-        .into_iter()
-        .filter_map(|txn| match txn {
-            Transaction::Deploy(deploy) => Some(deploy),
-            Transaction::V1(_) => None,
-        })
-        .collect();
     let executable_block =
-        ExecutableBlock::from_finalized_block_and_deploys(finalized_block, deploys);
+        ExecutableBlock::from_finalized_block_and_transactions(finalized_block, transactions);
     effect_builder
         .enqueue_block_for_execution(executable_block, MetaBlockState::new())
         .await
@@ -1431,11 +1414,11 @@ fn instance_id(chainspec_hash: Digest, era_id: EraId, key_block_hash: BlockHash)
     )
 }
 
-/// Checks that a [BlockPayload] does not have deploys we have already included in blocks in
-/// previous eras. This is done by repeatedly querying storage for deploy metadata. When metadata is
-/// found storage is queried again to get the era id for the included deploy. That era id must *not*
-/// be less than the current era, otherwise the deploy is a replay attack.
-async fn check_deploys_for_replay_in_previous_eras_and_validate_block<REv>(
+/// Checks that a `BlockPayload` does not have transactions we have already included in blocks in
+/// previous eras. This is done by repeatedly querying storage for transaction metadata. When
+/// metadata is found storage is queried again to get the era id for the included transaction. That
+/// era id must *not* be less than the current era, otherwise the transaction is a replay attack.
+async fn check_txns_for_replay_in_previous_eras_and_validate_block<REv>(
     effect_builder: EffectBuilder<REv>,
     proposed_block_era_id: EraId,
     sender: NodeId,
@@ -1444,21 +1427,20 @@ async fn check_deploys_for_replay_in_previous_eras_and_validate_block<REv>(
 where
     REv: From<BlockValidationRequest> + From<StorageRequest>,
 {
-    for deploy_hash in proposed_block.value().deploys_and_transfers_iter() {
+    for thwa in proposed_block.value().all_transactions() {
         let block_header = match effect_builder
-            .get_block_header_for_deploy_from_storage(deploy_hash.into())
+            .get_block_header_for_transaction_from_storage(thwa.transaction_hash())
             .await
         {
             None => continue,
             Some(header) => header,
         };
-        // We have found the deploy in the database. If it was from a previous era, it was a
+        // We have found the transaction in the database. If it was from a previous era, it was a
         // replay attack.
         //
-        // If not, then it might be this is a deploy for a block we are currently
-        // coming to consensus, and we will rely on the immediate ancestors of the
-        // block_payload within the current era to determine if we are facing a replay
-        // attack.
+        // If not, then it might be this is a transaction for a block we are currently coming to
+        // consensus, and we will rely on the immediate ancestors of the block_payload within the
+        // current era to determine if we are facing a replay attack.
         if block_header.era_id() < proposed_block_era_id {
             return Event::ResolveValidity(ResolveValidity {
                 era_id: proposed_block_era_id,
@@ -1483,17 +1465,17 @@ where
 }
 
 impl ProposedBlock<ClContext> {
-    /// If this block contains a deploy that's also present in an ancestor, this returns the deploy
-    /// hash, otherwise `None`.
-    fn contains_replay(&self) -> Option<DeployHash> {
-        let block_deploys_set: BTreeSet<DeployOrTransferHash> =
-            self.value().deploys_and_transfers_iter().collect();
+    /// If this block contains a transaction that's also present in an ancestor, this returns the
+    /// transaction hash, otherwise `None`.
+    fn contains_replay(&self) -> Option<TransactionHash> {
+        let block_txns_set: BTreeSet<TypedTransactionHash> =
+            self.value().typed_transaction_hashes().collect();
         self.context()
             .ancestor_values()
             .iter()
-            .flat_map(|ancestor| ancestor.deploys_and_transfers_iter())
-            .find(|deploy| block_deploys_set.contains(deploy))
-            .map(DeployOrTransferHash::into)
+            .flat_map(|ancestor| ancestor.typed_transaction_hashes())
+            .find(|typed_txn_hash| block_txns_set.contains(typed_txn_hash))
+            .map(TransactionHash::from)
     }
 }
 

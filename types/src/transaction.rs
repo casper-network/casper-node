@@ -97,6 +97,7 @@ pub enum Transaction {
     /// A deploy.
     Deploy(Deploy),
     /// A version 1 transaction.
+    #[cfg_attr(any(feature = "std", test), serde(rename = "Version1"))]
     V1(TransactionV1),
 }
 
@@ -106,6 +107,24 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => TransactionHash::from(*deploy.hash()),
             Transaction::V1(txn) => TransactionHash::from(*txn.hash()),
+        }
+    }
+
+    /// Returns the computed approvals hash identifying this transaction's approvals.
+    pub fn compute_approvals_hash(&self) -> TransactionApprovalsHash {
+        match self {
+            Transaction::Deploy(deploy) => TransactionApprovalsHash::Deploy(
+                deploy.compute_approvals_hash().unwrap_or_else(|error| {
+                    error!(%error, "failed to serialize deploy approvals");
+                    DeployApprovalsHash::from(Digest::default())
+                }),
+            ),
+            Transaction::V1(txn) => {
+                TransactionApprovalsHash::V1(txn.compute_approvals_hash().unwrap_or_else(|error| {
+                    error!(%error, "failed to serialize transaction approvals");
+                    TransactionV1ApprovalsHash::from(Digest::default())
+                }))
+            }
         }
     }
 

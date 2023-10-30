@@ -5,7 +5,8 @@ use rand::Rng;
 
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
-    testing::TestRng, AccessRights, CLValue, Deploy, StoredValue, TestBlockBuilder, URef,
+    testing::TestRng, AccessRights, CLValue, Deploy, StoredValue, TestBlockBuilder, Transaction,
+    URef,
 };
 
 use crate::types::ApprovalsHashes;
@@ -28,14 +29,18 @@ fn gen_approvals_hashes<'a, I: Iterator<Item = &'a Deploy> + Clone>(
     deploys_iter: I,
 ) -> ApprovalsHashes {
     let era = rng.gen_range(0..6);
+    let txns: Vec<_> = deploys_iter
+        .clone()
+        .map(|deploy| Transaction::from(deploy.clone()))
+        .collect();
     let block = TestBlockBuilder::new()
         .era(era)
         .height(era * 10 + rng.gen_range(0..10))
-        .deploys(deploys_iter.clone())
+        .transactions(&txns)
         .build(rng);
 
-    ApprovalsHashes::new(
-        block.hash(),
+    ApprovalsHashes::new_v1(
+        *block.hash(),
         deploys_iter
             .map(|deploy| deploy.compute_approvals_hash().unwrap())
             .collect(),

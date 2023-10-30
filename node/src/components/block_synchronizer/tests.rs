@@ -338,7 +338,7 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     let test_env = TestEnv::random(&mut rng).with_block(
         TestBlockBuilder::new()
             .era(1)
-            .random_deploys(1, &mut rng)
+            .transactions(Some(&Transaction::Deploy(Deploy::random(&mut rng))))
             .build(&mut rng),
     );
     let peers = test_env.peers();
@@ -503,7 +503,7 @@ async fn synchronizer_doesnt_busy_loop_without_peers() {
     let test_env = TestEnv::random(&mut rng).with_block(
         TestBlockBuilder::new()
             .era(1)
-            .random_deploys(1, &mut rng)
+            .transactions(Some(&Transaction::Deploy(Deploy::random(&mut rng))))
             .build(&mut rng),
     );
     let block = test_env.block();
@@ -1529,7 +1529,7 @@ async fn fwd_having_block_body_for_block_with_deploys_requires_approvals_hashes(
     let test_env = TestEnv::random(&mut rng).with_block(
         TestBlockBuilder::new()
             .era(1)
-            .random_deploys(1, &mut rng)
+            .transactions(Some(&Transaction::Deploy(Deploy::random(&mut rng))))
             .build(&mut rng),
     );
     let peers = test_env.peers();
@@ -1581,6 +1581,18 @@ async fn fwd_having_block_body_for_block_with_deploys_requires_approvals_hashes(
     .await;
 
     for event in events {
+        if !matches!(
+            event,
+            MockReactorEvent::ApprovalsHashesFetcherRequest(FetcherRequest {
+                id,
+                peer,
+                ..
+            }) if peers.contains(&peer) && id == *block.hash()
+        ) {
+            println!("peers: {:?}", peers);
+            println!("{}", block.hash());
+            println!("event: {:?}", event);
+        }
         assert_matches!(
             event,
             MockReactorEvent::ApprovalsHashesFetcherRequest(FetcherRequest {
@@ -1596,11 +1608,11 @@ async fn fwd_having_block_body_for_block_with_deploys_requires_approvals_hashes(
 async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let deploys = [Deploy::random(&mut rng)];
+    let txns = [Transaction::Deploy(Deploy::random(&mut rng))];
     let test_env = TestEnv::random(&mut rng).with_block(
         TestBlockBuilder::new()
             .era(1)
-            .deploys(deploys.iter())
+            .transactions(txns.iter())
             .build(&mut rng),
     );
     let peers = test_env.peers();
@@ -1641,11 +1653,10 @@ async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
         BlockAcquisitionState::HaveBlock(acquired_block, _, _) if acquired_block.hash() == block.hash()
     );
 
-    let approvals_hashes = ApprovalsHashes::new(
-        block.hash(),
-        deploys
-            .iter()
-            .map(|deploy| deploy.compute_approvals_hash().unwrap())
+    let approvals_hashes = ApprovalsHashes::new_v2(
+        *block.hash(),
+        txns.iter()
+            .map(|txn| txn.compute_approvals_hash())
             .collect(),
         dummy_merkle_proof(),
     );
@@ -1670,10 +1681,7 @@ async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
                 ..
             }) => {
                 assert!(peers.contains(&peer));
-                assert_eq!(id, TransactionId::new_deploy(
-                    *deploys[0].hash(),
-                    approvals_hashes.approvals_hashes()[0],
-                ));
+                assert_eq!(id, txns[0].compute_id());
             }
         );
     }
@@ -1870,7 +1878,7 @@ async fn fwd_have_strict_finality_requests_enqueue_when_finalized_block_is_creat
     // enqueued for execution
     let event = Event::MadeFinalizedBlock {
         block_hash: *block.hash(),
-        result: Some(ExecutableBlock::from_block_and_deploys(
+        result: Some(ExecutableBlock::from_block_and_transactions(
             block.clone(),
             Vec::new(),
         )),
@@ -1956,7 +1964,7 @@ async fn fwd_builder_status_is_executing_when_block_is_enqueued_for_execution() 
     );
 
     // Register finalized block
-    fwd_builder.register_made_executable_block(ExecutableBlock::from_block_and_deploys(
+    fwd_builder.register_made_executable_block(ExecutableBlock::from_block_and_transactions(
         block.clone(),
         Vec::new(),
     ));
@@ -2025,7 +2033,7 @@ async fn fwd_sync_is_finished_when_block_is_marked_as_executed() {
     );
 
     // Register finalized block
-    fwd_builder.register_made_executable_block(ExecutableBlock::from_block_and_deploys(
+    fwd_builder.register_made_executable_block(ExecutableBlock::from_block_and_transactions(
         block.clone(),
         Vec::new(),
     ));
@@ -2397,11 +2405,11 @@ async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
 async fn historical_sync_no_legacy_block() {
     let rng = &mut TestRng::new();
     let mock_reactor = MockReactor::new();
-    let deploy = Deploy::random(rng);
+    let txn = Transaction::Deploy(Deploy::random(rng));
     let test_env = TestEnv::random(rng).with_block(
         TestBlockBuilder::new()
             .era(1)
-            .deploys(std::iter::once(&deploy))
+            .transactions(iter::once(&txn))
             .build(rng),
     );
     let peers = test_env.peers();
@@ -2572,9 +2580,9 @@ async fn historical_sync_no_legacy_block() {
         mock_reactor.effect_builder(),
         rng,
         Event::ApprovalsHashesFetched(Ok(FetchedData::from_storage(Box::new(
-            ApprovalsHashes::new(
-                block.hash(),
-                vec![deploy.compute_approvals_hash().unwrap()],
+            ApprovalsHashes::new_v2(
+                *block.hash(),
+                vec![txn.compute_approvals_hash()],
                 dummy_merkle_proof(),
             ),
         )))),
@@ -2598,9 +2606,7 @@ async fn historical_sync_no_legacy_block() {
         rng,
         Event::DeployFetched {
             block_hash: *block.hash(),
-            result: Either::Right(Ok(FetchedData::from_storage(Box::new(
-                Transaction::Deploy(deploy),
-            )))),
+            result: Either::Right(Ok(FetchedData::from_storage(Box::new(txn)))),
         },
     );
     // ----- HaveAllDeploys -----
@@ -2626,7 +2632,7 @@ async fn historical_sync_legacy_block_strict_finality() {
     let test_env = TestEnv::random(rng).with_block(
         TestBlockBuilder::new()
             .era(1)
-            .deploys(std::iter::once(&deploy))
+            .transactions(iter::once(&Transaction::from(deploy.clone())))
             .build(rng),
     );
     let peers = test_env.peers();
@@ -2825,7 +2831,7 @@ async fn historical_sync_legacy_block_weak_finality() {
     let test_env = TestEnv::random(rng).with_block(
         TestBlockBuilder::new()
             .era(1)
-            .deploys(std::iter::once(&deploy))
+            .transactions(iter::once(&Transaction::from(deploy.clone())))
             .build(rng),
     );
     let peers = test_env.peers();
@@ -3037,7 +3043,7 @@ async fn historical_sync_legacy_block_any_finality() {
     let test_env = TestEnv::random(rng).with_block(
         TestBlockBuilder::new()
             .era(1)
-            .deploys(std::iter::once(&deploy))
+            .transactions(iter::once(&Transaction::from(deploy.clone())))
             .build(rng),
     );
     let peers = test_env.peers();
@@ -3243,11 +3249,11 @@ async fn historical_sync_legacy_block_any_finality() {
 async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
-    let deploys = [Deploy::random(&mut rng)];
+    let txn = Transaction::Deploy(Deploy::random(&mut rng));
     let test_env = TestEnv::random(&mut rng).with_block(
         TestBlockBuilder::new()
             .era(1)
-            .deploys(deploys.iter())
+            .transactions(iter::once(&txn))
             .build(&mut rng),
     );
     let peers = test_env.peers();
@@ -3539,12 +3545,9 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
     // Register approvals hashes. This would make the synchronizer switch to HaveApprovalsHashes and
     // continue asking for the deploys.
     {
-        let approvals_hashes = ApprovalsHashes::new(
-            block.hash(),
-            deploys
-                .iter()
-                .map(|deploy| deploy.compute_approvals_hash().unwrap())
-                .collect(),
+        let approvals_hashes = ApprovalsHashes::new_v2(
+            *block.hash(),
+            vec![txn.compute_approvals_hash()],
             dummy_merkle_proof(),
         );
         let effects = block_synchronizer.handle_event(
@@ -3565,10 +3568,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
                     ..
                 }) => {
                     assert!(peers.contains(&peer));
-                    assert_eq!(id, TransactionId::new_deploy(
-                        *deploys[0].hash(),
-                        approvals_hashes.approvals_hashes()[0],
-                    ));
+                    assert_eq!(id, txn.compute_id());
                 }
             );
         }
@@ -3613,9 +3613,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
             &mut rng,
             Event::DeployFetched {
                 block_hash: *block.hash(),
-                result: Either::Right(Ok(FetchedData::from_storage(Box::new(
-                    Transaction::Deploy(deploys[0].clone()),
-                )))),
+                result: Either::Right(Ok(FetchedData::from_storage(Box::new(txn.clone())))),
             },
         );
         let events = mock_reactor.process_effects(effects).await;
@@ -3652,9 +3650,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
             &mut rng,
             Event::DeployFetched {
                 block_hash: *block.hash(),
-                result: Either::Right(Ok(FetchedData::from_storage(Box::new(
-                    Transaction::Deploy(deploys[0].clone()),
-                )))),
+                result: Either::Right(Ok(FetchedData::from_storage(Box::new(txn.clone())))),
             },
         );
 
@@ -3719,20 +3715,13 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
 async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_responses() {
     let rng = &mut TestRng::new();
     let mock_reactor = MockReactor::new();
-    let first_deploy = Deploy::random(rng);
-    let second_deploy = Deploy::random(rng);
-    let third_deploy = Deploy::random(rng);
+    let first_txn = Transaction::Deploy(Deploy::random(rng));
+    let second_txn = Transaction::Deploy(Deploy::random(rng));
+    let third_txn = Transaction::Deploy(Deploy::random(rng));
     let test_env = TestEnv::random(rng).with_block(
         TestBlockBuilder::new()
             .era(1)
-            .deploys(
-                [
-                    first_deploy.clone(),
-                    second_deploy.clone(),
-                    third_deploy.clone(),
-                ]
-                .iter(),
-            )
+            .transactions([first_txn.clone(), second_txn.clone(), third_txn.clone()].iter())
             .build(rng),
     );
     let peers = test_env.peers();
@@ -3823,12 +3812,12 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
         mock_reactor.effect_builder(),
         rng,
         Event::ApprovalsHashesFetched(Ok(FetchedData::from_storage(Box::new(
-            ApprovalsHashes::new(
-                block.hash(),
+            ApprovalsHashes::new_v2(
+                *block.hash(),
                 vec![
-                    first_deploy.compute_approvals_hash().unwrap(),
-                    second_deploy.compute_approvals_hash().unwrap(),
-                    third_deploy.compute_approvals_hash().unwrap(),
+                    first_txn.compute_approvals_hash(),
+                    second_txn.compute_approvals_hash(),
+                    third_txn.compute_approvals_hash(),
                 ],
                 dummy_merkle_proof(),
             ),
@@ -3864,9 +3853,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
         rng,
         Event::DeployFetched {
             block_hash: *block.hash(),
-            result: Either::Right(Ok(FetchedData::from_storage(Box::new(
-                Transaction::Deploy(first_deploy.clone()),
-            )))),
+            result: Either::Right(Ok(FetchedData::from_storage(Box::new(first_txn.clone())))),
         },
     );
 
@@ -3894,9 +3881,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
         rng,
         Event::DeployFetched {
             block_hash: *block.hash(),
-            result: Either::Right(Ok(FetchedData::from_storage(Box::new(
-                Transaction::Deploy(second_deploy.clone()),
-            )))),
+            result: Either::Right(Ok(FetchedData::from_storage(Box::new(second_txn.clone())))),
         },
     );
 
@@ -3938,9 +3923,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
             rng,
             Event::DeployFetched {
                 block_hash: *block.hash(),
-                result: Either::Right(Ok(FetchedData::from_storage(Box::new(
-                    Transaction::Deploy(first_deploy.clone()),
-                )))),
+                result: Either::Right(Ok(FetchedData::from_storage(Box::new(first_txn.clone())))),
             },
         );
 
@@ -3960,9 +3943,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
             rng,
             Event::DeployFetched {
                 block_hash: *block.hash(),
-                result: Either::Right(Ok(FetchedData::from_storage(Box::new(
-                    Transaction::Deploy(second_deploy.clone()),
-                )))),
+                result: Either::Right(Ok(FetchedData::from_storage(Box::new(second_txn.clone())))),
             },
         );
 
@@ -3980,9 +3961,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
         rng,
         Event::DeployFetched {
             block_hash: *block.hash(),
-            result: Either::Right(Ok(FetchedData::from_storage(Box::new(
-                Transaction::Deploy(third_deploy.clone()),
-            )))),
+            result: Either::Right(Ok(FetchedData::from_storage(Box::new(third_txn.clone())))),
         },
     );
 
@@ -4002,20 +3981,13 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
 async fn historical_sync_latch_should_not_decrement_for_old_execution_results() {
     let rng = &mut TestRng::new();
     let mock_reactor = MockReactor::new();
-    let first_deploy = Deploy::random(rng);
-    let second_deploy = Deploy::random(rng);
-    let third_deploy = Deploy::random(rng);
+    let first_txn = Transaction::Deploy(Deploy::random(rng));
+    let second_txn = Transaction::Deploy(Deploy::random(rng));
+    let third_txn = Transaction::Deploy(Deploy::random(rng));
     let test_env = TestEnv::random(rng).with_block(
         TestBlockBuilder::new()
             .era(1)
-            .deploys(
-                [
-                    first_deploy.clone(),
-                    second_deploy.clone(),
-                    third_deploy.clone(),
-                ]
-                .iter(),
-            )
+            .transactions([first_txn, second_txn, third_txn].iter())
             .build(rng),
     );
     let peers = test_env.peers();

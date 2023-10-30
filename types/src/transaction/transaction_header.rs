@@ -27,6 +27,7 @@ pub enum TransactionHeader {
     /// A deploy header.
     Deploy(DeployHeader),
     /// A version 1 transaction header.
+    #[cfg_attr(any(feature = "std", test), serde(rename = "Version1"))]
     V1(TransactionV1Header),
 }
 

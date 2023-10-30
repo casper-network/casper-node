@@ -16,15 +16,16 @@ use serde::{Deserialize, Serialize};
 #[cfg(any(feature = "once_cell", test))]
 use once_cell::sync::OnceCell;
 
+use super::{Block, BlockBodyV2, BlockConversionError, RewardedSignatures};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
+#[cfg(feature = "json-schema")]
+use crate::TransactionV1Hash;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockHash, BlockHeaderV2, BlockValidationError, DeployHash, Digest, EraEndV2, EraId,
-    ProtocolVersion, PublicKey, Timestamp,
+    BlockHash, BlockHeaderV2, BlockValidationError, Digest, EraEndV2, EraId, ProtocolVersion,
+    PublicKey, Timestamp, TransactionHash,
 };
-
-use super::{Block, BlockBodyV2, BlockConversionError, RewardedSignatures};
 
 #[cfg(feature = "json-schema")]
 static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
@@ -39,8 +40,18 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
     let protocol_version = ProtocolVersion::V1_0_0;
     let secret_key = crate::SecretKey::example();
     let proposer = PublicKey::from(secret_key);
-    let deploy_hashes = vec![DeployHash::new(Digest::from([20; Digest::LENGTH]))];
-    let transfer_hashes = vec![DeployHash::new(Digest::from([21; Digest::LENGTH]))];
+    let transfer_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(Digest::from(
+        [20; Digest::LENGTH],
+    )))];
+    let non_transfer_native_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(
+        Digest::from([21; Digest::LENGTH]),
+    ))];
+    let installer_upgrader_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(
+        Digest::from([22; Digest::LENGTH]),
+    ))];
+    let other_hashes = vec![TransactionHash::V1(TransactionV1Hash::new(Digest::from(
+        [23; Digest::LENGTH],
+    )))];
     let rewarded_signatures = RewardedSignatures::default();
     BlockV2::new(
         parent_hash,
@@ -53,8 +64,10 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
         height,
         protocol_version,
         proposer,
-        deploy_hashes,
         transfer_hashes,
+        non_transfer_native_hashes,
+        installer_upgrader_hashes,
+        other_hashes,
         rewarded_signatures,
     )
 });
@@ -89,14 +102,18 @@ impl BlockV2 {
         height: u64,
         protocol_version: ProtocolVersion,
         proposer: PublicKey,
-        deploy_hashes: Vec<DeployHash>,
-        transfer_hashes: Vec<DeployHash>,
+        transfer: Vec<TransactionHash>,
+        staking: Vec<TransactionHash>,
+        install_upgrade: Vec<TransactionHash>,
+        standard: Vec<TransactionHash>,
         rewarded_signatures: RewardedSignatures,
     ) -> Self {
         let body = BlockBodyV2::new(
             proposer,
-            deploy_hashes,
-            transfer_hashes,
+            transfer,
+            staking,
+            install_upgrade,
+            standard,
             rewarded_signatures,
         );
         let body_hash = body.hash();
@@ -215,21 +232,29 @@ impl BlockV2 {
         self.body.rewarded_signatures()
     }
 
-    /// Returns the deploy hashes within the block.
-    pub fn deploy_hashes(&self) -> &[DeployHash] {
-        self.body.deploy_hashes()
+    /// Returns the hashes of the transfer transactions within the block.
+    pub fn transfer(&self) -> impl Iterator<Item = &TransactionHash> {
+        self.body.transfer()
     }
 
-    /// Returns the transfer hashes within the block.
-    pub fn transfer_hashes(&self) -> &[DeployHash] {
-        self.body.transfer_hashes()
+    /// Returns the hashes of the non-transfer, native transactions within the block.
+    pub fn staking(&self) -> impl Iterator<Item = &TransactionHash> {
+        self.body.staking()
     }
 
-    /// Returns the deploy and transfer hashes in the order in which they were executed.
-    pub fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
-        self.deploy_hashes()
-            .iter()
-            .chain(self.transfer_hashes().iter())
+    /// Returns the hashes of the installer/upgrader userland transactions within the block.
+    pub fn install_upgrade(&self) -> impl Iterator<Item = &TransactionHash> {
+        self.body.install_upgrade()
+    }
+
+    /// Returns the hashes of all other transactions within the block.
+    pub fn standard(&self) -> impl Iterator<Item = &TransactionHash> {
+        self.body.standard()
+    }
+
+    /// Returns all of the transaction hashes in the order in which they were executed.
+    pub fn all_transactions(&self) -> impl Iterator<Item = &TransactionHash> {
+        self.body.all_transactions()
     }
 
     /// Returns `Ok` if and only if the block's provided block hash and body hash are identical to

@@ -11,7 +11,7 @@ use casper_types::{
     DeployFootprint, DeployHash, Gas, PublicKey, RewardedSignatures, Timestamp, TransactionConfig,
 };
 
-use crate::types::DeployHashWithApprovals;
+use crate::types::{DeployHashWithApprovals, TransactionHashWithApprovals};
 
 use super::BlockPayload;
 
@@ -186,8 +186,26 @@ impl AppendableBlock {
             deploys, transfers, ..
         } = self;
         BlockPayload::new(
-            deploys,
-            transfers,
+            transfers
+                .iter()
+                .map(|dhwa| {
+                    TransactionHashWithApprovals::new_deploy(
+                        *dhwa.deploy_hash(),
+                        dhwa.approvals().clone(),
+                    )
+                })
+                .collect(),
+            vec![],
+            vec![],
+            deploys
+                .iter()
+                .map(|dhwa| {
+                    TransactionHashWithApprovals::new_deploy(
+                        *dhwa.deploy_hash(),
+                        dhwa.approvals().clone(),
+                    )
+                })
+                .collect(),
             accusations,
             rewarded_signatures,
             random_bit,
@@ -201,13 +219,13 @@ impl AppendableBlock {
     /// Returns `true` if the number of transfers is already the maximum allowed count, i.e. no
     /// more transfers can be added to this block.
     fn has_max_transfer_count(&self) -> bool {
-        self.transfers.len() == self.transaction_config.block_max_native_count as usize
+        self.transfers.len() == self.transaction_config.block_max_transfer_count as usize
     }
 
     /// Returns `true` if the number of deploys is already the maximum allowed count, i.e. no more
     /// deploys can be added to this block.
     fn has_max_deploy_count(&self) -> bool {
-        self.deploys.len() == self.transaction_config.block_max_deploy_count as usize
+        self.deploys.len() == self.transaction_config.block_max_standard_count as usize
     }
 
     /// Returns `true` if adding the deploy with 'additional_approvals` approvals would exceed the
@@ -217,9 +235,9 @@ impl AppendableBlock {
     fn would_exceed_approval_limits(&self, additional_approvals: usize) -> bool {
         let remaining_approval_slots =
             self.transaction_config.block_max_approval_count as usize - self.total_approvals;
-        let remaining_deploy_slots = self.transaction_config.block_max_native_count as usize
+        let remaining_deploy_slots = self.transaction_config.block_max_transfer_count as usize
             - self.transfers.len()
-            + self.transaction_config.block_max_deploy_count as usize
+            + self.transaction_config.block_max_standard_count as usize
             - self.deploys.len();
         // safe to subtract because the chainspec is validated at load time
         additional_approvals > remaining_approval_slots - remaining_deploy_slots + 1

@@ -25,8 +25,7 @@ use crate::{
 const STANDARD_TAG: u8 = 0;
 const INSTALLER_UPGRADER_TAG: u8 = 1;
 const DIRECT_CALL_TAG: u8 = 2;
-const NOOP_TAG: u8 = 3;
-const CLOSED_TAG: u8 = 4;
+const CLOSED_TAG: u8 = 3;
 
 /// A [`TransactionV1`] with userland (i.e. not native) functionality.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
@@ -56,13 +55,6 @@ pub enum UserlandTransactionV1 {
     },
     /// A transaction targeting a stored contract.
     DirectCall(DirectCallV1),
-    /// A transaction which doesn't modify global state.
-    Noop {
-        /// Raw Wasm module bytes with 'call' exported as an entrypoint.
-        module_bytes: Bytes,
-        /// Runtime arguments.
-        args: RuntimeArgs,
-    },
     /// A transaction which doesn't call stored contracts.
     Closed {
         /// Raw Wasm module bytes with 'call' exported as an entrypoint.
@@ -100,11 +92,6 @@ impl UserlandTransactionV1 {
         }
     }
 
-    /// Returns a new `UserlandTransactionV1::Noop`.
-    pub fn new_noop(module_bytes: Bytes, args: RuntimeArgs) -> Self {
-        UserlandTransactionV1::Noop { module_bytes, args }
-    }
-
     /// Returns a new `UserlandTransactionV1::Closed`.
     pub fn new_closed(module_bytes: Bytes, args: RuntimeArgs) -> Self {
         UserlandTransactionV1::Closed { module_bytes, args }
@@ -115,7 +102,6 @@ impl UserlandTransactionV1 {
         match self {
             UserlandTransactionV1::Standard { args, .. }
             | UserlandTransactionV1::InstallerUpgrader { args, .. }
-            | UserlandTransactionV1::Noop { args, .. }
             | UserlandTransactionV1::Closed { args, .. } => args,
             UserlandTransactionV1::DirectCall(direct_call) => direct_call.args(),
         }
@@ -125,7 +111,6 @@ impl UserlandTransactionV1 {
         match self {
             UserlandTransactionV1::Standard { args, .. }
             | UserlandTransactionV1::InstallerUpgrader { args, .. }
-            | UserlandTransactionV1::Noop { args, .. }
             | UserlandTransactionV1::Closed { args, .. } => args,
             UserlandTransactionV1::DirectCall(direct_call) => direct_call.args_mut(),
         }
@@ -134,9 +119,9 @@ impl UserlandTransactionV1 {
     /// Returns the entry point name.
     pub fn entry_point_name(&self) -> &str {
         match self {
-            UserlandTransactionV1::Standard { .. }
-            | UserlandTransactionV1::Noop { .. }
-            | UserlandTransactionV1::Closed { .. } => DEFAULT_ENTRY_POINT_NAME,
+            UserlandTransactionV1::Standard { .. } | UserlandTransactionV1::Closed { .. } => {
+                DEFAULT_ENTRY_POINT_NAME
+            }
             UserlandTransactionV1::InstallerUpgrader {
                 contract_package_id: Some(_),
                 ..
@@ -154,7 +139,6 @@ impl UserlandTransactionV1 {
         match self {
             UserlandTransactionV1::Standard { module_bytes, .. }
             | UserlandTransactionV1::InstallerUpgrader { module_bytes, .. }
-            | UserlandTransactionV1::Noop { module_bytes, .. }
             | UserlandTransactionV1::Closed { module_bytes, .. } => module_bytes.is_empty(),
             UserlandTransactionV1::DirectCall(_) => false,
         }
@@ -169,7 +153,7 @@ impl UserlandTransactionV1 {
             Bytes::from(buffer)
         }
 
-        match rng.gen_range(0..5) {
+        match rng.gen_range(0..4) {
             0 => UserlandTransactionV1::Standard {
                 module_bytes: random_bytes(rng),
                 args: RuntimeArgs::random(rng),
@@ -183,11 +167,7 @@ impl UserlandTransactionV1 {
                 }
             }
             2 => UserlandTransactionV1::DirectCall(DirectCallV1::random(rng)),
-            3 => UserlandTransactionV1::Noop {
-                module_bytes: random_bytes(rng),
-                args: RuntimeArgs::random(rng),
-            },
-            4 => UserlandTransactionV1::Closed {
+            3 => UserlandTransactionV1::Closed {
                 module_bytes: random_bytes(rng),
                 args: RuntimeArgs::random(rng),
             },
@@ -212,7 +192,6 @@ impl Display for UserlandTransactionV1 {
             UserlandTransactionV1::DirectCall(direct_call) => {
                 write!(formatter, "userland {}", direct_call)
             }
-            UserlandTransactionV1::Noop { .. } => write!(formatter, "userland noop"),
             UserlandTransactionV1::Closed { .. } => write!(formatter, "userland closed"),
         }
     }
@@ -239,11 +218,6 @@ impl ToBytes for UserlandTransactionV1 {
             UserlandTransactionV1::DirectCall(direct_call) => {
                 DIRECT_CALL_TAG.write_bytes(writer)?;
                 direct_call.write_bytes(writer)
-            }
-            UserlandTransactionV1::Noop { module_bytes, args } => {
-                NOOP_TAG.write_bytes(writer)?;
-                module_bytes.write_bytes(writer)?;
-                args.write_bytes(writer)
             }
             UserlandTransactionV1::Closed { module_bytes, args } => {
                 CLOSED_TAG.write_bytes(writer)?;
@@ -275,9 +249,6 @@ impl ToBytes for UserlandTransactionV1 {
                         + args.serialized_length()
                 }
                 UserlandTransactionV1::DirectCall(direct_call) => direct_call.serialized_length(),
-                UserlandTransactionV1::Noop { module_bytes, args } => {
-                    module_bytes.serialized_length() + args.serialized_length()
-                }
                 UserlandTransactionV1::Closed { module_bytes, args } => {
                     module_bytes.serialized_length() + args.serialized_length()
                 }
@@ -310,12 +281,6 @@ impl FromBytes for UserlandTransactionV1 {
             DIRECT_CALL_TAG => {
                 let (direct_call, remainder) = DirectCallV1::from_bytes(remainder)?;
                 let txn = UserlandTransactionV1::DirectCall(direct_call);
-                Ok((txn, remainder))
-            }
-            NOOP_TAG => {
-                let (module_bytes, remainder) = Bytes::from_bytes(remainder)?;
-                let (args, remainder) = RuntimeArgs::from_bytes(remainder)?;
-                let txn = UserlandTransactionV1::Noop { module_bytes, args };
                 Ok((txn, remainder))
             }
             CLOSED_TAG => {

@@ -147,6 +147,8 @@ fn send_a_valid_wire_unit() {
             vec![],
             vec![],
             vec![],
+            vec![],
+            vec![],
             Default::default(),
             false,
         ))),
@@ -193,6 +195,8 @@ fn detect_doppelganger() {
     let round_exp = 0;
     let now = Timestamp::zero();
     let value = Arc::new(BlockPayload::new(
+        vec![],
+        vec![],
         vec![],
         vec![],
         vec![],

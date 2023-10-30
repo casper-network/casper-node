@@ -9,7 +9,7 @@ use std::{
 use datasize::DataSize;
 use tracing::debug;
 
-use casper_types::{DeployHash, DeployId};
+use casper_types::{DeployHash, DeployId, TransactionApprovalsHash};
 
 use crate::types::ApprovalsHashes;
 
@@ -68,7 +68,14 @@ impl DeployAcquisition {
                 for ((deploy_hash, deploy_state), approvals_hash) in acquisition
                     .inner
                     .drain(..)
-                    .zip(approvals_hashes.approvals_hashes())
+                    .zip(approvals_hashes.approvals_hashes().iter().filter_map(
+                        |txn_approvals_hash| match txn_approvals_hash {
+                            TransactionApprovalsHash::Deploy(deploy_approvals_hash) => {
+                                Some(deploy_approvals_hash)
+                            }
+                            TransactionApprovalsHash::V1(_) => None,
+                        },
+                    ))
                 {
                     if !matches!(deploy_state, DeployState::Vacant) {
                         return Err(Error::EncounteredNonVacantDeployState);

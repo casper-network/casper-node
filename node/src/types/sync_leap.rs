@@ -441,9 +441,9 @@ mod tests {
 
     use casper_types::{
         crypto, testing::TestRng, ActivationPoint, Block, BlockHash, BlockHeader, BlockSignatures,
-        BlockV2, DeployHash, EraEndV2, EraId, FinalitySignature, GlobalStateUpdate, ProtocolConfig,
+        BlockV2, EraEndV2, EraId, FinalitySignature, GlobalStateUpdate, ProtocolConfig,
         ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TestBlockBuilder, Timestamp,
-        U512,
+        TransactionHash, TransactionV1Hash, U512,
     };
 
     use super::SyncLeap;
@@ -2230,13 +2230,25 @@ mod tests {
                 self.block.era_id()
             };
             let count = self.rng.gen_range(0..6);
-            let deploy_hashes = iter::repeat_with(|| DeployHash::random(self.rng))
-                .take(count)
-                .collect();
+            let transfer_hashes =
+                iter::repeat_with(|| TransactionHash::V1(TransactionV1Hash::random(self.rng)))
+                    .take(count)
+                    .collect();
             let count = self.rng.gen_range(0..6);
-            let transfer_hashes = iter::repeat_with(|| DeployHash::random(self.rng))
-                .take(count)
-                .collect();
+            let staking_hashes =
+                iter::repeat_with(|| TransactionHash::V1(TransactionV1Hash::random(self.rng)))
+                    .take(count)
+                    .collect();
+            let count = self.rng.gen_range(0..6);
+            let install_upgrade_hashes =
+                iter::repeat_with(|| TransactionHash::V1(TransactionV1Hash::random(self.rng)))
+                    .take(count)
+                    .collect();
+            let count = self.rng.gen_range(0..6);
+            let standard_hashes =
+                iter::repeat_with(|| TransactionHash::V1(TransactionV1Hash::random(self.rng)))
+                    .take(count)
+                    .collect();
 
             let next = BlockV2::new(
                 *self.block.hash(),
@@ -2249,8 +2261,10 @@ mod tests {
                 self.block.height() + 1,
                 self.protocol_version,
                 PublicKey::random(self.rng),
-                deploy_hashes,
                 transfer_hashes,
+                staking_hashes,
+                install_upgrade_hashes,
+                standard_hashes,
                 Default::default(),
             );
 

@@ -6,7 +6,6 @@ mod block_signatures;
 mod block_v1;
 mod block_v2;
 mod era_end;
-mod era_report;
 mod finality_signature;
 mod finality_signature_id;
 mod json_compatibility;
@@ -36,9 +35,8 @@ use schemars::JsonSchema;
 use crate::{
     bytesrepr,
     bytesrepr::{FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    DeployHash, Digest, EraId, ProtocolVersion, PublicKey, Timestamp,
+    Digest, EraId, ProtocolVersion, PublicKey, Timestamp,
 };
-
 pub use block_body::{BlockBody, BlockBodyV1, BlockBodyV2};
 pub use block_hash::BlockHash;
 pub use block_hash_and_height::BlockHashAndHeight;
@@ -46,8 +44,7 @@ pub use block_header::{BlockHeader, BlockHeaderV1, BlockHeaderV2};
 pub use block_signatures::{BlockSignatures, BlockSignaturesMergeError};
 pub use block_v1::BlockV1;
 pub use block_v2::BlockV2;
-pub use era_end::{EraEnd, EraEndV1, EraEndV2};
-pub use era_report::EraReport;
+pub use era_end::{EraEnd, EraEndV1, EraEndV2, EraReport};
 pub use finality_signature::FinalitySignature;
 pub use finality_signature_id::FinalitySignatureId;
 #[cfg(all(feature = "std", feature = "json-schema"))]
@@ -347,29 +344,6 @@ impl Block {
             Block::V1(v1) => v1.header.is_genesis(),
             Block::V2(v2) => v2.header.is_genesis(),
         }
-    }
-
-    /// Returns the deploy hashes within the block.
-    pub fn deploy_hashes(&self) -> &[DeployHash] {
-        match self {
-            Block::V1(v1) => v1.body.deploy_hashes(),
-            Block::V2(v2) => v2.body.deploy_hashes(),
-        }
-    }
-
-    /// Returns the transfer hashes within the block.
-    pub fn transfer_hashes(&self) -> &[DeployHash] {
-        match self {
-            Block::V1(v1) => v1.body.transfer_hashes(),
-            Block::V2(v2) => v2.body.transfer_hashes(),
-        }
-    }
-
-    /// Returns the deploy and transfer hashes in the order in which they were executed.
-    pub fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
-        self.deploy_hashes()
-            .iter()
-            .chain(self.transfer_hashes().iter())
     }
 
     /// Returns the root hash of global state after the deploys in this block have been executed.
