@@ -367,7 +367,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
     fn calculate_round_length(&mut self, vv: &ValidVertex<C>, now: Timestamp) {
         let new_round_len = self
             .round_success_meter
-            .calculate_new_length(self.highway.state());
+            .calculate_new_length(self.highway.state(), now);
         // If the vertex contains a proposal, register it in the success meter.
         // It's important to do this _after_ the calculation above - otherwise we might try to
         // register the proposal before the meter is aware that a new round has started, and it

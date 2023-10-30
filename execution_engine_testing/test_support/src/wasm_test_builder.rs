@@ -79,10 +79,9 @@ use casper_types::{
 use once_cell::sync::Lazy;
 
 use crate::{
-    chainspec_config::{ChainspecConfig, PRODUCTION_PATH},
-    instrument::{Instrumented, InstrumentedValue},
-    instrumented, utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_GAS_PRICE,
-    DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
+    chainspec_config::{ChainspecConfig, CoreConfig, PRODUCTION_PATH},
+    utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_GAS_PRICE, DEFAULT_PROPOSER_ADDR,
+    DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR, instrument::{Instrumented, InstrumentedValue}, instrumented,
 };
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
@@ -249,25 +248,40 @@ impl InMemoryWasmTestBuilder {
         let chainspec_config = ChainspecConfig::from_chainspec_path(chainspec_path)
             .expect("must build chainspec configuration");
 
+        // if you get a compilation error here, make sure to update the builder below accordingly
+        let ChainspecConfig {
+            core_config,
+            wasm_config,
+            system_costs_config,
+        } = chainspec_config;
+        let CoreConfig {
+            validator_slots: _,
+            auction_delay: _,
+            locked_funds_period: _,
+            vesting_schedule_period,
+            unbonding_delay: _,
+            round_seigniorage_rate: _,
+            max_associated_keys,
+            max_runtime_call_stack_height,
+            minimum_delegation_amount,
+            strict_argument_checking,
+            max_delegators_per_validator,
+            refund_handling,
+            fee_handling,
+        } = core_config;
+
         let engine_config = EngineConfigBuilder::new()
             .with_max_query_depth(DEFAULT_MAX_QUERY_DEPTH)
-            .with_max_associated_keys(chainspec_config.core_config.max_associated_keys)
-            .with_max_runtime_call_stack_height(
-                chainspec_config.core_config.max_runtime_call_stack_height,
-            )
-            .with_minimum_delegation_amount(chainspec_config.core_config.minimum_delegation_amount)
-            .with_strict_argument_checking(chainspec_config.core_config.strict_argument_checking)
-            .with_vesting_schedule_period_millis(
-                chainspec_config
-                    .core_config
-                    .vesting_schedule_period
-                    .millis(),
-            )
-            .with_max_delegators_per_validator(
-                chainspec_config.core_config.max_delegators_per_validator,
-            )
-            .with_wasm_config(chainspec_config.wasm_config)
-            .with_system_config(chainspec_config.system_costs_config)
+            .with_max_associated_keys(max_associated_keys)
+            .with_max_runtime_call_stack_height(max_runtime_call_stack_height)
+            .with_minimum_delegation_amount(minimum_delegation_amount)
+            .with_strict_argument_checking(strict_argument_checking)
+            .with_vesting_schedule_period_millis(vesting_schedule_period.millis())
+            .with_max_delegators_per_validator(max_delegators_per_validator)
+            .with_wasm_config(wasm_config)
+            .with_system_config(system_costs_config)
+            .with_refund_handling(refund_handling)
+            .with_fee_handling(fee_handling)
             .build();
 
         let global_state = InMemoryGlobalState::empty().expect("should create global state");
@@ -1701,8 +1715,6 @@ where
 
         // amount declared to be paid in payment code MINUS gas spent in last execution.
         let refundable_amount = Ratio::from(payment_amount) - Ratio::from(gas_amount.value());
-        (refundable_amount * refund_ratio)
-            .ceil() // assumes possible dust amounts are always transferred to the user
-            .to_integer()
+        (refundable_amount * refund_ratio).to_integer()
     }
 }
