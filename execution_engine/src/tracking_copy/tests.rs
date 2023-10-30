@@ -7,17 +7,9 @@ use casper_storage::global_state::{
     state::{self, StateProvider, StateReader},
     trie::merkle_proof::TrieMerkleProof,
 };
-use casper_types::{
-    account::{AccountHash, ACCOUNT_HASH_LENGTH},
-    addressable_entity::{
-        ActionThresholds, AddressableEntityHash, AssociatedKeys, EntityKindTag, NamedKeys, Weight,
-    },
-    execution::{Effects, Transform, TransformKind},
-    gens::*,
-    package::PackageHash,
-    AccessRights, AddressableEntity, CLValue, Digest, EntityKind, EntryPoints, HashAddr, Key,
-    KeyTag, ProtocolVersion, StoredValue, URef, U256, U512,
-};
+use casper_types::{account::{AccountHash, ACCOUNT_HASH_LENGTH}, addressable_entity::{
+    ActionThresholds, AddressableEntityHash, AssociatedKeys, EntityKindTag, NamedKeys, Weight,
+}, execution::{Effects, Transform, TransformKind}, gens::*, package::PackageHash, AccessRights, AddressableEntity, CLValue, Digest, EntityKind, EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion, StoredValue, URef, U256, U512, EntityAddr};
 
 use super::{
     meter::count_meter::Count, AddResult, TrackingCopy, TrackingCopyCache, TrackingCopyQueryResult,
@@ -453,7 +445,7 @@ proptest! {
             ActionThresholds::default(),
             EntityKind::SmartContract
         ));
-        let contract_key = Key::AddressableEntity(EntityKindTag::SmartContract,hash);
+        let contract_key = Key::AddressableEntity(EntityAddr::SmartContract(hash));
 
         // create account which knows about contract
         let mut account_named_keys = NamedKeys::new();

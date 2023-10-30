@@ -21,29 +21,17 @@ use tracing::error;
 use wasmi::{MemoryRef, Trap, TrapKind};
 
 use casper_storage::global_state::state::StateReader;
-use casper_types::{
-    account::{Account, AccountHash},
-    addressable_entity::{
-        self, ActionThresholds, ActionType, AddKeyFailure, AddressableEntity,
-        AddressableEntityHash, AssociatedKeys, EntityKindTag, EntryPoint, EntryPointAccess,
-        EntryPointType, EntryPoints, NamedKeys, Parameter, RemoveKeyFailure, SetThresholdFailure,
-        UpdateKeyFailure, Weight, DEFAULT_ENTRY_POINT_NAME,
-    },
-    bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    contracts::ContractPackage,
-    package::PackageStatus,
-    system::{
-        self,
-        auction::{self, EraInfo},
-        handle_payment, mint, CallStackElement, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
-        STANDARD_PAYMENT,
-    },
-    AccessRights, ApiError, ByteCode, ByteCodeHash, ByteCodeKind, CLTyped, CLValue,
-    ContextAccessRights, ContractWasm, DeployHash, EntityKind, EntityVersion, EntityVersionKey,
-    EntityVersions, Gas, GrantedAccess, Group, Groups, HostFunction, HostFunctionCost, Key,
-    NamedArg, Package, PackageHash, Phase, PublicKey, RuntimeArgs, StoredValue, Tagged, Transfer,
-    TransferResult, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
-};
+use casper_types::{account::{Account, AccountHash}, addressable_entity::{
+    self, ActionThresholds, ActionType, AddKeyFailure, AddressableEntity,
+    AddressableEntityHash, AssociatedKeys, EntityKindTag, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints, NamedKeys, Parameter, RemoveKeyFailure, SetThresholdFailure,
+    UpdateKeyFailure, Weight, DEFAULT_ENTRY_POINT_NAME,
+}, bytesrepr::{self, Bytes, FromBytes, ToBytes}, contracts::ContractPackage, package::PackageStatus, system::{
+    self,
+    auction::{self, EraInfo},
+    handle_payment, mint, CallStackElement, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
+    STANDARD_PAYMENT,
+}, AccessRights, ApiError, ByteCode, ByteCodeHash, ByteCodeKind, CLTyped, CLValue, ContextAccessRights, ContractWasm, DeployHash, EntityKind, EntityVersion, EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups, HostFunction, HostFunctionCost, Key, NamedArg, Package, PackageHash, Phase, PublicKey, RuntimeArgs, StoredValue, Tagged, Transfer, TransferResult, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512, EntityAddr};
 
 use crate::{
     engine_state::ACCOUNT_BYTE_CODE_HASH,
@@ -1700,8 +1688,14 @@ where
 
         let entity_kind = updated_session_entity.entity_kind();
 
+        if entity_kind != EntityKind::SmartContract {
+            return Err(Error::InvalidContext)
+        }
+
+        let entity_addr = EntityAddr::new_contract_entity_addr(entity_hash.value());
+
         self.context.metered_write_gs_unsafe(
-            Key::AddressableEntity(entity_kind.tag(), entity_hash.value()),
+            Key::AddressableEntity(entity_addr),
             updated_session_entity,
         )?;
 
@@ -1720,9 +1714,9 @@ where
         mut named_keys: NamedKeys,
         output_ptr: u32,
     ) -> Result<Result<(), ApiError>, Error> {
-        // if entry_points.contains_stored_session() {
-        //     return Err(Error::InvalidEntryPointType);
-        // }
+        if entry_points.contains_stored_session() {
+            return Err(Error::InvalidEntryPointType);
+        }
 
         let mut package = self.context.get_package(package_hash)?;
 
@@ -1756,7 +1750,9 @@ where
             byte_code,
         )?;
 
-        let entity_key = Key::AddressableEntity(EntityKindTag::SmartContract, entity_hash);
+        let entity_addr = EntityAddr::new_contract_entity_addr(entity_hash);
+
+        let entity_key = Key::AddressableEntity(entity_addr);
 
         let entity = AddressableEntity::new(
             package_hash,
@@ -2496,7 +2492,7 @@ where
                 } else {
                     let contract_hash = if let Some(entity_hash) = entity_key
                         .into_entity_addr()
-                        .map(AddressableEntityHash::new)
+                        .map(|entity_addr| AddressableEntityHash::new(entity_addr))
                     {
                         entity_hash
                     } else {

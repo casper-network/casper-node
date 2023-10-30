@@ -32,7 +32,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use crate::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity,
-    addressable_entity::{AddressableEntityHash, EntityKindTag},
+    addressable_entity::{AddressableEntityHash, EntityKindTag, EntityAddr},
     byte_code::ByteCodeKind,
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH},
     checksummed_hex,
@@ -116,8 +116,8 @@ pub type HashAddr = [u8; KEY_HASH_LENGTH];
 /// An alias for [`Key`]s package variant.
 pub type PackageAddr = [u8; ADDR_LENGTH];
 
-/// An alias for [`Key`]s entity variant.
-pub type EntityAddr = [u8; ADDR_LENGTH];
+// /// An alias for [`Key`]s entity variant.
+// pub type EntityAddr = [u8; ADDR_LENGTH];
 
 /// An alias for [`Key`]s byte code variant.
 pub type ByteCodeAddr = [u8; ADDR_LENGTH];
@@ -176,6 +176,14 @@ impl Display for KeyTag {
     }
 }
 
+
+
+// enum ExtendedAddr {
+//     Bid(BidAddr),
+//     NamedKey(EntityAddr, [u8;32]),
+//     Dictionary(URefAddr, [u8;32]),
+// }
+
 /// The key under which data (e.g. [`CLValue`]s, smart contracts, user accounts) are stored in
 /// global state.
 #[repr(C)]
@@ -219,7 +227,7 @@ pub enum Key {
     /// A `Key` under which package information is stored.
     Package(PackageAddr),
     /// A `Key` under which an addressable entity is stored.
-    AddressableEntity(EntityKindTag, EntityAddr),
+    AddressableEntity(EntityAddr),
     /// A `Key` under which a byte code record is stored.
     ByteCode(ByteCodeKind, ByteCodeAddr),
 }
@@ -468,31 +476,8 @@ impl Key {
             Key::Package(package_addr) => {
                 format!("{}{}", PACKAGE_PREFIX, base16::encode_lower(&package_addr))
             }
-            Key::AddressableEntity(package_tag, entity_addr) => match package_tag {
-                EntityKindTag::System => {
-                    format!(
-                        "{}{}{}",
-                        ENTITY_PREFIX,
-                        SYSTEM_ENTITY_PREFIX,
-                        base16::encode_lower(&entity_addr)
-                    )
-                }
-                EntityKindTag::Account => {
-                    format!(
-                        "{}{}{}",
-                        ENTITY_PREFIX,
-                        ACCOUNT_ENTITY_PREFIX,
-                        base16::encode_lower(&entity_addr)
-                    )
-                }
-                EntityKindTag::SmartContract => {
-                    format!(
-                        "{}{}{}",
-                        ENTITY_PREFIX,
-                        CONTRACT_ENTITY_PREFIX,
-                        base16::encode_lower(&entity_addr)
-                    )
-                }
+            Key::AddressableEntity(entity_addr) =>  {
+                format!("{}", entity_addr)
             },
             Key::ByteCode(byte_code_kind, byte_code_addr) => match byte_code_kind {
                 ByteCodeKind::Empty => {
@@ -695,9 +680,21 @@ impl Key {
             };
             let addr = checksummed_hex::decode(addr_str)
                 .map_err(|error| FromStrError::AddressableEntity(error.to_string()))?;
-            let entity_addr = EntityAddr::try_from(addr.as_ref())
+            let hash_addr = HashAddr::try_from(addr.as_ref())
                 .map_err(|error| FromStrError::AddressableEntity(error.to_string()))?;
-            return Ok(Key::AddressableEntity(tag, entity_addr));
+            let entity_addr = match tag {
+                EntityKindTag::System => {
+                    EntityAddr::new_system_entity_addr(hash_addr)
+                }
+                EntityKindTag::Account => {
+                    EntityAddr::new_account_entity_addr(hash_addr)
+                }
+                EntityKindTag::SmartContract => {
+                    EntityAddr::new_contract_entity_addr(hash_addr)
+                }
+            };
+
+            return Ok(Key::AddressableEntity(entity_addr))
         }
 
         if let Some(byte_code) = input.strip_prefix(BYTE_CODE_PREFIX) {
@@ -738,9 +735,9 @@ impl Key {
 
     /// Returns the inner bytes of `self` if `self` is of type [`Key::AddressableEntity`], otherwise
     /// returns `None`.
-    pub fn into_entity_addr(self) -> Option<EntityAddr> {
+    pub fn into_entity_addr(self) -> Option<HashAddr> {
         match self {
-            Key::AddressableEntity(_, hash) => Some(hash),
+            Key::AddressableEntity(entity_addr) => Some(entity_addr.value()),
             _ => None,
         }
     }
@@ -847,7 +844,14 @@ impl Key {
         entity_kind_tag: EntityKindTag,
         entity_hash: AddressableEntityHash,
     ) -> Self {
-        Key::AddressableEntity(entity_kind_tag, entity_hash.value())
+        let entity_addr = match entity_kind_tag {
+            EntityKindTag::System => {EntityAddr::new_system_entity_addr(entity_hash.value())}
+            EntityKindTag::Account => {EntityAddr::new_account_entity_addr(entity_hash.value())}
+            EntityKindTag::SmartContract => {EntityAddr::new_contract_entity_addr(entity_hash.value())}
+        };
+
+
+        Key::AddressableEntity(entity_addr)
     }
 
     /// Creates a new [`Key::AddressableEntity`] for a Smart contract.
@@ -896,10 +900,13 @@ impl Key {
 
     /// Returns if they inner Key is for a system contract entity.
     pub fn is_system_key(&self) -> bool {
-        if let Self::AddressableEntity(EntityKindTag::System, _) = self {
-            return true;
-        }
+        if let Self::AddressableEntity(entity_addr) = self {
+            return match entity_addr.tag() {
+                EntityKindTag::System => true,
+                EntityKindTag::SmartContract | EntityKindTag::Account => false,
+            };
 
+        }
         false
     }
 }
@@ -952,11 +959,11 @@ impl Display for Key {
             Key::Package(package_addr) => {
                 write!(f, "Key::Package({})", base16::encode_lower(package_addr))
             }
-            Key::AddressableEntity(kind_tag, entity_addr) => write!(
+            Key::AddressableEntity(entity_addr) => write!(
                 f,
                 "Key::AddressableEntity({}-{})",
-                kind_tag,
-                base16::encode_lower(entity_addr)
+                entity_addr.tag(),
+                base16::encode_lower(&entity_addr.value())
             ),
             Key::ByteCode(kind, byte_code_addr) => {
                 write!(
@@ -1118,8 +1125,7 @@ impl ToBytes for Key {
                 BidAddrTag::Validator | BidAddrTag::Delegator => bid_addr.write_bytes(writer),
             },
             Key::Package(package_addr) => package_addr.write_bytes(writer),
-            Key::AddressableEntity(package_kind_tag, entity_addr) => {
-                package_kind_tag.write_bytes(writer)?;
+            Key::AddressableEntity(entity_addr) => {
                 entity_addr.write_bytes(writer)
             }
             Key::ByteCode(byte_code_kind, byte_code_addr) => {
@@ -1203,9 +1209,8 @@ impl FromBytes for Key {
                 Ok((Key::Package(package_addr), rem))
             }
             tag if tag == KeyTag::AddressableEntity as u8 => {
-                let (package_kind_tag, rem) = EntityKindTag::from_bytes(remainder)?;
-                let (entity_addr, rem) = EntityAddr::from_bytes(rem)?;
-                Ok((Key::AddressableEntity(package_kind_tag, entity_addr), rem))
+                let (entity_addr, rem) = EntityAddr::from_bytes(remainder)?;
+                Ok((Key::AddressableEntity(entity_addr), rem))
             }
             tag if tag == KeyTag::ByteCode as u8 => {
                 let (byte_code_kind, rem) = ByteCodeKind::from_bytes(remainder)?;
@@ -1265,7 +1270,7 @@ impl Distribution<Key> for Standard {
             14 => Key::ChecksumRegistry,
             15 => Key::BidAddr(rng.gen()),
             16 => Key::Package(rng.gen()),
-            17 => Key::AddressableEntity(rng.gen(), rng.gen()),
+            17 => Key::AddressableEntity(rng.gen()),
             18 => Key::ByteCode(rng.gen(), rng.gen()),
             _ => unreachable!(),
         }
@@ -1295,7 +1300,7 @@ mod serde_helpers {
         ChecksumRegistry,
         BidAddr(&'a BidAddr),
         Package(&'a PackageAddr),
-        AddressableEntity(&'a EntityKindTag, &'a EntityAddr),
+        AddressableEntity(&'a EntityAddr),
         ByteCode(&'a ByteCodeKind, &'a ByteCodeAddr),
     }
 
@@ -1319,7 +1324,7 @@ mod serde_helpers {
         ChecksumRegistry,
         BidAddr(BidAddr),
         Package(PackageAddr),
-        AddressableEntity(EntityKindTag, EntityAddr),
+        AddressableEntity(EntityAddr),
         ByteCode(ByteCodeKind, ByteCodeAddr),
     }
 
@@ -1343,8 +1348,8 @@ mod serde_helpers {
                 Key::ChecksumRegistry => BinarySerHelper::ChecksumRegistry,
                 Key::BidAddr(bid_addr) => BinarySerHelper::BidAddr(bid_addr),
                 Key::Package(package_addr) => BinarySerHelper::Package(package_addr),
-                Key::AddressableEntity(package_kind, entity_addr) => {
-                    BinarySerHelper::AddressableEntity(package_kind, entity_addr)
+                Key::AddressableEntity(entity_addr) => {
+                    BinarySerHelper::AddressableEntity(entity_addr)
                 }
                 Key::ByteCode(byte_code_kind, byte_code_addr) => {
                     BinarySerHelper::ByteCode(byte_code_kind, byte_code_addr)
@@ -1373,8 +1378,8 @@ mod serde_helpers {
                 BinaryDeserHelper::ChecksumRegistry => Key::ChecksumRegistry,
                 BinaryDeserHelper::BidAddr(bid_addr) => Key::BidAddr(bid_addr),
                 BinaryDeserHelper::Package(package_addr) => Key::Package(package_addr),
-                BinaryDeserHelper::AddressableEntity(package_kind, entity_addr) => {
-                    Key::AddressableEntity(package_kind, entity_addr)
+                BinaryDeserHelper::AddressableEntity(entity_addr) => {
+                    Key::AddressableEntity(entity_addr)
                 }
                 BinaryDeserHelper::ByteCode(byte_kind, byte_code_addr) => {
                     Key::ByteCode(byte_kind, byte_code_addr)
@@ -1439,11 +1444,11 @@ mod tests {
     const CHECKSUM_REGISTRY_KEY: Key = Key::ChecksumRegistry;
     const PACKAGE_KEY: Key = Key::Package([42; 32]);
     const ADDRESSABLE_ENTITY_SYSTEM_KEY: Key =
-        Key::AddressableEntity(EntityKindTag::System, [42; 32]);
+        Key::AddressableEntity(EntityAddr::new_system_entity_addr([42; 32]));
     const ADDRESSABLE_ENTITY_ACCOUNT_KEY: Key =
-        Key::AddressableEntity(EntityKindTag::Account, [42; 32]);
+        Key::AddressableEntity(EntityAddr::new_account_entity_addr([42; 32]));
     const ADDRESSABLE_ENTITY_SMART_CONTRACT_KEY: Key =
-        Key::AddressableEntity(EntityKindTag::SmartContract, [42; 32]);
+        Key::AddressableEntity(EntityAddr::new_contract_entity_addr([42; 32]));
     const BYTE_CODE_EMPTY_KEY: Key = Key::ByteCode(ByteCodeKind::Empty, [42; 32]);
     const BYTE_CODE_V1_WASM_KEY: Key = Key::ByteCode(ByteCodeKind::V1CasperWasm, [42; 32]);
     const KEYS: &[Key] = &[
@@ -1962,9 +1967,9 @@ mod tests {
         round_trip(&Key::Dictionary(zeros));
         round_trip(&Key::Unbond(AccountHash::new(zeros)));
         round_trip(&Key::Package(zeros));
-        round_trip(&Key::AddressableEntity(EntityKindTag::System, zeros));
-        round_trip(&Key::AddressableEntity(EntityKindTag::Account, zeros));
-        round_trip(&Key::AddressableEntity(EntityKindTag::SmartContract, zeros));
+        round_trip(&Key::AddressableEntity(EntityAddr::new_system_entity_addr(zeros)));
+        round_trip(&Key::AddressableEntity(EntityAddr::new_account_entity_addr(zeros)));
+        round_trip(&Key::AddressableEntity(EntityAddr::new_contract_entity_addr(zeros)));
         round_trip(&Key::ByteCode(ByteCodeKind::Empty, zeros));
         round_trip(&Key::ByteCode(ByteCodeKind::V1CasperWasm, zeros));
     }

@@ -718,9 +718,9 @@ where
     /// Tests whether addition to `key` is valid.
     pub fn is_addable(&self, key: &Key) -> bool {
         match key {
-            Key::AddressableEntity(_, entity_addr) => {
+            Key::AddressableEntity(entity_addr) => {
                 match self.get_entity_key().into_entity_hash() {
-                    Some(entity_hash) => entity_hash == AddressableEntityHash::new(*entity_addr),
+                    Some(entity_hash) => entity_hash == AddressableEntityHash::new(entity_addr.value()),
                     None => false,
                 }
             }

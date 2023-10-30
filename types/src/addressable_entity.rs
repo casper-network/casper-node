@@ -63,6 +63,7 @@ use crate::{
     PackageHash, ProtocolVersion, PublicKey, Tagged, KEY_HASH_LENGTH,
 };
 
+
 /// Maximum number of distinct user groups.
 pub const MAX_GROUPS: u8 = 10;
 /// Maximum number of URefs which can be assigned across all user groups.
@@ -335,8 +336,8 @@ impl TryFrom<Key> for AddressableEntityHash {
     type Error = ApiError;
 
     fn try_from(value: Key) -> Result<Self, Self::Error> {
-        if let Key::AddressableEntity(_, entity_addr) = value {
-            Ok(AddressableEntityHash::new(entity_addr))
+        if let Key::AddressableEntity(entity_addr) = value {
+            Ok(AddressableEntityHash::new(entity_addr.value()))
         } else {
             Err(ApiError::Formatting)
         }
@@ -896,6 +897,130 @@ impl Distribution<EntityKind> for Standard {
         }
     }
 }
+
+// pub struct QueryAddressableEntity {
+//     addressable_entity: AddressableEntity,
+//     named_keys: NamedKeys
+// }
+
+#[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub enum EntityAddr {
+    System(HashAddr),
+    Account(HashAddr),
+    SmartContract(HashAddr)
+}
+
+impl EntityAddr {
+    pub const ENTITY_ADDR_LENGTH: usize = U8_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
+
+    pub const fn new_system_entity_addr(hash_addr: [u8; KEY_HASH_LENGTH]) -> Self {
+        Self::System(hash_addr)
+    }
+
+    pub const fn new_account_entity_addr(hash_addr: [u8; KEY_HASH_LENGTH]) -> Self {
+        Self::Account(hash_addr)
+    }
+
+    pub const fn new_contract_entity_addr(hash_addr: [u8; KEY_HASH_LENGTH]) -> Self {
+        Self::SmartContract(hash_addr)
+    }
+
+    pub fn tag(&self) -> EntityKindTag {
+        match self {
+            EntityAddr::System(_) => EntityKindTag::System,
+            EntityAddr::Account(_) => EntityKindTag::Account,
+            EntityAddr::SmartContract(_) => EntityKindTag::SmartContract
+        }
+    }
+    pub fn value(&self) -> HashAddr {
+        match self {
+            EntityAddr::System(hash_addr)
+            |EntityAddr::Account(hash_addr)
+            | EntityAddr::SmartContract(hash_addr) => *hash_addr
+        }
+    }
+}
+
+
+
+
+impl ToBytes for EntityAddr {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.push(self.tag() as u8);
+        buffer.append(&mut self.value().to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        EntityAddr::ENTITY_ADDR_LENGTH
+    }
+}
+
+impl FromBytes for EntityAddr {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder): (u8, &[u8]) = FromBytes::from_bytes(bytes)?;
+        match tag {
+            tag if tag == EntityKindTag::System  as u8 => HashAddr::from_bytes(remainder)
+                .map(|(hash_addr, remainder)| (EntityAddr::new_system_entity_addr(hash_addr), remainder)),
+            tag if tag == EntityKindTag::Account as u8  => HashAddr::from_bytes(remainder)
+                .map(|(hash_addr, remainder)|(EntityAddr::new_account_entity_addr(hash_addr), remainder)),
+            tag if tag == EntityKindTag::SmartContract as u8  => HashAddr::from_bytes(remainder)
+                .map(|(hash_addr, remainder)| (EntityAddr::new_contract_entity_addr(hash_addr), remainder)),
+            _ => Err(bytesrepr::Error::Formatting)
+        }
+    }
+}
+
+impl From<EntityAddr> for Key {
+    fn from(entity_addr: EntityAddr) -> Self {
+        Key::AddressableEntity(entity_addr)
+    }
+}
+
+impl From<EntityAddr> for AddressableEntityHash {
+    fn from(entity_addr: EntityAddr) -> Self {
+        AddressableEntityHash::new(entity_addr.value())
+    }
+}
+
+
+impl Display for EntityAddr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}-{}", ADDRESSABLE_ENTITY_STRING_PREFIX, self.tag(), base16::encode_lower(&self.value()))
+    }
+}
+
+impl Debug for EntityAddr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            EntityAddr::System(hash_addr) => {
+                write!(f, "EntityAddr::System({:?})", hash_addr)
+            }
+            EntityAddr::Account(hash_addr) => {
+                write!(f, "EntityAddr::Account({:?})", hash_addr)
+            }
+            EntityAddr::SmartContract(hash_addr) => {
+                write!(f, "EntityAddr::SmartContract({:?})", hash_addr)
+            }
+        }
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl Distribution<EntityAddr> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EntityAddr {
+        match rng.gen_range(0..=2) {
+            0 => EntityAddr::System(rng.gen()),
+            1 => EntityAddr::Account(rng.gen()),
+            2 => EntityAddr::SmartContract(rng.gen()),
+            _ => unreachable!(),
+        }
+    }
+}
+
 
 /// Methods and type signatures supported by a contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

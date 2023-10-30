@@ -93,13 +93,13 @@ pub fn approved_amount(idx: usize) -> U512 {
 }
 
 trait AccountExt {
-    fn get_entity_hash(&self, key: &str) -> EntityAddr;
+    fn get_entity_hash(&self, key: &str) -> HashAddr;
 
     fn get_package_hash(&self, key: &str) -> PackageAddr;
 }
 
 impl AccountExt for AddressableEntity {
-    fn get_entity_hash(&self, key: &str) -> EntityAddr {
+    fn get_entity_hash(&self, key: &str) -> HashAddr {
         self.named_keys()
             .get(key)
             .cloned()

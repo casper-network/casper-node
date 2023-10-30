@@ -16,27 +16,19 @@ use rand::{
 use serde::{Deserialize, Serialize};
 
 use casper_storage::global_state::state::StateProvider;
-use casper_types::{
-    addressable_entity::{ActionThresholds, EntityKind, NamedKeys},
-    execution::Effects,
-    package::{EntityVersions, Groups, PackageStatus},
-    system::{
-        auction::{
-            self, BidAddr, BidKind, DelegationRate, Delegator, SeigniorageRecipient,
-            SeigniorageRecipients, SeigniorageRecipientsSnapshot, Staking, ValidatorBid,
-            AUCTION_DELAY_KEY, DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY,
-            ERA_ID_KEY, INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
-        },
-        handle_payment::{self, ACCUMULATION_PURSE_KEY},
-        mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
-        SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
+use casper_types::{addressable_entity::{ActionThresholds, EntityKind, NamedKeys}, execution::Effects, package::{EntityVersions, Groups, PackageStatus}, system::{
+    auction::{
+        self, BidAddr, BidKind, DelegationRate, Delegator, SeigniorageRecipient,
+        SeigniorageRecipients, SeigniorageRecipientsSnapshot, Staking, ValidatorBid,
+        AUCTION_DELAY_KEY, DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY,
+        ERA_ID_KEY, INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
-    AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, ByteCode,
-    ByteCodeHash, ByteCodeKind, CLValue, Chainspec, ChainspecRegistry, Digest, EntryPoints, EraId,
-    FeeHandling, GenesisAccount, Key, Motes, Package, PackageHash, Phase, ProtocolVersion,
-    PublicKey, RefundHandling, StoredValue, SystemConfig, Tagged, URef, WasmConfig, U512,
-};
+    handle_payment::{self, ACCUMULATION_PURSE_KEY},
+    mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
+    SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
+}, AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, ByteCode, ByteCodeHash, ByteCodeKind, CLValue, Chainspec, ChainspecRegistry, Digest, EntryPoints, EraId, FeeHandling, GenesisAccount, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemConfig, Tagged, URef, WasmConfig, U512, EntityAddr};
+use casper_types::addressable_entity::EntityKindTag;
 
 use crate::{
     engine_state::{SystemContractRegistry, DEFAULT_ADDRESS},
@@ -1179,7 +1171,14 @@ where
             .borrow_mut()
             .write(byte_code_key, StoredValue::ByteCode(byte_code));
 
-        let entity_key = Key::AddressableEntity(entity_kind.tag(), entity_hash.value());
+        let entity_addr = match entity_kind.tag() {
+            EntityKindTag::System => EntityAddr::new_system_entity_addr(entity_hash.value()),
+            EntityKindTag::Account => EntityAddr::new_account_entity_addr(entity_hash.value()),
+            EntityKindTag::SmartContract => EntityAddr::new_contract_entity_addr(entity_hash.value()),
+        };
+
+
+        let entity_key: Key = entity_addr.into();
 
         self.tracking_copy
             .borrow_mut()

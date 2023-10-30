@@ -10,20 +10,10 @@ use once_cell::sync::Lazy;
 use rand::RngCore;
 
 use casper_storage::global_state::state::{self, lmdb::LmdbGlobalStateView, StateProvider};
-use casper_types::{
-    account::{AccountHash, ACCOUNT_HASH_LENGTH},
-    addressable_entity::{
-        ActionThresholds, ActionType, AddKeyFailure, AssociatedKeys, EntityKindTag, NamedKeys,
-        RemoveKeyFailure, SetThresholdFailure, Weight,
-    },
-    bytesrepr::ToBytes,
-    execution::TransformKind,
-    system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
-    AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCodeHash, CLValue,
-    ContextAccessRights, DeployHash, EntityKind, EntryPointType, EntryPoints, Gas, Key,
-    PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, Tagged,
-    URef, KEY_HASH_LENGTH, U256, U512,
-};
+use casper_types::{account::{AccountHash, ACCOUNT_HASH_LENGTH}, addressable_entity::{
+    ActionThresholds, ActionType, AddKeyFailure, AssociatedKeys, EntityKindTag, NamedKeys,
+    RemoveKeyFailure, SetThresholdFailure, Weight,
+}, bytesrepr::ToBytes, execution::TransformKind, system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT}, AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCodeHash, CLValue, ContextAccessRights, DeployHash, EntityKind, EntryPointType, EntryPoints, Gas, Key, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, Tagged, URef, KEY_HASH_LENGTH, U256, U512, EntityAddr};
 use tempfile::TempDir;
 
 use super::{Error, RuntimeContext};
@@ -116,7 +106,7 @@ fn random_account_key<G: RngCore>(entropy_source: &mut G) -> Key {
 fn random_contract_key<G: RngCore>(entropy_source: &mut G) -> Key {
     let mut key_hash = [0u8; 32];
     entropy_source.fill_bytes(&mut key_hash);
-    Key::AddressableEntity(EntityKindTag::SmartContract, key_hash)
+    Key::AddressableEntity(EntityAddr::SmartContract(key_hash))
 }
 
 // Create URef Key.

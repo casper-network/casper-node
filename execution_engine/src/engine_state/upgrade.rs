@@ -4,18 +4,9 @@ use std::{cell::RefCell, collections::BTreeSet, fmt, rc::Rc};
 use thiserror::Error;
 
 use casper_storage::global_state::state::StateProvider;
-use casper_types::{
-    addressable_entity::{
-        ActionThresholds, AssociatedKeys, EntityKind, EntityKindTag, NamedKeys, Weight,
-    },
-    bytesrepr::{self, ToBytes},
-    execution::Effects,
-    package::{EntityVersions, Groups, PackageStatus},
-    system::{handle_payment::ACCUMULATION_PURSE_KEY, SystemEntityType},
-    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeKind, CLValue,
-    CLValueError, Digest, EntryPoints, FeeHandling, Key, Package, PackageHash, Phase,
-    ProtocolVersion, PublicKey, StoredValue, URef, U512,
-};
+use casper_types::{addressable_entity::{
+    ActionThresholds, AssociatedKeys, EntityKind, EntityKindTag, NamedKeys, Weight,
+}, bytesrepr::{self, ToBytes}, execution::Effects, package::{EntityVersions, Groups, PackageStatus}, system::{handle_payment::ACCUMULATION_PURSE_KEY, SystemEntityType}, AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeKind, CLValue, CLValueError, Digest, EntryPoints, FeeHandling, Key, Package, PackageHash, Phase, ProtocolVersion, PublicKey, StoredValue, URef, U512, EntityAddr};
 
 use crate::{
     engine_state::ACCOUNT_BYTE_CODE_HASH, execution::AddressGenerator, tracking_copy::TrackingCopy,
@@ -227,8 +218,7 @@ where
             .tracking_copy
             .borrow_mut()
             .read(&Key::AddressableEntity(
-                EntityKindTag::System,
-                contract_hash.value(),
+                EntityAddr::new_system_entity_addr(contract_hash.value())
             ))
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContract(

@@ -64,7 +64,7 @@ fn regression_20211110() {
         .get(CONTRACT_HASH_NAME)
         .unwrap()
     {
-        Key::AddressableEntity(_, addr) => AddressableEntityHash::new(*addr),
+        Key::AddressableEntity(entity_addr) => AddressableEntityHash::new(entity_addr.value()),
         _ => panic!("Couldn't find regression contract."),
     };
 

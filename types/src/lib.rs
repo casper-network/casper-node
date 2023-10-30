@@ -80,7 +80,7 @@ pub use access_rights::{
 #[doc(inline)]
 pub use addressable_entity::{
     AddressableEntity, AddressableEntityHash, EntityKind, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, Parameter,
+    EntryPointType, EntryPoints, Parameter, EntityAddr,
 };
 #[doc(inline)]
 pub use api_error::ApiError;
@@ -143,7 +143,7 @@ pub use gas::Gas;
 pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]
 pub use key::{
-    ByteCodeAddr, DictionaryAddr, EntityAddr, FromStrError as KeyFromStrError, HashAddr, Key,
+    ByteCodeAddr, DictionaryAddr, FromStrError as KeyFromStrError, HashAddr, Key,
     KeyTag, PackageAddr, BLAKE2B_DIGEST_LENGTH, DICTIONARY_ITEM_KEY_MAX_LENGTH,
     KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
 };

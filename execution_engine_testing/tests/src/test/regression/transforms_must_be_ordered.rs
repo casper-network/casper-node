@@ -41,7 +41,7 @@ fn contract_transforms_should_be_ordered_in_the_effects() {
         .get("ordered-transforms-contract-hash")
         .unwrap()
     {
-        Key::AddressableEntity(_package_kind, addr) => AddressableEntityHash::new(*addr),
+        Key::AddressableEntity(entity_addr) => AddressableEntityHash::new(entity_addr.value()),
         _ => panic!("Couldn't find ordered-transforms contract."),
     };
 
