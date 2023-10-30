@@ -1,10 +1,10 @@
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    AddressableEntityHash,
+    checksummed_hex, AddressableEntityHash, Key,
 };
 
 use alloc::{string::String, vec::Vec};
-use core::fmt::Debug;
+use core::{convert::TryFrom, fmt::Debug};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -15,9 +15,9 @@ use rand::{
 };
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use super::TopicNameHash;
+use super::{FromStrError, TopicNameHash};
 
 /// Collection of multiple messages.
 pub type Messages = Vec<Message>;
@@ -25,9 +25,11 @@ pub type Messages = Vec<Message>;
 /// The length of a message digest
 pub const MESSAGE_CHECKSUM_LENGTH: usize = 32;
 
+const MESSAGE_CHECKSUM_STRING_PREFIX: &str = "message-checksum-";
+
 /// A newtype wrapping an array which contains the raw bytes of
 /// the hash of the message emitted.
-#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Clone, Copy, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
     feature = "json-schema",
@@ -43,6 +45,27 @@ impl MessageChecksum {
     /// Returns inner value of the message checksum.
     pub fn value(&self) -> [u8; MESSAGE_CHECKSUM_LENGTH] {
         self.0
+    }
+
+    /// Formats the `MessageChecksum` as a human readable string.
+    pub fn to_formatted_string(self) -> String {
+        format!(
+            "{}{}",
+            MESSAGE_CHECKSUM_STRING_PREFIX,
+            base16::encode_lower(&self.0),
+        )
+    }
+
+    /// Parses a string formatted as per `Self::to_formatted_string()` into a
+    /// `MessageChecksum`.
+    pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
+        let hex_addr = input
+            .strip_prefix(MESSAGE_CHECKSUM_STRING_PREFIX)
+            .ok_or(FromStrError::InvalidPrefix)?;
+
+        let bytes =
+            <[u8; MESSAGE_CHECKSUM_LENGTH]>::try_from(checksummed_hex::decode(hex_addr)?.as_ref())?;
+        Ok(MessageChecksum(bytes))
     }
 }
 
@@ -62,6 +85,28 @@ impl FromBytes for MessageChecksum {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (checksum, rem) = FromBytes::from_bytes(bytes)?;
         Ok((MessageChecksum(checksum), rem))
+    }
+}
+
+impl Serialize for MessageChecksum {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            self.to_formatted_string().serialize(serializer)
+        } else {
+            self.0.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for MessageChecksum {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if deserializer.is_human_readable() {
+            let formatted_string = String::deserialize(deserializer)?;
+            MessageChecksum::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
+        } else {
+            let bytes = <[u8; MESSAGE_CHECKSUM_LENGTH]>::deserialize(deserializer)?;
+            Ok(MessageChecksum(bytes))
+        }
     }
 }
 
@@ -180,6 +225,19 @@ impl Message {
     /// Returns the index of the message in the topic.
     pub fn index(&self) -> u32 {
         self.index
+    }
+
+    /// Returns a new [`Key::Message`] based on the information in the message.
+    /// This key can be used to query the checksum record for the message in global state.
+    pub fn message_key(&self) -> Key {
+        Key::message(self.entity_addr, self.topic_name_hash, self.index)
+    }
+
+    /// Returns a new [`Key::Message`] based on the information in the message.
+    /// This key can be used to query the control record for the topic of this message in global
+    /// state.
+    pub fn topic_key(&self) -> Key {
+        Key::message_topic(self.entity_addr, self.topic_name_hash)
     }
 }
 
