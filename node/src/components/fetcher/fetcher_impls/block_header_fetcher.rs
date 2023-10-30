@@ -26,6 +26,8 @@ impl FetchItem for BlockHeader {
     }
 
     fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
+        // No need for further validation.  The received header has necessarily had its hash
+        // computed to be the same value we used for the fetch ID if we got here.
         Ok(())
     }
 }

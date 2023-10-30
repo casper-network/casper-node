@@ -3,8 +3,8 @@ use serde::Serialize;
 use thiserror::Error;
 
 use casper_types::{
-    AddressableEntityHash, BlockHash, BlockHeader, DeployConfigurationFailure, Digest,
-    EntityVersion, PackageHash, PublicKey, Timestamp, TransactionV1ConfigFailure,
+    AddressableEntityHash, BlockHash, BlockHeader, DeployConfigFailure, Digest, EntityVersion,
+    PackageHash, PublicKey, Timestamp, TransactionV1ConfigFailure,
 };
 
 // `allow` can be removed once https://github.com/casper-network/casper-node/issues/3063 is fixed.
@@ -17,7 +17,7 @@ pub(crate) enum Error {
 
     /// The deploy has an invalid configuration.
     #[error("invalid deploy: {0}")]
-    InvalidDeployConfiguration(#[from] DeployConfigurationFailure),
+    InvalidDeployConfiguration(#[from] DeployConfigFailure),
 
     /// The v1 transaction has an invalid configuration.
     #[error("invalid v1 transaction: {0}")]

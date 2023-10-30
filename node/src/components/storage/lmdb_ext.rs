@@ -100,10 +100,8 @@ pub(super) trait TransactionExt {
     ) -> Result<Option<V>, LmdbExtError>;
 
     /// Returns `true` if the given key has an entry in the given database.
-    fn value_exists<'a, K, D>(&'a mut self, lookup_dbs: D, key: &K) -> Result<bool, LmdbExtError>
-    where
-        K: AsRef<[u8]>,
-        D: IntoIterator<Item = &'a Database>;
+    fn value_exists<K: AsRef<[u8]>>(&mut self, db: Database, key: &K)
+        -> Result<bool, LmdbExtError>;
 
     /// Helper function to load a value from a database using the `bytesrepr` `ToBytes`/`FromBytes`
     /// serialization.
@@ -169,19 +167,16 @@ where
     }
 
     #[inline]
-    fn value_exists<'a, K, D>(&'a mut self, lookup_dbs: D, key: &K) -> Result<bool, LmdbExtError>
-    where
-        K: AsRef<[u8]>,
-        D: IntoIterator<Item = &'a Database>,
-    {
-        for db in lookup_dbs.into_iter() {
-            match self.get(*db, key) {
-                Ok(_raw) => return Ok(true),
-                Err(lmdb::Error::NotFound) => continue,
-                Err(err) => return Err(err.into()),
-            }
+    fn value_exists<K: AsRef<[u8]>>(
+        &mut self,
+        db: Database,
+        key: &K,
+    ) -> Result<bool, LmdbExtError> {
+        match self.get(db, key) {
+            Ok(_raw) => Ok(true),
+            Err(lmdb::Error::NotFound) => Ok(false),
+            Err(err) => Err(err.into()),
         }
-        Ok(false)
     }
 
     #[inline]

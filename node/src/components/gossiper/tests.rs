@@ -18,8 +18,8 @@ use tokio::time;
 use tracing::debug;
 
 use casper_types::{
-    testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, Deploy, EraId, FinalitySignature,
-    ProtocolVersion, TimeDiff, Transaction, TransactionV1,
+    testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignature,
+    ProtocolVersion, TimeDiff, Transaction,
 };
 
 use super::*;
@@ -332,14 +332,6 @@ impl NetworkedReactor for Reactor {
     }
 }
 
-fn random_txn(rng: &mut TestRng) -> Transaction {
-    if rng.gen() {
-        Transaction::from(Deploy::random_valid_native_transfer(rng))
-    } else {
-        Transaction::from(TransactionV1::random(rng))
-    }
-}
-
 fn announce_transaction_received(
     transaction: &Transaction,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
@@ -359,7 +351,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, txn_count: usize) {
 
     // Create `txn_count` random transactions.
     let (all_txn_hashes, mut txns): (BTreeSet<_>, Vec<_>) = iter::repeat_with(|| {
-        let txn = random_txn(rng);
+        let txn = Transaction::random(rng);
         (txn.hash(), txn)
     })
     .take(txn_count)
@@ -420,7 +412,7 @@ async fn should_get_from_alternate_source() {
     let node_ids = network.add_nodes(rng, NETWORK_SIZE).await;
 
     // Create random transaction.
-    let txn = random_txn(rng);
+    let txn = Transaction::random(rng);
     let txn_hash = txn.hash();
 
     // Give the transaction to nodes 0 and 1 to be gossiped.
@@ -498,7 +490,7 @@ async fn should_timeout_gossip_response() {
     let mut node_ids = network.add_nodes(rng, infection_target as usize + 1).await;
 
     // Create random transaction.
-    let txn = random_txn(rng);
+    let txn = Transaction::random(rng);
     let txn_hash = txn.hash();
 
     // Give the transaction to node 0 to be gossiped.
@@ -575,7 +567,7 @@ async fn should_timeout_new_item_from_peer() {
     // received, no component triggers the `ItemReceived` event.
     reactor_0.fake_transaction_acceptor.set_active(false);
 
-    let txn = random_txn(rng);
+    let txn = Transaction::random(rng);
 
     // Give the transaction to node 1 to gossip to node 0.
     network
@@ -631,7 +623,7 @@ async fn should_not_gossip_old_stored_item_again() {
     let node_ids = network.add_nodes(rng, NETWORK_SIZE).await;
     let node_0 = node_ids[0];
 
-    let txn = random_txn(rng);
+    let txn = Transaction::random(rng);
 
     // Store the transaction on node 0.
     let store_txn = |effect_builder: EffectBuilder<Event>| {
@@ -701,7 +693,7 @@ async fn should_ignore_unexpected_message(message_type: Unexpected) {
     let node_ids = network.add_nodes(rng, NETWORK_SIZE).await;
     let node_0 = node_ids[0];
 
-    let txn = Box::new(random_txn(rng));
+    let txn = Box::new(Transaction::random(rng));
 
     let message = match message_type {
         Unexpected::Response => Message::GossipResponse {

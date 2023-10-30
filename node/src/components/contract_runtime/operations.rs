@@ -34,6 +34,7 @@ use crate::{
         fetcher::FetchItem,
     },
     types::{self, ApprovalsHashes, Chunkable, ExecutableBlock, InternalEraReport},
+    utils::fetch_id,
 };
 
 fn generate_range_by_index(
@@ -115,11 +116,7 @@ pub fn execute_finalized_block(
     // Run any deploys that must be executed
     let block_time = executable_block.timestamp.millis();
     let start = Instant::now();
-    let deploy_ids = executable_block
-        .deploys
-        .iter()
-        .map(|deploy| deploy.fetch_id())
-        .collect_vec();
+    let deploy_ids = executable_block.deploys.iter().map(fetch_id).collect_vec();
     let approvals_checksum = types::compute_approvals_checksum(deploy_ids.clone())
         .map_err(BlockExecutionError::FailedToComputeApprovalsChecksum)?;
 
