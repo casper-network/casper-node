@@ -164,6 +164,8 @@ pub struct GraphUnit {
     pub cited_units: Vec<UnitId>,
     pub height: usize,
     pub graph_height: usize,
+    pub timestamp: u64,
+    pub round_num: u64,
     pub round_exp: u8,
     pub max_quorum: Option<Quorum>,
 }
@@ -176,6 +178,8 @@ impl Debug for GraphUnit {
             .field("height", &self.height)
             .field("graph_height", &self.graph_height)
             .field("vote", &self.vote)
+            .field("timestamp", &self.timestamp)
+            .field("round_num", &self.round_num)
             .field("round_exp", &self.round_exp)
             .field("max_quorum", &self.max_quorum)
             .field("cited_units", &self.cited_units)
@@ -228,7 +232,7 @@ pub struct Graph {
 }
 
 impl Graph {
-    fn new(state: &State<ClContext>) -> Self {
+    fn new(state: &State<ClContext>, start_time: Timestamp) -> Self {
         let mut units: BTreeMap<ValidatorIndex, Vec<GraphUnit>> = state
             .weights()
             .iter()
@@ -284,6 +288,9 @@ impl Graph {
                     .push(unit_id);
             }
 
+            let time_since_era_start = unit.timestamp.saturating_diff(start_time).millis();
+            let round_num = time_since_era_start / state.params().min_round_length().millis();
+
             let graph_unit = GraphUnit {
                 id: unit_id,
                 creator: unit.creator,
@@ -291,6 +298,8 @@ impl Graph {
                 cited_units,
                 height: unit.seq_number as usize,
                 graph_height,
+                timestamp: time_since_era_start,
+                round_num,
                 round_exp: (unit.round_len().millis() / state.params().min_round_length().millis())
                     .trailing_zeros() as u8,
                 max_quorum: None,
@@ -401,7 +410,7 @@ fn main() {
 
     eprintln!("{}", dump.id);
 
-    let graph = Graph::new(&dump.highway_state);
+    let graph = Graph::new(&dump.highway_state, dump.start_time);
 
     for (index, (pub_key, _)) in dump.validators.iter().enumerate() {
         eprintln!("{}: {}", index, pub_key);

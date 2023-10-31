@@ -298,19 +298,21 @@ impl Renderer {
             );
             let text3 = format!("Vote: {:?}", unit.vote);
             let text4 = format!("round_exp: {}", unit.round_exp);
-            let text5 = if let Some(quorum) = unit.max_quorum.as_ref() {
+            let text5 = format!("timestamp: {} (round {})", unit.timestamp, unit.round_num);
+            let text6 = if let Some(quorum) = unit.max_quorum.as_ref() {
                 format!("max quorum: {:3.1}%", quorum.weight_percent)
             } else {
                 "".to_string()
             };
-            self.draw_text(target, -0.55, 0.5, &text1, 1.3, &matrix2);
-            self.draw_text(target, -0.82, 0.15, &text2, 1.0, &matrix2);
-            self.draw_text(target, -0.82, -0.15, &text3, 1.0, &matrix2);
-            self.draw_text(target, -0.82, -0.45, &text4, 1.0, &matrix2);
-            self.draw_text(target, -0.82, -0.75, &text5, 1.0, &matrix2);
+            self.draw_text(target, -0.4, 0.6, &text1, 1.3, &matrix2);
+            self.draw_text(target, -0.8, 0.26, &text2, 0.8, &matrix2);
+            self.draw_text(target, -0.8, 0.0, &text3, 0.8, &matrix2);
+            self.draw_text(target, -0.8, -0.26, &text4, 0.8, &matrix2);
+            self.draw_text(target, -0.8, -0.52, &text5, 0.8, &matrix2);
+            self.draw_text(target, -0.8, -0.78, &text6, 0.8, &matrix2);
         } else {
             let text = format!("{:?}", unit.id);
-            self.draw_text(target, -0.6, -0.1, &text, 2.0, &matrix2);
+            self.draw_text(target, -0.4, -0.1, &text, 2.0, &matrix2);
         }
     }
 
