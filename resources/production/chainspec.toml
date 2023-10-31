@@ -29,7 +29,7 @@ era_duration = '120 minutes'
 # minimum height.
 minimum_era_height = 20
 # Minimum difference between a block's and its child's timestamp.
-minimum_block_time = '32768 ms'
+minimum_block_time = '16384 ms'
 # Number of slots available in validator auction.
 validator_slots = 100
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
@@ -135,7 +135,7 @@ block_max_transfer_count = 1250
 # The maximum number of approvals permitted in a single block.
 block_max_approval_count = 2600
 # The upper limit of total gas of all deploys in a block.
-block_gas_limit = 10_000_000_000_000
+block_gas_limit = 4_000_000_000_000
 # The limit of length of serialized payment code arguments.
 payment_args_max_length = 1024
 # The limit of length of serialized session code arguments.
