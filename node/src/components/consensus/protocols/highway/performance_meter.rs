@@ -60,14 +60,15 @@ impl PerformanceMeter {
         self.current_round_len
     }
 
-    /// If the current timestamp indicates that the round has ended, checks the known proposals for
-    /// a level-1 summit.
-    /// If there is a summit, the round is considered successful. Otherwise, it is considered
-    /// failed.
-    /// Next, a number of last rounds are being checked for success and if not enough of them are
-    /// successful, we return a higher round length for the future.
-    /// If the length shouldn't grow, and the round ID is divisible by a certain number, a lower
-    /// round length is returned.
+    /// Whenever a block is proposed in a round and nodes cast their confirmation and witness
+    /// units, a "max quorum" can be calculated for each node - the maximum quorum for which there
+    /// exists a level-1 summit within the round, containing the particular node.
+    /// This function calculates the average max quorum for this node out of `BLOCKS_TO_CONSIDER`
+    /// most recent ancestor proposals of the current fork choice.
+    /// If this average max quorum is below a certain threshold, a higher round length will be
+    /// returned.
+    /// If it is above a certain threshold, and the current round ID is divisible by a certain
+    /// number, a lower round length is returned.
     pub fn calculate_new_length<C: Context>(&mut self, state: &State<C>) -> TimeDiff {
         let panorama = state.panorama();
         let latest_block = match state.fork_choice(panorama) {
