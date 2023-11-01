@@ -7,9 +7,17 @@ use casper_storage::global_state::{
     state::{self, StateProvider, StateReader},
     trie::merkle_proof::TrieMerkleProof,
 };
-use casper_types::{account::{AccountHash, ACCOUNT_HASH_LENGTH}, addressable_entity::{
-    ActionThresholds, AddressableEntityHash, AssociatedKeys, EntityKindTag, NamedKeys, Weight,
-}, execution::{Effects, Transform, TransformKind}, gens::*, package::PackageHash, AccessRights, AddressableEntity, CLValue, Digest, EntityKind, EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion, StoredValue, URef, U256, U512, EntityAddr};
+use casper_types::{
+    account::{AccountHash, ACCOUNT_HASH_LENGTH},
+    addressable_entity::{
+        ActionThresholds, AddressableEntityHash, AssociatedKeys, EntityKindTag, NamedKeys, Weight,
+    },
+    execution::{Effects, Transform, TransformKind},
+    gens::*,
+    package::PackageHash,
+    AccessRights, AddressableEntity, CLValue, Digest, EntityAddr, EntityKind, EntryPoints,
+    HashAddr, Key, KeyTag, ProtocolVersion, StoredValue, URef, U256, U512,
+};
 
 use super::{
     meter::count_meter::Count, AddResult, TrackingCopy, TrackingCopyCache, TrackingCopyQueryResult,
@@ -184,7 +192,6 @@ fn tracking_copy_add_named_key() {
     let contract = AddressableEntity::new(
         PackageHash::new([3u8; 32]),
         *ACCOUNT_BYTE_CODE_HASH,
-        NamedKeys::new(),
         EntryPoints::new_with_default_entry_point(),
         ProtocolVersion::V1_0_0,
         URef::new([0u8; 32], AccessRights::READ_ADD_WRITE),
@@ -344,7 +351,6 @@ proptest! {
             StoredValue::AddressableEntity(AddressableEntity::new(
             [2; 32].into(),
             [3; 32].into(),
-            named_keys,
             EntryPoints::new(),
             ProtocolVersion::V1_0_0,
             URef::default(),
@@ -389,7 +395,6 @@ proptest! {
         let account = AddressableEntity::new(
             PackageHash::new([1u8;32]),
             *ACCOUNT_BYTE_CODE_HASH,
-            named_keys,
             EntryPoints::new_with_default_entry_point(),
             ProtocolVersion::V1_0_0,
             purse,
@@ -437,7 +442,6 @@ proptest! {
             StoredValue::AddressableEntity(AddressableEntity::new(
             [2; 32].into(),
             [3; 32].into(),
-            contract_named_keys,
             EntryPoints::new(),
             ProtocolVersion::V1_0_0,
             URef::default(),
@@ -541,7 +545,6 @@ fn query_for_circular_references_should_fail() {
     let contract = StoredValue::AddressableEntity(AddressableEntity::new(
         [2; 32].into(),
         [3; 32].into(),
-        named_keys,
         EntryPoints::new(),
         ProtocolVersion::V1_0_0,
         URef::default(),
@@ -596,7 +599,6 @@ fn validate_query_proof_should_work() {
     let account_contract = StoredValue::AddressableEntity(AddressableEntity::new(
         PackageHash::new([20; 32]),
         *ACCOUNT_BYTE_CODE_HASH,
-        NamedKeys::new(),
         EntryPoints::new_with_default_entry_point(),
         ProtocolVersion::V1_0_0,
         fake_purse,
@@ -616,7 +618,6 @@ fn validate_query_proof_should_work() {
     let contract_value = StoredValue::AddressableEntity(AddressableEntity::new(
         [2; 32].into(),
         [3; 32].into(),
-        named_keys,
         EntryPoints::new(),
         ProtocolVersion::V1_0_0,
         URef::default(),
@@ -644,7 +645,6 @@ fn validate_query_proof_should_work() {
     let main_entity = StoredValue::AddressableEntity(AddressableEntity::new(
         PackageHash::new([21; 32]),
         *ACCOUNT_BYTE_CODE_HASH,
-        named_keys,
         EntryPoints::new_with_default_entry_point(),
         ProtocolVersion::V1_0_0,
         fake_purse,
@@ -1068,7 +1068,6 @@ fn query_with_large_depth_with_fixed_path_should_fail() {
         let contract = StoredValue::AddressableEntity(AddressableEntity::new(
             val_to_hashaddr(PACKAGE_OFFSET + value).into(),
             val_to_hashaddr(WASM_OFFSET + value).into(),
-            named_keys,
             EntryPoints::new(),
             ProtocolVersion::V1_0_0,
             URef::default(),
@@ -1131,7 +1130,6 @@ fn query_with_large_depth_with_urefs_should_fail() {
     let contract = StoredValue::AddressableEntity(AddressableEntity::new(
         val_to_hashaddr(PACKAGE_OFFSET).into(),
         val_to_hashaddr(WASM_OFFSET).into(),
-        named_keys,
         EntryPoints::new(),
         ProtocolVersion::V1_0_0,
         URef::default(),

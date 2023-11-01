@@ -16,19 +16,30 @@ use rand::{
 use serde::{Deserialize, Serialize};
 
 use casper_storage::global_state::state::StateProvider;
-use casper_types::{addressable_entity::{ActionThresholds, EntityKind, NamedKeys}, execution::Effects, package::{EntityVersions, Groups, PackageStatus}, system::{
-    auction::{
-        self, BidAddr, BidKind, DelegationRate, Delegator, SeigniorageRecipient,
-        SeigniorageRecipients, SeigniorageRecipientsSnapshot, Staking, ValidatorBid,
-        AUCTION_DELAY_KEY, DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY,
-        ERA_ID_KEY, INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+use casper_types::{
+    addressable_entity::{ActionThresholds, EntityKind, EntityKindTag, NamedKeyAddr, NamedKeys},
+    bytesrepr,
+    bytesrepr::ToBytes,
+    execution::Effects,
+    package::{EntityVersions, Groups, PackageStatus},
+    system::{
+        auction::{
+            self, BidAddr, BidKind, DelegationRate, Delegator, SeigniorageRecipient,
+            SeigniorageRecipients, SeigniorageRecipientsSnapshot, Staking, ValidatorBid,
+            AUCTION_DELAY_KEY, DELEGATION_RATE_DENOMINATOR, ERA_END_TIMESTAMP_MILLIS_KEY,
+            ERA_ID_KEY, INITIAL_ERA_END_TIMESTAMP_MILLIS, INITIAL_ERA_ID, LOCKED_FUNDS_PERIOD_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+        },
+        handle_payment::{self, ACCUMULATION_PURSE_KEY},
+        mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
+        SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
-    handle_payment::{self, ACCUMULATION_PURSE_KEY},
-    mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
-    SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
-}, AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, ByteCode, ByteCodeHash, ByteCodeKind, CLValue, Chainspec, ChainspecRegistry, Digest, EntryPoints, EraId, FeeHandling, GenesisAccount, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemConfig, Tagged, URef, WasmConfig, U512, EntityAddr};
-use casper_types::addressable_entity::EntityKindTag;
+    AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, ByteCode,
+    ByteCodeHash, ByteCodeKind, CLValue, Chainspec, ChainspecRegistry, Digest, EntityAddr,
+    EntryPoints, EraId, FeeHandling, GenesisAccount, Key, Motes, Package, PackageHash, Phase,
+    ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemConfig, Tagged, URef,
+    WasmConfig, KEY_HASH_LENGTH, U512,
+};
 
 use crate::{
     engine_state::{SystemContractRegistry, DEFAULT_ADDRESS},
@@ -538,6 +549,7 @@ pub enum GenesisError {
     ///
     /// This error can occur only on some private chains.
     DuplicatedAdministratorEntry,
+    Bytesrepr(bytesrepr::Error),
 }
 
 pub(crate) struct GenesisInstaller<S>
@@ -1135,10 +1147,11 @@ where
             }
         };
 
+        self.store_system_contract_named_keys(entity_hash, named_keys)?;
+
         let entity = AddressableEntity::new(
             package_hash,
             byte_code_hash,
-            named_keys,
             entry_points,
             protocol_version,
             main_purse,
@@ -1174,9 +1187,10 @@ where
         let entity_addr = match entity_kind.tag() {
             EntityKindTag::System => EntityAddr::new_system_entity_addr(entity_hash.value()),
             EntityKindTag::Account => EntityAddr::new_account_entity_addr(entity_hash.value()),
-            EntityKindTag::SmartContract => EntityAddr::new_contract_entity_addr(entity_hash.value()),
+            EntityKindTag::SmartContract => {
+                EntityAddr::new_contract_entity_addr(entity_hash.value())
+            }
         };
-
 
         let entity_key: Key = entity_addr.into();
 
@@ -1199,6 +1213,43 @@ where
         }
 
         Ok(entity_hash)
+    }
+
+    fn store_system_contract_named_keys(
+        &self,
+        contract_hash: AddressableEntityHash,
+        named_keys: NamedKeys,
+    ) -> Result<(), Box<GenesisError>> {
+        let entity_addr = EntityAddr::new_system_entity_addr(contract_hash.value());
+
+        let base_named_key_addr = NamedKeyAddr::new_named_key_base(entity_addr);
+        self.tracking_copy.borrow_mut().write(
+            base_named_key_addr.into(),
+            StoredValue::CLValue(CLValue::unit()),
+        );
+
+        for (string, key) in named_keys.iter() {
+            let string = string
+                .to_bytes()
+                .map_err(|error| GenesisError::Bytesrepr(error))?;
+
+            let string_bytes: [u8; KEY_HASH_LENGTH] =
+                bytesrepr::deserialize_from_slice(string.as_slice())
+                    .map_err(|error| GenesisError::Bytesrepr(error))?;
+
+            let named_key_entry = NamedKeyAddr::new_named_key_entry(entity_addr, string_bytes);
+
+            let cl_value = CLValue::from_t(*key)
+                .map_err(|cl_error| GenesisError::CLValue(cl_error.to_string()))?;
+
+            let entry_key = Key::NamedKey(named_key_entry);
+
+            self.tracking_copy
+                .borrow_mut()
+                .write(entry_key, StoredValue::CLValue(cl_value));
+        }
+
+        Ok(())
     }
 
     fn store_system_contract_registry(

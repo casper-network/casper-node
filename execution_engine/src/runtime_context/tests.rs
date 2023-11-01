@@ -10,10 +10,20 @@ use once_cell::sync::Lazy;
 use rand::RngCore;
 
 use casper_storage::global_state::state::{self, lmdb::LmdbGlobalStateView, StateProvider};
-use casper_types::{account::{AccountHash, ACCOUNT_HASH_LENGTH}, addressable_entity::{
-    ActionThresholds, ActionType, AddKeyFailure, AssociatedKeys, EntityKindTag, NamedKeys,
-    RemoveKeyFailure, SetThresholdFailure, Weight,
-}, bytesrepr::ToBytes, execution::TransformKind, system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT}, AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCodeHash, CLValue, ContextAccessRights, DeployHash, EntityKind, EntryPointType, EntryPoints, Gas, Key, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, Tagged, URef, KEY_HASH_LENGTH, U256, U512, EntityAddr};
+use casper_types::{
+    account::{AccountHash, ACCOUNT_HASH_LENGTH},
+    addressable_entity::{
+        ActionThresholds, ActionType, AddKeyFailure, AssociatedKeys, EntityKindTag, NamedKeys,
+        RemoveKeyFailure, SetThresholdFailure, Weight,
+    },
+    bytesrepr::ToBytes,
+    execution::TransformKind,
+    system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
+    AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCodeHash, CLValue,
+    ContextAccessRights, DeployHash, EntityAddr, EntityKind, EntryPointType, EntryPoints, Gas, Key,
+    PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, Tagged,
+    URef, KEY_HASH_LENGTH, U256, U512,
+};
 use tempfile::TempDir;
 
 use super::{Error, RuntimeContext};
@@ -67,7 +77,6 @@ fn new_addressable_entity_with_purse(
     let entity = AddressableEntity::new(
         PackageHash::default(),
         ByteCodeHash::default(),
-        named_keys,
         EntryPoints::new_with_default_entry_point(),
         ProtocolVersion::V1_0_0,
         URef::new(purse, AccessRights::READ_ADD_WRITE),
@@ -211,7 +220,7 @@ where
     );
 
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
-    let access_rights = addressable_entity.extract_access_rights(entity_hash);
+    let access_rights = addressable_entity.extract_access_rights(entity_hash, &named_keys);
     let (runtime_context, _tempdir) = new_runtime_context(
         &addressable_entity,
         account_hash,
@@ -381,7 +390,7 @@ fn contract_key_addable_valid() {
     let mut access_rights = entity_as_stored_value
         .as_addressable_entity()
         .unwrap()
-        .extract_access_rights(AddressableEntityHash::default());
+        .extract_access_rights(AddressableEntityHash::default(), &NamedKeys::new());
 
     let (tracking_copy, _tempdir) = new_tracking_copy(account_hash, entity_key, entity);
     let tracking_copy = Rc::new(RefCell::new(tracking_copy));
@@ -441,10 +450,11 @@ fn contract_key_addable_valid() {
         .metered_add_gs(contract_key, named_uref_tuple)
         .expect("Adding should work.");
 
+    let named_keys = NamedKeys::from(iter::once((uref_name, uref_as_key)).collect::<BTreeMap<_, _>>());
+
     let updated_contract = StoredValue::AddressableEntity(AddressableEntity::new(
         [0u8; 32].into(),
         [0u8; 32].into(),
-        NamedKeys::from(iter::once((uref_name, uref_as_key)).collect::<BTreeMap<_, _>>()),
         EntryPoints::new_with_default_entry_point(),
         ProtocolVersion::V1_0_0,
         URef::default(),
@@ -473,7 +483,7 @@ fn contract_key_addable_invalid() {
     let mut access_rights = contract
         .as_addressable_entity()
         .unwrap()
-        .extract_access_rights(AddressableEntityHash::default());
+        .extract_access_rights(AddressableEntityHash::default(), &NamedKeys::new());
     let (tracking_copy, _tempdir) = new_tracking_copy(account_hash, entity_key, entity.clone());
     let tracking_copy = Rc::new(RefCell::new(tracking_copy));
 
@@ -891,7 +901,7 @@ fn remove_uref_works() {
     let (_, entity_key, addressable_entity) =
         new_addressable_entity(account_hash, entity_hash, named_keys.clone());
 
-    let access_rights = addressable_entity.extract_access_rights(entity_hash);
+    let access_rights = addressable_entity.extract_access_rights(entity_hash, &named_keys);
 
     let (mut runtime_context, _tempdir) = new_runtime_context(
         &addressable_entity,
@@ -913,10 +923,12 @@ fn remove_uref_works() {
         TransformKind::Write(StoredValue::AddressableEntity(entity)) => entity,
         _ => panic!("Invalid transform operation found"),
     };
-    assert!(!entity.named_keys().contains(&uref_name));
+    let entity_named_keys = runtime_context.get_named_keys(entity_key)
+        .expect("must get named keys for entity");
+    assert!(!entity_named_keys.contains(&uref_name));
     // The next time the account is used, the access right is gone for the removed
     // named key.
-    let next_session_access_rights = entity.extract_access_rights(entity_hash);
+    let next_session_access_rights = entity.extract_access_rights(entity_hash, &named_keys);
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
     let (runtime_context, _tempdir) = new_runtime_context(
         &entity,
@@ -944,10 +956,10 @@ fn an_accounts_access_rights_should_include_main_purse() {
         named_keys,
     );
     assert!(
-        entity.named_keys().is_empty(),
+        named_keys.is_empty(),
         "Named keys does not contain main purse"
     );
-    let access_rights = entity.extract_access_rights(entity_hash);
+    let access_rights = entity.extract_access_rights(entity_hash, &named_keys);
     assert!(
         access_rights.has_access_rights_to_uref(&test_main_purse),
         "Main purse should be included in access rights"
@@ -973,7 +985,7 @@ fn validate_valid_purse_of_an_account() {
         named_keys.clone(),
     );
 
-    let mut access_rights = entity.extract_access_rights(entity_hash);
+    let mut access_rights = entity.extract_access_rights(entity_hash, &named_keys);
     access_rights.extend(&[test_main_purse]);
 
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);

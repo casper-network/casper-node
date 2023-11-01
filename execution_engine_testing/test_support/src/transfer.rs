@@ -87,11 +87,12 @@ pub fn create_test_purses(
         .get_entity_by_account_hash(source)
         .expect("must have addressable entity under this account hash");
 
+    let named_keys = builder.get_named_keys_by_account_hash(source);
+
     (0..total_purses)
         .map(|index| {
             let purse_lookup_key = format!("purse:{}", index);
-            let purse_uref = entity
-                .named_keys()
+            let purse_uref = named_keys
                 .get(&purse_lookup_key)
                 .and_then(Key::as_uref)
                 .unwrap_or_else(|| panic!("should get named key {} as uref", purse_lookup_key));

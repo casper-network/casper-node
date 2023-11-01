@@ -15,20 +15,11 @@ use std::{
 use tracing::error;
 
 use casper_storage::global_state::state::StateReader;
-use casper_types::{
-    account::{Account, AccountHash},
-    addressable_entity::{
-        ActionType, AddKeyFailure, EntityKind, EntityKindTag, NamedKeys, RemoveKeyFailure,
-        SetThresholdFailure, UpdateKeyFailure, Weight,
-    },
-    bytesrepr::ToBytes,
-    execution::Effects,
-    system::auction::EraInfo,
-    AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
-    ContextAccessRights, DeployHash, EntryPointType, Gas, GrantedAccess, Key, KeyTag, Package,
-    PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
-    TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
-};
+use casper_types::{account::{Account, AccountHash}, addressable_entity::{
+    ActionType, AddKeyFailure, EntityKind, EntityKindTag, NamedKeys, RemoveKeyFailure,
+    SetThresholdFailure, UpdateKeyFailure, Weight,
+}, bytesrepr::ToBytes, execution::Effects, system::auction::EraInfo, AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue, ContextAccessRights, DeployHash, EntryPointType, Gas, GrantedAccess, Key, KeyTag, Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512, EntityAddr};
+use casper_types::addressable_entity::NamedKeyAddr;
 
 use crate::{
     engine_state::{EngineConfig, SystemContractRegistry},
@@ -225,15 +216,18 @@ where
     /// Helper function to avoid duplication in `remove_uref`.
     fn remove_key_from_entity(
         &mut self,
-        key: Key,
-        mut contract: AddressableEntity,
+        entity_key: Key,
         name: &str,
     ) -> Result<(), Error> {
-        if contract.remove_named_key(name).is_none() {
-            return Ok(());
-        }
+        let entity_addr = if let Key::AddressableEntity(addr) = entity_key  {
+            addr
+        } else {
+            return Err(Error::UnexpectedKeyVariant(entity_key))
+        };
 
-        self.metered_write_gs_unsafe(key, contract)?;
+        let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, name.to_string())?;
+
+        self.prune_gs_unsafe(Key::NamedKey(named_key_addr));
         Ok(())
     }
 
@@ -243,9 +237,8 @@ where
     /// TrackingCopy/GlobalState).
     pub fn remove_key(&mut self, name: &str) -> Result<(), Error> {
         let entity_key = self.get_entity_key();
-        let contract: AddressableEntity = self.read_gs_typed(&entity_key)?;
         self.named_keys.remove(name);
-        self.remove_key_from_entity(entity_key, contract, name)
+        self.remove_key_from_entity(entity_key, name)
     }
 
     /// Returns the block time.
@@ -363,12 +356,53 @@ where
     pub fn put_key(&mut self, name: String, key: Key) -> Result<(), Error> {
         // No need to perform actual validation on the base key because an account or contract (i.e.
         // the element stored under `base_key`) is allowed to add new named keys to itself.
-        let named_key_value = StoredValue::CLValue(CLValue::from_t((name.clone(), key))?);
-        self.validate_value(&named_key_value)?;
-        self.metered_add_gs_unsafe(self.get_entity_key(), named_key_value)?;
+        self.write_named_key(name.clone(), key)?;
         self.insert_named_key(name, key);
         Ok(())
     }
+
+    fn write_named_key(&mut self, name: String, key: Key) -> Result<(), Error> {
+        let named_key_value = StoredValue::CLValue(CLValue::from_t(key)?);
+        self.validate_value(&named_key_value)?;
+        let entity_addr = if let Key::AddressableEntity(entity_addr) = self.get_entity_key() {
+            entity_addr
+        } else {
+            return Err(Error::InvalidContext)
+        };
+        let named_key_entry = Key::NamedKey(NamedKeyAddr::new_from_string(entity_addr, name)?);
+        self.metered_write_gs_unsafe(named_key_entry, named_key_value)
+    }
+
+    pub(crate) fn write_named_keys(&mut self, named_keys: NamedKeys) -> Result<(), Error> {
+        let entity_addr = if let Key::AddressableEntity(entity_addr) = self.get_entity_key() {
+            entity_addr
+        } else {
+            return Err(Error::InvalidContext)
+        };
+
+        self.metered_write_gs_unsafe(Key::NamedKey(NamedKeyAddr::new_named_key_base(entity_addr)), StoredValue::CLValue(CLValue::unit()))?;
+
+        for (name, key) in named_keys.iter() {
+            self.write_named_key(name.clone(), *key)?
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn get_named_keys(
+        &mut self,
+        entity_key: Key,
+    ) -> Result<NamedKeys, Error> {
+        let entity_addr= if let Key::AddressableEntity(entity_addr) = entity_key {
+            entity_addr
+        } else {
+            return Err(Error::UnexpectedKeyVariant(entity_key));
+        };
+
+        self.tracking_copy.borrow_mut().get_named_keys(entity_addr)
+            .map_err(Into::into)
+    }
+
 
     #[cfg(test)]
     pub(crate) fn get_entity(&self) -> AddressableEntity {
@@ -615,10 +649,7 @@ where
             StoredValue::Account(_) => Ok(()),
             StoredValue::ByteCode(_) => Ok(()),
             StoredValue::Contract(_) => Ok(()),
-            StoredValue::AddressableEntity(contract_header) => contract_header
-                .named_keys()
-                .keys()
-                .try_for_each(|key| self.validate_key(key)),
+            StoredValue::AddressableEntity(_) => Ok(()),
             // TODO: anything to validate here?
             StoredValue::Package(_) => Ok(()),
             StoredValue::Transfer(_) => Ok(()),
@@ -711,20 +742,26 @@ where
             | Key::BidAddr(_)
             | Key::Package(_)
             | Key::AddressableEntity(..)
-            | Key::ByteCode(..) => true,
+            | Key::ByteCode(..)
+            | Key::NamedKey(_) => true,
         }
     }
 
     /// Tests whether addition to `key` is valid.
     pub fn is_addable(&self, key: &Key) -> bool {
         match key {
-            Key::AddressableEntity(entity_addr) => {
-                match self.get_entity_key().into_entity_hash() {
-                    Some(entity_hash) => entity_hash == AddressableEntityHash::new(entity_addr.value()),
-                    None => false,
+            Key::AddressableEntity(entity_addr) => match self.get_entity_key().into_entity_hash() {
+                Some(entity_hash) => entity_hash == AddressableEntityHash::new(entity_addr.value()),
+                None => false,
+            },
+            Key::URef(uref) => uref.is_addable(),
+            Key::NamedKey(named_key_addr) => {
+                if let Key::AddressableEntity(entity_addr) = self.get_entity_key() {
+                    named_key_addr.entity_addr() == entity_addr
+                } else {
+                    false
                 }
             }
-            Key::URef(uref) => uref.is_addable(),
             Key::Hash(_)
             | Key::Account(_)
             | Key::Transfer(_)
@@ -749,6 +786,13 @@ where
     pub fn is_writeable(&self, key: &Key) -> bool {
         match key {
             Key::URef(uref) => uref.is_writeable(),
+            Key::NamedKey(named_key_addr) => {
+                if let Key::AddressableEntity(entity_addr) = self.get_entity_key() {
+                    named_key_addr.entity_addr() == entity_addr
+                } else {
+                    false
+                }
+            }
             Key::Account(_)
             | Key::Hash(_)
             | Key::Transfer(_)
@@ -1170,6 +1214,8 @@ where
             .map_err(Into::into)
     }
 
+
+
     /// Gets a dictionary item key from a dictionary referenced by a `uref`.
     pub(crate) fn dictionary_get(
         &mut self,
@@ -1239,6 +1285,7 @@ where
         self.metered_write_gs_unsafe(dictionary_key, wrapped_cl_value)?;
         Ok(())
     }
+
 
     /// Gets system contract by name.
     pub(crate) fn get_system_contract(&self, name: &str) -> Result<AddressableEntityHash, Error> {

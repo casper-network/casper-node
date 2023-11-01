@@ -8,6 +8,7 @@ use std::{
     rc::Rc,
     sync::Arc,
 };
+use env_logger::builder;
 
 use filesize::PathExt;
 use lmdb::DatabaseFlags;
@@ -40,28 +41,17 @@ use casper_storage::{
         trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_types::{
-    account::AccountHash,
-    addressable_entity::EntityKindTag,
-    bytesrepr::{self, FromBytes},
-    contracts::ContractHash,
-    execution::Effects,
-    runtime_args,
-    system::{
-        auction::{
-            BidKind, EraValidators, UnbondingPurse, UnbondingPurses, ValidatorWeights,
-            WithdrawPurses, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
-            AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION, UNBONDING_DELAY_KEY,
-        },
-        mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
-        AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
+use casper_types::{account::AccountHash, addressable_entity::EntityKindTag, bytesrepr::{self, FromBytes}, contracts::ContractHash, execution::Effects, runtime_args, system::{
+    auction::{
+        BidKind, EraValidators, UnbondingPurse, UnbondingPurses, ValidatorWeights,
+        WithdrawPurses, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
+        AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION, UNBONDING_DELAY_KEY,
     },
-    AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, ByteCodeHash, ByteCodeKind,
-    CLTyped, CLValue, Contract, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts,
-    Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolVersion, PublicKey,
-    RefundHandling, StoredValue, Transfer, TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
-};
+    mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
+    AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
+}, AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, ByteCodeHash, ByteCodeKind, CLTyped, CLValue, Contract, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts, Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolVersion, PublicKey, RefundHandling, StoredValue, Transfer, TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512, EntityAddr};
 use tempfile::TempDir;
+use casper_types::addressable_entity::{NamedKeyAddr, NamedKeys};
 
 use crate::{
     chainspec_config::{ChainspecConfig, PRODUCTION_PATH},
@@ -704,7 +694,7 @@ where
             .into_addressable_entity()
             .expect("must convert to mint contract");
 
-        let mint_named_keys = mint_contract.named_keys().clone();
+        let mint_named_keys = self.get_named_keys_by_contract_entity_hash(self.get_mint_contract_hash());
 
         let total_supply_uref = *mint_named_keys
             .get(TOTAL_SUPPLY_KEY)
@@ -1181,6 +1171,8 @@ where
         }
     }
 
+
+
     /// Queries for byte code by `ByteCodeAddr` and returns an `Option<ByteCode>`.
     pub fn get_byte_code(&self, byte_code_hash: ByteCodeHash) -> Option<ByteCode> {
         let byte_code_key = Key::byte_code_key(ByteCodeKind::V1CasperWasm, byte_code_hash.value());
@@ -1306,6 +1298,59 @@ where
         get_bids_result.into_success().unwrap()
     }
 
+    pub fn get_named_keys_by_account_hash(&self, account_hash: AccountHash) -> NamedKeys {
+        let entity_hash = self.get_entity_hash_by_account_hash(account_hash)
+            .expect("must have entity hash");
+        let entity_addr = EntityAddr::new_account_entity_addr(entity_hash.value());
+        self.get_named_keys(entity_addr)
+    }
+
+    pub fn get_named_keys_by_contract_entity_hash(&self, contract_hash: AddressableEntityHash) -> NamedKeys {
+        let entity_addr = EntityAddr::new_contract_entity_addr(contract_hash.value());
+        self.get_named_keys(entity_addr)
+    }
+
+    fn get_named_keys(&self, entity_addr: EntityAddr) -> NamedKeys {
+        let state_root_hash = self.get_post_state_hash();
+
+        let tracking_copy = self
+            .engine_state
+            .tracking_copy(state_root_hash)
+            .unwrap()
+            .unwrap();
+
+
+        let named_key_addr = NamedKeyAddr::Base(entity_addr);
+
+        let prefix = named_key_addr.named_keys_prefix()
+            .expect("must get prefix");
+
+        let reader = tracking_copy.reader();
+
+        let entries = reader
+            .keys_with_prefix(&prefix)
+            .unwrap_or_default();
+
+        let mut named_keys = NamedKeys::new();
+
+        for entry in entries.iter() {
+            let read_result = reader.read(entry);
+            if let Ok(Some(StoredValue::CLValue(cl_value))) = read_result {
+                let key = CLValue::into_t::<Key>(cl_value)
+                    .expect("must get key");
+
+                let name = entry.into_named_key_addr().unwrap()
+                    .named_string().expect("must get string");
+
+                named_keys.insert(name, key);
+            }
+        }
+
+        named_keys
+
+    }
+
+
     /// Gets [`UnbondingPurses`].
     pub fn get_unbonds(&mut self) -> UnbondingPurses {
         let state_root_hash = self.get_post_state_hash();
@@ -1391,11 +1436,10 @@ where
     where
         T: FromBytes + CLTyped,
     {
-        let contract = self
-            .get_addressable_entity(entity_hash)
-            .expect("should have contract");
-        let key = contract
-            .named_keys()
+
+        let named_keys = self.get_named_keys_by_contract_entity_hash(entity_hash);
+
+        let key = named_keys
             .get(name)
             .expect("should have named key");
         let stored_value = self.query(None, *key, &[]).expect("should query");

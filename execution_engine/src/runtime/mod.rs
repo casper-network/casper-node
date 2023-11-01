@@ -21,17 +21,30 @@ use tracing::error;
 use wasmi::{MemoryRef, Trap, TrapKind};
 
 use casper_storage::global_state::state::StateReader;
-use casper_types::{account::{Account, AccountHash}, addressable_entity::{
-    self, ActionThresholds, ActionType, AddKeyFailure, AddressableEntity,
-    AddressableEntityHash, AssociatedKeys, EntityKindTag, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, NamedKeys, Parameter, RemoveKeyFailure, SetThresholdFailure,
-    UpdateKeyFailure, Weight, DEFAULT_ENTRY_POINT_NAME,
-}, bytesrepr::{self, Bytes, FromBytes, ToBytes}, contracts::ContractPackage, package::PackageStatus, system::{
-    self,
-    auction::{self, EraInfo},
-    handle_payment, mint, CallStackElement, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
-    STANDARD_PAYMENT,
-}, AccessRights, ApiError, ByteCode, ByteCodeHash, ByteCodeKind, CLTyped, CLValue, ContextAccessRights, ContractWasm, DeployHash, EntityKind, EntityVersion, EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups, HostFunction, HostFunctionCost, Key, NamedArg, Package, PackageHash, Phase, PublicKey, RuntimeArgs, StoredValue, Tagged, Transfer, TransferResult, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512, EntityAddr};
+use casper_types::{
+    account::{Account, AccountHash},
+    addressable_entity::{
+        self, ActionThresholds, ActionType, AddKeyFailure, AddressableEntity,
+        AddressableEntityHash, AssociatedKeys, EntityKindTag, EntryPoint, EntryPointAccess,
+        EntryPointType, EntryPoints, NamedKeys, Parameter, RemoveKeyFailure, SetThresholdFailure,
+        UpdateKeyFailure, Weight, DEFAULT_ENTRY_POINT_NAME,
+    },
+    bytesrepr::{self, Bytes, FromBytes, ToBytes},
+    contracts::ContractPackage,
+    package::PackageStatus,
+    system::{
+        self,
+        auction::{self, EraInfo},
+        handle_payment, mint, CallStackElement, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
+        STANDARD_PAYMENT,
+    },
+    AccessRights, ApiError, ByteCode, ByteCodeHash, ByteCodeKind, CLTyped, CLValue,
+    ContextAccessRights, ContractWasm, DeployHash, EntityAddr, EntityKind, EntityVersion,
+    EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups, HostFunction,
+    HostFunctionCost, Key, NamedArg, Package, PackageHash, Phase, PublicKey, RuntimeArgs,
+    StoredValue, Tagged, Transfer, TransferResult, TransferredTo, URef,
+    DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
+};
 
 use crate::{
     engine_state::ACCOUNT_BYTE_CODE_HASH,
@@ -510,12 +523,14 @@ where
         let gas_counter = self.gas_counter();
 
         let mint_hash = self.context.get_system_contract(MINT)?;
-        let mint_key = Key::addressable_entity_key(EntityKindTag::System, mint_hash);
-        let mint_contract = self.context.state().borrow_mut().get_contract(mint_hash)?;
-        let mut named_keys = mint_contract.named_keys().to_owned();
+        let mint_addr = EntityAddr::new_system_entity_addr(mint_hash.value());
+
+        let mint_named_keys = self.context.state().borrow_mut().get_named_keys(mint_addr)?;
+
+        let mut named_keys = mint_named_keys.clone();
 
         let runtime_context = self.context.new_from_self(
-            mint_key,
+            mint_addr.into(),
             EntryPointType::AddressableEntity,
             &mut named_keys,
             access_rights,
@@ -644,7 +659,12 @@ where
             .state()
             .borrow_mut()
             .get_contract(handle_payment_hash)?;
-        let mut named_keys = handle_payment_contract.named_keys().to_owned();
+
+        let handle_payment_named_keys = self.context.state().borrow_mut().get_named_keys(
+            EntityAddr::System(handle_payment_hash.value())
+        )?;
+
+        let mut named_keys = handle_payment_named_keys.clone();
 
         let runtime_context = self.context.new_from_self(
             handle_payment_key,
@@ -741,7 +761,14 @@ where
             .state()
             .borrow_mut()
             .get_contract(auction_hash)?;
-        let mut named_keys = auction_contract.named_keys().to_owned();
+
+        let auction_named_keys = self
+            .context
+            .state()
+            .borrow_mut()
+            .get_named_keys(EntityAddr::System(auction_hash.value()))?;
+
+        let mut named_keys = auction_named_keys.clone();
 
         let runtime_context = self.context.new_from_self(
             auction_key,
@@ -1295,8 +1322,15 @@ where
             all_urefs
         };
 
+        let entity_addr = EntityAddr::new_with_tag(entity.entity_kind(), entity_hash.value());
+
+        let entity_named_keys = self.context
+            .state()
+            .borrow_mut()
+            .get_named_keys(entity_addr)?;
+
         let access_rights = {
-            let mut access_rights = entity.extract_access_rights(entity_hash);
+            let mut access_rights = entity.extract_access_rights(entity_hash, &entity_named_keys);
             access_rights.extend(&extended_access_rights);
             access_rights
         };
@@ -1368,7 +1402,7 @@ where
 
         let entity_tag = entity.entity_kind().tag();
 
-        let mut named_keys = entity.take_named_keys();
+        let mut named_keys = entity_named_keys;
 
         let context_entity_key = Key::addressable_entity_key(entity_tag, entity_hash);
 
@@ -1689,15 +1723,13 @@ where
         let entity_kind = updated_session_entity.entity_kind();
 
         if entity_kind != EntityKind::SmartContract {
-            return Err(Error::InvalidContext)
+            return Err(Error::InvalidContext);
         }
 
         let entity_addr = EntityAddr::new_contract_entity_addr(entity_hash.value());
 
-        self.context.metered_write_gs_unsafe(
-            Key::AddressableEntity(entity_addr),
-            updated_session_entity,
-        )?;
+        self.context
+            .metered_write_gs_unsafe(Key::AddressableEntity(entity_addr), updated_session_entity)?;
 
         self.context
             .metered_write_gs_unsafe(package_hash, package)?;
@@ -1754,10 +1786,13 @@ where
 
         let entity_key = Key::AddressableEntity(entity_addr);
 
+        // Is this still valid??
+        // TODO: EE-1032 - Implement different ways of carrying on existing named keys.
+        self.context.write_named_keys(named_keys)?;
+
         let entity = AddressableEntity::new(
             package_hash,
             byte_code_hash.into(),
-            named_keys,
             entry_points,
             protocol_version,
             main_purse,
@@ -1832,7 +1867,8 @@ where
 
             let associated_keys = previous_entity.associated_keys().clone();
 
-            let previous_named_keys = previous_entity.take_named_keys();
+            let previous_named_keys = self.context.get_named_keys(previous_entity_key)?;
+
 
             return Ok((
                 main_purse,
@@ -2378,13 +2414,11 @@ where
                 let package_hash = PackageHash::new(self.context.new_hash_address()?);
                 let main_purse = target_purse;
                 let associated_keys = AssociatedKeys::new(target, Weight::new(1));
-                let named_keys = NamedKeys::new();
                 let entry_points = EntryPoints::new();
 
                 let entity = AddressableEntity::new(
                     package_hash,
                     contract_wasm_hash,
-                    named_keys,
                     entry_points,
                     protocol_version,
                     main_purse,
@@ -3255,10 +3289,11 @@ where
                     AssociatedKeys::default()
                 };
 
+                self.context.write_named_keys(contract.named_keys().clone())?;
+
                 let updated_entity = AddressableEntity::new(
                     PackageHash::new(contract.contract_package_hash().value()),
                     ByteCodeHash::new(contract.contract_wasm_hash().value()),
-                    contract.named_keys().clone(),
                     contract.entry_points().clone(),
                     self.context.protocol_version(),
                     entity_main_purse,

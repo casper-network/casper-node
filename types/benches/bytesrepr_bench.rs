@@ -498,7 +498,6 @@ fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> AddressableEntit
     AddressableEntity::new(
         PackageHash::default(),
         ByteCodeHash::default(),
-        named_keys,
         entry_points,
         ProtocolVersion::default(),
         URef::default(),

@@ -372,7 +372,6 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         let entity = AddressableEntity::new(
             PackageHash::new([100; 32]),
             ByteCodeHash::new([101; 32]),
-            contract_named_keys,
             entry_points,
             ProtocolVersion::V1_0_0,
             URef::default(),

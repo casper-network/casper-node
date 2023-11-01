@@ -433,7 +433,6 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
                 AddressableEntity::new(
                     contract_package_hash_arb.into(),
                     contract_wasm_hash.into(),
-                    named_keys,
                     entry_points,
                     protocol_version,
                     main_purse,

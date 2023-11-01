@@ -59,9 +59,6 @@ static ACCOUNT: Lazy<Account> = Lazy::new(|| {
     }
 });
 
-
-
-
 /// Represents an Account in the global state.
 #[derive(PartialEq, Eq, Clone, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]

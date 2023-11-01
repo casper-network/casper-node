@@ -4,9 +4,19 @@ use std::{cell::RefCell, collections::BTreeSet, fmt, rc::Rc};
 use thiserror::Error;
 
 use casper_storage::global_state::state::StateProvider;
-use casper_types::{addressable_entity::{
-    ActionThresholds, AssociatedKeys, EntityKind, EntityKindTag, NamedKeys, Weight,
-}, bytesrepr::{self, ToBytes}, execution::Effects, package::{EntityVersions, Groups, PackageStatus}, system::{handle_payment::ACCUMULATION_PURSE_KEY, SystemEntityType}, AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeKind, CLValue, CLValueError, Digest, EntryPoints, FeeHandling, Key, Package, PackageHash, Phase, ProtocolVersion, PublicKey, StoredValue, URef, U512, EntityAddr};
+use casper_types::{
+    addressable_entity::{
+        ActionThresholds, AssociatedKeys, EntityKind, EntityKindTag, NamedKeyAddr, NamedKeys,
+        Weight,
+    },
+    bytesrepr::{self, ToBytes},
+    execution::Effects,
+    package::{EntityVersions, Groups, PackageStatus},
+    system::{handle_payment::ACCUMULATION_PURSE_KEY, SystemEntityType},
+    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeKind, CLValue,
+    CLValueError, Digest, EntityAddr, EntryPoints, FeeHandling, Key, Package, PackageHash, Phase,
+    ProtocolVersion, PublicKey, StoredValue, URef, U512,
+};
 
 use crate::{
     engine_state::ACCOUNT_BYTE_CODE_HASH, execution::AddressGenerator, tracking_copy::TrackingCopy,
@@ -138,7 +148,6 @@ where
         let new_entity = AddressableEntity::new(
             contract.package_hash(),
             contract.byte_code_hash(),
-            contract.named_keys().clone(),
             entry_points,
             self.new_protocol_version,
             URef::default(),
@@ -217,9 +226,9 @@ where
         if let Some(StoredValue::AddressableEntity(system_entity)) = self
             .tracking_copy
             .borrow_mut()
-            .read(&Key::AddressableEntity(
-                EntityAddr::new_system_entity_addr(contract_hash.value())
-            ))
+            .read(&Key::AddressableEntity(EntityAddr::new_system_entity_addr(
+                contract_hash.value(),
+            )))
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContract(
                     system_contract_type.to_string(),
@@ -239,6 +248,11 @@ where
                 )
             })?
         {
+            self.migrate_named_keys_for_legacy_contract(
+                contract_hash,
+                system_contract.named_keys().clone(),
+            )?;
+
             return Ok(system_contract.into());
         }
 
@@ -284,7 +298,6 @@ where
         let system_account_entity = AddressableEntity::new(
             package_hash,
             byte_code_hash,
-            NamedKeys::new(),
             EntryPoints::new(),
             self.new_protocol_version,
             main_purse,
@@ -355,12 +368,23 @@ where
         };
         let system_contract = SystemEntityType::HandlePayment;
 
-        let mut addressable_entity =
+        let addressable_entity =
             self.retrieve_system_contract(*handle_payment_hash, system_contract)?;
-        if !addressable_entity
-            .named_keys()
-            .contains(ACCUMULATION_PURSE_KEY)
-        {
+
+        let entity_addr = EntityAddr::new_system_entity_addr(handle_payment_hash.value());
+
+        let named_key_addr =
+            NamedKeyAddr::new_from_string(entity_addr, ACCUMULATION_PURSE_KEY.to_string())
+                .map_err(|error| ProtocolUpgradeError::Bytesrepr(error))?;
+
+        let requries_accumulation_purse = self
+            .tracking_copy
+            .borrow_mut()
+            .read(&Key::NamedKey(named_key_addr))
+            .map_err(|_| ProtocolUpgradeError::UnexpectedStoredValueVariant)?
+            .is_none();
+
+        if requries_accumulation_purse {
             let purse_uref = address_generator.new_uref(AccessRights::READ_ADD_WRITE);
             let balance_clvalue = CLValue::from_t(U512::zero())?;
             self.tracking_copy.borrow_mut().write(
@@ -371,9 +395,13 @@ where
                 .borrow_mut()
                 .write(Key::URef(purse_uref), StoredValue::CLValue(CLValue::unit()));
 
-            let mut new_named_keys = NamedKeys::new();
-            new_named_keys.insert(ACCUMULATION_PURSE_KEY.into(), Key::from(purse_uref));
-            addressable_entity.named_keys_append(new_named_keys);
+            let purse_cl_value = CLValue::from_t(Key::from(purse_uref))
+                .map_err(|cl_error| ProtocolUpgradeError::CLValue(cl_error.to_string()))?;
+
+            self.tracking_copy.borrow_mut().write(
+                Key::NamedKey(named_key_addr),
+                StoredValue::CLValue(purse_cl_value),
+            );
 
             let entity_key =
                 Key::addressable_entity_key(EntityKindTag::System, *handle_payment_hash);
@@ -382,6 +410,42 @@ where
                 entity_key,
                 StoredValue::AddressableEntity(addressable_entity),
             );
+        }
+
+        Ok(())
+    }
+
+    fn migrate_named_keys_for_legacy_contract(
+        &self,
+        contract_hash: AddressableEntityHash,
+        contract_named_keys: NamedKeys,
+    ) -> Result<(), ProtocolUpgradeError> {
+        let entity_addr = EntityAddr::new_system_entity_addr(contract_hash.value());
+
+        let base_named_key_addr = NamedKeyAddr::new_named_key_base(entity_addr);
+        self.tracking_copy.borrow_mut().write(
+            Key::NamedKey(base_named_key_addr),
+            StoredValue::CLValue(CLValue::unit()),
+        );
+
+        for (string, key) in contract_named_keys.into_inner().into_iter() {
+            let bytes = string
+                .to_bytes()
+                .map_err(|error| ProtocolUpgradeError::Bytesrepr(error))?;
+
+            let string_bytes = bytesrepr::deserialize_from_slice(bytes.as_slice())
+                .map_err(|error| ProtocolUpgradeError::Bytesrepr(error))?;
+
+            let entry_addr = NamedKeyAddr::new_named_key_entry(entity_addr, string_bytes);
+
+            let cl_value = CLValue::from_t(key)
+                .map_err(|error| ProtocolUpgradeError::CLValue(error.to_string()))?;
+
+            let entry_key = Key::NamedKey(entry_addr);
+
+            self.tracking_copy
+                .borrow_mut()
+                .write(entry_key, StoredValue::CLValue(cl_value))
         }
 
         Ok(())

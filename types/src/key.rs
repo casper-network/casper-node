@@ -32,7 +32,9 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use crate::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity,
-    addressable_entity::{AddressableEntityHash, EntityKindTag, EntityAddr},
+    addressable_entity::{
+        AddressableEntityHash, EntityAddr, EntityKindTag, NamedKeyAddr, NamedKeyAddrTag,
+    },
     byte_code::ByteCodeKind,
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH},
     checksummed_hex,
@@ -66,6 +68,7 @@ const SYSTEM_ENTITY_PREFIX: &str = "system-";
 const BYTE_CODE_PREFIX: &str = "byte-code-";
 const V1_WASM_PREFIX: &str = "v1-wasm-";
 const EMPTY_PREFIX: &str = "empty-";
+const NAMED_KEY_PREFIX: &str = "named-key-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -148,6 +151,7 @@ pub enum KeyTag {
     Package = 16,
     AddressableEntity = 17,
     ByteCode = 18,
+    NamedKey = 19,
 }
 
 impl Display for KeyTag {
@@ -172,11 +176,10 @@ impl Display for KeyTag {
             KeyTag::Package => write!(f, "Package"),
             KeyTag::AddressableEntity => write!(f, "AddressableEntity"),
             KeyTag::ByteCode => write!(f, "ByteCode"),
+            KeyTag::NamedKey => write!(f, "NamedKey"),
         }
     }
 }
-
-
 
 // enum ExtendedAddr {
 //     Bid(BidAddr),
@@ -230,6 +233,8 @@ pub enum Key {
     AddressableEntity(EntityAddr),
     /// A `Key` under which a byte code record is stored.
     ByteCode(ByteCodeKind, ByteCodeAddr),
+    /// A `Key` under which a single named key entry is stored.
+    NamedKey(NamedKeyAddr),
 }
 
 #[cfg(feature = "json-schema")]
@@ -292,6 +297,8 @@ pub enum FromStrError {
     AddressableEntity(String),
     /// Byte code parse error.
     ByteCode(String),
+    /// Named key parse error.
+    NamedKey(String),
     /// Unknown prefix.
     UnknownPrefix,
 }
@@ -358,6 +365,9 @@ impl Display for FromStrError {
             FromStrError::ByteCode(error) => {
                 write!(f, "byte-code-key from string error: {}", error)
             }
+            FromStrError::NamedKey(error) => {
+                write!(f, "named-key from string error: {}", error)
+            }
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
         }
     }
@@ -387,6 +397,7 @@ impl Key {
             Key::Package(_) => String::from("Key::Package"),
             Key::AddressableEntity(..) => String::from("Key::AddressableEntity"),
             Key::ByteCode(..) => String::from("Key::ByteCode"),
+            Key::NamedKey(_) => String::from("Key::NamedKey"),
         }
     }
 
@@ -476,9 +487,9 @@ impl Key {
             Key::Package(package_addr) => {
                 format!("{}{}", PACKAGE_PREFIX, base16::encode_lower(&package_addr))
             }
-            Key::AddressableEntity(entity_addr) =>  {
+            Key::AddressableEntity(entity_addr) => {
                 format!("{}", entity_addr)
-            },
+            }
             Key::ByteCode(byte_code_kind, byte_code_addr) => match byte_code_kind {
                 ByteCodeKind::Empty => {
                     format!(
@@ -497,6 +508,9 @@ impl Key {
                     )
                 }
             },
+            Key::NamedKey(named_key) => {
+                format!("{}{}", NAMED_KEY_PREFIX, named_key)
+            }
         }
     }
 
@@ -683,18 +697,12 @@ impl Key {
             let hash_addr = HashAddr::try_from(addr.as_ref())
                 .map_err(|error| FromStrError::AddressableEntity(error.to_string()))?;
             let entity_addr = match tag {
-                EntityKindTag::System => {
-                    EntityAddr::new_system_entity_addr(hash_addr)
-                }
-                EntityKindTag::Account => {
-                    EntityAddr::new_account_entity_addr(hash_addr)
-                }
-                EntityKindTag::SmartContract => {
-                    EntityAddr::new_contract_entity_addr(hash_addr)
-                }
+                EntityKindTag::System => EntityAddr::new_system_entity_addr(hash_addr),
+                EntityKindTag::Account => EntityAddr::new_account_entity_addr(hash_addr),
+                EntityKindTag::SmartContract => EntityAddr::new_contract_entity_addr(hash_addr),
             };
 
-            return Ok(Key::AddressableEntity(entity_addr))
+            return Ok(Key::AddressableEntity(entity_addr));
         }
 
         if let Some(byte_code) = input.strip_prefix(BYTE_CODE_PREFIX) {
@@ -710,6 +718,68 @@ impl Key {
             let byte_code_addr = ByteCodeAddr::try_from(addr.as_ref())
                 .map_err(|error| FromStrError::ByteCode(error.to_string()))?;
             return Ok(Key::ByteCode(tag, byte_code_addr));
+        }
+
+        if let Some(named_key) = input.strip_prefix(NAMED_KEY_PREFIX) {
+            let (addr_str, tag) =
+                if let Some(str) = named_key.strip_prefix(&format!("{}-", NamedKeyAddrTag::Base)) {
+                    (str, NamedKeyAddrTag::Base)
+                } else if let Some(str) =
+                    named_key.strip_prefix(&format!("{}-", NamedKeyAddrTag::NamedKeyEntry))
+                {
+                    (str, NamedKeyAddrTag::NamedKeyEntry)
+                } else {
+                    return Err(FromStrError::UnknownPrefix);
+                };
+
+            match tag {
+                NamedKeyAddrTag::Base => {
+                    let bytes = checksummed_hex::decode(addr_str)
+                        .map_err(|error| FromStrError::NamedKey(error.to_string()))?;
+                    if bytes.is_empty() {
+                        return Err(FromStrError::NamedKey(
+                            "bytes should not be 0 len".to_string(),
+                        ));
+                    }
+                    let (entity_addr, remainder) =
+                        EntityAddr::from_bytes(bytes.as_ref()).map_err(|_| {
+                            FromStrError::NamedKey("failed to parse decoded bytes".to_string())
+                        })?;
+                    if !remainder.is_empty() {
+                        return Err(FromStrError::NamedKey("remainder is not emtpy".to_string()));
+                    }
+                    return Ok(Self::NamedKey(NamedKeyAddr::Base(entity_addr)));
+                }
+                NamedKeyAddrTag::NamedKeyEntry => {
+                    if let Some((entity_str, byte_str)) = addr_str.split_once("-") {
+                        let bytes = checksummed_hex::decode(entity_str)
+                            .map_err(|error| FromStrError::NamedKey(error.to_string()))?;
+                        if bytes.is_empty() {
+                            return Err(FromStrError::NamedKey(
+                                "bytes should not be 0 len".to_string(),
+                            ));
+                        }
+                        let (entity_addr, remainder) = EntityAddr::from_bytes(bytes.as_ref())
+                            .map_err(|_| {
+                                FromStrError::NamedKey("failed to parse decoded bytes".to_string())
+                            })?;
+                        if !remainder.is_empty() {
+                            return Err(FromStrError::NamedKey(
+                                "remainder is not emtpy".to_string(),
+                            ));
+                        }
+                        let string_bytes = checksummed_hex::decode(byte_str)
+                            .map_err(|error| FromStrError::NamedKey(error.to_string()))?;
+                        let string_bytes = HashAddr::try_from(string_bytes.as_ref())
+                            .map_err(|error| FromStrError::NamedKey(error.to_string()))?;
+                        let named_key_addr =
+                            NamedKeyAddr::new_named_key_entry(entity_addr, string_bytes);
+                        return Ok(Key::NamedKey(named_key_addr));
+                    } else {
+                        return Err(FromStrError::NamedKey("could not split string".to_string()));
+                    }
+                }
+            }
         }
 
         Err(FromStrError::UnknownPrefix)
@@ -763,6 +833,13 @@ impl Key {
     pub fn into_package_hash(self) -> Option<PackageHash> {
         let package_addr = self.into_package_addr()?;
         Some(PackageHash::new(package_addr))
+    }
+
+    pub fn into_named_key_addr(self) -> Option<NamedKeyAddr> {
+        match self {
+            Key::NamedKey(addr) => Some(addr),
+            _ => None,
+        }
     }
 
     /// Returns a reference to the inner [`URef`] if `self` is of type [`Key::URef`], otherwise
@@ -845,11 +922,12 @@ impl Key {
         entity_hash: AddressableEntityHash,
     ) -> Self {
         let entity_addr = match entity_kind_tag {
-            EntityKindTag::System => {EntityAddr::new_system_entity_addr(entity_hash.value())}
-            EntityKindTag::Account => {EntityAddr::new_account_entity_addr(entity_hash.value())}
-            EntityKindTag::SmartContract => {EntityAddr::new_contract_entity_addr(entity_hash.value())}
+            EntityKindTag::System => EntityAddr::new_system_entity_addr(entity_hash.value()),
+            EntityKindTag::Account => EntityAddr::new_account_entity_addr(entity_hash.value()),
+            EntityKindTag::SmartContract => {
+                EntityAddr::new_contract_entity_addr(entity_hash.value())
+            }
         };
-
 
         Key::AddressableEntity(entity_addr)
     }
@@ -905,7 +983,6 @@ impl Key {
                 EntityKindTag::System => true,
                 EntityKindTag::SmartContract | EntityKindTag::Account => false,
             };
-
         }
         false
     }
@@ -973,6 +1050,9 @@ impl Display for Key {
                     base16::encode_lower(byte_code_addr)
                 )
             }
+            Key::NamedKey(named_key_addr) => {
+                write!(f, "Key::NamedKey({})", named_key_addr)
+            }
         }
     }
 }
@@ -1005,6 +1085,7 @@ impl Tagged<KeyTag> for Key {
             Key::Package(_) => KeyTag::Package,
             Key::AddressableEntity(..) => KeyTag::AddressableEntity,
             Key::ByteCode(..) => KeyTag::ByteCode,
+            Key::NamedKey(_) => KeyTag::NamedKey,
         }
     }
 }
@@ -1095,6 +1176,7 @@ impl ToBytes for Key {
                 U8_SERIALIZED_LENGTH + KEY_ID_SERIALIZED_LENGTH + ADDR_LENGTH
             }
             Key::ByteCode(..) => U8_SERIALIZED_LENGTH + KEY_ID_SERIALIZED_LENGTH + ADDR_LENGTH,
+            Key::NamedKey(named_key) => U8_SERIALIZED_LENGTH + named_key.serialized_length(),
         }
     }
 
@@ -1125,13 +1207,12 @@ impl ToBytes for Key {
                 BidAddrTag::Validator | BidAddrTag::Delegator => bid_addr.write_bytes(writer),
             },
             Key::Package(package_addr) => package_addr.write_bytes(writer),
-            Key::AddressableEntity(entity_addr) => {
-                entity_addr.write_bytes(writer)
-            }
+            Key::AddressableEntity(entity_addr) => entity_addr.write_bytes(writer),
             Key::ByteCode(byte_code_kind, byte_code_addr) => {
                 byte_code_kind.write_bytes(writer)?;
                 byte_code_addr.write_bytes(writer)
             }
+            Key::NamedKey(named_key_addr) => named_key_addr.write_bytes(writer),
         }
     }
 }
@@ -1217,6 +1298,10 @@ impl FromBytes for Key {
                 let (byte_code_addr, rem) = ByteCodeAddr::from_bytes(rem)?;
                 Ok((Key::ByteCode(byte_code_kind, byte_code_addr), rem))
             }
+            tag if tag == KeyTag::NamedKey as u8 => {
+                let (named_key_addr, rem) = NamedKeyAddr::from_bytes(remainder)?;
+                Ok((Key::NamedKey(named_key_addr), rem))
+            }
             _ => Err(Error::Formatting),
         }
     }
@@ -1246,6 +1331,7 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::Package(_) => unimplemented!(),
         Key::AddressableEntity(..) => unimplemented!(),
         Key::ByteCode(..) => unimplemented!(),
+        Key::NamedKey(_) => unimplemented!(),
     }
 }
 
@@ -1302,6 +1388,7 @@ mod serde_helpers {
         Package(&'a PackageAddr),
         AddressableEntity(&'a EntityAddr),
         ByteCode(&'a ByteCodeKind, &'a ByteCodeAddr),
+        NamedKey(&'a NamedKeyAddr),
     }
 
     #[derive(Deserialize)]
@@ -1326,6 +1413,7 @@ mod serde_helpers {
         Package(PackageAddr),
         AddressableEntity(EntityAddr),
         ByteCode(ByteCodeKind, ByteCodeAddr),
+        NamedKey(NamedKeyAddr),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -1354,6 +1442,7 @@ mod serde_helpers {
                 Key::ByteCode(byte_code_kind, byte_code_addr) => {
                     BinarySerHelper::ByteCode(byte_code_kind, byte_code_addr)
                 }
+                Key::NamedKey(named_key) => BinarySerHelper::NamedKey(named_key),
             }
         }
     }
@@ -1384,6 +1473,7 @@ mod serde_helpers {
                 BinaryDeserHelper::ByteCode(byte_kind, byte_code_addr) => {
                     Key::ByteCode(byte_kind, byte_code_addr)
                 }
+                BinaryDeserHelper::NamedKey(named_key_addr) => Key::NamedKey(named_key_addr),
             }
         }
     }
@@ -1967,9 +2057,15 @@ mod tests {
         round_trip(&Key::Dictionary(zeros));
         round_trip(&Key::Unbond(AccountHash::new(zeros)));
         round_trip(&Key::Package(zeros));
-        round_trip(&Key::AddressableEntity(EntityAddr::new_system_entity_addr(zeros)));
-        round_trip(&Key::AddressableEntity(EntityAddr::new_account_entity_addr(zeros)));
-        round_trip(&Key::AddressableEntity(EntityAddr::new_contract_entity_addr(zeros)));
+        round_trip(&Key::AddressableEntity(EntityAddr::new_system_entity_addr(
+            zeros,
+        )));
+        round_trip(&Key::AddressableEntity(
+            EntityAddr::new_account_entity_addr(zeros),
+        ));
+        round_trip(&Key::AddressableEntity(
+            EntityAddr::new_contract_entity_addr(zeros),
+        ));
         round_trip(&Key::ByteCode(ByteCodeKind::Empty, zeros));
         round_trip(&Key::ByteCode(ByteCodeKind::V1CasperWasm, zeros));
     }

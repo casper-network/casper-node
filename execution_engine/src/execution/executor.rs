@@ -2,15 +2,7 @@ use std::{cell::RefCell, collections::BTreeSet, convert::TryFrom, rc::Rc};
 
 use casper_storage::global_state::state::StateReader;
 
-use casper_types::{
-    account::AccountHash,
-    addressable_entity::{EntityKind, NamedKeys},
-    bytesrepr::FromBytes,
-    system::{auction, handle_payment, mint, AUCTION, HANDLE_PAYMENT, MINT},
-    AddressableEntity, AddressableEntityHash, ApiError, BlockTime, CLTyped, ContextAccessRights,
-    DeployHash, EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, Tagged,
-    URef, U512,
-};
+use casper_types::{account::AccountHash, addressable_entity::{EntityKind, NamedKeys}, bytesrepr::FromBytes, system::{auction, handle_payment, mint, AUCTION, HANDLE_PAYMENT, MINT}, AddressableEntity, AddressableEntityHash, ApiError, BlockTime, CLTyped, ContextAccessRights, DeployHash, EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, Tagged, URef, U512, EntityAddr};
 
 use crate::engine_state::TransferArgs;
 
@@ -143,7 +135,7 @@ impl Executor {
         direct_system_contract_call: DirectSystemContractCall,
         runtime_args: RuntimeArgs,
         entity: &AddressableEntity,
-        package_kind: EntityKind,
+        entity_kind: EntityKind,
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
@@ -209,17 +201,24 @@ impl Executor {
             Err(error) => return (None, ExecutionResult::precondition_failure(error.into())),
         };
 
-        let mut named_keys = contract.named_keys().clone();
-        let access_rights = contract.extract_access_rights(entity_hash);
-        let entity_address = Key::addressable_entity_key(package_kind.tag(), entity_hash);
 
+
+        let entity_addr = EntityAddr::new_with_tag(entity_kind, entity_hash.value());
+
+        let mut named_keys = match tracking_copy.borrow_mut().get_named_keys(entity_addr) {
+            Ok(named_key) => named_key,
+            Err(error) => return (None, ExecutionResult::precondition_failure(error.into()))
+        };
+
+        let access_rights = contract.extract_access_rights(entity_hash, &named_keys);
+        let entity_address = entity_addr.into();
         let runtime_context = self.create_runtime_context(
             &mut named_keys,
             entity,
             entity_address,
             authorization_keys,
             access_rights,
-            package_kind,
+            entity_kind,
             account_hash,
             address_generator,
             tracking_copy,

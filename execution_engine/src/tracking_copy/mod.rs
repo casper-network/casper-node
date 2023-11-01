@@ -23,6 +23,8 @@ use casper_types::{
     CLType, CLValue, CLValueError, Digest, Key, KeyTag, StoredValue, StoredValueTypeMismatch,
     Tagged, U512,
 };
+use casper_types::addressable_entity::NamedKeyAddr;
+use casper_types::bytesrepr::Error;
 
 pub use self::ext::TrackingCopyExt;
 use self::meter::{heap_meter::HeapSize, Meter};
@@ -527,12 +529,20 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                     );
                     return Ok(query.into_not_found_result(&msg_prefix));
                 }
-                StoredValue::AddressableEntity(entity) => {
+                StoredValue::AddressableEntity(_) => {
                     let name = query.next_name();
-                    if let Some(key) = entity.named_keys().get(name) {
-                        query.navigate(*key);
+
+                    if let Key::AddressableEntity(addr) = base_key {
+                        let named_key_addr = match NamedKeyAddr::new_from_string(addr, name.clone()) {
+                            Ok(named_key_addr) => Key::NamedKey(named_key_addr),
+                            Err(error) => {
+                                let msg_prefix = format!("{}", error);
+                                return Ok(query.into_not_found_result(&msg_prefix));
+                            }
+                        };
+                        query.navigate(named_key_addr);
                     } else {
-                        let msg_prefix = format!("Name {} not found in Contract", name);
+                        let msg_prefix = format!("Invalid base key");
                         return Ok(query.into_not_found_result(&msg_prefix));
                     }
                 }
@@ -691,7 +701,7 @@ pub fn validate_query_proof(
         let named_keys = match proof_value {
             StoredValue::Account(account) => account.named_keys(),
             StoredValue::Contract(contract) => contract.named_keys(),
-            StoredValue::AddressableEntity(entity) => entity.named_keys(),
+            // StoredValue::AddressableEntity(entity) => entity.named_keys(),
             StoredValue::CLValue(_) => {
                 proof_value = proof.value();
                 continue;

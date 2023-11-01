@@ -2,8 +2,11 @@ use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
-    account::AccountHash, system::mint, AccessRights, AddressableEntity, ApiError, CLType,
-    CLValueError, Key, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
+    account::AccountHash,
+    addressable_entity::{NamedKeyAddr, NamedKeys},
+    system::mint,
+    AccessRights, AddressableEntity, AddressableEntityHash, ApiError, CLType, CLValueError,
+    EntityAddr, Key, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
 use crate::{
@@ -152,6 +155,7 @@ impl TransferRuntimeArgsBuilder {
     fn resolve_source_uref<R>(
         &self,
         account: &AddressableEntity,
+        named_keys: NamedKeys,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<URef, Error>
     where
@@ -169,8 +173,7 @@ impl TransferRuntimeArgsBuilder {
                 }
 
                 let normalized_uref = Key::URef(uref).normalize();
-                let maybe_named_key = account
-                    .named_keys()
+                let maybe_named_key = named_keys
                     .keys()
                     .find(|&named_key| named_key.normalize() == normalized_uref);
 
@@ -317,6 +320,7 @@ impl TransferRuntimeArgsBuilder {
     pub fn build<R>(
         mut self,
         from: &AddressableEntity,
+        entity_named_keys: NamedKeys,
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<TransferArgs, Error>
@@ -340,7 +344,8 @@ impl TransferRuntimeArgsBuilder {
             }
         };
 
-        let source_uref = self.resolve_source_uref(from, Rc::clone(&tracking_copy))?;
+        let source_uref =
+            self.resolve_source_uref(from, entity_named_keys, Rc::clone(&tracking_copy))?;
 
         if source_uref.addr() == target_uref.addr() {
             return Err(Error::reverter(ApiError::InvalidPurse));
