@@ -124,17 +124,6 @@ impl PerformanceMeter {
 
         self.current_round_len
     }
-
-    /// Returns an instance of `Self` for the new era: resetting the counters where appropriate.
-    pub fn next_era(&self) -> Self {
-        Self {
-            our_vid: self.our_vid,
-            min_round_len: self.min_round_len,
-            max_round_len: self.max_round_len,
-            current_round_len: self.current_round_len,
-            last_switch_round_id: self.last_switch_round_id,
-        }
-    }
 }
 
 /// Returns the round index `i`, if `r_id` is the ID of the `i`-th round after the epoch.

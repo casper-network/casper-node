@@ -407,9 +407,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
     /// Returns an instance of `RoundSuccessMeter` for the new era: resetting the counters where
     /// appropriate.
     fn next_era_perf_meter(&self) -> Option<PerformanceMeter> {
-        self.performance_meter
-            .as_ref()
-            .map(|perf_meter| perf_meter.next_era())
+        self.performance_meter.clone()
     }
 
     /// Returns an iterator over all the values that are in parents of the given block.
