@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file.  The format
 * Add chainspec option `core.refund_handling` that specifies how payment refunds are handled.
 * Add chainspec option `core.fee_handling` that specifes how transaction fees are handled.
 * Add chainspec option `core.administrators` that, if set, contains list of administrator accounts. This option makes sense only for private chains.
+* Add support for a new FFI function `enable_contract_version` for enabling a specific version of a contract.
 
 ### Changed
 * Default value for `max_stack_height` is increased to 500.
