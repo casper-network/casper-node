@@ -4,7 +4,15 @@ use std::{
 };
 
 use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
-use casper_types::{account::AccountHash, addressable_entity::{EntityKindTag, NamedKeyAddr, NamedKeys}, bytesrepr, package::{EntityVersions, Groups, PackageStatus}, AccessRights, AddressableEntity, AddressableEntityHash, CLValue, EntityAddr, EntityKind, EntryPoints, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, StoredValue, StoredValueTypeMismatch, URef, KEY_HASH_LENGTH};
+use casper_types::{
+    account::AccountHash,
+    addressable_entity::{EntityKindTag, NamedKeyAddr, NamedKeys},
+    bytesrepr,
+    package::{EntityVersions, Groups, PackageStatus},
+    AccessRights, AddressableEntity, AddressableEntityHash, CLValue, EntityAddr, EntityKind,
+    EntryPoints, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, StoredValue,
+    StoredValueTypeMismatch, URef, KEY_HASH_LENGTH,
+};
 
 use crate::{
     engine_state::{ChecksumRegistry, SystemContractRegistry, ACCOUNT_BYTE_CODE_HASH},
@@ -81,7 +89,11 @@ pub trait TrackingCopyExt<R> {
     /// Gets the system checksum registry.
     fn get_checksum_registry(&mut self) -> Result<Option<ChecksumRegistry>, Self::Error>;
 
-    fn migrate_named_keys(&mut self, entity_addr: EntityAddr, named_keys: NamedKeys) -> Result<(), Self::Error>;
+    fn migrate_named_keys(
+        &mut self,
+        entity_addr: EntityAddr,
+        named_keys: NamedKeys,
+    ) -> Result<(), Self::Error>;
 }
 
 impl<R> TrackingCopyExt<R> for TrackingCopy<R>
@@ -132,7 +144,10 @@ where
 
                 let entry_points = EntryPoints::new();
 
-                self.migrate_named_keys(EntityAddr::Account(entity_hash.value()), account.named_keys().clone())?;
+                self.migrate_named_keys(
+                    EntityAddr::Account(entity_hash.value()),
+                    account.named_keys().clone(),
+                )?;
 
                 let entity = AddressableEntity::new(
                     package_hash,
@@ -291,9 +306,16 @@ where
         }
     }
 
-    fn migrate_named_keys(&mut self, entity_addr: EntityAddr, named_keys: NamedKeys) -> Result<(), Self::Error> {
+    fn migrate_named_keys(
+        &mut self,
+        entity_addr: EntityAddr,
+        named_keys: NamedKeys,
+    ) -> Result<(), Self::Error> {
         let base_named_key = NamedKeyAddr::new_named_key_base(entity_addr);
-        self.write(Key::NamedKey(base_named_key), StoredValue::CLValue(CLValue::unit()));
+        self.write(
+            Key::NamedKey(base_named_key),
+            StoredValue::CLValue(CLValue::unit()),
+        );
 
         for (name, key) in named_keys.iter() {
             let entry_key = {
@@ -301,8 +323,8 @@ where
                 Key::NamedKey(entry_addr)
             };
 
-            let cl_value = CLValue::from_t(*key)
-                .map_err(|cl_error| Self::Error::CLValue(cl_error.clone()))?;
+            let cl_value =
+                CLValue::from_t(*key).map_err(|cl_error| Self::Error::CLValue(cl_error.clone()))?;
 
             self.write(entry_key, StoredValue::CLValue(cl_value))
         }

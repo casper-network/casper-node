@@ -15,11 +15,20 @@ use std::{
 use tracing::error;
 
 use casper_storage::global_state::state::StateReader;
-use casper_types::{account::{Account, AccountHash}, addressable_entity::{
-    ActionType, AddKeyFailure, EntityKind, EntityKindTag, NamedKeys, RemoveKeyFailure,
-    SetThresholdFailure, UpdateKeyFailure, Weight,
-}, bytesrepr::ToBytes, execution::Effects, system::auction::EraInfo, AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue, ContextAccessRights, DeployHash, EntryPointType, Gas, GrantedAccess, Key, KeyTag, Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512, EntityAddr};
-use casper_types::addressable_entity::NamedKeyAddr;
+use casper_types::{
+    account::{Account, AccountHash},
+    addressable_entity::{
+        ActionType, AddKeyFailure, EntityKind, EntityKindTag, NamedKeyAddr, NamedKeys,
+        RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
+    },
+    bytesrepr::ToBytes,
+    execution::Effects,
+    system::auction::EraInfo,
+    AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
+    ContextAccessRights, DeployHash, EntityAddr, EntryPointType, Gas, GrantedAccess, Key, KeyTag,
+    Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
+    TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
+};
 
 use crate::{
     engine_state::{EngineConfig, SystemContractRegistry},
@@ -214,15 +223,11 @@ where
     }
 
     /// Helper function to avoid duplication in `remove_uref`.
-    fn remove_key_from_entity(
-        &mut self,
-        entity_key: Key,
-        name: &str,
-    ) -> Result<(), Error> {
-        let entity_addr = if let Key::AddressableEntity(addr) = entity_key  {
+    fn remove_key_from_entity(&mut self, entity_key: Key, name: &str) -> Result<(), Error> {
+        let entity_addr = if let Key::AddressableEntity(addr) = entity_key {
             addr
         } else {
-            return Err(Error::UnexpectedKeyVariant(entity_key))
+            return Err(Error::UnexpectedKeyVariant(entity_key));
         };
 
         let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, name.to_string())?;
@@ -367,7 +372,7 @@ where
         let entity_addr = if let Key::AddressableEntity(entity_addr) = self.get_entity_key() {
             entity_addr
         } else {
-            return Err(Error::InvalidContext)
+            return Err(Error::InvalidContext);
         };
         let named_key_entry = Key::NamedKey(NamedKeyAddr::new_from_string(entity_addr, name)?);
         self.metered_write_gs_unsafe(named_key_entry, named_key_value)
@@ -377,10 +382,13 @@ where
         let entity_addr = if let Key::AddressableEntity(entity_addr) = self.get_entity_key() {
             entity_addr
         } else {
-            return Err(Error::InvalidContext)
+            return Err(Error::InvalidContext);
         };
 
-        self.metered_write_gs_unsafe(Key::NamedKey(NamedKeyAddr::new_named_key_base(entity_addr)), StoredValue::CLValue(CLValue::unit()))?;
+        self.metered_write_gs_unsafe(
+            Key::NamedKey(NamedKeyAddr::new_named_key_base(entity_addr)),
+            StoredValue::CLValue(CLValue::unit()),
+        )?;
 
         for (name, key) in named_keys.iter() {
             self.write_named_key(name.clone(), *key)?
@@ -389,20 +397,18 @@ where
         Ok(())
     }
 
-    pub(crate) fn get_named_keys(
-        &mut self,
-        entity_key: Key,
-    ) -> Result<NamedKeys, Error> {
-        let entity_addr= if let Key::AddressableEntity(entity_addr) = entity_key {
+    pub(crate) fn get_named_keys(&mut self, entity_key: Key) -> Result<NamedKeys, Error> {
+        let entity_addr = if let Key::AddressableEntity(entity_addr) = entity_key {
             entity_addr
         } else {
             return Err(Error::UnexpectedKeyVariant(entity_key));
         };
 
-        self.tracking_copy.borrow_mut().get_named_keys(entity_addr)
+        self.tracking_copy
+            .borrow_mut()
+            .get_named_keys(entity_addr)
             .map_err(Into::into)
     }
-
 
     #[cfg(test)]
     pub(crate) fn get_entity(&self) -> AddressableEntity {
@@ -1214,8 +1220,6 @@ where
             .map_err(Into::into)
     }
 
-
-
     /// Gets a dictionary item key from a dictionary referenced by a `uref`.
     pub(crate) fn dictionary_get(
         &mut self,
@@ -1285,7 +1289,6 @@ where
         self.metered_write_gs_unsafe(dictionary_key, wrapped_cl_value)?;
         Ok(())
     }
-
 
     /// Gets system contract by name.
     pub(crate) fn get_system_contract(&self, name: &str) -> Result<AddressableEntityHash, Error> {

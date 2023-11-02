@@ -1,9 +1,6 @@
 use rand::Rng;
 
-use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT,
-};
+use casper_engine_test_support::{DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, EntityWithNamedKeys};
 use casper_execution_engine::engine_state::ExecuteRequest;
 use casper_types::{
     account::AccountHash, addressable_entity::EntityKindTag, bytesrepr::FromBytes, runtime_args,
@@ -388,7 +385,8 @@ pub fn get_faucet_entity_hash(
     installer_account: AccountHash,
 ) -> AddressableEntityHash {
     builder
-        .get_expected_addressable_entity_by_account_hash(installer_account)
+        .get_entity_with_named_keys_by_account_hash(installer_account)
+        .unwrap()
         .named_keys()
         .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
         .cloned()
@@ -400,9 +398,9 @@ pub fn get_faucet_entity_hash(
 pub fn get_faucet_entity(
     builder: &LmdbWasmTestBuilder,
     installer_account: AccountHash,
-) -> AddressableEntity {
+) -> EntityWithNamedKeys {
     builder
-        .get_addressable_entity(get_faucet_entity_hash(builder, installer_account))
+        .get_entity_with_named_keys_by_entity_hash(get_faucet_entity_hash(builder, installer_account))
         .expect("failed to find faucet contract")
 }
 

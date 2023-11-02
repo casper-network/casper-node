@@ -1722,7 +1722,6 @@ where
             }
         };
 
-
         let handle_payment_addr =
             EntityAddr::new_system_entity_addr(handle_payment_contract_hash.value());
 
@@ -1736,12 +1735,11 @@ where
 
         // Get payment purse Key from handle payment contract
         // payment_code_spec_6: system contract validity
-        let payment_purse_key = match handle_payment_named_keys
-            .get(handle_payment::PAYMENT_PURSE_KEY)
-        {
-            Some(key) => *key,
-            None => return Ok(ExecutionResult::precondition_failure(Error::Deploy)),
-        };
+        let payment_purse_key =
+            match handle_payment_named_keys.get(handle_payment::PAYMENT_PURSE_KEY) {
+                Some(key) => *key,
+                None => return Ok(ExecutionResult::precondition_failure(Error::Deploy)),
+            };
 
         let payment_purse_uref = payment_purse_key
             .into_uref()
@@ -1793,7 +1791,8 @@ where
             );
 
             // payment_code_spec_2: execute payment code
-            let payment_access_rights = entity.extract_access_rights(entity_hash, &entity_named_keys);
+            let payment_access_rights =
+                entity.extract_access_rights(entity_hash, &entity_named_keys);
 
             let mut payment_named_keys = entity_named_keys.clone();
 
@@ -1912,12 +1911,11 @@ where
 
         // Get payment purse Key from handle payment contract
         // payment_code_spec_6: system contract validity
-        let payment_purse_key: Key = match handle_payment_named_keys
-            .get(handle_payment::PAYMENT_PURSE_KEY)
-        {
-            Some(key) => *key,
-            None => return Ok(ExecutionResult::precondition_failure(Error::Deploy)),
-        };
+        let payment_purse_key: Key =
+            match handle_payment_named_keys.get(handle_payment::PAYMENT_PURSE_KEY) {
+                Some(key) => *key,
+                None => return Ok(ExecutionResult::precondition_failure(Error::Deploy)),
+            };
         let purse_balance_key = match tracking_copy
             .borrow_mut()
             .get_purse_balance_key(payment_purse_key)
@@ -2137,9 +2135,10 @@ where
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
             };
 
-            let handle_payment_addr = EntityAddr::new_system_entity_addr(handle_payment_contract_hash.value());
+            let handle_payment_addr =
+                EntityAddr::new_system_entity_addr(handle_payment_contract_hash.value());
 
-            let handle_payment_named_keys =  match finalization_tc
+            let handle_payment_named_keys = match finalization_tc
                 .borrow_mut()
                 .get_named_keys(handle_payment_addr)
             {
@@ -2147,9 +2146,8 @@ where
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
             };
 
-
-            let mut handle_payment_access_rights =
-                handle_payment_contract.extract_access_rights(*handle_payment_contract_hash, &handle_payment_named_keys);
+            let mut handle_payment_access_rights = handle_payment_contract
+                .extract_access_rights(*handle_payment_contract_hash, &handle_payment_named_keys);
             handle_payment_access_rights.extend(&[payment_purse_uref, rewards_target_purse]);
 
             let gas_limit = Gas::new(U512::MAX);
@@ -2229,18 +2227,17 @@ where
                     .borrow_mut()
                     .get_named_keys(EntityAddr::System(handle_payment_hash.value()))?;
 
-                let accumulation_purse_uref = match handle_payment_named_keys
-                    .get(ACCUMULATION_PURSE_KEY)
-                {
-                    Some(Key::URef(accumulation_purse)) => accumulation_purse,
-                    Some(_) | None => {
-                        error!(
+                let accumulation_purse_uref =
+                    match handle_payment_named_keys.get(ACCUMULATION_PURSE_KEY) {
+                        Some(Key::URef(accumulation_purse)) => accumulation_purse,
+                        Some(_) | None => {
+                            error!(
                             "fee handling is configured to accumulate but handle payment does not \
                             have accumulation purse"
                         );
-                        return Err(Error::FailedToRetrieveAccumulationPurse);
-                    }
-                };
+                            return Err(Error::FailedToRetrieveAccumulationPurse);
+                        }
+                    };
 
                 Ok(*accumulation_purse_uref)
             }

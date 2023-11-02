@@ -17,14 +17,12 @@ use thiserror::Error;
 
 use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
 use casper_types::{
-    addressable_entity::NamedKeys,
-    bytesrepr::{self},
+    addressable_entity::{NamedKeyAddr, NamedKeys},
+    bytesrepr::{self, Error},
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
     CLType, CLValue, CLValueError, Digest, Key, KeyTag, StoredValue, StoredValueTypeMismatch,
     Tagged, U512,
 };
-use casper_types::addressable_entity::NamedKeyAddr;
-use casper_types::bytesrepr::Error;
 
 pub use self::ext::TrackingCopyExt;
 use self::meter::{heap_meter::HeapSize, Meter};
@@ -533,7 +531,8 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                     let name = query.next_name();
 
                     if let Key::AddressableEntity(addr) = base_key {
-                        let named_key_addr = match NamedKeyAddr::new_from_string(addr, name.clone()) {
+                        let named_key_addr = match NamedKeyAddr::new_from_string(addr, name.clone())
+                        {
                             Ok(named_key_addr) => Key::NamedKey(named_key_addr),
                             Err(error) => {
                                 let msg_prefix = format!("{}", error);

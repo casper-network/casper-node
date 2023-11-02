@@ -36,7 +36,7 @@ fn default_genesis_config_should_not_have_rewards_purse() {
 
     let handle_payment = builder.get_handle_payment_contract_hash();
     let handle_payment_contract = builder
-        .get_addressable_entity(handle_payment)
+        .get_entity_with_named_keys_by_entity_hash(handle_payment)
         .expect("should have handle payment contract");
 
     assert!(
@@ -55,7 +55,7 @@ fn should_finalize_and_accumulate_rewards_purse() {
 
     let handle_payment = builder.get_handle_payment_contract_hash();
     let handle_payment_1 = builder
-        .get_addressable_entity(handle_payment)
+        .get_entity_with_named_keys_by_entity_hash(handle_payment)
         .expect("should have handle payment contract");
 
     let rewards_purse_key = handle_payment_1
@@ -74,7 +74,7 @@ fn should_finalize_and_accumulate_rewards_purse() {
 
     let exec_request_1_proposer = exec_request_1.proposer.clone();
     let proposer_account_1 = builder
-        .get_entity_by_account_hash(exec_request_1_proposer.to_account_hash())
+        .get_entity_with_named_keys_by_account_hash(exec_request_1_proposer.to_account_hash())
         .expect("should have proposer account");
     builder.exec(exec_request_1).expect_success().commit();
     assert_eq!(
@@ -83,7 +83,7 @@ fn should_finalize_and_accumulate_rewards_purse() {
     );
 
     let handle_payment_2 = builder
-        .get_addressable_entity(handle_payment)
+        .get_entity_with_named_keys_by_entity_hash(handle_payment)
         .expect("should have handle payment contract");
 
     assert_eq!(
@@ -113,7 +113,7 @@ fn should_finalize_and_accumulate_rewards_purse() {
     );
 
     let handle_payment_3 = builder
-        .get_addressable_entity(handle_payment)
+        .get_entity_with_named_keys_by_entity_hash(handle_payment)
         .expect("should have handle payment contract");
 
     assert_eq!(
@@ -136,7 +136,7 @@ fn should_accumulate_deploy_fees() {
     // Check handle payments has rewards purse
     let handle_payment_hash = builder.get_handle_payment_contract_hash();
     let handle_payment_contract = builder
-        .get_addressable_entity(handle_payment_hash)
+        .get_entity_with_named_keys_by_entity_hash(handle_payment_hash)
         .expect("should have handle payment contract");
 
     let rewards_purse = handle_payment_contract
@@ -162,7 +162,7 @@ fn should_accumulate_deploy_fees() {
     builder.exec(exec_request).expect_success().commit();
 
     let handle_payment_after = builder
-        .get_addressable_entity(handle_payment_hash)
+        .get_entity_with_named_keys_by_entity_hash(handle_payment_hash)
         .expect("should have handle payment contract");
 
     assert_eq!(
@@ -205,7 +205,7 @@ fn should_distribute_accumulated_fees_to_admins() {
 
     let handle_payment_hash = builder.get_handle_payment_contract_hash();
     let handle_payment = builder
-        .get_addressable_entity(handle_payment_hash)
+        .get_entity_with_named_keys_by_entity_hash(handle_payment_hash)
         .expect("should have handle payment contract");
 
     let accumulation_purse = handle_payment
@@ -315,7 +315,7 @@ fn should_accumulate_fees_after_upgrade() {
     // Check handle payments has rewards purse
     let handle_payment_hash = builder.get_handle_payment_contract_hash();
     let handle_payment_contract = builder
-        .get_addressable_entity(handle_payment_hash)
+        .get_entity_with_named_keys_by_entity_hash(handle_payment_hash)
         .expect("should have handle payment contract");
     let rewards_purse = handle_payment_contract
         .named_keys()
@@ -338,7 +338,7 @@ fn should_accumulate_fees_after_upgrade() {
     builder.exec(exec_request).expect_success().commit();
 
     let handle_payment_after = builder
-        .get_addressable_entity(handle_payment_hash)
+        .get_entity_with_named_keys_by_entity_hash(handle_payment_hash)
         .expect("should have handle payment contract");
 
     assert_eq!(

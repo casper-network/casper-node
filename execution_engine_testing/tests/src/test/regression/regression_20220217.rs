@@ -115,7 +115,7 @@ fn regression_20220217_mint_by_hash_transfer_from_other_purse() {
     let mut builder = setup();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let purse_1 = account
         .named_keys()
@@ -155,7 +155,7 @@ fn regression_20220217_mint_by_hash_transfer_from_someones_purse() {
     let mut builder = setup();
 
     let account_1 = builder
-        .get_entity_by_account_hash(ACCOUNT_1_ADDR)
+        .get_entity_with_named_keys_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
     let account_1_purse = account_1
         .named_keys()
@@ -165,7 +165,7 @@ fn regression_20220217_mint_by_hash_transfer_from_someones_purse() {
         .expect("should have account main purse");
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let purse_1 = default_account
@@ -209,7 +209,7 @@ fn regression_20220217_should_not_transfer_funds_on_unrelated_purses() {
     let mut builder = setup();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let purse_1 = account
         .named_keys()

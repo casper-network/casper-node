@@ -79,8 +79,8 @@ pub(crate) fn generate_admins(matches: &ArgMatches<'_>) {
     let total_supply_key = {
         let mint_contract_hash = test_builder.get_mint_contract_hash();
 
-        let mint_named_keys = test_builder
-            .get_named_keys_by_contract_entity_hash(mint_contract_hash);
+        let mint_named_keys =
+            test_builder.get_named_keys_by_contract_entity_hash(mint_contract_hash);
 
         mint_named_keys
             .get(mint::TOTAL_SUPPLY_KEY)

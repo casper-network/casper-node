@@ -54,7 +54,7 @@ fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
         .expect_success();
 
     let contract = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     assert!(contract
@@ -104,18 +104,26 @@ fn query_dictionary_item(
                 return Err("Provided base key is not an account".to_string());
             }
         }
-        Key::AddressableEntity(..) => {
+        Key::AddressableEntity(entity_addr) => {
             if let Some(name) = dictionary_name {
+                let entity_hash = AddressableEntityHash::new(entity_addr.value());
+
                 let stored_value = builder.query(None, key, &[])?;
 
-                let named_keys = match &stored_value {
-                    StoredValue::AddressableEntity(contract) => contract.named_keys(),
+                match &stored_value {
+                    StoredValue::AddressableEntity(_) => {},
                     _ => {
                         return Err(
                             "Provided base key is nether an account or a contract".to_string()
                         )
                     }
                 };
+
+                let named_keys = match builder.get_entity_with_named_keys_by_entity_hash(entity_hash) {
+                    Some(entity_with_keys) => entity_with_keys.named_keys().clone(),
+                    None => return Err("Could not find entity with named keys".to_string())
+                };
+
 
                 let dictionary_uref = named_keys
                     .get(&name)
@@ -155,7 +163,7 @@ fn should_modify_with_owned_access_rights() {
     .build();
 
     let contract = builder
-        .get_addressable_entity(contract_hash)
+        .get_entity_with_named_keys_by_entity_hash(contract_hash)
         .expect("should have account");
 
     let stored_dictionary_key = contract
@@ -318,7 +326,7 @@ fn should_write_with_write_access_rights() {
     builder.exec(call_request).commit();
 
     let contract = builder
-        .get_addressable_entity(contract_hash)
+        .get_entity_with_named_keys_by_entity_hash(contract_hash)
         .expect("should have account");
 
     let stored_dictionary_key = contract
@@ -343,7 +351,7 @@ fn should_not_write_with_forged_uref() {
     let (mut builder, contract_hash) = setup();
 
     let contract = builder
-        .get_addressable_entity(contract_hash)
+        .get_entity_with_named_keys_by_entity_hash(contract_hash)
         .expect("should have account");
 
     let stored_dictionary_key = contract
@@ -386,7 +394,7 @@ fn should_not_write_with_forged_uref() {
 fn should_fail_put_with_invalid_dictionary_item_key() {
     let (mut builder, contract_hash) = setup();
     let contract = builder
-        .get_addressable_entity(contract_hash)
+        .get_entity_with_named_keys_by_entity_hash(contract_hash)
         .expect("should have account");
 
     let _stored_dictionary_key = contract
@@ -423,7 +431,7 @@ fn should_fail_put_with_invalid_dictionary_item_key() {
 fn should_fail_get_with_invalid_dictionary_item_key() {
     let (mut builder, contract_hash) = setup();
     let contract = builder
-        .get_addressable_entity(contract_hash)
+        .get_entity_with_named_keys_by_entity_hash(contract_hash)
         .expect("should have account");
 
     let _stored_dictionary_key = contract
@@ -572,7 +580,7 @@ fn should_query_dictionary_items_with_test_builder() {
     builder.exec(exec_request).commit().expect_success();
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let entity_hash = default_account

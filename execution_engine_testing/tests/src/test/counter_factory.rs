@@ -153,7 +153,7 @@ fn should_install_and_use_factory_pattern() {
     builder.exec(exec_request_2).commit().expect_success();
 
     let counter_factory_contract = builder
-        .get_addressable_entity(contract_hash)
+        .get_entity_with_named_keys_by_entity_hash(contract_hash)
         .expect("should have contract hash");
 
     let new_counter_1 = counter_factory_contract
@@ -236,7 +236,7 @@ fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
     builder.exec(exec_request).commit().expect_success();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have entity for account");
 
     let contract_hash_key = account

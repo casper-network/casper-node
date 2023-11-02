@@ -170,7 +170,6 @@ impl<T: StateReader> StateTracker<T> {
         let addressable_entity = AddressableEntity::new(
             package_hash,
             contract_wasm_hash,
-            NamedKeys::default(),
             EntryPoints::new(),
             self.protocol_version,
             main_purse,

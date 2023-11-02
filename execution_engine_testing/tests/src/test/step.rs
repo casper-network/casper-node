@@ -39,7 +39,7 @@ fn get_named_key(
     name: &str,
 ) -> Key {
     *builder
-        .get_addressable_entity(entity_hash)
+        .get_entity_with_named_keys_by_entity_hash(entity_hash)
         .expect("should have contract")
         .named_keys()
         .get(name)

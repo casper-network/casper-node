@@ -1,3 +1,4 @@
+use env_logger::builder;
 use std::{
     collections::BTreeMap,
     convert::{TryFrom, TryInto},
@@ -8,7 +9,6 @@ use std::{
     rc::Rc,
     sync::Arc,
 };
-use env_logger::builder;
 
 use filesize::PathExt;
 use lmdb::DatabaseFlags;
@@ -41,17 +41,29 @@ use casper_storage::{
         trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_types::{account::AccountHash, addressable_entity::EntityKindTag, bytesrepr::{self, FromBytes}, contracts::ContractHash, execution::Effects, runtime_args, system::{
-    auction::{
-        BidKind, EraValidators, UnbondingPurse, UnbondingPurses, ValidatorWeights,
-        WithdrawPurses, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
-        AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION, UNBONDING_DELAY_KEY,
+use casper_types::{
+    account::AccountHash,
+    addressable_entity::{EntityKindTag, NamedKeyAddr, NamedKeys},
+    bytesrepr::{self, FromBytes},
+    contracts::ContractHash,
+    execution::Effects,
+    runtime_args,
+    system::{
+        auction::{
+            BidKind, EraValidators, UnbondingPurse, UnbondingPurses, ValidatorWeights,
+            WithdrawPurses, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
+            AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION, UNBONDING_DELAY_KEY,
+        },
+        mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
+        AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
-    AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
-}, AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, ByteCodeHash, ByteCodeKind, CLTyped, CLValue, Contract, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts, Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolVersion, PublicKey, RefundHandling, StoredValue, Transfer, TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512, EntityAddr};
+    AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, ByteCodeHash, ByteCodeKind,
+    CLTyped, CLValue, Contract, DeployHash, DeployInfo, Digest, EntityAddr, EraId, Gas,
+    HandlePaymentCosts, Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolVersion,
+    PublicKey, RefundHandling, StoredValue, Transfer, TransferAddr, URef, UpgradeConfig,
+    OS_PAGE_SIZE, U512,
+};
 use tempfile::TempDir;
-use casper_types::addressable_entity::{NamedKeyAddr, NamedKeys};
 
 use crate::{
     chainspec_config::{ChainspecConfig, PRODUCTION_PATH},
@@ -69,6 +81,37 @@ pub(crate) const DEFAULT_MAX_READERS: u32 = 512;
 
 /// This is appended to the data dir path provided to the `LmdbWasmTestBuilder`".
 const GLOBAL_STATE_DIR: &str = "global_state";
+
+/// A wrapper structure that groups an entity alongside its namedkeys.
+pub struct EntityWithNamedKeys {
+    entity: AddressableEntity,
+    named_keys: NamedKeys,
+}
+
+impl EntityWithNamedKeys {
+    /// Creates a new instance of an Entity with its NamedKeys.
+    pub fn new(entity: AddressableEntity, named_keys: NamedKeys) -> Self {
+        Self {
+            entity,
+            named_keys
+        }
+    }
+
+    /// Returns a reference to the Entity.
+    pub fn entity(&self) -> AddressableEntity {
+        self.entity.clone()
+    }
+
+    pub fn main_purse(&self) -> URef {
+        self.entity.main_purse().clone()
+    }
+
+    /// Returns a reference to the NamedKeys.
+    pub fn named_keys(&self) -> &NamedKeys {
+        &self.named_keys
+    }
+}
+
 
 /// Wasm test builder where state is held in LMDB.
 pub type LmdbWasmTestBuilder = WasmTestBuilder<DataAccessLayer<LmdbGlobalState>>;
@@ -694,7 +737,8 @@ where
             .into_addressable_entity()
             .expect("must convert to mint contract");
 
-        let mint_named_keys = self.get_named_keys_by_contract_entity_hash(self.get_mint_contract_hash());
+        let mint_named_keys =
+            self.get_named_keys_by_contract_entity_hash(self.get_mint_contract_hash());
 
         let total_supply_uref = *mint_named_keys
             .get(TOTAL_SUPPLY_KEY)
@@ -1046,16 +1090,21 @@ where
     }
 
     /// Returns the "handle payment" contract, panics if it can't be found.
-    pub fn get_handle_payment_contract(&self) -> AddressableEntity {
+    pub fn get_handle_payment_contract(&self) -> EntityWithNamedKeys {
+        let hash = self.get_system_entity_hash(HANDLE_PAYMENT)
+            .cloned()
+            .expect("should have handle payment contract uref");
+
         let handle_payment_contract = Key::addressable_entity_key(
             EntityKindTag::System,
-            self.get_system_entity_hash(HANDLE_PAYMENT)
-                .cloned()
-                .expect("should have handle payment contract uref"),
+            hash
         );
-        self.query(None, handle_payment_contract, &[])
+        let handle_payment = self.query(None, handle_payment_contract, &[])
             .and_then(|v| v.try_into().map_err(|error| format!("{:?}", error)))
-            .expect("should find handle payment URef")
+            .expect("should find handle payment URef");
+
+        let named_keys = self.get_named_keys_by_contract_entity_hash(hash);
+        EntityWithNamedKeys::new(handle_payment, named_keys)
     }
 
     /// Returns the balance of a purse, panics if the balance can't be parsed into a `U512`.
@@ -1102,6 +1151,31 @@ where
                 entity_key.into_entity_hash()
             }
             Some(_) | None => None,
+        }
+    }
+
+    pub fn get_entity_with_named_keys_by_account_hash(
+        &self,
+        account_hash: AccountHash,
+    ) -> Option<EntityWithNamedKeys> {
+        if let Some(entity) = self.get_entity_by_account_hash(account_hash) {
+            let entity_named_keys = self.get_named_keys_by_account_hash(account_hash);
+            return Some(EntityWithNamedKeys::new(entity, entity_named_keys))
+        };
+
+        None
+    }
+
+    pub fn get_entity_with_named_keys_by_entity_hash(
+        &self,
+        entity_hash: AddressableEntityHash,
+    ) -> Option<EntityWithNamedKeys> {
+        match self.get_addressable_entity(entity_hash) {
+            Some(entity) =>  {
+                let named_keys = self.get_named_keys_by_contract_entity_hash(entity_hash);
+                Some(EntityWithNamedKeys::new(entity, named_keys))
+            },
+            None => None
         }
     }
 
@@ -1170,8 +1244,6 @@ where
             None
         }
     }
-
-
 
     /// Queries for byte code by `ByteCodeAddr` and returns an `Option<ByteCode>`.
     pub fn get_byte_code(&self, byte_code_hash: ByteCodeHash) -> Option<ByteCode> {
@@ -1299,13 +1371,17 @@ where
     }
 
     pub fn get_named_keys_by_account_hash(&self, account_hash: AccountHash) -> NamedKeys {
-        let entity_hash = self.get_entity_hash_by_account_hash(account_hash)
+        let entity_hash = self
+            .get_entity_hash_by_account_hash(account_hash)
             .expect("must have entity hash");
         let entity_addr = EntityAddr::new_account_entity_addr(entity_hash.value());
         self.get_named_keys(entity_addr)
     }
 
-    pub fn get_named_keys_by_contract_entity_hash(&self, contract_hash: AddressableEntityHash) -> NamedKeys {
+    pub fn get_named_keys_by_contract_entity_hash(
+        &self,
+        contract_hash: AddressableEntityHash,
+    ) -> NamedKeys {
         let entity_addr = EntityAddr::new_contract_entity_addr(contract_hash.value());
         self.get_named_keys(entity_addr)
     }
@@ -1319,37 +1395,33 @@ where
             .unwrap()
             .unwrap();
 
-
         let named_key_addr = NamedKeyAddr::Base(entity_addr);
 
-        let prefix = named_key_addr.named_keys_prefix()
-            .expect("must get prefix");
+        let prefix = named_key_addr.named_keys_prefix().expect("must get prefix");
 
         let reader = tracking_copy.reader();
 
-        let entries = reader
-            .keys_with_prefix(&prefix)
-            .unwrap_or_default();
+        let entries = reader.keys_with_prefix(&prefix).unwrap_or_default();
 
         let mut named_keys = NamedKeys::new();
 
         for entry in entries.iter() {
             let read_result = reader.read(entry);
             if let Ok(Some(StoredValue::CLValue(cl_value))) = read_result {
-                let key = CLValue::into_t::<Key>(cl_value)
-                    .expect("must get key");
+                let key = CLValue::into_t::<Key>(cl_value).expect("must get key");
 
-                let name = entry.into_named_key_addr().unwrap()
-                    .named_string().expect("must get string");
+                let name = entry
+                    .into_named_key_addr()
+                    .unwrap()
+                    .named_string()
+                    .expect("must get string");
 
                 named_keys.insert(name, key);
             }
         }
 
         named_keys
-
     }
-
 
     /// Gets [`UnbondingPurses`].
     pub fn get_unbonds(&mut self) -> UnbondingPurses {
@@ -1436,12 +1508,9 @@ where
     where
         T: FromBytes + CLTyped,
     {
-
         let named_keys = self.get_named_keys_by_contract_entity_hash(entity_hash);
 
-        let key = named_keys
-            .get(name)
-            .expect("should have named key");
+        let key = named_keys.get(name).expect("should have named key");
         let stored_value = self.query(None, *key, &[]).expect("should query");
         let cl_value = stored_value.into_cl_value().expect("should be cl value");
         let result: T = cl_value.into_t().expect("should convert");

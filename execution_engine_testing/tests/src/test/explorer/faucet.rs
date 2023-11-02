@@ -54,7 +54,8 @@ fn should_install_faucet_contract() {
         .commit();
 
     let installer_named_keys = builder
-        .get_expected_addressable_entity_by_account_hash(INSTALLER_ACCOUNT)
+        .get_entity_with_named_keys_by_account_hash(INSTALLER_ACCOUNT)
+        .expect("must have entity")
         .named_keys()
         .clone();
 
@@ -744,7 +745,8 @@ fn should_allow_funding_by_an_authorized_account() {
         .commit();
 
     let installer_named_keys = builder
-        .get_expected_addressable_entity_by_account_hash(installer_account)
+        .get_entity_with_named_keys_by_account_hash(installer_account)
+        .expect("must have entity")
         .named_keys()
         .clone();
 

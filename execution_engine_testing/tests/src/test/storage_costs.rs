@@ -231,7 +231,7 @@ fn should_verify_isolated_auction_storage_is_free() {
     builder.exec(exec_request).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let bond_amount = U512::from(BOND_AMOUNT);
@@ -299,7 +299,7 @@ fn should_measure_gas_cost_for_storage_usage_write() {
     assert!(!builder.last_exec_gas_cost().value().is_zero());
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let contract_hash: AddressableEntityHash = account
@@ -410,7 +410,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
     builder.exec(install_exec_request).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let contract_hash: AddressableEntityHash = account
@@ -521,7 +521,7 @@ fn should_measure_gas_cost_for_storage_usage_add() {
     // let mut builder_a = builder.clone();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let contract_hash: AddressableEntityHash = account
@@ -633,10 +633,10 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
 
     builder.exec(install_exec_request).expect_success().commit();
 
-    // let mut builder_a = builder.clone();
+
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let contract_hash: AddressableEntityHash = account
@@ -745,7 +745,7 @@ fn should_verify_new_uref_is_charging_for_storage() {
     builder.exec(install_exec_request).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let balance_before = builder.get_purse_balance(account.main_purse());
@@ -789,7 +789,7 @@ fn should_verify_put_key_is_charging_for_storage() {
     builder.exec(install_exec_request).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let balance_before = builder.get_purse_balance(account.main_purse());
@@ -833,7 +833,7 @@ fn should_verify_remove_key_is_charging_for_storage() {
     builder.exec(install_exec_request).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let balance_before = builder.get_purse_balance(account.main_purse());
@@ -877,7 +877,7 @@ fn should_verify_create_contract_at_hash_is_charging_for_storage() {
     builder.exec(install_exec_request).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let balance_before = builder.get_purse_balance(account.main_purse());
@@ -921,7 +921,7 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
     builder.exec(install_exec_request).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let balance_before = builder.get_purse_balance(account.main_purse());
@@ -999,7 +999,7 @@ fn should_verify_subcall_new_uref_is_charging_for_storage() {
     builder.exec(install_exec_request).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let balance_before = builder.get_purse_balance(account.main_purse());

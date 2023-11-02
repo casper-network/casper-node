@@ -525,7 +525,11 @@ where
         let mint_hash = self.context.get_system_contract(MINT)?;
         let mint_addr = EntityAddr::new_system_entity_addr(mint_hash.value());
 
-        let mint_named_keys = self.context.state().borrow_mut().get_named_keys(mint_addr)?;
+        let mint_named_keys = self
+            .context
+            .state()
+            .borrow_mut()
+            .get_named_keys(mint_addr)?;
 
         let mut named_keys = mint_named_keys.clone();
 
@@ -660,9 +664,11 @@ where
             .borrow_mut()
             .get_contract(handle_payment_hash)?;
 
-        let handle_payment_named_keys = self.context.state().borrow_mut().get_named_keys(
-            EntityAddr::System(handle_payment_hash.value())
-        )?;
+        let handle_payment_named_keys = self
+            .context
+            .state()
+            .borrow_mut()
+            .get_named_keys(EntityAddr::System(handle_payment_hash.value()))?;
 
         let mut named_keys = handle_payment_named_keys.clone();
 
@@ -1324,7 +1330,8 @@ where
 
         let entity_addr = EntityAddr::new_with_tag(entity.entity_kind(), entity_hash.value());
 
-        let entity_named_keys = self.context
+        let entity_named_keys = self
+            .context
             .state()
             .borrow_mut()
             .get_named_keys(entity_addr)?;
@@ -1868,7 +1875,6 @@ where
             let associated_keys = previous_entity.associated_keys().clone();
 
             let previous_named_keys = self.context.get_named_keys(previous_entity_key)?;
-
 
             return Ok((
                 main_purse,
@@ -3289,7 +3295,8 @@ where
                     AssociatedKeys::default()
                 };
 
-                self.context.write_named_keys(contract.named_keys().clone())?;
+                self.context
+                    .write_named_keys(contract.named_keys().clone())?;
 
                 let updated_entity = AddressableEntity::new(
                     PackageHash::new(contract.contract_package_hash().value()),

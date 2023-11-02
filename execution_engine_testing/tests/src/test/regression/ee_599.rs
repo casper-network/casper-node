@@ -57,7 +57,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_purse_to_purse() {
         .expect("should have victim account");
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
     let transfer_funds = default_account
         .named_keys()
@@ -114,7 +114,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_from_purse_to_account() {
         .expect("should have victim account");
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let default_account_balance = builder.get_purse_balance(default_account.main_purse());
@@ -182,7 +182,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_to_account() {
         .expect("should have victim account");
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let default_account_balance = builder.get_purse_balance(default_account.main_purse());
@@ -247,11 +247,11 @@ fn should_not_be_able_to_get_main_purse_in_invalid_builder() {
     let mut builder = setup();
 
     let victim_account = builder
-        .get_entity_by_account_hash(VICTIM_ADDR)
+        .get_entity_with_named_keys_by_account_hash(VICTIM_ADDR)
         .expect("should have victim account");
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let transfer_funds = default_account

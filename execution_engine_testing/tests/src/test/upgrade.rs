@@ -84,7 +84,7 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
     }
 
     let account_1 = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
     let entity_hash = account_1
@@ -95,7 +95,7 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
         .unwrap();
 
     let entity = builder
-        .get_addressable_entity(entity_hash)
+        .get_entity_with_named_keys_by_entity_hash(entity_hash)
         .expect("must have entity");
 
     assert!(
@@ -138,7 +138,7 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
     }
 
     let account_1 = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
     let entity_hash = account_1
@@ -149,7 +149,7 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
         .unwrap();
 
     let entity = builder
-        .get_addressable_entity(entity_hash)
+        .get_entity_with_named_keys_by_entity_hash(entity_hash)
         .expect("must have entity");
 
     assert!(
@@ -182,7 +182,7 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
     }
 
     let account_1 = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
     account_1
@@ -215,7 +215,7 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
     }
 
     let account_1 = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
     let entity_hash = account_1
@@ -226,7 +226,7 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
         .unwrap();
 
     let entity = builder
-        .get_addressable_entity(entity_hash)
+        .get_entity_with_named_keys_by_entity_hash(entity_hash)
         .expect("must have entity");
 
     assert!(
@@ -273,7 +273,7 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
     }
 
     let account_1 = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
     let entity_hash = account_1
@@ -284,7 +284,7 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
         .unwrap();
 
     let entity = builder
-        .get_addressable_entity(entity_hash)
+        .get_entity_with_named_keys_by_entity_hash(entity_hash)
         .expect("must have entity");
 
     assert!(
@@ -318,7 +318,7 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
     }
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     assert!(
@@ -336,7 +336,7 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
 
     // verify version before upgrade
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let version = *account
@@ -373,7 +373,7 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
 
     // version should change after upgrade
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let version = *account
@@ -417,7 +417,7 @@ fn should_support_extending_functionality() {
     }
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let stored_package_hash = account
@@ -456,7 +456,7 @@ fn should_support_extending_functionality() {
 
     // verify known uref actually exists prior to upgrade
     let contract = builder
-        .get_addressable_entity(stored_hash)
+        .get_entity_with_named_keys_by_entity_hash(stored_hash)
         .expect("should have contract");
     assert!(
         contract.named_keys().contains(PURSE_1),
@@ -482,7 +482,7 @@ fn should_support_extending_functionality() {
 
     // verify uref still exists in named_keys after upgrade:
     let contract = builder
-        .get_addressable_entity(stored_hash)
+        .get_entity_with_named_keys_by_entity_hash(stored_hash)
         .expect("should have contract");
 
     assert!(
@@ -492,7 +492,7 @@ fn should_support_extending_functionality() {
 
     // Get account again after upgrade to refresh named keys
     let account_2 = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     // Get contract again after upgrade
 
@@ -526,7 +526,7 @@ fn should_support_extending_functionality() {
 
     // verify known urefs no longer include removed purse
     let contract = builder
-        .get_addressable_entity(stored_hash_2)
+        .get_entity_with_named_keys_by_entity_hash(stored_hash_2)
         .expect("should have contract");
 
     assert!(
@@ -560,7 +560,7 @@ fn should_maintain_named_keys_across_upgrade() {
     }
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let stored_hash = account
@@ -599,7 +599,7 @@ fn should_maintain_named_keys_across_upgrade() {
 
         // verify known uref actually exists prior to upgrade
         let contract = builder
-            .get_addressable_entity(stored_hash.into())
+            .get_entity_with_named_keys_by_entity_hash(stored_hash.into())
             .expect("should have contract");
         assert!(
             contract.named_keys().contains(purse_name),
@@ -626,7 +626,7 @@ fn should_maintain_named_keys_across_upgrade() {
 
     // verify all urefs still exist in named_keys after upgrade
     let contract = builder
-        .get_addressable_entity(stored_hash.into())
+        .get_entity_with_named_keys_by_entity_hash(stored_hash.into())
         .expect("should have contract");
 
     for index in 0..TOTAL_PURSES {
@@ -664,7 +664,7 @@ fn should_fail_upgrade_for_locked_contract() {
     }
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let stored_package_hash: PackageHash = account
@@ -727,7 +727,7 @@ fn should_only_upgrade_if_threshold_is_met() {
     builder.exec(install_request).expect_success().commit();
 
     let entity = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default addressable entity");
 
     let upgrade_threshold_contract_hash = entity
@@ -747,10 +747,11 @@ fn should_only_upgrade_if_threshold_is_met() {
         .expect("must get package hash");
 
     let upgrade_threshold_contract_entity = builder
-        .get_addressable_entity(upgrade_threshold_contract_hash)
+        .get_entity_with_named_keys_by_entity_hash(upgrade_threshold_contract_hash)
         .expect("must have upgrade threshold entity");
 
-    let actual_associated_keys = upgrade_threshold_contract_entity.associated_keys();
+    let entity = upgrade_threshold_contract_entity.entity();
+    let actual_associated_keys = entity.associated_keys();
     let mut expected_associated_keys = AssociatedKeys::new(*DEFAULT_ACCOUNT_ADDR, Weight::new(1));
     assert_eq!(&expected_associated_keys, actual_associated_keys);
 
@@ -889,7 +890,7 @@ fn should_migrate_with_correct_upgrade_thresholds() {
     let (mut builder, new_protocol_version, _) = setup_upgrade_threshold_state();
 
     let default_addressable_entity = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default entity");
 
     let contract_hash = default_addressable_entity
@@ -929,7 +930,7 @@ fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
     let (mut builder, new_protocol_version, entity_1) = setup_upgrade_threshold_state();
 
     let default_addressable_entity = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default entity");
 
     let entity_hash = default_addressable_entity
@@ -982,7 +983,7 @@ fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
     builder.exec(upgrade_request).expect_success().commit();
 
     let new_entity_hash = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have entity")
         .named_keys()
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
@@ -1018,7 +1019,7 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
     };
 
     let default_addressable_entity = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default entity");
 
     let entity_hash = default_addressable_entity
@@ -1089,7 +1090,7 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
     builder.exec(execute_request).expect_success().commit();
 
     let updated_entity = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default entity");
 
     let updated_key = updated_entity

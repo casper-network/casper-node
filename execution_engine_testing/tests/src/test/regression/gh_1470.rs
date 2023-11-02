@@ -114,7 +114,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let entity_hash_key = account
@@ -318,7 +318,7 @@ fn gh_1470_call_contract_should_ignore_optional_args() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let contract_hash_key = account
@@ -384,7 +384,7 @@ fn gh_1470_call_contract_should_not_accept_extra_args() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let contract_hash_key = account
@@ -450,7 +450,7 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
 
     let entity_hash_key = account
@@ -556,7 +556,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let entity_hash_key = account

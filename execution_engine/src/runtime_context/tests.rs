@@ -450,7 +450,8 @@ fn contract_key_addable_valid() {
         .metered_add_gs(contract_key, named_uref_tuple)
         .expect("Adding should work.");
 
-    let named_keys = NamedKeys::from(iter::once((uref_name, uref_as_key)).collect::<BTreeMap<_, _>>());
+    let named_keys =
+        NamedKeys::from(iter::once((uref_name, uref_as_key)).collect::<BTreeMap<_, _>>());
 
     let updated_contract = StoredValue::AddressableEntity(AddressableEntity::new(
         [0u8; 32].into(),
@@ -923,7 +924,8 @@ fn remove_uref_works() {
         TransformKind::Write(StoredValue::AddressableEntity(entity)) => entity,
         _ => panic!("Invalid transform operation found"),
     };
-    let entity_named_keys = runtime_context.get_named_keys(entity_key)
+    let entity_named_keys = runtime_context
+        .get_named_keys(entity_key)
         .expect("must get named keys for entity");
     assert!(!entity_named_keys.contains(&uref_name));
     // The next time the account is used, the access right is gone for the removed
@@ -953,7 +955,7 @@ fn an_accounts_access_rights_should_include_main_purse() {
         entity_hash,
         EntityKind::Account(account_hash),
         test_main_purse.addr(),
-        named_keys,
+        named_keys.clone(),
     );
     assert!(
         named_keys.is_empty(),

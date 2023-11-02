@@ -109,7 +109,7 @@ fn test_burning_fees(
     );
     let handle_payment = builder.get_handle_payment_contract_hash();
     let handle_payment_1 = builder
-        .get_addressable_entity(handle_payment)
+        .get_entity_with_named_keys_by_entity_hash(handle_payment)
         .expect("should have handle payment contract");
     let rewards_purse_key = handle_payment_1
         .named_keys()
