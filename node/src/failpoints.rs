@@ -310,8 +310,6 @@ impl FromStr for FailpointActivation {
     }
 }
 
-// TODO: Convert `parse` to `from_str`.
-
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
