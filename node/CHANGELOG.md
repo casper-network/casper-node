@@ -20,7 +20,7 @@ All notable changes to this project will be documented in this file.  The format
 * New environment variable `CL_EVENT_QUEUE_DUMP_THRESHOLD` to enable dumping of queue event counts to log when a certain threshold is exceeded.
 * Add initial support for private chain (#3106). 
 * Add support for CA signed client certificates for private chain (#3310).
-* Add a Highway Analysis tool for checking the state of the consensus (#4372).
+* Add a Highway Analysis tool for checking the state of the consensus (#4327).
 
 ### Fixed
 * Now possible to build outside a git repository context (e.g. from a source tarball). In such cases, the node's build version (as reported vie status endpoints) will not contain a trailing git short hash.
