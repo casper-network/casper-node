@@ -26,7 +26,9 @@ All notable changes to this project will be documented in this file.  The format
 * Default value for `max_stack_height` is increased to 500.
 * `current stack height` is written to `stderr` in case `Trap(Unreachable)` error is encountered during Wasm execution.
 * Tweaked upgrade logic transforming withdraw purses to early exit if possible (#4119).
-
+* Lower the default gas costs of opcodes (#4387).
+  - Set the cost for branching opcodes to 35,000 (`br`, `br_if`, `br_table`).
+  - Set the cost for call opcodes to 68,000 (`call`, `call_indirect`).
 
 ## 6.0.0
 
