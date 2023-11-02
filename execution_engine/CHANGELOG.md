@@ -21,15 +21,12 @@ All notable changes to this project will be documented in this file.  The format
 * Add chainspec option `core.refund_handling` that specifies how payment refunds are handled.
 * Add chainspec option `core.fee_handling` that specifes how transaction fees are handled.
 * Add chainspec option `core.administrators` that, if set, contains list of administrator accounts. This option makes sense only for private chains.
-* Add initial support for private chain (#3106). 
-
-### Fixed
-* Fix an issue where payment errors penalty could've been paid to block proposer regardless of fee_handling/refund_handling option (#4258).
 
 ### Changed
 * Default value for `max_stack_height` is increased to 500.
 * `current stack height` is written to `stderr` in case `Trap(Unreachable)` error is encountered during Wasm execution.
 * Tweaked upgrade logic transforming withdraw purses to early exit if possible (#4119).
+
 
 ## 6.0.0
 

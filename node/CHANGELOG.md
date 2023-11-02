@@ -20,27 +20,21 @@ All notable changes to this project will be documented in this file.  The format
 * New environment variable `CL_EVENT_QUEUE_DUMP_THRESHOLD` to enable dumping of queue event counts to log when a certain threshold is exceeded.
 * Add initial support for private chain (#3106). 
 * Add support for CA signed client certificates for private chain (#3310).
-* Add a finer grained latching mechanism for block_synchronization (#4042).
-* Add a NoSync option, which allows a node to opt out of historical sync via config setting (#4257).
-* Add more detail in the log message for too many events in the queue (#4295).
-* Add more logging in BlockValidator (#4299).
 * Add a Highway Analysis tool for checking the state of the consensus (#4372).
 
 ### Fixed
 * Now possible to build outside a git repository context (e.g. from a source tarball). In such cases, the node's build version (as reported vie status endpoints) will not contain a trailing git short hash.
-* Purge block synchronizer every time we transition out of CatchUp (#4058).
-* Don't return a fatal error when trying to deactivate an era that was already deactivated (#4075).
-* Fix historical sync stall after restart in era 0 on pre-1.5 chain (#4129).
-* Remove error for timestamp chronology to resolve failing sync (#4195).
-* Fix block synchronizer request storm by tweaking the latching (#4205).
+* Remove an error that would unnecessarily be raised when a node includes its highest orphaned block within the current era.
 * Short-circuit initialization of block and deploy metadata DB to resolve delays after an upgrade (#4311).
 
 ### Changed
 * The `state_identifier` parameter of the `query_global_state` JSON-RPC method is now optional. If no `state_identifier` is specified, the highest complete block known to the node will be used to fulfill the request.
-* Make the state_identifier parameter of the query_global_state JSON-RPC method optional (#4086).
-* Downgrade the 'highest_era_weights does not contain signing_public_key' log message to DEBUG (#4143).
 * `state_get_account_info` RPC handler can now handle an `AccountIdentifier` as a parameter (#4218).
-
+* Replace the `sync_to_genesis` node config field with `sync_handling` (#4257).
+  * The new field `sync_handling` field accepts three values:
+    - `genesis` - node will attempt to acquire all block data back to genesis
+    - `ttl` - node will attempt to acquire all block data to comply with time to live enforcement
+    - `nosync` - node will only acquire blocks moving forward
 
 
 ## 1.5.3
