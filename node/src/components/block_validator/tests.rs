@@ -6,7 +6,8 @@ use std::{
 
 use casper_types::{
     bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng,
-    Chainspec, ChainspecRawBytes, ExecutableDeployItem, RuntimeArgs, SecretKey, TimeDiff, U512,
+    Chainspec, ChainspecRawBytes, ExecutableDeployItem, RuntimeArgs, SecretKey, TimeDiff,
+    Transaction, U512,
 };
 use derive_more::From;
 use itertools::Itertools;
@@ -14,7 +15,7 @@ use itertools::Itertools;
 use crate::{
     components::{consensus::BlockContext, fetcher},
     reactor::{EventQueueHandle, QueueKind, Scheduler},
-    types::{BlockPayload, DeployHashWithApprovals},
+    types::BlockPayload,
     utils::{self, Loadable},
 };
 
@@ -99,13 +100,23 @@ impl MockReactor {
 
 fn new_proposed_block(
     timestamp: Timestamp,
-    deploys: Vec<DeployHashWithApprovals>,
-    transfers: Vec<DeployHashWithApprovals>,
+    transfer: Vec<TransactionHashWithApprovals>,
+    staking: Vec<TransactionHashWithApprovals>,
+    install_upgrade: Vec<TransactionHashWithApprovals>,
+    standard: Vec<TransactionHashWithApprovals>,
 ) -> ProposedBlock<ClContext> {
     // Accusations and ancestors are empty, and the random bit is always true:
     // These values are not checked by the block validator.
     let block_context = BlockContext::new(timestamp, vec![]);
-    let block_payload = BlockPayload::new(deploys, transfers, vec![], Default::default(), true);
+    let block_payload = BlockPayload::new(
+        transfer,
+        staking,
+        install_upgrade,
+        standard,
+        vec![],
+        Default::default(),
+        true,
+    );
     ProposedBlock::new(Arc::new(block_payload), block_context)
 }
 
@@ -170,15 +181,21 @@ async fn validate_block(
     transfers: Vec<Deploy>,
 ) -> bool {
     // Assemble the block to be validated.
-    let deploys_for_block = deploys
-        .iter()
-        .map(DeployHashWithApprovals::from)
-        .collect_vec();
     let transfers_for_block = transfers
         .iter()
-        .map(DeployHashWithApprovals::from)
+        .map(|deploy| TransactionHashWithApprovals::from(&Transaction::Deploy(deploy.clone())))
         .collect_vec();
-    let proposed_block = new_proposed_block(timestamp, deploys_for_block, transfers_for_block);
+    let standard_for_block = deploys
+        .iter()
+        .map(|deploy| TransactionHashWithApprovals::from(&Transaction::Deploy(deploy.clone())))
+        .collect_vec();
+    let proposed_block = new_proposed_block(
+        timestamp,
+        transfers_for_block,
+        vec![],
+        vec![],
+        standard_for_block,
+    );
 
     // Create the reactor and component.
     let reactor = MockReactor::new();
@@ -323,16 +340,21 @@ async fn should_fetch_from_multiple_peers() {
             .collect_vec();
 
         // Assemble the block to be validated.
-        let deploys_for_block = deploys
-            .iter()
-            .map(|deploy| DeployHashWithApprovals::new(*deploy.hash(), deploy.approvals().clone()))
-            .collect_vec();
         let transfers_for_block = transfers
             .iter()
-            .map(|deploy| DeployHashWithApprovals::new(*deploy.hash(), deploy.approvals().clone()))
+            .map(|deploy| TransactionHashWithApprovals::from(&Transaction::Deploy(deploy.clone())))
             .collect_vec();
-        let proposed_block =
-            new_proposed_block(1100.into(), deploys_for_block, transfers_for_block);
+        let standard_for_block = deploys
+            .iter()
+            .map(|deploy| TransactionHashWithApprovals::from(&Transaction::Deploy(deploy.clone())))
+            .collect_vec();
+        let proposed_block = new_proposed_block(
+            1100.into(),
+            transfers_for_block,
+            vec![],
+            vec![],
+            standard_for_block,
+        );
 
         // Create the reactor and component.
         let reactor = MockReactor::new();

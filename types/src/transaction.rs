@@ -97,6 +97,7 @@ pub enum Transaction {
     /// A deploy.
     Deploy(Deploy),
     /// A version 1 transaction.
+    #[cfg_attr(any(feature = "std", test), serde(rename = "Version1"))]
     V1(TransactionV1),
 }
 
@@ -107,6 +108,17 @@ impl Transaction {
             Transaction::Deploy(deploy) => TransactionHash::from(*deploy.hash()),
             Transaction::V1(txn) => TransactionHash::from(*txn.hash()),
         }
+    }
+
+    /// Returns the computed approvals hash identifying this transaction's approvals.
+    pub fn compute_approvals_hash(&self) -> Result<TransactionApprovalsHash, bytesrepr::Error> {
+        let approvals_hash = match self {
+            Transaction::Deploy(deploy) => {
+                TransactionApprovalsHash::Deploy(deploy.compute_approvals_hash()?)
+            }
+            Transaction::V1(txn) => TransactionApprovalsHash::V1(txn.compute_approvals_hash()?),
+        };
+        Ok(approvals_hash)
     }
 
     /// Returns the computed `TransactionId` uniquely identifying this transaction and its

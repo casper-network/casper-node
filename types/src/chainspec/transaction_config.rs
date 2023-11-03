@@ -33,11 +33,15 @@ pub struct TransactionConfig {
     pub max_ttl: TimeDiff,
     /// Maximum size in bytes of a single transaction, when bytesrepr encoded.
     pub max_transaction_size: u32,
-    /// Maximum number of standard deploys allowed in a block.
-    pub block_max_deploy_count: u32,
-    /// Maximum number of native Transactions, including wasm-less transfer deploys, allowed in a
-    /// block.
-    pub block_max_native_count: u32,
+    /// Maximum number of transfer transactions allowed in a block.
+    pub block_max_transfer_count: u32,
+    /// Maximum number of staking transactions allowed in a block.
+    pub block_max_staking_count: u32,
+    /// Maximum number of installer/upgrader transactions allowed in a block.
+    pub block_max_install_upgrade_count: u32,
+    /// Maximum number of other transactions (non-transfer, non-staking, non-installer/upgrader)
+    /// allowed in a block.
+    pub block_max_standard_count: u32,
     /// Maximum number of approvals (signatures) allowed in a block across all transactions.
     pub block_max_approval_count: u32,
     /// Maximum possible size in bytes of a block.
@@ -61,8 +65,10 @@ impl TransactionConfig {
     pub fn random(rng: &mut TestRng) -> Self {
         let max_ttl = TimeDiff::from_seconds(rng.gen_range(60..3_600));
         let max_transaction_size = rng.gen_range(100_000..1_000_000);
-        let block_max_deploy_count = rng.gen();
-        let block_max_native_count = rng.gen();
+        let block_max_transfer_count = rng.gen();
+        let block_max_staking_count = rng.gen();
+        let block_max_install_upgrade_count = rng.gen();
+        let block_max_standard_count = rng.gen();
         let block_max_approval_count = rng.gen();
         let max_block_size = rng.gen_range(1_000_000..1_000_000_000);
         let block_gas_limit = rng.gen_range(100_000_000_000..1_000_000_000_000_000);
@@ -74,8 +80,10 @@ impl TransactionConfig {
         TransactionConfig {
             max_ttl,
             max_transaction_size,
-            block_max_deploy_count,
-            block_max_native_count,
+            block_max_transfer_count,
+            block_max_staking_count,
+            block_max_install_upgrade_count,
+            block_max_standard_count,
             block_max_approval_count,
             max_block_size,
             block_gas_limit,
@@ -93,8 +101,10 @@ impl Default for TransactionConfig {
         TransactionConfig {
             max_ttl: eighteeen_hours,
             max_transaction_size: 1_048_576,
-            block_max_deploy_count: 50,
-            block_max_native_count: 1250,
+            block_max_transfer_count: 1000,
+            block_max_staking_count: 200,
+            block_max_install_upgrade_count: 2,
+            block_max_standard_count: 100,
             block_max_approval_count: 2600,
             max_block_size: 10_485_760,
             block_gas_limit: 10_000_000_000_000,
@@ -109,8 +119,10 @@ impl ToBytes for TransactionConfig {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.max_ttl.write_bytes(writer)?;
         self.max_transaction_size.write_bytes(writer)?;
-        self.block_max_deploy_count.write_bytes(writer)?;
-        self.block_max_native_count.write_bytes(writer)?;
+        self.block_max_transfer_count.write_bytes(writer)?;
+        self.block_max_staking_count.write_bytes(writer)?;
+        self.block_max_install_upgrade_count.write_bytes(writer)?;
+        self.block_max_standard_count.write_bytes(writer)?;
         self.block_max_approval_count.write_bytes(writer)?;
         self.max_block_size.write_bytes(writer)?;
         self.block_gas_limit.write_bytes(writer)?;
@@ -128,8 +140,10 @@ impl ToBytes for TransactionConfig {
     fn serialized_length(&self) -> usize {
         self.max_ttl.serialized_length()
             + self.max_transaction_size.serialized_length()
-            + self.block_max_deploy_count.serialized_length()
-            + self.block_max_native_count.serialized_length()
+            + self.block_max_transfer_count.serialized_length()
+            + self.block_max_staking_count.serialized_length()
+            + self.block_max_install_upgrade_count.serialized_length()
+            + self.block_max_standard_count.serialized_length()
             + self.block_max_approval_count.serialized_length()
             + self.max_block_size.serialized_length()
             + self.block_gas_limit.serialized_length()
@@ -143,8 +157,10 @@ impl FromBytes for TransactionConfig {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (max_ttl, remainder) = TimeDiff::from_bytes(bytes)?;
         let (max_transaction_size, remainder) = u32::from_bytes(remainder)?;
-        let (block_max_deploy_count, remainder) = u32::from_bytes(remainder)?;
-        let (block_max_native_count, remainder) = u32::from_bytes(remainder)?;
+        let (block_max_transfer_count, remainder) = u32::from_bytes(remainder)?;
+        let (block_max_staking_count, remainder) = u32::from_bytes(remainder)?;
+        let (block_max_install_upgrade_count, remainder) = u32::from_bytes(remainder)?;
+        let (block_max_standard_count, remainder) = u32::from_bytes(remainder)?;
         let (block_max_approval_count, remainder) = u32::from_bytes(remainder)?;
         let (max_block_size, remainder) = u32::from_bytes(remainder)?;
         let (block_gas_limit, remainder) = u64::from_bytes(remainder)?;
@@ -154,8 +170,10 @@ impl FromBytes for TransactionConfig {
         let config = TransactionConfig {
             max_ttl,
             max_transaction_size,
-            block_max_deploy_count,
-            block_max_native_count,
+            block_max_transfer_count,
+            block_max_staking_count,
+            block_max_install_upgrade_count,
+            block_max_standard_count,
             block_max_approval_count,
             max_block_size,
             block_gas_limit,

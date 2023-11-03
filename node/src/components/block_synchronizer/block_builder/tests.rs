@@ -1,7 +1,8 @@
 use std::{collections::BTreeMap, thread, time::Duration};
 
-use casper_types::{testing::TestRng, Deploy, TestBlockBuilder};
 use num_rational::Ratio;
+
+use casper_types::{testing::TestRng, TestBlockBuilder, Transaction};
 
 use crate::components::consensus::tests::utils::{ALICE_PUBLIC_KEY, ALICE_SECRET_KEY};
 
@@ -239,9 +240,9 @@ fn register_executable_block() {
         Acceptance::NeededIt
     );
     // Set the builder's state to `HaveStrictFinalitySignatures`.
-    let expected_deploys = vec![Deploy::random(&mut rng)];
+    let expected_txns = vec![Transaction::random(&mut rng)];
     let executable_block =
-        ExecutableBlock::from_block_and_deploys(block.clone(), expected_deploys.clone());
+        ExecutableBlock::from_block_and_transactions(block.clone(), expected_txns.clone());
     builder.acquisition_state = BlockAcquisitionState::HaveStrictFinalitySignatures(
         Box::new(block.clone().into()),
         signature_acquisition.clone(),
@@ -253,7 +254,7 @@ fn register_executable_block() {
     match &builder.acquisition_state {
         BlockAcquisitionState::HaveExecutableBlock(actual_block, executable_block, enqueued) => {
             assert_eq!(actual_block.hash(), block.hash());
-            assert_eq!(expected_deploys, *executable_block.deploys);
+            assert_eq!(expected_txns, *executable_block.transactions);
             assert!(!enqueued);
         }
         _ => panic!("Unexpected outcome in registering finalized block"),
@@ -308,9 +309,9 @@ fn register_block_execution() {
         Acceptance::NeededIt
     );
 
-    let executable_block = Box::new(ExecutableBlock::from_block_and_deploys(
+    let executable_block = Box::new(ExecutableBlock::from_block_and_transactions(
         block.clone(),
-        vec![Deploy::random(&mut rng)],
+        vec![Transaction::random(&mut rng)],
     ));
     builder.acquisition_state =
         BlockAcquisitionState::HaveExecutableBlock(Box::new(block.into()), executable_block, false);

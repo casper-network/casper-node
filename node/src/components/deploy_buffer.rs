@@ -20,7 +20,7 @@ use tracing::{debug, error, info, warn};
 
 use casper_types::{
     Block, BlockV2, Deploy, DeployApproval, DeployFootprint, DeployHash, DeployId, DisplayIter,
-    Timestamp, Transaction, TransactionConfig, TransactionId,
+    Timestamp, Transaction, TransactionConfig, TransactionHash, TransactionId,
 };
 
 use crate::{
@@ -45,6 +45,7 @@ use crate::{
 pub(crate) use config::Config;
 pub(crate) use event::Event;
 
+use crate::types::TransactionHashWithApprovals;
 use metrics::Metrics;
 
 const COMPONENT_NAME: &str = "deploy_buffer";
@@ -264,12 +265,27 @@ impl DeployBuffer {
         let timestamp = &proposed_block.context().timestamp();
         if let Some(hold_set) = self.hold.get_mut(timestamp) {
             debug!(%timestamp, "DeployBuffer: existing hold timestamp extended");
-            hold_set.extend(proposed_block.value().deploy_and_transfer_hashes());
+            hold_set.extend(proposed_block.value().all_transactions().filter_map(
+                |thwa| match thwa {
+                    TransactionHashWithApprovals::Deploy { deploy_hash, .. } => Some(*deploy_hash),
+                    TransactionHashWithApprovals::V1 { .. } => None,
+                },
+            ));
         } else {
             debug!(%timestamp, "DeployBuffer: new hold timestamp inserted");
             self.hold.insert(
                 *timestamp,
-                HashSet::from_iter(proposed_block.value().deploy_and_transfer_hashes().copied()),
+                HashSet::from_iter(
+                    proposed_block
+                        .value()
+                        .all_transactions()
+                        .filter_map(|thwa| match thwa {
+                            TransactionHashWithApprovals::Deploy { deploy_hash, .. } => {
+                                Some(*deploy_hash)
+                            }
+                            TransactionHashWithApprovals::V1 { .. } => None,
+                        }),
+                ),
             );
         }
         self.metrics.held_deploys.set(
@@ -308,15 +324,42 @@ impl DeployBuffer {
         let block_height = block.height();
         let timestamp = block.timestamp();
         debug!(%timestamp, "DeployBuffer: register_block({}) timestamp finalized", block_height);
-        self.register_deploys(timestamp, block.deploy_and_transfer_hashes());
+        self.register_deploys(
+            timestamp,
+            block
+                .all_transactions()
+                .filter_map(|txn_hash| match txn_hash {
+                    TransactionHash::Deploy(deploy_hash) => Some(deploy_hash),
+                    TransactionHash::V1(_) => None,
+                }),
+        );
     }
 
     /// When initializing the buffer, register past blocks in order to provide replay protection.
     fn register_versioned_block(&mut self, block: &Block) {
         let block_height = block.height();
         let timestamp = block.timestamp();
-        debug!(%timestamp, "DeployBuffer: register_block_for_replay_protection_on_init({}) timestamp finalized", block_height);
-        self.register_deploys(timestamp, block.deploy_and_transfer_hashes());
+        debug!(
+            %timestamp,
+            "DeployBuffer: register_versioned_block({}) timestamp finalized",
+            block_height
+        );
+        match block {
+            Block::V1(v1_block) => {
+                self.register_deploys(timestamp, v1_block.deploy_and_transfer_hashes())
+            }
+            Block::V2(v2_block) => {
+                self.register_deploys(
+                    timestamp,
+                    v2_block
+                        .all_transactions()
+                        .filter_map(|txn_hash| match txn_hash {
+                            TransactionHash::Deploy(deploy_hash) => Some(deploy_hash),
+                            TransactionHash::V1(_) => None,
+                        }),
+                );
+            }
+        }
     }
 
     /// Update buffer and holds considering new finalized block.
@@ -324,7 +367,15 @@ impl DeployBuffer {
         let block_height = finalized_block.height;
         let timestamp = finalized_block.timestamp;
         debug!(%timestamp, "DeployBuffer: register_block_finalized({}) timestamp finalized", block_height);
-        self.register_deploys(timestamp, finalized_block.deploy_and_transfer_hashes());
+        self.register_deploys(
+            timestamp,
+            finalized_block
+                .all_transactions()
+                .filter_map(|txn_hash| match txn_hash {
+                    TransactionHash::Deploy(deploy_hash) => Some(deploy_hash),
+                    TransactionHash::V1(_) => None,
+                }),
+        );
     }
 
     /// Returns eligible deploys that are buffered and not held or dead.

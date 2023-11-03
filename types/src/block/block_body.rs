@@ -11,10 +11,7 @@ use core::fmt::{self, Display, Formatter};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    DeployHash,
-};
+use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 
@@ -30,35 +27,12 @@ pub const BLOCK_BODY_V2_TAG: u8 = 1;
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum BlockBody {
     /// The legacy, initial version of the body portion of a block.
+    #[serde(rename = "Version1")]
     V1(BlockBodyV1),
     /// The version 2 of the body portion of a block, which includes the
     /// `past_finality_signatures`.
+    #[serde(rename = "Version2")]
     V2(BlockBodyV2),
-}
-
-impl BlockBody {
-    /// Retrieves the deploy hashes within the block.
-    pub fn deploy_hashes(&self) -> &Vec<DeployHash> {
-        match self {
-            BlockBody::V1(v1) => &v1.deploy_hashes,
-            BlockBody::V2(v2) => &v2.deploy_hashes,
-        }
-    }
-
-    /// Retrieves the transfer hashes within the block.
-    pub fn transfer_hashes(&self) -> &Vec<DeployHash> {
-        match self {
-            BlockBody::V1(v1) => &v1.transfer_hashes,
-            BlockBody::V2(v2) => &v2.transfer_hashes,
-        }
-    }
-
-    /// Returns the deploy and transfer hashes in the order in which they were executed.
-    pub fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> + Clone {
-        self.deploy_hashes()
-            .iter()
-            .chain(self.transfer_hashes().iter())
-    }
 }
 
 impl Display for BlockBody {

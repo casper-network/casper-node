@@ -1321,16 +1321,16 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests the header of the block containing the given deploy.
-    pub(crate) async fn get_block_header_for_deploy_from_storage(
+    pub(crate) async fn get_block_header_for_transaction_from_storage(
         self,
-        deploy_hash: DeployHash,
+        transaction_hash: TransactionHash,
     ) -> Option<BlockHeader>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetBlockHeaderForDeploy {
-                deploy_hash,
+            |responder| StorageRequest::GetBlockHeaderForTransaction {
+                transaction_hash,
                 responder,
             },
             QueueKind::FromStorage,

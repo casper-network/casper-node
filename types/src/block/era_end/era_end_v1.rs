@@ -1,3 +1,5 @@
+mod era_report;
+
 use alloc::{collections::BTreeMap, vec::Vec};
 use core::fmt::{self, Display, Formatter};
 
@@ -16,8 +18,9 @@ use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 use crate::SecretKey;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    EraReport, PublicKey, U512,
+    PublicKey, U512,
 };
+pub use era_report::EraReport;
 
 #[cfg(feature = "json-schema")]
 static ERA_END_V1: Lazy<EraEndV1> = Lazy::new(|| {

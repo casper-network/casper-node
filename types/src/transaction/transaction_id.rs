@@ -34,6 +34,7 @@ pub enum TransactionId {
         approvals_hash: DeployApprovalsHash,
     },
     /// A version 1 transaction identifier.
+    #[serde(rename = "Version1")]
     V1 {
         /// The transaction hash.
         transaction_v1_hash: TransactionV1Hash,
