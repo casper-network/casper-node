@@ -169,8 +169,8 @@ mod tests {
     #[proptest]
     fn hex_roundtrip(input: Vec<u8>) {
         prop_assert_eq!(
-            input.clone(),
-            decode(encode_iter(&input).collect::<String>()).expect("Failed to decode input.")
+            &input,
+            &decode(encode_iter(&input).collect::<String>()).expect("Failed to decode input.")
         );
     }
 
