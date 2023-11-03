@@ -423,6 +423,16 @@ where
         &mut self.nodes
     }
 
+    /// Returns the first node of the network.
+    pub(crate) fn first_node(&self) -> &Runner<ConditionCheckReactor<R>> {
+        &self
+            .nodes()
+            .iter()
+            .next()
+            .expect("Expected non-empty network")
+            .1
+    }
+
     /// Returns an iterator over all runners, mutable.
     pub(crate) fn runners_mut(
         &mut self,

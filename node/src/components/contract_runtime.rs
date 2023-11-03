@@ -875,7 +875,7 @@ impl ContractRuntime {
         let prune_batch_size = chainspec.core_config.prune_batch_size;
         if executable_block.era_report.is_some() && executable_block.rewards.is_none() {
             executable_block.rewards = Some(if chainspec.core_config.compute_rewards {
-                match rewards::rewards_for_era(
+                match rewards::full_rewards_for_era(
                     effect_builder,
                     executable_block.era_id,
                     executable_block.height,
@@ -883,7 +883,18 @@ impl ContractRuntime {
                 )
                 .await
                 {
-                    Ok(rewards) => rewards,
+                    Ok(rewards) => {
+                        tracing::info!(
+                            length = %rewards.len(),
+                            non_zero_entries = %rewards
+                                .iter()
+                                .filter(|(_, amount)| amount.is_zero() == false)
+                                .count(),
+                            "rewards successfully computed",
+                        );
+
+                        rewards
+                    }
                     Err(e) => {
                         return fatal!(effect_builder, "Failed to compute the rewards: {e:?}").await
                     }

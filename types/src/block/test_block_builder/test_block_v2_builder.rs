@@ -19,6 +19,7 @@ pub struct TestBlockV2Builder {
     timestamp: Option<Timestamp>,
     era: Option<EraId>,
     height: Option<u64>,
+    proposer: Option<PublicKey>,
     protocol_version: ProtocolVersion,
     txns: Vec<Transaction>,
     is_switch: Option<bool>,
@@ -34,6 +35,7 @@ impl Default for TestBlockV2Builder {
             timestamp: None,
             era: None,
             height: None,
+            proposer: None,
             protocol_version: ProtocolVersion::V1_0_0,
             txns: Vec::new(),
             is_switch: None,
@@ -85,6 +87,14 @@ impl TestBlockV2Builder {
     pub fn height(self, height: u64) -> Self {
         Self {
             height: Some(height),
+            ..self
+        }
+    }
+
+    /// Sets the block proposer.
+    pub fn proposer(self, proposer: PublicKey) -> Self {
+        Self {
+            proposer: Some(proposer),
             ..self
         }
     }
@@ -145,6 +155,7 @@ impl TestBlockV2Builder {
             timestamp,
             era,
             height,
+            proposer,
             protocol_version,
             txns,
             is_switch,
@@ -162,7 +173,7 @@ impl TestBlockV2Builder {
         let era_id = era.unwrap_or(EraId::random(rng));
         let height = height.unwrap_or_else(|| era_id.value() * 10 + rng.gen_range(0..10));
         let protocol_version = protocol_version;
-        let proposer = PublicKey::random(rng);
+        let proposer = proposer.unwrap_or_else(|| PublicKey::random(rng));
 
         let mut transfer_hashes = vec![];
         let mut staking_hashes = vec![];

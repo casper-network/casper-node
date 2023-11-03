@@ -74,6 +74,17 @@ const TEST_PORT_RANGE: Range<u16> = 60001..60998;
 /// Random offset + stride for port generation.
 const TEST_PORT_STRIDE: u16 = 29;
 
+macro_rules! map {
+    ( $( $key:expr => $value:expr ),+ $(,)? ) => {{
+        let mut map = BTreeMap::new();
+        $(
+            map.insert($key, $value);
+        )+
+        map
+    }}
+}
+pub(crate) use map;
+
 /// Create an unused port on localhost.
 ///
 /// Returns a random port on localhost, provided that no other applications are binding ports inside
