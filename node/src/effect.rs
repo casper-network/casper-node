@@ -168,10 +168,11 @@ use announcements::{
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
     AcceptDeployRequest, BeginGossipRequest, BlockAccumulatorRequest, BlockSynchronizerRequest,
-    BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest,
-    DeployBufferRequest, FetcherRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest,
-    MetricsRequest, NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, SetNodeStopRequest,
-    StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
+    ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest,
+    FetcherRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest, MetricsRequest,
+    NetworkInfoRequest, NetworkRequest, ProposedBlockValidationRequest, ReactorStatusRequest,
+    SetNodeStopRequest, StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
+    UpgradeWatcherRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -1795,14 +1796,14 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn validate_block(
         self,
         sender: NodeId,
-        block: ProposedBlock<ClContext>,
+        proposed_block: ProposedBlock<ClContext>,
     ) -> Result<(), ValidationError>
     where
-        REv: From<BlockValidationRequest>,
+        REv: From<ProposedBlockValidationRequest>,
     {
         self.make_request(
-            |responder| BlockValidationRequest {
-                block,
+            |responder| ProposedBlockValidationRequest {
+                proposed_block,
                 sender,
                 responder,
             },

@@ -1,7 +1,7 @@
-//! Block validator
+//! Proposed Block Validator
 //!
-//! The block validator checks whether all the deploys included in the block payload exist, either
-//! locally or on the network.
+//! The proposed block validator checks whether all the deploys included in the block payload exist,
+//! either locally or on the network.
 //!
 //! When multiple requests are made to validate the same block payload, they will eagerly return
 //! true if valid, but only fail if all sources have been exhausted. This is only relevant when
@@ -28,7 +28,7 @@ use crate::{
     },
     consensus::ValidationError,
     effect::{
-        requests::{BlockValidationRequest, FetcherRequest, StorageRequest},
+        requests::{FetcherRequest, ProposedBlockValidationRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
     types::{
@@ -41,7 +41,7 @@ pub use config::Config;
 pub(crate) use event::Event;
 use state::{AddResponderResult, BlockValidationState, MaybeStartFetching};
 
-const COMPONENT_NAME: &str = "block_validator";
+const COMPONENT_NAME: &str = "proposed_block_validator";
 
 impl ProposedBlock<ClContext> {
     fn timestamp(&self) -> Timestamp {
@@ -62,11 +62,11 @@ enum MaybeHandled {
     /// The request is already being handled - return the wrapped effects and finish.
     Handled(Effects<Event>),
     /// The request is new - it still needs to be handled.
-    NotHandled(BlockValidationRequest),
+    NotHandled(ProposedBlockValidationRequest),
 }
 
 #[derive(DataSize, Debug)]
-pub(crate) struct BlockValidator {
+pub(crate) struct ProposedBlockValidator {
     /// Chainspec loaded for deploy validation.
     #[data_size(skip)]
     chainspec: Arc<Chainspec>,
@@ -75,10 +75,10 @@ pub(crate) struct BlockValidator {
     validation_states: HashMap<ProposedBlock<ClContext>, BlockValidationState>,
 }
 
-impl BlockValidator {
-    /// Creates a new block validator instance.
+impl ProposedBlockValidator {
+    /// Creates a new proposed block validator instance.
     pub(crate) fn new(chainspec: Arc<Chainspec>, config: Config) -> Self {
-        BlockValidator {
+        ProposedBlockValidator {
             chainspec,
             config,
             validation_states: HashMap::new(),
@@ -90,18 +90,18 @@ impl BlockValidator {
     fn try_handle_as_existing_request<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        request: BlockValidationRequest,
+        request: ProposedBlockValidationRequest,
     ) -> MaybeHandled
     where
         REv: From<Event> + From<FetcherRequest<Deploy>> + Send,
     {
-        if let Some(state) = self.validation_states.get_mut(&request.block) {
-            let BlockValidationRequest {
-                block,
+        if let Some(state) = self.validation_states.get_mut(&request.proposed_block) {
+            let ProposedBlockValidationRequest {
+                proposed_block,
                 sender,
                 responder,
             } = request;
-            debug!(%sender, %block, "already validating proposed block");
+            debug!(%sender, %proposed_block, "already validating proposed block");
             match state.add_responder(responder) {
                 AddResponderResult::Added => {}
                 AddResponderResult::ValidationCompleted {
@@ -146,26 +146,26 @@ impl BlockValidator {
     fn handle_new_request<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        BlockValidationRequest {
-            block,
+        ProposedBlockValidationRequest {
+            proposed_block,
             sender,
             responder,
-        }: BlockValidationRequest,
+        }: ProposedBlockValidationRequest,
     ) -> Effects<Event>
     where
         REv: From<Event> + From<FetcherRequest<Deploy>> + Send,
     {
-        debug!(%sender, %block, "validating new proposed block");
-        debug_assert!(!self.validation_states.contains_key(&block));
+        debug!(%sender, %proposed_block, "validating new proposed block");
+        debug_assert!(!self.validation_states.contains_key(&proposed_block));
         let (mut state, maybe_responder) =
-            BlockValidationState::new(&block, sender, responder, self.chainspec.as_ref());
+            BlockValidationState::new(&proposed_block, sender, responder, self.chainspec.as_ref());
         let effects = match state.start_fetching() {
             MaybeStartFetching::Start {
                 holder,
                 missing_deploys,
             } => fetch_deploys(effect_builder, holder, missing_deploys),
             MaybeStartFetching::ValidationSucceeded => {
-                debug!("no deploys - block validation complete");
+                debug!("no deploys - proposed block validation complete");
                 debug_assert!(maybe_responder.is_some());
                 respond(Ok(()), maybe_responder)
             }
@@ -180,7 +180,7 @@ impl BlockValidator {
                 // Programmer error, we should only request each validation once!
 
                 // This `MaybeStartFetching` variant should never be returned here.
-                error!(%state, "invalid state while handling new block validation");
+                error!(%state, "invalid state while handling new proposed block validation");
                 debug_assert!(false, "invalid state {}", state);
                 respond(
                     Err(ValidationError::DuplicateValidationAttempt),
@@ -188,7 +188,7 @@ impl BlockValidator {
                 )
             }
         };
-        self.validation_states.insert(block, state);
+        self.validation_states.insert(proposed_block, state);
         self.purge_oldest_complete();
         effects
     }
@@ -214,7 +214,7 @@ impl BlockValidator {
                     debug!(
                         %state,
                         num_completed_remaining = (completed_times.len() - 1),
-                        "purging completed block validation state"
+                        "purging completed proposed block validation state"
                     );
                     let _ = completed_times.pop();
                     return false;
@@ -380,10 +380,10 @@ impl BlockValidator {
     }
 }
 
-impl<REv> Component<REv> for BlockValidator
+impl<REv> Component<REv> for ProposedBlockValidator
 where
     REv: From<Event>
-        + From<BlockValidationRequest>
+        + From<ProposedBlockValidationRequest>
         + From<FetcherRequest<Deploy>>
         + From<StorageRequest>
         + Send,
