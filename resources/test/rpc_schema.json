@@ -5229,6 +5229,32 @@
                   }
                 },
                 "additionalProperties": false
+              },
+              {
+                "description": "Variant that stores a message topic.",
+                "type": "object",
+                "required": [
+                  "MessageTopic"
+                ],
+                "properties": {
+                  "MessageTopic": {
+                    "$ref": "#/components/schemas/MessageTopicSummary"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Variant that stores a message digest.",
+                "type": "object",
+                "required": [
+                  "Message"
+                ],
+                "properties": {
+                  "Message": {
+                    "$ref": "#/components/schemas/MessageChecksum"
+                  }
+                },
+                "additionalProperties": false
               }
             ]
           },
@@ -5552,6 +5578,7 @@
               "byte_code_hash",
               "entry_points",
               "main_purse",
+              "message_topics",
               "named_keys",
               "package_hash",
               "protocol_version"
@@ -5580,11 +5607,43 @@
               },
               "action_thresholds": {
                 "$ref": "#/components/schemas/ActionThresholds"
+              },
+              "message_topics": {
+                "$ref": "#/components/schemas/Array_of_MessageTopic"
               }
             }
           },
           "ByteCodeHash": {
             "description": "The hash address of the contract wasm",
+            "type": "string"
+          },
+          "Array_of_MessageTopic": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageTopic"
+            }
+          },
+          "MessageTopic": {
+            "type": "object",
+            "required": [
+              "topic_name",
+              "topic_name_hash"
+            ],
+            "properties": {
+              "topic_name": {
+                "type": "string"
+              },
+              "topic_name_hash": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/TopicNameHash"
+                  }
+                ]
+              }
+            }
+          },
+          "TopicNameHash": {
+            "description": "The hash of the name of the message topic.",
             "type": "string"
           },
           "Package": {
@@ -5824,6 +5883,40 @@
                 ]
               }
             ]
+          },
+          "MessageTopicSummary": {
+            "description": "Summary of a message topic that will be stored in global state.",
+            "type": "object",
+            "required": [
+              "blocktime",
+              "message_count"
+            ],
+            "properties": {
+              "message_count": {
+                "description": "Number of messages in this topic.",
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0.0
+              },
+              "blocktime": {
+                "description": "Block timestamp in which these messages were emitted.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/BlockTime"
+                  }
+                ]
+              }
+            }
+          },
+          "BlockTime": {
+            "description": "A newtype wrapping a [`u64`] which represents the block time.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "MessageChecksum": {
+            "description": "Message checksum as a formatted string.",
+            "type": "string"
           },
           "GlobalStateIdentifier": {
             "description": "Identifier for possible ways to query Global State",

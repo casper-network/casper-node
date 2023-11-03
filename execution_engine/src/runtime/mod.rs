@@ -24,13 +24,17 @@ use casper_storage::global_state::state::StateReader;
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
-        self, ActionThresholds, ActionType, AddKeyFailure, AddressableEntity,
-        AddressableEntityHash, AssociatedKeys, EntryPoint, EntryPointAccess, EntryPointType,
-        EntryPoints, NamedKeys, Parameter, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure,
-        Weight, DEFAULT_ENTRY_POINT_NAME,
+        self, ActionThresholds, ActionType, AddKeyFailure, AddressableEntity, AssociatedKeys,
+        EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, MessageTopics, NamedKeys,
+        Parameter, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
+        DEFAULT_ENTRY_POINT_NAME,
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
+    contract_messages::{
+        Message, MessageAddr, MessageChecksum, MessagePayload, MessageTopicSummary,
+    },
     contracts::ContractPackage,
+    crypto,
     package::{PackageKind, PackageKindTag, PackageStatus},
     system::{
         self,
@@ -38,11 +42,11 @@ use casper_types::{
         handle_payment, mint, CallStackElement, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
         STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, ByteCode, ByteCodeHash, ByteCodeKind, CLTyped, CLValue,
-    ContextAccessRights, ContractWasm, DeployHash, EntityVersion, EntityVersionKey, EntityVersions,
-    Gas, GrantedAccess, Group, Groups, HostFunction, HostFunctionCost, Key, NamedArg, Package,
-    PackageHash, Phase, PublicKey, RuntimeArgs, StoredValue, Tagged, Transfer, TransferResult,
-    TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
+    AccessRights, AddressableEntityHash, ApiError, ByteCode, ByteCodeHash, ByteCodeKind, CLTyped,
+    CLValue, ContextAccessRights, ContractWasm, DeployHash, EntityVersion, EntityVersionKey,
+    EntityVersions, Gas, GrantedAccess, Group, Groups, HostFunction, HostFunctionCost, Key,
+    NamedArg, Package, PackageHash, Phase, PublicKey, RuntimeArgs, StoredValue, Tagged, Transfer,
+    TransferResult, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
 use crate::{
@@ -1414,8 +1418,10 @@ where
         let result = instance.invoke_export(entry_point.name(), &[], runtime);
         // The `runtime`'s context was initialized with our counter from before the call and any gas
         // charged by the sub-call was added to its counter - so let's copy the correct value of the
-        // counter from there to our counter.
+        // counter from there to our counter. Do the same for the message cost tracking.
         self.context.set_gas_counter(runtime.context.gas_counter());
+        self.context
+            .set_emit_message_cost(runtime.context.emit_message_cost());
         let transfers = self.context.transfers_mut();
         *transfers = runtime.context.transfers().to_owned();
 
@@ -1752,7 +1758,7 @@ where
             return Err(Error::LockedEntity(package_hash));
         }
 
-        let (main_purse, previous_named_keys, action_thresholds, associated_keys) =
+        let (main_purse, previous_named_keys, action_thresholds, associated_keys, message_topics) =
             self.new_version_entity_parts(&package)?;
 
         // TODO: EE-1032 - Implement different ways of carrying on existing named keys.
@@ -1788,11 +1794,21 @@ where
             main_purse,
             associated_keys,
             action_thresholds,
+            message_topics.clone(),
         );
 
         self.context.metered_write_gs_unsafe(entity_key, entity)?;
         self.context
             .metered_write_gs_unsafe(package_hash, package)?;
+
+        for (_, topic_hash) in message_topics.iter() {
+            let topic_key = Key::message_topic(entity_hash.into(), *topic_hash);
+            let summary = StoredValue::MessageTopic(MessageTopicSummary::new(
+                0,
+                self.context.get_blocktime(),
+            ));
+            self.context.metered_write_gs_unsafe(topic_key, summary)?;
+        }
 
         // set return values to buffer
         {
@@ -1820,7 +1836,16 @@ where
     fn new_version_entity_parts(
         &mut self,
         package: &Package,
-    ) -> Result<(URef, NamedKeys, ActionThresholds, AssociatedKeys), Error> {
+    ) -> Result<
+        (
+            URef,
+            NamedKeys,
+            ActionThresholds,
+            AssociatedKeys,
+            MessageTopics,
+        ),
+        Error,
+    > {
         if let Some(previous_entity_key) = package.previous_entity_key() {
             let (mut previous_entity, requires_purse_creation) =
                 self.context.get_contract_entity(previous_entity_key)?;
@@ -1854,6 +1879,8 @@ where
 
             let associated_keys = previous_entity.associated_keys().clone();
 
+            let previous_message_topics = previous_entity.message_topics().clone();
+
             let previous_named_keys = previous_entity.take_named_keys();
 
             return Ok((
@@ -1861,6 +1888,7 @@ where
                 previous_named_keys,
                 action_thresholds,
                 associated_keys,
+                previous_message_topics,
             ));
         }
 
@@ -1869,6 +1897,7 @@ where
             NamedKeys::new(),
             ActionThresholds::default(),
             AssociatedKeys::new(self.context.get_caller(), Weight::new(1)),
+            MessageTopics::default(),
         ))
     }
 
@@ -2402,6 +2431,7 @@ where
                 let associated_keys = AssociatedKeys::new(target, Weight::new(1));
                 let named_keys = NamedKeys::new();
                 let entry_points = EntryPoints::new();
+                let message_topics = MessageTopics::default();
 
                 let entity = AddressableEntity::new(
                     package_hash,
@@ -2412,6 +2442,7 @@ where
                     main_purse,
                     associated_keys,
                     ActionThresholds::default(),
+                    message_topics,
                 );
 
                 let access_key = self.context.new_unit_uref()?;
@@ -3289,6 +3320,7 @@ where
                     entity_main_purse,
                     associated_keys,
                     ActionThresholds::default(),
+                    MessageTopics::default(),
                 );
 
                 let previous_wasm = self.context.read_gs_typed::<ContractWasm>(&Key::Hash(
@@ -3312,5 +3344,70 @@ where
             Some(_) => Err(Error::UnexpectedStoredValueVariant),
             None => Err(Error::InvalidEntity(contract_hash)),
         }
+    }
+
+    fn add_message_topic(&mut self, topic_name: &str) -> Result<Result<(), ApiError>, Error> {
+        let topic_hash = crypto::blake2b(topic_name).into();
+
+        self.context
+            .add_message_topic(topic_name, topic_hash)
+            .map(|ret| ret.map_err(ApiError::from))
+    }
+
+    fn emit_message(
+        &mut self,
+        topic_name: &str,
+        message: MessagePayload,
+    ) -> Result<Result<(), ApiError>, Trap> {
+        let entity_addr = self
+            .context
+            .get_entity_key()
+            .into_entity_hash()
+            .ok_or(Error::InvalidContext)?;
+
+        let topic_name_hash = crypto::blake2b(topic_name).into();
+        let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash));
+
+        // Check if the topic exists and get the summary.
+        let Some(StoredValue::MessageTopic(prev_topic_summary)) =
+            self.context.read_gs(&topic_key)? else {
+            return Ok(Err(ApiError::MessageTopicNotRegistered));
+        };
+
+        let current_blocktime = self.context.get_blocktime();
+        let message_index = if prev_topic_summary.blocktime() != current_blocktime {
+            for index in 1..prev_topic_summary.message_count() {
+                self.context
+                    .prune_gs_unsafe(Key::message(entity_addr, topic_name_hash, index));
+            }
+            0
+        } else {
+            prev_topic_summary.message_count()
+        };
+
+        let Some(message_count) = message_index.checked_add(1) else {
+            return Ok(Err(ApiError::MessageTopicFull));
+        };
+        let new_topic_summary = MessageTopicSummary::new(message_count, current_blocktime);
+
+        let message_key = Key::message(entity_addr, topic_name_hash, message_index);
+        let message_checksum = MessageChecksum(crypto::blake2b(
+            message.to_bytes().map_err(Error::BytesRepr)?,
+        ));
+
+        self.context.metered_emit_message(
+            topic_key,
+            new_topic_summary,
+            message_key,
+            message_checksum,
+            Message::new(
+                entity_addr,
+                message,
+                topic_name.to_string(),
+                topic_name_hash,
+                message_index,
+            ),
+        )?;
+        Ok(Ok(()))
     }
 }

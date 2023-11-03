@@ -23,12 +23,14 @@ use super::Effects;
 use super::{Transform, TransformKind};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
+#[cfg(any(feature = "testing", feature = "json-schema", test))]
+use crate::Key;
+#[cfg(feature = "json-schema")]
+use crate::KEY_HASH_LENGTH;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, RESULT_ERR_TAG, RESULT_OK_TAG, U8_SERIALIZED_LENGTH},
     TransferAddr, U512,
 };
-#[cfg(feature = "json-schema")]
-use crate::{Key, KEY_HASH_LENGTH};
 
 #[cfg(feature = "json-schema")]
 static EXECUTION_RESULT: Lazy<ExecutionResultV2> = Lazy::new(|| {
@@ -93,16 +95,18 @@ impl Distribution<ExecutionResultV2> for Standard {
             transfers.push(TransferAddr::new(rng.gen()))
         }
 
+        let effects = Effects::random(rng);
+
         if rng.gen() {
             ExecutionResultV2::Failure {
-                effects: Effects::random(rng),
+                effects,
                 transfers,
                 cost: rng.gen::<u64>().into(),
                 error_message: format!("Error message {}", rng.gen::<u64>()),
             }
         } else {
             ExecutionResultV2::Success {
-                effects: Effects::random(rng),
+                effects,
                 transfers,
                 cost: rng.gen::<u64>().into(),
             }

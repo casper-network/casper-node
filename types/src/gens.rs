@@ -2,7 +2,12 @@
 //! [`Proptest`](https://crates.io/crates/proptest).
 #![allow(missing_docs)]
 
-use alloc::{boxed::Box, collections::BTreeSet, string::String, vec};
+use alloc::{
+    boxed::Box,
+    collections::{BTreeMap, BTreeSet},
+    string::String,
+    vec,
+};
 
 use proptest::{
     array, bits, bool,
@@ -14,17 +19,18 @@ use proptest::{
 
 use crate::{
     account::{self, action_thresholds::gens::account_action_thresholds_arb, AccountHash},
-    addressable_entity::{NamedKeys, Parameters, Weight},
-    crypto::gens::public_key_arb_no_system,
+    addressable_entity::{MessageTopics, NamedKeys, Parameters, Weight},
+    contract_messages::{MessageChecksum, MessageTopicSummary, TopicNameHash},
+    crypto::{self, gens::public_key_arb_no_system},
     package::{EntityVersionKey, EntityVersions, Groups, PackageStatus},
     system::auction::{
         gens::era_info_arb, DelegationRate, Delegator, UnbondingPurse, WithdrawPurse,
         DELEGATION_RATE_DENOMINATOR,
     },
     transfer::TransferAddr,
-    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, CLType, CLValue, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg, Package, Parameter,
-    Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
+    EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg,
+    Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
 };
 
 use crate::{
@@ -343,6 +349,20 @@ pub fn entry_points_arb() -> impl Strategy<Value = EntryPoints> {
     collection::vec(entry_point_arb(), 1..10).prop_map(EntryPoints::from)
 }
 
+pub fn message_topics_arb() -> impl Strategy<Value = MessageTopics> {
+    collection::vec(any::<String>(), 1..100).prop_map(|topic_names| {
+        MessageTopics::from(
+            topic_names
+                .into_iter()
+                .map(|name| {
+                    let name_hash = crypto::blake2b(&name).into();
+                    (name, name_hash)
+                })
+                .collect::<BTreeMap<String, TopicNameHash>>(),
+        )
+    })
+}
+
 pub fn account_arb() -> impl Strategy<Value = Account> {
     (
         account_hash_arb(),
@@ -419,6 +439,7 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
         uref_arb(),
         associated_keys_arb(),
         action_thresholds_arb(),
+        message_topics_arb(),
     )
         .prop_map(
             |(
@@ -430,6 +451,7 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
                 main_purse,
                 associated_keys,
                 action_thresholds,
+                message_topics,
             )| {
                 AddressableEntity::new(
                     contract_package_hash_arb.into(),
@@ -440,6 +462,7 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
                     main_purse,
                     associated_keys,
                     action_thresholds,
+                    message_topics,
                 )
             },
         )
@@ -660,6 +683,17 @@ fn unbondings_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<Unbon
     collection::vec(unbonding_arb(), size)
 }
 
+fn message_topic_summary_arb() -> impl Strategy<Value = MessageTopicSummary> {
+    (any::<u32>(), any::<u64>()).prop_map(|(message_count, blocktime)| MessageTopicSummary {
+        message_count,
+        blocktime: BlockTime::new(blocktime),
+    })
+}
+
+fn message_summary_arb() -> impl Strategy<Value = MessageChecksum> {
+    u8_slice_32().prop_map(MessageChecksum)
+}
+
 pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
     prop_oneof![
         cl_value_arb().prop_map(StoredValue::CLValue),
@@ -675,7 +709,9 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         validator_bid_arb().prop_map(StoredValue::BidKind),
         delegator_bid_arb().prop_map(StoredValue::BidKind),
         withdraws_arb(1..50).prop_map(StoredValue::Withdraw),
-        unbondings_arb(1..50).prop_map(StoredValue::Unbonding)
+        unbondings_arb(1..50).prop_map(StoredValue::Unbonding),
+        message_topic_summary_arb().prop_map(StoredValue::MessageTopic),
+        message_summary_arb().prop_map(StoredValue::Message),
     ]
     .prop_map(|stored_value|
         // The following match statement is here only to make sure
@@ -696,5 +732,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
             StoredValue::BidKind(_) => stored_value,
             StoredValue::Package(_) => stored_value,
             StoredValue::ByteCode(_) => stored_value,
+            StoredValue::MessageTopic(_) => stored_value,
+            StoredValue::Message(_) => stored_value,
         })
 }

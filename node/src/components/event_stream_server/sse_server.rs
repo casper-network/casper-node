@@ -32,15 +32,16 @@ use warp::{
     Filter, Reply,
 };
 
+use casper_types::{
+    contract_messages::Messages,
+    execution::{Effects, ExecutionResult},
+    Block, BlockHash, EraId, FinalitySignature, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+    Transaction, TransactionHash,
+};
 #[cfg(test)]
 use casper_types::{
     execution::ExecutionResultV2, testing::TestRng, Deploy, TestBlockBuilder,
     TestTransactionV1Builder,
-};
-use casper_types::{
-    execution::{Effects, ExecutionResult},
-    Block, BlockHash, EraId, FinalitySignature, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
-    Transaction, TransactionHash,
 };
 
 /// The URL root path.
@@ -75,8 +76,9 @@ pub enum SseData {
         timestamp: Timestamp,
         ttl: TimeDiff,
         block_hash: Box<BlockHash>,
-        #[data_size(skip)]
+        //#[data_size(skip)]
         execution_result: Box<ExecutionResult>,
+        messages: Messages,
     },
     /// The given transaction has expired.
     TransactionExpired { transaction_hash: TransactionHash },
@@ -124,6 +126,11 @@ impl SseData {
             Transaction::Deploy(deploy) => (deploy.timestamp(), deploy.ttl()),
             Transaction::V1(txn) => (txn.timestamp(), txn.ttl()),
         };
+        let message_count = rng.gen_range(0..6);
+        let messages = std::iter::repeat_with(|| rng.gen())
+            .take(message_count)
+            .collect();
+
         SseData::TransactionProcessed {
             transaction_hash: Box::new(txn.hash()),
             account: Box::new(txn.account().clone()),
@@ -131,6 +138,7 @@ impl SseData {
             ttl,
             block_hash: Box::new(BlockHash::random(rng)),
             execution_result: Box::new(ExecutionResult::from(ExecutionResultV2::random(rng))),
+            messages,
         }
     }
 

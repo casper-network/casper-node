@@ -17,6 +17,7 @@ use serde_bytes::ByteBuf;
 use crate::{
     account::Account,
     bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    contract_messages::{MessageChecksum, MessageTopicSummary},
     contract_wasm::ContractWasm,
     contracts::{Contract, ContractPackage},
     package::Package,
@@ -43,6 +44,8 @@ enum Tag {
     BidKind = 12,
     Package = 13,
     ByteCode = 14,
+    MessageTopic = 15,
+    Message = 16,
 }
 
 /// A value stored in Global State.
@@ -85,6 +88,10 @@ pub enum StoredValue {
     Package(Package),
     /// A record of byte code.
     ByteCode(ByteCode),
+    /// Variant that stores a message topic.
+    MessageTopic(MessageTopicSummary),
+    /// Variant that stores a message digest.
+    Message(MessageChecksum),
 }
 
 impl StoredValue {
@@ -182,6 +189,24 @@ impl StoredValue {
     pub fn as_addressable_entity(&self) -> Option<&AddressableEntity> {
         match self {
             StoredValue::AddressableEntity(entity) => Some(entity),
+            _ => None,
+        }
+    }
+
+    /// Returns a reference to the wrapped `MessageTopicSummary` if this is a `MessageTopic`
+    /// variant.
+    pub fn as_message_topic_summary(&self) -> Option<&MessageTopicSummary> {
+        match self {
+            StoredValue::MessageTopic(summary) => Some(summary),
+            _ => None,
+        }
+    }
+
+    /// Returns a reference to the wrapped `MessageChecksum` if this is a `Message`
+    /// variant.
+    pub fn as_message_checksum(&self) -> Option<&MessageChecksum> {
+        match self {
+            StoredValue::Message(checksum) => Some(checksum),
             _ => None,
         }
     }
@@ -318,6 +343,8 @@ impl StoredValue {
             StoredValue::BidKind(_) => "BidKind".to_string(),
             StoredValue::ByteCode(_) => "ByteCode".to_string(),
             StoredValue::Package(_) => "Package".to_string(),
+            StoredValue::MessageTopic(_) => "MessageTopic".to_string(),
+            StoredValue::Message(_) => "Message".to_string(),
         }
     }
 
@@ -338,6 +365,8 @@ impl StoredValue {
             StoredValue::BidKind(_) => Tag::BidKind,
             StoredValue::Package(_) => Tag::Package,
             StoredValue::ByteCode(_) => Tag::ByteCode,
+            StoredValue::MessageTopic(_) => Tag::MessageTopic,
+            StoredValue::Message(_) => Tag::Message,
         }
     }
 }
@@ -597,6 +626,10 @@ impl ToBytes for StoredValue {
                 StoredValue::BidKind(bid_kind) => bid_kind.serialized_length(),
                 StoredValue::Package(package) => package.serialized_length(),
                 StoredValue::ByteCode(byte_code) => byte_code.serialized_length(),
+                StoredValue::MessageTopic(message_topic_summary) => {
+                    message_topic_summary.serialized_length()
+                }
+                StoredValue::Message(message_digest) => message_digest.serialized_length(),
             }
     }
 
@@ -620,6 +653,10 @@ impl ToBytes for StoredValue {
             StoredValue::BidKind(bid_kind) => bid_kind.write_bytes(writer)?,
             StoredValue::Package(package) => package.write_bytes(writer)?,
             StoredValue::ByteCode(byte_code) => byte_code.write_bytes(writer)?,
+            StoredValue::MessageTopic(message_topic_summary) => {
+                message_topic_summary.write_bytes(writer)?
+            }
+            StoredValue::Message(message_digest) => message_digest.write_bytes(writer)?,
         };
         Ok(())
     }
@@ -671,6 +708,12 @@ impl FromBytes for StoredValue {
                 .map(|(package, remainder)| (StoredValue::Package(package), remainder)),
             tag if tag == Tag::ByteCode as u8 => ByteCode::from_bytes(remainder)
                 .map(|(byte_code, remainder)| (StoredValue::ByteCode(byte_code), remainder)),
+            tag if tag == Tag::MessageTopic as u8 => MessageTopicSummary::from_bytes(remainder)
+                .map(|(message_summary, remainder)| {
+                    (StoredValue::MessageTopic(message_summary), remainder)
+                }),
+            tag if tag == Tag::Message as u8 => MessageChecksum::from_bytes(remainder)
+                .map(|(checksum, remainder)| (StoredValue::Message(checksum), remainder)),
             _ => Err(Error::Formatting),
         }
     }
@@ -710,6 +753,10 @@ mod serde_helpers {
         Package(&'a Package),
         /// A record of byte code.
         ByteCode(&'a ByteCode),
+        /// Variant that stores [`MessageTopicSummary`].
+        MessageTopic(&'a MessageTopicSummary),
+        /// Variant that stores a [`MessageChecksum`].
+        Message(&'a MessageChecksum),
     }
 
     #[derive(Deserialize)]
@@ -744,6 +791,10 @@ mod serde_helpers {
         Package(Package),
         /// A record of byte code.
         ByteCode(ByteCode),
+        /// Variant that stores [`MessageTopicSummary`].
+        MessageTopic(MessageTopicSummary),
+        /// Variant that stores [`MessageChecksum`].
+        Message(MessageChecksum),
     }
 
     impl<'a> From<&'a StoredValue> for BinarySerHelper<'a> {
@@ -766,6 +817,10 @@ mod serde_helpers {
                 StoredValue::BidKind(payload) => BinarySerHelper::BidKind(payload),
                 StoredValue::Package(payload) => BinarySerHelper::Package(payload),
                 StoredValue::ByteCode(payload) => BinarySerHelper::ByteCode(payload),
+                StoredValue::MessageTopic(message_topic_summary) => {
+                    BinarySerHelper::MessageTopic(message_topic_summary)
+                }
+                StoredValue::Message(message_digest) => BinarySerHelper::Message(message_digest),
             }
         }
     }
@@ -792,6 +847,10 @@ mod serde_helpers {
                 BinaryDeserHelper::BidKind(payload) => StoredValue::BidKind(payload),
                 BinaryDeserHelper::ByteCode(payload) => StoredValue::ByteCode(payload),
                 BinaryDeserHelper::Package(payload) => StoredValue::Package(payload),
+                BinaryDeserHelper::MessageTopic(message_topic_summary) => {
+                    StoredValue::MessageTopic(message_topic_summary)
+                }
+                BinaryDeserHelper::Message(message_digest) => StoredValue::Message(message_digest),
             }
         }
     }

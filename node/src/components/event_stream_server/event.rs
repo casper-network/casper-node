@@ -6,6 +6,7 @@ use std::{
 use itertools::Itertools;
 
 use casper_types::{
+    contract_messages::Messages,
     execution::{Effects, ExecutionResult},
     Block, BlockHash, EraId, FinalitySignature, PublicKey, Timestamp, Transaction, TransactionHash,
     TransactionHeader,
@@ -21,6 +22,7 @@ pub enum Event {
         transaction_header: Box<TransactionHeader>,
         block_hash: BlockHash,
         execution_result: Box<ExecutionResult>,
+        messages: Messages,
     },
     TransactionsExpired(Vec<TransactionHash>),
     Fault {

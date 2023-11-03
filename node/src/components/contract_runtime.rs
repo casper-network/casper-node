@@ -75,7 +75,7 @@ pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
 use operations::execute_only;
 pub(crate) use types::{
-    BlockAndExecutionResults, EraValidatorsRequest, RoundSeigniorageRateRequest,
+    BlockAndExecutionResults, EraValidatorsRequest, ExecutionArtifact, RoundSeigniorageRateRequest,
     StepEffectsAndUpcomingEraValidators, TotalSupplyRequest,
 };
 
@@ -984,7 +984,7 @@ impl ContractRuntime {
         let execution_results_map: HashMap<_, _> = execution_results
             .iter()
             .cloned()
-            .map(|(deploy_hash, _, execution_result)| (deploy_hash, execution_result))
+            .map(|artifact| (artifact.deploy_hash, artifact.execution_result))
             .collect();
         if meta_block_state.register_as_stored().was_updated() {
             effect_builder

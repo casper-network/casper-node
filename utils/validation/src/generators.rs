@@ -8,7 +8,9 @@ use casper_types::{
         Account, AccountHash, ActionThresholds as AccountActionThresholds,
         AssociatedKeys as AccountAssociatedKeys, Weight as AccountWeight,
     },
-    addressable_entity::{ActionThresholds, AddressableEntity, AssociatedKeys, NamedKeys},
+    addressable_entity::{
+        ActionThresholds, AddressableEntity, AssociatedKeys, MessageTopics, NamedKeys,
+    },
     package::{EntityVersions, Groups, Package, PackageKind, PackageStatus},
     system::auction::{
         Bid, BidAddr, BidKind, Delegator, EraInfo, SeigniorageAllocation, UnbondingPurse,
@@ -376,6 +378,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
+            MessageTopics::default(),
         );
         stored_value.insert(
             "AddressableEntity".to_string(),

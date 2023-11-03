@@ -6,6 +6,7 @@ use std::{
 use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
 use casper_types::{
     account::AccountHash,
+    addressable_entity::MessageTopics,
     bytesrepr,
     package::{EntityVersions, Groups, PackageKind, PackageKindTag, PackageStatus},
     AccessRights, AddressableEntity, AddressableEntityHash, CLValue, EntryPoints, Key, Motes,
@@ -148,6 +149,7 @@ where
                     account.main_purse(),
                     account.associated_keys().clone().into(),
                     account.action_thresholds().clone().into(),
+                    MessageTopics::default(),
                 );
 
                 let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);

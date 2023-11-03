@@ -126,12 +126,14 @@ impl Executor {
                 effects: runtime.context().effects(),
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
+                messages: runtime.context().messages(),
             },
             Err(error) => ExecutionResult::Failure {
                 error: error.into(),
                 effects: runtime.context().effects(),
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
+                messages: runtime.context().messages(),
             },
         }
     }
@@ -177,6 +179,7 @@ impl Executor {
         // Snapshot of effects before execution, so in case of error only nonce update
         // can be returned.
         let effects = tracking_copy.borrow().effects();
+        let messages = tracking_copy.borrow().messages();
 
         let entry_point_name = direct_system_contract_call.entry_point_name();
 
@@ -250,6 +253,7 @@ impl Executor {
                     effects: runtime.context().effects(),
                     transfers: runtime.context().transfers().to_owned(),
                     cost: runtime.context().gas_counter(),
+                    messages: runtime.context().messages(),
                 }
                 .take_with_ret(ret),
                 Err(error) => ExecutionResult::Failure {
@@ -257,6 +261,7 @@ impl Executor {
                     error: Error::CLValue(error).into(),
                     transfers: runtime.context().transfers().to_owned(),
                     cost: runtime.context().gas_counter(),
+                    messages,
                 }
                 .take_without_ret(),
             },
@@ -265,6 +270,7 @@ impl Executor {
                 error: error.into(),
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
+                messages,
             }
             .take_without_ret(),
         }

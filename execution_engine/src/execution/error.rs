@@ -1,4 +1,6 @@
 //! Execution error and supporting code.
+use std::str::Utf8Error;
+
 use casper_storage::global_state;
 use parity_wasm::elements;
 use thiserror::Error;
@@ -197,6 +199,12 @@ pub enum Error {
     /// The EntryPoints contains an invalid entry.
     #[error("The EntryPoints contains an invalid entry")]
     InvalidEntryPointType,
+    /// Invalid message topic operation.
+    #[error("The requested operation is invalid for a message topic")]
+    InvalidMessageTopicOperation,
+    /// Invalid string encoding.
+    #[error("Invalid UTF-8 string encoding: {0}")]
+    InvalidUtf8Encoding(Utf8Error),
 }
 
 impl From<PreprocessingError> for Error {

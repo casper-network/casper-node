@@ -5,10 +5,12 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::{
     engine_state::{
-        self, execution_result::ExecutionResults, step::EvictItem, ChecksumRegistry, DeployItem,
-        EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult,
-        GetEraValidatorsRequest, PruneConfig, PruneResult, QueryRequest, QueryResult, StepError,
-        StepRequest, StepSuccess,
+        self,
+        execution_result::{ExecutionResultAndMessages, ExecutionResults},
+        step::EvictItem,
+        ChecksumRegistry, DeployItem, EngineState, ExecuteRequest,
+        ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, PruneConfig,
+        PruneResult, QueryRequest, QueryResult, StepError, StepRequest, StepSuccess,
     },
     execution,
 };
@@ -19,6 +21,7 @@ use casper_storage::{
 use casper_types::{
     account::AccountHash,
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
+    contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
     AddressableEntity, AddressableEntityHash, BlockV2, CLValue, DeployHash, Digest, EraEndV2,
     EraId, HashAddr, Key, ProtocolVersion, PublicKey, StoredValue, Transaction, U512,
@@ -35,6 +38,8 @@ use crate::{
     },
     types::{self, ApprovalsHashes, Chunkable, ExecutableBlock, InternalEraReport},
 };
+
+use super::ExecutionArtifact;
 
 fn generate_range_by_index(
     highest_era: u64,
@@ -111,7 +116,8 @@ pub fn execute_finalized_block(
         next_block_height,
     } = execution_pre_state;
     let mut state_root_hash = pre_state_root_hash;
-    let mut execution_results = Vec::with_capacity(executable_block.transactions.len());
+    let mut execution_results: Vec<ExecutionArtifact> =
+        Vec::with_capacity(executable_block.transactions.len());
     // Run any deploys that must be executed
     let block_time = executable_block.timestamp.millis();
     let start = Instant::now();
@@ -163,20 +169,28 @@ pub fn execute_finalized_block(
 
         trace!(?deploy_hash, ?result, "deploy execution result");
         // As for now a given state is expected to exist.
-        let (state_hash, execution_result) = commit_execution_results(
+        let (state_hash, execution_result, messages) = commit_execution_results(
             &scratch_state,
             metrics.clone(),
             state_root_hash,
             deploy_hash,
             result,
         )?;
-        execution_results.push((deploy_hash, deploy_header, execution_result));
+        execution_results.push(ExecutionArtifact::new(
+            deploy_hash,
+            deploy_header,
+            execution_result,
+            messages,
+        ));
         state_root_hash = state_hash;
     }
 
     // Write the deploy approvals' and execution results' checksums to global state.
-    let execution_results_checksum =
-        compute_execution_results_checksum(execution_results.iter().map(|(_, _, result)| result))?;
+    let execution_results_checksum = compute_execution_results_checksum(
+        execution_results
+            .iter()
+            .map(|artifact| &artifact.execution_result),
+    )?;
 
     let mut checksum_registry = ChecksumRegistry::new();
     checksum_registry.insert(APPROVALS_CHECKSUM_NAME, approvals_checksum);
@@ -382,7 +396,7 @@ fn commit_execution_results<S>(
     state_root_hash: Digest,
     deploy_hash: DeployHash,
     execution_results: ExecutionResults,
-) -> Result<(Digest, ExecutionResult), BlockExecutionError>
+) -> Result<(Digest, ExecutionResult, Messages), BlockExecutionError>
 where
     S: StateProvider + CommitProvider,
     S::Error: Into<execution::Error>,
@@ -413,9 +427,12 @@ where
         }
     };
     let new_state_root = commit_transforms(engine_state, metrics, state_root_hash, effects)?;
-    let versioned_execution_result =
-        ExecutionResult::from(ExecutionResultV2::from(ee_execution_result));
-    Ok((new_state_root, versioned_execution_result))
+    let ExecutionResultAndMessages {
+        execution_result,
+        messages,
+    } = ExecutionResultAndMessages::from(ee_execution_result);
+    let versioned_execution_result = ExecutionResult::from(execution_result);
+    Ok((new_state_root, versioned_execution_result, messages))
 }
 
 fn commit_transforms<S>(
@@ -446,7 +463,7 @@ pub fn execute_only<S>(
     engine_state: &EngineState<S>,
     execution_state: SpeculativeExecutionState,
     deploy: DeployItem,
-) -> Result<Option<ExecutionResultV2>, engine_state::Error>
+) -> Result<Option<(ExecutionResultV2, Messages)>, engine_state::Error>
 where
     S: StateProvider + CommitProvider,
     S::Error: Into<execution::Error>,
@@ -478,7 +495,14 @@ where
             // with `Some(_)` but `pop_front` already returns an `Option`.
             // We need to transform the `engine_state::ExecutionResult` into
             // `casper_types::ExecutionResult` as well.
-            execution_results.pop_front().map(Into::into)
+            execution_results.pop_front().map(|result| {
+                let ExecutionResultAndMessages {
+                    execution_result,
+                    messages,
+                } = result.into();
+
+                (execution_result, messages)
+            })
         }
     })
 }

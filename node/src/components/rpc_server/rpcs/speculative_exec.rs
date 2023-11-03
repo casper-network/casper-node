@@ -9,7 +9,10 @@ use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::engine_state::Error as EngineStateError;
 use casper_json_rpc::ReservedErrorCode;
-use casper_types::{execution::ExecutionResultV2, BlockHash, Deploy, ProtocolVersion, Transaction};
+use casper_types::{
+    contract_messages::Messages, execution::ExecutionResultV2, BlockHash, Deploy, ProtocolVersion,
+    Transaction,
+};
 
 use super::{
     chain::BlockIdentifier,
@@ -29,6 +32,7 @@ static SPECULATIVE_EXEC_TXN_RESULT: Lazy<SpeculativeExecTxnResult> =
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
         block_hash: *BlockHash::example(),
         execution_result: ExecutionResultV2::example().clone(),
+        messages: Vec::new(),
     });
 static SPECULATIVE_EXEC_PARAMS: Lazy<SpeculativeExecParams> = Lazy::new(|| SpeculativeExecParams {
     block_identifier: Some(BlockIdentifier::Hash(*BlockHash::example())),
@@ -62,6 +66,8 @@ pub struct SpeculativeExecTxnResult {
     pub block_hash: BlockHash,
     /// Result of the execution.
     pub execution_result: ExecutionResultV2,
+    /// Messages emitted during execution.
+    pub messages: Messages,
 }
 
 impl DocExample for SpeculativeExecTxnResult {
@@ -168,11 +174,12 @@ async fn handle_request<REv: ReactorEventT>(
         .await;
 
     match result {
-        Ok(Some(execution_result)) => {
+        Ok(Some((execution_result, messages))) => {
             let result = SpeculativeExecTxnResult {
                 api_version,
                 block_hash,
                 execution_result,
+                messages,
             };
             Ok(result)
         }

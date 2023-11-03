@@ -296,6 +296,7 @@ where
                     transaction_header,
                     block_hash,
                     execution_result,
+                    messages,
                 } => {
                     let (account, timestamp, ttl) = match *transaction_header {
                         TransactionHeader::Deploy(deploy_header) => (
@@ -316,6 +317,7 @@ where
                         ttl,
                         block_hash: Box::new(block_hash),
                         execution_result,
+                        messages,
                     })
                 }
                 Event::TransactionsExpired(transaction_hashes) => transaction_hashes

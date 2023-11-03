@@ -689,6 +689,7 @@ dependencies = [
  "blake2",
  "criterion",
  "datasize",
+ "derive_more",
  "derp",
  "ed25519-dalek",
  "getrandom",
@@ -930,6 +931,30 @@ dependencies = [
 
 [[package]]
 name = "contract-funds-call"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "contract-messages-emitter"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "contract-messages-from-account"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
+name = "contract-messages-upgrader"
 version = "0.1.0"
 dependencies = [
  "casper-contract",

@@ -35,6 +35,7 @@ mod chainspec;
 pub mod checksummed_hex;
 mod cl_type;
 mod cl_value;
+pub mod contract_messages;
 mod contract_wasm;
 pub mod contracts;
 pub mod crypto;
@@ -105,9 +106,10 @@ pub use chainspec::{
     ControlFlowCosts, CoreConfig, DelegatorConfig, DeployConfig, FeeHandling, GenesisAccount,
     GenesisValidator, GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError,
     HandlePaymentCosts, HighwayConfig, HostFunction, HostFunctionCost, HostFunctionCosts,
-    LegacyRequiredFinality, MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig, RefundHandling,
-    StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig, TransactionV1Config,
-    UpgradeConfig, ValidatorConfig, WasmConfig, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
+    LegacyRequiredFinality, MessageLimits, MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig,
+    RefundHandling, StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig,
+    TransactionV1Config, UpgradeConfig, ValidatorConfig, WasmConfig,
+    DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{

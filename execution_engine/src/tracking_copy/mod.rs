@@ -19,6 +19,7 @@ use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieM
 use casper_types::{
     addressable_entity::NamedKeys,
     bytesrepr::{self},
+    contract_messages::{Message, Messages},
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
     CLType, CLValue, CLValueError, Digest, Key, KeyTag, StoredValue, StoredValueTypeMismatch,
     Tagged, U512,
@@ -223,6 +224,7 @@ pub struct TrackingCopy<R> {
     reader: R,
     cache: TrackingCopyCache<HeapSize>,
     effects: Effects,
+    messages: Messages,
 }
 
 /// Result of executing an "add" operation on a value in the state.
@@ -261,6 +263,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
             // TODO: Should `max_cache_size` be a fraction of wasm memory limit?
             cache: TrackingCopyCache::new(1024 * 16, HeapSize),
             effects: Effects::new(),
+            messages: Vec::new(),
         }
     }
 
@@ -340,6 +343,24 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         self.cache.insert_write(normalized_key, value.clone());
         let transform = Transform::new(normalized_key, TransformKind::Write(value));
         self.effects.push(transform);
+    }
+
+    /// Caches the emitted message and writes the message topic summary under the specified key.
+    ///
+    /// This function does not check the types for the key and the value so the caller should
+    /// correctly set the type. The `message_topic_key` should be of the `Key::MessageTopic`
+    /// variant and the `message_topic_summary` should be of the `StoredValue::Message` variant.
+    pub fn emit_message(
+        &mut self,
+        message_topic_key: Key,
+        message_topic_summary: StoredValue,
+        message_key: Key,
+        message_value: StoredValue,
+        message: Message,
+    ) {
+        self.write(message_key, message_value);
+        self.write(message_topic_key, message_topic_summary);
+        self.messages.push(message);
     }
 
     /// Prunes a `key`.
@@ -433,6 +454,11 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     /// Returns a copy of the execution effects cached by this instance.
     pub fn effects(&self) -> Effects {
         self.effects.clone()
+    }
+
+    /// Returns a copy of the messages cached by this instance.
+    pub fn messages(&self) -> Messages {
+        self.messages.clone()
     }
 
     /// Calling `query()` avoids calling into `self.cache`, so this will not return any values
@@ -568,6 +594,12 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                 }
                 StoredValue::Unbonding(_) => {
                     return Ok(query.into_not_found_result("UnbondingPurses value found."));
+                }
+                StoredValue::MessageTopic(_) => {
+                    return Ok(query.into_not_found_result("MessageTopic value found."));
+                }
+                StoredValue::Message(_) => {
+                    return Ok(query.into_not_found_result("Message value found."));
                 }
             }
         }

@@ -8,6 +8,7 @@ use casper_types::{
     addressable_entity::NamedKeys,
     api_error,
     bytesrepr::{self, FromBytes},
+    contract_messages::{MessagePayload, MessageTopicOperation},
     package::EntityVersion,
     system::CallStackElement,
     AddressableEntityHash, ApiError, BlockTime, CLTyped, CLValue, Key, PackageHash, Phase,
@@ -402,6 +403,47 @@ pub fn get_call_stack() -> Vec<CallStackElement> {
     }
     let bytes = read_host_buffer(result_size).unwrap_or_revert();
     bytesrepr::deserialize(bytes).unwrap_or_revert()
+}
+
+/// Manages a message topic.
+pub fn manage_message_topic(
+    topic_name: &str,
+    operation: MessageTopicOperation,
+) -> Result<(), ApiError> {
+    if topic_name.is_empty() {
+        return Err(ApiError::InvalidArgument);
+    }
+
+    let (operation_ptr, operation_size, _bytes) = contract_api::to_ptr(operation);
+    let result = unsafe {
+        ext_ffi::casper_manage_message_topic(
+            topic_name.as_ptr(),
+            topic_name.len(),
+            operation_ptr,
+            operation_size,
+        )
+    };
+    api_error::result_from(result)
+}
+
+/// Emits a message on a topic.
+pub fn emit_message(topic_name: &str, message: &MessagePayload) -> Result<(), ApiError> {
+    if topic_name.is_empty() {
+        return Err(ApiError::InvalidArgument);
+    }
+
+    let (message_ptr, message_size, _bytes) = contract_api::to_ptr(message);
+
+    let result = unsafe {
+        ext_ffi::casper_emit_message(
+            topic_name.as_ptr(),
+            topic_name.len(),
+            message_ptr,
+            message_size,
+        )
+    };
+
+    api_error::result_from(result)
 }
 
 #[cfg(feature = "test-support")]

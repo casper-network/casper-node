@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_storage::global_state::state::StateProvider;
 use casper_types::{
-    addressable_entity::{ActionThresholds, NamedKeys},
+    addressable_entity::{ActionThresholds, MessageTopics, NamedKeys},
     execution::Effects,
     package::{EntityVersions, Groups, PackageKind, PackageStatus},
     system::{
@@ -1152,6 +1152,7 @@ where
             main_purse,
             associated_keys,
             ActionThresholds::default(),
+            MessageTopics::default(),
         );
 
         let access_key = self

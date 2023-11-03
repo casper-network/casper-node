@@ -10,7 +10,7 @@ use casper_storage::global_state::{
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity::{
-        ActionThresholds, AddressableEntityHash, AssociatedKeys, NamedKeys, Weight,
+        ActionThresholds, AddressableEntityHash, AssociatedKeys, MessageTopics, NamedKeys, Weight,
     },
     execution::{Effects, Transform, TransformKind},
     gens::*,
@@ -198,6 +198,7 @@ fn tracking_copy_add_named_key() {
         URef::new([0u8; 32], AccessRights::READ_ADD_WRITE),
         associated_keys,
         Default::default(),
+        MessageTopics::default(),
     );
 
     let db = CountingDb::new_init(StoredValue::AddressableEntity(contract));
@@ -357,6 +358,7 @@ proptest! {
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
+            MessageTopics::default(),
         ));
         let contract_key = Key::Hash(hash);
 
@@ -400,7 +402,8 @@ proptest! {
             ProtocolVersion::V1_0_0,
             purse,
             associated_keys,
-            ActionThresholds::default()
+            ActionThresholds::default(),
+            MessageTopics::default(),
         );
 
 
@@ -450,6 +453,7 @@ proptest! {
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
+            MessageTopics::default(),
         ));
         let contract_key = Key::AddressableEntity(PackageKindTag::SmartContract,hash);
 
@@ -553,6 +557,7 @@ fn query_for_circular_references_should_fail() {
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
+        MessageTopics::default(),
     ));
 
     let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
@@ -607,6 +612,7 @@ fn validate_query_proof_should_work() {
         fake_purse,
         AssociatedKeys::new(account_hash, Weight::new(1)),
         ActionThresholds::default(),
+        MessageTopics::default(),
     ));
 
     // create contract that refers to that account
@@ -626,6 +632,7 @@ fn validate_query_proof_should_work() {
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
+        MessageTopics::default(),
     ));
     let contract_key = Key::Hash([5; 32]);
 
@@ -653,6 +660,7 @@ fn validate_query_proof_should_work() {
         fake_purse,
         AssociatedKeys::new(account_hash, Weight::new(1)),
         ActionThresholds::default(),
+        MessageTopics::default(),
     ));
 
     let main_account_value = StoredValue::CLValue(cl_value_2);
@@ -1074,6 +1082,7 @@ fn query_with_large_depth_with_fixed_path_should_fail() {
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
+            MessageTopics::default(),
         ));
         pairs.push((contract_key, contract));
         contract_keys.push(contract_key);
@@ -1136,6 +1145,7 @@ fn query_with_large_depth_with_urefs_should_fail() {
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
+        MessageTopics::default(),
     ));
     let contract_key = Key::Hash([0; 32]);
     pairs.push((contract_key, contract));
