@@ -1656,7 +1656,7 @@ async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
     let approvals_hashes = ApprovalsHashes::new_v2(
         *block.hash(),
         txns.iter()
-            .map(|txn| txn.compute_approvals_hash())
+            .map(|txn| txn.compute_approvals_hash().unwrap())
             .collect(),
         dummy_merkle_proof(),
     );
@@ -2582,7 +2582,7 @@ async fn historical_sync_no_legacy_block() {
         Event::ApprovalsHashesFetched(Ok(FetchedData::from_storage(Box::new(
             ApprovalsHashes::new_v2(
                 *block.hash(),
-                vec![txn.compute_approvals_hash()],
+                vec![txn.compute_approvals_hash().unwrap()],
                 dummy_merkle_proof(),
             ),
         )))),
@@ -3547,7 +3547,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
     {
         let approvals_hashes = ApprovalsHashes::new_v2(
             *block.hash(),
-            vec![txn.compute_approvals_hash()],
+            vec![txn.compute_approvals_hash().unwrap()],
             dummy_merkle_proof(),
         );
         let effects = block_synchronizer.handle_event(
@@ -3815,9 +3815,9 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
             ApprovalsHashes::new_v2(
                 *block.hash(),
                 vec![
-                    first_txn.compute_approvals_hash(),
-                    second_txn.compute_approvals_hash(),
-                    third_txn.compute_approvals_hash(),
+                    first_txn.compute_approvals_hash().unwrap(),
+                    second_txn.compute_approvals_hash().unwrap(),
+                    third_txn.compute_approvals_hash().unwrap(),
                 ],
                 dummy_merkle_proof(),
             ),

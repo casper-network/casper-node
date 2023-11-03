@@ -370,7 +370,7 @@ impl MainReactor {
             PublicKey::System,
         );
 
-        // this genesis block has no deploys, and will get
+        // this genesis block has no transactions, and will get
         // handed off to be stored & marked complete after
         // sufficient finality signatures have been collected.
         let effects = effect_builder

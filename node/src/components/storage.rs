@@ -1464,7 +1464,11 @@ impl Storage {
                 .iter()
                 .zip(finalized_approvals.approvals_hashes())
             {
-                if transaction.compute_approvals_hash() == hash {
+                let computed_hash = transaction.compute_approvals_hash().map_err(|error| {
+                    error!(%error, "failed to serialize approvals");
+                    FatalStorageError::UnexpectedSerializationFailure(error)
+                })?;
+                if computed_hash == hash {
                     continue;
                 }
                 // This should be unreachable as the `BlockSynchronizer` should ensure we have the

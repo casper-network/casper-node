@@ -111,21 +111,14 @@ impl Transaction {
     }
 
     /// Returns the computed approvals hash identifying this transaction's approvals.
-    pub fn compute_approvals_hash(&self) -> TransactionApprovalsHash {
-        match self {
-            Transaction::Deploy(deploy) => TransactionApprovalsHash::Deploy(
-                deploy.compute_approvals_hash().unwrap_or_else(|error| {
-                    error!(%error, "failed to serialize deploy approvals");
-                    DeployApprovalsHash::from(Digest::default())
-                }),
-            ),
-            Transaction::V1(txn) => {
-                TransactionApprovalsHash::V1(txn.compute_approvals_hash().unwrap_or_else(|error| {
-                    error!(%error, "failed to serialize transaction approvals");
-                    TransactionV1ApprovalsHash::from(Digest::default())
-                }))
+    pub fn compute_approvals_hash(&self) -> Result<TransactionApprovalsHash, bytesrepr::Error> {
+        let approvals_hash = match self {
+            Transaction::Deploy(deploy) => {
+                TransactionApprovalsHash::Deploy(deploy.compute_approvals_hash()?)
             }
-        }
+            Transaction::V1(txn) => TransactionApprovalsHash::V1(txn.compute_approvals_hash()?),
+        };
+        Ok(approvals_hash)
     }
 
     /// Returns the computed `TransactionId` uniquely identifying this transaction and its
