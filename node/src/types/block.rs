@@ -1021,6 +1021,18 @@ impl BlockHeader {
     fn serialize(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.to_bytes()
     }
+
+    /// Returns a modified block header without the era end.
+    ///
+    /// Test only function, block headers should not be mutated. This method is exclusively used in
+    /// generating the largest specimen.
+    pub(crate) fn without_era_end(self) -> Self {
+        Self {
+            era_end: None,
+            block_hash: OnceCell::new(),
+            ..self
+        }
+    }
 }
 
 impl PartialEq for BlockHeader {
