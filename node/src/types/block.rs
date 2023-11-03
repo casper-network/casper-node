@@ -827,7 +827,7 @@ pub struct BlockHeader {
     block_hash: OnceCell<BlockHash>,
 }
 
-mod specimen_support {
+pub(crate) mod specimen_support {
     use crate::utils::specimen::{
         btree_map_distinct_from_prop, Cache, LargestSpecimen, SizeEstimator,
     };
@@ -837,6 +837,37 @@ mod specimen_support {
         BlockHeaderWithMetadata, BlockSignatures, EraEnd,
     };
     use once_cell::sync::OnceCell;
+
+    /// A wrapper around `BlockHeader` that implements `LargestSpecimen` without including the era
+    /// end.
+    pub(crate) struct BlockHeaderWithoutEraEnd(BlockHeader);
+
+    impl BlockHeaderWithoutEraEnd {
+        /// Unwraps the inner `BlockHeader`.
+        pub(crate) fn into_inner(self) -> BlockHeader {
+            self.0
+        }
+    }
+
+    impl LargestSpecimen for BlockHeaderWithoutEraEnd {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            BlockHeaderWithoutEraEnd(BlockHeader {
+                parent_hash: LargestSpecimen::largest_specimen(estimator, cache),
+                state_root_hash: LargestSpecimen::largest_specimen(estimator, cache),
+                body_hash: LargestSpecimen::largest_specimen(estimator, cache),
+                random_bit: LargestSpecimen::largest_specimen(estimator, cache),
+                accumulated_seed: LargestSpecimen::largest_specimen(estimator, cache),
+                era_end: None,
+                timestamp: LargestSpecimen::largest_specimen(estimator, cache),
+                era_id: LargestSpecimen::largest_specimen(estimator, cache),
+                height: LargestSpecimen::largest_specimen(estimator, cache),
+                protocol_version: LargestSpecimen::largest_specimen(estimator, cache),
+                block_hash: OnceCell::with_value(LargestSpecimen::largest_specimen(
+                    estimator, cache,
+                )),
+            })
+        }
+    }
 
     impl LargestSpecimen for BlockHeader {
         fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
@@ -1020,18 +1051,6 @@ impl BlockHeader {
     // Serialize the block header.
     fn serialize(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.to_bytes()
-    }
-
-    /// Returns a modified block header without the era end.
-    ///
-    /// Test only function, block headers should not be mutated. This method is exclusively used in
-    /// generating the largest specimen.
-    pub(crate) fn without_era_end(self) -> Self {
-        Self {
-            era_end: None,
-            block_hash: OnceCell::new(),
-            ..self
-        }
     }
 }
 

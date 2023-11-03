@@ -390,7 +390,7 @@ impl FetchItem for SyncLeap {
 
 mod specimen_support {
     use crate::{
-        types::BlockHeader,
+        types::block::specimen_support::BlockHeaderWithoutEraEnd,
         utils::specimen::{
             estimator_max_rounds_per_era, vec_of_largest_specimen, vec_prop_specimen, Cache,
             LargestSpecimen, SizeEstimator,
@@ -404,17 +404,18 @@ mod specimen_support {
             // Will at most contain as many blocks as a single era. And how many blocks can
             // there be in an era is determined by the chainspec: it's the
             // maximum of minimum_era_height and era_duration / minimum_block_time
-            let mut trusted_ancestor_headers: Vec<BlockHeader> =
-                vec_of_largest_specimen(estimator, estimator_max_rounds_per_era(estimator), cache);
+            let count = estimator_max_rounds_per_era(estimator).saturating_sub(1);
 
-            let pseudo_switch_block = trusted_ancestor_headers
-                .pop()
-                .expect("should generate at least one block header");
-            let mut trusted_ancestor_headers: Vec<_> = trusted_ancestor_headers
-                .into_iter()
-                .map(BlockHeader::without_era_end)
-                .collect();
-            trusted_ancestor_headers.push(pseudo_switch_block);
+            let non_switch_block_ancestors: Vec<BlockHeaderWithoutEraEnd> =
+                vec_of_largest_specimen(estimator, count, cache);
+
+            let mut trusted_ancestor_headers =
+                vec![LargestSpecimen::largest_specimen(estimator, cache)];
+            trusted_ancestor_headers.extend(
+                non_switch_block_ancestors
+                    .into_iter()
+                    .map(BlockHeaderWithoutEraEnd::into_inner),
+            );
 
             let signed_block_headers = vec_prop_specimen(estimator, "recent_era_count", cache);
             SyncLeap {
