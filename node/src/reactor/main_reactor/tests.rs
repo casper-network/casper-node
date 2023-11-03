@@ -914,3 +914,50 @@ async fn empty_block_validation_regression() {
         inactive => panic!("unexpected inactive validators: {:?}", inactive),
     }
 }
+
+#[tokio::test]
+async fn basic_simple_rewards_test() {
+    // TODO: Consider fixing the seed
+    let mut rng = crate::new_rng();
+
+    // Create random keypairs to populate our network
+    let size = 5;
+    let keys: Vec<Arc<SecretKey>> = (1..size)
+        .map(|_| Arc::new(SecretKey::random(&mut rng)))
+        .collect();
+    let stakes: BTreeMap<PublicKey, U512> = keys
+        .iter()
+        .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100000u64)))
+        .collect();
+
+    // Instantiate the chain
+    let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
+
+    // Run the network for a specified number of eras
+    let era_count = 4;
+    // TODO: Consider replacing era duration estimate with actual chainspec value
+    let timeout = Duration::from_secs(era_count * 41);
+    net.settle_on(
+        &mut rng,
+        has_completed_era(EraId::new(era_count - 1)),
+        timeout)
+        .await;
+
+    // Collect our data
+    let switch_blocks = SwitchBlocks::collect(net.nodes(), era_count);
+    let bids: Vec<Bids> = (0..era_count)
+        .map(|era_number| switch_blocks.bids(net.nodes(), era_number))
+        .collect();
+
+    // Verify that it "works"
+    // TODO: Make this more interesting
+    for entry in &bids[3] {
+        let (_, bid) = entry;
+        assert!(bid.staked_amount() > &U512::from(100000u64));
+    }
+
+}
