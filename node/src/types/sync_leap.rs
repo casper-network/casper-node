@@ -2355,9 +2355,4 @@ mod tests {
             }
         }
     }
-
-    #[test]
-    fn sync_leap_largest_specimen() {
-        // SyncLeap::largest_specimen();
-    }
 }
