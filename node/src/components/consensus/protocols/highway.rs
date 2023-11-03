@@ -1039,9 +1039,9 @@ where
                 .collect();
             // recursively remove vertices depending on the dropped ones
             let _faulty_senders = self.synchronizer.invalid_vertices(dropped_vertex_ids);
-            // We don't disconnect from the faulty senders here: The block validator considers the
-            // value "invalid" even if it just couldn't download the deploys, which could just be
-            // because the original sender went offline.
+            // We don't disconnect from the faulty senders here: The proposed block validator
+            // considers the value "invalid" even if it just couldn't download the deploys, which
+            // could just be because the original sender went offline.
             vec![]
         }
     }

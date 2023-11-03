@@ -532,10 +532,10 @@ disconnect_dishonest_peers_interval = '10 seconds'
 latch_reset_interval = '5 seconds'
 
 
-# =============================================
-# Configuration options for the block validator
-# =============================================
-[block_validator]
+# ======================================================
+# Configuration options for the proposed block validator
+# ======================================================
+[proposed_block_validator]
 
 # Maximum number of completed entries to retain.
 #

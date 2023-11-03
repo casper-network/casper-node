@@ -22,7 +22,7 @@ pub(super) struct MemoryMetrics {
     mem_finality_signature_gossiper: IntGauge,
     mem_block_gossiper: IntGauge,
     mem_deploy_buffer: IntGauge,
-    mem_block_validator: IntGauge,
+    mem_proposed_block_validator: IntGauge,
     mem_sync_leaper: IntGauge,
     mem_deploy_acceptor: IntGauge,
     mem_block_synchronizer: IntGauge,
@@ -71,9 +71,9 @@ impl MemoryMetrics {
             IntGauge::new("mem_block_gossiper", "block gossiper memory usage in bytes")?;
         let mem_deploy_buffer =
             IntGauge::new("mem_deploy_buffer", "deploy buffer memory usage in bytes")?;
-        let mem_block_validator = IntGauge::new(
+        let mem_proposed_block_validator = IntGauge::new(
             "mem_block_validator",
-            "block validator memory usage in bytes",
+            "proposed block validator memory usage in bytes",
         )?;
         let mem_sync_leaper =
             IntGauge::new("mem_sync_leaper", "sync leaper memory usage in bytes")?;
@@ -121,7 +121,7 @@ impl MemoryMetrics {
         registry.register(Box::new(mem_finality_signature_gossiper.clone()))?;
         registry.register(Box::new(mem_block_gossiper.clone()))?;
         registry.register(Box::new(mem_deploy_buffer.clone()))?;
-        registry.register(Box::new(mem_block_validator.clone()))?;
+        registry.register(Box::new(mem_proposed_block_validator.clone()))?;
         registry.register(Box::new(mem_sync_leaper.clone()))?;
         registry.register(Box::new(mem_deploy_acceptor.clone()))?;
         registry.register(Box::new(mem_block_synchronizer.clone()))?;
@@ -146,7 +146,7 @@ impl MemoryMetrics {
             mem_finality_signature_gossiper,
             mem_block_gossiper,
             mem_deploy_buffer,
-            mem_block_validator,
+            mem_proposed_block_validator,
             mem_sync_leaper,
             mem_deploy_acceptor,
             mem_block_synchronizer,
@@ -177,7 +177,7 @@ impl MemoryMetrics {
             reactor.finality_signature_gossiper.estimate_heap_size() as i64;
         let block_gossiper = reactor.block_gossiper.estimate_heap_size() as i64;
         let deploy_buffer = reactor.deploy_buffer.estimate_heap_size() as i64;
-        let block_validator = reactor.block_validator.estimate_heap_size() as i64;
+        let proposed_block_validator = reactor.proposed_block_validator.estimate_heap_size() as i64;
         let sync_leaper = reactor.sync_leaper.estimate_heap_size() as i64;
         let deploy_acceptor = reactor.deploy_acceptor.estimate_heap_size() as i64;
         let block_synchronizer = reactor.block_synchronizer.estimate_heap_size() as i64;
@@ -199,7 +199,7 @@ impl MemoryMetrics {
             + finality_signature_gossiper
             + block_gossiper
             + deploy_buffer
-            + block_validator
+            + proposed_block_validator
             + sync_leaper
             + deploy_acceptor
             + block_synchronizer
@@ -221,7 +221,8 @@ impl MemoryMetrics {
             .set(finality_signature_gossiper);
         self.mem_block_gossiper.set(block_gossiper);
         self.mem_deploy_buffer.set(deploy_buffer);
-        self.mem_block_validator.set(block_validator);
+        self.mem_proposed_block_validator
+            .set(proposed_block_validator);
         self.mem_sync_leaper.set(sync_leaper);
         self.mem_deploy_acceptor.set(deploy_acceptor);
         self.mem_block_synchronizer.set(block_synchronizer);
@@ -251,7 +252,7 @@ impl MemoryMetrics {
                %finality_signature_gossiper,
                %block_gossiper,
                %deploy_buffer,
-               %block_validator,
+               %proposed_block_validator,
                %sync_leaper,
                %deploy_acceptor,
                %block_synchronizer,
@@ -281,7 +282,7 @@ impl Drop for MemoryMetrics {
         unregister_metric!(self.registry, self.mem_finality_signature_gossiper);
         unregister_metric!(self.registry, self.mem_block_gossiper);
         unregister_metric!(self.registry, self.mem_deploy_buffer);
-        unregister_metric!(self.registry, self.mem_block_validator);
+        unregister_metric!(self.registry, self.mem_proposed_block_validator);
         unregister_metric!(self.registry, self.mem_sync_leaper);
         unregister_metric!(self.registry, self.mem_deploy_acceptor);
         unregister_metric!(self.registry, self.mem_block_synchronizer);

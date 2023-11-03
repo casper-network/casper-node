@@ -11,6 +11,13 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## Next Unreleased
+
+### Changed
+* Rename `BlockValidator` component to `ProposedBlockValidator`, and corresponding config section `block_validator` to `proposed_block_validator`.
+
+
+
 ## Unreleased
 
 ### Added

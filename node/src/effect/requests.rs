@@ -1040,12 +1040,12 @@ impl Display for SyncGlobalStateRequest {
     }
 }
 
-/// A block validator request.
+/// A proposed block validator request.
 #[derive(Debug)]
 #[must_use]
-pub(crate) struct BlockValidationRequest {
-    /// The block to be validated.
-    pub(crate) block: ProposedBlock<ClContext>,
+pub(crate) struct ProposedBlockValidationRequest {
+    /// The proposed block to be validated.
+    pub(crate) proposed_block: ProposedBlock<ClContext>,
     /// The sender of the block, which will be asked to provide all missing deploys.
     pub(crate) sender: NodeId,
     /// Responder to call with the result.
@@ -1054,10 +1054,14 @@ pub(crate) struct BlockValidationRequest {
     pub(crate) responder: Responder<bool>,
 }
 
-impl Display for BlockValidationRequest {
+impl Display for ProposedBlockValidationRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let BlockValidationRequest { block, sender, .. } = self;
-        write!(f, "validate block {} from {}", block, sender)
+        let ProposedBlockValidationRequest {
+            proposed_block,
+            sender,
+            ..
+        } = self;
+        write!(f, "validate {} from {}", proposed_block, sender)
     }
 }
 

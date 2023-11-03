@@ -50,7 +50,7 @@ use crate::{
     },
     effect::{
         announcements::FatalAnnouncement,
-        requests::{BlockValidationRequest, ContractRuntimeRequest, StorageRequest},
+        requests::{ContractRuntimeRequest, ProposedBlockValidationRequest, StorageRequest},
         AutoClosingResponder, EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal, protocol,
@@ -1371,7 +1371,7 @@ async fn check_deploys_for_replay_in_previous_eras_and_validate_block<REv>(
     proposed_block: ProposedBlock<ClContext>,
 ) -> Event
 where
-    REv: From<BlockValidationRequest> + From<StorageRequest>,
+    REv: From<ProposedBlockValidationRequest> + From<StorageRequest>,
 {
     let deploys_era_ids = effect_builder
         .get_deploys_era_ids(

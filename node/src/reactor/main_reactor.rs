@@ -33,7 +33,6 @@ use crate::{
     components::{
         block_accumulator::{self, BlockAccumulator},
         block_synchronizer::{self, BlockSynchronizer},
-        block_validator::{self, BlockValidator},
         consensus::{self, EraSupervisor},
         contract_runtime::ContractRuntime,
         deploy_acceptor::{self, DeployAcceptor},
@@ -43,6 +42,7 @@ use crate::{
         gossiper::{self, GossipItem, Gossiper},
         metrics::Metrics,
         network::{self, GossipedAddress, Identity as NetworkIdentity, Network},
+        proposed_block_validator::{self, ProposedBlockValidator},
         rest_server::RestServer,
         rpc_server::RpcServer,
         shutdown_trigger::{self, ShutdownTrigger},
@@ -144,7 +144,7 @@ pub(crate) struct MainReactor {
     consensus: EraSupervisor,
 
     // block handling
-    block_validator: BlockValidator,
+    proposed_block_validator: ProposedBlockValidator,
     block_accumulator: BlockAccumulator,
     block_synchronizer: BlockSynchronizer,
 
@@ -452,15 +452,15 @@ impl reactor::Reactor for MainReactor {
             }
 
             // BLOCKS
-            MainEvent::BlockValidator(event) => reactor::wrap_effects(
-                MainEvent::BlockValidator,
-                self.block_validator
+            MainEvent::ProposedBlockValidator(event) => reactor::wrap_effects(
+                MainEvent::ProposedBlockValidator,
+                self.proposed_block_validator
                     .handle_event(effect_builder, rng, event),
             ),
-            MainEvent::BlockValidatorRequest(req) => self.dispatch_event(
+            MainEvent::ProposedBlockValidatorRequest(req) => self.dispatch_event(
                 effect_builder,
                 rng,
-                MainEvent::BlockValidator(block_validator::Event::from(req)),
+                MainEvent::ProposedBlockValidator(proposed_block_validator::Event::from(req)),
             ),
             MainEvent::BlockAccumulator(event) => reactor::wrap_effects(
                 MainEvent::BlockAccumulator,
@@ -1147,7 +1147,8 @@ impl reactor::Reactor for MainReactor {
             validator_matrix.clone(),
             registry,
         )?;
-        let block_validator = BlockValidator::new(Arc::clone(&chainspec), config.block_validator);
+        let proposed_block_validator =
+            ProposedBlockValidator::new(Arc::clone(&chainspec), config.proposed_block_validator);
         let upgrade_watcher =
             UpgradeWatcher::new(chainspec.as_ref(), config.upgrade_watcher, &root_dir)?;
         let deploy_acceptor =
@@ -1176,7 +1177,7 @@ impl reactor::Reactor for MainReactor {
             sync_leaper,
             deploy_buffer,
             consensus,
-            block_validator,
+            proposed_block_validator,
             block_accumulator,
             block_synchronizer,
             diagnostics_port,

@@ -51,7 +51,6 @@ use tracing::warn;
 pub(crate) use components::{
     block_accumulator::Config as BlockAccumulatorConfig,
     block_synchronizer::Config as BlockSynchronizerConfig,
-    block_validator::Config as BlockValidatorConfig,
     consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
     deploy_acceptor::Config as DeployAcceptorConfig,
@@ -61,6 +60,7 @@ pub(crate) use components::{
     fetcher::Config as FetcherConfig,
     gossiper::Config as GossipConfig,
     network::Config as NetworkConfig,
+    proposed_block_validator::Config as ProposedBlockValidatorConfig,
     rest_server::Config as RestServerConfig,
     rpc_server::{Config as RpcServerConfig, SpeculativeExecConfig},
     upgrade_watcher::Config as UpgradeWatcherConfig,
