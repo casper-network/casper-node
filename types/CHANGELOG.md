@@ -13,6 +13,12 @@ All notable changes to this project will be documented in this file.  The format
 
 ## Unreleased
 
+### Added
+* Add a new `SyncHandling` enum, which allows a node to opt out of historical sync.
+
+### Changed
+* Update `k256` to version 0.13.1.
+
 ### Security
 * Update `ed25519-dalek` to version 2.0.0 as mitigation for [RUSTSEC-2022-0093](https://rustsec.org/advisories/RUSTSEC-2022-0093)
 
