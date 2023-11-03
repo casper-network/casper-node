@@ -29,7 +29,7 @@ use crate::{
     utils::{Loadable, WithDir},
 };
 
-// We override the standard allocator to gather metrics and tune the allocator via th MALLOC_CONF
+// We override the standard allocator to gather metrics and tune the allocator via the MALLOC_CONF
 // env var.
 #[global_allocator]
 static ALLOC: &StatsAlloc<System> = &INSTRUMENTED_SYSTEM;
@@ -149,7 +149,7 @@ impl Cli {
                 // Setup UNIX signal hooks.
                 setup_signal_hooks();
 
-                let validator_config = Self::init(&config, config_ext)?;
+                let mut validator_config = Self::init(&config, config_ext)?;
 
                 // We use a `ChaCha20Rng` for the production node. For one, we want to completely
                 // eliminate any chance of runtime failures, regardless of how small (these
@@ -171,6 +171,8 @@ impl Cli {
                 if !chainspec.is_valid() {
                     bail!("invalid chainspec");
                 }
+
+                validator_config.value_mut().ensure_valid(&chainspec);
 
                 let network_identity = NetworkIdentity::from_config(WithDir::new(
                     validator_config.dir(),

@@ -225,6 +225,16 @@ impl<C: Context> Highway<C> {
         self.active_validator = None;
     }
 
+    /// Gets the round exponent for the next message this instance will create.
+    #[cfg(test)]
+    #[allow(clippy::integer_arithmetic)]
+    pub(crate) fn get_round_exp(&self) -> Option<u8> {
+        self.active_validator.as_ref().map(|av| {
+            (av.next_round_length().millis() / self.state.params().min_round_length().millis())
+                .trailing_zeros() as u8
+        })
+    }
+
     /// Switches the active validator to a new round length.
     pub(crate) fn set_round_len(&mut self, new_round_len: TimeDiff) {
         if let Some(ref mut av) = self.active_validator {

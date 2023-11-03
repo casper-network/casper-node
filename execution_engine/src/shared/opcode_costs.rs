@@ -1,12 +1,9 @@
 //! Support for Wasm opcode costs.
 use std::{convert::TryInto, num::NonZeroU32};
 
-use casper_wasm_utils::{
-    parity_wasm::elements::Instruction,
-    rules::{MemoryGrowCost, Rules},
-};
+use casper_wasm::elements::Instruction;
+use casper_wasm_utils::rules::{MemoryGrowCost, Rules};
 use datasize::DataSize;
-
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
 

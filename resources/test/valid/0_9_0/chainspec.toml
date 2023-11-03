@@ -49,6 +49,7 @@ block_gas_limit = 13
 payment_args_max_length = 1024
 session_args_max_length = 1024
 native_transfer_minimum_motes = 2_500_000_000
+max_timestamp_leeway = '5 seconds'
 
 [wasm]
 max_memory = 17

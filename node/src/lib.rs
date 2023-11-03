@@ -8,7 +8,7 @@
 //! While the [`main`](fn.main.html) function is the central entrypoint for the node application,
 //! its core event loop is found inside the [reactor](reactor/index.html).
 
-#![doc(html_root_url = "https://docs.rs/casper-node/1.5.2")]
+#![doc(html_root_url = "https://docs.rs/casper-node/1.5.3")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon_48.png",
     html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png",
@@ -52,8 +52,10 @@ use tracing::warn;
 pub(crate) use components::{
     block_accumulator::Config as BlockAccumulatorConfig,
     block_synchronizer::Config as BlockSynchronizerConfig,
+    block_validator::Config as BlockValidatorConfig,
     consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
+    deploy_acceptor::Config as DeployAcceptorConfig,
     deploy_buffer::Config as DeployBufferConfig,
     diagnostics_port::Config as DiagnosticsPortConfig,
     event_stream_server::Config as EventStreamServerConfig,

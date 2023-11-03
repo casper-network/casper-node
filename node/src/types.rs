@@ -3,6 +3,7 @@
 pub(crate) mod appendable_block;
 mod available_block_range;
 mod block;
+mod block_hash_height_and_era;
 pub mod chainspec;
 mod chunkable;
 mod deploy;
@@ -36,6 +37,7 @@ pub use block::{
     BlockExecutionResultsOrChunkId, BlockExecutionResultsOrChunkIdDisplay, BlockHash, BlockHeader,
     BlockSignatures, FinalitySignature, FinalizedBlock,
 };
+pub(crate) use block_hash_height_and_era::BlockHashHeightAndEra;
 pub use chainspec::Chainspec;
 pub(crate) use chainspec::{ActivationPoint, ChainspecRawBytes};
 pub use chunkable::Chunkable;

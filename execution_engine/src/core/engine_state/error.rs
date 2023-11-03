@@ -33,7 +33,7 @@ pub enum Error {
     WasmPreprocessing(#[from] wasm_prep::PreprocessingError),
     /// WASM serialization error.
     #[error("Wasm serialization error: {0:?}")]
-    WasmSerialization(#[from] parity_wasm::SerializationError),
+    WasmSerialization(#[from] casper_wasm::SerializationError),
     /// Contract execution error.
     #[error(transparent)]
     Exec(execution::Error),

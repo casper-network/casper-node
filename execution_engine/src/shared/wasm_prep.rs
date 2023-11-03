@@ -1,8 +1,8 @@
 //! Preprocessing of Wasm modules.
-use casper_wasm_utils::{self, parity_wasm::elements::Module, stack_height};
-use parity_wasm::elements::{
-    self, External, Instruction, Internal, MemorySection, Section, TableType, Type,
+use casper_wasm::elements::{
+    self, External, Instruction, Internal, MemorySection, Module, Section, TableType, Type,
 };
+use casper_wasm_utils::{self, stack_height};
 use thiserror::Error;
 
 use super::wasm_config::WasmConfig;
@@ -411,25 +411,25 @@ pub fn preprocess(
 
 /// Returns a parity Module from the given bytes without making modifications or checking limits.
 pub fn deserialize(module_bytes: &[u8]) -> Result<Module, PreprocessingError> {
-    parity_wasm::deserialize_buffer::<Module>(module_bytes).map_err(|deserialize_error| {
+    casper_wasm::deserialize_buffer::<Module>(module_bytes).map_err(|deserialize_error| {
         match deserialize_error {
-            parity_wasm::SerializationError::UnknownOpcode(BULK_OPCODE_PREFIX) => {
+            casper_wasm::SerializationError::UnknownOpcode(BULK_OPCODE_PREFIX) => {
                 PreprocessingError::Deserialize(
                     "Bulk memory operations are not supported".to_string(),
                 )
             }
-            parity_wasm::SerializationError::UnknownOpcode(SIMD_OPCODE_PREFIX) => {
+            casper_wasm::SerializationError::UnknownOpcode(SIMD_OPCODE_PREFIX) => {
                 PreprocessingError::Deserialize("SIMD operations are not supported".to_string())
             }
-            parity_wasm::SerializationError::UnknownOpcode(ATOMIC_OPCODE_PREFIX) => {
+            casper_wasm::SerializationError::UnknownOpcode(ATOMIC_OPCODE_PREFIX) => {
                 PreprocessingError::Deserialize("Atomic operations are not supported".to_string())
             }
-            parity_wasm::SerializationError::UnknownOpcode(
+            casper_wasm::SerializationError::UnknownOpcode(
                 SIGN_EXT_OPCODE_START..=SIGN_EXT_OPCODE_END,
             ) => PreprocessingError::Deserialize(
                 "Sign extension operations are not supported".to_string(),
             ),
-            parity_wasm::SerializationError::Other(msg) if msg == "Enable the multi_value feature to deserialize more than one function result" => {
+            casper_wasm::SerializationError::Other(msg) if msg == "Enable the multi_value feature to deserialize more than one function result" => {
                 // Due to the way parity-wasm crate works, it's always deserializes opcodes
                 // from multi_value proposal but if the feature is not enabled, then it will
                 // error with very specific message (as compared to other extensions).
@@ -467,7 +467,7 @@ pub fn get_module_from_entry_points(
         Some(missing_name) => Err(execution::Error::FunctionNotFound(missing_name)),
         None => {
             casper_wasm_utils::optimize(&mut module, entry_point_names)?;
-            parity_wasm::serialize(module).map_err(execution::Error::ParityWasm)
+            casper_wasm::serialize(module).map_err(execution::Error::ParityWasm)
         }
     }
 }
@@ -475,7 +475,7 @@ pub fn get_module_from_entry_points(
 #[cfg(test)]
 mod tests {
     use casper_types::contracts::DEFAULT_ENTRY_POINT_NAME;
-    use parity_wasm::{
+    use casper_wasm::{
         builder,
         elements::{CodeSection, Instructions},
     };
@@ -523,7 +523,7 @@ mod tests {
             .memory()
             .build()
             .build();
-        let module_bytes = parity_wasm::serialize(module).expect("should serialize");
+        let module_bytes = casper_wasm::serialize(module).expect("should serialize");
         let error = preprocess(WasmConfig::default(), &module_bytes)
             .expect_err("should fail with an error");
         assert!(
@@ -562,7 +562,7 @@ mod tests {
             .memory()
             .build()
             .build();
-        let module_bytes = parity_wasm::serialize(module).expect("should serialize");
+        let module_bytes = casper_wasm::serialize(module).expect("should serialize");
         let error = preprocess(WasmConfig::default(), &module_bytes)
             .expect_err("should fail with an error");
         assert!(
@@ -598,7 +598,7 @@ mod tests {
             .memory()
             .build()
             .build();
-        let module_bytes = parity_wasm::serialize(module).expect("should serialize");
+        let module_bytes = casper_wasm::serialize(module).expect("should serialize");
         let error = preprocess(WasmConfig::default(), &module_bytes)
             .expect_err("should fail with an error");
         assert!(
@@ -619,7 +619,7 @@ mod tests {
             .memory()
             .build()
             .build();
-        let module_bytes = parity_wasm::serialize(module).expect("should serialize");
+        let module_bytes = casper_wasm::serialize(module).expect("should serialize");
 
         let error = preprocess(WasmConfig::default(), &module_bytes)
             .expect_err("should fail with an error");
@@ -642,7 +642,7 @@ mod tests {
             .memory()
             .build()
             .build();
-        let module_bytes = parity_wasm::serialize(module).expect("should serialize");
+        let module_bytes = casper_wasm::serialize(module).expect("should serialize");
         let error = preprocess(WasmConfig::default(), &module_bytes)
             .expect_err("should fail with an error");
         assert!(

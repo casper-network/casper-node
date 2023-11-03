@@ -1,6 +1,6 @@
 use assert_matches::assert_matches;
+use casper_wasm::builder;
 use once_cell::sync::Lazy;
-use parity_wasm::builder;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
@@ -65,7 +65,7 @@ fn make_session_code_with_memory_pages(initial_pages: u32, max_pages: Option<u32
         .with_max(max_pages)
         .build()
         .build();
-    parity_wasm::serialize(module).expect("should serialize")
+    casper_wasm::serialize(module).expect("should serialize")
 }
 
 fn make_request_with_session_bytes(session_code: Vec<u8>) -> ExecuteRequest {

@@ -394,7 +394,10 @@ mod schema_tests {
             "{}/../resources/test/rest_schema_status.json",
             env!("CARGO_MANIFEST_DIR")
         );
-        assert_schema(schema_path, schema_for!(GetStatusResult));
+        assert_schema(
+            schema_path,
+            serde_json::to_string_pretty(&schema_for!(GetStatusResult)).unwrap(),
+        );
     }
 
     #[test]
@@ -403,7 +406,10 @@ mod schema_tests {
             "{}/../resources/test/rest_schema_validator_changes.json",
             env!("CARGO_MANIFEST_DIR")
         );
-        assert_schema(schema_path, schema_for!(GetValidatorChangesResult));
+        assert_schema(
+            schema_path,
+            serde_json::to_string_pretty(&schema_for!(GetValidatorChangesResult)).unwrap(),
+        );
     }
 
     #[test]
@@ -412,7 +418,10 @@ mod schema_tests {
             "{}/../resources/test/rest_schema_rpc_schema.json",
             env!("CARGO_MANIFEST_DIR")
         );
-        assert_schema(schema_path, schema_for!(OpenRpcSchema));
+        assert_schema(
+            schema_path,
+            serde_json::to_string_pretty(&schema_for!(OpenRpcSchema)).unwrap(),
+        );
     }
 
     #[test]
@@ -421,6 +430,9 @@ mod schema_tests {
             "{}/../resources/test/rest_schema_chainspec_bytes.json",
             env!("CARGO_MANIFEST_DIR")
         );
-        assert_schema(schema_path, schema_for!(GetChainspecResult));
+        assert_schema(
+            schema_path,
+            serde_json::to_string_pretty(&schema_for!(GetChainspecResult)).unwrap(),
+        );
     }
 }

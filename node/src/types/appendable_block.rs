@@ -3,7 +3,7 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
-use casper_types::{Gas, PublicKey, Timestamp};
+use casper_types::{Gas, PublicKey, TimeDiff, Timestamp};
 use datasize::DataSize;
 use num_traits::Zero;
 use thiserror::Error;
@@ -12,6 +12,8 @@ use crate::types::{
     chainspec::DeployConfig, deploy::DeployFootprint, BlockPayload, DeployHash,
     DeployHashWithApprovals,
 };
+
+const NO_LEEWAY: TimeDiff = TimeDiff::from_millis(0);
 
 #[derive(Debug, Error)]
 pub(crate) enum AddError {
@@ -34,7 +36,7 @@ pub(crate) enum AddError {
 }
 
 /// A block that is still being added to. It keeps track of and enforces block limits.
-#[derive(Clone, DataSize, Debug)]
+#[derive(Clone, Eq, PartialEq, DataSize, Debug)]
 pub(crate) struct AppendableBlock {
     deploy_config: DeployConfig,
     deploys: Vec<DeployHashWithApprovals>,
@@ -96,7 +98,12 @@ impl AppendableBlock {
         }
         if footprint
             .header
-            .is_valid(&self.deploy_config, self.timestamp, transfer.deploy_hash())
+            .is_valid(
+                &self.deploy_config,
+                NO_LEEWAY,
+                self.timestamp,
+                transfer.deploy_hash(),
+            )
             .is_err()
         {
             return Err(AddError::InvalidDeploy);
@@ -131,7 +138,12 @@ impl AppendableBlock {
         }
         if footprint
             .header
-            .is_valid(&self.deploy_config, self.timestamp, deploy.deploy_hash())
+            .is_valid(
+                &self.deploy_config,
+                NO_LEEWAY,
+                self.timestamp,
+                deploy.deploy_hash(),
+            )
             .is_err()
         {
             return Err(AddError::InvalidDeploy);

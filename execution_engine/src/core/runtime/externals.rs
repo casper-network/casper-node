@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, convert::TryFrom};
 
-use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
+use casper_wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
 use casper_types::{
     account::AccountHash,
@@ -450,22 +450,22 @@ where
 
                 let source: URef = {
                     let bytes = self.bytes_from_mem(source_ptr, source_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
 
                 let target: URef = {
                     let bytes = self.bytes_from_mem(target_ptr, target_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
 
                 let amount: U512 = {
                     let bytes = self.bytes_from_mem(amount_ptr, amount_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
 
                 let id: Option<u64> = {
                     let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
 
                 let ret = self.transfer_from_purse_to_purse(source, target, amount, id)?;

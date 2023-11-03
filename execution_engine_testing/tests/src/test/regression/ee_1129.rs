@@ -1,6 +1,6 @@
+use casper_wasm::builder;
 use num_traits::Zero;
 use once_cell::sync::Lazy;
-use parity_wasm::builder;
 
 use casper_engine_test_support::{
     utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
@@ -438,7 +438,7 @@ fn do_nothing_without_memory() -> Vec<u8> {
         .field(DEFAULT_ENTRY_POINT_NAME)
         .build()
         .build();
-    parity_wasm::serialize(module).expect("should serialize")
+    casper_wasm::serialize(module).expect("should serialize")
 }
 
 #[ignore]
