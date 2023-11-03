@@ -36,8 +36,10 @@ pub const BLOCK_HEADER_V2_TAG: u8 = 1;
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum BlockHeader {
     /// The legacy, initial version of the header portion of a block.
+    #[cfg_attr(any(feature = "std", test), serde(rename = "Version1"))]
     V1(BlockHeaderV1),
     /// The version 2 of the header portion of a block.
+    #[cfg_attr(any(feature = "std", test), serde(rename = "Version2"))]
     V2(BlockHeaderV2),
 }
 

@@ -322,11 +322,8 @@ pub(crate) enum StorageRequest {
         /// Responder.
         responder: Responder<Option<BlockHeader>>,
     },
-    /// Retrieve the header of the block containing the deploy.
-    GetBlockHeaderForDeploy {
-        /// Hash of the deploy.
-        deploy_hash: DeployHash,
-        /// Responder.
+    GetBlockHeaderForTransaction {
+        transaction_hash: TransactionHash,
         responder: Responder<Option<BlockHeader>>,
     },
     /// Retrieve block header with given hash.
@@ -541,7 +538,10 @@ impl Display for StorageRequest {
             StorageRequest::GetHighestCompleteBlockHeader { .. } => {
                 write!(formatter, "get highest complete block header")
             }
-            StorageRequest::GetBlockHeaderForDeploy { deploy_hash, .. } => {
+            StorageRequest::GetBlockHeaderForTransaction {
+                transaction_hash: deploy_hash,
+                ..
+            } => {
                 write!(formatter, "get block header for deploy {}", deploy_hash)
             }
             StorageRequest::GetBlockHeader { block_hash, .. } => {

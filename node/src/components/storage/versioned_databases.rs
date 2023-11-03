@@ -22,9 +22,9 @@ use casper_types::{
 
 use super::{
     lmdb_ext::{self, LmdbExtError, TransactionExt, WriteTransactionExt},
-    DeployMetadataV1, FatalStorageError,
+    DeployMetadataV1, FatalStorageError, LegacyApprovalsHashes,
 };
-use crate::types::{FinalizedApprovals, FinalizedDeployApprovals};
+use crate::types::{ApprovalsHashes, FinalizedApprovals, FinalizedDeployApprovals};
 
 pub(super) trait VersionedKey: ToBytes {
     type Legacy: AsRef<[u8]>;
@@ -73,6 +73,10 @@ impl VersionedValue for BlockHeader {
 
 impl VersionedValue for BlockBody {
     type Legacy = BlockBodyV1;
+}
+
+impl VersionedValue for ApprovalsHashes {
+    type Legacy = LegacyApprovalsHashes;
 }
 
 impl VersionedValue for ExecutionResult {

@@ -24,6 +24,7 @@ pub enum TransactionHash {
     /// A deploy hash.
     Deploy(DeployHash),
     /// A version 1 transaction hash.
+    #[serde(rename = "Version1")]
     V1(TransactionV1Hash),
 }
 
@@ -33,9 +34,21 @@ impl From<DeployHash> for TransactionHash {
     }
 }
 
+impl From<&DeployHash> for TransactionHash {
+    fn from(hash: &DeployHash) -> Self {
+        Self::from(*hash)
+    }
+}
+
 impl From<TransactionV1Hash> for TransactionHash {
     fn from(hash: TransactionV1Hash) -> Self {
         Self::V1(hash)
+    }
+}
+
+impl From<&TransactionV1Hash> for TransactionHash {
+    fn from(hash: &TransactionV1Hash) -> Self {
+        Self::from(*hash)
     }
 }
 

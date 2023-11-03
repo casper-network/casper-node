@@ -1189,6 +1189,8 @@ async fn empty_block_validation_regression() {
                         block_payload: Arc::new(BlockPayload::new(
                             vec![],
                             vec![],
+                            vec![],
+                            vec![],
                             everyone_else.clone(),
                             Default::default(),
                             false,

@@ -126,11 +126,13 @@ pub(crate) fn validate_core_config(core_config: &CoreConfig) -> bool {
 pub(crate) fn validate_transaction_config(transaction_config: &TransactionConfig) -> bool {
     // The total number of transactions should not exceed the number of approvals because each
     // transaction needs at least one approval to be valid.
-    if let Some(total_deploy_and_transfer_slots) = transaction_config
-        .block_max_deploy_count
-        .checked_add(transaction_config.block_max_native_count)
+    if let Some(total_txn_slots) = transaction_config
+        .block_max_transfer_count
+        .checked_add(transaction_config.block_max_staking_count)
+        .and_then(|total| total.checked_add(transaction_config.block_max_install_upgrade_count))
+        .and_then(|total| total.checked_add(transaction_config.block_max_standard_count))
     {
-        transaction_config.block_max_approval_count >= total_deploy_and_transfer_slots
+        transaction_config.block_max_approval_count >= total_txn_slots
     } else {
         false
     }
@@ -380,35 +382,40 @@ mod tests {
     fn should_have_valid_transaction_counts() {
         let transaction_config = TransactionConfig {
             block_max_approval_count: 100,
-            block_max_deploy_count: 100,
-            block_max_native_count: 100,
+            block_max_transfer_count: 100,
+            block_max_staking_count: 1,
             ..Default::default()
         };
         assert!(
             !validate_transaction_config(&transaction_config),
-            "max approval count that is not at least equal to deploy + transfer count should be invalid"
+            "max approval count that is not at least equal to sum of `block_max_[txn type]_count`s \
+            should be invalid"
         );
 
         let transaction_config = TransactionConfig {
             block_max_approval_count: 200,
-            block_max_deploy_count: 100,
-            block_max_native_count: 100,
+            block_max_transfer_count: 100,
+            block_max_staking_count: 50,
+            block_max_install_upgrade_count: 25,
+            block_max_standard_count: 25,
             ..Default::default()
         };
         assert!(
             validate_transaction_config(&transaction_config),
-            "max approval count equal to deploy + transfer count should be valid"
+            "max approval count equal to sum of `block_max_[txn type]_count`s should be valid"
         );
 
         let transaction_config = TransactionConfig {
             block_max_approval_count: 200,
-            block_max_deploy_count: 10,
-            block_max_native_count: 100,
+            block_max_transfer_count: 100,
+            block_max_staking_count: 50,
+            block_max_install_upgrade_count: 25,
+            block_max_standard_count: 24,
             ..Default::default()
         };
         assert!(
             validate_transaction_config(&transaction_config),
-            "max approval count greater than deploy + transfer count should be valid"
+            "max approval count greater than sum of `block_max_[txn type]_count`s should be valid"
         );
     }
 
@@ -531,7 +538,6 @@ mod tests {
         assert!(validate_chainspec(&chainspec));
     }
 
-    #[allow(deprecated)]
     fn check_spec(spec: Chainspec, is_first_version: bool) {
         if is_first_version {
             assert_eq!(
@@ -615,7 +621,7 @@ mod tests {
         );
         assert_eq!(spec.transaction_config.deploy_config.max_dependencies, 11);
         assert_eq!(spec.transaction_config.max_block_size, 12);
-        assert_eq!(spec.transaction_config.block_max_deploy_count, 125);
+        assert_eq!(spec.transaction_config.block_max_transfer_count, 125);
         assert_eq!(spec.transaction_config.block_gas_limit, 13);
 
         assert_eq!(spec.wasm_config, *EXPECTED_GENESIS_WASM_COSTS);

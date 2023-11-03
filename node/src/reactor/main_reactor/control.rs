@@ -370,12 +370,15 @@ impl MainReactor {
             PublicKey::System,
         );
 
-        // this genesis block has no deploys, and will get
+        // this genesis block has no transactions, and will get
         // handed off to be stored & marked complete after
         // sufficient finality signatures have been collected.
         let effects = effect_builder
             .enqueue_block_for_execution(
-                ExecutableBlock::from_finalized_block_and_deploys(genesis_switch_block, vec![]),
+                ExecutableBlock::from_finalized_block_and_transactions(
+                    genesis_switch_block,
+                    vec![],
+                ),
                 MetaBlockState::new_not_to_be_gossiped(),
             )
             .ignore();
@@ -447,7 +450,7 @@ impl MainReactor {
                     );
                     Ok(effect_builder
                         .enqueue_block_for_execution(
-                            ExecutableBlock::from_finalized_block_and_deploys(
+                            ExecutableBlock::from_finalized_block_and_transactions(
                                 finalized_block,
                                 vec![],
                             ),

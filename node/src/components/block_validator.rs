@@ -37,7 +37,7 @@ use crate::{
     },
     types::{
         appendable_block::AppendableBlock, DeployHashWithApprovals, DeployOrTransferHash,
-        LegacyDeploy, NodeId,
+        LegacyDeploy, NodeId, TransactionHashWithApprovals,
     },
     NodeRng,
 };
@@ -51,27 +51,41 @@ impl ProposedBlock<ClContext> {
     }
 
     fn deploy_hashes(&self) -> impl Iterator<Item = &DeployHash> + '_ {
-        self.value().deploy_hashes()
+        self.value().standard().filter_map(|thwa| match thwa {
+            TransactionHashWithApprovals::Deploy { deploy_hash, .. } => Some(deploy_hash),
+            TransactionHashWithApprovals::V1 { .. } => None,
+        })
     }
 
     fn transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> + '_ {
-        self.value().transfer_hashes()
+        self.value().transfer().filter_map(|thwa| match thwa {
+            TransactionHashWithApprovals::Deploy { deploy_hash, .. } => Some(deploy_hash),
+            TransactionHashWithApprovals::V1 { .. } => None,
+        })
     }
 
     fn deploys_and_transfers_iter(
         &self,
     ) -> impl Iterator<Item = (DeployOrTransferHash, BTreeSet<DeployApproval>)> + '_ {
-        let deploys = self.value().deploys().iter().map(|dwa| {
-            (
-                DeployOrTransferHash::Deploy(*dwa.deploy_hash()),
-                dwa.approvals().clone(),
-            )
+        let deploys = self.value().standard().filter_map(|thwa| match thwa {
+            TransactionHashWithApprovals::Deploy {
+                deploy_hash,
+                approvals,
+            } => Some((
+                DeployOrTransferHash::Deploy(*deploy_hash),
+                approvals.clone(),
+            )),
+            TransactionHashWithApprovals::V1 { .. } => None,
         });
-        let transfers = self.value().transfers().iter().map(|dwa| {
-            (
-                DeployOrTransferHash::Transfer(*dwa.deploy_hash()),
-                dwa.approvals().clone(),
-            )
+        let transfers = self.value().transfer().filter_map(|thwa| match thwa {
+            TransactionHashWithApprovals::Deploy {
+                deploy_hash,
+                approvals,
+            } => Some((
+                DeployOrTransferHash::Transfer(*deploy_hash),
+                approvals.clone(),
+            )),
+            TransactionHashWithApprovals::V1 { .. } => None,
         });
         deploys.chain(transfers)
     }
@@ -188,12 +202,12 @@ where
             }) => {
                 debug!(?block, "validating proposed block");
                 if block.deploy_hashes().count()
-                    > self.chainspec.transaction_config.block_max_deploy_count as usize
+                    > self.chainspec.transaction_config.block_max_standard_count as usize
                 {
                     return responder.respond(false).ignore();
                 }
                 if block.transfer_hashes().count()
-                    > self.chainspec.transaction_config.block_max_native_count as usize
+                    > self.chainspec.transaction_config.block_max_transfer_count as usize
                 {
                     return responder.respond(false).ignore();
                 }

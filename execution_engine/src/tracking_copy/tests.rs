@@ -784,8 +784,6 @@ fn validate_query_proof_should_work() {
         panic!("query was not successful: {:?}", misfit_result)
     };
 
-    println!("Validating the injected proof");
-
     // Proof has been subject to an injection
     assert_eq!(
         tracking_copy::validate_query_proof(

@@ -1,6 +1,5 @@
 use datasize::DataSize;
 use derive_more::Display;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{Deploy, DeployHash};
@@ -19,10 +18,9 @@ use casper_types::{Deploy, DeployHash};
     Deserialize,
     Debug,
     Display,
-    JsonSchema,
 )]
 #[serde(deny_unknown_fields)]
-pub enum DeployOrTransferHash {
+pub(crate) enum DeployOrTransferHash {
     /// Hash of a deploy.
     #[display(fmt = "deploy {}", _0)]
     Deploy(DeployHash),

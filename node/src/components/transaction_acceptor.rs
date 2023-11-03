@@ -489,7 +489,6 @@ impl TransactionAcceptor {
                 | TransactionV1Kind::Userland(UserlandTransactionV1::InstallerUpgrader {
                     ..
                 })
-                | TransactionV1Kind::Userland(UserlandTransactionV1::Noop { .. })
                 | TransactionV1Kind::Userland(UserlandTransactionV1::Closed { .. })
                 | TransactionV1Kind::Native(_) => NextStep::CryptoValidation,
             },

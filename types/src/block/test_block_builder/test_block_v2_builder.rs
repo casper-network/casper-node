@@ -3,11 +3,13 @@ use std::iter;
 use alloc::collections::BTreeMap;
 use rand::Rng;
 
-use crate::{testing::TestRng, Block, EraEndV2, RewardedSignatures};
+use crate::{
+    testing::TestRng, Block, EraEndV2, RewardedSignatures, Transaction, TransactionV1Kind,
+};
 
 use crate::{
-    system::auction::ValidatorWeights, BlockHash, BlockV2, Deploy, Digest, EraId, ProtocolVersion,
-    PublicKey, Timestamp, U512,
+    system::auction::ValidatorWeights, BlockHash, BlockV2, Digest, EraId, NativeTransactionV1,
+    ProtocolVersion, PublicKey, Timestamp, UserlandTransactionV1, U512,
 };
 
 /// A helper to build the blocks with various properties required for tests.
@@ -18,7 +20,7 @@ pub struct TestBlockV2Builder {
     era: Option<EraId>,
     height: Option<u64>,
     protocol_version: ProtocolVersion,
-    deploys: Vec<Deploy>,
+    txns: Vec<Transaction>,
     is_switch: Option<bool>,
     validator_weights: Option<ValidatorWeights>,
     rewarded_signatures: Option<RewardedSignatures>,
@@ -33,7 +35,7 @@ impl Default for TestBlockV2Builder {
             era: None,
             height: None,
             protocol_version: ProtocolVersion::V1_0_0,
-            deploys: Vec::new(),
+            txns: Vec::new(),
             is_switch: None,
             validator_weights: None,
             rewarded_signatures: None,
@@ -95,10 +97,10 @@ impl TestBlockV2Builder {
         }
     }
 
-    /// Associates the given deploys with the created block.
-    pub fn deploys<'a, I: IntoIterator<Item = &'a Deploy>>(self, deploys_iter: I) -> Self {
+    /// Associates the given transactions with the created block.
+    pub fn transactions<'a, I: IntoIterator<Item = &'a Transaction>>(self, txns_iter: I) -> Self {
         Self {
-            deploys: deploys_iter.into_iter().cloned().collect(),
+            txns: txns_iter.into_iter().cloned().collect(),
             ..self
         }
     }
@@ -111,11 +113,10 @@ impl TestBlockV2Builder {
         }
     }
 
-    /// Associates a number of random deploys with the created block.
-    pub fn random_deploys(mut self, count: usize, rng: &mut TestRng) -> Self {
-        self.deploys = iter::repeat(())
+    /// Associates a number of random transactions with the created block.
+    pub fn random_transactions(mut self, count: usize, rng: &mut TestRng) -> Self {
+        self.txns = iter::repeat_with(|| Transaction::random(rng))
             .take(count)
-            .map(|_| Deploy::random(rng))
             .collect();
         self
     }
@@ -145,7 +146,7 @@ impl TestBlockV2Builder {
             era,
             height,
             protocol_version,
-            deploys,
+            txns,
             is_switch,
             validator_weights,
             rewarded_signatures,
@@ -162,8 +163,33 @@ impl TestBlockV2Builder {
         let height = height.unwrap_or_else(|| era_id.value() * 10 + rng.gen_range(0..10));
         let protocol_version = protocol_version;
         let proposer = PublicKey::random(rng);
-        let deploy_hashes = deploys.iter().map(|deploy| *deploy.hash()).collect();
-        let transfer_hashes = vec![];
+
+        let mut transfer_hashes = vec![];
+        let mut staking_hashes = vec![];
+        let mut install_upgrade_hashes = vec![];
+        let mut standard_hashes = vec![];
+        for txn in txns {
+            let txn_hash = txn.hash();
+            match txn {
+                Transaction::Deploy(deploy) => {
+                    if deploy.session().is_transfer() {
+                        transfer_hashes.push(txn_hash);
+                    } else {
+                        standard_hashes.push(txn_hash);
+                    }
+                }
+                Transaction::V1(v1_txn) => match v1_txn.body() {
+                    TransactionV1Kind::Native(NativeTransactionV1::MintTransfer(_)) => {
+                        transfer_hashes.push(txn_hash)
+                    }
+                    TransactionV1Kind::Native(_) => staking_hashes.push(txn_hash),
+                    TransactionV1Kind::Userland(UserlandTransactionV1::InstallerUpgrader {
+                        ..
+                    }) => install_upgrade_hashes.push(txn_hash),
+                    TransactionV1Kind::Userland(_) => standard_hashes.push(txn_hash),
+                },
+            }
+        }
         let rewarded_signatures = rewarded_signatures.unwrap_or_default();
 
         BlockV2::new(
@@ -177,8 +203,10 @@ impl TestBlockV2Builder {
             height,
             protocol_version,
             proposer,
-            deploy_hashes,
             transfer_hashes,
+            staking_hashes,
+            install_upgrade_hashes,
+            standard_hashes,
             rewarded_signatures,
         )
     }

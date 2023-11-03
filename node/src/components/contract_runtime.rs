@@ -583,9 +583,9 @@ impl ContractRuntime {
                     // This is the next block to be executed, we do it right away:
                     Ordering::Equal => {
                         info!(
-                            "ContractRuntime: execute finalized block({}) with {} deploys",
+                            "ContractRuntime: execute finalized block({}) with {} transactions",
                             finalized_block_height,
-                            executable_block.deploys.len()
+                            executable_block.transactions.len()
                         );
                         let engine_state = Arc::clone(&self.engine_state);
                         let metrics = Arc::clone(&self.metrics);
@@ -613,9 +613,10 @@ impl ContractRuntime {
                             finalized_block_height, next_block_height
                         );
                         info!(
-                            "ContractRuntime: enqueuing finalized block({}) with {} deploys for execution",
+                            "ContractRuntime: enqueuing finalized block({}) with {} transactions \
+                            for execution",
                             finalized_block_height,
-                            executable_block.deploys.len()
+                            executable_block.transactions.len()
                         );
                         exec_queue.insert(
                             finalized_block_height,

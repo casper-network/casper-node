@@ -9,22 +9,19 @@ use datasize::DataSize;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+use casper_types::Transaction;
 use casper_types::{
-    BlockV2, Deploy, DeployApproval, DeployHash, EraId, PublicKey, RewardedSignatures, SecretKey,
-    SingleBlockRewardedSignatures, Timestamp,
+    BlockV2, EraId, PublicKey, RewardedSignatures, SecretKey, SingleBlockRewardedSignatures,
+    Timestamp, TransactionHash, TransactionV1Approval, TransactionV1Hash,
 };
 #[cfg(any(feature = "testing", test))]
 use {casper_types::testing::TestRng, rand::Rng};
 
 use super::BlockPayload;
-use crate::{rpcs::docs::DocExample, types::DeployHashWithApprovals};
+use crate::{rpcs::docs::DocExample, types::TransactionHashWithApprovals};
 
 static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
-    let transfer_hashes = vec![*Deploy::doc_example().hash()];
-    let random_bit = true;
-    let timestamp = *Timestamp::doc_example();
-    let secret_key = SecretKey::example();
-    let public_key = PublicKey::from(secret_key);
     let validator_set = {
         let mut validator_set = BTreeSet::new();
         validator_set.insert(PublicKey::from(
@@ -40,24 +37,27 @@ static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
             &validator_set,
             &validator_set,
         )]);
+    let secret_key = SecretKey::example();
+    let hash = TransactionV1Hash::from_raw([19; 32]);
+    let approval = TransactionV1Approval::create(&hash, secret_key);
+    let mut approvals = BTreeSet::new();
+    approvals.insert(approval);
+    let transfer = TransactionHashWithApprovals::new_v1(hash, approvals);
+    let random_bit = true;
     let block_payload = BlockPayload::new(
+        vec![transfer],
         vec![],
-        transfer_hashes
-            .into_iter()
-            .map(|hash| {
-                let approval = DeployApproval::create(&hash, secret_key);
-                let mut approvals = BTreeSet::new();
-                approvals.insert(approval);
-                DeployHashWithApprovals::new(hash, approvals)
-            })
-            .collect(),
+        vec![],
+        vec![],
         vec![],
         rewarded_signatures,
         random_bit,
     );
     let era_report = Some(InternalEraReport::doc_example().clone());
+    let timestamp = *Timestamp::doc_example();
     let era_id = EraId::from(1);
     let height = 10;
+    let public_key = PublicKey::from(secret_key);
     FinalizedBlock::new(
         block_payload,
         era_report,
@@ -87,8 +87,10 @@ static INTERNAL_ERA_REPORT: Lazy<InternalEraReport> = Lazy::new(|| {
 /// and before execution happened yet.
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FinalizedBlock {
-    pub(crate) deploy_hashes: Vec<DeployHash>,
-    pub(crate) transfer_hashes: Vec<DeployHash>,
+    pub(crate) transfer: Vec<TransactionHash>,
+    pub(crate) staking: Vec<TransactionHash>,
+    pub(crate) install_upgrade: Vec<TransactionHash>,
+    pub(crate) standard: Vec<TransactionHash>,
     pub(crate) rewarded_signatures: RewardedSignatures,
     pub(crate) timestamp: Timestamp,
     pub(crate) random_bit: bool,
@@ -119,8 +121,22 @@ impl FinalizedBlock {
         proposer: PublicKey,
     ) -> Self {
         FinalizedBlock {
-            deploy_hashes: block_payload.deploy_hashes().cloned().collect(),
-            transfer_hashes: block_payload.transfer_hashes().cloned().collect(),
+            transfer: block_payload
+                .transfer()
+                .map(TransactionHashWithApprovals::transaction_hash)
+                .collect(),
+            staking: block_payload
+                .staking()
+                .map(TransactionHashWithApprovals::transaction_hash)
+                .collect(),
+            install_upgrade: block_payload
+                .install_upgrade()
+                .map(TransactionHashWithApprovals::transaction_hash)
+                .collect(),
+            standard: block_payload
+                .standard()
+                .map(TransactionHashWithApprovals::transaction_hash)
+                .collect(),
             rewarded_signatures: block_payload.rewarded_signatures().clone(),
             timestamp,
             random_bit: block_payload.random_bit(),
@@ -132,15 +148,19 @@ impl FinalizedBlock {
     }
 
     /// The list of deploy hashes chained with the list of transfer hashes.
-    pub(crate) fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
-        self.deploy_hashes.iter().chain(&self.transfer_hashes)
+    pub(crate) fn all_transactions(&self) -> impl Iterator<Item = &TransactionHash> {
+        self.transfer
+            .iter()
+            .chain(&self.staking)
+            .chain(&self.install_upgrade)
+            .chain(&self.standard)
     }
 
     /// Generates a random instance using a `TestRng` and includes specified deploys.
     #[cfg(test)]
-    pub(crate) fn random<'a, I: IntoIterator<Item = &'a Deploy>>(
+    pub(crate) fn random<'a, I: IntoIterator<Item = &'a Transaction>>(
         rng: &mut TestRng,
-        deploys_iter: I,
+        txns_iter: I,
     ) -> Self {
         let era = rng.gen_range(0..5);
         let height = era * 10 + rng.gen_range(0..10);
@@ -152,7 +172,7 @@ impl FinalizedBlock {
             height,
             is_switch,
             Timestamp::now(),
-            deploys_iter,
+            txns_iter,
         )
     }
 
@@ -160,31 +180,38 @@ impl FinalizedBlock {
     /// If `deploy` is `None`, random deploys will be generated, otherwise, the provided `deploy`
     /// will be used.
     #[cfg(test)]
-    pub(crate) fn random_with_specifics<'a, I: IntoIterator<Item = &'a Deploy>>(
+    pub(crate) fn random_with_specifics<'a, I: IntoIterator<Item = &'a Transaction>>(
         rng: &mut TestRng,
         era_id: EraId,
         height: u64,
         is_switch: bool,
         timestamp: Timestamp,
-        deploys_iter: I,
+        txns_iter: I,
     ) -> Self {
         use std::iter;
 
-        let mut deploys = deploys_iter
+        let mut txns = txns_iter
             .into_iter()
-            .map(DeployHashWithApprovals::from)
+            .map(TransactionHashWithApprovals::from)
             .collect::<Vec<_>>();
-        if deploys.is_empty() {
+        if txns.is_empty() {
             let count = rng.gen_range(0..11);
-            deploys.extend(
-                iter::repeat_with(|| DeployHashWithApprovals::from(&Deploy::random(rng)))
+            txns.extend(
+                iter::repeat_with(|| TransactionHashWithApprovals::from(&Transaction::random(rng)))
                     .take(count),
             );
         }
         let rewarded_signatures = Default::default();
         let random_bit = rng.gen();
-        let block_payload =
-            BlockPayload::new(deploys, vec![], vec![], rewarded_signatures, random_bit);
+        let block_payload = BlockPayload::new(
+            txns,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            rewarded_signatures,
+            random_bit,
+        );
 
         let era_report = if is_switch {
             Some(InternalEraReport::random(rng))
@@ -220,8 +247,10 @@ impl DocExample for InternalEraReport {
 impl From<BlockV2> for FinalizedBlock {
     fn from(block: BlockV2) -> Self {
         FinalizedBlock {
-            deploy_hashes: block.deploy_hashes().to_vec(),
-            transfer_hashes: block.transfer_hashes().to_vec(),
+            transfer: block.transfer().copied().collect(),
+            staking: block.staking().copied().collect(),
+            install_upgrade: block.install_upgrade().copied().collect(),
+            standard: block.standard().copied().collect(),
             timestamp: block.timestamp(),
             random_bit: block.random_bit(),
             era_report: block.era_end().map(|era_end| InternalEraReport {
@@ -240,12 +269,15 @@ impl Display for FinalizedBlock {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "finalized block #{} in {}, timestamp {}, {} deploys, {} transfers",
+            "finalized block #{} in {}, timestamp {}, {} transfers, {} staking txns, {} \
+            install/upgrade txns, {} standard txns",
             self.height,
             self.era_id,
             self.timestamp,
-            self.deploy_hashes.len(),
-            self.transfer_hashes.len(),
+            self.transfer.len(),
+            self.staking.len(),
+            self.install_upgrade.len(),
+            self.standard.len(),
         )?;
         if let Some(ref ee) = self.era_report {
             write!(formatter, ", era_end: {:?}", ee)?;

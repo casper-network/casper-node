@@ -333,7 +333,7 @@ pub(crate) enum MessageKind {
     FinalitySignatureGossip,
     /// Addresses being gossiped.
     AddressGossip,
-    /// Deploys being transferred directly (via requests).
+    /// Transactions being transferred directly (via requests).
     TransactionTransfer,
     /// Blocks for finality signatures being transferred directly (via requests and other means).
     BlockTransfer,
@@ -352,7 +352,7 @@ impl Display for MessageKind {
             MessageKind::BlockGossip => f.write_str("block_gossip"),
             MessageKind::FinalitySignatureGossip => f.write_str("finality_signature_gossip"),
             MessageKind::AddressGossip => f.write_str("address_gossip"),
-            MessageKind::TransactionTransfer => f.write_str("deploy_transfer"),
+            MessageKind::TransactionTransfer => f.write_str("transaction_transfer"),
             MessageKind::BlockTransfer => f.write_str("block_transfer"),
             MessageKind::TrieTransfer => f.write_str("trie_transfer"),
             MessageKind::Other => f.write_str("other"),
@@ -530,21 +530,39 @@ impl<'a> NetworkMessageEstimator<'a> {
                 .minimum_block_time
                 .millis()
                 .max(1) as i64,
-            "max_deploy_size" => self.chainspec.transaction_config.max_transaction_size as i64,
+            "max_transaction_size" => self.chainspec.transaction_config.max_transaction_size as i64,
             "approvals_hashes" => {
-                (self.chainspec.transaction_config.block_max_deploy_count
-                    + self.chainspec.transaction_config.block_max_native_count)
+                (self.chainspec.transaction_config.block_max_transfer_count
+                    + self.chainspec.transaction_config.block_max_staking_count
+                    + self
+                        .chainspec
+                        .transaction_config
+                        .block_max_install_upgrade_count
+                    + self.chainspec.transaction_config.block_max_standard_count)
                     as i64
             }
-            "max_deploys_per_block" => {
-                self.chainspec.transaction_config.block_max_deploy_count as i64
-            }
             "max_transfers_per_block" => {
-                self.chainspec.transaction_config.block_max_native_count as i64
+                self.chainspec.transaction_config.block_max_transfer_count as i64
             }
-            "average_approvals_per_deploy_in_block" => {
-                let max_total_deploys = (self.chainspec.transaction_config.block_max_deploy_count
-                    + self.chainspec.transaction_config.block_max_native_count)
+            "max_staking_transactions_per_block" => {
+                self.chainspec.transaction_config.block_max_staking_count as i64
+            }
+            "max_install_upgrade_transactions_per_block" => {
+                self.chainspec
+                    .transaction_config
+                    .block_max_install_upgrade_count as i64
+            }
+            "max_standard_transactions_per_block" => {
+                self.chainspec.transaction_config.block_max_standard_count as i64
+            }
+            "average_approvals_per_transaction_in_block" => {
+                let max_total_txns = (self.chainspec.transaction_config.block_max_transfer_count
+                    + self.chainspec.transaction_config.block_max_staking_count
+                    + self
+                        .chainspec
+                        .transaction_config
+                        .block_max_install_upgrade_count
+                    + self.chainspec.transaction_config.block_max_standard_count)
                     as i64;
 
                 // Note: The +1 is to overestimate, as depending on the serialization format chosen,
@@ -554,9 +572,9 @@ impl<'a> NetworkMessageEstimator<'a> {
                 //       using separators without trailing separators (e.g. commas in JSON),
                 //       spreading out will reduce the total number of bytes.
                 ((self.chainspec.transaction_config.block_max_approval_count as i64
-                    + max_total_deploys
+                    + max_total_txns
                     - 1)
-                    / max_total_deploys)
+                    / max_total_txns)
                     .max(0)
                     + 1
             }

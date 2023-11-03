@@ -736,10 +736,12 @@
       "description": "The body portion of a block. Version 2.",
       "type": "object",
       "required": [
-        "deploy_hashes",
+        "install_upgrade",
         "proposer",
         "rewarded_signatures",
-        "transfer_hashes"
+        "staking",
+        "standard",
+        "transfer"
       ],
       "properties": {
         "proposer": {
@@ -750,18 +752,32 @@
             }
           ]
         },
-        "deploy_hashes": {
-          "description": "The deploy hashes of the non-transfer deploys within the block.",
+        "transfer": {
+          "description": "The hashes of the transfer transactions within the block.",
           "type": "array",
           "items": {
-            "$ref": "#/definitions/DeployHash"
+            "$ref": "#/definitions/TransactionHash"
           }
         },
-        "transfer_hashes": {
-          "description": "The deploy hashes of the transfers within the block.",
+        "staking": {
+          "description": "The hashes of the non-transfer, native transactions within the block.",
           "type": "array",
           "items": {
-            "$ref": "#/definitions/DeployHash"
+            "$ref": "#/definitions/TransactionHash"
+          }
+        },
+        "install_upgrade": {
+          "description": "The hashes of the installer/upgrader userland transactions within the block.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TransactionHash"
+          }
+        },
+        "standard": {
+          "description": "The hashes of all other transactions within the block.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TransactionHash"
           }
         },
         "rewarded_signatures": {
@@ -773,6 +789,45 @@
           ]
         }
       }
+    },
+    "TransactionHash": {
+      "description": "A versioned wrapper for a transaction hash or deploy hash.",
+      "oneOf": [
+        {
+          "description": "A deploy hash.",
+          "type": "object",
+          "required": [
+            "Deploy"
+          ],
+          "properties": {
+            "Deploy": {
+              "$ref": "#/definitions/DeployHash"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A version 1 transaction hash.",
+          "type": "object",
+          "required": [
+            "Version1"
+          ],
+          "properties": {
+            "Version1": {
+              "$ref": "#/definitions/TransactionV1Hash"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "TransactionV1Hash": {
+      "description": "Hex-encoded TransactionV1 hash.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Digest"
+        }
+      ]
     },
     "RewardedSignatures": {
       "description": "Describes finality signatures that will be rewarded in a block. Consists of a vector of `SingleBlockRewardedSignatures`, each of which describes signatures for a single ancestor block. The first entry represents the signatures for the parent block, the second for the parent of the parent, and so on.",
@@ -810,10 +865,10 @@
           "description": "A version 1 transaction.",
           "type": "object",
           "required": [
-            "V1"
+            "Version1"
           ],
           "properties": {
-            "V1": {
+            "Version1": {
               "$ref": "#/definitions/TransactionV1"
             }
           },
@@ -1486,14 +1541,6 @@
       },
       "additionalProperties": false
     },
-    "TransactionV1Hash": {
-      "description": "Hex-encoded TransactionV1 hash.",
-      "allOf": [
-        {
-          "$ref": "#/definitions/Digest"
-        }
-      ]
-    },
     "TransactionV1Header": {
       "description": "The header portion of a TransactionV1.",
       "type": "object",
@@ -1832,42 +1879,6 @@
           "additionalProperties": false
         },
         {
-          "description": "A transaction which doesn't modify global state.",
-          "type": "object",
-          "required": [
-            "Noop"
-          ],
-          "properties": {
-            "Noop": {
-              "type": "object",
-              "required": [
-                "args",
-                "module_bytes"
-              ],
-              "properties": {
-                "module_bytes": {
-                  "description": "Raw Wasm module bytes with 'call' exported as an entrypoint.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/Bytes"
-                    }
-                  ]
-                },
-                "args": {
-                  "description": "Runtime arguments.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/RuntimeArgs"
-                    }
-                  ]
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
-        },
-        {
           "description": "A transaction which doesn't call stored contracts.",
           "type": "object",
           "required": [
@@ -2183,37 +2194,6 @@
         }
       },
       "additionalProperties": false
-    },
-    "TransactionHash": {
-      "description": "A versioned wrapper for a transaction hash or deploy hash.",
-      "oneOf": [
-        {
-          "description": "A deploy hash.",
-          "type": "object",
-          "required": [
-            "Deploy"
-          ],
-          "properties": {
-            "Deploy": {
-              "$ref": "#/definitions/DeployHash"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "A version 1 transaction hash.",
-          "type": "object",
-          "required": [
-            "V1"
-          ],
-          "properties": {
-            "V1": {
-              "$ref": "#/definitions/TransactionV1Hash"
-            }
-          },
-          "additionalProperties": false
-        }
-      ]
     },
     "ExecutionResult": {
       "description": "The versioned result of executing a single deploy.",

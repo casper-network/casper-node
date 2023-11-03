@@ -169,7 +169,7 @@
                 {
                   "name": "transaction",
                   "value": {
-                    "V1": {
+                    "Version1": {
                       "hash": "d1cb08851052c110a0df51c8b7ba8f3cbe3e5487a4e012f7db0d32ef02fdbde8",
                       "header": {
                         "account": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
@@ -249,7 +249,7 @@
                 "value": {
                   "api_version": "1.5.2",
                   "transaction_hash": {
-                    "V1": "d1cb08851052c110a0df51c8b7ba8f3cbe3e5487a4e012f7db0d32ef02fdbde8"
+                    "Version1": "d1cb08851052c110a0df51c8b7ba8f3cbe3e5487a4e012f7db0d32ef02fdbde8"
                   }
                 }
               }
@@ -385,7 +385,7 @@
                       }
                     ]
                   },
-                  "block_hash": "24ec19bc9aee9726616271ccfb046e8a7ea6370a34f18d6fb54d7a8ae29bdb1b",
+                  "block_hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e",
                   "block_height": 10,
                   "execution_result": {
                     "Version2": {
@@ -484,7 +484,7 @@
                 {
                   "name": "transaction_hash",
                   "value": {
-                    "V1": "d1cb08851052c110a0df51c8b7ba8f3cbe3e5487a4e012f7db0d32ef02fdbde8"
+                    "Version1": "d1cb08851052c110a0df51c8b7ba8f3cbe3e5487a4e012f7db0d32ef02fdbde8"
                   }
                 },
                 {
@@ -497,7 +497,7 @@
                 "value": {
                   "api_version": "1.5.2",
                   "transaction": {
-                    "V1": {
+                    "Version1": {
                       "hash": "d1cb08851052c110a0df51c8b7ba8f3cbe3e5487a4e012f7db0d32ef02fdbde8",
                       "header": {
                         "account": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
@@ -570,7 +570,7 @@
                       ]
                     }
                   },
-                  "block_hash": "24ec19bc9aee9726616271ccfb046e8a7ea6370a34f18d6fb54d7a8ae29bdb1b",
+                  "block_hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e",
                   "block_height": 10,
                   "execution_result": {
                     "Version2": {
@@ -874,7 +874,7 @@
                 {
                   "name": "state_identifier",
                   "value": {
-                    "BlockHash": "24ec19bc9aee9726616271ccfb046e8a7ea6370a34f18d6fb54d7a8ae29bdb1b"
+                    "BlockHash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e"
                   }
                 },
                 {
@@ -891,7 +891,7 @@
                 "value": {
                   "api_version": "1.5.2",
                   "block_header": {
-                    "V2": {
+                    "Version2": {
                       "parent_hash": "0707070707070707070707070707070707070707070707070707070707070707",
                       "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
                       "body_hash": "0505050505050505050505050505050505050505050505050505050505050505",
@@ -1203,7 +1203,7 @@
                   "chainspec_name": "casper-example",
                   "starting_state_root_hash": "0000000000000000000000000000000000000000000000000000000000000000",
                   "last_added_block_info": {
-                    "hash": "24ec19bc9aee9726616271ccfb046e8a7ea6370a34f18d6fb54d7a8ae29bdb1b",
+                    "hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e",
                     "timestamp": "2020-11-17T00:39:24.072Z",
                     "era_id": 1,
                     "height": 10,
@@ -1384,7 +1384,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "24ec19bc9aee9726616271ccfb046e8a7ea6370a34f18d6fb54d7a8ae29bdb1b"
+                    "Hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e"
                   }
                 }
               ],
@@ -1395,11 +1395,11 @@
                   "block_with_signatures": {
                     "block": {
                       "Version2": {
-                        "hash": "24ec19bc9aee9726616271ccfb046e8a7ea6370a34f18d6fb54d7a8ae29bdb1b",
+                        "hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e",
                         "header": {
                           "parent_hash": "0707070707070707070707070707070707070707070707070707070707070707",
                           "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
-                          "body_hash": "1855b7a4c3743c589f89bb840d13099a11527e4bd21ef1a3b37441547f5f99dc",
+                          "body_hash": "e49c0b878951cb6685cbfe86aa830090b2f8dab96304cb46ffa466879fdc8ae4",
                           "random_bit": true,
                           "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
                           "era_end": {
@@ -1432,11 +1432,25 @@
                         },
                         "body": {
                           "proposer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                          "deploy_hashes": [
-                            "1414141414141414141414141414141414141414141414141414141414141414"
+                          "transfer": [
+                            {
+                              "Version1": "1414141414141414141414141414141414141414141414141414141414141414"
+                            }
                           ],
-                          "transfer_hashes": [
-                            "1515151515151515151515151515151515151515151515151515151515151515"
+                          "staking": [
+                            {
+                              "Version1": "1515151515151515151515151515151515151515151515151515151515151515"
+                            }
+                          ],
+                          "install_upgrade": [
+                            {
+                              "Version1": "1616161616161616161616161616161616161616161616161616161616161616"
+                            }
+                          ],
+                          "standard": [
+                            {
+                              "Version1": "1717171717171717171717171717171717171717171717171717171717171717"
+                            }
                           ],
                           "rewarded_signatures": []
                         }
@@ -1445,7 +1459,7 @@
                     "proofs": [
                       {
                         "public_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                        "signature": "0161b0fd1cc91e99bf8994eb9785d38a5e93fd7fe248ece6d4700a7b5574408874a822cf9317320bde08d9b15b10243e7000955239c19d18200cad704217ad800c"
+                        "signature": "010fff61ef78aa2bc5ba549b287b67c50ce23f828e81633a5c0eb832863c101351738d94ad114a74a33fd5872e9fabe1b6a2042dd2c084a53ec75a5316a87bbf0f"
                       }
                     ]
                   }
@@ -1816,7 +1830,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "24ec19bc9aee9726616271ccfb046e8a7ea6370a34f18d6fb54d7a8ae29bdb1b"
+                    "Hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e"
                   }
                 }
               ],
@@ -1825,7 +1839,7 @@
                 "value": {
                   "api_version": "1.5.2",
                   "era_summary": {
-                    "block_hash": "24ec19bc9aee9726616271ccfb046e8a7ea6370a34f18d6fb54d7a8ae29bdb1b",
+                    "block_hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e",
                     "era_id": 42,
                     "stored_value": {
                       "EraInfo": {
@@ -1991,7 +2005,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "24ec19bc9aee9726616271ccfb046e8a7ea6370a34f18d6fb54d7a8ae29bdb1b"
+                    "Hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e"
                   }
                 }
               ],
@@ -2000,7 +2014,7 @@
                 "value": {
                   "api_version": "1.5.2",
                   "era_summary": {
-                    "block_hash": "24ec19bc9aee9726616271ccfb046e8a7ea6370a34f18d6fb54d7a8ae29bdb1b",
+                    "block_hash": "9ccc716f5f3c7ac238bf7aaad113c2add3586921a7966faffb3a5a253aa1d75e",
                     "era_id": 42,
                     "stored_value": {
                       "EraInfo": {
@@ -2698,10 +2712,10 @@
                 "description": "A version 1 transaction.",
                 "type": "object",
                 "required": [
-                  "V1"
+                  "Version1"
                 ],
                 "properties": {
-                  "V1": {
+                  "Version1": {
                     "$ref": "#/components/schemas/TransactionV1"
                   }
                 },
@@ -3092,42 +3106,6 @@
                 "additionalProperties": false
               },
               {
-                "description": "A transaction which doesn't modify global state.",
-                "type": "object",
-                "required": [
-                  "Noop"
-                ],
-                "properties": {
-                  "Noop": {
-                    "type": "object",
-                    "required": [
-                      "args",
-                      "module_bytes"
-                    ],
-                    "properties": {
-                      "module_bytes": {
-                        "description": "Raw Wasm module bytes with 'call' exported as an entrypoint.",
-                        "allOf": [
-                          {
-                            "$ref": "#/components/schemas/Bytes"
-                          }
-                        ]
-                      },
-                      "args": {
-                        "description": "Runtime arguments.",
-                        "allOf": [
-                          {
-                            "$ref": "#/components/schemas/RuntimeArgs"
-                          }
-                        ]
-                      }
-                    },
-                    "additionalProperties": false
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
                 "description": "A transaction which doesn't call stored contracts.",
                 "type": "object",
                 "required": [
@@ -3464,10 +3442,10 @@
                 "description": "A version 1 transaction hash.",
                 "type": "object",
                 "required": [
-                  "V1"
+                  "Version1"
                 ],
                 "properties": {
-                  "V1": {
+                  "Version1": {
                     "$ref": "#/components/schemas/TransactionV1Hash"
                   }
                 },
@@ -5898,7 +5876,7 @@
                 ]
               },
               {
-                "description": "Byte code to be executed with the V1 Casper execution engine.",
+                "description": "Byte code to be executed with the version 1 Casper execution engine.",
                 "type": "string",
                 "enum": [
                   "V1CasperWasm"
@@ -5993,10 +5971,10 @@
                 "description": "The legacy, initial version of the header portion of a block.",
                 "type": "object",
                 "required": [
-                  "V1"
+                  "Version1"
                 ],
                 "properties": {
-                  "V1": {
+                  "Version1": {
                     "$ref": "#/components/schemas/BlockHeaderV1"
                   }
                 },
@@ -6006,10 +5984,10 @@
                 "description": "The version 2 of the header portion of a block.",
                 "type": "object",
                 "required": [
-                  "V2"
+                  "Version2"
                 ],
                 "properties": {
-                  "V2": {
+                  "Version2": {
                     "$ref": "#/components/schemas/BlockHeaderV2"
                   }
                 },
@@ -6937,10 +6915,12 @@
             "description": "The body portion of a block. Version 2.",
             "type": "object",
             "required": [
-              "deploy_hashes",
+              "install_upgrade",
               "proposer",
               "rewarded_signatures",
-              "transfer_hashes"
+              "staking",
+              "standard",
+              "transfer"
             ],
             "properties": {
               "proposer": {
@@ -6951,18 +6931,32 @@
                   }
                 ]
               },
-              "deploy_hashes": {
-                "description": "The deploy hashes of the non-transfer deploys within the block.",
+              "transfer": {
+                "description": "The hashes of the transfer transactions within the block.",
                 "type": "array",
                 "items": {
-                  "$ref": "#/components/schemas/DeployHash"
+                  "$ref": "#/components/schemas/TransactionHash"
                 }
               },
-              "transfer_hashes": {
-                "description": "The deploy hashes of the transfers within the block.",
+              "staking": {
+                "description": "The hashes of the non-transfer, native transactions within the block.",
                 "type": "array",
                 "items": {
-                  "$ref": "#/components/schemas/DeployHash"
+                  "$ref": "#/components/schemas/TransactionHash"
+                }
+              },
+              "install_upgrade": {
+                "description": "The hashes of the installer/upgrader userland transactions within the block.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TransactionHash"
+                }
+              },
+              "standard": {
+                "description": "The hashes of all other transactions within the block.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TransactionHash"
                 }
               },
               "rewarded_signatures": {

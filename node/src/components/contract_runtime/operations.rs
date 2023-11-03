@@ -24,17 +24,19 @@ use casper_types::{
     contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
     AddressableEntity, AddressableEntityHash, BlockV2, CLValue, DeployHash, Digest, EraEndV2,
-    EraId, HashAddr, Key, ProtocolVersion, PublicKey, StoredValue, U512,
+    EraId, HashAddr, Key, ProtocolVersion, PublicKey, StoredValue, Transaction, U512,
 };
 
 use crate::{
-    components::contract_runtime::{
-        error::BlockExecutionError, types::StepEffectsAndUpcomingEraValidators,
-        BlockAndExecutionResults, ExecutionPreState, Metrics, PackageKindTag,
-        SpeculativeExecutionState, APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
+    components::{
+        contract_runtime::{
+            error::BlockExecutionError, types::StepEffectsAndUpcomingEraValidators,
+            BlockAndExecutionResults, ExecutionPreState, Metrics, PackageKindTag,
+            SpeculativeExecutionState, APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
+        },
+        fetcher::FetchItem,
     },
     types::{self, ApprovalsHashes, Chunkable, ExecutableBlock, InternalEraReport},
-    utils::fetch_id,
 };
 
 use super::ExecutionArtifact;
@@ -115,12 +117,16 @@ pub fn execute_finalized_block(
     } = execution_pre_state;
     let mut state_root_hash = pre_state_root_hash;
     let mut execution_results: Vec<ExecutionArtifact> =
-        Vec::with_capacity(executable_block.deploys.len());
+        Vec::with_capacity(executable_block.transactions.len());
     // Run any deploys that must be executed
     let block_time = executable_block.timestamp.millis();
     let start = Instant::now();
-    let deploy_ids = executable_block.deploys.iter().map(fetch_id).collect_vec();
-    let approvals_checksum = types::compute_approvals_checksum(deploy_ids.clone())
+    let txn_ids = executable_block
+        .transactions
+        .iter()
+        .map(Transaction::fetch_id)
+        .collect_vec();
+    let approvals_checksum = types::compute_approvals_checksum(txn_ids.clone())
         .map_err(BlockExecutionError::FailedToComputeApprovalsChecksum)?;
 
     // Create a new EngineState that reads from LMDB but only caches changes in memory.
@@ -137,8 +143,13 @@ pub fn execute_finalized_block(
         )?;
     }
 
-    // WARNING: Do not change the order of `deploys` as it will result in a different root hash.
-    for deploy in executable_block.deploys {
+    // WARNING: Do not change the order of `transactions` as it will result in a different root
+    // hash.
+    for txn in executable_block.transactions {
+        let deploy = match txn {
+            Transaction::Deploy(deploy) => deploy,
+            Transaction::V1(_) => continue,
+        };
         let deploy_hash = *deploy.hash();
         let deploy_header = deploy.header().clone();
         let execute_request = ExecuteRequest::new(
@@ -355,18 +366,17 @@ pub fn execute_finalized_block(
         executable_block.height,
         protocol_version,
         (*executable_block.proposer).clone(),
-        executable_block.deploy_hashes,
-        executable_block.transfer_hashes,
+        executable_block.transfer,
+        executable_block.staking,
+        executable_block.install_upgrade,
+        executable_block.standard,
         executable_block.rewarded_signatures,
     ));
 
-    let approvals_hashes = deploy_ids
-        .into_iter()
-        .map(|id| id.destructure().1)
-        .collect();
+    let approvals_hashes = txn_ids.into_iter().map(|id| id.approvals_hash()).collect();
     let proof_of_checksum_registry = engine_state.get_checksum_registry_proof(state_root_hash)?;
-    let approvals_hashes = Box::new(ApprovalsHashes::new(
-        block.hash(),
+    let approvals_hashes = Box::new(ApprovalsHashes::new_v2(
+        *block.hash(),
         approvals_hashes,
         proof_of_checksum_registry,
     ));

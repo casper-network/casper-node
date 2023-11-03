@@ -279,7 +279,7 @@ impl StdError for DeployConfigFailure {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ExcessiveSizeError {
     /// The maximum permitted serialized deploy size, in bytes.
-    pub max_deploy_size: u32,
+    pub max_transaction_size: u32,
     /// The serialized size of the deploy provided, in bytes.
     pub actual_deploy_size: usize,
 }
@@ -289,7 +289,7 @@ impl Display for ExcessiveSizeError {
         write!(
             formatter,
             "deploy size of {} bytes exceeds limit of {}",
-            self.actual_deploy_size, self.max_deploy_size
+            self.actual_deploy_size, self.max_transaction_size
         )
     }
 }

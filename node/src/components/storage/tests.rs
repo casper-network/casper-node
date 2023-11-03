@@ -22,7 +22,8 @@ use casper_types::{
     AccessRights, Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures, BlockV2,
     Chainspec, ChainspecRawBytes, Deploy, DeployApprovalsHash, DeployHash, Digest, EraId,
     FinalitySignature, ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TestBlockBuilder,
-    TestBlockV1Builder, TimeDiff, Transaction, TransactionHash, Transfer, URef, U512,
+    TestBlockV1Builder, TimeDiff, Transaction, TransactionApprovalsHash, TransactionHash, Transfer,
+    URef, U512,
 };
 use tempfile::tempdir;
 
@@ -667,8 +668,8 @@ fn get_block_header_for_deploy(
     deploy_hash: DeployHash,
 ) -> Option<BlockHeader> {
     let response = harness.send_request(storage, move |responder| {
-        StorageRequest::GetBlockHeaderForDeploy {
-            deploy_hash,
+        StorageRequest::GetBlockHeaderForTransaction {
+            transaction_hash: TransactionHash::from(deploy_hash),
             responder,
         }
         .into()
@@ -1218,7 +1219,7 @@ fn persist_blocks_deploys_and_execution_info_across_instantiations() {
     // Create some sample data.
     let deploy = Deploy::random(&mut harness.rng);
     let block: Block = TestBlockBuilder::new()
-        .deploys(Some(&deploy))
+        .transactions(Some(&Transaction::from(deploy.clone())))
         .build_versioned(&mut harness.rng);
 
     let block_height = block.height();
@@ -1303,9 +1304,12 @@ fn should_hard_reset() {
                 .era(height as u64 / 3)
                 .height(height as u64)
                 .switch_block(is_switch)
-                .deploys(iter::once(
-                    random_deploys.get(height).expect("should_have_deploy"),
-                ))
+                .transactions(iter::once(&Transaction::from(
+                    random_deploys
+                        .get(height)
+                        .expect("should_have_deploy")
+                        .clone(),
+                )))
                 .build_versioned(&mut harness.rng)
         })
         .collect();
@@ -2199,7 +2203,7 @@ static TEST_STORAGE_DIR_1_5_2: Lazy<PathBuf> = Lazy::new(|| {
 static STORAGE_INFO_FILE_NAME: &str = "storage_info.json";
 
 #[derive(Serialize, Deserialize, Debug)]
-struct BlockInfo {
+struct Node1_5_2BlockInfo {
     height: u64,
     era: EraId,
     approvals_hashes: Option<Vec<DeployApprovalsHash>>,
@@ -2209,15 +2213,15 @@ struct BlockInfo {
 
 // Summary information about the context of a database
 #[derive(Serialize, Deserialize, Debug)]
-struct StorageInfo {
+struct Node1_5_2StorageInfo {
     net_name: String,
     protocol_version: ProtocolVersion,
     block_range: (u64, u64),
-    blocks: HashMap<BlockHash, BlockInfo>,
+    blocks: HashMap<BlockHash, Node1_5_2BlockInfo>,
     deploys: Vec<DeployHash>,
 }
 
-impl StorageInfo {
+impl Node1_5_2StorageInfo {
     fn from_file(path: impl AsRef<Path>) -> Result<Self, io::Error> {
         Ok(serde_json::from_slice(fs::read(path)?.as_slice()).expect("Malformed JSON"))
     }
@@ -2453,7 +2457,7 @@ fn check_block_operations_with_node_1_5_2_storage() {
     let temp_dir = tempdir().unwrap();
     copy_dir_recursive(TEST_STORAGE_DIR_1_5_2.as_path(), temp_dir.path()).unwrap();
     let storage_info =
-        StorageInfo::from_file(temp_dir.path().join(STORAGE_INFO_FILE_NAME)).unwrap();
+        Node1_5_2StorageInfo::from_file(temp_dir.path().join(STORAGE_INFO_FILE_NAME)).unwrap();
     let mut harness = ComponentHarness::builder()
         .on_disk(temp_dir)
         .rng(rng)
@@ -2495,8 +2499,11 @@ fn check_block_operations_with_node_1_5_2_storage() {
         if let Some(expected_approvals_hashes) = &block_info.approvals_hashes {
             let stored_approvals_hashes = approvals_hashes.unwrap();
             assert_eq!(
-                stored_approvals_hashes.approvals_hashes(),
-                expected_approvals_hashes.as_slice()
+                stored_approvals_hashes.approvals_hashes().to_vec(),
+                expected_approvals_hashes
+                    .iter()
+                    .map(|approvals_hash| TransactionApprovalsHash::Deploy(*approvals_hash))
+                    .collect::<Vec<_>>()
             );
         }
 
