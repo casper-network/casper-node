@@ -414,12 +414,11 @@ pub fn manage_message_topic(
         return Err(ApiError::InvalidArgument);
     }
 
-    let (topic_name_ptr, topic_name_size, _bytes) = contract_api::to_ptr(topic_name);
     let (operation_ptr, operation_size, _bytes) = contract_api::to_ptr(operation);
     let result = unsafe {
         ext_ffi::casper_manage_message_topic(
-            topic_name_ptr,
-            topic_name_size,
+            topic_name.as_ptr(),
+            topic_name.len(),
             operation_ptr,
             operation_size,
         )
@@ -433,11 +432,15 @@ pub fn emit_message(topic_name: &str, message: &MessagePayload) -> Result<(), Ap
         return Err(ApiError::InvalidArgument);
     }
 
-    let (topic_name_ptr, topic_name_size, _bytes) = contract_api::to_ptr(topic_name);
     let (message_ptr, message_size, _bytes) = contract_api::to_ptr(message);
 
     let result = unsafe {
-        ext_ffi::casper_emit_message(topic_name_ptr, topic_name_size, message_ptr, message_size)
+        ext_ffi::casper_emit_message(
+            topic_name.as_ptr(),
+            topic_name.len(),
+            message_ptr,
+            message_size,
+        )
     };
 
     api_error::result_from(result)

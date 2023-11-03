@@ -1358,7 +1358,7 @@ where
     /// Adds new message topic.
     pub(crate) fn add_message_topic(
         &mut self,
-        topic_name: String,
+        topic_name: &str,
         topic_name_hash: TopicNameHash,
     ) -> Result<Result<(), MessageTopicError>, Error> {
         let entity_key: Key = self.get_entity_key();

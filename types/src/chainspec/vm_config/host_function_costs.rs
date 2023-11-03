@@ -390,54 +390,104 @@ impl Zero for HostFunctionCosts {
     }
 
     fn is_zero(&self) -> bool {
-        self.read_value.is_zero()
-            && self.dictionary_get.is_zero()
-            && self.write.is_zero()
-            && self.dictionary_put.is_zero()
-            && self.add.is_zero()
-            && self.new_uref.is_zero()
-            && self.load_named_keys.is_zero()
-            && self.ret.is_zero()
-            && self.get_key.is_zero()
-            && self.has_key.is_zero()
-            && self.put_key.is_zero()
-            && self.remove_key.is_zero()
-            && self.revert.is_zero()
-            && self.is_valid_uref.is_zero()
-            && self.add_associated_key.is_zero()
-            && self.remove_associated_key.is_zero()
-            && self.update_associated_key.is_zero()
-            && self.set_action_threshold.is_zero()
-            && self.get_caller.is_zero()
-            && self.get_blocktime.is_zero()
-            && self.create_purse.is_zero()
-            && self.transfer_to_account.is_zero()
-            && self.transfer_from_purse_to_account.is_zero()
-            && self.transfer_from_purse_to_purse.is_zero()
-            && self.get_balance.is_zero()
-            && self.get_phase.is_zero()
-            && self.get_system_contract.is_zero()
-            && self.get_main_purse.is_zero()
-            && self.read_host_buffer.is_zero()
-            && self.create_contract_package_at_hash.is_zero()
-            && self.create_contract_user_group.is_zero()
-            && self.add_contract_version.is_zero()
-            && self.disable_contract_version.is_zero()
-            && self.call_contract.is_zero()
-            && self.call_versioned_contract.is_zero()
-            && self.get_named_arg_size.is_zero()
-            && self.get_named_arg.is_zero()
-            && self.remove_contract_user_group.is_zero()
-            && self.provision_contract_user_group_uref.is_zero()
-            && self.remove_contract_user_group_urefs.is_zero()
-            && self.print.is_zero()
-            && self.blake2b.is_zero()
-            && self.random_bytes.is_zero()
-            && self.enable_contract_version.is_zero()
-            && self.add_session_version.is_zero()
-            && self.manage_message_topic.is_zero()
-            && self.emit_message.is_zero()
-            && self.cost_increase_per_message.is_zero()
+        let HostFunctionCosts {
+            cost_increase_per_message,
+            read_value,
+            dictionary_get,
+            write,
+            dictionary_put,
+            add,
+            new_uref,
+            load_named_keys,
+            ret,
+            get_key,
+            has_key,
+            put_key,
+            remove_key,
+            revert,
+            is_valid_uref,
+            add_associated_key,
+            remove_associated_key,
+            update_associated_key,
+            set_action_threshold,
+            get_caller,
+            get_blocktime,
+            create_purse,
+            transfer_to_account,
+            transfer_from_purse_to_account,
+            transfer_from_purse_to_purse,
+            get_balance,
+            get_phase,
+            get_system_contract,
+            get_main_purse,
+            read_host_buffer,
+            create_contract_package_at_hash,
+            create_contract_user_group,
+            add_contract_version,
+            disable_contract_version,
+            call_contract,
+            call_versioned_contract,
+            get_named_arg_size,
+            get_named_arg,
+            remove_contract_user_group,
+            provision_contract_user_group_uref,
+            remove_contract_user_group_urefs,
+            print,
+            blake2b,
+            random_bytes,
+            enable_contract_version,
+            add_session_version,
+            manage_message_topic,
+            emit_message,
+        } = self;
+        read_value.is_zero()
+            && dictionary_get.is_zero()
+            && write.is_zero()
+            && dictionary_put.is_zero()
+            && add.is_zero()
+            && new_uref.is_zero()
+            && load_named_keys.is_zero()
+            && ret.is_zero()
+            && get_key.is_zero()
+            && has_key.is_zero()
+            && put_key.is_zero()
+            && remove_key.is_zero()
+            && revert.is_zero()
+            && is_valid_uref.is_zero()
+            && add_associated_key.is_zero()
+            && remove_associated_key.is_zero()
+            && update_associated_key.is_zero()
+            && set_action_threshold.is_zero()
+            && get_caller.is_zero()
+            && get_blocktime.is_zero()
+            && create_purse.is_zero()
+            && transfer_to_account.is_zero()
+            && transfer_from_purse_to_account.is_zero()
+            && transfer_from_purse_to_purse.is_zero()
+            && get_balance.is_zero()
+            && get_phase.is_zero()
+            && get_system_contract.is_zero()
+            && get_main_purse.is_zero()
+            && read_host_buffer.is_zero()
+            && create_contract_package_at_hash.is_zero()
+            && create_contract_user_group.is_zero()
+            && add_contract_version.is_zero()
+            && disable_contract_version.is_zero()
+            && call_contract.is_zero()
+            && call_versioned_contract.is_zero()
+            && get_named_arg_size.is_zero()
+            && get_named_arg.is_zero()
+            && remove_contract_user_group.is_zero()
+            && provision_contract_user_group_uref.is_zero()
+            && remove_contract_user_group_urefs.is_zero()
+            && print.is_zero()
+            && blake2b.is_zero()
+            && random_bytes.is_zero()
+            && enable_contract_version.is_zero()
+            && add_session_version.is_zero()
+            && manage_message_topic.is_zero()
+            && emit_message.is_zero()
+            && cost_increase_per_message.is_zero()
     }
 }
 

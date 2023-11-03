@@ -7,12 +7,14 @@ use datasize::DataSize;
 use serde::Serialize;
 
 use casper_types::{
-    contract_messages::Messages, execution::ExecutionResult, ActivationPoint, Block, BlockHash,
-    BlockV2, DeployHash, DeployHeader, EraId,
+    execution::ExecutionResult, ActivationPoint, Block, BlockHash, BlockV2, DeployHash,
+    DeployHeader, EraId,
 };
 
 pub(crate) use merge_mismatch_error::MergeMismatchError;
 pub(crate) use state::State;
+
+use crate::contract_runtime::ExecutionArtifact;
 
 /// A block along with its execution results and state recording which actions have been taken
 /// related to the block.
@@ -30,7 +32,7 @@ pub(crate) enum MetaBlock {
 impl MetaBlock {
     pub(crate) fn new_forward(
         block: Arc<BlockV2>,
-        execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult, Messages)>,
+        execution_results: Vec<ExecutionArtifact>,
         state: State,
     ) -> Self {
         Self::Forward(ForwardMetaBlock {
@@ -98,7 +100,7 @@ impl MetaBlock {
 #[derive(Clone, Eq, PartialEq, Serialize, Debug, DataSize)]
 pub(crate) struct ForwardMetaBlock {
     pub(crate) block: Arc<BlockV2>,
-    pub(crate) execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult, Messages)>,
+    pub(crate) execution_results: Vec<ExecutionArtifact>,
     pub(crate) state: State,
 }
 
@@ -179,7 +181,7 @@ mod tests {
 
         let block = Arc::new(TestBlockBuilder::new().build(rng));
         let deploy = Deploy::random(rng);
-        let execution_results = vec![(
+        let execution_results = vec![ExecutionArtifact::new(
             *deploy.hash(),
             deploy.take_header(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
@@ -234,7 +236,7 @@ mod tests {
 
         let block = Arc::new(TestBlockBuilder::new().build(rng));
         let deploy = Deploy::random(rng);
-        let execution_results = vec![(
+        let execution_results = vec![ExecutionArtifact::new(
             *deploy.hash(),
             deploy.take_header(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
@@ -272,7 +274,7 @@ mod tests {
                 .build(rng),
         );
         let deploy = Deploy::random(rng);
-        let execution_results = vec![(
+        let execution_results = vec![ExecutionArtifact::new(
             *deploy.hash(),
             deploy.take_header(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
@@ -305,14 +307,14 @@ mod tests {
 
         let block = Arc::new(TestBlockBuilder::new().build(rng));
         let deploy1 = Deploy::random(rng);
-        let execution_results1 = vec![(
+        let execution_results1 = vec![ExecutionArtifact::new(
             *deploy1.hash(),
             deploy1.take_header(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
             Vec::new(),
         )];
         let deploy2 = Deploy::random(rng);
-        let execution_results2 = vec![(
+        let execution_results2 = vec![ExecutionArtifact::new(
             *deploy2.hash(),
             deploy2.take_header(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),

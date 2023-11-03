@@ -2725,7 +2725,8 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::InvalidPackageKind(_)
                 | ExecError::Transform(_)
                 | ExecError::InvalidEntryPointType
-                | ExecError::InvalidMessageTopicOperation => false,
+                | ExecError::InvalidMessageTopicOperation
+                | ExecError::InvalidUtf8Encoding(_) => false,
                 ExecError::DisabledUnrestrictedTransfers => false,
             },
             Error::WasmPreprocessing(_) => true,

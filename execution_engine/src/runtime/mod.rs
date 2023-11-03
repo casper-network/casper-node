@@ -3346,8 +3346,8 @@ where
         }
     }
 
-    fn add_message_topic(&mut self, topic_name: String) -> Result<Result<(), ApiError>, Error> {
-        let topic_hash = crypto::blake2b(&topic_name).into();
+    fn add_message_topic(&mut self, topic_name: &str) -> Result<Result<(), ApiError>, Error> {
+        let topic_hash = crypto::blake2b(topic_name).into();
 
         self.context
             .add_message_topic(topic_name, topic_hash)
@@ -3356,7 +3356,7 @@ where
 
     fn emit_message(
         &mut self,
-        topic_name: String,
+        topic_name: &str,
         message: MessagePayload,
     ) -> Result<Result<(), ApiError>, Trap> {
         let entity_addr = self
@@ -3365,7 +3365,7 @@ where
             .into_entity_hash()
             .ok_or(Error::InvalidContext)?;
 
-        let topic_name_hash = crypto::blake2b(&topic_name).into();
+        let topic_name_hash = crypto::blake2b(topic_name).into();
         let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash));
 
         // Check if the topic exists and get the summary.
@@ -3403,7 +3403,7 @@ where
             Message::new(
                 entity_addr,
                 message,
-                topic_name,
+                topic_name.to_string(),
                 topic_name_hash,
                 message_index,
             ),

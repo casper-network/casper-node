@@ -693,14 +693,14 @@ impl MessageTopics {
     /// Adds new message topic by topic name.
     pub fn add_topic(
         &mut self,
-        topic_name: String,
+        topic_name: &str,
         topic_name_hash: TopicNameHash,
     ) -> Result<(), MessageTopicError> {
         if self.0.len() >= u32::MAX as usize {
             return Err(MessageTopicError::MaxTopicsExceeded);
         }
 
-        match self.0.entry(topic_name) {
+        match self.0.entry(topic_name.to_string()) {
             Entry::Vacant(entry) => {
                 entry.insert(topic_name_hash);
                 Ok(())
@@ -1054,7 +1054,7 @@ impl AddressableEntity {
     /// Adds a new message topic to the entity
     pub fn add_message_topic(
         &mut self,
-        topic_name: String,
+        topic_name: &str,
         topic_name_hash: TopicNameHash,
     ) -> Result<(), MessageTopicError> {
         self.message_topics.add_topic(topic_name, topic_name_hash)

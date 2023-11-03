@@ -1582,17 +1582,15 @@ impl MainReactor {
 
         match &meta_block {
             MetaBlock::Forward(fwd_meta_block) => {
-                for (deploy_hash, deploy_header, execution_result, messages) in
-                    fwd_meta_block.execution_results.iter()
-                {
+                for exec_artifact in fwd_meta_block.execution_results.iter() {
                     let event = event_stream_server::Event::TransactionProcessed {
-                        transaction_hash: TransactionHash::Deploy(*deploy_hash),
+                        transaction_hash: TransactionHash::Deploy(exec_artifact.deploy_hash),
                         transaction_header: Box::new(TransactionHeader::Deploy(
-                            deploy_header.clone(),
+                            exec_artifact.deploy_header.clone(),
                         )),
                         block_hash: *fwd_meta_block.block.hash(),
-                        execution_result: Box::new(execution_result.clone()),
-                        messages: messages.clone(),
+                        execution_result: Box::new(exec_artifact.execution_result.clone()),
+                        messages: exec_artifact.messages.clone(),
                     };
 
                     effects.extend(reactor::wrap_effects(

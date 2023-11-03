@@ -152,7 +152,11 @@ impl Zero for BrTableCost {
     }
 
     fn is_zero(&self) -> bool {
-        self.cost.is_zero() && self.size_multiplier.is_zero()
+        let BrTableCost {
+            cost,
+            size_multiplier,
+        } = self;
+        cost.is_zero() && size_multiplier.is_zero()
     }
 }
 
@@ -356,19 +360,34 @@ impl Zero for ControlFlowCosts {
     }
 
     fn is_zero(&self) -> bool {
-        self.block.is_zero()
-            && self.op_loop.is_zero()
-            && self.op_if.is_zero()
-            && self.op_else.is_zero()
-            && self.end.is_zero()
-            && self.br.is_zero()
-            && self.br_if.is_zero()
-            && self.op_return.is_zero()
-            && self.call.is_zero()
-            && self.call_indirect.is_zero()
-            && self.drop.is_zero()
-            && self.select.is_zero()
-            && self.br_table.is_zero()
+        let ControlFlowCosts {
+            block,
+            op_loop,
+            op_if,
+            op_else,
+            end,
+            br,
+            br_if,
+            op_return,
+            call,
+            call_indirect,
+            drop,
+            select,
+            br_table,
+        } = self;
+        block.is_zero()
+            && op_loop.is_zero()
+            && op_if.is_zero()
+            && op_else.is_zero()
+            && end.is_zero()
+            && br.is_zero()
+            && br_if.is_zero()
+            && op_return.is_zero()
+            && call.is_zero()
+            && call_indirect.is_zero()
+            && drop.is_zero()
+            && select.is_zero()
+            && br_table.is_zero()
     }
 }
 
@@ -605,22 +624,40 @@ impl Zero for OpcodeCosts {
     }
 
     fn is_zero(&self) -> bool {
-        self.bit.is_zero()
-            && self.add.is_zero()
-            && self.mul.is_zero()
-            && self.div.is_zero()
-            && self.load.is_zero()
-            && self.store.is_zero()
-            && self.op_const.is_zero()
-            && self.local.is_zero()
-            && self.global.is_zero()
-            && self.integer_comparison.is_zero()
-            && self.conversion.is_zero()
-            && self.unreachable.is_zero()
-            && self.nop.is_zero()
-            && self.current_memory.is_zero()
-            && self.grow_memory.is_zero()
-            && self.control_flow.is_zero()
+        let OpcodeCosts {
+            bit,
+            add,
+            mul,
+            div,
+            load,
+            store,
+            op_const,
+            local,
+            global,
+            integer_comparison,
+            conversion,
+            unreachable,
+            nop,
+            current_memory,
+            grow_memory,
+            control_flow,
+        } = self;
+        bit.is_zero()
+            && add.is_zero()
+            && mul.is_zero()
+            && div.is_zero()
+            && load.is_zero()
+            && store.is_zero()
+            && op_const.is_zero()
+            && local.is_zero()
+            && global.is_zero()
+            && integer_comparison.is_zero()
+            && conversion.is_zero()
+            && unreachable.is_zero()
+            && nop.is_zero()
+            && current_memory.is_zero()
+            && grow_memory.is_zero()
+            && control_flow.is_zero()
     }
 }
 

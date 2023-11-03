@@ -812,7 +812,7 @@ extern "C" {
     ///
     /// # Arguments
     ///
-    /// * `topic_name_ptr` - pointer to the serialized topic name string.
+    /// * `topic_name_ptr` - pointer to the topic name UTF-8 string.
     /// * `topic_name_size` - size of the serialized name string.
     /// * `operation_ptr` - pointer to the management operation to be performed for the specified
     ///   topic.
@@ -827,7 +827,7 @@ extern "C" {
     ///
     /// # Arguments
     ///
-    /// * `topic_name_ptr` - pointer to the serialized topic name string where the message will be
+    /// * `topic_name_ptr` - pointer to the topic name UTF-8 string where the message will be
     ///   emitted.
     /// * `topic_name_size` - size of the serialized name string.
     /// * `message_ptr` - pointer to the serialized message payload to be emitted.

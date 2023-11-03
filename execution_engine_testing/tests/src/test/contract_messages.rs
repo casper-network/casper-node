@@ -477,8 +477,8 @@ fn should_not_exceed_configured_limits() {
     let contract_hash = install_messages_emitter_contract(&builder);
 
     // if the topic larger than the limit, registering should fail.
-    // string is 29 bytes + 4 bytes for size = 33 bytes > limit established above
-    let too_large_topic_name = std::str::from_utf8(&[0x4du8; 29]).unwrap();
+    // string is 33 bytes > limit established above
+    let too_large_topic_name = std::str::from_utf8(&[0x4du8; 33]).unwrap();
     let add_topic_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         contract_hash,
@@ -496,8 +496,8 @@ fn should_not_exceed_configured_limits() {
         .commit();
 
     // if the topic name is equal to the limit, registering should work.
-    // string is 28 bytes + 4 bytes for size = 32 bytes == limit established above
-    let topic_name_at_limit = std::str::from_utf8(&[0x4du8; 28]).unwrap();
+    // string is 32 bytes == limit established above
+    let topic_name_at_limit = std::str::from_utf8(&[0x4du8; 32]).unwrap();
     let add_topic_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         contract_hash,

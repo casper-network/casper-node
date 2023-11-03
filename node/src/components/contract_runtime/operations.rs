@@ -37,6 +37,8 @@ use crate::{
     utils::fetch_id,
 };
 
+use super::ExecutionArtifact;
+
 fn generate_range_by_index(
     highest_era: u64,
     batch_size: u64,
@@ -112,7 +114,8 @@ pub fn execute_finalized_block(
         next_block_height,
     } = execution_pre_state;
     let mut state_root_hash = pre_state_root_hash;
-    let mut execution_results = Vec::with_capacity(executable_block.deploys.len());
+    let mut execution_results: Vec<ExecutionArtifact> =
+        Vec::with_capacity(executable_block.deploys.len());
     // Run any deploys that must be executed
     let block_time = executable_block.timestamp.millis();
     let start = Instant::now();
@@ -162,13 +165,20 @@ pub fn execute_finalized_block(
             deploy_hash,
             result,
         )?;
-        execution_results.push((deploy_hash, deploy_header, execution_result, messages));
+        execution_results.push(ExecutionArtifact::new(
+            deploy_hash,
+            deploy_header,
+            execution_result,
+            messages,
+        ));
         state_root_hash = state_hash;
     }
 
     // Write the deploy approvals' and execution results' checksums to global state.
     let execution_results_checksum = compute_execution_results_checksum(
-        execution_results.iter().map(|(_, _, result, _)| result),
+        execution_results
+            .iter()
+            .map(|artifact| &artifact.execution_result),
     )?;
 
     let mut checksum_registry = ChecksumRegistry::new();

@@ -1150,7 +1150,10 @@ where
                     )))));
                 }
 
-                let topic_name = self.string_from_mem(topic_name_ptr, topic_name_size)?;
+                let topic_name_bytes =
+                    self.bytes_from_mem(topic_name_ptr, topic_name_size as usize)?;
+                let topic_name = std::str::from_utf8(&topic_name_bytes)
+                    .map_err(|e| Trap::from(Error::InvalidUtf8Encoding(e)))?;
 
                 if operation_size as usize > MessageTopicOperation::max_serialized_len() {
                     return Err(Trap::from(Error::InvalidMessageTopicOperation));
@@ -1204,7 +1207,11 @@ where
                     )))));
                 }
 
-                let topic_name = self.string_from_mem(topic_name_ptr, topic_name_size)?;
+                let topic_name_bytes =
+                    self.bytes_from_mem(topic_name_ptr, topic_name_size as usize)?;
+                let topic_name = std::str::from_utf8(&topic_name_bytes)
+                    .map_err(|e| Trap::from(Error::InvalidUtf8Encoding(e)))?;
+
                 let message = self.t_from_mem(message_ptr, message_size)?;
 
                 let result = self.emit_message(topic_name, message)?;
