@@ -69,6 +69,7 @@ mod transfer_result;
 mod uint;
 mod uref;
 
+use bytesrepr::{Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 #[cfg(feature = "std")]
 use libc::{c_long, sysconf, _SC_PAGESIZE};
 #[cfg(feature = "std")]
@@ -186,6 +187,9 @@ pub use uref::{
     FromStrError as URefFromStrError, URef, URefAddr, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH,
 };
 
+use alloc::string::String;
+use alloc::vec::Vec;
+
 /// OS page size.
 #[cfg(feature = "std")]
 pub static OS_PAGE_SIZE: Lazy<usize> = Lazy::new(|| {
@@ -200,3 +204,186 @@ pub static OS_PAGE_SIZE: Lazy<usize> = Lazy::new(|| {
         value as usize
     }
 });
+
+const ERROR_TAG: u8 = 0;
+
+/// TODO
+#[derive(Debug)]
+pub enum BinaryError {
+    /// TODO
+    Error(String),
+}
+
+const GET_TAG: u8 = 0;
+const PUT_TRANSACTION_TAG: u8 = 1;
+const SPECULATIVE_EXEC_TAG: u8 = 2;
+const QUIT_EXEC_TAG: u8 = 3;
+
+pub const BLOCK_HEADER_DB: &str = "block_header";
+pub const BLOCK_HEADER_V2_DB: &str = "block_header_v2";
+pub const BLOCK_METADATA_DB: &str = "block_metadata";
+pub const DEPLOYS_DB: &str = "deploys";
+pub const TRANSACTIONS_DB: &str = "transactions";
+pub const DEPLOY_METADATA_DB: &str = "deploy_metadata";
+pub const EXECUTION_RESULTS_DB: &str = "execution_results";
+pub const TRANSFER_DB: &str = "transfer";
+pub const STATE_STORE_DB: &str = "state_store";
+pub const BLOCK_BODY_DB: &str = "block_body";
+pub const BLOCK_BODY_V2_DB: &str = "block_body_v2";
+pub const FINALIZED_APPROVALS_DB: &str = "finalized_approvals";
+pub const VERSIONED_FINALIZED_APPROVALS_DB: &str = "versioned_finalized_approvals";
+pub const APPROVALS_HASHES_DB: &str = "approvals_hashes";
+pub const VERSIONED_APPROVALS_HASHES_DB: &str = "versioned_approvals_hashes";
+
+/// TODO
+#[derive(Debug)]
+pub enum BinaryRequest {
+    // TODO[RC] Add version tag, or rather follow the `BinaryRequestV1/V2` scheme.
+    /// TODO
+    Get {
+        /// TODO
+        db: u8,
+        /// TODO - bytesrepr serialized
+        key: Vec<u8>,
+    },
+    /// TODO
+    PutTransaction {
+        /// TODO
+        tbd: u32,
+    },
+    /// TODO
+    SpeculativeExec {
+        /// TODO
+        tbd: u32,
+    },
+    /// TODO
+    Quit,
+}
+
+/// TODO
+/// First byte - error code, then raw data from DB
+#[derive(Debug)]
+pub struct BinaryResponse(pub Vec<u8>);
+
+// TODO[RC]: Roundtrip tests for serialization
+impl ToBytes for BinaryError {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            BinaryError::Error(msg) => {
+                ERROR_TAG.write_bytes(writer)?;
+                msg.write_bytes(writer)
+            }
+        }
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+            + match self {
+                BinaryError::Error(msg) => msg.serialized_length(),
+            }
+    }
+}
+
+impl FromBytes for BinaryError {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            ERROR_TAG => {
+                let (msg, remainder) = String::from_bytes(remainder)?;
+                Ok((BinaryError::Error(msg), remainder))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+impl ToBytes for BinaryRequest {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            BinaryRequest::Get { db, key } => {
+                GET_TAG.write_bytes(writer)?;
+                db.write_bytes(writer)?;
+                key.write_bytes(writer)
+            }
+            BinaryRequest::PutTransaction { tbd } => {
+                PUT_TRANSACTION_TAG.write_bytes(writer)?;
+                tbd.write_bytes(writer)
+            }
+            BinaryRequest::SpeculativeExec { tbd } => {
+                SPECULATIVE_EXEC_TAG.write_bytes(writer)?;
+                tbd.write_bytes(writer)
+            }
+            BinaryRequest::Quit => QUIT_EXEC_TAG.write_bytes(writer),
+        }
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+            + match self {
+                BinaryRequest::Get { db, key } => db.serialized_length() + key.serialized_length(),
+                BinaryRequest::PutTransaction { tbd } => tbd.serialized_length(),
+                BinaryRequest::SpeculativeExec { tbd } => tbd.serialized_length(),
+                BinaryRequest::Quit => 0,
+            }
+    }
+}
+
+impl FromBytes for BinaryRequest {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            GET_TAG => {
+                let (db, remainder) = u8::from_bytes(remainder)?;
+                let (key, remainder) = Bytes::from_bytes(remainder)?;
+                Ok((
+                    BinaryRequest::Get {
+                        db,
+                        key: key.into(),
+                    },
+                    remainder,
+                ))
+            }
+            PUT_TRANSACTION_TAG => {
+                let (tbd, remainder) = u32::from_bytes(remainder)?;
+                Ok((BinaryRequest::PutTransaction { tbd }, remainder))
+            }
+            SPECULATIVE_EXEC_TAG => {
+                let (tbd, remainder) = u32::from_bytes(remainder)?;
+                Ok((BinaryRequest::SpeculativeExec { tbd }, remainder))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+#[derive(Eq, PartialEq, Hash)]
+#[repr(u8)]
+pub enum DbTag {
+    BlockHeader = 0,
+    BlockHeaderV2 = 1,
+    BlockMetadata = 2,
+    Deploys = 3,
+    Transactions = 4,
+    DeployMetadata = 5,
+    ExecutionResults = 6,
+    Transfer = 7,
+    StateStore = 8,
+    BlockBody = 9,
+    BlockBodyV2 = 10,
+    FinalizedApprovals = 11,
+    VersionedFinalizedApprovals = 12,
+    ApprovalsHashes = 13,
+    VersionedApprovalsHashes = 14,
+}
