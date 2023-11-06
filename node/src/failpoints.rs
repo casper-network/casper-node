@@ -218,6 +218,7 @@ impl FailpointActivation {
     ///
     /// Will panic if `value` does not cleanly serialize to a [`serde_json::Value`].
     #[inline(always)]
+    #[allow(unused)]
     pub(crate) fn value<T>(self, value: T) -> Self
     where
         T: Serialize,
@@ -542,7 +543,7 @@ mod tests {
         fp.update_from(&FailpointActivation::from_str("some_failpoint,p:0.5,once=null").unwrap());
 
         assert_eq!(fp.probability, Some(0.5));
-        assert_eq!(fp.once, true);
+        assert!(fp.once);
     }
 
     #[test]
