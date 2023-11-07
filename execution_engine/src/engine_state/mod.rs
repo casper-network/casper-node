@@ -298,10 +298,14 @@ where
             tracking_copy,
         );
 
-        genesis_installer.install(chainspec_registry)?;
+        if let Err(error) = genesis_installer.install(chainspec_registry) {
+            println!("{:?}", error)
+        };
 
         // Commit the transforms.
         let effects = genesis_installer.finalize();
+
+        println!("Installation completed");
 
         let post_state_hash = self
             .state
@@ -952,11 +956,15 @@ where
             .named_keys_prefix()
             .map_err(|error| Error::Bytesrepr(error.to_string()))?;
 
+        println!("{:?}", prefix);
+
         let named_key_entries = tracking_copy
             .borrow_mut()
             .reader()
             .keys_with_prefix(&prefix)
             .map_err(Into::into)?;
+
+        println!("entries {:?}", named_key_entries);
 
         let mut named_keys = NamedKeys::new();
 
@@ -1732,6 +1740,8 @@ where
                     return Ok(ExecutionResult::precondition_failure(error));
                 }
             };
+
+        println!("{:?}", handle_payment_named_keys);
 
         // Get payment purse Key from handle payment contract
         // payment_code_spec_6: system contract validity

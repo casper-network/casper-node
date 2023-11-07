@@ -40,6 +40,7 @@ use casper_types::{
     ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemConfig, Tagged, URef,
     WasmConfig, KEY_HASH_LENGTH, U512,
 };
+use casper_types::bytesrepr::FromBytes;
 
 use crate::{
     engine_state::{SystemContractRegistry, DEFAULT_ADDRESS},
@@ -1147,7 +1148,11 @@ where
             }
         };
 
-        self.store_system_contract_named_keys(entity_hash, named_keys)?;
+        println!("Storing named keys for {}", entity_kind);
+
+        if let Err(error) = self.store_system_contract_named_keys(entity_hash, named_keys) {
+            panic!("{:?}", error);
+        };
 
         let entity = AddressableEntity::new(
             package_hash,
@@ -1229,13 +1234,29 @@ where
         );
 
         for (string, key) in named_keys.iter() {
-            let string = string
+            println!("Writing named key, {}", string);
+
+            let mut string = string
                 .to_bytes()
                 .map_err(|error| GenesisError::Bytesrepr(error))?;
 
-            let string_bytes: [u8; KEY_HASH_LENGTH] =
-                bytesrepr::deserialize_from_slice(string.as_slice())
-                    .map_err(|error| GenesisError::Bytesrepr(error))?;
+            println!("{:?}", string);
+
+            let str_length = string.len();
+
+            let string_bytes_vec = if str_length < KEY_HASH_LENGTH {
+                let mut string_bytes = Vec::with_capacity(KEY_HASH_LENGTH);
+                string_bytes.append(&mut string);
+                string_bytes.resize(KEY_HASH_LENGTH, 0u8);
+                string_bytes
+            } else {
+                string
+            };
+
+            println!("{:?}", string_bytes_vec);
+
+            let (string_bytes, remainder) = FromBytes::from_vec(string_bytes_vec)
+                .map_err(|error| GenesisError::Bytesrepr(error))?;
 
             let named_key_entry = NamedKeyAddr::new_named_key_entry(entity_addr, string_bytes);
 
@@ -1302,23 +1323,40 @@ where
         chainspec_registry: ChainspecRegistry,
     ) -> Result<(), Box<GenesisError>> {
         // Setup system account
-        self.setup_system_account()?;
+        if let Err(error) = self.setup_system_account() {
+            println!("{:?}", error);
+            return Err(error);
+        };
+
+        println!("Created accounts");
 
         // Create mint
         let total_supply_key = self.create_mint()?;
 
+        println!("Created total supply");
+
         let payment_purse_uref = self.create_purse(U512::zero())?;
+
+        println!("Created payment uref");
 
         // Create all genesis accounts
         self.create_accounts(total_supply_key, payment_purse_uref)?;
 
+        println!("Created accounts");
+
         // Create the auction and setup the stake of all genesis validators.
         self.create_auction(total_supply_key)?;
+
+        println!("Created auction");
 
         // Create handle payment
         self.create_handle_payment(payment_purse_uref)?;
 
+        println!("Created hp");
+
         self.store_chainspec_registry(chainspec_registry)?;
+
+        println!("marker");
 
         Ok(())
     }

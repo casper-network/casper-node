@@ -1560,6 +1560,8 @@ where
             Err(_) => return Ok(Err(ApiError::OutOfMemory)),
         };
 
+        println!("In EE: {}", total_keys);
+
         let total_keys_bytes = total_keys.to_le_bytes();
         if let Err(error) = self
             .try_get_memory()?

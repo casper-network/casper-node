@@ -29,23 +29,9 @@ use rand::{
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{
-    account::{AccountHash, ACCOUNT_HASH_LENGTH},
-    addressable_entity,
-    addressable_entity::{
-        AddressableEntityHash, EntityAddr, EntityKindTag, NamedKeyAddr, NamedKeyAddrTag,
-    },
-    byte_code::ByteCodeKind,
-    bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH},
-    checksummed_hex,
-    contract_wasm::ContractWasmHash,
-    contracts::{ContractHash, ContractPackageHash},
-    package::PackageHash,
-    system::auction::{BidAddr, BidAddrTag},
-    uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
-    DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError, TRANSFER_ADDR_LENGTH,
-    UREF_ADDR_LENGTH,
-};
+use crate::{account::{AccountHash, ACCOUNT_HASH_LENGTH}, addressable_entity, addressable_entity::{
+    AddressableEntityHash, EntityAddr, EntityKindTag, NamedKeyAddr, NamedKeyAddrTag,
+}, byte_code::ByteCodeKind, bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH}, checksummed_hex, contract_wasm::ContractWasmHash, contracts::{ContractHash, ContractPackageHash}, package::PackageHash, system::auction::{BidAddr, BidAddrTag}, uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH}, DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError, TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH, KeyFromStrError};
 
 const HASH_PREFIX: &str = "hash-";
 const DEPLOY_INFO_PREFIX: &str = "deploy-";
@@ -111,7 +97,7 @@ const KEY_CHECKSUM_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_PACKAGE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + 32;
 
-const MAX_SERIALIZED_LENGTH: usize = KEY_DELEGATOR_BID_SERIALIZED_LENGTH;
+const MAX_SERIALIZED_LENGTH: usize = KEY_DELEGATOR_BID_SERIALIZED_LENGTH + U8_SERIALIZED_LENGTH;
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -509,7 +495,7 @@ impl Key {
                 }
             },
             Key::NamedKey(named_key) => {
-                format!("{}{}", NAMED_KEY_PREFIX, named_key)
+                format!("{}", named_key)
             }
         }
     }
@@ -682,27 +668,10 @@ impl Key {
             return Ok(Key::Package(addr));
         }
 
-        if let Some(entity) = input.strip_prefix(ENTITY_PREFIX) {
-            let (addr_str, tag) = if let Some(str) = entity.strip_prefix(ACCOUNT_ENTITY_PREFIX) {
-                (str, EntityKindTag::Account)
-            } else if let Some(str) = entity.strip_prefix(SYSTEM_ENTITY_PREFIX) {
-                (str, EntityKindTag::System)
-            } else if let Some(str) = entity.strip_prefix(CONTRACT_ENTITY_PREFIX) {
-                (str, EntityKindTag::SmartContract)
-            } else {
-                return Err(FromStrError::UnknownPrefix);
-            };
-            let addr = checksummed_hex::decode(addr_str)
-                .map_err(|error| FromStrError::AddressableEntity(error.to_string()))?;
-            let hash_addr = HashAddr::try_from(addr.as_ref())
-                .map_err(|error| FromStrError::AddressableEntity(error.to_string()))?;
-            let entity_addr = match tag {
-                EntityKindTag::System => EntityAddr::new_system_entity_addr(hash_addr),
-                EntityKindTag::Account => EntityAddr::new_account_entity_addr(hash_addr),
-                EntityKindTag::SmartContract => EntityAddr::new_contract_entity_addr(hash_addr),
-            };
-
-            return Ok(Key::AddressableEntity(entity_addr));
+        match EntityAddr::from_formatted_str(input) {
+            Ok(entity_addr) => return Ok(Key::AddressableEntity(entity_addr)),
+            Err(addressable_entity::FromStrError::InvalidPrefix) => {}
+            Err(error) => return Err(FromStrError::AddressableEntity(error.to_string())),
         }
 
         if let Some(byte_code) = input.strip_prefix(BYTE_CODE_PREFIX) {
@@ -720,66 +689,10 @@ impl Key {
             return Ok(Key::ByteCode(tag, byte_code_addr));
         }
 
-        if let Some(named_key) = input.strip_prefix(NAMED_KEY_PREFIX) {
-            let (addr_str, tag) =
-                if let Some(str) = named_key.strip_prefix(&format!("{}-", NamedKeyAddrTag::Base)) {
-                    (str, NamedKeyAddrTag::Base)
-                } else if let Some(str) =
-                    named_key.strip_prefix(&format!("{}-", NamedKeyAddrTag::NamedKeyEntry))
-                {
-                    (str, NamedKeyAddrTag::NamedKeyEntry)
-                } else {
-                    return Err(FromStrError::UnknownPrefix);
-                };
-
-            match tag {
-                NamedKeyAddrTag::Base => {
-                    let bytes = checksummed_hex::decode(addr_str)
-                        .map_err(|error| FromStrError::NamedKey(error.to_string()))?;
-                    if bytes.is_empty() {
-                        return Err(FromStrError::NamedKey(
-                            "bytes should not be 0 len".to_string(),
-                        ));
-                    }
-                    let (entity_addr, remainder) =
-                        EntityAddr::from_bytes(bytes.as_ref()).map_err(|_| {
-                            FromStrError::NamedKey("failed to parse decoded bytes".to_string())
-                        })?;
-                    if !remainder.is_empty() {
-                        return Err(FromStrError::NamedKey("remainder is not emtpy".to_string()));
-                    }
-                    return Ok(Self::NamedKey(NamedKeyAddr::Base(entity_addr)));
-                }
-                NamedKeyAddrTag::NamedKeyEntry => {
-                    if let Some((entity_str, byte_str)) = addr_str.split_once("-") {
-                        let bytes = checksummed_hex::decode(entity_str)
-                            .map_err(|error| FromStrError::NamedKey(error.to_string()))?;
-                        if bytes.is_empty() {
-                            return Err(FromStrError::NamedKey(
-                                "bytes should not be 0 len".to_string(),
-                            ));
-                        }
-                        let (entity_addr, remainder) = EntityAddr::from_bytes(bytes.as_ref())
-                            .map_err(|_| {
-                                FromStrError::NamedKey("failed to parse decoded bytes".to_string())
-                            })?;
-                        if !remainder.is_empty() {
-                            return Err(FromStrError::NamedKey(
-                                "remainder is not emtpy".to_string(),
-                            ));
-                        }
-                        let string_bytes = checksummed_hex::decode(byte_str)
-                            .map_err(|error| FromStrError::NamedKey(error.to_string()))?;
-                        let string_bytes = HashAddr::try_from(string_bytes.as_ref())
-                            .map_err(|error| FromStrError::NamedKey(error.to_string()))?;
-                        let named_key_addr =
-                            NamedKeyAddr::new_named_key_entry(entity_addr, string_bytes);
-                        return Ok(Key::NamedKey(named_key_addr));
-                    } else {
-                        return Err(FromStrError::NamedKey("could not split string".to_string()));
-                    }
-                }
-            }
+        match NamedKeyAddr::from_formatted_str(input) {
+            Ok(named_key) => return Ok(Key::NamedKey(named_key)),
+            Err(addressable_entity::FromStrError::InvalidPrefix) => {}
+            Err(error) => return Err(FromStrError::NamedKey(error.to_string())),
         }
 
         Err(FromStrError::UnknownPrefix)
@@ -1541,6 +1454,11 @@ mod tests {
         Key::AddressableEntity(EntityAddr::new_contract_entity_addr([42; 32]));
     const BYTE_CODE_EMPTY_KEY: Key = Key::ByteCode(ByteCodeKind::Empty, [42; 32]);
     const BYTE_CODE_V1_WASM_KEY: Key = Key::ByteCode(ByteCodeKind::V1CasperWasm, [42; 32]);
+    const BASE_NAMED_KEY: Key = Key::NamedKey(NamedKeyAddr::Base(EntityAddr::new_contract_entity_addr([42; 32])));
+    const ENTRY_NAMED_KEY: Key = Key::NamedKey(NamedKeyAddr::NamedKeyEntry {
+        base_addr: EntityAddr::new_contract_entity_addr([42; 32]),
+        string_bytes: [43;32],
+    });
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
@@ -1566,6 +1484,8 @@ mod tests {
         ADDRESSABLE_ENTITY_SMART_CONTRACT_KEY,
         BYTE_CODE_EMPTY_KEY,
         BYTE_CODE_V1_WASM_KEY,
+        BASE_NAMED_KEY,
+        ENTRY_NAMED_KEY
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
     const UNIFIED_HEX_STRING: &str =
@@ -1714,7 +1634,7 @@ mod tests {
         );
         assert_eq!(
             format!("{}", ADDRESSABLE_ENTITY_SMART_CONTRACT_KEY),
-            format!("Key::AddressableEntity(smart-contract-{})", HEX_STRING)
+            format!("Key::AddressableEntity(contract-{})", HEX_STRING)
         );
         assert_eq!(
             format!("{}", BYTE_CODE_EMPTY_KEY),
@@ -1894,6 +1814,12 @@ mod tests {
     }
 
     #[test]
+    fn print_the_key() {
+        let key = ENTRY_NAMED_KEY;
+        println!("{}", key.to_formatted_string());
+    }
+
+    #[test]
     fn should_fail_to_parse_key_from_str() {
         assert!(
             Key::from_formatted_str(ACCOUNT_HASH_FORMATTED_STRING_PREFIX)
@@ -1971,10 +1897,13 @@ mod tests {
             .unwrap_err()
             .to_string()
             .starts_with("package-key from string error: "));
+
+        let error_string =             Key::from_formatted_str(&format!("{}{}", ENTITY_PREFIX, ACCOUNT_ENTITY_PREFIX))
+            .unwrap_err()
+            .to_string();
+        println!("{}", error_string);
         assert!(
-            Key::from_formatted_str(&format!("{}{}", ENTITY_PREFIX, ACCOUNT_ENTITY_PREFIX))
-                .unwrap_err()
-                .to_string()
+                error_string
                 .starts_with("addressable-entity-key from string error: ")
         );
         assert!(

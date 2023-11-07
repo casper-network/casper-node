@@ -83,6 +83,12 @@ const BASE_TAG: u8 = 0;
 
 const ENTRY_TAG: u8 = 1;
 
+const ENTITY_PREFIX: &str = "addressable-entity-";
+const ACCOUNT_ENTITY_PREFIX: &str = "account-";
+const CONTRACT_ENTITY_PREFIX: &str = "contract-";
+const SYSTEM_ENTITY_PREFIX: &str = "system-";
+const NAMED_KEY_PREFIX: &str = "named-key-";
+
 /// Set of errors which may happen when working with contract headers.
 #[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -194,6 +200,8 @@ pub enum FromStrError {
     Hash(TryFromSliceError),
     /// Error when parsing an uref.
     URef(uref::FromStrError),
+    /// Error parsing from bytes.
+    BytesRepr(bytesrepr::Error)
 }
 
 impl From<base16::DecodeError> for FromStrError {
@@ -223,6 +231,9 @@ impl Display for FromStrError {
             FromStrError::URef(error) => write!(f, "uref from string error: {:?}", error),
             FromStrError::Account(error) => {
                 write!(f, "account hash from string error: {:?}", error)
+            }
+            FromStrError::BytesRepr(error) => {
+                write!(f, "bytesrepr error: {:?}", error)
             }
         }
     }
@@ -722,7 +733,7 @@ impl Display for EntityKindTag {
                 write!(f, "account")
             }
             EntityKindTag::SmartContract => {
-                write!(f, "smart-contract")
+                write!(f, "contract")
             }
         }
     }
@@ -952,6 +963,40 @@ impl EntityAddr {
             | EntityAddr::SmartContract(hash_addr) => *hash_addr,
         }
     }
+
+    pub fn to_formatted_string(&self) -> String {
+        format!("{}", self)
+    }
+
+    pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
+        if let Some(entity) = input.strip_prefix(ENTITY_PREFIX) {
+            let (addr_str, tag) = if let Some(str) = entity.strip_prefix(ACCOUNT_ENTITY_PREFIX) {
+                (str, EntityKindTag::Account)
+            } else if let Some(str) = entity.strip_prefix(SYSTEM_ENTITY_PREFIX) {
+                (str, EntityKindTag::System)
+            } else if let Some(str) = entity.strip_prefix(CONTRACT_ENTITY_PREFIX) {
+                (str, EntityKindTag::SmartContract)
+            } else {
+                return Err(FromStrError::InvalidPrefix);
+            };
+            let addr = checksummed_hex::decode(addr_str)
+                .map_err(|error| FromStrError::Hex(error))?;
+            let hash_addr = HashAddr::try_from(addr.as_ref())
+                .map_err(|error| FromStrError::Hash(error))?;
+            let entity_addr = match tag {
+                EntityKindTag::System => EntityAddr::new_system_entity_addr(hash_addr),
+                EntityKindTag::Account => EntityAddr::new_account_entity_addr(hash_addr),
+                EntityKindTag::SmartContract => EntityAddr::new_contract_entity_addr(hash_addr),
+            };
+
+            return Ok(entity_addr);
+        }
+
+        Err(FromStrError::InvalidPrefix)
+    }
+
+
+
 }
 
 impl ToBytes for EntityAddr {
@@ -1042,6 +1087,10 @@ impl Distribution<EntityAddr> for Standard {
     }
 }
 
+
+
+
+
 #[derive(
     Debug, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize,
 )]
@@ -1096,8 +1145,16 @@ impl NamedKeyAddr {
         entity_addr: EntityAddr,
         entry: String,
     ) -> Result<Self, bytesrepr::Error> {
-        let bytes = entry.to_bytes()?;
-        let string_bytes: [u8; 32] = bytesrepr::deserialize_from_slice(bytes.as_slice())?;
+        let mut bytes = entry.to_bytes()?;
+        let string_vec = if bytes.len() < KEY_HASH_LENGTH {
+            let mut string_byte = Vec::with_capacity(KEY_HASH_LENGTH);
+            string_byte.append(&mut bytes);
+            string_byte.resize(KEY_HASH_LENGTH, 0u8);
+            string_byte
+        } else {
+            return Err(bytesrepr::Error::LeftOverBytes)
+        };
+        let (string_bytes, _) = FromBytes::from_vec(string_vec)?;
         Ok(Self::new_named_key_entry(entity_addr, string_bytes))
     }
 
@@ -1112,6 +1169,7 @@ impl NamedKeyAddr {
         let entity_addr = self.entity_addr();
         let mut ret = Vec::with_capacity(entity_addr.serialized_length() + 1);
         ret.push(KeyTag::NamedKey as u8);
+        ret.insert(1usize, NamedKeyAddrTag::NamedKeyEntry as u8);
         entity_addr.write_bytes(&mut ret)?;
         Ok(ret)
     }
@@ -1125,9 +1183,57 @@ impl NamedKeyAddr {
 
     pub fn named_string(&self) -> Option<String> {
         if let Self::NamedKeyEntry { string_bytes, .. } = self {
-            return Some(base16::encode_lower(string_bytes));
+            let string = String::from_bytes(string_bytes.as_slice())
+                .ok();
+            return match string {
+                Some((string, _)) => Some(string),
+                None => None
+            };
         }
         None
+    }
+
+    pub fn to_formatted_string(&self) -> String {
+        format!("{}", self)
+    }
+
+    pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
+        if let Some(named_key) = input.strip_prefix(NAMED_KEY_PREFIX) {
+            let (addr_str, tag) =
+                if let Some(str) = named_key.strip_prefix(&format!("{}-", NamedKeyAddrTag::Base)) {
+                    (str, NamedKeyAddrTag::Base)
+                } else if let Some(str) =
+                    named_key.strip_prefix(&format!("{}-", NamedKeyAddrTag::NamedKeyEntry))
+                {
+                    (str, NamedKeyAddrTag::NamedKeyEntry)
+                } else {
+                    return Err(FromStrError::InvalidPrefix);
+                };
+
+
+            match tag {
+                NamedKeyAddrTag::Base => {
+                    let entity_addr = EntityAddr::from_formatted_str(addr_str)?;
+                    return Ok(Self::Base(entity_addr))
+                }
+                NamedKeyAddrTag::NamedKeyEntry => {
+                    let reverse_string = addr_str.chars().rev().collect::<String>();
+                    if let Some((reverse_bytes, reverse_entity_addr)) = reverse_string.split_once("-") {
+                        let entity_addr_str = reverse_entity_addr.chars().rev().collect::<String>();
+                        let entity_addr = EntityAddr::from_formatted_str(&entity_addr_str)?;
+                        let string_bytes_str = reverse_bytes.chars().rev().collect::<String>();
+                        let string_bytes = checksummed_hex::decode(&string_bytes_str)
+                            .map_err(|decode_error| FromStrError::Hex(decode_error))?;
+                        let (string_bytes, _) = FromBytes::from_vec(string_bytes)
+                            .map_err(|error| FromStrError::BytesRepr(error))?;
+                        return Ok(Self::new_named_key_entry(entity_addr, string_bytes))
+                    };
+
+                }
+            }
+        }
+
+        Err(FromStrError::InvalidPrefix)
     }
 }
 
@@ -1197,7 +1303,7 @@ impl Display for NamedKeyAddr {
         let tag = self.tag();
         match self {
             NamedKeyAddr::Base(entity_addr) => {
-                write!(f, "{}-{}", tag, entity_addr)
+                write!(f, "{}{}-{}",NAMED_KEY_PREFIX, tag, entity_addr)
             }
             NamedKeyAddr::NamedKeyEntry {
                 base_addr,
@@ -1205,7 +1311,8 @@ impl Display for NamedKeyAddr {
             } => {
                 write!(
                     f,
-                    "{}-{}-{}",
+                    "{}{}-{}-{}",
+                    NAMED_KEY_PREFIX,
                     tag,
                     base_addr,
                     base16::encode_lower(string_bytes)
@@ -2115,6 +2222,51 @@ mod tests {
     }
 
     #[test]
+    fn entity_addr_from_str() {
+        let entity_addr = EntityAddr::new_contract_entity_addr([3;32]);
+        let encoded = entity_addr.to_formatted_string();
+        let decoded = EntityAddr::from_formatted_str(&encoded).unwrap();
+
+        let entity_addr = EntityAddr::new_account_entity_addr([3;32]);
+        let encoded = entity_addr.to_formatted_string();
+        let decoded = EntityAddr::from_formatted_str(&encoded).unwrap();
+
+        let entity_addr = EntityAddr::new_system_entity_addr([3;32]);
+        let encoded = entity_addr.to_formatted_string();
+        let decoded = EntityAddr::from_formatted_str(&encoded).unwrap();
+    }
+
+    #[test]
+    fn named_key_addr_from_str() {
+        let named_key_addr = NamedKeyAddr::new_named_key_base(EntityAddr::new_contract_entity_addr([3;32]));
+        let encoded = named_key_addr.to_formatted_string();
+        println!("{}", encoded);
+        let decoded = NamedKeyAddr::from_formatted_str(&encoded).unwrap();
+        assert_eq!(named_key_addr, decoded);
+
+
+        let named_key_addr = NamedKeyAddr::new_named_key_entry(EntityAddr::new_contract_entity_addr([3;32]), [4;32]);
+        let encoded = named_key_addr.to_formatted_string();
+        let decoded = NamedKeyAddr::from_formatted_str(&encoded).unwrap();
+        assert_eq!(named_key_addr, decoded);
+    }
+
+    #[test]
+    fn should_maintain_string_for_named_key_addr() {
+        let string = "test".to_string();
+        let entity_addr = EntityAddr::new_contract_entity_addr([3;32]);
+
+        let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, string.clone())
+            .expect("must create named key addr");
+
+        let encoded_string = named_key_addr.named_string().expect("must get string value");
+        assert_eq!(encoded_string, string)
+    }
+
+
+
+
+    #[test]
     fn entity_hash_serde_roundtrip() {
         let entity_hash = AddressableEntityHash([255; 32]);
         let serialized = bincode::serialize(&entity_hash).unwrap();
@@ -2128,6 +2280,16 @@ mod tests {
         let json_string = serde_json::to_string_pretty(&entity_hash).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(entity_hash, decoded)
+    }
+
+    #[test]
+    fn serialization_roundtrip() {
+        let entity_addr = EntityAddr::new_system_entity_addr([1; 32]);
+        bytesrepr::test_serialization_roundtrip(&entity_addr);
+        let entity_addr = EntityAddr::new_account_entity_addr([1; 32]);
+        bytesrepr::test_serialization_roundtrip(&entity_addr);
+        let entity_addr = EntityAddr::new_contract_entity_addr([1; 32]);
+        bytesrepr::test_serialization_roundtrip(&entity_addr);
     }
 
     #[test]
