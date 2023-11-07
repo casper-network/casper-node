@@ -56,14 +56,14 @@ unbonding_delay = 7
 # Round seigniorage rate represented as a fraction of the total supply.
 #
 # Annual issuance: 8%
-# Minimum block time: 2^15 milliseconds
+# Minimum block time: 2^14 milliseconds
 # Ticks per year: 31536000000
 #
-# (1+0.08)^((2^15)/31536000000)-1 is expressed as a fractional number below
+# (1+0.08)^((2^14)/31536000000)-1 is expressed as a fractional number below
 # Python:
 # from fractions import Fraction
-# Fraction((1 + 0.08)**((2**15)/31536000000) - 1).limit_denominator(1000000000)
-round_seigniorage_rate = [7, 87535408]
+# Fraction((1 + 0.08)**((2**14)/31536000000) - 1).limit_denominator(1000000000)
+round_seigniorage_rate = [7, 175070816]
 # Maximum number of associated keys for a single account.
 max_associated_keys = 100
 # Maximum height of contract runtime call stack.
