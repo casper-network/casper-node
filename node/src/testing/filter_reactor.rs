@@ -16,6 +16,7 @@ use crate::{
     reactor::{EventQueueHandle, Finalize, Reactor},
     types::NodeId,
     NodeRng,
+    failpoints::FailpointActivation,
 };
 
 pub(crate) trait EventFilter<Ev>:
@@ -45,6 +46,12 @@ impl<R: Reactor> FilterReactor<R> {
 
     pub(crate) fn inner_mut(&mut self) -> &mut R {
         &mut self.reactor
+    }
+
+    /// Activate failpoint disabling finality signature creation
+    pub(crate) fn activate_finality_signature_creation_failpoint(&mut self) {
+        let activation = FailpointActivation::new("finality_signature_creation");
+        self.reactor.activate_failpoint(&activation);
     }
 }
 
