@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    instrumented, ExecuteRequestBuilder, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{
     core::engine_state::engine_config::{FeeHandling, RefundHandling},
@@ -130,7 +130,10 @@ fn test_burning_fees(
     let proposer_account_1 = builder
         .get_account(exec_request_1_proposer.to_account_hash())
         .expect("should have proposer account");
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
     assert_eq!(
         builder.get_purse_balance(proposer_account_1.main_purse()),
         U512::zero(),
@@ -151,7 +154,10 @@ fn test_burning_fees(
         ExecuteRequestBuilder::transfer(*DEFAULT_ADMIN_ACCOUNT_ADDR, transfer_args).build()
     };
     let total_supply_before = builder.total_supply(None);
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .expect_success()
+        .commit();
     let total_supply_after = builder.total_supply(None);
 
     match fee_handling {

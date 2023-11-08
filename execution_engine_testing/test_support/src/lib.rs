@@ -13,6 +13,7 @@ pub mod auction;
 mod chainspec_config;
 mod deploy_item_builder;
 mod execute_request_builder;
+pub mod instrument;
 mod step_request_builder;
 /// Utilities for running transfers in a test or bench context.
 pub mod transfer;

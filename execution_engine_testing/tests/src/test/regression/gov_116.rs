@@ -4,10 +4,11 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_VALIDATOR_SLOTS, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    instrumented, utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY,
+    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION, DEFAULT_VALIDATOR_SLOTS,
+    MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::core::engine_state::{
     genesis::{ExecConfigBuilder, GenesisValidator},
@@ -118,7 +119,10 @@ fn initialize_builder() -> InMemoryWasmTestBuilder {
     )
     .build();
 
-    builder.exec(fund_request).expect_success().commit();
+    builder
+        .exec_instrumented(fund_request, instrumented!())
+        .expect_success()
+        .commit();
 
     builder
 }
@@ -159,7 +163,10 @@ fn should_not_retain_genesis_validator_slot_protection_after_vesting_period_elap
         .build()
     };
 
-    builder.exec(withdraw_bid_request).expect_success().commit();
+    builder
+        .exec_instrumented(withdraw_bid_request, instrumented!())
+        .expect_success()
+        .commit();
 
     builder.run_auction(VESTING_WEEKS[1], Vec::new());
 
@@ -202,7 +209,10 @@ fn should_not_retain_genesis_validator_slot_protection_after_vesting_period_elap
     )
     .build();
 
-    builder.exec(add_bid_request).expect_success().commit();
+    builder
+        .exec_instrumented(add_bid_request, instrumented!())
+        .expect_success()
+        .commit();
 
     builder.run_auction(VESTING_WEEKS[2], Vec::new());
 
@@ -280,7 +290,10 @@ fn should_retain_genesis_validator_slot_protection() {
         )
         .build();
 
-        builder.exec(fund_request).expect_success().commit();
+        builder
+            .exec_instrumented(fund_request, instrumented!())
+            .expect_success()
+            .commit();
 
         builder
     };
@@ -319,7 +332,10 @@ fn should_retain_genesis_validator_slot_protection() {
     )
     .build();
 
-    builder.exec(add_bid_request).expect_success().commit();
+    builder
+        .exec_instrumented(add_bid_request, instrumented!())
+        .expect_success()
+        .commit();
 
     builder.run_auction(CASPER_VESTING_BASE + WEEK_MILLIS, Vec::new());
 

@@ -1,8 +1,9 @@
 use std::convert::TryInto;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
 };
 use casper_types::{
     account::{Account, AccountHash},
@@ -48,9 +49,15 @@ fn initialize() -> InMemoryWasmTestBuilder {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
     builder
 }
@@ -78,9 +85,13 @@ fn finalize_payment_should_not_be_run_by_non_system_accounts() {
     let exec_request_2 =
         ExecuteRequestBuilder::standard(ACCOUNT_ADDR, CONTRACT_FINALIZE_PAYMENT, args).build();
 
-    assert!(builder.exec(exec_request_1).is_error());
+    assert!(builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .is_error());
 
-    assert!(builder.exec(exec_request_2).is_error());
+    assert!(builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .is_error());
 }
 
 #[ignore]
@@ -112,7 +123,10 @@ fn finalize_payment_should_refund_to_specified_purse() {
         .build()
     };
 
-    builder.exec(create_purse_request).expect_success().commit();
+    builder
+        .exec_instrumented(create_purse_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let rewards_pre_balance = builder.get_proposer_purse_balance();
 
@@ -146,7 +160,10 @@ fn finalize_payment_should_refund_to_specified_purse() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 

@@ -1,6 +1,7 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, runtime_args, system::mint, RuntimeArgs, U512};
 
@@ -54,7 +55,10 @@ fn transfer(builder: &mut InMemoryWasmTestBuilder, account_hash: AccountHash, am
         .build()
     };
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success()
+        .commit();
 }
 
 fn refund_tests(builder: &mut InMemoryWasmTestBuilder, account_hash: AccountHash) {
@@ -81,11 +85,11 @@ fn refund_tests(builder: &mut InMemoryWasmTestBuilder, account_hash: AccountHash
     };
 
     builder
-        .exec(create_purse_request_1)
+        .exec_instrumented(create_purse_request_1, instrumented!())
         .expect_success()
         .commit();
     builder
-        .exec(create_purse_request_2)
+        .exec_instrumented(create_purse_request_2, instrumented!())
         .expect_success()
         .commit();
 
@@ -109,5 +113,8 @@ fn refund_tests(builder: &mut InMemoryWasmTestBuilder, account_hash: AccountHash
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(refund_purse_request).expect_success().commit();
+    builder
+        .exec_instrumented(refund_purse_request, instrumented!())
+        .expect_success()
+        .commit();
 }

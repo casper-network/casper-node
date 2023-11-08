@@ -1,8 +1,8 @@
 use std::convert::TryInto;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_WASM_CONFIG,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_WASM_CONFIG, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{engine_state::Error, execution};
 use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, RuntimeArgs};
@@ -89,7 +89,10 @@ fn too_many_locals_should_exceed_stack_height() {
     )
     .build();
 
-    builder.exec(success_request).expect_success().commit();
+    builder
+        .exec_instrumented(success_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let failing_request = ExecuteRequestBuilder::module_bytes(
         *DEFAULT_ACCOUNT_ADDR,
@@ -98,7 +101,10 @@ fn too_many_locals_should_exceed_stack_height() {
     )
     .build();
 
-    builder.exec(failing_request).expect_failure().commit();
+    builder
+        .exec_instrumented(failing_request, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have error");
 

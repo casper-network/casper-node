@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{engine_state, execution};
@@ -40,7 +40,10 @@ fn setup() -> InMemoryWasmTestBuilder {
         RuntimeArgs::default(),
     )
     .build();
-    builder.exec(install_request).expect_success().commit();
+    builder
+        .exec_instrumented(install_request, instrumented!())
+        .expect_success()
+        .commit();
 
     builder
 }
@@ -58,7 +61,9 @@ fn test(entrypoint: &str) {
         },
     )
     .build();
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(

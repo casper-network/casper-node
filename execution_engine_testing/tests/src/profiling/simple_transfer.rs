@@ -12,7 +12,7 @@ use std::{convert::TryFrom, env, io, path::PathBuf};
 use clap::{crate_version, App, Arg};
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_PAYMENT,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_PAYMENT,
 };
 use casper_execution_engine::core::engine_state::EngineConfig;
 use casper_hashing::Digest;
@@ -122,7 +122,10 @@ fn main() {
 
     let mut test_builder = LmdbWasmTestBuilder::open(&args.data_dir, engine_config, root_hash);
 
-    test_builder.exec(exec_request).expect_success().commit();
+    test_builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success()
+        .commit();
 
     if args.verbose {
         println!("{:#?}", test_builder.get_execution_journals());

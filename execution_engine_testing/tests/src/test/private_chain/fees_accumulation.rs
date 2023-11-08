@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder,
+    UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::engine_state::{
@@ -80,7 +80,10 @@ fn should_finalize_and_accumulate_rewards_purse() {
     let proposer_account_1 = builder
         .get_account(exec_request_1_proposer.to_account_hash())
         .expect("should have proposer account");
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
     assert_eq!(
         builder.get_purse_balance(proposer_account_1.main_purse()),
         U512::zero()
@@ -110,7 +113,10 @@ fn should_finalize_and_accumulate_rewards_purse() {
         .get_account(exec_request_2_proposer.to_account_hash())
         .expect("should have proposer account");
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .expect_success()
+        .commit();
     assert_eq!(
         builder.get_purse_balance(proposer_account_2.main_purse()),
         U512::zero()
@@ -160,7 +166,10 @@ fn should_accumulate_deploy_fees() {
 
     let exec_request_proposer = exec_request.proposer.clone();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let handle_payment_after = builder
         .get_contract(handle_payment_hash)
@@ -217,7 +226,10 @@ fn should_distribute_accumulated_fees_to_admins() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     // At this point rewards purse balance is not zero as the `private_chain_setup` executes bunch
     // of deploys before
@@ -343,7 +355,10 @@ fn should_accumulate_fees_after_upgrade() {
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let handle_payment_after = builder
         .get_contract(handle_payment_hash)

@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{runtime_args, RuntimeArgs};
@@ -22,13 +22,14 @@ fn named_dictionaries_should_work_as_expected() {
     let builder = &mut InMemoryWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
     builder
-        .exec(
+        .exec_instrumented(
             ExecuteRequestBuilder::standard(
                 *DEFAULT_ACCOUNT_ADDR,
                 "named-dictionary-test.wasm",
                 runtime_args! { "puts" => puts },
             )
             .build(),
+            instrumented!(),
         )
         .expect_success();
 }

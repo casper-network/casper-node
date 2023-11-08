@@ -7,8 +7,8 @@ use std::{env, path::PathBuf};
 use clap::{crate_version, App};
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT, DEFAULT_ACCOUNTS,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
+    DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY,
     DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
     DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
@@ -93,7 +93,7 @@ fn main() {
 
     let post_state_hash = builder
         .run_genesis(&run_genesis_request)
-        .exec(exec_request)
+        .exec_instrumented(exec_request, instrumented!())
         .expect_success()
         .commit()
         .get_post_state_hash();

@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{engine_state, execution};
 use casper_types::{runtime_args, system::mint, ApiError, RuntimeArgs};
@@ -33,7 +33,10 @@ fn should_not_transfer_above_approved_limit_in_payment_code() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(

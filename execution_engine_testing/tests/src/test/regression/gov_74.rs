@@ -1,8 +1,8 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
@@ -54,7 +54,10 @@ fn should_pass_max_parameter_count() {
     )
     .build();
 
-    builder.exec(exec).expect_success().commit();
+    builder
+        .exec_instrumented(exec, instrumented!())
+        .expect_success()
+        .commit();
 
     let module_bytes = wasm_utils::make_n_arg_call_bytes(ARITY_INTERPRETER_LIMIT + 1, I32_WAT_TYPE)
         .expect("should make wasm bytes");
@@ -66,7 +69,10 @@ fn should_pass_max_parameter_count() {
     )
     .build();
 
-    builder.exec(exec).expect_failure().commit();
+    builder
+        .exec_instrumented(exec, instrumented!())
+        .expect_failure()
+        .commit();
     let error = builder.get_error().expect("should have error");
 
     assert!(
@@ -105,7 +111,10 @@ fn should_observe_stack_height_limit() {
         .build()
     };
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     {
         // We need to perform an upgrade to be able to observe new max wasm stack height.
@@ -140,7 +149,10 @@ fn should_observe_stack_height_limit() {
         .build()
     };
 
-    builder.exec(exec_request_2).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -164,5 +176,8 @@ fn should_observe_stack_height_limit() {
         .build()
     };
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_3, instrumented!())
+        .expect_success()
+        .commit();
 }

@@ -2,8 +2,8 @@ use casper_execution_engine::core::engine_state::ExecuteRequest;
 use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
 
 use crate::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 
 const CONTRACT_CREATE_ACCOUNTS: &str = "create_accounts.wasm";
@@ -46,7 +46,7 @@ pub fn create_initial_accounts_and_run_genesis(
     let exec_request = create_accounts_request(accounts, amount);
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
+        .exec_instrumented(exec_request, instrumented!())
         .expect_success()
         .commit();
 }
@@ -80,7 +80,10 @@ pub fn create_test_purses(
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success()
+        .commit();
 
     // Return creates purses for given account by filtering named keys
     let query_result = builder
@@ -123,7 +126,9 @@ pub fn transfer_to_account_multiple_execs(
         )
         .build();
 
-        let builder = builder.exec(exec_request).expect_success();
+        let builder = builder
+            .exec_instrumented(exec_request, instrumented!())
+            .expect_success();
         if should_commit {
             builder.commit();
         }
@@ -157,7 +162,9 @@ pub fn transfer_to_account_multiple_deploys(
 
     let exec_request = exec_builder.build();
 
-    let builder = builder.exec(exec_request).expect_success();
+    let builder = builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success();
     if should_commit {
         builder.commit();
     }
@@ -180,7 +187,9 @@ pub fn transfer_to_purse_multiple_execs(
         )
         .build();
 
-        let builder = builder.exec(exec_request).expect_success();
+        let builder = builder
+            .exec_instrumented(exec_request, instrumented!())
+            .expect_success();
         if should_commit {
             builder.commit();
         }
@@ -211,7 +220,9 @@ pub fn transfer_to_purse_multiple_deploys(
 
     let exec_request = exec_builder.build();
 
-    let builder = builder.exec(exec_request).expect_success();
+    let builder = builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success();
     if should_commit {
         builder.commit();
     }
@@ -234,7 +245,9 @@ pub fn transfer_to_account_multiple_native_transfers(
         if use_scratch {
             builder.scratch_exec_and_commit(request).expect_success();
         } else {
-            builder.exec(request).expect_success();
+            builder
+                .exec_instrumented(request, instrumented!())
+                .expect_success();
             builder.commit();
         }
     }

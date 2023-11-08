@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_PUBLIC_KEY, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 
@@ -39,7 +39,9 @@ fn should_run_ee_1174_delegation_rate_too_high() {
     )
     .build();
 
-    builder.exec(add_bid_request).commit();
+    builder
+        .exec_instrumented(add_bid_request, instrumented!())
+        .commit();
 
     let error = builder
         .get_last_exec_results()

@@ -14,8 +14,8 @@
 // charge)
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::engine_state::MAX_PAYMENT;
 use casper_types::{runtime_args, Gas, RuntimeArgs};
@@ -91,9 +91,15 @@ fn run_test_case(input_wasm_bytes: &[u8], expected_error: &str, execution_phase:
 
     if empty_wasm_in_payment {
         // Special case: We expect success, since default payment will be used instead.
-        builder.exec(do_minimum_request).expect_success().commit();
+        builder
+            .exec_instrumented(do_minimum_request, instrumented!())
+            .expect_success()
+            .commit();
     } else {
-        builder.exec(do_minimum_request).expect_failure().commit();
+        builder
+            .exec_instrumented(do_minimum_request, instrumented!())
+            .expect_failure()
+            .commit();
 
         let actual_error = builder.get_error().expect("should have error").to_string();
         assert!(actual_error.contains(expected_error_message));

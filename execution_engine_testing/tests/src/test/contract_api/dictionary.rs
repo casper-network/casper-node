@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
     DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
     DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
@@ -45,10 +45,13 @@ fn setup() -> (InMemoryWasmTestBuilder, ContractHash) {
     )
     .build();
 
-    builder.exec(fund_request).commit().expect_success();
+    builder
+        .exec_instrumented(fund_request, instrumented!())
+        .commit()
+        .expect_success();
 
     builder
-        .exec(install_contract_request)
+        .exec_instrumented(install_contract_request, instrumented!())
         .commit()
         .expect_success();
 
@@ -148,7 +151,7 @@ fn should_modify_with_owned_access_rights() {
     let dictionary_key = Key::dictionary(dictionary_seed_uref, key_bytes);
 
     builder
-        .exec(modify_write_request_1)
+        .exec_instrumented(modify_write_request_1, instrumented!())
         .commit()
         .expect_success();
 
@@ -177,7 +180,7 @@ fn should_modify_with_owned_access_rights() {
     assert_eq!(value, "Hello, world!");
 
     builder
-        .exec(modify_write_request_2)
+        .exec_instrumented(modify_write_request_2, instrumented!())
         .commit()
         .expect_success();
 
@@ -209,7 +212,9 @@ fn should_not_write_with_read_access_rights() {
     )
     .build();
 
-    builder.exec(call_request).commit();
+    builder
+        .exec_instrumented(call_request, instrumented!())
+        .commit();
 
     let exec_results = builder
         .get_last_exec_results()
@@ -244,7 +249,10 @@ fn should_read_with_read_access_rights() {
     )
     .build();
 
-    builder.exec(call_request).expect_success().commit();
+    builder
+        .exec_instrumented(call_request, instrumented!())
+        .expect_success()
+        .commit();
 }
 
 #[ignore]
@@ -263,7 +271,9 @@ fn should_not_read_with_write_access_rights() {
     )
     .build();
 
-    builder.exec(call_request).commit();
+    builder
+        .exec_instrumented(call_request, instrumented!())
+        .commit();
 
     let exec_results = builder
         .get_last_exec_results()
@@ -299,7 +309,9 @@ fn should_write_with_write_access_rights() {
     )
     .build();
 
-    builder.exec(call_request).commit();
+    builder
+        .exec_instrumented(call_request, instrumented!())
+        .commit();
 
     let contract = builder
         .get_contract(contract_hash)
@@ -349,7 +361,9 @@ fn should_not_write_with_forged_uref() {
     )
     .build();
 
-    builder.exec(call_request).commit();
+    builder
+        .exec_instrumented(call_request, instrumented!())
+        .commit();
 
     let exec_results = builder
         .get_last_exec_results()
@@ -390,7 +404,9 @@ fn should_fail_put_with_invalid_dictionary_item_key() {
     )
     .build();
 
-    builder.exec(call_request).commit();
+    builder
+        .exec_instrumented(call_request, instrumented!())
+        .commit();
     let exec_results = builder
         .get_last_exec_results()
         .expect("should have results");
@@ -429,7 +445,9 @@ fn should_fail_get_with_invalid_dictionary_item_key() {
     )
     .build();
 
-    builder.exec(call_request).commit();
+    builder
+        .exec_instrumented(call_request, instrumented!())
+        .commit();
     let exec_results = builder
         .get_last_exec_results()
         .expect("should have results");
@@ -471,8 +489,13 @@ fn dictionary_put_should_fail_with_large_item_key() {
     )
     .build();
 
-    builder.exec(fund_request).commit().expect_success();
-    builder.exec(install_contract_request).commit();
+    builder
+        .exec_instrumented(fund_request, instrumented!())
+        .commit()
+        .expect_success();
+    builder
+        .exec_instrumented(install_contract_request, instrumented!())
+        .commit();
     let exec_results = builder
         .get_last_exec_results()
         .expect("should have results");
@@ -514,8 +537,13 @@ fn dictionary_get_should_fail_with_large_item_key() {
     )
     .build();
 
-    builder.exec(fund_request).commit().expect_success();
-    builder.exec(install_contract_request).commit();
+    builder
+        .exec_instrumented(fund_request, instrumented!())
+        .commit()
+        .expect_success();
+    builder
+        .exec_instrumented(install_contract_request, instrumented!())
+        .commit();
     let exec_results = builder
         .get_last_exec_results()
         .expect("should have results");
@@ -563,7 +591,10 @@ fn should_query_dictionary_items_with_test_builder() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&run_genesis_request).commit();
 
-    builder.exec(exec_request).commit().expect_success();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit()
+        .expect_success();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -663,7 +694,7 @@ fn should_be_able_to_perform_dictionary_read() {
             .build();
 
     builder
-        .exec(dictionary_session_call)
+        .exec_instrumented(dictionary_session_call, instrumented!())
         .expect_success()
         .commit();
 }
@@ -679,7 +710,7 @@ fn should_be_able_to_perform_read_from_key() {
             .build();
 
     builder
-        .exec(read_from_key_session_call)
+        .exec_instrumented(read_from_key_session_call, instrumented!())
         .expect_success()
         .commit();
 }

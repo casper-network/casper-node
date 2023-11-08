@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    SYSTEM_ADDR,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_PAYMENT,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
 use casper_execution_engine::core::{engine_state::Error, execution};
 use casper_types::{
@@ -40,7 +40,10 @@ fn should_disallow_native_unrestricted_transfer_to_create_new_account_by_user() 
     .build();
 
     // Admin can transfer funds to create new account.
-    builder.exec(fund_transfer_1).expect_success().commit();
+    builder
+        .exec_instrumented(fund_transfer_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let transfer_request_1 = ExecuteRequestBuilder::transfer(
         *ACCOUNT_1_ADDR,
@@ -53,7 +56,10 @@ fn should_disallow_native_unrestricted_transfer_to_create_new_account_by_user() 
     .build();
 
     // User can't transfer funds to create new account.
-    builder.exec(transfer_request_1).expect_failure().commit();
+    builder
+        .exec_instrumented(transfer_request_1, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -76,7 +82,10 @@ fn should_disallow_native_unrestricted_transfer_to_create_new_account_by_user() 
     .build();
 
     // User can transfer funds back to admin.
-    builder.exec(transfer_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(transfer_request_2, instrumented!())
+        .expect_success()
+        .commit();
 }
 
 #[ignore]
@@ -95,7 +104,10 @@ fn should_disallow_wasm_unrestricted_transfer_to_create_new_account_by_user() {
     .build();
 
     // Admin can transfer funds to create new account.
-    builder.exec(fund_transfer_1).expect_success().commit();
+    builder
+        .exec_instrumented(fund_transfer_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let transfer_request_1 = ExecuteRequestBuilder::standard(
         *ACCOUNT_1_ADDR,
@@ -108,7 +120,10 @@ fn should_disallow_wasm_unrestricted_transfer_to_create_new_account_by_user() {
     .build();
 
     // User can't transfer funds to create new account.
-    builder.exec(transfer_request_1).expect_failure().commit();
+    builder
+        .exec_instrumented(transfer_request_1, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -131,7 +146,10 @@ fn should_disallow_wasm_unrestricted_transfer_to_create_new_account_by_user() {
     .build();
 
     // User can transfer funds back to admin.
-    builder.exec(transfer_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(transfer_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
     // What is
 }
@@ -151,7 +169,10 @@ fn should_disallow_transfer_to_own_purse_via_direct_mint_transfer_call() {
         session_args,
     )
     .build();
-    builder.exec(create_purse_request).expect_success().commit();
+    builder
+        .exec_instrumented(create_purse_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let mint_contract_hash = builder.get_mint_contract_hash();
 
@@ -181,7 +202,10 @@ fn should_disallow_transfer_to_own_purse_via_direct_mint_transfer_call() {
         session_args,
     )
     .build();
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success()
+        .commit();
 
     // Transfer technically succeeded but the result of mint::Error was discarded so we have to
     // ensure that purse has 0 balance.
@@ -211,7 +235,10 @@ fn should_allow_admin_to_transfer_to_own_purse_via_direct_mint_transfer_call() {
         session_args,
     )
     .build();
-    builder.exec(create_purse_request).expect_success().commit();
+    builder
+        .exec_instrumented(create_purse_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let mint_contract_hash = builder.get_mint_contract_hash();
 
@@ -241,7 +268,10 @@ fn should_allow_admin_to_transfer_to_own_purse_via_direct_mint_transfer_call() {
         session_args,
     )
     .build();
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success()
+        .commit();
 
     // Transfer technically succeeded but the result of mint::Error was discarded so we have to
     // ensure that purse has 0 balance.
@@ -271,7 +301,10 @@ fn should_disallow_transfer_to_own_purse_in_wasm_session() {
         session_args,
     )
     .build();
-    builder.exec(create_purse_request).expect_failure().commit();
+    builder
+        .exec_instrumented(create_purse_request, instrumented!())
+        .expect_failure()
+        .commit();
     let error = builder.get_error().expect("should have error");
     assert!(
         matches!(
@@ -298,7 +331,10 @@ fn should_allow_admin_to_transfer_to_own_purse_in_wasm_session() {
         session_args,
     )
     .build();
-    builder.exec(create_purse_request).expect_success().commit();
+    builder
+        .exec_instrumented(create_purse_request, instrumented!())
+        .expect_success()
+        .commit();
 }
 
 #[ignore]
@@ -316,7 +352,10 @@ fn should_disallow_transfer_to_own_purse_via_native_transfer() {
         session_args,
     )
     .build();
-    builder.exec(create_purse_request).expect_success().commit();
+    builder
+        .exec_instrumented(create_purse_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let account = builder
         .get_account(*ACCOUNT_1_ADDR)
@@ -339,7 +378,10 @@ fn should_disallow_transfer_to_own_purse_via_native_transfer() {
     )
     .build();
 
-    builder.exec(transfer_request).expect_failure().commit();
+    builder
+        .exec_instrumented(transfer_request, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -367,7 +409,10 @@ fn should_allow_admin_to_transfer_to_own_purse_via_native_transfer() {
         session_args,
     )
     .build();
-    builder.exec(create_purse_request).expect_success().commit();
+    builder
+        .exec_instrumented(create_purse_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let account = builder
         .get_account(*DEFAULT_ADMIN_ACCOUNT_ADDR)
@@ -390,7 +435,10 @@ fn should_allow_admin_to_transfer_to_own_purse_via_native_transfer() {
     )
     .build();
 
-    builder.exec(transfer_request).expect_success().commit();
+    builder
+        .exec_instrumented(transfer_request, instrumented!())
+        .expect_success()
+        .commit();
 }
 
 #[ignore]
@@ -406,7 +454,7 @@ fn should_disallow_wasm_payment_to_purse() {
     .build();
 
     builder
-        .exec(store_contract_request)
+        .exec_instrumented(store_contract_request, instrumented!())
         .expect_success()
         .commit();
 
@@ -419,7 +467,10 @@ fn should_disallow_wasm_payment_to_purse() {
     )
     .build();
 
-    builder.exec(transfer_request).expect_failure().commit();
+    builder
+        .exec_instrumented(transfer_request, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -446,7 +497,7 @@ fn should_not_allow_payment_to_purse_in_stored_payment() {
     .build();
 
     builder
-        .exec(store_contract_request)
+        .exec_instrumented(store_contract_request, instrumented!())
         .expect_success()
         .commit();
 
@@ -475,7 +526,10 @@ fn should_not_allow_payment_to_purse_in_stored_payment() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_1).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -514,8 +568,14 @@ fn should_disallow_native_unrestricted_transfer_to_existing_account_by_user() {
     .build();
 
     // Admin can transfer funds to create new account.
-    builder.exec(fund_transfer_1).expect_success().commit();
-    builder.exec(fund_transfer_2).expect_success().commit();
+    builder
+        .exec_instrumented(fund_transfer_1, instrumented!())
+        .expect_success()
+        .commit();
+    builder
+        .exec_instrumented(fund_transfer_2, instrumented!())
+        .expect_success()
+        .commit();
 
     let transfer_request_1 = ExecuteRequestBuilder::transfer(
         *ACCOUNT_1_ADDR,
@@ -528,7 +588,10 @@ fn should_disallow_native_unrestricted_transfer_to_existing_account_by_user() {
     .build();
 
     // User can't transfer funds to create new account.
-    builder.exec(transfer_request_1).expect_failure().commit();
+    builder
+        .exec_instrumented(transfer_request_1, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -551,7 +614,10 @@ fn should_disallow_native_unrestricted_transfer_to_existing_account_by_user() {
     .build();
 
     // User can transfer funds back to admin.
-    builder.exec(transfer_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(transfer_request_2, instrumented!())
+        .expect_success()
+        .commit();
 }
 
 #[ignore]
@@ -580,8 +646,14 @@ fn should_disallow_wasm_unrestricted_transfer_to_existing_account_by_user() {
     .build();
 
     // Admin can transfer funds to create new account.
-    builder.exec(fund_transfer_1).expect_success().commit();
-    builder.exec(fund_transfer_2).expect_success().commit();
+    builder
+        .exec_instrumented(fund_transfer_1, instrumented!())
+        .expect_success()
+        .commit();
+    builder
+        .exec_instrumented(fund_transfer_2, instrumented!())
+        .expect_success()
+        .commit();
 
     let transfer_request_1 = ExecuteRequestBuilder::standard(
         *ACCOUNT_1_ADDR,
@@ -594,7 +666,10 @@ fn should_disallow_wasm_unrestricted_transfer_to_existing_account_by_user() {
     .build();
 
     // User can't transfer funds to create new account.
-    builder.exec(transfer_request_1).expect_failure().commit();
+    builder
+        .exec_instrumented(transfer_request_1, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -616,7 +691,10 @@ fn should_disallow_wasm_unrestricted_transfer_to_existing_account_by_user() {
     .build();
 
     // User can transfer funds back to admin.
-    builder.exec(transfer_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(transfer_request_2, instrumented!())
+        .expect_success()
+        .commit();
 }
 
 #[ignore]
@@ -637,7 +715,10 @@ fn should_not_allow_direct_mint_transfer_with_system_addr_specified() {
     .build();
 
     // Admin can transfer funds to create new account.
-    builder.exec(fund_transfer_1).expect_failure().commit();
+    builder
+        .exec_instrumented(fund_transfer_1, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -665,7 +746,10 @@ fn should_not_allow_direct_mint_transfer_with_an_admin_in_to_field() {
     .build();
 
     // Admin can transfer funds to create new account.
-    builder.exec(fund_transfer_1).expect_failure().commit();
+    builder
+        .exec_instrumented(fund_transfer_1, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -693,7 +777,10 @@ fn should_not_allow_direct_mint_transfer_without_to_field() {
     .build();
 
     // Admin can transfer funds to create new account.
-    builder.exec(fund_transfer_1).expect_failure().commit();
+    builder
+        .exec_instrumented(fund_transfer_1, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -730,7 +817,10 @@ fn should_allow_custom_payment_by_paying_to_system_account() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let handle_payment_contract = builder
         .get_contract(builder.get_handle_payment_contract_hash())
@@ -774,7 +864,10 @@ fn should_allow_transfer_to_system_in_a_session_code() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let handle_payment_contract = builder
         .get_contract(builder.get_handle_payment_contract_hash())
@@ -809,7 +902,10 @@ fn should_allow_transfer_to_system_in_a_native_transfer() {
     )
     .build();
 
-    builder.exec(fund_transfer_1).expect_success().commit();
+    builder
+        .exec_instrumented(fund_transfer_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let handle_payment_contract = builder
         .get_contract(builder.get_handle_payment_contract_hash())

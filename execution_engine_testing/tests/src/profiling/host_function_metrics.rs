@@ -19,7 +19,9 @@ use log::LevelFilter;
 use rand::{self, Rng};
 use serde_json::Value;
 
-use casper_engine_test_support::{DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder};
+use casper_engine_test_support::{
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+};
 use casper_execution_engine::{
     core::engine_state::EngineConfig,
     shared::logging::{self, Settings},
@@ -173,7 +175,7 @@ fn run_test(root_hash: Vec<u8>, repetitions: usize, data_dir: &Path) {
             .push_deploy(deploy.clone())
             .build();
 
-        test_builder.exec(exec_request);
+        test_builder.exec_instrumented(exec_request, instrumented!());
         // Should revert with User error 10.
         let error_msg = test_builder
             .exec_error_message(0)

@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{engine_state::Error, execution::Error as ExecError};
@@ -30,7 +30,7 @@ fn should_not_transfer_above_approved_limit() {
             .build();
 
     builder
-        .exec(exec_request)
+        .exec_instrumented(exec_request, instrumented!())
         .assert_error(UNAPPROVED_SPENDING_AMOUNT_ERR);
 }
 
@@ -50,7 +50,9 @@ fn should_transfer_within_approved_limit() {
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, REGRESSION_20220207_CONTRACT, args)
             .build();
 
-    builder.exec(exec_request).expect_success();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success();
 }
 
 #[ignore]
@@ -71,6 +73,6 @@ fn should_fail_without_amount_arg() {
             .build();
 
     builder
-        .exec(exec_request)
+        .exec_instrumented(exec_request, instrumented!())
         .assert_error(UNAPPROVED_SPENDING_AMOUNT_ERR);
 }

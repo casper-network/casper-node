@@ -4,8 +4,8 @@ use assert_matches::assert_matches;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{engine_state::Error, execution};
 use casper_types::{
@@ -52,7 +52,10 @@ fn should_create_and_remove_group() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -90,7 +93,10 @@ fn should_create_and_remove_group() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
     let query_result = builder
         .query(None, *package_hash, &[])
@@ -128,7 +134,10 @@ fn should_create_and_remove_group() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_3, instrumented!())
+        .expect_success()
+        .commit();
 
     let query_result = builder
         .query(None, *package_hash, &[])
@@ -158,7 +167,10 @@ fn should_create_and_extend_user_group() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -196,7 +208,10 @@ fn should_create_and_extend_user_group() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
     let query_result = builder
         .query(None, *package_hash, &[])
@@ -235,7 +250,10 @@ fn should_create_and_extend_user_group() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_3, instrumented!())
+        .expect_success()
+        .commit();
 
     let query_result = builder
         .query(None, *package_hash, &[])
@@ -269,7 +287,10 @@ fn should_create_and_remove_urefs_from_group() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -307,7 +328,10 @@ fn should_create_and_remove_urefs_from_group() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
     let query_result = builder
         .query(None, *package_hash, &[])
@@ -348,7 +372,10 @@ fn should_create_and_remove_urefs_from_group() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_3, instrumented!())
+        .expect_success()
+        .commit();
 
     let query_result = builder
         .query(None, *package_hash, &[])
@@ -379,7 +406,10 @@ fn should_limit_max_urefs_while_extending() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
@@ -417,7 +447,10 @@ fn should_limit_max_urefs_while_extending() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
     let query_result = builder
         .query(None, *package_hash, &[])
@@ -481,7 +514,10 @@ fn should_limit_max_urefs_while_extending() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_3, instrumented!())
+        .expect_success()
+        .commit();
 
     let query_result = builder
         .query(None, *package_hash, &[])
@@ -496,7 +532,9 @@ fn should_limit_max_urefs_while_extending() {
     assert_eq!(group_1_modified.len(), MAX_GROUPS as usize);
 
     // Tries to exceed the limit by 1
-    builder.exec(exec_request_4).commit();
+    builder
+        .exec_instrumented(exec_request_4, instrumented!())
+        .commit();
 
     let response = builder
         .get_last_exec_results()

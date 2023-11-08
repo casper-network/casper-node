@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{engine_state, execution};
@@ -23,7 +23,10 @@ fn regression_20220222_escalate() {
     )
     .build();
 
-    builder.exec(transfer_request).commit().expect_success();
+    builder
+        .exec_instrumented(transfer_request, instrumented!())
+        .commit()
+        .expect_success();
 
     let alice = builder
         .get_account(ALICE_ADDR)
@@ -47,7 +50,9 @@ fn regression_20220222_escalate() {
         session_args,
     )
     .build();
-    builder.exec(exec_request).expect_failure();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_failure();
 
     let error = builder.get_error().expect("should have error");
 

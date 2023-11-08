@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{engine_state, execution};
@@ -46,7 +46,10 @@ fn regression_20220217_transfer_mint_by_hash_from_main_purse() {
         },
     )
     .build();
-    builder.exec(exec_request_2).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -96,7 +99,10 @@ fn regression_20220217_transfer_mint_by_package_hash_from_main_purse() {
         },
     )
     .build();
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -142,7 +148,10 @@ fn regression_20220217_mint_by_hash_transfer_from_other_purse() {
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success()
+        .commit();
 }
 
 #[ignore]
@@ -180,7 +189,9 @@ fn regression_20220217_mint_by_hash_transfer_from_someones_purse() {
     )
     .build();
 
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
     let error = builder.get_error().expect("should have error");
     assert!(
         matches!(
@@ -223,7 +234,10 @@ fn regression_20220217_should_not_transfer_funds_on_unrelated_purses() {
         },
     )
     .build();
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have error");
 
@@ -280,12 +294,21 @@ fn setup() -> InMemoryWasmTestBuilder {
     .build();
 
     builder
-        .exec(fund_account_1_request)
+        .exec_instrumented(fund_account_1_request, instrumented!())
         .expect_success()
         .commit();
-    builder.exec(fund_purse_1_request).expect_success().commit();
-    builder.exec(fund_purse_2_request).expect_success().commit();
-    builder.exec(fund_purse_3_request).expect_success().commit();
+    builder
+        .exec_instrumented(fund_purse_1_request, instrumented!())
+        .expect_success()
+        .commit();
+    builder
+        .exec_instrumented(fund_purse_2_request, instrumented!())
+        .expect_success()
+        .commit();
+    builder
+        .exec_instrumented(fund_purse_3_request, instrumented!())
+        .expect_success()
+        .commit();
     builder
 }
 
@@ -318,7 +341,10 @@ fn regression_20220217_auction_add_bid_directly() {
         },
     )
     .build();
-    builder.exec(exec_request_2).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -362,7 +388,10 @@ fn regression_20220217_() {
         },
     )
     .build();
-    builder.exec(exec_request_2).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -414,5 +443,7 @@ fn mint_by_hash_transfer_should_fail_because_lack_of_target_uref_access() {
     // Previously we would allow deposit in this flow to a purse without explicit ADD access. We
     // still allow that in some other flows, but due to code complexity, this is no longer
     // supported.
-    builder.exec(transfer_request).expect_failure();
+    builder
+        .exec_instrumented(transfer_request, instrumented!())
+        .expect_failure();
 }

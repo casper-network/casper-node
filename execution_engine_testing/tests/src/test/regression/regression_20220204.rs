@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{engine_state, execution};
@@ -34,7 +34,9 @@ fn regression_20220204_as_contract() {
         },
     )
     .build();
-    builder.exec(exec_request_2).commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .commit();
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
@@ -68,7 +70,9 @@ fn regression_20220204_as_contract_attenuated() {
         },
     )
     .build();
-    builder.exec(exec_request_2).commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .commit();
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
@@ -97,7 +101,9 @@ fn regression_20220204_as_contract_attenuated() {
         },
     )
     .build();
-    builder.exec(exec_request_2).commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .commit();
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
@@ -135,7 +141,9 @@ fn regression_20220204_as_contract_by_hash() {
         },
     )
     .build();
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
     let error = builder.get_error().expect("should have returned an error");
     assert!(
         matches!(
@@ -165,7 +173,9 @@ fn regression_20220204_nontrivial_arg_as_contract() {
         },
     )
     .build();
-    builder.exec(exec_request_2).commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .commit();
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
@@ -203,7 +213,9 @@ fn regression_20220204_as_contract_by_hash_attenuated() {
         },
     )
     .build();
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
     let error = builder.get_error().expect("should have returned an error");
     assert!(
         matches!(
@@ -232,7 +244,9 @@ fn regression_20220204_as_contract_by_hash_attenuated() {
         },
     )
     .build();
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
     let error = builder.get_error().expect("should have returned an error");
     assert!(
         matches!(
@@ -261,7 +275,9 @@ fn regression_20220204_as_session() {
         },
     )
     .build();
-    builder.exec(exec_request_1).commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .commit();
     let error = builder.get_error().expect("should have returned an error");
     assert!(
         matches!(
@@ -290,7 +306,9 @@ fn regression_20220204_as_session_attenuated() {
         },
     )
     .build();
-    builder.exec(exec_request_2).commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .commit();
     let error = builder.get_error().expect("should have returned an error");
     assert!(
         matches!(
@@ -323,7 +341,9 @@ fn regression_20220204_as_session_by_hash() {
         },
     )
     .build();
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
     let error = builder.get_error().expect("should have returned an error");
     assert!(
         matches!(
@@ -356,7 +376,9 @@ fn regression_20220204_as_session_by_hash_attenuated() {
         },
     )
     .build();
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
     let error = builder.get_error().expect("should have returned an error");
     assert!(
         matches!(
@@ -384,7 +406,9 @@ fn regression_20220204_as_session_by_hash_attenuated() {
         },
     )
     .build();
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
     let error = builder.get_error().expect("should have returned an error");
     assert!(
         matches!(
@@ -412,7 +436,9 @@ fn regression_20220204_main_purse_as_session() {
     )
     .build();
 
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
 
     // This test fails because mint's transfer in a StoredSession is disabled for security reasons
     // introduced as part of EE-1217. This assertion will serve as a reference point when the
@@ -443,7 +469,9 @@ fn regression_20220204_main_purse_as_session_by_hash() {
     )
     .build();
 
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
 
     // This test fails because mint's transfer in a StoredSession is disabled for security reasons
     // introduced as part of EE-1217. This assertion will serve as a reference point when the
@@ -470,7 +498,10 @@ fn setup() -> InMemoryWasmTestBuilder {
         RuntimeArgs::default(),
     )
     .build();
-    builder.exec(install_request).expect_success().commit();
+    builder
+        .exec_instrumented(install_request, instrumented!())
+        .expect_success()
+        .commit();
 
     builder
 }

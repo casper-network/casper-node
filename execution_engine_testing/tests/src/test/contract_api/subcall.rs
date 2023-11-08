@@ -2,7 +2,7 @@ use casper_execution_engine::shared::storage_costs::StorageCosts;
 use num_traits::cast::AsPrimitive;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{contracts::CONTRACT_INITIAL_VERSION, runtime_args, RuntimeArgs, U512};
@@ -44,11 +44,20 @@ fn should_charge_gas_for_subcall() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(do_nothing_request).expect_success().commit();
+    builder
+        .exec_instrumented(do_nothing_request, instrumented!())
+        .expect_success()
+        .commit();
 
-    builder.exec(do_something_request).expect_success().commit();
+    builder
+        .exec_instrumented(do_something_request, instrumented!())
+        .expect_success()
+        .commit();
 
-    builder.exec(no_subcall_request).expect_success().commit();
+    builder
+        .exec_instrumented(no_subcall_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let do_nothing_cost = builder.exec_costs(0)[0];
 
@@ -133,19 +142,19 @@ fn should_add_all_gas_for_subcall() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder
-        .exec(add_zero_gas_from_session_request)
+        .exec_instrumented(add_zero_gas_from_session_request, instrumented!())
         .expect_success()
         .commit();
     builder
-        .exec(add_some_gas_from_session_request)
+        .exec_instrumented(add_some_gas_from_session_request, instrumented!())
         .expect_success()
         .commit();
     builder
-        .exec(add_zero_gas_via_subcall_request)
+        .exec_instrumented(add_zero_gas_via_subcall_request, instrumented!())
         .expect_success()
         .commit();
     builder
-        .exec(add_some_gas_via_subcall_request)
+        .exec_instrumented(add_some_gas_via_subcall_request, instrumented!())
         .expect_success()
         .commit();
 
@@ -189,12 +198,12 @@ fn expensive_subcall_should_cost_more() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder
-        .exec(store_do_nothing_request)
+        .exec_instrumented(store_do_nothing_request, instrumented!())
         .expect_success()
         .commit();
 
     builder
-        .exec(store_calculation_request)
+        .exec_instrumented(store_calculation_request, instrumented!())
         .expect_success()
         .commit();
 
@@ -229,12 +238,12 @@ fn expensive_subcall_should_cost_more() {
     .build();
 
     builder
-        .exec(call_do_nothing_request)
+        .exec_instrumented(call_do_nothing_request, instrumented!())
         .expect_success()
         .commit();
 
     builder
-        .exec(call_expensive_calculation_request)
+        .exec_instrumented(call_expensive_calculation_request, instrumented!())
         .expect_success()
         .commit();
 

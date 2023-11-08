@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{engine_state::Error, execution::Error as ExecError};
@@ -28,7 +28,7 @@ fn runtime_stack_overflow_should_cause_unreachable_error() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
     builder
-        .exec(do_stack_overflow_request)
+        .exec_instrumented(do_stack_overflow_request, instrumented!())
         .expect_failure()
         .commit();
 

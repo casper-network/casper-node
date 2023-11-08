@@ -2,7 +2,7 @@ use casper_types::system::mint;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{
@@ -62,7 +62,9 @@ fn should_fail_to_add_new_bid_over_the_approved_amount() {
     )
     .build();
 
-    builder.exec(validator_1_add_bid_request).expect_failure();
+    builder
+        .exec_instrumented(validator_1_add_bid_request, instrumented!())
+        .expect_failure();
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -104,10 +106,12 @@ fn should_fail_to_add_into_existing_bid_over_the_approved_amount() {
     .build();
 
     builder
-        .exec(validator_1_add_bid_request_1)
+        .exec_instrumented(validator_1_add_bid_request_1, instrumented!())
         .expect_success()
         .commit();
-    builder.exec(validator_1_add_bid_request_2).expect_failure();
+    builder
+        .exec_instrumented(validator_1_add_bid_request_2, instrumented!())
+        .expect_failure();
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -138,7 +142,7 @@ fn should_fail_to_add_new_delegator_over_the_approved_amount() {
     .build();
 
     builder
-        .exec(validator_1_add_bid_request)
+        .exec_instrumented(validator_1_add_bid_request, instrumented!())
         .expect_success()
         .commit();
 
@@ -154,7 +158,7 @@ fn should_fail_to_add_new_delegator_over_the_approved_amount() {
     .build();
 
     builder
-        .exec(delegator_1_delegate_requestr)
+        .exec_instrumented(delegator_1_delegate_requestr, instrumented!())
         .expect_failure()
         .commit();
 
@@ -209,17 +213,17 @@ fn should_fail_to_update_existing_delegator_over_the_approved_amount() {
     .build();
 
     builder
-        .exec(validator_1_add_bid_request)
+        .exec_instrumented(validator_1_add_bid_request, instrumented!())
         .expect_success()
         .commit();
 
     builder
-        .exec(delegator_1_delegate_request_1)
+        .exec_instrumented(delegator_1_delegate_request_1, instrumented!())
         .expect_success()
         .commit();
 
     builder
-        .exec(delegator_1_delegate_request_2)
+        .exec_instrumented(delegator_1_delegate_request_2, instrumented!())
         .expect_failure()
         .commit();
 
@@ -258,7 +262,10 @@ fn should_fail_to_mint_transfer_over_the_limit() {
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, CONTRACT_REGRESSION_TRANSFER, args)
             .build();
 
-    builder.exec(transfer_request_1).expect_failure().commit();
+    builder
+        .exec_instrumented(transfer_request_1, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -296,11 +303,14 @@ fn setup() -> InMemoryWasmTestBuilder {
     .build();
 
     builder
-        .exec(validator_1_fund_request)
+        .exec_instrumented(validator_1_fund_request, instrumented!())
         .expect_success()
         .commit();
 
-    builder.exec(create_purse_request).expect_success().commit();
+    builder
+        .exec_instrumented(create_purse_request, instrumented!())
+        .expect_success()
+        .commit();
 
     builder
 }

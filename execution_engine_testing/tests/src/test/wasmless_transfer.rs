@@ -1,8 +1,8 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
@@ -183,7 +183,7 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
     };
 
     builder
-        .exec(no_wasm_transfer_request)
+        .exec_instrumented(no_wasm_transfer_request, instrumented!())
         .expect_success()
         .commit();
 
@@ -526,7 +526,7 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
 
     let account_1_starting_balance = builder.get_purse_balance(account_1_purse);
 
-    builder.exec(no_wasm_transfer_request);
+    builder.exec_instrumented(no_wasm_transfer_request, instrumented!());
 
     let result = builder
         .get_last_exec_results()
@@ -614,7 +614,7 @@ fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
     };
 
     builder
-        .exec(no_wasm_transfer_request)
+        .exec_instrumented(no_wasm_transfer_request, instrumented!())
         .expect_success()
         .commit();
 
@@ -666,7 +666,7 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> InMemoryWasmTestBu
 
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(create_account_1_request)
+        .exec_instrumented(create_account_1_request, instrumented!())
         .expect_success()
         .commit();
 
@@ -686,7 +686,7 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> InMemoryWasmTestBu
     .build();
 
     builder
-        .exec(create_account_2_request)
+        .exec_instrumented(create_account_2_request, instrumented!())
         .commit()
         .expect_success();
 
@@ -700,7 +700,7 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> InMemoryWasmTestBu
     .build();
 
     builder
-        .exec(new_named_uref_request)
+        .exec_instrumented(new_named_uref_request, instrumented!())
         .commit()
         .expect_success();
 
@@ -754,7 +754,7 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
     };
 
     builder
-        .exec(no_wasm_transfer_request_1)
+        .exec_instrumented(no_wasm_transfer_request_1, instrumented!())
         .expect_success()
         .commit();
 
@@ -793,7 +793,9 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    builder.exec(no_wasm_transfer_request_2).commit();
+    builder
+        .exec_instrumented(no_wasm_transfer_request_2, instrumented!())
+        .commit();
 
     let exec_result = &builder.get_last_exec_results().unwrap()[0];
     let error = exec_result
@@ -854,7 +856,7 @@ fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
     };
 
     builder
-        .exec(no_wasm_transfer_request_1)
+        .exec_instrumented(no_wasm_transfer_request_1, instrumented!())
         .expect_success()
         .commit();
 
@@ -894,7 +896,7 @@ fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
     };
 
     builder
-        .exec(no_wasm_transfer_request_2)
+        .exec_instrumented(no_wasm_transfer_request_2, instrumented!())
         .commit()
         .expect_success();
 }
@@ -912,7 +914,10 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
         runtime_args! { ARG_PURSE_NAME => TEST_PURSE_NAME },
     )
     .build();
-    builder.exec(create_purse_request).commit().expect_success();
+    builder
+        .exec_instrumented(create_purse_request, instrumented!())
+        .commit()
+        .expect_success();
 
     let account_1 = builder
         .get_account(*ACCOUNT_1_ADDR)
@@ -948,7 +953,9 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    builder.exec(no_wasm_transfer_request_1).commit();
+    builder
+        .exec_instrumented(no_wasm_transfer_request_1, instrumented!())
+        .commit();
 
     let exec_result = &builder.get_last_exec_results().unwrap()[0];
     let error = exec_result.as_error().expect("should have error");
@@ -1040,7 +1047,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
     };
 
     builder
-        .exec(no_wasm_transfer_request_1)
+        .exec_instrumented(no_wasm_transfer_request_1, instrumented!())
         .expect_success()
         .commit();
 
