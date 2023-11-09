@@ -48,10 +48,6 @@ fn should_run_named_keys_contract() {
 
     run_command(&mut builder, COMMAND_CREATE_UREF1);
 
-    let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have account");
-
     let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 
     assert!(named_keys.contains(KEY1));
@@ -59,9 +55,8 @@ fn should_run_named_keys_contract() {
 
     run_command(&mut builder, COMMAND_CREATE_UREF2);
 
-    let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have account");
+    let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
     let uref1 = *named_keys.get(KEY1).expect("should have key");
     let uref2 = *named_keys.get(KEY2).expect("should have key");
     let value1: String = read_value(&mut builder, uref1);
@@ -73,9 +68,6 @@ fn should_run_named_keys_contract() {
 
     run_command(&mut builder, COMMAND_REMOVE_UREF1);
 
-    let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have account");
 
     let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 

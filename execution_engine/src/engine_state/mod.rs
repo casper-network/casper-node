@@ -975,16 +975,14 @@ where
                 .map_err(Into::into)?;
 
             match maybe_stored_value {
-                Some(StoredValue::CLValue(cl_value)) => {
-                    let key = CLValue::into_t::<Key>(cl_value).map_err(|_| {
+                Some(StoredValue::NamedKey(cl_value)) => {
+                    let key = cl_value.get_key().map_err(|_| {
                         Error::Bytesrepr("Failed to convert to CLValue".to_string())
                     })?;
 
-                    let string = named_key_entry
-                        .into_named_key_addr()
-                        .ok_or_else(|| Error::InvalidKeyVariant)?
-                        .named_string()
-                        .ok_or_else(|| Error::InvalidKeyVariant)?;
+                    let string = cl_value.get_name().map_err(|_| {
+                        Error::Bytesrepr("Failed to convert to CLValue".to_string())
+                    })?;
 
                     named_keys.insert(string, key);
                 }
@@ -1642,6 +1640,8 @@ where
             }
         };
 
+        println!("In exec {:?}", entity_named_keys);
+
         let payment = deploy_item.payment;
         let session = deploy_item.session;
 
@@ -1741,7 +1741,6 @@ where
                 }
             };
 
-        println!("{:?}", handle_payment_named_keys);
 
         // Get payment purse Key from handle payment contract
         // payment_code_spec_6: system contract validity
@@ -1898,15 +1897,7 @@ where
                 Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
             })?;
 
-        let handle_payment_contract = match tracking_copy
-            .borrow_mut()
-            .get_contract(*handle_payment_contract_hash)
-        {
-            Ok(contract) => contract,
-            Err(error) => {
-                return Ok(ExecutionResult::precondition_failure(error.into()));
-            }
-        };
+
 
         let handle_payment_addr =
             EntityAddr::new_system_entity_addr(handle_payment_contract_hash.value());

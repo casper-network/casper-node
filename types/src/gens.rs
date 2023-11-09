@@ -41,6 +41,7 @@ use crate::{
     system::auction::{Bid, BidAddr, BidKind, ValidatorBid},
 };
 pub use crate::{deploy_info::gens::deploy_info_arb, transfer::gens::transfer_arb};
+use crate::addressable_entity::NamedKeyValue;
 
 pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {
     collection::vec(any::<u8>(), 32).prop_map(|b| {
@@ -658,6 +659,18 @@ fn unbondings_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<Unbon
     collection::vec(unbonding_arb(), size)
 }
 
+pub fn named_key_value_arb() -> impl Strategy<Value = NamedKeyValue> {
+    (
+        key_arb(),
+        "test",
+        ).prop_map(|(key, string)| {
+        let cl_key = CLValue::from_t(key).unwrap();
+        let cl_string = CLValue::from_t(string).unwrap();
+        NamedKeyValue::new(cl_key, cl_string)
+    })
+}
+
+
 pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
     prop_oneof![
         cl_value_arb().prop_map(StoredValue::CLValue),
@@ -673,7 +686,8 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         validator_bid_arb().prop_map(StoredValue::BidKind),
         delegator_bid_arb().prop_map(StoredValue::BidKind),
         withdraws_arb(1..50).prop_map(StoredValue::Withdraw),
-        unbondings_arb(1..50).prop_map(StoredValue::Unbonding)
+        unbondings_arb(1..50).prop_map(StoredValue::Unbonding),
+        named_key_value_arb().prop_map(StoredValue::NamedKey)
     ]
     .prop_map(|stored_value|
         // The following match statement is here only to make sure
@@ -694,5 +708,6 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
             StoredValue::BidKind(_) => stored_value,
             StoredValue::Package(_) => stored_value,
             StoredValue::ByteCode(_) => stored_value,
+            StoredValue::NamedKey(_) => stored_value,
         })
 }

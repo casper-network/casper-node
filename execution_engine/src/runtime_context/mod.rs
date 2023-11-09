@@ -342,6 +342,7 @@ where
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
         self.insert_uref(uref);
+        println!("Writing URef {}", uref);
         self.metered_write_gs(Key::URef(uref), value)?;
         Ok(uref)
     }
@@ -361,37 +362,31 @@ where
     pub fn put_key(&mut self, name: String, key: Key) -> Result<(), Error> {
         // No need to perform actual validation on the base key because an account or contract (i.e.
         // the element stored under `base_key`) is allowed to add new named keys to itself.
-        self.write_named_key(name.clone(), key)?;
+        let entity_addr = if let Key::AddressableEntity(entity_addr) = self.get_entity_key() {
+            entity_addr
+        } else {
+            return Err(Error::InvalidContext);
+        };
+        self.write_named_key(entity_addr,name.clone(), key)?;
         self.insert_named_key(name, key);
         Ok(())
     }
 
-    fn write_named_key(&mut self, name: String, key: Key) -> Result<(), Error> {
+    fn write_named_key(&mut self, entity_addr: EntityAddr, name: String, key: Key) -> Result<(), Error> {
         let named_key_value = StoredValue::CLValue(CLValue::from_t(key)?);
         self.validate_value(&named_key_value)?;
-        let entity_addr = if let Key::AddressableEntity(entity_addr) = self.get_entity_key() {
-            entity_addr
-        } else {
-            return Err(Error::InvalidContext);
-        };
-        let named_key_entry = Key::NamedKey(NamedKeyAddr::new_from_string(entity_addr, name)?);
+        let named_key_entry = Key::NamedKey(NamedKeyAddr::new_from_string(entity_addr, name.clone())?);
         self.metered_write_gs_unsafe(named_key_entry, named_key_value)
     }
 
-    pub(crate) fn write_named_keys(&mut self, named_keys: NamedKeys) -> Result<(), Error> {
-        let entity_addr = if let Key::AddressableEntity(entity_addr) = self.get_entity_key() {
-            entity_addr
-        } else {
-            return Err(Error::InvalidContext);
-        };
-
+    pub(crate) fn write_named_keys(&mut self, entity_addr: EntityAddr, named_keys: NamedKeys) -> Result<(), Error> {
         self.metered_write_gs_unsafe(
             Key::NamedKey(NamedKeyAddr::new_named_key_base(entity_addr)),
             StoredValue::CLValue(CLValue::unit()),
         )?;
 
         for (name, key) in named_keys.iter() {
-            self.write_named_key(name.clone(), *key)?
+            self.write_named_key(entity_addr, name.clone(), *key)?
         }
 
         Ok(())
@@ -667,6 +662,7 @@ where
             StoredValue::Unbonding(_) => Ok(()),
             StoredValue::ContractPackage(_) => Ok(()),
             StoredValue::ContractWasm(_) => Ok(()),
+            StoredValue::NamedKey(_) => Ok(())
         }
     }
 

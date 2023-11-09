@@ -40,6 +40,7 @@ use casper_types::{
     ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemConfig, Tagged, URef,
     WasmConfig, KEY_HASH_LENGTH, U512,
 };
+use casper_types::addressable_entity::NamedKeyValue;
 use casper_types::bytesrepr::FromBytes;
 
 use crate::{
@@ -1148,11 +1149,9 @@ where
             }
         };
 
-        println!("Storing named keys for {}", entity_kind);
 
-        if let Err(error) = self.store_system_contract_named_keys(entity_hash, named_keys) {
-            panic!("{:?}", error);
-        };
+
+        self.store_system_contract_named_keys(entity_hash, named_keys)?;
 
         let entity = AddressableEntity::new(
             package_hash,
@@ -1234,40 +1233,17 @@ where
         );
 
         for (string, key) in named_keys.iter() {
-            println!("Writing named key, {}", string);
-
-            let mut string = string
-                .to_bytes()
+            let named_key_entry = NamedKeyAddr::new_from_string(entity_addr, string.clone())
                 .map_err(|error| GenesisError::Bytesrepr(error))?;
 
-            println!("{:?}", string);
-
-            let str_length = string.len();
-
-            let string_bytes_vec = if str_length < KEY_HASH_LENGTH {
-                let mut string_bytes = Vec::with_capacity(KEY_HASH_LENGTH);
-                string_bytes.append(&mut string);
-                string_bytes.resize(KEY_HASH_LENGTH, 0u8);
-                string_bytes
-            } else {
-                string
-            };
-
-            println!("{:?}", string_bytes_vec);
-
-            let (string_bytes, remainder) = FromBytes::from_vec(string_bytes_vec)
-                .map_err(|error| GenesisError::Bytesrepr(error))?;
-
-            let named_key_entry = NamedKeyAddr::new_named_key_entry(entity_addr, string_bytes);
-
-            let cl_value = CLValue::from_t(*key)
-                .map_err(|cl_error| GenesisError::CLValue(cl_error.to_string()))?;
+            let named_key_value = NamedKeyValue::from_concrete_values(*key, string.clone())
+                .map_err(|error| GenesisError::CLValue(error.to_string()))?;
 
             let entry_key = Key::NamedKey(named_key_entry);
 
             self.tracking_copy
                 .borrow_mut()
-                .write(entry_key, StoredValue::CLValue(cl_value));
+                .write(entry_key, StoredValue::NamedKey(named_key_value));
         }
 
         Ok(())

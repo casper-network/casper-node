@@ -50,18 +50,8 @@ pub use self::{
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
 
-use crate::{
-    account::{Account, AccountHash},
-    byte_code::ByteCodeHash,
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    checksummed_hex,
-    contracts::{Contract, ContractHash},
-    key::ByteCodeAddr,
-    system::SystemEntityType,
-    uref::{self, URef},
-    AccessRights, ApiError, CLType, CLTyped, ContextAccessRights, Group, HashAddr, Key, KeyTag,
-    PackageHash, ProtocolVersion, PublicKey, Tagged, KEY_HASH_LENGTH,
-};
+use crate::{account::{Account, AccountHash}, byte_code::ByteCodeHash, bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH}, checksummed_hex, contracts::{Contract, ContractHash}, key::ByteCodeAddr, system::SystemEntityType, uref::{self, URef}, AccessRights, ApiError, CLType, CLTyped, ContextAccessRights, Group, HashAddr, Key, KeyTag, PackageHash, ProtocolVersion, PublicKey, Tagged, KEY_HASH_LENGTH, CLValue, CLValueError};
+
 
 /// Maximum number of distinct user groups.
 pub const MAX_GROUPS: u8 = 10;
@@ -76,6 +66,8 @@ pub const PACKAGE_KIND_SYSTEM_CONTRACT_TAG: u8 = 1;
 pub const PACKAGE_KIND_ACCOUNT_TAG: u8 = 2;
 /// The tag for Contract Packages associated with legacy packages.
 pub const PACKAGE_KIND_LEGACY_TAG: u8 = 3;
+
+pub const MAX_ENTRY_BYTE_LENGTH: usize = 64;
 
 const ADDRESSABLE_ENTITY_STRING_PREFIX: &str = "addressable-entity-";
 
@@ -1152,9 +1144,9 @@ impl NamedKeyAddr {
             string_byte.resize(KEY_HASH_LENGTH, 0u8);
             string_byte
         } else {
-            return Err(bytesrepr::Error::LeftOverBytes)
+            bytes
         };
-        let (string_bytes, _) = FromBytes::from_vec(string_vec)?;
+        let (string_bytes, _) = FromBytes::from_bytes(&string_vec)?;
         Ok(Self::new_named_key_entry(entity_addr, string_bytes))
     }
 
@@ -1179,18 +1171,6 @@ impl NamedKeyAddr {
             NamedKeyAddr::Base(_) => NamedKeyAddrTag::Base,
             NamedKeyAddr::NamedKeyEntry { .. } => NamedKeyAddrTag::NamedKeyEntry,
         }
-    }
-
-    pub fn named_string(&self) -> Option<String> {
-        if let Self::NamedKeyEntry { string_bytes, .. } = self {
-            let string = String::from_bytes(string_bytes.as_slice())
-                .ok();
-            return match string {
-                Some((string, _)) => Some(string),
-                None => None
-            };
-        }
-        None
     }
 
     pub fn to_formatted_string(&self) -> String {
@@ -1342,6 +1322,66 @@ impl Debug for NamedKeyAddr {
         }
     }
 }
+
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct NamedKeyValue {
+    /// The actual `Key` encoded as a CLValue.
+    named_key: CLValue,
+    /// The name of the `Key` encoded as a CLValue.
+    name: CLValue
+}
+
+impl NamedKeyValue {
+    pub fn new(key: CLValue, name: CLValue) -> Self {
+        Self {
+            named_key: key,
+            name
+        }
+    }
+
+    pub fn from_concrete_values(named_key: Key, name: String) -> Result<Self, CLValueError> {
+        let key_cl_value = CLValue::from_t(named_key)?;
+        let string_cl_value = CLValue::from_t(name)?;
+        Ok(Self::new(key_cl_value, string_cl_value))
+    }
+
+    pub fn get_key(&self) -> Result<Key, CLValueError> {
+        self.named_key.clone().into_t::<Key>()
+    }
+
+    pub fn get_name(&self) -> Result<String, CLValueError> {
+        self.name.clone().into_t::<String>()
+    }
+}
+
+impl ToBytes for NamedKeyValue {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.append(&mut self.named_key.to_bytes()?);
+        buffer.append(&mut self.name.to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.named_key.serialized_length() + self.name.serialized_length()
+    }
+}
+
+impl FromBytes for NamedKeyValue {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (named_key, remainder) = CLValue::from_bytes(bytes)?;
+        let (name, remainder) = CLValue::from_bytes(remainder)?;
+        Ok((Self {
+            named_key,
+            name
+        }, remainder))
+    }
+}
+
+
+
 
 /// Methods and type signatures supported by a contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2189,6 +2229,7 @@ mod tests {
     use super::*;
     use crate::{AccessRights, URef, UREF_ADDR_LENGTH};
 
+
     #[test]
     fn entity_hash_from_slice() {
         let bytes: Vec<u8> = (0..32).collect();
@@ -2250,21 +2291,6 @@ mod tests {
         let decoded = NamedKeyAddr::from_formatted_str(&encoded).unwrap();
         assert_eq!(named_key_addr, decoded);
     }
-
-    #[test]
-    fn should_maintain_string_for_named_key_addr() {
-        let string = "test".to_string();
-        let entity_addr = EntityAddr::new_contract_entity_addr([3;32]);
-
-        let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, string.clone())
-            .expect("must create named key addr");
-
-        let encoded_string = named_key_addr.named_string().expect("must get string value");
-        assert_eq!(encoded_string, string)
-    }
-
-
-
 
     #[test]
     fn entity_hash_serde_roundtrip() {

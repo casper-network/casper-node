@@ -528,9 +528,10 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                     return Ok(query.into_not_found_result(&msg_prefix));
                 }
                 StoredValue::AddressableEntity(_) => {
+                    let current_key = query.current_key;
                     let name = query.next_name();
 
-                    if let Key::AddressableEntity(addr) = base_key {
+                    if let Key::AddressableEntity(addr) = current_key {
                         let named_key_addr = match NamedKeyAddr::new_from_string(addr, name.clone())
                         {
                             Ok(named_key_addr) => Key::NamedKey(named_key_addr),
@@ -543,6 +544,23 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                     } else {
                         let msg_prefix = format!("Invalid base key");
                         return Ok(query.into_not_found_result(&msg_prefix));
+                    }
+                }
+                StoredValue::NamedKey(named_key_value) => {
+                    if let Ok(string) = named_key_value.get_name() {
+                        let name = query.next_name().clone();
+                        if string ==  name{
+                            if let Ok(key) = named_key_value.get_key() {
+                                query.navigate(key)
+                            } else {
+                                return Ok(query.into_not_found_result("Unable to get Key from CLValue"))
+                            }
+                        } else {
+                            let msg_prefix = format!("Name {} not found", name);
+                            return Ok(query.into_not_found_result(&msg_prefix));
+                        }
+                    } else {
+                        return Ok(query.into_not_found_result("Unable to get name from CLValue"))
                     }
                 }
                 StoredValue::ContractWasm(_) => {

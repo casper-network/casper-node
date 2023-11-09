@@ -662,6 +662,34 @@ where
         Err(format!("{:?}", query_result))
     }
 
+    pub fn query_named_key_by_account_hash(
+        &self,
+        maybe_post_state: Option<Digest>,
+        account_hash: AccountHash,
+        name: &str
+    ) -> Result<StoredValue, String>  {
+        let entity_addr = self.get_entity_hash_by_account_hash(account_hash)
+            .map(|entity_hash| EntityAddr::new_account_entity_addr(entity_hash.value()))
+            .expect("must get EntityAddr");
+        self.query_named_key(maybe_post_state, entity_addr, name)
+    }
+
+    pub fn query_named_key(
+        &self,
+        maybe_post_state: Option<Digest>,
+        entity_addr: EntityAddr,
+        name: &str,
+    ) -> Result<StoredValue, String> {
+        let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, name.to_string())
+            .expect("could not create named key address");
+        let empty_path: Vec<String> = vec![];
+        let maybe_stored_value = self.query(maybe_post_state, Key::NamedKey(named_key_addr), &empty_path)
+            .expect("no stored value found");
+        let key = maybe_stored_value.as_cl_value().map(|cl_val| CLValue::into_t::<Key>(cl_val.clone()))
+            .expect("must be cl_value").expect("must get key");
+        self.query(maybe_post_state, key, &vec![])
+    }
+
     /// Queries state for a dictionary item.
     pub fn query_dictionary_item(
         &self,
@@ -1407,15 +1435,9 @@ where
 
         for entry in entries.iter() {
             let read_result = reader.read(entry);
-            if let Ok(Some(StoredValue::CLValue(cl_value))) = read_result {
-                let key = CLValue::into_t::<Key>(cl_value).expect("must get key");
-
-                let name = entry
-                    .into_named_key_addr()
-                    .unwrap()
-                    .named_string()
-                    .expect("must get string");
-
+            if let Ok(Some(StoredValue::NamedKey(named_key))) = read_result {
+                let key = named_key.get_key().unwrap();
+                let name = named_key.get_name().unwrap();
                 named_keys.insert(name, key);
             }
         }

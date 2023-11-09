@@ -168,6 +168,11 @@ impl TransformKind {
                     let found = "ContractPackage".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
+                StoredValue::NamedKey(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "NamedKeyValue".to_string();
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
+                }
             },
             TransformKind::Failure(error) => Err(error),
         }

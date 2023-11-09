@@ -246,6 +246,8 @@ where
     ) -> Result<Result<(), ApiError>, Trap> {
         let name = self.string_from_mem(name_ptr, name_size)?;
 
+        println!("{:?}", self.context.named_keys());
+
         // Get a key and serialize it
         let key = match self.context.named_keys_get(&name) {
             Some(key) => key,
@@ -1336,6 +1338,8 @@ where
             .borrow_mut()
             .get_named_keys(entity_addr)?;
 
+        println!("In execute contract {:?}", entity_named_keys);
+
         let access_rights = {
             let mut access_rights = entity.extract_access_rights(entity_hash, &entity_named_keys);
             access_rights.extend(&extended_access_rights);
@@ -1797,7 +1801,7 @@ where
 
         // Is this still valid??
         // TODO: EE-1032 - Implement different ways of carrying on existing named keys.
-        self.context.write_named_keys(named_keys)?;
+        self.context.write_named_keys(entity_addr, named_keys)?;
 
         let entity = AddressableEntity::new(
             package_hash,
@@ -3297,8 +3301,10 @@ where
                     AssociatedKeys::default()
                 };
 
+                let contract_addr = EntityAddr::new_contract_entity_addr(contract_hash.value());
+
                 self.context
-                    .write_named_keys(contract.named_keys().clone())?;
+                    .write_named_keys(contract_addr, contract.named_keys().clone())?;
 
                 let updated_entity = AddressableEntity::new(
                     PackageHash::new(contract.contract_package_hash().value()),

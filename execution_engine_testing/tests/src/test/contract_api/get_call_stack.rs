@@ -2,11 +2,7 @@ use num_traits::One;
 
 use casper_engine_test_support::{LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR};
 use casper_execution_engine::engine_state::{Error as CoreError, ExecError, ExecuteRequest};
-use casper_types::{
-    addressable_entity::NamedKeys, system::CallStackElement, AddressableEntity,
-    AddressableEntityHash, CLValue, EntryPointType, HashAddr, Key, PackageAddr,
-    PackageHash, StoredValue, U512,
-};
+use casper_types::{addressable_entity::NamedKeys, system::CallStackElement, AddressableEntity, AddressableEntityHash, CLValue, EntryPointType, HashAddr, Key, PackageAddr, PackageHash, StoredValue, U512, EntityAddr};
 
 use crate::lmdb_fixture;
 
@@ -154,11 +150,15 @@ impl BuilderExt for LmdbWasmTestBuilder {
         &mut self,
         stored_call_stack_key: &str,
     ) -> Vec<CallStackElement> {
+        let entity_addr = self.get_entity_hash_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+            .map(|entity_hash| EntityAddr::new_account_entity_addr(entity_hash.value()))
+            .unwrap();
+
         let cl_value = self
-            .query(
+            .query_named_key_by_account_hash(
                 None,
                 (*DEFAULT_ACCOUNT_ADDR).into(),
-                &[stored_call_stack_key.to_string()],
+                stored_call_stack_key,
             )
             .unwrap();
 
@@ -184,13 +184,13 @@ impl BuilderExt for LmdbWasmTestBuilder {
         };
 
         let current_entity_hash = package.current_entity_hash().unwrap();
-        let current_contract_entity_key = Key::contract_entity_key(current_entity_hash);
+        let current_contract_entity_key = EntityAddr::new_contract_entity_addr(current_entity_hash.value());
 
         let cl_value = self
-            .query(
+            .query_named_key(
                 None,
                 current_contract_entity_key,
-                &[stored_call_stack_key.to_string()],
+                stored_call_stack_key,
             )
             .unwrap();
 

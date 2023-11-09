@@ -344,11 +344,13 @@ where
         let mut named_keys = NamedKeys::new();
 
         for entry_key in entries.iter() {
-            let key = match self.read(entry_key).map_err(Into::into)? {
-                Some(StoredValue::CLValue(cl_value)) => {
-                    let key = CLValue::into_t::<Key>(cl_value)
-                        .map_err(|cl_error| Self::Error::CLValue(cl_error.clone()))?;
-                    key
+            match self.read(entry_key).map_err(Into::into)? {
+                Some(StoredValue::NamedKey(named_key)) => {
+                    let key = named_key.get_key()
+                        .map_err(|cl_error| execution::Error::CLValue(cl_error.clone()))?;
+                    let name = named_key.get_name()
+                        .map_err(|cl_error| execution::Error::CLValue(cl_error.clone()))?;
+                    named_keys.insert(name, key);
                 }
                 Some(other) => {
                     return Err(execution::Error::TypeMismatch(
@@ -357,14 +359,6 @@ where
                 }
                 None => return Err(execution::Error::KeyNotFound(*entry_key)),
             };
-
-            let string = entry_key
-                .into_named_key_addr()
-                .ok_or_else(|| Self::Error::InvalidContext)?
-                .named_string()
-                .ok_or_else(|| Self::Error::UnexpectedKeyVariant(*entry_key))?;
-
-            named_keys.insert(string, key);
         }
 
         Ok(named_keys)

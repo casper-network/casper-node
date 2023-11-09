@@ -899,6 +899,14 @@ impl Key {
         }
         false
     }
+
+    pub fn is_named_key_entry(&self) -> bool {
+        if let Self::NamedKey(NamedKeyAddr::NamedKeyEntry { .. }) = self {
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl Display for Key {
