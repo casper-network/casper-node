@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::RuntimeArgs;
+use casper_types::{EntityAddr, RuntimeArgs};
 
 const CONTRACT_EE_1071_REGRESSION: &str = "ee_1071_regression.wasm";
 const CONTRACT_HASH_NAME: &str = "contract";
@@ -45,14 +45,13 @@ fn should_run_ee_1071_regression() {
     .build();
 
     let contract_before = builder
-        .get_addressable_entity(contract_hash)
-        .expect("should have account");
+        .get_named_keys(EntityAddr::SmartContract(contract_hash.value()));
 
     builder.exec(exec_request_2).expect_success().commit();
 
     let contract_after = builder
-        .get_addressable_entity(contract_hash)
-        .expect("should have account");
+        .get_named_keys(EntityAddr::SmartContract(contract_hash.value()));
+
     assert_ne!(
         contract_after, contract_before,
         "contract object should be modified"

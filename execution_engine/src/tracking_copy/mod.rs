@@ -93,6 +93,12 @@ impl Query {
         self.depth += 1;
     }
 
+    fn navigate_for_named_key(&mut self, named_key: Key) {
+        if let Key::NamedKey(_) = &named_key {
+            self.current_key = named_key.normalize();
+        }
+    }
+
     fn into_not_found_result(self, msg_prefix: &str) -> TrackingCopyQueryResult {
         let msg = format!("{} at path: {}", msg_prefix, self.current_path());
         TrackingCopyQueryResult::ValueNotFound(msg)
@@ -484,7 +490,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
 
             proofs.push(stored_value);
 
-            if query.unvisited_names.is_empty() {
+            if query.unvisited_names.is_empty() && !query.current_key.is_named_key() {
                 return Ok(TrackingCopyQueryResult::Success { value, proofs });
             }
 
@@ -512,6 +518,28 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                         return Ok(query.into_not_found_result(&msg_prefix));
                     }
                 }
+                StoredValue::NamedKey(named_key_value) => {
+                    println!("{:?}", query.visited_names);
+                    match query.visited_names.last() {
+                        Some(expected_name) => {
+                            match named_key_value.get_name() {
+                                Ok(actual_name) => {
+                                    if &actual_name != expected_name {
+                                        return Ok(query.into_not_found_result("Queried and retrieved names do not match"))
+                                    } else {
+                                        if let Ok(key) = named_key_value.get_key() {
+                                            query.navigate(key)
+                                        } else {
+                                            return Ok(query.into_not_found_result("Failed to parse CLValue as Key"));
+                                        }
+                                    }
+                                }
+                                Err(_) => return Ok(query.into_not_found_result("Failed to parse CLValue as String"))
+                            }
+                        }
+                        None => return Ok(query.into_not_found_result("No visited names"))
+                    }
+                }
                 StoredValue::CLValue(cl_value) if cl_value.cl_type() == &CLType::Key => {
                     if let Ok(key) = cl_value.to_owned().into_t::<Key>() {
                         query.navigate(key);
@@ -531,6 +559,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                     let current_key = query.current_key;
                     let name = query.next_name();
 
+
                     if let Key::AddressableEntity(addr) = current_key {
                         let named_key_addr = match NamedKeyAddr::new_from_string(addr, name.clone())
                         {
@@ -540,29 +569,10 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                                 return Ok(query.into_not_found_result(&msg_prefix));
                             }
                         };
-                        query.navigate(named_key_addr);
+                        query.navigate_for_named_key(named_key_addr);
                     } else {
                         let msg_prefix = format!("Invalid base key");
                         return Ok(query.into_not_found_result(&msg_prefix));
-                    }
-                }
-                StoredValue::NamedKey(named_key_value) => {
-                    if let Ok(string) = named_key_value.get_name() {
-                        let name = query.next_name().clone();
-                        if string == name {
-                            if let Ok(key) = named_key_value.get_key() {
-                                query.navigate(key)
-                            } else {
-                                return Ok(
-                                    query.into_not_found_result("Unable to get Key from CLValue")
-                                );
-                            }
-                        } else {
-                            let msg_prefix = format!("Name {} not found", name);
-                            return Ok(query.into_not_found_result(&msg_prefix));
-                        }
-                    } else {
-                        return Ok(query.into_not_found_result("Unable to get name from CLValue"));
                     }
                 }
                 StoredValue::ContractWasm(_) => {

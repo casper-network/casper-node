@@ -2,10 +2,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{
-    addressable_entity::EntityKindTag, execution::TransformKind, runtime_args, CLValue, Key,
-    RuntimeArgs, StoredValue,
-};
+use casper_types::{addressable_entity::EntityKindTag, execution::TransformKind, runtime_args, CLValue, Key, RuntimeArgs, StoredValue, EntityAddr};
 
 const ARG_AMOUNT: &str = "amount";
 
@@ -41,26 +38,34 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
 
     let entity_key = Key::addressable_entity_key(EntityKindTag::Account, entity_hash);
 
+
+
     let effects = &builder.get_effects()[0];
     let mut add_keys_iter = effects
         .transforms()
         .iter()
         .filter(|transform| transform.key() == &entity_key)
         .map(|transform| transform.kind());
-    let payment_uref = match add_keys_iter.next().unwrap() {
-        TransformKind::AddKeys(named_keys) => named_keys.get("new_uref_result-payment").unwrap(),
-        _ => panic!("should be an AddKeys transform"),
-    };
-    let session_uref = match add_keys_iter.next().unwrap() {
-        TransformKind::AddKeys(named_keys) => named_keys.get("new_uref_result-session").unwrap(),
-        _ => panic!("should be an AddKeys transform"),
-    };
+    // let payment_uref = match add_keys_iter.next().unwrap() {
+    //     TransformKind::AddKeys(named_keys) => named_keys.get("new_uref_result-payment").unwrap(),
+    //     _ => panic!("should be an AddKeys transform"),
+    // };
+    // let session_uref = match add_keys_iter.next().unwrap() {
+    //     TransformKind::AddKeys(named_keys) => named_keys.get("new_uref_result-session").unwrap(),
+    //     _ => panic!("should be an AddKeys transform"),
+    // };
+
+    builder.commit();
+
+    let entity_named_keys = builder.get_named_keys(EntityAddr::Account(entity_hash.value()));
+
+    let payment_uref = entity_named_keys.get("new_uref_result-payment").unwrap();
+    let session_uref = entity_named_keys.get("new_uref_result-session").unwrap();
+
     assert_ne!(
         payment_uref, session_uref,
         "payment and session code should not create same uref"
     );
-
-    builder.commit();
 
     let payment_value: StoredValue = builder
         .query(None, *payment_uref, &[])

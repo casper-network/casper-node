@@ -7,6 +7,7 @@ use casper_types::{
     AddressableEntityHash, CLValue, EntityAddr, EntryPointType, HashAddr, Key, PackageAddr,
     PackageHash, StoredValue, U512,
 };
+use casper_types::bytesrepr::ToBytes;
 
 use crate::lmdb_fixture;
 
@@ -154,18 +155,15 @@ impl BuilderExt for LmdbWasmTestBuilder {
         &mut self,
         stored_call_stack_key: &str,
     ) -> Vec<CallStackElement> {
-        let entity_addr = self
-            .get_entity_hash_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-            .map(|entity_hash| EntityAddr::new_account_entity_addr(entity_hash.value()))
-            .unwrap();
-
         let cl_value = self
-            .query_named_key_by_account_hash(
+            .query(
                 None,
                 (*DEFAULT_ACCOUNT_ADDR).into(),
-                stored_call_stack_key,
+                &[stored_call_stack_key.to_string()],
             )
             .unwrap();
+
+        println!("{:?}", cl_value);
 
         cl_value
             .into_cl_value()
@@ -193,8 +191,10 @@ impl BuilderExt for LmdbWasmTestBuilder {
             EntityAddr::new_contract_entity_addr(current_entity_hash.value());
 
         let cl_value = self
-            .query_named_key(None, current_contract_entity_key, stored_call_stack_key)
+            .query(None, current_contract_entity_key.into(), &[stored_call_stack_key.to_string()])
             .unwrap();
+
+        println!("{:?}", cl_value);
 
         cl_value
             .into_cl_value()

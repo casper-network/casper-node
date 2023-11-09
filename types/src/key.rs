@@ -893,6 +893,14 @@ impl Key {
         false
     }
 
+    pub fn is_named_key(&self) -> bool {
+        if let Key::NamedKey(_) = self {
+            return true;
+        }
+
+        false
+    }
+
     /// Returns a reference to the inner `BidAddr` if `self` is of type [`Key::Bid`],
     /// otherwise returns `None`.
     pub fn as_bid_addr(&self) -> Option<&BidAddr> {
