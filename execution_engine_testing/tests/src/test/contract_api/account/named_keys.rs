@@ -49,6 +49,7 @@ fn should_run_named_keys_contract() {
     run_command(&mut builder, COMMAND_CREATE_UREF1);
 
     let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+    println!("{:?}", named_keys);
 
     assert!(named_keys.contains(KEY1));
     assert!(!named_keys.contains(KEY2));
@@ -68,7 +69,6 @@ fn should_run_named_keys_contract() {
 
     run_command(&mut builder, COMMAND_REMOVE_UREF1);
 
-
     let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 
     assert!(!named_keys.contains(KEY1));
@@ -77,7 +77,6 @@ fn should_run_named_keys_contract() {
     run_command(&mut builder, COMMAND_TEST_READ_UREF2);
 
     run_command(&mut builder, COMMAND_INCREASE_UREF2);
-
 
     let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 
@@ -94,7 +93,6 @@ fn should_run_named_keys_contract() {
     assert_eq!(value2, U512::from(EXPECTED_UREF_VALUE));
 
     run_command(&mut builder, COMMAND_REMOVE_UREF2);
-
 
     let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 

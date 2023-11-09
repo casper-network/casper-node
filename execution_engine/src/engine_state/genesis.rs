@@ -17,9 +17,11 @@ use serde::{Deserialize, Serialize};
 
 use casper_storage::global_state::state::StateProvider;
 use casper_types::{
-    addressable_entity::{ActionThresholds, EntityKind, EntityKindTag, NamedKeyAddr, NamedKeys},
+    addressable_entity::{
+        ActionThresholds, EntityKind, EntityKindTag, NamedKeyAddr, NamedKeyValue, NamedKeys,
+    },
     bytesrepr,
-    bytesrepr::ToBytes,
+    bytesrepr::{FromBytes, ToBytes},
     execution::Effects,
     package::{EntityVersions, Groups, PackageStatus},
     system::{
@@ -40,8 +42,6 @@ use casper_types::{
     ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemConfig, Tagged, URef,
     WasmConfig, KEY_HASH_LENGTH, U512,
 };
-use casper_types::addressable_entity::NamedKeyValue;
-use casper_types::bytesrepr::FromBytes;
 
 use crate::{
     engine_state::{SystemContractRegistry, DEFAULT_ADDRESS},
@@ -1148,8 +1148,6 @@ where
                 }
             }
         };
-
-
 
         self.store_system_contract_named_keys(entity_hash, named_keys)?;
 

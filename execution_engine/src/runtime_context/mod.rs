@@ -18,8 +18,8 @@ use casper_storage::global_state::state::StateReader;
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
-        ActionType, AddKeyFailure, EntityKind, EntityKindTag, NamedKeyAddr, NamedKeys,
-        RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
+        ActionType, AddKeyFailure, EntityKind, EntityKindTag, NamedKeyAddr, NamedKeyValue,
+        NamedKeys, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
     },
     bytesrepr::ToBytes,
     execution::Effects,
@@ -367,19 +367,30 @@ where
         } else {
             return Err(Error::InvalidContext);
         };
-        self.write_named_key(entity_addr,name.clone(), key)?;
+        self.write_named_key(entity_addr, name.clone(), key)?;
         self.insert_named_key(name, key);
         Ok(())
     }
 
-    fn write_named_key(&mut self, entity_addr: EntityAddr, name: String, key: Key) -> Result<(), Error> {
-        let named_key_value = StoredValue::CLValue(CLValue::from_t(key)?);
+    fn write_named_key(
+        &mut self,
+        entity_addr: EntityAddr,
+        name: String,
+        key: Key,
+    ) -> Result<(), Error> {
+        let named_key_value =
+            StoredValue::NamedKey(NamedKeyValue::from_concrete_values(key, name.clone())?);
         self.validate_value(&named_key_value)?;
-        let named_key_entry = Key::NamedKey(NamedKeyAddr::new_from_string(entity_addr, name.clone())?);
+        let named_key_entry =
+            Key::NamedKey(NamedKeyAddr::new_from_string(entity_addr, name.clone())?);
         self.metered_write_gs_unsafe(named_key_entry, named_key_value)
     }
 
-    pub(crate) fn write_named_keys(&mut self, entity_addr: EntityAddr, named_keys: NamedKeys) -> Result<(), Error> {
+    pub(crate) fn write_named_keys(
+        &mut self,
+        entity_addr: EntityAddr,
+        named_keys: NamedKeys,
+    ) -> Result<(), Error> {
         self.metered_write_gs_unsafe(
             Key::NamedKey(NamedKeyAddr::new_named_key_base(entity_addr)),
             StoredValue::CLValue(CLValue::unit()),
@@ -662,7 +673,10 @@ where
             StoredValue::Unbonding(_) => Ok(()),
             StoredValue::ContractPackage(_) => Ok(()),
             StoredValue::ContractWasm(_) => Ok(()),
-            StoredValue::NamedKey(_) => Ok(())
+            StoredValue::NamedKey(named_key_value) => {
+                self.validate_cl_value(named_key_value.get_key_as_cl_value())?;
+                self.validate_cl_value(named_key_value.get_name_as_cl_value())
+            }
         }
     }
 

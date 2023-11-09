@@ -2,7 +2,11 @@ use num_traits::One;
 
 use casper_engine_test_support::{LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR};
 use casper_execution_engine::engine_state::{Error as CoreError, ExecError, ExecuteRequest};
-use casper_types::{addressable_entity::NamedKeys, system::CallStackElement, AddressableEntity, AddressableEntityHash, CLValue, EntryPointType, HashAddr, Key, PackageAddr, PackageHash, StoredValue, U512, EntityAddr};
+use casper_types::{
+    addressable_entity::NamedKeys, system::CallStackElement, AddressableEntity,
+    AddressableEntityHash, CLValue, EntityAddr, EntryPointType, HashAddr, Key, PackageAddr,
+    PackageHash, StoredValue, U512,
+};
 
 use crate::lmdb_fixture;
 
@@ -150,7 +154,8 @@ impl BuilderExt for LmdbWasmTestBuilder {
         &mut self,
         stored_call_stack_key: &str,
     ) -> Vec<CallStackElement> {
-        let entity_addr = self.get_entity_hash_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        let entity_addr = self
+            .get_entity_hash_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
             .map(|entity_hash| EntityAddr::new_account_entity_addr(entity_hash.value()))
             .unwrap();
 
@@ -184,14 +189,11 @@ impl BuilderExt for LmdbWasmTestBuilder {
         };
 
         let current_entity_hash = package.current_entity_hash().unwrap();
-        let current_contract_entity_key = EntityAddr::new_contract_entity_addr(current_entity_hash.value());
+        let current_contract_entity_key =
+            EntityAddr::new_contract_entity_addr(current_entity_hash.value());
 
         let cl_value = self
-            .query_named_key(
-                None,
-                current_contract_entity_key,
-                stored_call_stack_key,
-            )
+            .query_named_key(None, current_contract_entity_key, stored_call_stack_key)
             .unwrap();
 
         cl_value
@@ -3167,7 +3169,9 @@ mod session {
 mod payment {
     use rand::Rng;
 
-    use crate::test::contract_api::get_call_stack::{EntityWithKeys, IS_NOT_SESSION_ENTRY_POINT, IS_SESSION_ENTRY_POINT};
+    use crate::test::contract_api::get_call_stack::{
+        EntityWithKeys, IS_NOT_SESSION_ENTRY_POINT, IS_SESSION_ENTRY_POINT,
+    };
     use casper_engine_test_support::{
         DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     };

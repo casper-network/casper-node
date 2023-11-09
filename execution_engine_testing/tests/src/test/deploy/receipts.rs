@@ -7,8 +7,8 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, AccessRights, DeployHash,
-    PublicKey, SecretKey, Transfer, TransferAddr, DEFAULT_WASMLESS_TRANSFER_COST, U512,
+    account::AccountHash, runtime_args, system::mint, AccessRights, DeployHash, PublicKey,
+    SecretKey, Transfer, TransferAddr, DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";

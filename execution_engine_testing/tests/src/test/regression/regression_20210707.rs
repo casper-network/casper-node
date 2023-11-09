@@ -1,4 +1,8 @@
-use casper_engine_test_support::{DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, EntityWithNamedKeys};
+use casper_engine_test_support::{
+    DeployItemBuilder, EntityWithNamedKeys, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_RUN_GENESIS_REQUEST,
+};
 use casper_execution_engine::{
     engine_state::{Error as CoreError, ExecuteRequest},
     execution::Error as ExecError,
@@ -100,7 +104,9 @@ fn should_transfer_funds_from_contract_to_new_account() {
     builder.exec(store_request).commit().expect_success();
     builder.exec(fund_request).commit().expect_success();
 
-    let account = builder.get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR).unwrap();
+    let account = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
     let contract_hash = get_account_entity_hash(&account);
 
@@ -145,7 +151,9 @@ fn should_transfer_funds_from_contract_to_existing_account() {
     builder.exec(fund_request_1).commit().expect_success();
     builder.exec(fund_request_2).commit().expect_success();
 
-    let account = builder.get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR).unwrap();
+    let account = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
     let contract_hash = get_account_entity_hash(&account);
 
@@ -228,9 +236,13 @@ fn should_not_transfer_funds_from_forged_purse_to_owned_purse() {
     builder.exec(fund_request_1).commit().expect_success();
     builder.exec(fund_request_2).commit().expect_success();
 
-    let account = builder.get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR).unwrap();
+    let account = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
-    let bob = builder.get_entity_with_named_keys_by_account_hash(*BOB_ADDR).unwrap();
+    let bob = builder
+        .get_entity_with_named_keys_by_account_hash(*BOB_ADDR)
+        .unwrap();
     let bob_main_purse = bob.main_purse();
 
     let contract_hash = get_account_entity_hash(&account);
@@ -271,7 +283,9 @@ fn should_not_transfer_funds_into_bob_purse() {
     builder.exec(store_request).commit().expect_success();
     builder.exec(fund_request_1).commit().expect_success();
 
-    let account = builder.get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR).unwrap();
+    let account = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
     let bob = builder.get_expected_addressable_entity_by_account_hash(*BOB_ADDR);
     let bob_main_purse = bob.main_purse();
@@ -314,7 +328,9 @@ fn should_not_transfer_from_hardcoded_purse() {
     builder.exec(store_request).commit().expect_success();
     builder.exec(fund_request_1).commit().expect_success();
 
-    let account = builder.get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR).unwrap();
+    let account = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
     let contract_hash = get_account_entity_hash(&account);
 
@@ -360,7 +376,9 @@ fn should_not_refund_to_bob_and_charge_alice() {
     builder.exec(fund_request_1).commit().expect_success();
     builder.exec(fund_request_2).commit().expect_success();
 
-    let account = builder.get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR).unwrap();
+    let account = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
     let bob = builder.get_expected_addressable_entity_by_account_hash(*BOB_ADDR);
     let bob_main_purse = bob.main_purse();
@@ -416,7 +434,9 @@ fn should_not_charge_alice_for_execution() {
     builder.exec(fund_request_1).commit().expect_success();
     builder.exec(fund_request_2).commit().expect_success();
 
-    let account = builder.get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR).unwrap();
+    let account = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
     let bob = builder.get_expected_addressable_entity_by_account_hash(*BOB_ADDR);
     let bob_main_purse = bob.main_purse();
@@ -472,7 +492,9 @@ fn should_not_charge_for_execution_from_hardcoded_purse() {
     builder.exec(fund_request_1).commit().expect_success();
     builder.exec(fund_request_2).commit().expect_success();
 
-    let account = builder.get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR).unwrap();
+    let account = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
     let contract_hash = get_account_entity_hash(&account);
 

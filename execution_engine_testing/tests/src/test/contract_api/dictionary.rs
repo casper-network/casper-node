@@ -10,8 +10,8 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::AccountHash, addressable_entity::EntityKindTag, runtime_args, system::mint,
-    AccessRights, AddressableEntityHash, ApiError, CLType, CLValue, GenesisAccount, Key, Motes,
-    RuntimeArgs, StoredValue, U512,
+    AccessRights, AddressableEntityHash, ApiError, CLType, CLValue, EntityAddr, EntityKind,
+    GenesisAccount, Key, Motes, RuntimeArgs, StoredValue, U512,
 };
 use std::{convert::TryFrom, path::PathBuf};
 
@@ -53,16 +53,18 @@ fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
         .commit()
         .expect_success();
 
-    let contract = builder
+    let default_account_entity = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
-    assert!(contract
+    assert!(default_account_entity
         .named_keys()
         .contains(dictionary::MALICIOUS_KEY_NAME));
-    assert!(contract.named_keys().contains(dictionary::DICTIONARY_REF));
+    assert!(default_account_entity
+        .named_keys()
+        .contains(dictionary::DICTIONARY_REF));
 
-    let entity_hash = contract
+    let entity_hash = default_account_entity
         .named_keys()
         .get(dictionary::CONTRACT_HASH_NAME)
         .cloned()
@@ -106,12 +108,10 @@ fn query_dictionary_item(
         }
         Key::AddressableEntity(entity_addr) => {
             if let Some(name) = dictionary_name {
-                let entity_hash = AddressableEntityHash::new(entity_addr.value());
-
                 let stored_value = builder.query(None, key, &[])?;
 
                 match &stored_value {
-                    StoredValue::AddressableEntity(_) => {},
+                    StoredValue::AddressableEntity(_) => {}
                     _ => {
                         return Err(
                             "Provided base key is nether an account or a contract".to_string()
@@ -119,11 +119,7 @@ fn query_dictionary_item(
                     }
                 };
 
-                let named_keys = match builder.get_entity_with_named_keys_by_entity_hash(entity_hash) {
-                    Some(entity_with_keys) => entity_with_keys.named_keys().clone(),
-                    None => return Err("Could not find entity with named keys".to_string())
-                };
-
+                let named_keys = builder.get_named_keys(entity_addr);
 
                 let dictionary_uref = named_keys
                     .get(&name)
@@ -325,12 +321,9 @@ fn should_write_with_write_access_rights() {
 
     builder.exec(call_request).commit();
 
-    let contract = builder
-        .get_entity_with_named_keys_by_entity_hash(contract_hash)
-        .expect("should have account");
+    let contract_named_keys = builder.get_named_keys_by_contract_entity_hash(contract_hash);
 
-    let stored_dictionary_key = contract
-        .named_keys()
+    let stored_dictionary_key = contract_named_keys
         .get(dictionary::DICTIONARY_NAME)
         .expect("dictionary");
     let dictionary_root_uref = stored_dictionary_key.into_uref().expect("should be uref");

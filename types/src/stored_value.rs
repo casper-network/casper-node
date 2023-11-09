@@ -16,6 +16,7 @@ use serde_bytes::ByteBuf;
 
 use crate::{
     account::Account,
+    addressable_entity::NamedKeyValue,
     bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contract_wasm::ContractWasm,
     contracts::{Contract, ContractPackage},
@@ -24,7 +25,6 @@ use crate::{
     AddressableEntity, ByteCode, CLValue, DeployInfo, Transfer,
 };
 pub use type_mismatch::TypeMismatch;
-use crate::addressable_entity::NamedKeyValue;
 
 #[allow(clippy::large_enum_variant)]
 #[repr(u8)]
@@ -88,7 +88,7 @@ pub enum StoredValue {
     /// A record of byte code.
     ByteCode(ByteCode),
     /// A NamedKey record.
-    NamedKey(NamedKeyValue)
+    NamedKey(NamedKeyValue),
 }
 
 impl StoredValue {
@@ -322,7 +322,7 @@ impl StoredValue {
             StoredValue::BidKind(_) => "BidKind".to_string(),
             StoredValue::ByteCode(_) => "ByteCode".to_string(),
             StoredValue::Package(_) => "Package".to_string(),
-            StoredValue::NamedKey(_) => "NamedKeyValue".to_string()
+            StoredValue::NamedKey(_) => "NamedKeyValue".to_string(),
         }
     }
 
@@ -582,11 +582,12 @@ impl TryFrom<StoredValue> for NamedKeyValue {
     fn try_from(value: StoredValue) -> Result<Self, Self::Error> {
         match value {
             StoredValue::NamedKey(named_key_value) => Ok(named_key_value),
-            _ => Err(TypeMismatch::new("NamedKeyValue".to_string(), value.type_name()))
+            _ => Err(TypeMismatch::new(
+                "NamedKeyValue".to_string(),
+                value.type_name(),
+            )),
         }
     }
-
-
 }
 
 impl ToBytes for StoredValue {
@@ -616,7 +617,7 @@ impl ToBytes for StoredValue {
                 StoredValue::BidKind(bid_kind) => bid_kind.serialized_length(),
                 StoredValue::Package(package) => package.serialized_length(),
                 StoredValue::ByteCode(byte_code) => byte_code.serialized_length(),
-                StoredValue::NamedKey(named_key_value) => named_key_value.serialized_length()
+                StoredValue::NamedKey(named_key_value) => named_key_value.serialized_length(),
             }
     }
 
@@ -640,7 +641,7 @@ impl ToBytes for StoredValue {
             StoredValue::BidKind(bid_kind) => bid_kind.write_bytes(writer)?,
             StoredValue::Package(package) => package.write_bytes(writer)?,
             StoredValue::ByteCode(byte_code) => byte_code.write_bytes(writer)?,
-            StoredValue::NamedKey(named_key_value) => named_key_value.write_bytes(writer)?
+            StoredValue::NamedKey(named_key_value) => named_key_value.write_bytes(writer)?,
         };
         Ok(())
     }
@@ -692,8 +693,11 @@ impl FromBytes for StoredValue {
                 .map(|(package, remainder)| (StoredValue::Package(package), remainder)),
             tag if tag == Tag::ByteCode as u8 => ByteCode::from_bytes(remainder)
                 .map(|(byte_code, remainder)| (StoredValue::ByteCode(byte_code), remainder)),
-            tag if tag == Tag::NamedKeyValue as u8 => NamedKeyValue::from_bytes(remainder)
-                .map(|(named_key_value, remainder)| (StoredValue::NamedKey(named_key_value), remainder)),
+            tag if tag == Tag::NamedKeyValue as u8 => {
+                NamedKeyValue::from_bytes(remainder).map(|(named_key_value, remainder)| {
+                    (StoredValue::NamedKey(named_key_value), remainder)
+                })
+            }
             _ => Err(Error::Formatting),
         }
     }
@@ -734,7 +738,7 @@ mod serde_helpers {
         /// A record of byte code.
         ByteCode(&'a ByteCode),
         /// A record for NamedKey.
-        NamedKey(&'a NamedKeyValue)
+        NamedKey(&'a NamedKeyValue),
     }
 
     #[derive(Deserialize)]
@@ -770,7 +774,7 @@ mod serde_helpers {
         /// A record of byte code.
         ByteCode(ByteCode),
         /// A record for NamedKey.
-        NamedKey(NamedKeyValue)
+        NamedKey(NamedKeyValue),
     }
 
     impl<'a> From<&'a StoredValue> for BinarySerHelper<'a> {
@@ -793,7 +797,7 @@ mod serde_helpers {
                 StoredValue::BidKind(payload) => BinarySerHelper::BidKind(payload),
                 StoredValue::Package(payload) => BinarySerHelper::Package(payload),
                 StoredValue::ByteCode(payload) => BinarySerHelper::ByteCode(payload),
-                StoredValue::NamedKey(payload) => BinarySerHelper::NamedKey(payload)
+                StoredValue::NamedKey(payload) => BinarySerHelper::NamedKey(payload),
             }
         }
     }
@@ -820,7 +824,7 @@ mod serde_helpers {
                 BinaryDeserHelper::BidKind(payload) => StoredValue::BidKind(payload),
                 BinaryDeserHelper::ByteCode(payload) => StoredValue::ByteCode(payload),
                 BinaryDeserHelper::Package(payload) => StoredValue::Package(payload),
-                BinaryDeserHelper::NamedKey(payload) => StoredValue::NamedKey(payload)
+                BinaryDeserHelper::NamedKey(payload) => StoredValue::NamedKey(payload),
             }
         }
     }

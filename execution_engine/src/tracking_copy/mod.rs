@@ -549,18 +549,20 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                 StoredValue::NamedKey(named_key_value) => {
                     if let Ok(string) = named_key_value.get_name() {
                         let name = query.next_name().clone();
-                        if string ==  name{
+                        if string == name {
                             if let Ok(key) = named_key_value.get_key() {
                                 query.navigate(key)
                             } else {
-                                return Ok(query.into_not_found_result("Unable to get Key from CLValue"))
+                                return Ok(
+                                    query.into_not_found_result("Unable to get Key from CLValue")
+                                );
                             }
                         } else {
                             let msg_prefix = format!("Name {} not found", name);
                             return Ok(query.into_not_found_result(&msg_prefix));
                         }
                     } else {
-                        return Ok(query.into_not_found_result("Unable to get name from CLValue"))
+                        return Ok(query.into_not_found_result("Unable to get name from CLValue"));
                     }
                 }
                 StoredValue::ContractWasm(_) => {

@@ -1741,7 +1741,6 @@ where
                 }
             };
 
-
         // Get payment purse Key from handle payment contract
         // payment_code_spec_6: system contract validity
         let payment_purse_key =
@@ -1896,8 +1895,6 @@ where
                 error!("Missing system handle payment contract hash");
                 Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
             })?;
-
-
 
         let handle_payment_addr =
             EntityAddr::new_system_entity_addr(handle_payment_contract_hash.value());

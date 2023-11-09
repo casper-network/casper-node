@@ -481,7 +481,8 @@ fn should_upgrade_only_round_seigniorage_rate() {
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
     let round_seigniorage_rate_key = *builder
-        .get_entity_with_named_keys_by_entity_hash(builder.get_auction_contract_hash()).expect("mint should exist")
+        .get_entity_with_named_keys_by_entity_hash(builder.get_auction_contract_hash())
+        .expect("mint should exist")
         .named_keys()
         .get(ROUND_SEIGNIORAGE_RATE_KEY)
         .unwrap();
@@ -544,7 +545,8 @@ fn should_upgrade_only_unbonding_delay() {
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
     let unbonding_delay_key = *builder
-        .get_entity_with_named_keys_by_entity_hash(builder.get_auction_contract_hash()).expect("auction should exist")
+        .get_entity_with_named_keys_by_entity_hash(builder.get_auction_contract_hash())
+        .expect("auction should exist")
         .named_keys()
         .get(UNBONDING_DELAY_KEY)
         .unwrap();
@@ -603,7 +605,8 @@ fn should_apply_global_state_upgrade() {
 
     // We'll try writing directly to this key.
     let unbonding_delay_key = *builder
-        .get_entity_with_named_keys_by_entity_hash(builder.get_auction_contract_hash()).expect("auction should exist")
+        .get_entity_with_named_keys_by_entity_hash(builder.get_auction_contract_hash())
+        .expect("auction should exist")
         .named_keys()
         .get(UNBONDING_DELAY_KEY)
         .unwrap();

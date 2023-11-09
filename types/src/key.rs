@@ -29,9 +29,23 @@ use rand::{
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{account::{AccountHash, ACCOUNT_HASH_LENGTH}, addressable_entity, addressable_entity::{
-    AddressableEntityHash, EntityAddr, EntityKindTag, NamedKeyAddr, NamedKeyAddrTag,
-}, byte_code::ByteCodeKind, bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH}, checksummed_hex, contract_wasm::ContractWasmHash, contracts::{ContractHash, ContractPackageHash}, package::PackageHash, system::auction::{BidAddr, BidAddrTag}, uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH}, DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError, TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH, KeyFromStrError};
+use crate::{
+    account::{AccountHash, ACCOUNT_HASH_LENGTH},
+    addressable_entity,
+    addressable_entity::{
+        AddressableEntityHash, EntityAddr, EntityKindTag, NamedKeyAddr, NamedKeyAddrTag,
+    },
+    byte_code::ByteCodeKind,
+    bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH},
+    checksummed_hex,
+    contract_wasm::ContractWasmHash,
+    contracts::{ContractHash, ContractPackageHash},
+    package::PackageHash,
+    system::auction::{BidAddr, BidAddrTag},
+    uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
+    DeployHash, Digest, EraId, KeyFromStrError, Tagged, TransferAddr, TransferFromStrError,
+    TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
+};
 
 const HASH_PREFIX: &str = "hash-";
 const DEPLOY_INFO_PREFIX: &str = "deploy-";
@@ -1462,10 +1476,12 @@ mod tests {
         Key::AddressableEntity(EntityAddr::new_contract_entity_addr([42; 32]));
     const BYTE_CODE_EMPTY_KEY: Key = Key::ByteCode(ByteCodeKind::Empty, [42; 32]);
     const BYTE_CODE_V1_WASM_KEY: Key = Key::ByteCode(ByteCodeKind::V1CasperWasm, [42; 32]);
-    const BASE_NAMED_KEY: Key = Key::NamedKey(NamedKeyAddr::Base(EntityAddr::new_contract_entity_addr([42; 32])));
+    const BASE_NAMED_KEY: Key = Key::NamedKey(NamedKeyAddr::Base(
+        EntityAddr::new_contract_entity_addr([42; 32]),
+    ));
     const ENTRY_NAMED_KEY: Key = Key::NamedKey(NamedKeyAddr::NamedKeyEntry {
         base_addr: EntityAddr::new_contract_entity_addr([42; 32]),
-        string_bytes: [43;32],
+        string_bytes: [43; 32],
     });
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
@@ -1493,7 +1509,7 @@ mod tests {
         BYTE_CODE_EMPTY_KEY,
         BYTE_CODE_V1_WASM_KEY,
         BASE_NAMED_KEY,
-        ENTRY_NAMED_KEY
+        ENTRY_NAMED_KEY,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
     const UNIFIED_HEX_STRING: &str =
@@ -1906,14 +1922,12 @@ mod tests {
             .to_string()
             .starts_with("package-key from string error: "));
 
-        let error_string =             Key::from_formatted_str(&format!("{}{}", ENTITY_PREFIX, ACCOUNT_ENTITY_PREFIX))
-            .unwrap_err()
-            .to_string();
+        let error_string =
+            Key::from_formatted_str(&format!("{}{}", ENTITY_PREFIX, ACCOUNT_ENTITY_PREFIX))
+                .unwrap_err()
+                .to_string();
         println!("{}", error_string);
-        assert!(
-                error_string
-                .starts_with("addressable-entity-key from string error: ")
-        );
+        assert!(error_string.starts_with("addressable-entity-key from string error: "));
         assert!(
             Key::from_formatted_str(&format!("{}{}", BYTE_CODE_PREFIX, EMPTY_PREFIX))
                 .unwrap_err()

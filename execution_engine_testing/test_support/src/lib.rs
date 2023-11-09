@@ -47,7 +47,7 @@ pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
 pub use step_request_builder::StepRequestBuilder;
 pub use upgrade_request_builder::UpgradeRequestBuilder;
-pub use wasm_test_builder::{LmdbWasmTestBuilder, WasmTestBuilder, EntityWithNamedKeys};
+pub use wasm_test_builder::{EntityWithNamedKeys, LmdbWasmTestBuilder, WasmTestBuilder};
 
 /// Default number of validator slots.
 pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;

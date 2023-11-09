@@ -91,10 +91,7 @@ pub struct EntityWithNamedKeys {
 impl EntityWithNamedKeys {
     /// Creates a new instance of an Entity with its NamedKeys.
     pub fn new(entity: AddressableEntity, named_keys: NamedKeys) -> Self {
-        Self {
-            entity,
-            named_keys
-        }
+        Self { entity, named_keys }
     }
 
     /// Returns a reference to the Entity.
@@ -111,7 +108,6 @@ impl EntityWithNamedKeys {
         &self.named_keys
     }
 }
-
 
 /// Wasm test builder where state is held in LMDB.
 pub type LmdbWasmTestBuilder = WasmTestBuilder<DataAccessLayer<LmdbGlobalState>>;
@@ -666,9 +662,10 @@ where
         &self,
         maybe_post_state: Option<Digest>,
         account_hash: AccountHash,
-        name: &str
-    ) -> Result<StoredValue, String>  {
-        let entity_addr = self.get_entity_hash_by_account_hash(account_hash)
+        name: &str,
+    ) -> Result<StoredValue, String> {
+        let entity_addr = self
+            .get_entity_hash_by_account_hash(account_hash)
             .map(|entity_hash| EntityAddr::new_account_entity_addr(entity_hash.value()))
             .expect("must get EntityAddr");
         self.query_named_key(maybe_post_state, entity_addr, name)
@@ -683,10 +680,14 @@ where
         let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, name.to_string())
             .expect("could not create named key address");
         let empty_path: Vec<String> = vec![];
-        let maybe_stored_value = self.query(maybe_post_state, Key::NamedKey(named_key_addr), &empty_path)
+        let maybe_stored_value = self
+            .query(maybe_post_state, Key::NamedKey(named_key_addr), &empty_path)
             .expect("no stored value found");
-        let key = maybe_stored_value.as_cl_value().map(|cl_val| CLValue::into_t::<Key>(cl_val.clone()))
-            .expect("must be cl_value").expect("must get key");
+        let key = maybe_stored_value
+            .as_cl_value()
+            .map(|cl_val| CLValue::into_t::<Key>(cl_val.clone()))
+            .expect("must be cl_value")
+            .expect("must get key");
         self.query(maybe_post_state, key, &vec![])
     }
 
@@ -1119,19 +1120,18 @@ where
 
     /// Returns the "handle payment" contract, panics if it can't be found.
     pub fn get_handle_payment_contract(&self) -> EntityWithNamedKeys {
-        let hash = self.get_system_entity_hash(HANDLE_PAYMENT)
+        let hash = self
+            .get_system_entity_hash(HANDLE_PAYMENT)
             .cloned()
             .expect("should have handle payment contract uref");
 
-        let handle_payment_contract = Key::addressable_entity_key(
-            EntityKindTag::System,
-            hash
-        );
-        let handle_payment = self.query(None, handle_payment_contract, &[])
+        let handle_payment_contract = Key::addressable_entity_key(EntityKindTag::System, hash);
+        let handle_payment = self
+            .query(None, handle_payment_contract, &[])
             .and_then(|v| v.try_into().map_err(|error| format!("{:?}", error)))
             .expect("should find handle payment URef");
 
-        let named_keys = self.get_named_keys_by_contract_entity_hash(hash);
+        let named_keys = self.get_named_keys(EntityAddr::System(hash.value()));
         EntityWithNamedKeys::new(handle_payment, named_keys)
     }
 
@@ -1188,7 +1188,7 @@ where
     ) -> Option<EntityWithNamedKeys> {
         if let Some(entity) = self.get_entity_by_account_hash(account_hash) {
             let entity_named_keys = self.get_named_keys_by_account_hash(account_hash);
-            return Some(EntityWithNamedKeys::new(entity, entity_named_keys))
+            return Some(EntityWithNamedKeys::new(entity, entity_named_keys));
         };
 
         None
@@ -1199,11 +1199,11 @@ where
         entity_hash: AddressableEntityHash,
     ) -> Option<EntityWithNamedKeys> {
         match self.get_addressable_entity(entity_hash) {
-            Some(entity) =>  {
+            Some(entity) => {
                 let named_keys = self.get_named_keys_by_contract_entity_hash(entity_hash);
                 Some(EntityWithNamedKeys::new(entity, named_keys))
-            },
-            None => None
+            }
+            None => None,
         }
     }
 
@@ -1414,7 +1414,14 @@ where
         self.get_named_keys(entity_addr)
     }
 
-    fn get_named_keys(&self, entity_addr: EntityAddr) -> NamedKeys {
+    pub fn get_named_keys_for_system_contract(
+        &self,
+        system_entity_hash: AddressableEntityHash,
+    ) -> NamedKeys {
+        self.get_named_keys(EntityAddr::System(system_entity_hash.value()))
+    }
+
+    pub fn get_named_keys(&self, entity_addr: EntityAddr) -> NamedKeys {
         let state_root_hash = self.get_post_state_hash();
 
         let tracking_copy = self
@@ -1526,11 +1533,11 @@ where
     }
 
     /// Gets a stored value from a contract's named keys.
-    pub fn get_value<T>(&mut self, entity_hash: AddressableEntityHash, name: &str) -> T
+    pub fn get_value<T>(&mut self, entity_addr: EntityAddr, name: &str) -> T
     where
         T: FromBytes + CLTyped,
     {
-        let named_keys = self.get_named_keys_by_contract_entity_hash(entity_hash);
+        let named_keys = self.get_named_keys(entity_addr);
 
         let key = named_keys.get(name).expect("should have named key");
         let stored_value = self.query(None, *key, &[]).expect("should query");
@@ -1542,19 +1549,25 @@ where
     /// Gets an [`EraId`].
     pub fn get_era(&mut self) -> EraId {
         let auction_contract = self.get_auction_contract_hash();
-        self.get_value(auction_contract, ERA_ID_KEY)
+        self.get_value(EntityAddr::System(auction_contract.value()), ERA_ID_KEY)
     }
 
     /// Gets the auction delay.
     pub fn get_auction_delay(&mut self) -> u64 {
         let auction_contract = self.get_auction_contract_hash();
-        self.get_value(auction_contract, AUCTION_DELAY_KEY)
+        self.get_value(
+            EntityAddr::System(auction_contract.value()),
+            AUCTION_DELAY_KEY,
+        )
     }
 
     /// Gets the unbonding delay
     pub fn get_unbonding_delay(&mut self) -> u64 {
         let auction_contract = self.get_auction_contract_hash();
-        self.get_value(auction_contract, UNBONDING_DELAY_KEY)
+        self.get_value(
+            EntityAddr::System(auction_contract.value()),
+            UNBONDING_DELAY_KEY,
+        )
     }
 
     /// Gets the [`AddressableEntityHash`] of the system auction contract, panics if it can't be

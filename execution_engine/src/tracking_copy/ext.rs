@@ -346,9 +346,11 @@ where
         for entry_key in entries.iter() {
             match self.read(entry_key).map_err(Into::into)? {
                 Some(StoredValue::NamedKey(named_key)) => {
-                    let key = named_key.get_key()
+                    let key = named_key
+                        .get_key()
                         .map_err(|cl_error| execution::Error::CLValue(cl_error.clone()))?;
-                    let name = named_key.get_name()
+                    let name = named_key
+                        .get_name()
                         .map_err(|cl_error| execution::Error::CLValue(cl_error.clone()))?;
                     named_keys.insert(name, key);
                 }

@@ -50,8 +50,18 @@ pub use self::{
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
 
-use crate::{account::{Account, AccountHash}, byte_code::ByteCodeHash, bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH}, checksummed_hex, contracts::{Contract, ContractHash}, key::ByteCodeAddr, system::SystemEntityType, uref::{self, URef}, AccessRights, ApiError, CLType, CLTyped, ContextAccessRights, Group, HashAddr, Key, KeyTag, PackageHash, ProtocolVersion, PublicKey, Tagged, KEY_HASH_LENGTH, CLValue, CLValueError};
-
+use crate::{
+    account::{Account, AccountHash},
+    byte_code::ByteCodeHash,
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    checksummed_hex,
+    contracts::{Contract, ContractHash},
+    key::ByteCodeAddr,
+    system::SystemEntityType,
+    uref::{self, URef},
+    AccessRights, ApiError, CLType, CLTyped, CLValue, CLValueError, ContextAccessRights, Group,
+    HashAddr, Key, KeyTag, PackageHash, ProtocolVersion, PublicKey, Tagged, KEY_HASH_LENGTH,
+};
 
 /// Maximum number of distinct user groups.
 pub const MAX_GROUPS: u8 = 10;
@@ -193,7 +203,7 @@ pub enum FromStrError {
     /// Error when parsing an uref.
     URef(uref::FromStrError),
     /// Error parsing from bytes.
-    BytesRepr(bytesrepr::Error)
+    BytesRepr(bytesrepr::Error),
 }
 
 impl From<base16::DecodeError> for FromStrError {
@@ -971,10 +981,10 @@ impl EntityAddr {
             } else {
                 return Err(FromStrError::InvalidPrefix);
             };
-            let addr = checksummed_hex::decode(addr_str)
-                .map_err(|error| FromStrError::Hex(error))?;
-            let hash_addr = HashAddr::try_from(addr.as_ref())
-                .map_err(|error| FromStrError::Hash(error))?;
+            let addr =
+                checksummed_hex::decode(addr_str).map_err(|error| FromStrError::Hex(error))?;
+            let hash_addr =
+                HashAddr::try_from(addr.as_ref()).map_err(|error| FromStrError::Hash(error))?;
             let entity_addr = match tag {
                 EntityKindTag::System => EntityAddr::new_system_entity_addr(hash_addr),
                 EntityKindTag::Account => EntityAddr::new_account_entity_addr(hash_addr),
@@ -986,9 +996,6 @@ impl EntityAddr {
 
         Err(FromStrError::InvalidPrefix)
     }
-
-
-
 }
 
 impl ToBytes for EntityAddr {
@@ -1078,10 +1085,6 @@ impl Distribution<EntityAddr> for Standard {
         }
     }
 }
-
-
-
-
 
 #[derive(
     Debug, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize,
@@ -1190,15 +1193,16 @@ impl NamedKeyAddr {
                     return Err(FromStrError::InvalidPrefix);
                 };
 
-
             match tag {
                 NamedKeyAddrTag::Base => {
                     let entity_addr = EntityAddr::from_formatted_str(addr_str)?;
-                    return Ok(Self::Base(entity_addr))
+                    return Ok(Self::Base(entity_addr));
                 }
                 NamedKeyAddrTag::NamedKeyEntry => {
                     let reverse_string = addr_str.chars().rev().collect::<String>();
-                    if let Some((reverse_bytes, reverse_entity_addr)) = reverse_string.split_once("-") {
+                    if let Some((reverse_bytes, reverse_entity_addr)) =
+                        reverse_string.split_once("-")
+                    {
                         let entity_addr_str = reverse_entity_addr.chars().rev().collect::<String>();
                         let entity_addr = EntityAddr::from_formatted_str(&entity_addr_str)?;
                         let string_bytes_str = reverse_bytes.chars().rev().collect::<String>();
@@ -1206,9 +1210,8 @@ impl NamedKeyAddr {
                             .map_err(|decode_error| FromStrError::Hex(decode_error))?;
                         let (string_bytes, _) = FromBytes::from_vec(string_bytes)
                             .map_err(|error| FromStrError::BytesRepr(error))?;
-                        return Ok(Self::new_named_key_entry(entity_addr, string_bytes))
+                        return Ok(Self::new_named_key_entry(entity_addr, string_bytes));
                     };
-
                 }
             }
         }
@@ -1283,7 +1286,7 @@ impl Display for NamedKeyAddr {
         let tag = self.tag();
         match self {
             NamedKeyAddr::Base(entity_addr) => {
-                write!(f, "{}{}-{}",NAMED_KEY_PREFIX, tag, entity_addr)
+                write!(f, "{}{}-{}", NAMED_KEY_PREFIX, tag, entity_addr)
             }
             NamedKeyAddr::NamedKeyEntry {
                 base_addr,
@@ -1330,14 +1333,14 @@ pub struct NamedKeyValue {
     /// The actual `Key` encoded as a CLValue.
     named_key: CLValue,
     /// The name of the `Key` encoded as a CLValue.
-    name: CLValue
+    name: CLValue,
 }
 
 impl NamedKeyValue {
     pub fn new(key: CLValue, name: CLValue) -> Self {
         Self {
             named_key: key,
-            name
+            name,
         }
     }
 
@@ -1345,6 +1348,14 @@ impl NamedKeyValue {
         let key_cl_value = CLValue::from_t(named_key)?;
         let string_cl_value = CLValue::from_t(name)?;
         Ok(Self::new(key_cl_value, string_cl_value))
+    }
+
+    pub fn get_key_as_cl_value(&self) -> &CLValue {
+        &self.named_key
+    }
+
+    pub fn get_name_as_cl_value(&self) -> &CLValue {
+        &self.name
     }
 
     pub fn get_key(&self) -> Result<Key, CLValueError> {
@@ -1373,15 +1384,9 @@ impl FromBytes for NamedKeyValue {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (named_key, remainder) = CLValue::from_bytes(bytes)?;
         let (name, remainder) = CLValue::from_bytes(remainder)?;
-        Ok((Self {
-            named_key,
-            name
-        }, remainder))
+        Ok((Self { named_key, name }, remainder))
     }
 }
-
-
-
 
 /// Methods and type signatures supported by a contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2229,7 +2234,6 @@ mod tests {
     use super::*;
     use crate::{AccessRights, URef, UREF_ADDR_LENGTH};
 
-
     #[test]
     fn entity_hash_from_slice() {
         let bytes: Vec<u8> = (0..32).collect();
@@ -2264,29 +2268,32 @@ mod tests {
 
     #[test]
     fn entity_addr_from_str() {
-        let entity_addr = EntityAddr::new_contract_entity_addr([3;32]);
+        let entity_addr = EntityAddr::new_contract_entity_addr([3; 32]);
         let encoded = entity_addr.to_formatted_string();
         let decoded = EntityAddr::from_formatted_str(&encoded).unwrap();
 
-        let entity_addr = EntityAddr::new_account_entity_addr([3;32]);
+        let entity_addr = EntityAddr::new_account_entity_addr([3; 32]);
         let encoded = entity_addr.to_formatted_string();
         let decoded = EntityAddr::from_formatted_str(&encoded).unwrap();
 
-        let entity_addr = EntityAddr::new_system_entity_addr([3;32]);
+        let entity_addr = EntityAddr::new_system_entity_addr([3; 32]);
         let encoded = entity_addr.to_formatted_string();
         let decoded = EntityAddr::from_formatted_str(&encoded).unwrap();
     }
 
     #[test]
     fn named_key_addr_from_str() {
-        let named_key_addr = NamedKeyAddr::new_named_key_base(EntityAddr::new_contract_entity_addr([3;32]));
+        let named_key_addr =
+            NamedKeyAddr::new_named_key_base(EntityAddr::new_contract_entity_addr([3; 32]));
         let encoded = named_key_addr.to_formatted_string();
         println!("{}", encoded);
         let decoded = NamedKeyAddr::from_formatted_str(&encoded).unwrap();
         assert_eq!(named_key_addr, decoded);
 
-
-        let named_key_addr = NamedKeyAddr::new_named_key_entry(EntityAddr::new_contract_entity_addr([3;32]), [4;32]);
+        let named_key_addr = NamedKeyAddr::new_named_key_entry(
+            EntityAddr::new_contract_entity_addr([3; 32]),
+            [4; 32],
+        );
         let encoded = named_key_addr.to_formatted_string();
         let decoded = NamedKeyAddr::from_formatted_str(&encoded).unwrap();
         assert_eq!(named_key_addr, decoded);

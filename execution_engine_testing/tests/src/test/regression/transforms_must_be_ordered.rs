@@ -91,7 +91,9 @@ fn contract_transforms_should_be_ordered_in_the_effects() {
     assert_eq!(exec_result.len(), 1);
     let effects = exec_result[0].effects();
 
-    let contract = builder.get_entity_with_named_keys_by_entity_hash(contract_hash).unwrap();
+    let contract = builder
+        .get_entity_with_named_keys_by_entity_hash(contract_hash)
+        .unwrap();
     let urefs: Vec<URef> = (0..N_UREFS)
         .map(
             |i| match contract.named_keys().get(&format!("uref-{}", i)).unwrap() {

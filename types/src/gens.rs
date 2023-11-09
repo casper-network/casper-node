@@ -31,6 +31,7 @@ use crate::{
     account::{associated_keys::gens::account_associated_keys_arb, Account},
     addressable_entity::{
         action_thresholds::gens::action_thresholds_arb, associated_keys::gens::associated_keys_arb,
+        NamedKeyValue,
     },
     byte_code::ByteCodeKind,
     contracts::{
@@ -41,7 +42,6 @@ use crate::{
     system::auction::{Bid, BidAddr, BidKind, ValidatorBid},
 };
 pub use crate::{deploy_info::gens::deploy_info_arb, transfer::gens::transfer_arb};
-use crate::addressable_entity::NamedKeyValue;
 
 pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {
     collection::vec(any::<u8>(), 32).prop_map(|b| {
@@ -660,16 +660,12 @@ fn unbondings_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<Unbon
 }
 
 pub fn named_key_value_arb() -> impl Strategy<Value = NamedKeyValue> {
-    (
-        key_arb(),
-        "test",
-        ).prop_map(|(key, string)| {
+    (key_arb(), "test").prop_map(|(key, string)| {
         let cl_key = CLValue::from_t(key).unwrap();
         let cl_string = CLValue::from_t(string).unwrap();
         NamedKeyValue::new(cl_key, cl_string)
     })
 }
-
 
 pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
     prop_oneof![

@@ -633,8 +633,6 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
 
     builder.exec(install_exec_request).expect_success().commit();
 
-
-
     let account = builder
         .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
