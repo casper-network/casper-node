@@ -4,7 +4,7 @@ pub mod memory_resolver;
 pub(crate) mod v1_function_index;
 mod v1_resolver;
 
-use wasmi::ModuleImportResolver;
+use casper_wasmi::ModuleImportResolver;
 
 use casper_types::ProtocolVersion;
 

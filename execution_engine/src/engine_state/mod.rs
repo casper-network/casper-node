@@ -87,7 +87,7 @@ pub use self::{
     prune::{PruneConfig, PruneResult},
     query::{QueryRequest, QueryResult},
     run_genesis_request::RunGenesisRequest,
-    step::{SlashItem, StepError, StepRequest, StepSuccess},
+    step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
     system_contract_registry::SystemContractRegistry,
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::UpgradeSuccess,

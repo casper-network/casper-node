@@ -1427,21 +1427,24 @@ async fn check_txns_for_replay_in_previous_eras_and_validate_block<REv>(
 where
     REv: From<BlockValidationRequest> + From<StorageRequest>,
 {
-    for thwa in proposed_block.value().all_transactions() {
-        let block_header = match effect_builder
-            .get_block_header_for_transaction_from_storage(thwa.transaction_hash())
-            .await
-        {
-            None => continue,
-            Some(header) => header,
-        };
-        // We have found the transaction in the database. If it was from a previous era, it was a
-        // replay attack.
+    let txns_era_ids = effect_builder
+        .get_transactions_era_ids(
+            proposed_block
+                .value()
+                .all_transactions()
+                .map(|thwa| thwa.transaction_hash())
+                .collect(),
+        )
+        .await;
+
+    for txn_era_id in txns_era_ids {
+        // If the stored transaction was executed in a previous era, it is a replay attack.
         //
-        // If not, then it might be this is a transaction for a block we are currently coming to
-        // consensus, and we will rely on the immediate ancestors of the block_payload within the
-        // current era to determine if we are facing a replay attack.
-        if block_header.era_id() < proposed_block_era_id {
+        // If not, then it might be this is a transaction for a block on which we are currently
+        // coming to consensus, and we will rely on the immediate ancestors of the
+        // block_payload within the current era to determine if we are facing a replay
+        // attack.
+        if txn_era_id < proposed_block_era_id {
             return Event::ResolveValidity(ResolveValidity {
                 era_id: proposed_block_era_id,
                 sender,

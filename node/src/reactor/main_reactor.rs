@@ -1152,10 +1152,11 @@ impl reactor::Reactor for MainReactor {
             validator_matrix.clone(),
             registry,
         )?;
-        let block_validator = BlockValidator::new(Arc::clone(&chainspec));
+        let block_validator = BlockValidator::new(Arc::clone(&chainspec), config.block_validator);
         let upgrade_watcher =
             UpgradeWatcher::new(chainspec.as_ref(), config.upgrade_watcher, &root_dir)?;
-        let transaction_acceptor = TransactionAcceptor::new(chainspec.as_ref(), registry)?;
+        let transaction_acceptor =
+            TransactionAcceptor::new(config.transaction_acceptor, chainspec.as_ref(), registry)?;
         let deploy_buffer =
             DeployBuffer::new(chainspec.transaction_config, config.deploy_buffer, registry)?;
 

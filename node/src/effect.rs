@@ -1321,17 +1321,18 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests the header of the block containing the given deploy.
-    pub(crate) async fn get_block_header_for_transaction_from_storage(
+    /// Returns the era IDs of the blocks in which the given transactions were executed.  If none
+    /// of the transactions have been executed yet, an empty set will be returned.
+    pub(crate) async fn get_transactions_era_ids(
         self,
-        transaction_hash: TransactionHash,
-    ) -> Option<BlockHeader>
+        transaction_hashes: HashSet<TransactionHash>,
+    ) -> HashSet<EraId>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetBlockHeaderForTransaction {
-                transaction_hash,
+            |responder| StorageRequest::GetTransactionsEraIds {
+                transaction_hashes,
                 responder,
             },
             QueueKind::FromStorage,
@@ -1567,6 +1568,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         block_hash: BlockHash,
         block_height: u64,
+        era_id: EraId,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     ) where
         REv: From<StorageRequest>,
@@ -1575,6 +1577,7 @@ impl<REv> EffectBuilder<REv> {
             |responder| StorageRequest::PutExecutionResults {
                 block_hash: Box::new(block_hash),
                 block_height,
+                era_id,
                 execution_results,
                 responder,
             },

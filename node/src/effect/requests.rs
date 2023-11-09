@@ -68,7 +68,7 @@ use crate::{
 };
 
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
-const_assert!(_STORAGE_REQUEST_SIZE < 89);
+const_assert!(_STORAGE_REQUEST_SIZE < 97);
 
 /// A metrics request.
 #[derive(Debug)]
@@ -322,9 +322,10 @@ pub(crate) enum StorageRequest {
         /// Responder.
         responder: Responder<Option<BlockHeader>>,
     },
-    GetBlockHeaderForTransaction {
-        transaction_hash: TransactionHash,
-        responder: Responder<Option<BlockHeader>>,
+    /// Retrieve the era IDs of the blocks in which the given transactions were executed.
+    GetTransactionsEraIds {
+        transaction_hashes: HashSet<TransactionHash>,
+        responder: Responder<HashSet<EraId>>,
     },
     /// Retrieve block header with given hash.
     GetBlockHeader {
@@ -396,6 +397,7 @@ pub(crate) enum StorageRequest {
         /// Hash of block.
         block_hash: Box<BlockHash>,
         block_height: u64,
+        era_id: EraId,
         /// Mapping of deploys to execution results of the block.
         execution_results: HashMap<DeployHash, ExecutionResult>,
         /// Responder to call when done storing.
@@ -538,11 +540,14 @@ impl Display for StorageRequest {
             StorageRequest::GetHighestCompleteBlockHeader { .. } => {
                 write!(formatter, "get highest complete block header")
             }
-            StorageRequest::GetBlockHeaderForTransaction {
-                transaction_hash: deploy_hash,
-                ..
+            StorageRequest::GetTransactionsEraIds {
+                transaction_hashes, ..
             } => {
-                write!(formatter, "get block header for deploy {}", deploy_hash)
+                write!(
+                    formatter,
+                    "get era ids for {} transactions",
+                    transaction_hashes.len()
+                )
             }
             StorageRequest::GetBlockHeader { block_hash, .. } => {
                 write!(formatter, "get {}", block_hash)

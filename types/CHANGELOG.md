@@ -11,10 +11,20 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [Unreleased]
+## [Unreleased] (node 2.0)
 
 ### Added
 * Add new `EntryPointType::Install`, `EntryPointType::Normal`, `EntryPointAccess::Abstract` variants to support implementation of a factory pattern.
+
+
+
+## [Unreleased] (node 1.5.4)
+
+### Added
+* Add a new `SyncHandling` enum, which allows a node to opt out of historical sync.
+
+### Changed
+* Update `k256` to version 0.13.1.
 
 ### Security
 * Update `ed25519-dalek` to version 2.0.0 as mitigation for [RUSTSEC-2022-0093](https://rustsec.org/advisories/RUSTSEC-2022-0093)

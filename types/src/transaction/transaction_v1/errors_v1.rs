@@ -43,6 +43,8 @@ pub enum TransactionV1ConfigFailure {
     TimestampInFuture {
         /// The node's timestamp when validating the transaction.
         validation_timestamp: Timestamp,
+        /// Any configured leeway added to `validation_timestamp`.
+        timestamp_leeway: TimeDiff,
         /// The transaction's timestamp.
         got: Timestamp,
     },
@@ -136,12 +138,13 @@ impl Display for TransactionV1ConfigFailure {
             }
             TransactionV1ConfigFailure::TimestampInFuture {
                 validation_timestamp,
+                timestamp_leeway,
                 got,
             } => {
                 write!(
                     formatter,
                     "timestamp of {got} is later than node's validation timestamp of \
-                    {validation_timestamp}"
+                    {validation_timestamp} plus leeway of {timestamp_leeway}"
                 )
             }
             TransactionV1ConfigFailure::InvalidBodyHash => {

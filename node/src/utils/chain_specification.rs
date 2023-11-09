@@ -1,3 +1,6 @@
+pub(crate) mod error;
+pub(crate) mod parse_toml;
+
 use num_rational::Ratio;
 use tracing::{error, info, warn};
 
@@ -6,8 +9,7 @@ use casper_types::{
     ProtocolConfig, TimeDiff, TransactionConfig,
 };
 
-pub(crate) mod error;
-pub(crate) mod parse_toml;
+use crate::components::network;
 
 /// Returns `false` and logs errors if the values set in the config don't make sense.
 #[tracing::instrument(ret, level = "info", skip(chainspec), fields(hash=%chainspec.hash()))]
@@ -52,7 +54,8 @@ pub fn validate_chainspec(chainspec: &Chainspec) -> bool {
         }
     }
 
-    validate_protocol_config(&chainspec.protocol_config)
+    network::within_message_size_limit_tolerance(chainspec)
+        && validate_protocol_config(&chainspec.protocol_config)
         && validate_core_config(&chainspec.core_config)
         && validate_transaction_config(&chainspec.transaction_config)
 }

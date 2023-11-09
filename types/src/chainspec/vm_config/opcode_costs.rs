@@ -1,4 +1,5 @@
 //! Support for Wasm opcode costs.
+
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 use derive_more::Add;

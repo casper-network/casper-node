@@ -49,6 +49,8 @@ pub enum DeployConfigFailure {
     TimestampInFuture {
         /// The node's timestamp when validating the deploy.
         validation_timestamp: Timestamp,
+        /// Any configured leeway added to `validation_timestamp`.
+        timestamp_leeway: TimeDiff,
         /// The deploy's timestamp.
         got: Timestamp,
     },
@@ -155,12 +157,13 @@ impl Display for DeployConfigFailure {
             }
             DeployConfigFailure::TimestampInFuture {
                 validation_timestamp,
+                timestamp_leeway,
                 got,
             } => {
                 write!(
                     formatter,
-                    "timestamp of {} is later than node's validation timestamp of {}",
-                    got, validation_timestamp
+                    "timestamp of {} is later than node's timestamp of {} plus leeway of {}",
+                    got, validation_timestamp, timestamp_leeway
                 )
             }
             DeployConfigFailure::InvalidBodyHash => {

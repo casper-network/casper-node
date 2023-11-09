@@ -10,8 +10,9 @@ use casper_types::{
 
 use super::{FinalizedApprovals, FinalizedDeployApprovals, FinalizedTransactionV1Approvals};
 
+#[allow(missing_docs)]
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub(crate) enum TransactionHashWithApprovals {
+pub enum TransactionHashWithApprovals {
     Deploy {
         deploy_hash: DeployHash,
         approvals: BTreeSet<DeployApproval>,

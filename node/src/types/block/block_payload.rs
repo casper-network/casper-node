@@ -20,7 +20,7 @@ use crate::types::{TransactionHashWithApprovals, TypedTransactionHash};
 #[derive(
     Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Default,
 )]
-pub(crate) struct BlockPayload {
+pub struct BlockPayload {
     transfer: Vec<TransactionHashWithApprovals>,
     staking: Vec<TransactionHashWithApprovals>,
     install_upgrade: Vec<TransactionHashWithApprovals>,

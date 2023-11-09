@@ -1,10 +1,9 @@
 //! Execution error and supporting code.
 use std::str::Utf8Error;
 
-use casper_storage::global_state;
-use parity_wasm::elements;
 use thiserror::Error;
 
+use casper_storage::global_state;
 use casper_types::{
     addressable_entity::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
     bytesrepr,
@@ -13,6 +12,7 @@ use casper_types::{
     system, AccessRights, AddressableEntityHash, ApiError, ByteCodeHash, CLType, CLValueError,
     EntityVersionKey, Key, PackageHash, StoredValueTypeMismatch, URef,
 };
+use casper_wasm::elements;
 
 use crate::{
     resolvers::error::ResolverError,
@@ -229,10 +229,10 @@ impl Error {
     }
 }
 
-impl wasmi::HostError for Error {}
+impl casper_wasmi::HostError for Error {}
 
-impl From<wasmi::Error> for Error {
-    fn from(error: wasmi::Error) -> Self {
+impl From<casper_wasmi::Error> for Error {
+    fn from(error: casper_wasmi::Error) -> Self {
         match error
             .as_host_error()
             .and_then(|host_error| host_error.downcast_ref::<Error>())

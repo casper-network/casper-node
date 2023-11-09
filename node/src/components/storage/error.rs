@@ -4,8 +4,8 @@ use thiserror::Error;
 use tracing::error;
 
 use casper_types::{
-    bytesrepr, crypto, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockValidationError,
-    DeployHash, Digest, EraId, FinalitySignature, FinalitySignatureId, TransactionHash,
+    bytesrepr, crypto, BlockBody, BlockHash, BlockHeader, BlockValidationError, DeployHash, Digest,
+    EraId, FinalitySignature, FinalitySignatureId, TransactionHash,
 };
 
 use super::lmdb_ext::LmdbExtError;
@@ -45,10 +45,10 @@ pub enum FatalStorageError {
     DuplicateTransactionIndex {
         /// Transaction hash at which duplicate was found.
         transaction_hash: TransactionHash,
-        /// First block hash encountered at `deploy_hash`.
-        first: BlockHashAndHeight,
-        /// Second block hash encountered at `deploy_hash`.
-        second: BlockHashAndHeight,
+        /// First block hash encountered at `transaction_hash`.
+        first: BlockHash,
+        /// Second block hash encountered at `transaction_hash`.
+        second: BlockHash,
     },
     /// LMDB error while operating.
     #[error("internal database error: {0}")]

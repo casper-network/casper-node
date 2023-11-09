@@ -8,12 +8,14 @@ use num_traits::Zero;
 use thiserror::Error;
 
 use casper_types::{
-    DeployFootprint, DeployHash, Gas, PublicKey, RewardedSignatures, Timestamp, TransactionConfig,
+    DeployFootprint, DeployHash, Gas, PublicKey, RewardedSignatures, TimeDiff, Timestamp,
+    TransactionConfig,
 };
 
+use super::BlockPayload;
 use crate::types::{DeployHashWithApprovals, TransactionHashWithApprovals};
 
-use super::BlockPayload;
+const NO_LEEWAY: TimeDiff = TimeDiff::from_millis(0);
 
 #[derive(Debug, Error)]
 pub(crate) enum AddError {
@@ -36,7 +38,7 @@ pub(crate) enum AddError {
 }
 
 /// A block that is still being added to. It keeps track of and enforces block limits.
-#[derive(Clone, DataSize, Debug)]
+#[derive(Clone, Eq, PartialEq, DataSize, Debug)]
 pub(crate) struct AppendableBlock {
     transaction_config: TransactionConfig,
     deploys: Vec<DeployHashWithApprovals>,
@@ -100,6 +102,7 @@ impl AppendableBlock {
             .header
             .is_valid(
                 &self.transaction_config,
+                NO_LEEWAY,
                 self.timestamp,
                 transfer.deploy_hash(),
             )
@@ -139,6 +142,7 @@ impl AppendableBlock {
             .header
             .is_valid(
                 &self.transaction_config,
+                NO_LEEWAY,
                 self.timestamp,
                 deploy.deploy_hash(),
             )

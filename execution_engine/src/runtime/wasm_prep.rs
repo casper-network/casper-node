@@ -1,18 +1,17 @@
 //! Preprocessing of Wasm modules.
 use std::{convert::TryInto, num::NonZeroU32};
 
+use thiserror::Error;
+
+use casper_types::{OpcodeCosts, WasmConfig};
+use casper_wasm::elements::{
+    self, External, Instruction, Internal, MemorySection, Module, Section, TableType, Type,
+};
 use casper_wasm_utils::{
     self,
     rules::{MemoryGrowCost, Rules},
     stack_height,
 };
-
-use casper_types::{OpcodeCosts, WasmConfig};
-
-use parity_wasm::elements::{
-    self, External, Instruction, Internal, MemorySection, Module, Section, TableType, Type,
-};
-use thiserror::Error;
 
 use crate::execution;
 
@@ -409,8 +408,8 @@ pub(crate) fn preprocess(
 }
 
 /// Returns a parity Module from the given bytes without making modifications or checking limits.
-fn deserialize(module_bytes: &[u8]) -> Result<Module, PreprocessingError> {
-    parity_wasm::deserialize_buffer::<Module>(module_bytes).map_err(Into::into)
+pub fn deserialize(module_bytes: &[u8]) -> Result<Module, PreprocessingError> {
+    casper_wasm::deserialize_buffer::<Module>(module_bytes).map_err(Into::into)
 }
 
 /// Creates new wasm module from entry points.
@@ -436,7 +435,7 @@ pub fn get_module_from_entry_points(
         Some(missing_name) => Err(execution::Error::FunctionNotFound(missing_name)),
         None => {
             casper_wasm_utils::optimize(&mut module, entry_point_names)?;
-            parity_wasm::serialize(module).map_err(execution::Error::ParityWasm)
+            casper_wasm::serialize(module).map_err(execution::Error::ParityWasm)
         }
     }
 }
@@ -659,7 +658,7 @@ impl Rules for RuledOpcodeCosts {
 #[cfg(test)]
 mod tests {
     use casper_types::addressable_entity::DEFAULT_ENTRY_POINT_NAME;
-    use parity_wasm::{
+    use casper_wasm::{
         builder,
         elements::{CodeSection, Instructions},
     };
@@ -704,7 +703,7 @@ mod tests {
             .memory()
             .build()
             .build();
-        let module_bytes = parity_wasm::serialize(module).expect("should serialize");
+        let module_bytes = casper_wasm::serialize(module).expect("should serialize");
         let error = preprocess(WasmConfig::default(), &module_bytes)
             .expect_err("should fail with an error");
         assert!(
@@ -743,7 +742,7 @@ mod tests {
             .memory()
             .build()
             .build();
-        let module_bytes = parity_wasm::serialize(module).expect("should serialize");
+        let module_bytes = casper_wasm::serialize(module).expect("should serialize");
         let error = preprocess(WasmConfig::default(), &module_bytes)
             .expect_err("should fail with an error");
         assert!(
@@ -779,7 +778,7 @@ mod tests {
             .memory()
             .build()
             .build();
-        let module_bytes = parity_wasm::serialize(module).expect("should serialize");
+        let module_bytes = casper_wasm::serialize(module).expect("should serialize");
         let error = preprocess(WasmConfig::default(), &module_bytes)
             .expect_err("should fail with an error");
         assert!(
@@ -800,7 +799,7 @@ mod tests {
             .memory()
             .build()
             .build();
-        let module_bytes = parity_wasm::serialize(module).expect("should serialize");
+        let module_bytes = casper_wasm::serialize(module).expect("should serialize");
 
         let error = preprocess(WasmConfig::default(), &module_bytes)
             .expect_err("should fail with an error");
@@ -823,7 +822,7 @@ mod tests {
             .memory()
             .build()
             .build();
-        let module_bytes = parity_wasm::serialize(module).expect("should serialize");
+        let module_bytes = casper_wasm::serialize(module).expect("should serialize");
         let error = preprocess(WasmConfig::default(), &module_bytes)
             .expect_err("should fail with an error");
         assert!(
