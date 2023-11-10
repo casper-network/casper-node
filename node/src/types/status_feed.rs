@@ -9,8 +9,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    ActivationPoint, Block, BlockHash, Digest, EraId, ProtocolVersion, PublicKey, TimeDiff,
-    Timestamp,
+    ActivationPoint, AvailableBlockRange, Block, BlockHash, Digest, EraId, ProtocolVersion,
+    PublicKey, TimeDiff, Timestamp,
 };
 
 use crate::{
@@ -22,8 +22,6 @@ use crate::{
     reactor::main_reactor::ReactorState,
     types::{NodeId, PeersMap},
 };
-
-use super::AvailableBlockRange;
 
 static CHAINSPEC_INFO: Lazy<ChainspecInfo> = Lazy::new(|| {
     let next_upgrade = NextUpgrade::new(

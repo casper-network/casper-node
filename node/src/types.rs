@@ -1,11 +1,9 @@
 //! Common types used across multiple components.
 
 pub(crate) mod appendable_block;
-mod available_block_range;
 mod block;
 mod chunkable;
 mod exit_code;
-pub mod json_compatibility;
 mod max_ttl;
 mod node_config;
 mod node_id;
@@ -25,15 +23,12 @@ use rand::{CryptoRng, RngCore};
 use rand_chacha::ChaCha20Rng;
 use thiserror::Error;
 
-pub use available_block_range::AvailableBlockRange;
 pub(crate) use block::{
     compute_approvals_checksum, create_single_block_rewarded_signatures, ApprovalsHashes,
     BlockExecutionResultsOrChunkId, BlockPayload, BlockWithMetadata, ForwardMetaBlock, MetaBlock,
     MetaBlockMergeError, MetaBlockState,
 };
-pub use block::{
-    BlockExecutionResultsOrChunk, ExecutableBlock, FinalizedBlock, InternalEraReport, SignedBlock,
-};
+pub use block::{BlockExecutionResultsOrChunk, ExecutableBlock, FinalizedBlock, InternalEraReport};
 pub use chunkable::Chunkable;
 pub use datasize::DataSize;
 pub use exit_code::ExitCode;

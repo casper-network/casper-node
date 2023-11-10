@@ -3,8 +3,6 @@ use std::fmt::{self, Display, Formatter};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::storage::disjoint_sequences::Sequence;
-
 /// An unbroken, inclusive range of blocks.
 #[derive(
     Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, JsonSchema,
@@ -17,21 +15,11 @@ pub struct AvailableBlockRange {
     high: u64,
 }
 
-impl From<Sequence> for AvailableBlockRange {
-    fn from(sequence: Sequence) -> Self {
-        AvailableBlockRange {
-            low: sequence.low(),
-            high: sequence.high(),
-        }
-    }
-}
-
 impl AvailableBlockRange {
     /// An `AvailableRange` of [0, 0].
     pub const RANGE_0_0: AvailableBlockRange = AvailableBlockRange { low: 0, high: 0 };
 
     /// Constructs a new `AvailableBlockRange` with the given limits.
-    #[cfg(test)]
     pub fn new(low: u64, high: u64) -> Self {
         assert!(
             low <= high,

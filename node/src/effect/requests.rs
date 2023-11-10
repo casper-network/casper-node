@@ -31,10 +31,10 @@ use casper_types::{
     contract_messages::Messages,
     execution::{ExecutionResult, ExecutionResultV2},
     system::auction::EraValidators,
-    Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DbId, DeployHash,
-    DeployHeader, Digest, DisplayIter, EraId, FinalitySignature, FinalitySignatureId, Key,
-    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId,
-    Transfer, URef, U512,
+    AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2,
+    ChainspecRawBytes, DbId, DeployHash, DeployHeader, Digest, DisplayIter, EraId,
+    FinalitySignature, FinalitySignatureId, Key, ProtocolVersion, PublicKey, SignedBlock, TimeDiff,
+    Timestamp, Transaction, TransactionHash, TransactionId, Transfer, URef, U512,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -60,10 +60,10 @@ use crate::{
     reactor::main_reactor::ReactorState,
     rpcs::docs::OpenRpcSchema,
     types::{
-        appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
-        ExecutableBlock, ExecutionInfo, FinalizedApprovals, LegacyDeploy, MetaBlockState, NodeId,
-        SignedBlock, StatusFeed, TransactionWithFinalizedApprovals, TrieOrChunk, TrieOrChunkId,
+        appendable_block::AppendableBlock, ApprovalsHashes, BlockExecutionResultsOrChunk,
+        BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, ExecutionInfo,
+        FinalizedApprovals, LegacyDeploy, MetaBlockState, NodeId, StatusFeed,
+        TransactionWithFinalizedApprovals, TrieOrChunk, TrieOrChunkId,
     },
     utils::Source,
 };

@@ -126,9 +126,10 @@ use casper_types::{
     execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},
     package::Package,
     system::auction::EraValidators,
-    AddressableEntity, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes,
-    DbId, DeployHash, DeployHeader, Digest, EraId, FinalitySignature, FinalitySignatureId, Key,
-    PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId, Transfer, U512,
+    AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
+    BlockV2, ChainspecRawBytes, DbId, DeployHash, DeployHeader, Digest, EraId, FinalitySignature,
+    FinalitySignatureId, Key, PublicKey, SignedBlock, TimeDiff, Timestamp, Transaction,
+    TransactionHash, TransactionId, Transfer, U512,
 };
 
 use crate::{
@@ -152,11 +153,10 @@ use crate::{
     failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
-        appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
-        ExecutableBlock, ExecutionInfo, FinalizedApprovals, FinalizedBlock, LegacyDeploy,
-        MetaBlock, MetaBlockState, NodeId, SignedBlock, TransactionWithFinalizedApprovals,
-        TrieOrChunk, TrieOrChunkId,
+        appendable_block::AppendableBlock, ApprovalsHashes, BlockExecutionResultsOrChunk,
+        BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, ExecutionInfo,
+        FinalizedApprovals, FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState, NodeId,
+        TransactionWithFinalizedApprovals, TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };

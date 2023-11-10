@@ -1,3 +1,4 @@
+mod available_block_range;
 mod block_body;
 mod block_hash;
 mod block_header;
@@ -10,6 +11,7 @@ mod finality_signature_id;
 mod json_compatibility;
 mod rewarded_signatures;
 mod rewards;
+mod signed_block;
 mod signed_block_header;
 
 #[cfg(any(feature = "testing", test))]
@@ -36,6 +38,7 @@ use crate::{
     bytesrepr::{FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     Digest, EraId, ProtocolVersion, PublicKey, Timestamp,
 };
+pub use available_block_range::AvailableBlockRange;
 pub use block_body::{BlockBody, BlockBodyV1, BlockBodyV2};
 pub use block_hash::BlockHash;
 pub use block_header::{BlockHeader, BlockHeaderV1, BlockHeaderV2};
@@ -49,6 +52,7 @@ pub use finality_signature_id::FinalitySignatureId;
 pub use json_compatibility::JsonBlockWithSignatures;
 pub use rewarded_signatures::{RewardedSignatures, SingleBlockRewardedSignatures};
 pub use rewards::Rewards;
+pub use signed_block::SignedBlock;
 pub use signed_block_header::{SignedBlockHeader, SignedBlockHeaderValidationError};
 #[cfg(any(feature = "testing", test))]
 pub use test_block_builder::{

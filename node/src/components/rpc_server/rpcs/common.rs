@@ -5,13 +5,13 @@ use tracing::{debug, warn};
 
 use casper_json_rpc::{ErrorCodeT, ReservedErrorCode};
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
-use casper_types::{bytesrepr::ToBytes, Block, Digest, Key, StoredValue};
+use casper_types::{bytesrepr::ToBytes, AvailableBlockRange, Block, Digest, Key, StoredValue};
 
 use super::{
     chain::{self, BlockIdentifier},
     state, Error, ReactorEventT, RpcRequest,
 };
-use crate::{effect::EffectBuilder, reactor::QueueKind, types::AvailableBlockRange};
+use crate::{effect::EffectBuilder, reactor::QueueKind};
 
 pub(super) static MERKLE_PROOF: Lazy<String> = Lazy::new(|| {
     String::from(
@@ -115,5 +115,5 @@ pub(super) async fn get_block<REv: ReactorEventT>(
 ) -> Result<Block, Error> {
     chain::get_signed_block(maybe_id, only_from_available_block_range, effect_builder)
         .await
-        .map(|signed_block| signed_block.block)
+        .map(|signed_block| signed_block.into_inner().0)
 }

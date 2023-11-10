@@ -2,27 +2,23 @@
 
 mod era_summary;
 
-use std::{clone::Clone, num::ParseIntError, str};
+use std::{clone::Clone, num::ParseIntError, str, sync::Arc};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::engine_state::{self, QueryResult};
 use casper_types::{
-    Block, BlockHash, BlockHeaderV2, Digest, DigestError, JsonBlockWithSignatures, Key,
-    ProtocolVersion, SignedBlock, Transfer,
+    BlockHash, BlockHeaderV2, Digest, DigestError, JsonBlockWithSignatures, ProtocolVersion,
+    Transfer,
 };
+
+use crate::NodeInterface;
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-    Error, ErrorCode, ReactorEventT, ReservedErrorCode, RpcRequest, RpcWithOptionalParams,
-};
-use crate::{
-    effect::EffectBuilder,
-    reactor::QueueKind,
-    rpcs::{common, state},
+    Error, RpcWithOptionalParams,
 };
 pub use era_summary::EraSummary;
 use era_summary::ERA_SUMMARY;
@@ -153,32 +149,12 @@ impl RpcWithOptionalParams for GetBlock {
     type OptionalRequestParams = GetBlockParams;
     type ResponseResult = GetBlockResult;
 
-    async fn do_handle_request<REv: ReactorEventT>(
-        effect_builder: EffectBuilder<REv>,
-        api_version: ProtocolVersion,
-        maybe_params: Option<Self::OptionalRequestParams>,
+    async fn do_handle_request(
+        _node_interface: Arc<dyn NodeInterface>,
+        _api_version: ProtocolVersion,
+        _maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, Error> {
-        // This RPC request is restricted by the block availability index.
-        let only_from_available_block_range = true;
-
-        // Get the block.
-        let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-        let (block, block_signatures) = get_signed_block(
-            maybe_block_id,
-            only_from_available_block_range,
-            effect_builder,
-        )
-        .await?
-        .into_inner();
-
-        let json_block = JsonBlockWithSignatures::new(block, Some(block_signatures));
-
-        // Return the result.
-        let result = Self::ResponseResult {
-            api_version,
-            block_with_signatures: Some(json_block),
-        };
-        Ok(result)
+        todo!()
     }
 }
 
@@ -211,6 +187,8 @@ pub struct GetBlockTransfersResult {
 
 impl GetBlockTransfersResult {
     /// Create an instance of GetBlockTransfersResult.
+    // TODO: will be used
+    #[allow(unused)]
     pub fn new(
         api_version: ProtocolVersion,
         block_hash: Option<BlockHash>,
@@ -239,37 +217,12 @@ impl RpcWithOptionalParams for GetBlockTransfers {
     type OptionalRequestParams = GetBlockTransfersParams;
     type ResponseResult = GetBlockTransfersResult;
 
-    async fn do_handle_request<REv: ReactorEventT>(
-        effect_builder: EffectBuilder<REv>,
-        api_version: ProtocolVersion,
-        maybe_params: Option<Self::OptionalRequestParams>,
+    async fn do_handle_request(
+        _node_interface: Arc<dyn NodeInterface>,
+        _api_version: ProtocolVersion,
+        _maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, Error> {
-        // This RPC request is restricted by the block availability index.
-        let only_from_available_block_range = true;
-
-        // Get the block.
-        let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-        let block_hash = common::get_block(
-            maybe_block_id,
-            only_from_available_block_range,
-            effect_builder,
-        )
-        .await
-        .map(|block| *block.hash())?;
-
-        let transfers = effect_builder
-            .make_request(
-                |responder| RpcRequest::GetBlockTransfers {
-                    block_hash,
-                    responder,
-                },
-                QueueKind::Api,
-            )
-            .await;
-
-        // Return the result.
-        let result = Self::ResponseResult::new(api_version, Some(block_hash), transfers);
-        Ok(result)
+        todo!()
     }
 }
 
@@ -313,29 +266,12 @@ impl RpcWithOptionalParams for GetStateRootHash {
     type OptionalRequestParams = GetStateRootHashParams;
     type ResponseResult = GetStateRootHashResult;
 
-    async fn do_handle_request<REv: ReactorEventT>(
-        effect_builder: EffectBuilder<REv>,
-        api_version: ProtocolVersion,
-        maybe_params: Option<Self::OptionalRequestParams>,
+    async fn do_handle_request(
+        _node_interface: Arc<dyn NodeInterface>,
+        _api_version: ProtocolVersion,
+        _maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, Error> {
-        // This RPC request is restricted by the block availability index.
-        let only_from_available_block_range = true;
-
-        // Get the block.
-        let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-        let block = common::get_block(
-            maybe_block_id,
-            only_from_available_block_range,
-            effect_builder,
-        )
-        .await?;
-
-        // Return the result.
-        let result = Self::ResponseResult {
-            api_version,
-            state_root_hash: Some(*block.state_root_hash()),
-        };
-        Ok(result)
+        todo!()
     }
 }
 
@@ -379,35 +315,12 @@ impl RpcWithOptionalParams for GetEraInfoBySwitchBlock {
     type OptionalRequestParams = GetEraInfoParams;
     type ResponseResult = GetEraInfoResult;
 
-    async fn do_handle_request<REv: ReactorEventT>(
-        effect_builder: EffectBuilder<REv>,
-        api_version: ProtocolVersion,
-        maybe_params: Option<Self::OptionalRequestParams>,
+    async fn do_handle_request(
+        _node_interface: Arc<dyn NodeInterface>,
+        _api_version: ProtocolVersion,
+        _maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, Error> {
-        // This RPC request is restricted by the block availability index.
-        let only_from_available_block_range = true;
-
-        let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-        let block = common::get_block(
-            maybe_block_id,
-            only_from_available_block_range,
-            effect_builder,
-        )
-        .await?;
-
-        if !block.is_switch_block() {
-            return Ok(Self::ResponseResult {
-                api_version,
-                era_summary: None,
-            });
-        }
-
-        let era_summary = get_era_summary(effect_builder, &block).await?;
-        let result = Self::ResponseResult {
-            api_version,
-            era_summary: Some(era_summary),
-        };
-        Ok(result)
+        todo!()
     }
 }
 
@@ -451,138 +364,11 @@ impl RpcWithOptionalParams for GetEraSummary {
     type OptionalRequestParams = GetEraSummaryParams;
     type ResponseResult = GetEraSummaryResult;
 
-    async fn do_handle_request<REv: ReactorEventT>(
-        effect_builder: EffectBuilder<REv>,
-        api_version: ProtocolVersion,
-        maybe_params: Option<Self::OptionalRequestParams>,
+    async fn do_handle_request(
+        _node_interface: Arc<dyn NodeInterface>,
+        _api_version: ProtocolVersion,
+        _maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, Error> {
-        let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-        let block = common::get_block(maybe_block_id, true, effect_builder).await?;
-
-        let era_summary = get_era_summary(effect_builder, &block).await?;
-        let result = Self::ResponseResult {
-            api_version,
-            era_summary,
-        };
-        Ok(result)
+        todo!()
     }
-}
-
-pub(super) async fn get_signed_block<REv: ReactorEventT>(
-    maybe_id: Option<BlockIdentifier>,
-    only_from_available_block_range: bool,
-    effect_builder: EffectBuilder<REv>,
-) -> Result<SignedBlock, Error> {
-    let maybe_result = match maybe_id {
-        Some(BlockIdentifier::Hash(hash)) => {
-            effect_builder
-                .get_signed_block_from_storage(hash, only_from_available_block_range)
-                .await
-        }
-        Some(BlockIdentifier::Height(height)) => {
-            effect_builder
-                .get_signed_block_at_height_from_storage(height, only_from_available_block_range)
-                .await
-        }
-        None => {
-            effect_builder
-                .get_highest_signed_block_from_storage(only_from_available_block_range)
-                .await
-        }
-    };
-
-    if let Some(signed_block) = maybe_result {
-        return Ok(signed_block);
-    }
-
-    // TODO: Potential optimization: We might want to make the `GetBlock` actually return the
-    //       available block range, so we don't need to request it again inside the
-    //       `missing_block_or_state_root_error` function.
-    let error = match maybe_id {
-        Some(BlockIdentifier::Hash(block_hash)) => {
-            common::missing_block_or_state_root_error(
-                effect_builder,
-                ErrorCode::NoSuchBlock,
-                format!("block {:?} not stored on this node", block_hash.inner()),
-            )
-            .await
-        }
-        Some(BlockIdentifier::Height(block_height)) => {
-            common::missing_block_or_state_root_error(
-                effect_builder,
-                ErrorCode::NoSuchBlock,
-                format!("block at height {} not stored on this node", block_height),
-            )
-            .await
-        }
-        None => {
-            common::missing_block_or_state_root_error(
-                effect_builder,
-                ReservedErrorCode::InternalError,
-                "failed to get highest block".to_string(),
-            )
-            .await
-        }
-    };
-
-    Err(error)
-}
-
-/// Returns the `EraSummary` for the era specified in the block.
-///
-/// Prior to Casper Mainnet version 1.4.15, era summaries were stored under `Key::EraInfo(era_id)`.
-/// At this version and later, they are stored under `Key::EraSummary`.
-///
-/// As this change in behaviour is not related to a consistent protocol version across all Casper
-/// networks, we simply try to find the `EraSummary` under the new key variant, and fall back to
-/// to the old variant if the former executes correctly but fails to find the value.
-async fn get_era_summary<REv: ReactorEventT>(
-    effect_builder: EffectBuilder<REv>,
-    block: &Block,
-) -> Result<EraSummary, Error> {
-    async fn handle_query_result<REv: ReactorEventT>(
-        effect_builder: EffectBuilder<REv>,
-        block: &Block,
-        result: Result<QueryResult, engine_state::Error>,
-    ) -> Result<EraSummary, Error> {
-        let (value, proofs) =
-            state::handle_query_result(effect_builder, *block.state_root_hash(), result).await?;
-        let (stored_value, merkle_proof) = common::encode_query_success(value, proofs)?;
-        Ok(EraSummary {
-            block_hash: *block.hash(),
-            era_id: block.era_id(),
-            stored_value,
-            state_root_hash: *block.state_root_hash(),
-            merkle_proof,
-        })
-    }
-
-    let era_summary_query_result = effect_builder
-        .make_request(
-            |responder| RpcRequest::QueryGlobalState {
-                state_root_hash: *block.state_root_hash(),
-                base_key: Key::EraSummary,
-                path: vec![],
-                responder,
-            },
-            QueueKind::Api,
-        )
-        .await;
-    if !matches!(era_summary_query_result, Ok(QueryResult::ValueNotFound(_))) {
-        // The query succeeded or failed in a way not requiring trying under `Key::EraInfo`.
-        return handle_query_result(effect_builder, block, era_summary_query_result).await;
-    }
-
-    let era_info_query_result = effect_builder
-        .make_request(
-            |responder| RpcRequest::QueryGlobalState {
-                state_root_hash: *block.state_root_hash(),
-                base_key: Key::EraInfo(block.era_id()),
-                path: vec![],
-                responder,
-            },
-            QueueKind::Api,
-        )
-        .await;
-    handle_query_result(effect_builder, block, era_info_query_result).await
 }

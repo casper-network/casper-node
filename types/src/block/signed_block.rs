@@ -2,7 +2,7 @@ use std::fmt::{self, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use casper_types::{Block, BlockSignatures};
+use crate::{Block, BlockSignatures};
 
 /// A block and signatures for that block.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -11,6 +11,21 @@ pub struct SignedBlock {
     pub(crate) block: Block,
     // The signatures of the block.
     pub(crate) block_signatures: BlockSignatures,
+}
+
+impl SignedBlock {
+    /// Creates a new `SignedBlock`.
+    pub fn new(block: Block, block_signatures: BlockSignatures) -> Self {
+        Self {
+            block,
+            block_signatures,
+        }
+    }
+
+    /// Converts `self` into the block and signatures.
+    pub fn into_inner(self) -> (Block, BlockSignatures) {
+        (self.block, self.block_signatures)
+    }
 }
 
 impl Display for SignedBlock {

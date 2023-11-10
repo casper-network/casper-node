@@ -48,7 +48,7 @@ impl RequestHandlers {
             }
         };
 
-        match handler(request.params).await {
+        match dbg!(handler(request.params).await) {
             Ok(result) => Response::new_success(request.id, result),
             Err(error) => Response::new_failure(request.id, error),
         }

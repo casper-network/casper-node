@@ -1,31 +1,26 @@
 //! RPCs related to the state.
 
-use std::str;
+use std::{str, sync::Arc};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info, warn};
 
-use casper_execution_engine::engine_state::{self, BalanceResult, GetBidsResult, QueryResult};
-use casper_json_rpc::ReservedErrorCode;
-use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
     account::{Account, AccountHash},
-    bytesrepr::{Bytes, ToBytes},
+    bytesrepr::Bytes,
     AuctionState, BlockHash, BlockHeader, BlockHeaderV2, BlockV2, CLValue, Digest, Key,
     ProtocolVersion, PublicKey, SecretKey, StoredValue, URef, U512,
 };
 
 use crate::{
-    effect::EffectBuilder,
-    reactor::QueueKind,
+    node_interface::NodeInterface,
     rpcs::{
         chain::BlockIdentifier,
-        common::{self, MERKLE_PROOF},
+        common::MERKLE_PROOF,
         docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-        Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithOptionalParams, RpcWithParams,
+        Error, ErrorCode, RpcWithOptionalParams, RpcWithParams,
     },
 };
 
@@ -57,7 +52,7 @@ static GET_AUCTION_INFO_PARAMS: Lazy<GetAuctionInfoParams> = Lazy::new(|| GetAuc
 });
 static GET_AUCTION_INFO_RESULT: Lazy<GetAuctionInfoResult> = Lazy::new(|| GetAuctionInfoResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-    auction_state: AuctionState::example().clone(),
+    auction_state: AuctionState::doc_example().clone(),
 });
 static GET_ACCOUNT_INFO_PARAMS: Lazy<GetAccountInfoParams> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
@@ -169,25 +164,12 @@ impl RpcWithParams for GetItem {
     type RequestParams = GetItemParams;
     type ResponseResult = GetItemResult;
 
-    async fn do_handle_request<REv: ReactorEventT>(
-        effect_builder: EffectBuilder<REv>,
-        api_version: ProtocolVersion,
-        params: Self::RequestParams,
+    async fn do_handle_request(
+        _node_interface: Arc<dyn NodeInterface>,
+        _api_version: ProtocolVersion,
+        _params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
-        let (stored_value, merkle_proof) = common::run_query_and_encode(
-            effect_builder,
-            params.state_root_hash,
-            params.key,
-            params.path,
-        )
-        .await?;
-
-        let result = Self::ResponseResult {
-            api_version,
-            stored_value,
-            merkle_proof,
-        };
-        Ok(result)
+        todo!()
     }
 }
 
@@ -235,73 +217,12 @@ impl RpcWithParams for GetBalance {
     type RequestParams = GetBalanceParams;
     type ResponseResult = GetBalanceResult;
 
-    async fn do_handle_request<REv: ReactorEventT>(
-        effect_builder: EffectBuilder<REv>,
-        api_version: ProtocolVersion,
-        params: Self::RequestParams,
+    async fn do_handle_request(
+        _node_interface: Arc<dyn NodeInterface>,
+        _api_version: ProtocolVersion,
+        _params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
-        // Try to parse the purse's URef from the params.
-        let purse_uref = match URef::from_formatted_str(&params.purse_uref)
-            .map_err(|error| format!("failed to parse purse_uref: {}", error))
-        {
-            Ok(uref) => uref,
-            Err(error_msg) => {
-                info!("{}", error_msg);
-                return Err(Error::new(
-                    ErrorCode::FailedToParseGetBalanceURef,
-                    error_msg,
-                ));
-            }
-        };
-
-        // Get the balance.
-        let balance_result = effect_builder
-            .make_request(
-                |responder| RpcRequest::GetBalance {
-                    state_root_hash: params.state_root_hash,
-                    purse_uref,
-                    responder,
-                },
-                QueueKind::Api,
-            )
-            .await;
-
-        let (balance_value, balance_proof) = match balance_result {
-            Ok(BalanceResult::Success { motes, proof }) => (motes, proof),
-            Ok(balance_result) => {
-                info!("get-balance failed: {:?}", balance_result);
-                return Err(Error::new(
-                    ErrorCode::FailedToGetBalance,
-                    format!("failed for purse {}: {:?}", purse_uref, balance_result),
-                ));
-            }
-            Err(error) => {
-                info!("get-balance failed to execute: {}", error);
-                return Err(Error::new(
-                    ErrorCode::GetBalanceFailedToExecute,
-                    format!("failed to execute for purse {}: {}", purse_uref, error),
-                ));
-            }
-        };
-
-        let proof_bytes = match balance_proof.to_bytes() {
-            Ok(proof_bytes) => proof_bytes,
-            Err(error) => {
-                let message = format!("failed to encode proof: {}", error);
-                info!("{}", message);
-                return Err(Error::new(ReservedErrorCode::InternalError, message));
-            }
-        };
-
-        let merkle_proof = base16::encode_lower(&proof_bytes);
-
-        // Return the result.
-        let result = Self::ResponseResult {
-            api_version,
-            balance_value,
-            merkle_proof,
-        };
-        Ok(result)
+        todo!()
     }
 }
 
@@ -345,106 +266,12 @@ impl RpcWithOptionalParams for GetAuctionInfo {
     type OptionalRequestParams = GetAuctionInfoParams;
     type ResponseResult = GetAuctionInfoResult;
 
-    async fn do_handle_request<REv: ReactorEventT>(
-        effect_builder: EffectBuilder<REv>,
-        api_version: ProtocolVersion,
-        maybe_params: Option<Self::OptionalRequestParams>,
+    async fn do_handle_request(
+        _node_interface: Arc<dyn NodeInterface>,
+        _api_version: ProtocolVersion,
+        _maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, Error> {
-        // This RPC request is restricted by the block availability index.
-        let only_from_available_block_range = true;
-
-        let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-        let block = common::get_block(
-            maybe_block_id,
-            only_from_available_block_range,
-            effect_builder,
-        )
-        .await?;
-
-        let protocol_version = api_version;
-
-        // the global state hash of the last block
-        let state_root_hash = *block.state_root_hash();
-        // the block height of the last added block
-        let block_height = block.height();
-
-        let get_bids_result = effect_builder
-            .make_request(
-                |responder| RpcRequest::GetBids {
-                    state_root_hash,
-                    responder,
-                },
-                QueueKind::Api,
-            )
-            .await;
-
-        let bids = match get_bids_result {
-            Ok(GetBidsResult::Success { bids }) => bids,
-            Ok(GetBidsResult::RootNotFound) => {
-                error!(
-                    block_hash=?block.hash(),
-                    ?state_root_hash,
-                    "root not found while trying to get bids"
-                );
-                return Err(Error::new(
-                    ReservedErrorCode::InternalError,
-                    format!(
-                        "root not found when getting bids at block {:?}",
-                        block.hash().inner()
-                    ),
-                ));
-            }
-            Err(error) => {
-                error!(
-                    block_hash=?block.hash(),
-                    ?state_root_hash,
-                    ?error,
-                    "failed to get bids"
-                );
-                return Err(Error::new(
-                    ReservedErrorCode::InternalError,
-                    format!(
-                        "error getting bids at block {:?}: {}",
-                        block.hash().inner(),
-                        error
-                    ),
-                ));
-            }
-        };
-
-        let era_validators_result = effect_builder
-            .make_request(
-                |responder| RpcRequest::QueryEraValidators {
-                    state_root_hash,
-                    protocol_version,
-                    responder,
-                },
-                QueueKind::Api,
-            )
-            .await;
-
-        let era_validators = match era_validators_result {
-            Ok(validators) => validators,
-            Err(error) => {
-                error!(block_hash=?block.hash(), ?state_root_hash, ?error, "failed to get era validators");
-                return Err(Error::new(
-                    ReservedErrorCode::InternalError,
-                    format!(
-                        "failed to get validators at block {:?}: {}",
-                        block.hash().inner(),
-                        error
-                    ),
-                ));
-            }
-        };
-
-        let auction_state = AuctionState::new(state_root_hash, block_height, era_validators, bids);
-
-        let result = Self::ResponseResult {
-            api_version,
-            auction_state,
-        };
-        Ok(result)
+        todo!()
     }
 }
 
@@ -503,48 +330,12 @@ impl RpcWithParams for GetAccountInfo {
     type RequestParams = GetAccountInfoParams;
     type ResponseResult = GetAccountInfoResult;
 
-    async fn do_handle_request<REv: ReactorEventT>(
-        effect_builder: EffectBuilder<REv>,
-        api_version: ProtocolVersion,
-        params: Self::RequestParams,
+    async fn do_handle_request(
+        _node_interface: Arc<dyn NodeInterface>,
+        _api_version: ProtocolVersion,
+        _params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
-        // This RPC request is restricted by the block availability index.
-        let only_from_available_block_range = true;
-
-        let maybe_block_id = params.block_identifier;
-        let block = common::get_block(
-            maybe_block_id,
-            only_from_available_block_range,
-            effect_builder,
-        )
-        .await?;
-
-        let state_root_hash = *block.state_root_hash();
-        let base_key = {
-            let account_hash = match params.account_identifier {
-                AccountIdentifier::PublicKey(public_key) => public_key.to_account_hash(),
-                AccountIdentifier::AccountHash(account_hash) => account_hash,
-            };
-            Key::Account(account_hash)
-        };
-        let (stored_value, merkle_proof) =
-            common::run_query_and_encode(effect_builder, state_root_hash, base_key, vec![]).await?;
-
-        let account = if let StoredValue::Account(account) = stored_value {
-            account
-        } else {
-            let error_msg = format!("stored value is not an account for account {}", base_key);
-            info!(?stored_value, "{}", error_msg);
-            return Err(Error::new(ErrorCode::NoSuchAccount, error_msg));
-        };
-
-        let result = Self::ResponseResult {
-            api_version,
-            account,
-            merkle_proof,
-        };
-
-        Ok(result)
+        todo!()
     }
 }
 
@@ -581,6 +372,8 @@ pub enum DictionaryIdentifier {
 }
 
 impl DictionaryIdentifier {
+    // TODO: will be used
+    #[allow(unused)]
     fn get_dictionary_address(
         &self,
         maybe_stored_value: Option<StoredValue>,
@@ -705,51 +498,12 @@ impl RpcWithParams for GetDictionaryItem {
     type RequestParams = GetDictionaryItemParams;
     type ResponseResult = GetDictionaryItemResult;
 
-    async fn do_handle_request<REv: ReactorEventT>(
-        effect_builder: EffectBuilder<REv>,
-        api_version: ProtocolVersion,
-        params: Self::RequestParams,
+    async fn do_handle_request(
+        _node_interface: Arc<dyn NodeInterface>,
+        _api_version: ProtocolVersion,
+        _params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
-        let dictionary_query_key = match params.dictionary_identifier {
-            DictionaryIdentifier::AccountNamedKey { ref key, .. }
-            | DictionaryIdentifier::ContractNamedKey { ref key, .. } => {
-                let base_key = match Key::from_formatted_str(key) {
-                    Ok(key) => key,
-                    Err(error) => {
-                        return Err(Error::new(
-                            ErrorCode::FailedToParseQueryKey,
-                            format!("failed to parse base key: {}", error),
-                        ))
-                    }
-                };
-
-                let empty_path = Vec::new();
-                let (value, _proofs) =
-                    run_query(effect_builder, params.state_root_hash, base_key, empty_path).await?;
-                params
-                    .dictionary_identifier
-                    .get_dictionary_address(Some(value))?
-            }
-            DictionaryIdentifier::URef { .. } | DictionaryIdentifier::Dictionary(_) => {
-                params.dictionary_identifier.get_dictionary_address(None)?
-            }
-        };
-
-        let (stored_value, merkle_proof) = common::run_query_and_encode(
-            effect_builder,
-            params.state_root_hash,
-            dictionary_query_key,
-            vec![],
-        )
-        .await?;
-
-        let result = Self::ResponseResult {
-            api_version,
-            dictionary_key: dictionary_query_key.to_formatted_string(),
-            stored_value,
-            merkle_proof,
-        };
-        Ok(result)
+        todo!()
     }
 }
 
@@ -814,43 +568,12 @@ impl RpcWithParams for QueryGlobalState {
     type RequestParams = QueryGlobalStateParams;
     type ResponseResult = QueryGlobalStateResult;
 
-    async fn do_handle_request<REv: ReactorEventT>(
-        effect_builder: EffectBuilder<REv>,
-        api_version: ProtocolVersion,
-        params: Self::RequestParams,
+    async fn do_handle_request(
+        _node_interface: Arc<dyn NodeInterface>,
+        _api_version: ProtocolVersion,
+        _params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
-        let (state_root_hash, maybe_block_header) = match params.state_identifier {
-            None => match effect_builder
-                .get_highest_complete_block_header_from_storage()
-                .await
-            {
-                None => {
-                    return Err(Error::new(
-                        ErrorCode::NoSuchBlock,
-                        "query-global-state failed to retrieve highest block header",
-                    ))
-                }
-                Some(block_header) => (*block_header.state_root_hash(), Some(block_header)),
-            },
-            Some(state_identifier) => {
-                let (state_root_hash, maybe_block_header) =
-                    get_state_root_hash_and_optional_header(effect_builder, state_identifier)
-                        .await?;
-                (state_root_hash, maybe_block_header)
-            }
-        };
-
-        let (stored_value, merkle_proof) =
-            common::run_query_and_encode(effect_builder, state_root_hash, params.key, params.path)
-                .await?;
-
-        let result = Self::ResponseResult {
-            api_version,
-            block_header: maybe_block_header,
-            stored_value,
-            merkle_proof,
-        };
-        Ok(result)
+        todo!()
     }
 }
 
@@ -907,90 +630,12 @@ impl RpcWithParams for QueryBalance {
     type RequestParams = QueryBalanceParams;
     type ResponseResult = QueryBalanceResult;
 
-    async fn do_handle_request<REv: ReactorEventT>(
-        effect_builder: EffectBuilder<REv>,
-        api_version: ProtocolVersion,
-        params: Self::RequestParams,
+    async fn do_handle_request(
+        _node_interface: Arc<dyn NodeInterface>,
+        _api_version: ProtocolVersion,
+        _params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
-        let state_root_hash = match params.state_identifier {
-            None => match effect_builder
-                .get_highest_complete_block_header_from_storage()
-                .await
-            {
-                None => {
-                    return Err(Error::new(
-                        ErrorCode::NoSuchBlock,
-                        "query-balance failed to retrieve highest block header",
-                    ))
-                }
-                Some(block_header) => *block_header.state_root_hash(),
-            },
-            Some(state_identifier) => {
-                let (state_root_hash, _) =
-                    get_state_root_hash_and_optional_header(effect_builder, state_identifier)
-                        .await?;
-                state_root_hash
-            }
-        };
-
-        let purse_uref = match params.purse_identifier {
-            PurseIdentifier::MainPurseUnderPublicKey(account_public_key) => {
-                get_main_purse_by_account_hash(
-                    effect_builder,
-                    state_root_hash,
-                    account_public_key.to_account_hash(),
-                )
-                .await?
-            }
-            PurseIdentifier::MainPurseUnderAccountHash(account_hash) => {
-                get_main_purse_by_account_hash(effect_builder, state_root_hash, account_hash)
-                    .await?
-            }
-            PurseIdentifier::PurseUref(purse_uref) => purse_uref,
-        };
-
-        // Get the balance.
-        let balance_result = effect_builder
-            .make_request(
-                |responder| RpcRequest::GetBalance {
-                    state_root_hash,
-                    purse_uref,
-                    responder,
-                },
-                QueueKind::Api,
-            )
-            .await;
-
-        let balance_value = match balance_result {
-            Ok(BalanceResult::Success { motes, .. }) => motes,
-            Ok(BalanceResult::RootNotFound) => {
-                info!(
-                    %state_root_hash,
-                    %purse_uref,
-                    "query-balance failed: root not found"
-                );
-                return Err(Error::new(
-                    ErrorCode::FailedToGetBalance,
-                    format!(
-                        "root hash {} not found when querying for purse {}",
-                        state_root_hash, purse_uref
-                    ),
-                ));
-            }
-            Err(error) => {
-                info!("query-balance failed to execute: {}", error);
-                return Err(Error::new(
-                    ErrorCode::GetBalanceFailedToExecute,
-                    error.to_string(),
-                ));
-            }
-        };
-
-        let result = Self::ResponseResult {
-            api_version,
-            balance: balance_value,
-        };
-        Ok(result)
+        todo!()
     }
 }
 
@@ -1037,170 +682,11 @@ impl RpcWithParams for GetTrie {
     type RequestParams = GetTrieParams;
     type ResponseResult = GetTrieResult;
 
-    async fn do_handle_request<REv: ReactorEventT>(
-        effect_builder: EffectBuilder<REv>,
-        api_version: ProtocolVersion,
-        params: Self::RequestParams,
+    async fn do_handle_request(
+        _node_interface: Arc<dyn NodeInterface>,
+        _api_version: ProtocolVersion,
+        _params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
-        let trie_key = params.trie_key;
-
-        match effect_builder.get_trie_full(trie_key).await {
-            Ok(maybe_trie_bytes) => {
-                let result = Self::ResponseResult {
-                    api_version,
-                    maybe_trie_bytes,
-                };
-                Ok(result)
-            }
-            Err(error) => {
-                warn!(?error, "failed to get trie");
-                Err(Error::new(
-                    ErrorCode::FailedToGetTrie,
-                    format!("{:?}", error),
-                ))
-            }
-        }
-    }
-}
-
-type QuerySuccess = (StoredValue, Vec<TrieMerkleProof<Key, StoredValue>>);
-
-/// Runs a global state query and returns a tuple of the domain stored value and Merkle proof of the
-/// value.
-///
-/// On error, a `warp_json_rpc::Error` is returned suitable for sending as a JSON-RPC response.
-pub(super) async fn run_query<REv: ReactorEventT>(
-    effect_builder: EffectBuilder<REv>,
-    state_root_hash: Digest,
-    base_key: Key,
-    path: Vec<String>,
-) -> Result<QuerySuccess, Error> {
-    let query_result = effect_builder
-        .make_request(
-            |responder| RpcRequest::QueryGlobalState {
-                state_root_hash,
-                base_key,
-                path,
-                responder,
-            },
-            QueueKind::Api,
-        )
-        .await;
-
-    handle_query_result(effect_builder, state_root_hash, query_result).await
-}
-
-/// Converts the result of running a global state query into a type suitable for including in a
-/// JSON-RPC response.
-pub(super) async fn handle_query_result<REv: ReactorEventT>(
-    effect_builder: EffectBuilder<REv>,
-    state_root_hash: Digest,
-    query_result: Result<QueryResult, engine_state::Error>,
-) -> Result<QuerySuccess, Error> {
-    match query_result {
-        Ok(QueryResult::Success { value, proofs }) => Ok((*value, proofs)),
-        Ok(QueryResult::RootNotFound) => {
-            info!("query failed: root not found");
-            let error = common::missing_block_or_state_root_error(
-                effect_builder,
-                ErrorCode::NoSuchStateRoot,
-                format!("failed to get state root at {:?}", state_root_hash),
-            )
-            .await;
-            Err(error)
-        }
-        Ok(query_result) => {
-            debug!(?query_result, "query failed");
-            Err(Error::new(
-                ErrorCode::QueryFailed,
-                format!("{:?}", query_result),
-            ))
-        }
-        Err(error) => {
-            info!(?error, "query failed to execute");
-            Err(Error::new(
-                ErrorCode::QueryFailedToExecute,
-                format!("{:?}", error),
-            ))
-        }
-    }
-}
-
-async fn get_main_purse_by_account_hash<REv: ReactorEventT>(
-    effect_builder: EffectBuilder<REv>,
-    state_root_hash: Digest,
-    account_hash: AccountHash,
-) -> Result<URef, Error> {
-    let (stored_value, _) = common::run_query_and_encode(
-        effect_builder,
-        state_root_hash,
-        Key::Account(account_hash),
-        vec![],
-    )
-    .await?;
-
-    let error = {
-        let error_msg = format!("failed to get main purse for {}", account_hash);
-        info!(?stored_value, "{}", error_msg);
-        Err(Error::new(ErrorCode::NoSuchMainPurse, error_msg))
-    };
-
-    match stored_value {
-        StoredValue::Account(account) => Ok(account.main_purse()),
-        StoredValue::CLValue(entity_key_as_clvalue) => {
-            let entity_key: Key = match CLValue::into_t(entity_key_as_clvalue) {
-                Ok(entity_key) => entity_key,
-                Err(_) => return error,
-            };
-            let (entity_value, _) =
-                common::run_query_and_encode(effect_builder, state_root_hash, entity_key, vec![])
-                    .await?;
-            if let StoredValue::AddressableEntity(entity) = entity_value {
-                Ok(entity.main_purse())
-            } else {
-                error
-            }
-        }
-        _ => error,
-    }
-}
-
-pub(super) async fn get_state_root_hash_and_optional_header<REv: ReactorEventT>(
-    effect_builder: EffectBuilder<REv>,
-    state_identifier: GlobalStateIdentifier,
-) -> Result<(Digest, Option<BlockHeader>), Error> {
-    // This RPC request is restricted by the block availability index.
-    let only_from_available_block_range = true;
-    match state_identifier {
-        GlobalStateIdentifier::BlockHash(block_hash) => {
-            match effect_builder
-                .get_block_header_from_storage(block_hash, only_from_available_block_range)
-                .await
-            {
-                None => {
-                    let error_msg =
-                        format!("failed to retrieve specified block header {}", block_hash);
-                    Err(Error::new(ErrorCode::NoSuchBlock, error_msg))
-                }
-                Some(block_header) => Ok((*block_header.state_root_hash(), Some(block_header))),
-            }
-        }
-        GlobalStateIdentifier::BlockHeight(block_height) => {
-            match effect_builder
-                .get_block_header_at_height_from_storage(
-                    block_height,
-                    only_from_available_block_range,
-                )
-                .await
-            {
-                None => {
-                    let error_msg =
-                        format!("failed to retrieve block header at height {}", block_height);
-                    Err(Error::new(ErrorCode::NoSuchBlock, error_msg))
-                }
-                Some(block_header) => Ok((*block_header.state_root_hash(), Some(block_header))),
-            }
-        }
-        GlobalStateIdentifier::StateRootHash(state_root_hash) => Ok((state_root_hash, None)),
+        todo!()
     }
 }

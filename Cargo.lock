@@ -677,6 +677,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "casper-rpc-sidecar"
+version = "1.5.2"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "backtrace",
+ "base16",
+ "casper-json-rpc",
+ "casper-types",
+ "datasize",
+ "http",
+ "hyper",
+ "num_cpus",
+ "once_cell",
+ "schemars",
+ "serde",
+ "serde_json",
+ "structopt",
+ "thiserror",
+ "tokio",
+ "toml 0.5.11",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
+ "warp",
+]
+
+[[package]]
 name = "casper-storage"
 version = "1.4.3"
 dependencies = [

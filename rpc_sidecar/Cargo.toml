@@ -1,0 +1,65 @@
+[package]
+name = "casper-rpc-sidecar"
+version = "1.5.2" # when updating, also update 'html_root_url' in lib.rs
+authors = ["Jacek Malec <jacek@casperlabs.io>"]
+edition = "2018"
+description = "The Casper blockchain RPC sidecard"
+documentation = "https://docs.rs/casper-rpc-sidecar"
+readme = "README.md"
+homepage = "https://casperlabs.io"
+repository = "https://github.com/CasperLabs/casper-node/tree/master/rpc_sidecard"
+license = "Apache-2.0"
+
+[dependencies]
+anyhow = "1"
+async-trait = "0.1.50"
+backtrace = "0.3.50"
+base16 = "0.2.1"
+casper-json-rpc = { version = "1.0.0", path = "../json_rpc" }
+casper-types = { version = "3.0.0", path = "../types", features = ["datasize", "json-schema", "std"] }
+datasize = { version = "0.2.11", features = ["detailed", "fake_clock-types"] }
+http = "0.2.1"
+hyper = "0.14.26"
+num_cpus = "1"
+once_cell = "1"
+schemars = { version = "0.8.12", features = ["preserve_order", "impl_json_schema"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+structopt = "0.3.14"
+thiserror = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+toml = "0.5.6"
+tower = { version = "0.4.6", features = ["limit"] }
+tracing = "0.1.18"
+tracing-subscriber = { version = "0.3.15", features = ["env-filter", "fmt", "json"] }
+warp = { version = "0.3.6", features = ["compression"] }
+
+[dev-dependencies]
+casper-types = { path = "../types", features = ["datasize", "json-schema", "std", "testing"] }
+tokio = { version = "1", features = ["test-util"] }
+
+[features]
+testing = ["casper-types/testing"]
+
+[[bin]]
+name = "casper-rpc-sidecar"
+path = "src/app/main.rs"
+bench = false
+doctest = false
+test = false
+
+[package.metadata.deb]
+revision = "0"
+assets = [
+    ["../target/release/casper-rpc-sidecar", "/usr/bin/casper-rpc-sidecar", "755"]
+]
+maintainer-scripts = "../resources/maintainer_scripts/debian"
+extended-description = """
+Package for Casper RPC sidecar.
+
+For information on using package, see https://github.com/casper-network/casper-node
+"""
+
+[package.metadata.deb.systemd-units]
+unit-scripts = "../resources/maintainer_scripts/casper_rpc_sidecar"
+restart-after-upgrade = false

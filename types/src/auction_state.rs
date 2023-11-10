@@ -6,15 +6,12 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_map_to_array::{BTreeMapToArray, KeyValueJsonSchema, KeyValueLabels};
 
-use casper_types::{
+use crate::{
     system::auction::{
         Bid, BidKind, DelegationRate, Delegator, EraValidators, Staking, ValidatorBid,
-        ValidatorBids,
     },
     AccessRights, Digest, EraId, PublicKey, SecretKey, URef, U512,
 };
-
-use crate::rpcs::docs::DocExample;
 
 static ERA_VALIDATORS: Lazy<EraValidators> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
@@ -27,27 +24,6 @@ static ERA_VALIDATORS: Lazy<EraValidators> = Lazy::new(|| {
     era_validators.insert(EraId::from(10u64), validator_weights);
 
     era_validators
-});
-static BIDS: Lazy<ValidatorBids> = Lazy::new(|| {
-    let bonding_purse = URef::new([250; 32], AccessRights::READ_ADD_WRITE);
-    let staked_amount = U512::from(10);
-    let release_era: u64 = 42;
-
-    let validator_secret_key =
-        SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
-    let validator_public_key = PublicKey::from(&validator_secret_key);
-
-    let validator_bid = ValidatorBid::locked(
-        validator_public_key.clone(),
-        bonding_purse,
-        staked_amount,
-        DelegationRate::zero(),
-        release_era,
-    );
-    let mut bids = BTreeMap::new();
-    bids.insert(validator_public_key, Box::new(validator_bid));
-
-    bids
 });
 static AUCTION_INFO: Lazy<AuctionState> = Lazy::new(|| {
     let state_root_hash = Digest::from([11; Digest::LENGTH]);
@@ -76,7 +52,7 @@ static AUCTION_INFO: Lazy<AuctionState> = Lazy::new(|| {
     bids.push(BidKind::Delegator(Box::new(delegator_bid)));
 
     let height: u64 = 10;
-    let era_validators = EraValidators::doc_example().clone();
+    let era_validators = ERA_VALIDATORS.clone();
     AuctionState::new(state_root_hash, height, era_validators, bids)
 });
 
@@ -186,23 +162,12 @@ impl AuctionState {
             bids,
         }
     }
-}
 
-impl DocExample for AuctionState {
-    fn doc_example() -> &'static Self {
+    // This method is not intended to be used by third party crates.
+    #[doc(hidden)]
+    #[cfg(feature = "json-schema")]
+    pub fn example() -> &'static Self {
         &AUCTION_INFO
-    }
-}
-
-impl DocExample for EraValidators {
-    fn doc_example() -> &'static Self {
-        &ERA_VALIDATORS
-    }
-}
-
-impl DocExample for ValidatorBids {
-    fn doc_example() -> &'static Self {
-        &BIDS
     }
 }
 
