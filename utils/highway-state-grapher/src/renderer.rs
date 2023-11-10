@@ -47,17 +47,26 @@ struct Vertex {
 
 implement_vertex!(Vertex, position);
 
+/// Rendering-specific data.
 pub struct Renderer {
+    /// The coordinates at the center of the screen.
     center: Vector2<f32>,
+    /// The width of the window, in pixels.
     window_width: f32,
+    /// The current width of the viewport.
     width: f32,
+    /// The shading program.
     program: Program,
+    /// Stuff for rendering text.
     text_system: TextSystem,
     font: FontTexture,
 
+    /// Pre-generated vertices for a unit.
     unit_vertex_buffer: VertexBuffer<Vertex>,
     interior_indices: index::NoIndices,
     frame_indices: index::IndexBuffer<u32>,
+
+    /// `True` if we're drawing edges.
     edges_enabled: bool,
 }
 
@@ -91,6 +100,7 @@ impl Renderer {
         }
     }
 
+    /// Creates vertices for a rounded rectangle.
     fn unit_vertex_buffer(
         display: &Display,
     ) -> (
@@ -153,6 +163,7 @@ impl Renderer {
         )
     }
 
+    /// Draws the graph.
     pub fn draw(&mut self, display: &Display, graph: &Graph, cursor_x: f32, cursor_y: f32) {
         let mut target = display.draw();
 
@@ -219,6 +230,7 @@ impl Renderer {
         target.finish().unwrap();
     }
 
+    /// Converts the cursor coordinates in pixels into the scene coordinates.
     fn convert_cursor(&self, cursor_x: f32, cursor_y: f32, size_x: u32, size_y: u32) -> (f32, f32) {
         let size_x = size_x as f32;
         let size_y = size_y as f32;
@@ -227,12 +239,14 @@ impl Renderer {
         (self.center.x + delta_x, self.center.y + delta_y)
     }
 
+    /// Checks whether the cursor hovers over a unit.
     fn unit_contains_cursor(unit: &GraphUnit, cursor_x: f32, cursor_y: f32) -> bool {
         let (unit_x, unit_y) = Self::unit_pos(unit);
         (unit_x - cursor_x).abs() < UNIT_WIDTH / 2.0
             && (unit_y - cursor_y).abs() < UNIT_HEIGHT / 2.0
     }
 
+    /// Draws a unit.
     fn draw_unit(
         &mut self,
         target: &mut Frame,
@@ -316,6 +330,7 @@ impl Renderer {
         }
     }
 
+    /// Renders a string.
     fn draw_text(
         &self,
         target: &mut Frame,
@@ -342,6 +357,7 @@ impl Renderer {
         .unwrap();
     }
 
+    /// Draws the edges between units.
     fn draw_edges(
         &mut self,
         display: &Display,
@@ -399,16 +415,19 @@ impl Renderer {
             .unwrap();
     }
 
+    /// Returns the position of the units in scene coordinates.
     fn unit_pos(unit: &GraphUnit) -> (f32, f32) {
         let x = unit.creator.0 as f32;
         let y = unit.graph_height as f32;
         (x, y)
     }
 
+    /// Handles a mouse scroll event (zooms in or out).
     pub fn mouse_scroll(&mut self, lines: f32) {
         self.width *= 2.0_f32.powf(lines / 3.0);
     }
 
+    /// Handles a dragging event (pans the screen).
     pub fn pan(&mut self, delta_x: f32, delta_y: f32) {
         let scale = self.width / self.window_width;
         self.center += Vector2::new(-delta_x * scale, delta_y * scale);
@@ -418,6 +437,7 @@ impl Renderer {
         self.edges_enabled = !self.edges_enabled;
     }
 
+    /// Returns a color for the max quorum based on its rank.
     fn quorum_color_spectrum(frac: f32) -> [f32; 3] {
         let r = if frac < 0.5 { frac } else { 1.0 };
         let g = if frac < 0.5 { 1.0 } else { 1.0 - frac };

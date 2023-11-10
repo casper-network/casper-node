@@ -66,12 +66,14 @@ pub(crate) struct EraDump {
     pub highway_state: State<ClContext>,
 }
 
+/// Helper struct for sorting the units with regards to the implicit partial ordering in the DAG.
 struct Units {
     set: HashSet<Digest>,
     order: Vec<Digest>,
 }
 
 impl Units {
+    /// Collects all the unit hashes and orders them roughly from the newest to the oldest.
     fn do_collect_ancestor_units(
         &mut self,
         state: &State<ClContext>,
@@ -91,6 +93,7 @@ impl Units {
         }
     }
 
+    /// Reorders the units in self.order so that every unit comes after all its dependencies.
     fn reorder(&mut self, state: &State<ClContext>) {
         let mut new_order_set = HashSet::new();
         let mut new_order = vec![];
@@ -115,12 +118,16 @@ impl Units {
         self.order = new_order;
     }
 
+    /// Collects all the unit hashes and orders them so that every unit comes after all its
+    /// dependencies.
     fn collect_ancestor_units(&mut self, state: &State<ClContext>) {
         self.do_collect_ancestor_units(state, state.panorama());
         self.reorder(state);
     }
 }
 
+/// A more readable unit ID: the validator index together with the height in that validator's
+/// swimlane
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UnitId(ValidatorIndex, usize);
 
@@ -130,6 +137,9 @@ impl Debug for UnitId {
     }
 }
 
+/// A more readable block id. The first field is the block height, the second is the number of the
+/// block among all the blocks at that height (if there are no orphan blocks, all the block IDs will
+/// have 0s in the second field).
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BlockId(u64, u8);
 
@@ -143,6 +153,9 @@ impl Debug for BlockId {
     }
 }
 
+/// A helper struct for coloring units based on the validator's max quorum.
+/// `max_rank` is the number of distinct values of max quorum. `rank` is the index relative to the
+/// maximum value (ie. the largest max quorum has rank 0, the second largest has rank 1 etc.)
 #[derive(Clone, Copy)]
 pub struct Quorum {
     pub rank: usize,
@@ -156,6 +169,9 @@ impl Debug for Quorum {
     }
 }
 
+/// A representation of the protocol state unit for the purpose of drawing it on the screen.
+/// `graph_height` is the maximum of graph heights of the cited units, plus 1 - drawing based on
+/// graph height guarantees that every unit will appear higher than all its dependencies.
 #[derive(Clone)]
 pub struct GraphUnit {
     pub id: UnitId,
@@ -187,6 +203,7 @@ impl Debug for GraphUnit {
     }
 }
 
+/// A struct helping in assigning readable IDs to blocks.
 #[derive(Clone, Debug)]
 struct BlockMapper {
     hash_to_id: HashMap<Digest, BlockId>,
@@ -203,6 +220,7 @@ impl BlockMapper {
         }
     }
 
+    /// Inserts the new ID, updating the mappings as necessary.
     fn insert(&mut self, hash: Digest, id: BlockId) {
         self.hash_to_id.insert(hash, id);
         self.id_to_hash.insert(id, hash);
@@ -210,19 +228,31 @@ impl BlockMapper {
         *entry = (*entry).max(id.1);
     }
 
+    /// Returns the block ID for the next block at the given height.
+    /// Usually, there will only be one block at a given height, but in some cases forks are
+    /// possible - in those cases, blocks at the same height will get sequential IDs.
     fn next_id_for_height(&self, height: u64) -> BlockId {
-        BlockId(height, *self.last_id_by_height.get(&height).unwrap_or(&0))
+        BlockId(
+            height,
+            self.last_id_by_height
+                .get(&height)
+                .map(|idx| *idx + 1)
+                .unwrap_or(0),
+        )
     }
 
+    /// Gets the readable block ID corresponding to the given hash.
     fn get(&self, hash: &Digest) -> Option<BlockId> {
         self.hash_to_id.get(hash).copied()
     }
 
+    /// Gets the block hash corresponding to the given ID.
     fn get_by_id(&self, id: &BlockId) -> Option<Digest> {
         self.id_to_hash.get(id).copied()
     }
 }
 
+/// All the data needed for drawing the unit DAG.
 #[derive(Clone, Debug)]
 pub struct Graph {
     units: ValidatorMap<Vec<GraphUnit>>,
@@ -232,6 +262,7 @@ pub struct Graph {
 }
 
 impl Graph {
+    /// Creates a `Graph` based on the `state`.
     fn new(state: &State<ClContext>, start_time: Timestamp) -> Self {
         let mut units: BTreeMap<ValidatorIndex, Vec<GraphUnit>> = state
             .weights()
@@ -357,16 +388,20 @@ impl Graph {
         }
     }
 
+    /// Returns the unit under the given `unit_id`.
     pub fn get(&self, unit_id: &UnitId) -> Option<&GraphUnit> {
         self.units
             .get(unit_id.0)
             .and_then(|swimlane| swimlane.get(unit_id.1))
     }
 
+    /// Returns the validator weights.
     pub fn validator_weights(&self) -> &ValidatorMap<f32> {
         &self.weight_percentages
     }
 
+    /// Iterates over all the units created by validators within `range_vid` and with graph heights
+    /// within `range_graph_height`.
     pub fn iter_range<R1, R2>(
         &self,
         range_vid: R1,
@@ -419,8 +454,11 @@ fn main() {
     start_rendering(graph);
 }
 
+/// Struct keeping the current state of some keys (the events only report the current state, so we
+/// need to store the old state to know when it changes).
 #[derive(Clone, Copy)]
 struct KeyboardState {
+    /// State of the 'E' key.
     e_state: bool,
 }
 
@@ -436,13 +474,18 @@ impl KeyboardState {
     }
 }
 
+/// Enum keeping the state of mouse input.
 #[derive(Clone, Copy)]
 enum MouseState {
+    /// Mouse is freely moving.
     Free { position: (f64, f64) },
+    /// The user is dragging something.
     Dragging { last_position: (f64, f64) },
 }
 
 impl MouseState {
+    /// Handles a mouse move event.
+    /// Returns `Some(delta_x, delta_y)` if dragging is in progress.
     fn handle_move(&mut self, new_position: (f64, f64)) -> Option<(f32, f32)> {
         match self {
             Self::Free { position } => {
@@ -458,6 +501,7 @@ impl MouseState {
         }
     }
 
+    /// Switches between `Free` and `Dragging` based on the button presses.
     fn handle_button(&mut self, button_down: bool) {
         match (*self, button_down) {
             (Self::Free { position }, true) => {
@@ -474,6 +518,7 @@ impl MouseState {
         }
     }
 
+    /// Returns the current position of the cursor.
     fn cursor(&self) -> (f32, f32) {
         match self {
             Self::Free { position } => (position.0 as f32, position.1 as f32),
@@ -482,6 +527,7 @@ impl MouseState {
     }
 }
 
+/// The main loop of the program.
 fn start_rendering(graph: Graph) {
     let event_loop = EventLoop::new();
 
