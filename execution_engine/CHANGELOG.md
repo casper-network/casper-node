@@ -24,7 +24,6 @@ All notable changes to this project will be documented in this file.  The format
 * Add support for a new FFI function `enable_contract_version` for enabling a specific version of a contract.
 
 ### Changed
-* Default value for `max_stack_height` is increased to 500.
 * `current stack height` is written to `stderr` in case `Trap(Unreachable)` error is encountered during Wasm execution.
 * Tweak upgrade logic transforming withdraw purses to early exit if possible.
 * Lower the default gas costs of opcodes.
@@ -36,6 +35,7 @@ All notable changes to this project will be documented in this file.  The format
 ## 6.0.0
 
 ### Changed
+* Default value for `max_stack_height` is increased to 500.
 * Replaced usage of `parity-wasm` and `wasmi` with Casper forks `casper-wasm` and `casper-wasmi` respectively.
 
 ### Fixed
