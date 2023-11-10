@@ -1567,6 +1567,7 @@ async fn run_redelegate_bid_network() {
 
     let spec_override = ChainspecOverride {
         unbonding_delay: 1,
+        minimum_era_height: 5,
         ..Default::default()
     };
     let mut fixture = TestFixture::new(initial_stakes, Some(spec_override)).await;
@@ -1667,13 +1668,13 @@ async fn run_redelegate_bid_network() {
     // Crank the network forward to run out the unbonding delay.
     // First, close out the era the redelegate was processed in.
     fixture
-        .run_until_stored_switch_block_header(ERA_TWO, ONE_MIN)
+        .run_until_stored_switch_block_header(ERA_ONE, ONE_MIN)
         .await;
     // The undelegate is in the unbonding queue.
     fixture.check_bid_existence_at_tip(&charlie_public_key, Some(&alice_public_key), false);
     // Unbonding delay is 1 on this test network, so step 1 more era.
     fixture
-        .run_until_stored_switch_block_header(ERA_THREE, ONE_MIN)
+        .run_until_stored_switch_block_header(ERA_TWO, ONE_MIN)
         .await;
 
     // Ensure the validator records are still present.
