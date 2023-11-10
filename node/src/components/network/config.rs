@@ -48,7 +48,7 @@ impl Default for Config {
             tarpit_version_threshold: None,
             tarpit_duration: TimeDiff::from_seconds(600),
             tarpit_chance: 0.2,
-            max_in_flight_demands: 50,
+            max_in_flight_demands: 5000, // TODO: Adjust after testing.
             ack_timeout: TimeDiff::from_seconds(30),
             blocklist_retain_duration: TimeDiff::from_seconds(600),
             identity: None,

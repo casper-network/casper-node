@@ -31,7 +31,7 @@ pub(super) fn create_rpc_builder(
 
     let protocol = juliet::protocol::ProtocolBuilder::with_default_channel_config(channel_cfg);
 
-    // TODO: Figure out a good value for buffer sizes.
+    // TODO: Figure out a good value for buffer sizes, and make configurable individually.
     let io_core = juliet::io::IoCoreBuilder::with_default_buffer_size(
         protocol,
         max_in_flight_demands.max(1) as usize,
