@@ -69,6 +69,7 @@ impl ops::Sub<Matrix> for Matrix {
 impl ops::Mul<Matrix> for Matrix {
     type Output = Matrix;
 
+    #[allow(clippy::needless_range_loop)]
     fn mul(self, other: Matrix) -> Matrix {
         let mut new_coords = [[0.0; 4]; 4];
         for i in 0..4 {

@@ -247,6 +247,7 @@ impl BlockMapper {
     }
 
     /// Gets the block hash corresponding to the given ID.
+    #[allow(unused)] // Will be useful if we add features related to the blocks
     fn get_by_id(&self, id: &BlockId) -> Option<Digest> {
         self.id_to_hash.get(id).copied()
     }
@@ -257,6 +258,7 @@ impl BlockMapper {
 pub struct Graph {
     units: ValidatorMap<Vec<GraphUnit>>,
     reverse_edges: HashMap<UnitId, Vec<UnitId>>,
+    #[allow(unused)] // Will be useful if we add features related to the blocks
     blocks: BlockMapper,
     weight_percentages: ValidatorMap<f32>,
 }
