@@ -7,7 +7,7 @@ use crate::{
     components::{
         block_synchronizer, block_synchronizer::BlockSynchronizerProgress,
         contract_runtime::ExecutionPreState, diagnostics_port, event_stream_server, network,
-        rest_server, rpc_server, upgrade_watcher,
+        rest_server, rpc_server, upgrade_watcher, binary_port,
     },
     effect::{EffectBuilder, EffectExt, Effects},
     fatal,
@@ -303,6 +303,15 @@ impl MainReactor {
             effect_builder,
             &mut self.rest_server,
             MainEvent::RestServer(rest_server::Event::Initialize),
+        ) {
+            return Some(effects);
+        }
+
+        // bring up binary port
+        if let Some(effects) = utils::initialize_component(
+            effect_builder,
+            &mut self.binary_port,
+            MainEvent::BinaryPort(binary_port::Event::Initialize),
         ) {
             return Some(effects);
         }

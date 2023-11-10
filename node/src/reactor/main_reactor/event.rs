@@ -13,7 +13,7 @@ use casper_types::{
 
 use crate::{
     components::{
-        block_accumulator,
+        binary_port, block_accumulator,
         block_synchronizer::{self, GlobalStateSynchronizerEvent, TrieAccumulatorEvent},
         block_validator, consensus, contract_runtime, deploy_buffer, diagnostics_port,
         event_stream_server, fetcher, gossiper,
@@ -77,6 +77,8 @@ pub(crate) enum MainEvent {
     UpgradeWatcherAnnouncement(#[serde(skip_serializing)] UpgradeWatcherAnnouncement),
     #[from]
     RpcServer(#[serde(skip_serializing)] rpc_server::Event),
+    #[from]
+    BinaryPort(#[serde(skip_serializing)] binary_port::Event),
     #[from]
     RestServer(#[serde(skip_serializing)] rest_server::Event),
     #[from]
@@ -363,6 +365,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::GotBlockAfterUpgradeEraValidators(_, _, _) => {
                 "GotImmediateSwitchBlockEraValidators"
             }
+            MainEvent::BinaryPort(_) => "BinaryPort",
         }
     }
 }
@@ -547,6 +550,7 @@ impl Display for MainEvent {
                     era_id
                 )
             }
+            MainEvent::BinaryPort(inner) => Display::fmt(inner, f),
         }
     }
 }

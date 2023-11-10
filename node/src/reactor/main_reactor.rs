@@ -35,6 +35,7 @@ use casper_types::{
 use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
+        binary_port::BinaryPort,
         block_accumulator::{self, BlockAccumulator},
         block_synchronizer::{self, BlockSynchronizer},
         block_validator::{self, BlockValidator},
@@ -141,6 +142,7 @@ pub(crate) struct MainReactor {
     upgrade_watcher: UpgradeWatcher,
     rpc_server: RpcServer,
     rest_server: RestServer,
+    binary_port: BinaryPort,
     event_stream_server: EventStreamServer,
     diagnostics_port: DiagnosticsPort,
     shutdown_trigger: ShutdownTrigger,
@@ -911,6 +913,11 @@ impl reactor::Reactor for MainReactor {
                 MainEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, req.into()),
             ),
+            MainEvent::BinaryPort(req) => reactor::wrap_effects(
+                MainEvent::BinaryPort,
+                self.binary_port
+                    .handle_event(effect_builder, rng, req.into()),
+            ),
 
             // This event gets emitted when we manage to read the era validators from the global
             // states of a block after an upgrade and its parent. Once that happens, we can check
@@ -1096,6 +1103,7 @@ impl reactor::Reactor for MainReactor {
             chainspec.network_config.name.clone(),
             node_startup_instant,
         );
+        let binary_port = BinaryPort::new(registry)?;
         let event_stream_server = EventStreamServer::new(
             config.event_stream_server.clone(),
             storage.root_path().to_path_buf(),
@@ -1172,6 +1180,7 @@ impl reactor::Reactor for MainReactor {
 
             rpc_server,
             rest_server,
+            binary_port,
             event_stream_server,
             transaction_acceptor,
             fetchers,
