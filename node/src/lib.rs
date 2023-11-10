@@ -27,6 +27,9 @@ pub(crate) mod components;
 mod config_migration;
 mod data_migration;
 pub(crate) mod effect;
+#[cfg_attr(not(feature = "failpoints"), path = "failpoints_disabled.rs")]
+pub(crate) mod failpoints;
+
 pub mod logging;
 pub(crate) mod protocol;
 pub(crate) mod reactor;

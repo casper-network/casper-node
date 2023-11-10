@@ -29,7 +29,7 @@ era_duration = '120 minutes'
 # minimum height.
 minimum_era_height = 20
 # Minimum difference between a block's and its child's timestamp.
-minimum_block_time = '32768 ms'
+minimum_block_time = '16384 ms'
 # Number of slots available in validator auction.
 validator_slots = 100
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
@@ -56,14 +56,14 @@ unbonding_delay = 7
 # Round seigniorage rate represented as a fraction of the total supply.
 #
 # Annual issuance: 8%
-# Minimum block time: 2^15 milliseconds
+# Minimum block time: 2^14 milliseconds
 # Ticks per year: 31536000000
 #
-# (1+0.08)^((2^15)/31536000000)-1 is expressed as a fractional number below
+# (1+0.08)^((2^14)/31536000000)-1 is expressed as a fractional number below
 # Python:
 # from fractions import Fraction
-# Fraction((1 + 0.08)**((2**15)/31536000000) - 1).limit_denominator(1000000000)
-round_seigniorage_rate = [7, 87535408]
+# Fraction((1 + 0.08)**((2**14)/31536000000) - 1).limit_denominator(1000000000)
+round_seigniorage_rate = [7, 175070816]
 # Maximum number of associated keys for a single account.
 max_associated_keys = 100
 # Maximum height of contract runtime call stack.
@@ -141,7 +141,7 @@ block_max_approval_count = 2600
 # Maximum block size in bytes including transactions contained by the block.  0 means unlimited.
 max_block_size = 10_485_760
 # The upper limit of total gas of all transactions in a block.
-block_gas_limit = 10_000_000_000_000
+block_gas_limit = 4_000_000_000_000
 # The minimum amount in motes for a valid native transfer.
 native_transfer_minimum_motes = 2_500_000_000
 # The maximum value to which `transaction_acceptor.timestamp_leeway` can be set in the config.toml file.
@@ -210,17 +210,17 @@ loop = 440
 if = 440
 else = 440
 end = 440
-br = 440_000
-br_if = 440_000
+br = 35_000
+br_if = 35_000
 return = 440
 select = 440
-call = 140_000
-call_indirect = 140_000
+call = 68_000
+call_indirect = 68_000
 drop = 440
 
 [wasm.opcode_costs.control_flow.br_table]
 # Fixed cost per `br_table` opcode
-cost = 440_000
+cost = 35_000
 # Size of target labels in the `br_table` opcode will be multiplied by `size_multiplier`
 size_multiplier = 100
 

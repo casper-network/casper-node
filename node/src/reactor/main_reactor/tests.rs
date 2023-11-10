@@ -218,6 +218,7 @@ impl TestFixture {
     /// Returns the highest complete block from node 0.
     ///
     /// Panics if there is no such block.
+    #[track_caller]
     fn highest_complete_block(&self) -> Block {
         let node_0 = self
             .node_contexts
@@ -235,6 +236,7 @@ impl TestFixture {
             .expect("node 0 should have a complete block")
     }
 
+    #[track_caller]
     fn create_node_config(
         &mut self,
         secret_key: &SecretKey,
@@ -306,6 +308,7 @@ impl TestFixture {
         id
     }
 
+    #[track_caller]
     fn remove_and_stop_node(&mut self, index: usize) -> NodeContext {
         let node_context = self.node_contexts.remove(index);
         let runner = self.network.remove_node(&node_context.id).unwrap();
@@ -476,6 +479,7 @@ impl TestFixture {
         }
     }
 
+    #[track_caller]
     fn check_bid_existence_at_tip(
         &self,
         validator_public_key: &PublicKey,
@@ -527,6 +531,7 @@ impl TestFixture {
     }
 
     /// Returns the hash of the given system contract.
+    #[track_caller]
     fn system_contract_hash(&self, system_contract_name: &str) -> AddressableEntityHash {
         let node_0 = self
             .node_contexts

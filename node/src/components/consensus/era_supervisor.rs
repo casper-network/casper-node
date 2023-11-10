@@ -55,6 +55,7 @@ use crate::{
         requests::{BlockValidationRequest, ContractRuntimeRequest, StorageRequest},
         AutoClosingResponder, EffectBuilder, EffectExt, Effects, Responder,
     },
+    failpoints::Failpoint,
     fatal, protocol,
     types::{
         create_single_block_rewarded_signatures, BlockWithMetadata, ExecutableBlock,
@@ -115,6 +116,9 @@ pub struct EraSupervisor {
     /// The path to the folder where unit files will be stored.
     unit_files_folder: PathBuf,
     last_progress: Timestamp,
+
+    /// Failpoints
+    pub(super) message_delay_failpoint: Failpoint<u64>,
 }
 
 impl Debug for EraSupervisor {
@@ -149,6 +153,7 @@ impl EraSupervisor {
             unit_files_folder,
             next_executed_height: 0,
             last_progress: Timestamp::now(),
+            message_delay_failpoint: Failpoint::new("consensus.message_delay"),
         };
 
         Ok(era_supervisor)
@@ -1000,9 +1005,18 @@ impl EraSupervisor {
             }
             ProtocolOutcome::CreatedGossipMessage(payload) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
-                effect_builder
-                    .broadcast_message_to_validators(message.into(), era_id)
-                    .ignore()
+                let delay_by = self.message_delay_failpoint.fire(rng).cloned();
+                async move {
+                    if let Some(delay) = delay_by {
+                        effect_builder
+                            .set_timeout(Duration::from_millis(delay))
+                            .await;
+                    }
+                    effect_builder
+                        .broadcast_message_to_validators(message.into(), era_id)
+                        .await
+                }
+                .ignore()
             }
             ProtocolOutcome::CreatedTargetedMessage(payload, to) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };

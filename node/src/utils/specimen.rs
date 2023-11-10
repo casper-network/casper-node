@@ -590,6 +590,34 @@ impl LargestSpecimen for BlockHeader {
     }
 }
 
+/// A wrapper around `BlockHeader` that implements `LargestSpecimen` without including the era
+/// end.
+pub(crate) struct BlockHeaderWithoutEraEnd(BlockHeaderV2);
+
+impl BlockHeaderWithoutEraEnd {
+    pub(crate) fn into_block_header(self) -> BlockHeader {
+        BlockHeader::V2(self.0)
+    }
+}
+
+impl LargestSpecimen for BlockHeaderWithoutEraEnd {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        BlockHeaderWithoutEraEnd(BlockHeaderV2::new(
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            None,
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            OnceCell::with_value(LargestSpecimen::largest_specimen(estimator, cache)),
+        ))
+    }
+}
+
 impl LargestSpecimen for EraEndV1 {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
         EraEndV1::new(

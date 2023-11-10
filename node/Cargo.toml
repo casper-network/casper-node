@@ -109,6 +109,7 @@ reqwest = { version = "0.11.18", features = ["stream"] }
 tokio = { version = "1", features = ["test-util"] }
 
 [features]
+failpoints = []
 testing = ["casper-types/testing"]
 vendored-openssl = ["openssl/vendored"]
 
