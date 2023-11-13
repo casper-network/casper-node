@@ -82,7 +82,10 @@ impl TestChainBuilder {
         }
     }
 
-    pub(super) fn build(self, rng: &mut TestRng) -> TestChain {
+    pub(super) async fn build(
+        self,
+        rng: &mut TestRng,
+    ) -> (TestChain, TestingNetwork<FilterReactor<MainReactor>>) {
         let Self {
             nodes,
             keys,
@@ -116,7 +119,8 @@ impl TestChainBuilder {
             chainspec.network_config.accounts_config =
                 AccountsConfig::new(accounts, delegators, administrators);
 
-            // Make the genesis timestamp 60 seconds from now, to allow for all validators to start up.
+            // Make the genesis timestamp 60 seconds from now, to allow for all validators to start
+            // up.
             let genesis_time = Timestamp::now() + TimeDiff::from_seconds(60);
             info!(
                 "creating test chain configuration, genesis: {}",
@@ -141,12 +145,19 @@ impl TestChainBuilder {
 
         let keys = keys.unwrap_or_else(|| stakes.into_iter().map(|pair| pair.0).collect());
 
-        TestChain {
+        let mut chain = TestChain {
             keys,
             storages: Vec::new(),
             chainspec: Arc::new(chainspec),
             chainspec_raw_bytes: Arc::new(chainspec_raw_bytes),
             first_node_port,
-        }
+        };
+
+        let net = chain
+            .create_initialized_network(rng)
+            .await
+            .expect("network initialization failed");
+
+        (chain, net)
     }
 }

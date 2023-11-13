@@ -14,9 +14,11 @@ use crate::{
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder,
     },
+    types::ExecutableBlock,
 };
 use casper_types::{
-    Block, BlockHash, Chainspec, CoreConfig, Digest, EraId, ProtocolVersion, PublicKey, U512,
+    Block, BlockV2, Chainspec, CoreConfig, Digest, EraEndV2, EraId, ProtocolVersion, PublicKey,
+    U512,
 };
 
 pub(crate) trait ReactorEventT:
@@ -29,7 +31,7 @@ impl<T> ReactorEventT for T where T: Send + From<StorageRequest> + From<Contract
 #[derive(Debug)]
 pub(crate) struct RewardsInfo {
     eras_info: BTreeMap<EraId, EraInfo>,
-    cited_blocks: Vec<Option<Block>>,
+    cited_blocks: Vec<Block>,
 }
 
 /// The era information needed in the rewards computation:
@@ -53,7 +55,7 @@ pub enum RewardsError {
     /// We got an overflow while computing something.
     ArithmeticOverflow,
 
-    FailedToFetchBlock(BlockHash),
+    FailedToFetchBlockWithHeight(u64),
     FailedToFetchEra(GetEraValidatorsError),
     /// Fetching the era validators succedeed, but no info is present (should not happen).
     /// The `Digest` is the one that was queried.
@@ -63,63 +65,52 @@ pub enum RewardsError {
 }
 
 impl RewardsInfo {
-    /// `block_hashs` is an iterator over the era ID to get the information about + the block
-    /// hash to query to have such information (which may not be from the same era).
     pub async fn new_from_storage<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
-        current_era_id: EraId,
-        switch_block_height: u64,
         protocol_version: ProtocolVersion,
         signature_rewards_max_delay: u64,
+        executable_block: ExecutableBlock,
     ) -> Result<Self, RewardsError> {
+        let current_era_id = executable_block.era_id;
         // All the blocks that may appear as a signed block. They are collected upfront, so that we
         // don't have to worry about doing it one by one later.
         //
         // They are sorted from the oldest to the newest:
-        let cited_blocks = if current_era_id.is_genesis() {
-            // Special case: genesis block does not yield any reward, because there is no block producer,
-            // and no previous blocks whose signatures are to be rewarded:
-            effect_builder
-                .collect_past_blocks_with_metadata(0..1, false)
+
+        let cited_block_height_start = {
+            let previous_era_id = current_era_id.saturating_sub(1);
+            let previous_era_switch_block_header = effect_builder
+                .get_switch_block_header_by_era_id_from_storage(previous_era_id)
                 .await
-                .into_iter()
-                .map(|maybe_block_with_metadata| maybe_block_with_metadata.map(|b| b.block))
-                .collect()
-        } else {
-            let cited_block_height_start = {
-                let previous_era_id = current_era_id.saturating_sub(1);
-                let previous_era_switch_block_header = effect_builder
-                    .get_switch_block_header_by_era_id_from_storage(previous_era_id)
-                    .await
-                    .ok_or(RewardsError::MissingSwitchBlock(previous_era_id))?;
+                .ok_or(RewardsError::MissingSwitchBlock(previous_era_id))?;
 
-                // Here we do not substract 1, because we want one block more:
-                previous_era_switch_block_header
-                    .height()
-                    .saturating_sub(signature_rewards_max_delay)
-            };
-            let range_to_fetch = cited_block_height_start..switch_block_height;
-
-            let result = collect_past_blocks_batched(effect_builder, range_to_fetch.clone()).await;
-
-            tracing::info!(
-                current_era_id = %current_era_id.value(),
-                range_requested = ?range_to_fetch,
-                num_fetched_blocks = %result.iter().flatten().count(),
-                num_requested_blocks = %result.len(),
-                "blocks fetched",
-            );
-
-            result
+            // Here we do not substract 1, because we want one block more:
+            previous_era_switch_block_header
+                .height()
+                .saturating_sub(signature_rewards_max_delay)
         };
+        let range_to_fetch = cited_block_height_start..executable_block.height;
+
+        let mut cited_blocks =
+            collect_past_blocks_batched(effect_builder, range_to_fetch.clone()).await?;
+
+        tracing::info!(
+            current_era_id = %current_era_id.value(),
+            range_requested = ?range_to_fetch,
+            num_fetched_blocks = %cited_blocks.iter().count(),
+            num_requested_blocks = %cited_blocks.len(),
+            "blocks fetched",
+        );
 
         let eras_info = Self::create_eras_info(
             effect_builder,
             current_era_id,
             protocol_version,
-            cited_blocks.iter().flatten(),
+            cited_blocks.iter(),
         )
         .await?;
+
+        cited_blocks.push(block_from_executable(executable_block));
 
         Ok(RewardsInfo {
             eras_info,
@@ -128,10 +119,7 @@ impl RewardsInfo {
     }
 
     #[cfg(test)]
-    pub fn new_testing(
-        eras_info: BTreeMap<EraId, EraInfo>,
-        cited_blocks: Vec<Option<Block>>,
-    ) -> Self {
+    pub fn new_testing(eras_info: BTreeMap<EraId, EraInfo>, cited_blocks: Vec<Block>) -> Self {
         Self {
             eras_info,
             cited_blocks,
@@ -146,42 +134,40 @@ impl RewardsInfo {
         protocol_version: ProtocolVersion,
         mut cited_blocks: impl Iterator<Item = &Block>,
     ) -> Result<BTreeMap<EraId, EraInfo>, RewardsError> {
-        // We take the first block, then every switch block to get all the needed hashes to fetch
-        // needed eras. We take the first block, because we need it for the first era.
-        // If the first block is itself a switch block, that's fine, because we fetch one block more
-        // to handle this case.
-
         let oldest_block = cited_blocks.next();
 
         // If the oldest block is genesis, we add the validator information for genesis (era 0) from
         // era 1, because it's the same:
         let oldest_block_is_genesis = oldest_block.map_or(false, |block| block.is_genesis());
 
-        let hashes_and_eras: Vec<_> = oldest_block
+        // Here, we gather a list of all of the era ID we need to fetch to calculate the rewards,
+        // as well as the state root hash allowing to query this information.
+        //
+        // To get all of the needed era IDs, we take the very first block, then every switch block
+        // We take the first block, because we need it for the first cited era, then every switch
+        // block for every subsequent eras.
+        // If the first block is itself a switch block, that's fine, because we fetch one block more
+        // in the first place to handle this case.
+        let eras_and_state_root_hashes: Vec<_> = oldest_block
             .into_iter()
             .chain(cited_blocks.filter(|&block| block.is_switch_block()))
             .map(|block| {
-                (
-                    // The validator info for a switch block is the one from the next era:
-                    if block.is_switch_block() {
-                        block.era_id().successor()
-                    } else {
-                        block.era_id()
-                    },
-                    *block.hash(),
-                )
+                let state_root_hash = *block.state_root_hash();
+                let era = if block.is_switch_block() {
+                    block.era_id().successor()
+                } else {
+                    block.era_id()
+                };
+
+                (era, state_root_hash)
             })
             .collect();
 
-        let num_eras_to_fetch = hashes_and_eras.len() + usize::from(oldest_block_is_genesis);
+        let num_eras_to_fetch =
+            eras_and_state_root_hashes.len() + usize::from(oldest_block_is_genesis);
 
-        let mut eras_info: BTreeMap<_, _> = stream::iter(hashes_and_eras)
-            .then(|(era_id, block_hash)| async move {
-                let state_root_hash = effect_builder
-                    .get_block_from_storage(block_hash)
-                    .await
-                    .map(|block| *block.state_root_hash())
-                    .ok_or_else(|| RewardsError::FailedToFetchBlock(block_hash))?;
+        let mut eras_info: BTreeMap<_, _> = stream::iter(eras_and_state_root_hashes)
+            .then(|(era_id, state_root_hash)| async move {
                 let weights = effect_builder
                     .get_era_validators_from_contract_runtime(EraValidatorsRequest::new(
                         state_root_hash,
@@ -286,18 +272,15 @@ impl RewardsInfo {
     pub fn era_for_block_height(&self, height: u64) -> Result<EraId, RewardsError> {
         self.cited_blocks
             .iter()
-            .flatten()
             .find_map(|block| (block.height() == height).then_some(block.era_id()))
             .ok_or_else(|| RewardsError::HeightNotInEraRange(height))
     }
 
     /// Returns all the blocks belonging to an era.
     pub fn blocks_from_era(&self, era_id: EraId) -> impl Iterator<Item = &Block> {
-        self.cited_blocks.iter().filter_map(move |maybe_block| {
-            maybe_block
-                .as_ref()
-                .filter(|block| block.era_id() == era_id)
-        })
+        self.cited_blocks
+            .iter()
+            .filter(move |block| block.era_id() == era_id)
     }
 }
 
@@ -315,27 +298,37 @@ impl EraInfo {
 
 /// First create the `RewardsInfo` structure, then compute the rewards.
 /// It is done in 2 steps so that it is easier to unit test the rewards calculation.
-pub(crate) async fn full_rewards_for_era<REv: ReactorEventT>(
+pub(crate) async fn fetch_data_and_calculate_rewards_for_era<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
-    current_era_id: EraId,
-    switch_block_height: u64,
     chainspec: Arc<Chainspec>,
+    executable_block: ExecutableBlock,
 ) -> Result<BTreeMap<PublicKey, U512>, RewardsError> {
+    let current_era_id = executable_block.era_id;
     tracing::info!(
         current_era_id = %current_era_id.value(),
-        "current era",
+        "starting the rewards calculation"
     );
 
-    let rewards_info = RewardsInfo::new_from_storage(
-        effect_builder,
-        current_era_id,
-        switch_block_height,
-        chainspec.protocol_version(),
-        chainspec.core_config.signature_rewards_max_delay,
-    )
-    .await?;
+    if current_era_id.is_genesis() {
+        // Special case: genesis block does not yield any reward, because there is no block
+        // producer, and no previous blocks whose signatures are to be rewarded:
+        Ok(chainspec
+            .network_config
+            .accounts_config
+            .validators()
+            .map(|account| (account.public_key.clone(), U512::zero()))
+            .collect())
+    } else {
+        let rewards_info = RewardsInfo::new_from_storage(
+            effect_builder,
+            chainspec.protocol_version(),
+            chainspec.core_config.signature_rewards_max_delay,
+            executable_block,
+        )
+        .await?;
 
-    rewards_for_era(rewards_info, current_era_id, &chainspec.core_config)
+        rewards_for_era(rewards_info, current_era_id, &chainspec.core_config)
+    }
 }
 
 pub(crate) fn rewards_for_era(
@@ -343,51 +336,48 @@ pub(crate) fn rewards_for_era(
     current_era_id: EraId,
     core_config: &CoreConfig,
 ) -> Result<BTreeMap<PublicKey, U512>, RewardsError> {
-    fn increase_value_for_key(
-        map: &mut BTreeMap<PublicKey, Ratio<U512>>,
-        key: PublicKey,
-        value: Ratio<U512>,
-    ) -> Result<(), RewardsError> {
-        match map.entry(key) {
-            std::collections::btree_map::Entry::Vacant(entry) => {
-                entry.insert(value);
-            }
-            std::collections::btree_map::Entry::Occupied(mut entry) => {
-                let new_value = (*entry.get())
-                    .checked_add(&value)
-                    .ok_or(RewardsError::ArithmeticOverflow)?;
-                *entry.get_mut() = new_value;
-            }
-        }
-
-        Ok(())
-    }
-
     fn to_ratio_u512(ratio: Ratio<u64>) -> Ratio<U512> {
         Ratio::new(U512::from(*ratio.numer()), U512::from(*ratio.denom()))
     }
 
-    // Special case: genesis block does not yield any reward, because there is no block producer,
-    // and no previous blocks whose signatures are to be rewarded:
-    if current_era_id.is_genesis() {
-        return Ok(BTreeMap::new());
-    }
+    let mut full_reward_for_validators: BTreeMap<_, _> = rewards_info
+        .validator_keys(current_era_id)?
+        .map(|key| (key, Ratio::new(U512::zero(), U512::one())))
+        .collect();
 
-    let collection_proportion = to_ratio_u512(core_config.collection_rewards_proportion());
-    let contribution_proportion = to_ratio_u512(core_config.contribution_rewards_proportion());
+    let mut increase_value_for_key =
+        |key: PublicKey, value: Ratio<U512>| -> Result<(), RewardsError> {
+            match full_reward_for_validators.entry(key) {
+                std::collections::btree_map::Entry::Vacant(entry) => {
+                    entry.insert(value);
+                }
+                std::collections::btree_map::Entry::Occupied(mut entry) => {
+                    let new_value = (*entry.get())
+                        .checked_add(&value)
+                        .ok_or(RewardsError::ArithmeticOverflow)?;
+                    *entry.get_mut() = new_value;
+                }
+            }
 
-    // Reward for producing a block from this era:
-    let production_reward = to_ratio_u512(core_config.production_rewards_proportion())
-        .checked_mul(&rewards_info.reward(current_era_id)?)
-        .ok_or(RewardsError::ArithmeticOverflow)?;
+            Ok(())
+        };
 
-    // Collect all rewards as a ratio:
-    let full_reward_for_validators = {
-        let mut result = BTreeMap::new();
+    // Rules out a special case: genesis block does not yield any reward,
+    // because there is no block producer, and no previous blocks whose
+    // signatures are to be rewarded:
+    if current_era_id.is_genesis() == false {
+        let collection_proportion = to_ratio_u512(core_config.collection_rewards_proportion());
+        let contribution_proportion = to_ratio_u512(core_config.contribution_rewards_proportion());
 
+        // Reward for producing a block from this era:
+        let production_reward = to_ratio_u512(core_config.production_rewards_proportion())
+            .checked_mul(&rewards_info.reward(current_era_id)?)
+            .ok_or(RewardsError::ArithmeticOverflow)?;
+
+        // Collect all rewards as a ratio:
         for block in rewards_info.blocks_from_era(current_era_id) {
             // Transfer the block production reward for this block proposer:
-            increase_value_for_key(&mut result, block.proposer().clone(), production_reward)?;
+            increase_value_for_key(block.proposer().clone(), production_reward)?;
 
             // Now, let's compute the reward attached to each signed block reported by the block
             // we examine:
@@ -417,18 +407,12 @@ pub(crate) fn rewards_for_era(
                         .checked_mul(&rewards_info.reward(signed_block_era)?)
                         .ok_or(RewardsError::ArithmeticOverflow)?;
 
-                    increase_value_for_key(&mut result, signing_validator, contribution_reward)?;
-                    increase_value_for_key(
-                        &mut result,
-                        block.proposer().clone(),
-                        collection_reward,
-                    )?;
+                    increase_value_for_key(signing_validator, contribution_reward)?;
+                    increase_value_for_key(block.proposer().clone(), collection_reward)?;
                 }
             }
         }
-
-        result
-    };
+    }
 
     // Return the rewards as plain U512:
     Ok(full_reward_for_validators
@@ -441,7 +425,7 @@ pub(crate) fn rewards_for_era(
 async fn collect_past_blocks_batched<REv: From<StorageRequest>>(
     effect_builder: EffectBuilder<REv>,
     era_height_span: Range<u64>,
-) -> Vec<Option<Block>> {
+) -> Result<Vec<Block>, RewardsError> {
     const STEP: usize = 100;
     let only_from_available_block_range = false;
 
@@ -457,13 +441,52 @@ async fn collect_past_blocks_batched<REv: From<StorageRequest>>(
         .then(|range| async move {
             stream::iter(
                 effect_builder
-                    .collect_past_blocks_with_metadata(range, only_from_available_block_range)
+                    .collect_past_blocks_with_metadata(
+                        range.clone(),
+                        only_from_available_block_range,
+                    )
                     .await
                     .into_iter()
-                    .map(|maybe_block_with_metadata| maybe_block_with_metadata.map(|b| b.block)),
+                    .zip(range)
+                    .map(|(maybe_block_with_metadata, height)| {
+                        maybe_block_with_metadata
+                            .ok_or(RewardsError::FailedToFetchBlockWithHeight(height))
+                            .map(|b| b.block)
+                    }),
             )
         })
         .flatten()
-        .collect()
+        .inspect(|b| eprintln!("{b:?}"))
+        .try_collect()
         .await
+}
+
+fn block_from_executable(eb: ExecutableBlock) -> Block {
+    let era_end = eb.era_report.map(|er| {
+        EraEndV2::new(
+            er.equivocators,
+            er.inactive_validators,
+            Default::default(),
+            Default::default(),
+        )
+    });
+
+    BlockV2::new(
+        Default::default(),
+        Default::default(),
+        Default::default(),
+        eb.random_bit,
+        era_end,
+        eb.timestamp,
+        eb.era_id,
+        eb.height,
+        Default::default(),
+        *eb.proposer,
+        vec![],
+        vec![],
+        vec![],
+        vec![],
+        eb.rewarded_signatures,
+    )
+    .into()
 }

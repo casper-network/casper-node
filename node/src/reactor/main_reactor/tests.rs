@@ -19,9 +19,9 @@ use casper_types::{
     execution::{Effects, ExecutionResult, ExecutionResultV2, TransformKind},
     system::auction::{BidAddr, BidKind, BidsExt, DelegationRate},
     testing::TestRng,
-    AccountConfig, AccountsConfig, ActivationPoint, Block, BlockHash, BlockHeader, BlockV2,
-    CLValue, Chainspec, ChainspecRawBytes, ContractHash, Deploy, DeployHash, EraId, Key, Motes,
-    ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, Timestamp, Transaction,
+    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, Block, BlockHash,
+    BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Deploy, DeployHash, EraId, Key,
+    Motes, ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, Timestamp, Transaction,
     TransactionHash, ValidatorConfig, U512,
 };
 
@@ -299,12 +299,9 @@ async fn run_network() {
 
     // Instantiate a new chain with a fixed size.
     const NETWORK_SIZE: usize = 5;
-    let mut chain = TestChainBuilder::new_with_size(NETWORK_SIZE).build(&mut rng);
-
-    let mut net = chain
-        .create_initialized_network(&mut rng)
-        .await
-        .expect("network initialization failed");
+    let (_, mut net) = TestChainBuilder::new_with_size(NETWORK_SIZE)
+        .build(&mut rng)
+        .await;
 
     // Wait for all nodes to agree on one era.
     net.settle_on(
@@ -330,14 +327,10 @@ async fn historical_sync_with_era_height_1() {
 
     // Instantiate a new chain with a fixed size.
     const NETWORK_SIZE: usize = 5;
-    let mut chain = TestChainBuilder::new_with_size(NETWORK_SIZE)
+    let (chain, mut net) = TestChainBuilder::new_with_size(NETWORK_SIZE)
         .chainspec(|chain| chain.core_config.minimum_era_height = 1)
-        .build(&mut rng);
-
-    let mut net = chain
-        .create_initialized_network(&mut rng)
-        .await
-        .expect("network initialization failed");
+        .build(&mut rng)
+        .await;
 
     // Wait for all nodes to reach era 3.
     net.settle_on(
@@ -426,14 +419,10 @@ async fn should_not_historical_sync_no_sync_node() {
 
     // Instantiate a new chain with a fixed size.
     const NETWORK_SIZE: usize = 5;
-    let mut chain = TestChainBuilder::new_with_size(NETWORK_SIZE)
+    let (chain, mut net) = TestChainBuilder::new_with_size(NETWORK_SIZE)
         .chainspec(|chain| chain.core_config.minimum_era_height = 1)
-        .build(&mut rng);
-
-    let mut net = chain
-        .create_initialized_network(&mut rng)
-        .await
-        .expect("network initialization failed");
+        .build(&mut rng)
+        .await;
 
     // Wait for all nodes to reach era 1.
     net.settle_on(
@@ -574,19 +563,16 @@ async fn run_equivocator_network() {
 
     // We configure the era to take ten rounds. That should guarantee that the two nodes
     // equivocate.
-    let mut chain = TestChainBuilder::new_with_keys(stakes.clone())
+    let (chain, mut net) = TestChainBuilder::new_with_keys(stakes.clone())
         .keys(keys)
         .chainspec(move |chain| {
             chain.core_config.minimum_era_height = 10;
             chain.highway_config.maximum_round_length = chain.core_config.minimum_block_time * 2;
             chain.core_config.validator_slots = size as u32;
         })
-        .build(&mut rng);
+        .build(&mut rng)
+        .await;
 
-    let mut net = chain
-        .create_initialized_network(&mut rng)
-        .await
-        .expect("network initialization failed");
     let min_round_len = chain.chainspec.core_config.minimum_block_time;
     let mut maybe_first_message_time = None;
 
@@ -733,15 +719,16 @@ async fn run_equivocator_network() {
 
     for (era, bids) in era_bids {
         for (secret_key, stake) in &stakes {
+            let public_key = PublicKey::from(secret_key.as_ref());
             let bid = bids
-                .validator_bid(&PublicKey::from(secret_key.as_ref()))
-                .expect("should have bid for public key {secret_key} in era {era}");
+                .validator_bid(&public_key)
+                .expect("should have bid for public key {public_key} in era {era}");
             let staked_amount = bid.staked_amount();
             assert!(
                 staked_amount >= *stake,
                 "expected stake {} for public key {} in era {}, found {}",
                 staked_amount,
-                secret_key,
+                public_key,
                 era,
                 stake
             );
@@ -753,18 +740,14 @@ async fn assert_network_shutdown_for_upgrade_with_stakes(rng: &mut TestRng, stak
     const NETWORK_SIZE: usize = 2;
     const INITIALIZATION_TIMEOUT: Duration = Duration::from_secs(20);
 
-    let mut chain = TestChainBuilder::new_with_stakes(stakes.to_owned())
+    let (_, mut net) = TestChainBuilder::new_with_stakes(stakes.to_owned())
         .chainspec(|chain| {
             chain.core_config.minimum_era_height = 2;
             chain.core_config.era_duration = TimeDiff::from_millis(0);
             chain.core_config.minimum_block_time = "1second".parse().unwrap();
         })
-        .build(rng);
-
-    let mut net = chain
-        .create_initialized_network(rng)
-        .await
-        .expect("network initialization failed");
+        .build(rng)
+        .await;
 
     // Wait until initialization is finished, so upgrade watcher won't reject test requests.
     net.settle_on(
@@ -834,18 +817,14 @@ async fn dont_upgrade_without_switch_block() {
     const NETWORK_SIZE: usize = 2;
     const INITIALIZATION_TIMEOUT: Duration = Duration::from_secs(20);
 
-    let mut chain = TestChainBuilder::new_with_size(NETWORK_SIZE)
+    let (_, mut net) = TestChainBuilder::new_with_size(NETWORK_SIZE)
         .chainspec(|chain| {
             chain.core_config.minimum_era_height = 2;
             chain.core_config.era_duration = TimeDiff::from_millis(0);
             chain.core_config.minimum_block_time = "1second".parse().unwrap();
         })
-        .build(&mut rng);
-
-    let mut net = chain
-        .create_initialized_network(&mut rng)
-        .await
-        .expect("network initialization failed");
+        .build(&mut rng)
+        .await;
 
     // Wait until initialization is finished, so upgrade watcher won't reject test requests.
     net.settle_on(
@@ -930,7 +909,7 @@ async fn should_store_finalized_approvals() {
     let charlie_secret_key = Arc::new(SecretKey::random(&mut rng)); // just for ordering testing purposes
 
     // Eras have exactly two blocks each, and there is one block per second.
-    let mut chain = TestChainBuilder::new_with_keys(map! {
+    let (_, mut net) = TestChainBuilder::new_with_keys(map! {
         // only Alice will be proposing blocks:
         alice_secret_key.clone() => U512::from(100),
     })
@@ -941,12 +920,8 @@ async fn should_store_finalized_approvals() {
         chain.core_config.minimum_block_time = "1second".parse().unwrap();
         chain.core_config.validator_slots = 1;
     })
-    .build(&mut rng);
-
-    let mut net = chain
-        .create_initialized_network(&mut rng)
-        .await
-        .expect("network initialization failed");
+    .build(&mut rng)
+    .await;
 
     // Wait for all nodes to complete era 0.
     net.settle_on(
@@ -1093,18 +1068,15 @@ async fn empty_block_validation_regression() {
         .collect();
 
     // We make the first validator always accuse everyone else.
-    let mut chain = TestChainBuilder::new_with_keys(stakes)
+    let (_, mut net) = TestChainBuilder::new_with_keys(stakes)
         .chainspec(|chain| {
             chain.core_config.minimum_block_time = "1second".parse().unwrap();
             chain.highway_config.maximum_round_length = "1second".parse().unwrap();
             chain.core_config.minimum_era_height = 15;
         })
-        .build(&mut rng);
+        .build(&mut rng)
+        .await;
 
-    let mut net = chain
-        .create_initialized_network(&mut rng)
-        .await
-        .expect("network initialization failed");
     let malicious_validator = keys.first().unwrap().clone();
     info!("Malicious validator: {:?}", malicious_validator);
     let everyone_else: Vec<_> = keys
@@ -1169,12 +1141,12 @@ async fn empty_block_validation_regression() {
     }
 }
 
-fn simple_test_chain(
+async fn simple_test_chain(
     named: Vec<(Arc<SecretKey>, PublicKey, U512)>,
     total_node_count: usize,
     nameless_stake_override: Option<U512>,
     rng: &mut TestRng,
-) -> TestChain {
+) -> (TestChain, TestingNetwork<FilterReactor<MainReactor>>) {
     // getting a basic network set up
     if total_node_count < named.len() {
         panic!("named validator count exceeds total node count");
@@ -1192,7 +1164,8 @@ fn simple_test_chain(
     }
 
     let validator_count = stakes.len();
-    let chain = TestChainBuilder::new_with_keys(stakes)
+
+    TestChainBuilder::new_with_keys(stakes)
         .chainspec(move |chain| {
             chain.core_config.minimum_era_height = 5;
             chain.highway_config.maximum_round_length = chain.core_config.minimum_block_time * 2;
@@ -1202,9 +1175,8 @@ fn simple_test_chain(
             chain.core_config.minimum_delegation_amount = 0;
             chain.core_config.unbonding_delay = 1;
         })
-        .build(rng);
-
-    chain
+        .build(rng)
+        .await
 }
 
 fn get_highest_block_or_fail(
@@ -1393,17 +1365,11 @@ async fn run_withdraw_bid_network() {
             alice_stake,
         )];
 
-        let mut chain = simple_test_chain(named_validators, 5, None, &mut rng);
+        let (chain, net) = simple_test_chain(named_validators, 5, None, &mut rng).await;
 
         let chain_name = chain.chainspec.network_config.name.clone();
 
-        (
-            chain
-                .create_initialized_network(&mut rng)
-                .await
-                .expect("network initialization failed"),
-            chain_name,
-        )
+        (net, chain_name)
     };
 
     // genesis
@@ -1496,17 +1462,11 @@ async fn run_undelegate_bid_network() {
     let (mut net, chain_name) = {
         let named_validators = vec![alice.clone(), bob.clone()];
 
-        let mut chain = simple_test_chain(named_validators, 5, None, &mut rng);
+        let (chain, net) = simple_test_chain(named_validators, 5, None, &mut rng).await;
 
         let chain_name = chain.chainspec.network_config.name.clone();
 
-        (
-            chain
-                .create_initialized_network(&mut rng)
-                .await
-                .expect("network initialization failed"),
-            chain_name,
-        )
+        (net, chain_name)
     };
 
     // genesis
@@ -1665,17 +1625,11 @@ async fn run_redelegate_bid_network() {
     let (mut net, chain_name) = {
         let named_validators = vec![alice.clone(), bob.clone(), charlie.clone()];
 
-        let mut chain = simple_test_chain(named_validators, 5, None, &mut rng);
+        let (chain, net) = simple_test_chain(named_validators, 5, None, &mut rng).await;
 
         let chain_name = chain.chainspec.network_config.name.clone();
 
-        (
-            chain
-                .create_initialized_network(&mut rng)
-                .await
-                .expect("network initialization failed"),
-            chain_name,
-        )
+        (net, chain_name)
     };
 
     // genesis
@@ -1814,8 +1768,6 @@ async fn run_redelegate_bid_network() {
     check_bid_existence_at_tip(&net, &charlie.1, Some(&alice.1), true);
 }
 
-// 1 -> 90
-// 2 -> 150
 #[tokio::test]
 async fn rewards_are_calculated() {
     testing::init_logging();
@@ -1824,16 +1776,12 @@ async fn rewards_are_calculated() {
 
     // Instantiate a new chain with a fixed size.
     const NETWORK_SIZE: usize = 5;
-    let mut chain = TestChainBuilder::new_with_size(NETWORK_SIZE)
+    let (_, mut network) = TestChainBuilder::new_with_size(NETWORK_SIZE)
         .chainspec(|chainspec| {
             chainspec.core_config.minimum_era_height = 3;
         })
-        .build(rng);
-
-    let mut network = chain
-        .create_initialized_network(rng)
-        .await
-        .expect("network initialization failed");
+        .build(rng)
+        .await;
 
     let era = EraId::new(2);
 

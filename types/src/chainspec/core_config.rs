@@ -136,7 +136,8 @@ impl CoreConfig {
         Ratio::new(1, 1) - self.finality_signature_proportion
     }
 
-    /// The proportion of the total rewards going to finality signatures collection.
+    /// The finder's fee, *i.e.* the proportion of the total rewards going to the validator
+    /// collecting the finality signatures which is the validator producing the block.
     pub fn collection_rewards_proportion(&self) -> Ratio<u64> {
         self.finders_fee * self.finality_signature_proportion
     }
