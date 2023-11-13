@@ -805,4 +805,22 @@ extern "C" {
         contract_hash_ptr: *const u8,
         contract_hash_size: usize,
     ) -> i32;
+    /// Computes digest hash, using provided algorithm type.
+    ///
+    /// # Arguments
+    ///
+    /// * `in_ptr` - pointer to the location where argument bytes will be copied from the host side
+    /// * `in_size` - size of output pointer
+    /// * `hash_algo_type_ptr` - pointer to serialized hash type
+    /// * `hash_algo_type_size` - size of hash type in serialized form
+    /// * `out_ptr` - pointer to the location where argument bytes will be copied to the host side
+    /// * `out_size` - size of output pointer
+    pub fn casper_generic_hash(
+        in_ptr: *const u8,
+        in_size: usize,
+        hash_algo_type_ptr: *const u8,
+        hash_algo_type_size: usize,
+        out_ptr: *const u8,
+        out_size: usize,
+    ) -> i32;
 }
