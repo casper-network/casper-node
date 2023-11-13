@@ -106,7 +106,7 @@ pub(super) struct VersionedDatabases<K, V> {
     /// Current form of the data, with the key as `K` bytesrepr-encoded and the value as `V` also
     /// bytesrepr-encoded.
     #[data_size(skip)]
-    current: Database,
+    pub current: Database, // TODO[RC]: tmp
     _phantom: PhantomData<(K, V)>,
 }
 

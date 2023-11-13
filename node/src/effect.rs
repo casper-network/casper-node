@@ -1164,6 +1164,21 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    // TODO[RC]: Allow for different databases
+    pub(crate) async fn get_raw_data(self, block_hash: BlockHash) -> Option<Vec<u8>>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetRawData {
+                block_hash,
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
     /// Gets the requested block header from the linear block store.
     pub(crate) async fn get_block_header_from_storage(
         self,

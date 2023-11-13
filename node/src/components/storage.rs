@@ -1182,6 +1182,13 @@ impl Storage {
                     .respond(self.key_block_height_for_activation_point)
                     .ignore()
             }
+            StorageRequest::GetRawData {
+                block_hash,
+                responder,
+            } => {
+                let maybe_raw_data = self.read_raw_data(&block_hash)?;
+                responder.respond(maybe_raw_data).ignore()
+            }
         })
     }
 
@@ -2251,6 +2258,15 @@ impl Storage {
     ) -> Result<Option<BlockSignatures>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
         self.get_block_signatures(&mut txn, block_hash)
+    }
+
+    fn read_raw_data(&self, block_hash: &BlockHash) -> Result<Option<Vec<u8>>, FatalStorageError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        let result = txn.get(self.block_header_dbs.current, block_hash);
+        match result {
+            Ok(maybe_raw_data) => return Ok(Some(maybe_raw_data.to_vec())),
+            Err(err) => panic!("XXXXX - error {}", err),
+        }
     }
 
     /// Stores a set of finalized approvals if they are different to the approvals in the original

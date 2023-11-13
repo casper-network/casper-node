@@ -13,6 +13,7 @@ default-run = "casper-node"
 exclude = ["proptest-regressions"]
 
 [dependencies]
+juliet = { path = "/home/magister/Downloads/juliet/casper-node/juliet" }
 ansi_term = "0.12.1"
 anyhow = "1"
 aquamarine = "0.1.12"

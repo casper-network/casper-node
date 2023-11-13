@@ -338,6 +338,14 @@ pub(crate) enum StorageRequest {
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
     },
+    /// Retrieve block header with given hash.
+    GetRawData {
+        /// Hash of block to get header of.
+        block_hash: BlockHash,
+        /// Responder to call with the result.  Returns `None` if the block header doesn't exist in
+        /// local storage.
+        responder: Responder<Option<Vec<u8>>>,
+    },
     GetBlockHeaderByHeight {
         /// Height of block to get header of.
         block_height: u64,
@@ -669,6 +677,11 @@ impl Display for StorageRequest {
                     "get key block height for current activation point"
                 )
             }
+            // TODO[RC]: Log correctly
+            StorageRequest::GetRawData {
+                block_hash,
+                responder,
+            } => write!(formatter, "get raw data {}::{}", "DB", "KEY"),
         }
     }
 }
