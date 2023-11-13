@@ -288,6 +288,8 @@ pub struct HostFunctionCosts {
     pub random_bytes: HostFunction<[Cost; 2]>,
     /// Cost of calling the `enable_contract_version` host function.
     pub enable_contract_version: HostFunction<[Cost; 4]>,
+    /// Cost of calling the `generic_hash` host function.
+    pub generic_hash: HostFunction<[Cost; 6]>,
 }
 
 impl Default for HostFunctionCosts {
@@ -420,6 +422,7 @@ impl Default for HostFunctionCosts {
             blake2b: HostFunction::default(),
             random_bytes: HostFunction::default(),
             enable_contract_version: HostFunction::default(),
+            generic_hash: HostFunction::default(),
         }
     }
 }
@@ -471,6 +474,7 @@ impl ToBytes for HostFunctionCosts {
         ret.append(&mut self.blake2b.to_bytes()?);
         ret.append(&mut self.random_bytes.to_bytes()?);
         ret.append(&mut self.enable_contract_version.to_bytes()?);
+        ret.append(&mut self.generic_hash.to_bytes()?);
         Ok(ret)
     }
 
@@ -519,6 +523,7 @@ impl ToBytes for HostFunctionCosts {
             + self.blake2b.serialized_length()
             + self.random_bytes.serialized_length()
             + self.enable_contract_version.serialized_length()
+            + self.generic_hash.serialized_length()
     }
 }
 
@@ -568,6 +573,7 @@ impl FromBytes for HostFunctionCosts {
         let (blake2b, rem) = FromBytes::from_bytes(rem)?;
         let (random_bytes, rem) = FromBytes::from_bytes(rem)?;
         let (enable_contract_version, rem) = FromBytes::from_bytes(rem)?;
+        let (generic_hash, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             HostFunctionCosts {
                 read_value,
@@ -614,6 +620,7 @@ impl FromBytes for HostFunctionCosts {
                 blake2b,
                 random_bytes,
                 enable_contract_version,
+                generic_hash,
             },
             rem,
         ))
@@ -667,6 +674,7 @@ impl Distribution<HostFunctionCosts> for Standard {
             blake2b: rng.gen(),
             random_bytes: rng.gen(),
             enable_contract_version: rng.gen(),
+            generic_hash: rng.gen(),
         }
     }
 }
@@ -728,6 +736,7 @@ pub mod gens {
             blake2b in host_function_cost_arb(),
             random_bytes in host_function_cost_arb(),
             enable_contract_version in host_function_cost_arb(),
+            generic_hash in host_function_cost_arb(),
         ) -> HostFunctionCosts {
             HostFunctionCosts {
                 read_value,
@@ -774,6 +783,7 @@ pub mod gens {
                 blake2b,
                 random_bytes,
                 enable_contract_version,
+                generic_hash,
             }
         }
     }
