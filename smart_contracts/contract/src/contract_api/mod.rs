@@ -1,6 +1,7 @@
 //! Contains support for writing smart contracts.
 
 pub mod account;
+pub mod crypto;
 pub mod runtime;
 pub mod storage;
 pub mod system;
