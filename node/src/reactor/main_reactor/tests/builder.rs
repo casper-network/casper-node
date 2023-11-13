@@ -1,8 +1,11 @@
+#![allow(unused)]
+
 use super::*;
 
 pub(super) struct TestChainBuilder {
     nodes: Nodes,
     keys: Option<Vec<Arc<SecretKey>>>,
+    #[allow(clippy::type_complexity)]
     chainspec_update: Option<Box<dyn Fn(&mut Chainspec)>>,
 }
 
@@ -14,7 +17,7 @@ enum Nodes {
 
 impl Nodes {
     fn get(self, rng: &mut TestRng) -> BTreeMap<Arc<SecretKey>, U512> {
-        let stake = match self {
+        match self {
             Self::Random(size) => {
                 (0..size)
                     .map(|_| {
@@ -31,9 +34,7 @@ impl Nodes {
                 .map(|amount| (Arc::new(SecretKey::random(rng)), amount))
                 .collect(),
             Self::Stake(stake) => stake,
-        };
-
-        stake
+        }
     }
 }
 

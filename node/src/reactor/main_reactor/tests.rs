@@ -1,7 +1,6 @@
 mod builder;
-use builder::TestChainBuilder;
 
-use std::{collections::BTreeMap, convert::TryFrom, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, convert::TryFrom, iter, sync::Arc, time::Duration};
 
 use either::Either;
 use num::Zero;
@@ -11,6 +10,7 @@ use tempfile::TempDir;
 use tokio::time;
 use tracing::{error, info};
 
+use builder::TestChainBuilder;
 use casper_execution_engine::engine_state::{
     GetBidsRequest, GetBidsResult, SystemContractRegistry,
 };
@@ -44,7 +44,7 @@ use crate::{
         Runner,
     },
     testing::{
-        self, filter_reactor::FilterReactor, map, network::TestingNetwork, ConditionCheckReactor,
+        self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
     },
     types::{
         AvailableBlockRange, BlockPayload, DeployOrTransferHash, DeployWithFinalizedApprovals,
@@ -72,6 +72,94 @@ impl Runner<ConditionCheckReactor<FilterReactor<MainReactor>>> {
 }
 
 impl TestChain {
+    /// Instantiates a new test chain configuration.
+    ///
+    /// Generates secret keys for `size` validators and creates a matching chainspec.
+    fn new(rng: &mut TestRng, size: usize, initial_stakes: Option<&[U512]>) -> Self {
+        let keys: Vec<Arc<SecretKey>> = (0..size)
+            .map(|_| Arc::new(SecretKey::random(rng)))
+            .collect();
+
+        let stake_values = if let Some(initial_stakes) = initial_stakes {
+            assert_eq!(size, initial_stakes.len());
+            initial_stakes.to_vec()
+        } else {
+            // By default we use very large stakes so we would catch overflow issues.
+            iter::from_fn(|| Some(U512::from(rng.gen_range(100..999)) * U512::from(u128::MAX)))
+                .take(size)
+                .collect()
+        };
+
+        let stakes = keys
+            .iter()
+            .zip(stake_values)
+            .map(|(secret_key, stake)| {
+                let secret_key = secret_key.clone();
+                (PublicKey::from(&*secret_key), stake)
+            })
+            .collect();
+        Self::new_with_keys(rng, keys, stakes)
+    }
+
+    /// Instantiates a new test chain configuration.
+    ///
+    /// Takes a vector of bonded keys with specified bond amounts.
+    fn new_with_keys(
+        rng: &mut TestRng,
+        keys: Vec<Arc<SecretKey>>,
+        stakes: BTreeMap<PublicKey, U512>,
+    ) -> Self {
+        // Load the `local` chainspec.
+        let (mut chainspec, chainspec_raw_bytes) =
+            <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+
+        let min_motes = 100_000_000_000u64; // 1000 token
+        let max_motes = min_motes * 100; // 100_000 token
+        let balance = U512::from(rng.gen_range(min_motes..max_motes));
+
+        // Override accounts with those generated from the keys.
+        let accounts = stakes
+            .into_iter()
+            .map(|(public_key, bonded_amount)| {
+                let validator_config =
+                    ValidatorConfig::new(Motes::new(bonded_amount), DelegationRate::zero());
+                AccountConfig::new(public_key, Motes::new(balance), Some(validator_config))
+            })
+            .collect();
+        let delegators = vec![];
+        let administrators = vec![];
+        chainspec.network_config.accounts_config =
+            AccountsConfig::new(accounts, delegators, administrators);
+
+        // Make the genesis timestamp 60 seconds from now, to allow for all validators to start up.
+        let genesis_time = Timestamp::now() + TimeDiff::from_seconds(60);
+        info!(
+            "creating test chain configuration, genesis: {}",
+            genesis_time
+        );
+        chainspec.protocol_config.activation_point = ActivationPoint::Genesis(genesis_time);
+
+        chainspec.core_config.minimum_era_height = 1;
+        chainspec.core_config.finality_threshold_fraction = Ratio::new(34, 100);
+        chainspec.core_config.era_duration = TimeDiff::from_millis(10);
+        chainspec.core_config.auction_delay = 1;
+        chainspec.core_config.unbonding_delay = 3;
+
+        let first_node_port = testing::unused_port_on_localhost();
+
+        TestChain {
+            keys,
+            storages: Vec::new(),
+            chainspec: Arc::new(chainspec),
+            chainspec_raw_bytes: Arc::new(chainspec_raw_bytes),
+            first_node_port,
+        }
+    }
+
+    fn chainspec_mut(&mut self) -> &mut Chainspec {
+        Arc::get_mut(&mut self.chainspec).unwrap()
+    }
+
     fn chainspec(&self) -> Arc<Chainspec> {
         self.chainspec.clone()
     }
@@ -203,8 +291,7 @@ fn switch_block_for_era(
     storage
         .read_switch_block_by_era_id(era_id)
         .unwrap_or_default()
-        .map(|block| BlockV2::try_from(block).ok())
-        .flatten()
+        .and_then(|block| BlockV2::try_from(block).ok())
 }
 
 fn highest_complete_block_hash(
@@ -299,9 +386,12 @@ async fn run_network() {
 
     // Instantiate a new chain with a fixed size.
     const NETWORK_SIZE: usize = 5;
-    let (_, mut net) = TestChainBuilder::new_with_size(NETWORK_SIZE)
-        .build(&mut rng)
-        .await;
+    let mut chain = TestChain::new(&mut rng, NETWORK_SIZE, None);
+
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
 
     // Wait for all nodes to agree on one era.
     net.settle_on(
@@ -327,10 +417,13 @@ async fn historical_sync_with_era_height_1() {
 
     // Instantiate a new chain with a fixed size.
     const NETWORK_SIZE: usize = 5;
-    let (chain, mut net) = TestChainBuilder::new_with_size(NETWORK_SIZE)
-        .chainspec(|chain| chain.core_config.minimum_era_height = 1)
-        .build(&mut rng)
-        .await;
+    let mut chain = TestChain::new(&mut rng, NETWORK_SIZE, None);
+    chain.chainspec_mut().core_config.minimum_era_height = 1;
+
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
 
     // Wait for all nodes to reach era 3.
     net.settle_on(
@@ -419,10 +512,13 @@ async fn should_not_historical_sync_no_sync_node() {
 
     // Instantiate a new chain with a fixed size.
     const NETWORK_SIZE: usize = 5;
-    let (chain, mut net) = TestChainBuilder::new_with_size(NETWORK_SIZE)
-        .chainspec(|chain| chain.core_config.minimum_era_height = 1)
-        .build(&mut rng)
-        .await;
+    let mut chain = TestChain::new(&mut rng, NETWORK_SIZE, None);
+    chain.chainspec_mut().core_config.minimum_era_height = 1;
+
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
 
     // Wait for all nodes to reach era 1.
     net.settle_on(
@@ -550,12 +646,12 @@ async fn run_equivocator_network() {
     let mut keys: Vec<Arc<SecretKey>> = (2..size)
         .map(|_| Arc::new(SecretKey::random(&mut rng)))
         .collect();
-    let mut stakes: BTreeMap<_, U512> = keys
+    let mut stakes: BTreeMap<PublicKey, U512> = keys
         .iter()
-        .map(|secret_key| (secret_key.clone(), U512::from(100000u64)))
+        .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100000u64)))
         .collect();
-    stakes.insert(alice_secret_key.clone(), U512::from(1));
-    stakes.insert(bob_secret_key, U512::from(1));
+    stakes.insert(PublicKey::from(&*alice_secret_key), U512::from(1));
+    stakes.insert(PublicKey::from(&*bob_secret_key), U512::from(1));
 
     // Here's where things go wrong: Bob doesn't run a node at all, and Alice runs two!
     keys.push(alice_secret_key.clone());
@@ -563,16 +659,16 @@ async fn run_equivocator_network() {
 
     // We configure the era to take ten rounds. That should guarantee that the two nodes
     // equivocate.
-    let (chain, mut net) = TestChainBuilder::new_with_keys(stakes.clone())
-        .keys(keys)
-        .chainspec(move |chain| {
-            chain.core_config.minimum_era_height = 10;
-            chain.highway_config.maximum_round_length = chain.core_config.minimum_block_time * 2;
-            chain.core_config.validator_slots = size as u32;
-        })
-        .build(&mut rng)
-        .await;
+    let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
+    chain.chainspec_mut().core_config.minimum_era_height = 10;
+    chain.chainspec_mut().highway_config.maximum_round_length =
+        chain.chainspec.core_config.minimum_block_time * 2;
+    chain.chainspec_mut().core_config.validator_slots = size as u32;
 
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
     let min_round_len = chain.chainspec.core_config.minimum_block_time;
     let mut maybe_first_message_time = None;
 
@@ -718,10 +814,9 @@ async fn run_equivocator_network() {
     );
 
     for (era, bids) in era_bids {
-        for (secret_key, stake) in &stakes {
-            let public_key = PublicKey::from(secret_key.as_ref());
+        for (public_key, stake) in &stakes {
             let bid = bids
-                .validator_bid(&public_key)
+                .validator_bid(public_key)
                 .expect("should have bid for public key {public_key} in era {era}");
             let staked_amount = bid.staked_amount();
             assert!(
@@ -740,14 +835,15 @@ async fn assert_network_shutdown_for_upgrade_with_stakes(rng: &mut TestRng, stak
     const NETWORK_SIZE: usize = 2;
     const INITIALIZATION_TIMEOUT: Duration = Duration::from_secs(20);
 
-    let (_, mut net) = TestChainBuilder::new_with_stakes(stakes.to_owned())
-        .chainspec(|chain| {
-            chain.core_config.minimum_era_height = 2;
-            chain.core_config.era_duration = TimeDiff::from_millis(0);
-            chain.core_config.minimum_block_time = "1second".parse().unwrap();
-        })
-        .build(rng)
-        .await;
+    let mut chain = TestChain::new(rng, NETWORK_SIZE, Some(stakes));
+    chain.chainspec_mut().core_config.minimum_era_height = 2;
+    chain.chainspec_mut().core_config.era_duration = TimeDiff::from_millis(0);
+    chain.chainspec_mut().core_config.minimum_block_time = "1second".parse().unwrap();
+
+    let mut net = chain
+        .create_initialized_network(rng)
+        .await
+        .expect("network initialization failed");
 
     // Wait until initialization is finished, so upgrade watcher won't reject test requests.
     net.settle_on(
@@ -817,14 +913,15 @@ async fn dont_upgrade_without_switch_block() {
     const NETWORK_SIZE: usize = 2;
     const INITIALIZATION_TIMEOUT: Duration = Duration::from_secs(20);
 
-    let (_, mut net) = TestChainBuilder::new_with_size(NETWORK_SIZE)
-        .chainspec(|chain| {
-            chain.core_config.minimum_era_height = 2;
-            chain.core_config.era_duration = TimeDiff::from_millis(0);
-            chain.core_config.minimum_block_time = "1second".parse().unwrap();
-        })
-        .build(&mut rng)
-        .await;
+    let mut chain = TestChain::new(&mut rng, NETWORK_SIZE, None);
+    chain.chainspec_mut().core_config.minimum_era_height = 2;
+    chain.chainspec_mut().core_config.era_duration = TimeDiff::from_millis(0);
+    chain.chainspec_mut().core_config.minimum_block_time = "1second".parse().unwrap();
+
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
 
     // Wait until initialization is finished, so upgrade watcher won't reject test requests.
     net.settle_on(
@@ -907,21 +1004,22 @@ async fn should_store_finalized_approvals() {
     let alice_public_key = PublicKey::from(&*alice_secret_key);
     let bob_secret_key = Arc::new(SecretKey::random(&mut rng));
     let charlie_secret_key = Arc::new(SecretKey::random(&mut rng)); // just for ordering testing purposes
+    let keys: Vec<Arc<SecretKey>> = vec![alice_secret_key.clone(), bob_secret_key.clone()];
+    // only Alice will be proposing blocks
+    let stakes: BTreeMap<PublicKey, U512> =
+        iter::once((alice_public_key.clone(), U512::from(100))).collect();
 
     // Eras have exactly two blocks each, and there is one block per second.
-    let (_, mut net) = TestChainBuilder::new_with_keys(map! {
-        // only Alice will be proposing blocks:
-        alice_secret_key.clone() => U512::from(100),
-    })
-    .keys(vec![alice_secret_key.clone(), bob_secret_key.clone()])
-    .chainspec(|chain| {
-        chain.core_config.minimum_era_height = 2;
-        chain.core_config.era_duration = TimeDiff::from_millis(0);
-        chain.core_config.minimum_block_time = "1second".parse().unwrap();
-        chain.core_config.validator_slots = 1;
-    })
-    .build(&mut rng)
-    .await;
+    let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
+    chain.chainspec_mut().core_config.minimum_era_height = 2;
+    chain.chainspec_mut().core_config.era_duration = TimeDiff::from_millis(0);
+    chain.chainspec_mut().core_config.minimum_block_time = "1second".parse().unwrap();
+    chain.chainspec_mut().core_config.validator_slots = 1;
+
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
 
     // Wait for all nodes to complete era 0.
     net.settle_on(
@@ -1059,28 +1157,27 @@ async fn empty_block_validation_regression() {
     let mut rng = crate::new_rng();
 
     let size: usize = 4;
-    let stakes: BTreeMap<_, _> = (0..size)
-        .map(|_| (Arc::new(SecretKey::random(&mut rng)), U512::from(100u64)))
+    let keys: Vec<Arc<SecretKey>> = (0..size)
+        .map(|_| Arc::new(SecretKey::random(&mut rng)))
         .collect();
-    let keys: Vec<_> = stakes
-        .keys()
-        .map(|secret_key| PublicKey::from(secret_key.as_ref()))
+    let stakes: BTreeMap<PublicKey, U512> = keys
+        .iter()
+        .map(|secret_key| (PublicKey::from(&*secret_key.clone()), U512::from(100u64)))
         .collect();
 
     // We make the first validator always accuse everyone else.
-    let (_, mut net) = TestChainBuilder::new_with_keys(stakes)
-        .chainspec(|chain| {
-            chain.core_config.minimum_block_time = "1second".parse().unwrap();
-            chain.highway_config.maximum_round_length = "1second".parse().unwrap();
-            chain.core_config.minimum_era_height = 15;
-        })
-        .build(&mut rng)
-        .await;
-
-    let malicious_validator = keys.first().unwrap().clone();
+    let mut chain = TestChain::new_with_keys(&mut rng, keys, stakes.clone());
+    chain.chainspec_mut().core_config.minimum_block_time = "1second".parse().unwrap();
+    chain.chainspec_mut().highway_config.maximum_round_length = "1second".parse().unwrap();
+    chain.chainspec_mut().core_config.minimum_era_height = 15;
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
+    let malicious_validator = stakes.keys().next().unwrap().clone();
     info!("Malicious validator: {:?}", malicious_validator);
-    let everyone_else: Vec<_> = keys
-        .iter()
+    let everyone_else: Vec<_> = stakes
+        .keys()
         .filter(|pub_key| **pub_key != malicious_validator)
         .cloned()
         .collect();
@@ -1141,42 +1238,45 @@ async fn empty_block_validation_regression() {
     }
 }
 
-async fn simple_test_chain(
+fn simple_test_chain(
     named: Vec<(Arc<SecretKey>, PublicKey, U512)>,
     total_node_count: usize,
     nameless_stake_override: Option<U512>,
     rng: &mut TestRng,
-) -> (TestChain, TestingNetwork<FilterReactor<MainReactor>>) {
+) -> TestChain {
     // getting a basic network set up
     if total_node_count < named.len() {
         panic!("named validator count exceeds total node count");
     }
 
     let diff = total_node_count - named.len();
+    // Leave open slots for named validators.
+    let mut keys: Vec<Arc<SecretKey>> = (1..=diff)
+        .map(|_| Arc::new(SecretKey::random(rng)))
+        .collect();
     // Nameless validators stake; default == 100 token
     let nameless_stake = nameless_stake_override.unwrap_or(U512::from(10_000_000_000u64));
-    // Leave open slots for named validators.
-    let mut stakes: BTreeMap<Arc<SecretKey>, _> = (1..=diff)
-        .map(|_| (Arc::new(SecretKey::random(rng)), nameless_stake))
+    let mut stakes: BTreeMap<PublicKey, U512> = keys
+        .iter()
+        .map(|secret_key| (PublicKey::from(&*secret_key.clone()), nameless_stake))
         .collect();
-    for (secret_key, _public_key, stake) in named {
-        stakes.insert(secret_key, stake);
+
+    for (secret_key, public_key, stake) in named {
+        keys.push(secret_key.clone());
+        stakes.insert(public_key, stake);
     }
 
-    let validator_count = stakes.len();
-
-    TestChainBuilder::new_with_keys(stakes)
-        .chainspec(move |chain| {
-            chain.core_config.minimum_era_height = 5;
-            chain.highway_config.maximum_round_length = chain.core_config.minimum_block_time * 2;
-            chain.core_config.validator_slots = validator_count as u32;
-            chain.core_config.locked_funds_period = TimeDiff::default();
-            chain.core_config.vesting_schedule_period = TimeDiff::default();
-            chain.core_config.minimum_delegation_amount = 0;
-            chain.core_config.unbonding_delay = 1;
-        })
-        .build(rng)
-        .await
+    let validator_count = keys.len();
+    let mut chain = TestChain::new_with_keys(rng, keys, stakes.clone());
+    chain.chainspec_mut().core_config.minimum_era_height = 5;
+    chain.chainspec_mut().highway_config.maximum_round_length =
+        chain.chainspec.core_config.minimum_block_time * 2;
+    chain.chainspec_mut().core_config.validator_slots = validator_count as u32;
+    chain.chainspec_mut().core_config.locked_funds_period = TimeDiff::default();
+    chain.chainspec_mut().core_config.vesting_schedule_period = TimeDiff::default();
+    chain.chainspec_mut().core_config.minimum_delegation_amount = 0;
+    chain.chainspec_mut().core_config.unbonding_delay = 1;
+    chain
 }
 
 fn get_highest_block_or_fail(
@@ -1365,11 +1465,17 @@ async fn run_withdraw_bid_network() {
             alice_stake,
         )];
 
-        let (chain, net) = simple_test_chain(named_validators, 5, None, &mut rng).await;
+        let mut chain = simple_test_chain(named_validators, 5, None, &mut rng);
 
         let chain_name = chain.chainspec.network_config.name.clone();
 
-        (net, chain_name)
+        (
+            chain
+                .create_initialized_network(&mut rng)
+                .await
+                .expect("network initialization failed"),
+            chain_name,
+        )
     };
 
     // genesis
@@ -1462,11 +1568,17 @@ async fn run_undelegate_bid_network() {
     let (mut net, chain_name) = {
         let named_validators = vec![alice.clone(), bob.clone()];
 
-        let (chain, net) = simple_test_chain(named_validators, 5, None, &mut rng).await;
+        let mut chain = simple_test_chain(named_validators, 5, None, &mut rng);
 
         let chain_name = chain.chainspec.network_config.name.clone();
 
-        (net, chain_name)
+        (
+            chain
+                .create_initialized_network(&mut rng)
+                .await
+                .expect("network initialization failed"),
+            chain_name,
+        )
     };
 
     // genesis
@@ -1625,11 +1737,17 @@ async fn run_redelegate_bid_network() {
     let (mut net, chain_name) = {
         let named_validators = vec![alice.clone(), bob.clone(), charlie.clone()];
 
-        let (chain, net) = simple_test_chain(named_validators, 5, None, &mut rng).await;
+        let mut chain = simple_test_chain(named_validators, 5, None, &mut rng);
 
         let chain_name = chain.chainspec.network_config.name.clone();
 
-        (net, chain_name)
+        (
+            chain
+                .create_initialized_network(&mut rng)
+                .await
+                .expect("network initialization failed"),
+            chain_name,
+        )
     };
 
     // genesis
@@ -1792,7 +1910,7 @@ async fn rewards_are_calculated() {
     let switch_block =
         switch_block_for_era(network.first_node(), era).expect("a switch block for era 2");
 
-    for (_validator, reward) in switch_block.era_end().unwrap().rewards() {
+    for reward in switch_block.era_end().unwrap().rewards().values() {
         assert_ne!(reward, &U512::zero());
     }
 }

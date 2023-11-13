@@ -97,8 +97,7 @@ impl RewardsInfo {
         tracing::info!(
             current_era_id = %current_era_id.value(),
             range_requested = ?range_to_fetch,
-            num_fetched_blocks = %cited_blocks.iter().count(),
-            num_requested_blocks = %cited_blocks.len(),
+            num_fetched_blocks = %cited_blocks.len(),
             "blocks fetched",
         );
 

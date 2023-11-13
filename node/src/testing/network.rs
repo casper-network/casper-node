@@ -425,8 +425,7 @@ where
 
     /// Returns the first node of the network.
     pub(crate) fn first_node(&self) -> &Runner<ConditionCheckReactor<R>> {
-        &self
-            .nodes()
+        self.nodes()
             .iter()
             .next()
             .expect("Expected non-empty network")
