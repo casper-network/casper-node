@@ -22,6 +22,9 @@ All notable changes to this project will be documented in this file.  The format
 ### Changed
 * The `state_identifier` parameter of the `query_global_state` JSON-RPC method is now optional. If no `state_identifier` is specified, the highest complete block known to the node will be used to fulfill the request.
 
+### Removed
+* The section `consensus.highway.round_success_meter` has been removed from the config file as no longer relevant with the introduction of a new method of determining the round exponent in Highway.
+
 
 
 ## 1.5.3

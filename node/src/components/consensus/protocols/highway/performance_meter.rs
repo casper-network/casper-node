@@ -35,7 +35,7 @@ pub(crate) struct PerformanceMeter {
     min_round_len: TimeDiff,
     max_round_len: TimeDiff,
     current_round_len: TimeDiff,
-    last_switch_round_id: Timestamp,
+    last_exponent_change_round_id: Timestamp,
 }
 
 impl PerformanceMeter {
@@ -52,7 +52,7 @@ impl PerformanceMeter {
             min_round_len,
             max_round_len,
             current_round_len: round_len,
-            last_switch_round_id: current_round_id,
+            last_exponent_change_round_id: current_round_id,
         }
     }
 
@@ -82,7 +82,7 @@ impl PerformanceMeter {
         let blocks_to_check = state.ancestor_hashes(latest_block);
 
         let max_quora: Vec<_> = blocks_to_check
-            .take_while(|block| state.unit(block).round_id() >= self.last_switch_round_id)
+            .take_while(|block| state.unit(block).round_id() >= self.last_exponent_change_round_id)
             .filter_map(|block| {
                 let round_id = state.unit(block).round_id();
                 (!matches!(
@@ -113,13 +113,19 @@ impl PerformanceMeter {
 
         #[allow(clippy::integer_arithmetic)]
         if avg_max_quorum < SLOW_DOWN_THRESHOLD {
-            self.current_round_len = min(self.current_round_len * 2, self.max_round_len);
-            self.last_switch_round_id = current_round_id;
+            let new_round_len = min(self.current_round_len * 2, self.max_round_len);
+            if new_round_len != self.current_round_len {
+                self.current_round_len = new_round_len;
+                self.last_exponent_change_round_id = current_round_id;
+            }
         } else if avg_max_quorum > ACCELERATION_THRESHOLD
             && current_round_index % ACCELERATION_PARAMETER == 0
         {
-            self.current_round_len = max(self.current_round_len / 2, self.min_round_len);
-            self.last_switch_round_id = current_round_id;
+            let new_round_len = max(self.current_round_len / 2, self.min_round_len);
+            if new_round_len != self.current_round_len {
+                self.current_round_len = new_round_len;
+                self.last_exponent_change_round_id = current_round_id;
+            }
         }
 
         self.current_round_len
