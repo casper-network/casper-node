@@ -133,7 +133,9 @@ where
 {
     // Manually encode a handshake.
     let handshake_message = context.chain_info().create_handshake::<P>(
-        context.public_addr().expect("TODO: What to do?"),
+        context
+            .public_addr()
+            .expect("did not expect public listening address to be missing"),
         context.node_key_pair(),
         connection_id,
     );
