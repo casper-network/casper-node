@@ -46,7 +46,7 @@ where
         .await
         .map_err(RawFrameIoError::Io)?;
 
-    let length = u32::from_ne_bytes(length_prefix_raw);
+    let length = u32::from_be_bytes(length_prefix_raw);
 
     if length > max_length {
         return Err(RawFrameIoError::MaximumLengthExceeded(length as usize));
@@ -76,7 +76,7 @@ where
     }
 
     async move {
-        stream.write_all(&(data.len() as u32).to_ne_bytes()).await?;
+        stream.write_all(&(data.len() as u32).to_be_bytes()).await?;
         stream.write_all(data).await?;
         stream.flush().await?;
         Ok(())
