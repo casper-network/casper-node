@@ -1043,6 +1043,7 @@ where
 
         let min_round_len = self.highway.state().params().min_round_length();
         let max_round_len = self.highway.state().params().max_round_length();
+        let minimum_era_height = self.highway.state().params().end_height();
         let our_idx = match self.highway.validators().get_index(&our_id) {
             Some(idx) => idx,
             None => {
@@ -1058,6 +1059,7 @@ where
             self.highway.state().params().init_round_len(),
             min_round_len,
             max_round_len,
+            minimum_era_height,
             now,
         ));
 
