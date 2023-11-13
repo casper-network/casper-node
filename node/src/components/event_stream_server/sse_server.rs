@@ -35,13 +35,12 @@ use warp::{
 use casper_types::{
     contract_messages::Messages,
     execution::{Effects, ExecutionResult},
-    Block, BlockHash, EraId, FinalitySignature, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
-    Transaction, TransactionHash,
+    Block, BlockHash, EraId, FinalitySignature, InitiatorAddr, ProtocolVersion, PublicKey,
+    TimeDiff, Timestamp, Transaction, TransactionHash,
 };
 #[cfg(test)]
 use casper_types::{
-    execution::ExecutionResultV2, testing::TestRng, Deploy, TestBlockBuilder,
-    TestTransactionV1Builder,
+    execution::ExecutionResultV2, testing::TestRng, Deploy, TestBlockBuilder, TransactionV1Builder,
 };
 
 /// The URL root path.
@@ -72,7 +71,7 @@ pub enum SseData {
     /// The given transaction has been executed, committed and forms part of the given block.
     TransactionProcessed {
         transaction_hash: Box<TransactionHash>,
-        account: Box<PublicKey>,
+        initiator_addr: Box<InitiatorAddr>,
         timestamp: Timestamp,
         ttl: TimeDiff,
         block_hash: Box<BlockHash>,
@@ -133,7 +132,7 @@ impl SseData {
 
         SseData::TransactionProcessed {
             transaction_hash: Box::new(txn.hash()),
-            account: Box::new(txn.account().clone()),
+            initiator_addr: Box::new(txn.initiator_addr()),
             timestamp,
             ttl,
             block_hash: Box::new(BlockHash::random(rng)),
@@ -149,10 +148,11 @@ impl SseData {
         let txn = if rng.gen() {
             Transaction::from(Deploy::random_with_timestamp_and_ttl(rng, timestamp, ttl))
         } else {
-            let txn = TestTransactionV1Builder::new(rng)
+            let txn = TransactionV1Builder::new_random(rng)
                 .with_timestamp(timestamp)
                 .with_ttl(ttl)
-                .build();
+                .build()
+                .unwrap();
             Transaction::from(txn)
         };
 

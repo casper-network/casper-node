@@ -28,7 +28,7 @@ use casper_types::{
     RuntimeArgs, SecretKey, SemVer, SignedBlockHeader, SingleBlockRewardedSignatures, TimeDiff,
     Timestamp, Transaction, TransactionApprovalsHash, TransactionHash, TransactionId,
     TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash, TransactionV1Builder,
-    TransactionV1Hash, TransactionV1Kind, URef, KEY_HASH_LENGTH, U512,
+    TransactionV1Hash, URef, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{
@@ -985,23 +985,21 @@ impl LargestSpecimen for TransactionV1Hash {
 
 impl LargestSpecimen for TransactionV1 {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-        let body = TransactionV1Kind::new_transfer(
+        TransactionV1Builder::new_transfer(
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             U512::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
         )
-        .unwrap();
-        TransactionV1Builder::new()
-            .with_secret_key(&LargestSpecimen::largest_specimen(estimator, cache))
-            .with_timestamp(LargestSpecimen::largest_specimen(estimator, cache))
-            .with_ttl(LargestSpecimen::largest_specimen(estimator, cache))
-            .with_chain_name(largest_chain_name(estimator))
-            .with_payment(LargestSpecimen::largest_specimen(estimator, cache))
-            .with_body(body)
-            .build()
-            .unwrap()
+        .unwrap()
+        .with_secret_key(&LargestSpecimen::largest_specimen(estimator, cache))
+        .with_timestamp(LargestSpecimen::largest_specimen(estimator, cache))
+        .with_ttl(LargestSpecimen::largest_specimen(estimator, cache))
+        .with_chain_name(largest_chain_name(estimator))
+        .with_payment_amount(LargestSpecimen::largest_specimen(estimator, cache))
+        .build()
+        .unwrap()
     }
 }
 

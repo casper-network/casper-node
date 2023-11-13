@@ -35,7 +35,7 @@ use tokio::sync::{
 use tracing::{error, info, warn};
 use warp::Filter;
 
-use casper_types::{ProtocolVersion, TransactionHeader};
+use casper_types::{InitiatorAddr, ProtocolVersion, TransactionHeader};
 
 use super::Component;
 use crate::{
@@ -298,21 +298,21 @@ where
                     execution_result,
                     messages,
                 } => {
-                    let (account, timestamp, ttl) = match *transaction_header {
+                    let (initiator_addr, timestamp, ttl) = match *transaction_header {
                         TransactionHeader::Deploy(deploy_header) => (
-                            deploy_header.account().clone(),
+                            InitiatorAddr::PublicKey(deploy_header.account().clone()),
                             deploy_header.timestamp(),
                             deploy_header.ttl(),
                         ),
                         TransactionHeader::V1(txn_header) => (
-                            txn_header.account().clone(),
+                            txn_header.initiator_addr().clone(),
                             txn_header.timestamp(),
                             txn_header.ttl(),
                         ),
                     };
                     self.broadcast(SseData::TransactionProcessed {
                         transaction_hash: Box::new(transaction_hash),
-                        account: Box::new(account),
+                        initiator_addr: Box::new(initiator_addr),
                         timestamp,
                         ttl,
                         block_hash: Box::new(block_hash),
