@@ -462,7 +462,7 @@ where
     E: SizeEstimator,
 {
     fn large_unique_sequence(_estimator: &E, count: usize, _cache: &mut Cache) -> BTreeSet<Self> {
-        (0..count).map(|n| Digest::hash(n.to_ne_bytes())).collect()
+        (0..count).map(|n| Digest::hash(n.to_le_bytes())).collect()
     }
 }
 
