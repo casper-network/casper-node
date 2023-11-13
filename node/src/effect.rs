@@ -127,7 +127,7 @@ use casper_types::{
     package::Package,
     system::auction::EraValidators,
     AddressableEntity, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes,
-    DeployHash, DeployHeader, Digest, EraId, FinalitySignature, FinalitySignatureId, Key,
+    DbId, DeployHash, DeployHeader, Digest, EraId, FinalitySignature, FinalitySignatureId, Key,
     PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId, Transfer, U512,
 };
 
@@ -1165,12 +1165,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     // TODO[RC]: Allow for different databases
-    pub(crate) async fn get_raw_data(self, block_hash: BlockHash) -> Option<Vec<u8>>
+    pub(crate) async fn get_raw_data(self, db: DbId, block_hash: BlockHash) -> Option<Vec<u8>>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::GetRawData {
+                db,
                 block_hash,
                 responder,
             },

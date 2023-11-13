@@ -54,6 +54,7 @@ use std::{
     fmt::{self, Display, Formatter},
     fs::{self, OpenOptions},
     io::ErrorKind,
+    iter::FromIterator,
     path::{Path, PathBuf},
     rc::Rc,
     sync::Arc,
@@ -75,7 +76,7 @@ use casper_types::{
     execution::{
         execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
     },
-    Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, BlockV2, DeployApprovalsHash,
+    Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, BlockV2, DbId, DeployApprovalsHash,
     DeployHash, DeployHeader, Digest, EraId, FinalitySignature, ProtocolVersion, PublicKey,
     SignedBlockHeader, StoredValue, Timestamp, Transaction, TransactionApprovalsHash,
     TransactionHash, TransactionId, TransactionV1ApprovalsHash, Transfer,
@@ -1185,8 +1186,33 @@ impl Storage {
             StorageRequest::GetRawData {
                 block_hash,
                 responder,
+                db,
             } => {
-                let maybe_raw_data = self.read_raw_data(&block_hash)?;
+                // TODO[RC]: Contruct at the time the storage is created
+                let db_mapper = HashMap::<DbId, Database>::from_iter([
+                    (DbId::BlockHeader, self.block_header_dbs.legacy),
+                    (DbId::BlockHeaderV2, self.block_header_dbs.current),
+                ]);
+
+                let database = match db {
+                    casper_types::DbId::BlockHeader => self.block_header_dbs.legacy,
+                    casper_types::DbId::BlockHeaderV2 => self.block_header_dbs.current,
+                    casper_types::DbId::BlockMetadata => self.block_metadata_db,
+                    casper_types::DbId::Deploys => todo!(),
+                    casper_types::DbId::Transactions => todo!(),
+                    casper_types::DbId::DeployMetadata => todo!(),
+                    casper_types::DbId::ExecutionResults => todo!(),
+                    casper_types::DbId::Transfer => todo!(),
+                    casper_types::DbId::StateStore => todo!(),
+                    casper_types::DbId::BlockBody => todo!(),
+                    casper_types::DbId::BlockBodyV2 => todo!(),
+                    casper_types::DbId::FinalizedApprovals => todo!(),
+                    casper_types::DbId::VersionedFinalizedApprovals => todo!(),
+                    casper_types::DbId::ApprovalsHashes => todo!(),
+                    casper_types::DbId::VersionedApprovalsHashes => todo!(),
+                };
+                let maybe_raw_data =
+                    self.read_raw_data(db_mapper.get(&db).unwrap(), &block_hash)?;
                 responder.respond(maybe_raw_data).ignore()
             }
         })
@@ -2260,9 +2286,13 @@ impl Storage {
         self.get_block_signatures(&mut txn, block_hash)
     }
 
-    fn read_raw_data(&self, block_hash: &BlockHash) -> Result<Option<Vec<u8>>, FatalStorageError> {
+    fn read_raw_data(
+        &self,
+        db: &Database,
+        block_hash: &BlockHash,
+    ) -> Result<Option<Vec<u8>>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
-        let result = txn.get(self.block_header_dbs.current, block_hash);
+        let result = txn.get(*db, block_hash);
         match result {
             Ok(maybe_raw_data) => return Ok(Some(maybe_raw_data.to_vec())),
             Err(err) => panic!("XXXXX - error {}", err),

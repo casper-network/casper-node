@@ -74,6 +74,7 @@ use bytesrepr::{Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 use libc::{c_long, sysconf, _SC_PAGESIZE};
 #[cfg(feature = "std")]
 use once_cell::sync::Lazy;
+use serde::Serialize;
 
 pub use crate::uint::{UIntParseError, U128, U256, U512};
 pub use access_rights::{
@@ -206,6 +207,8 @@ pub static OS_PAGE_SIZE: Lazy<usize> = Lazy::new(|| {
 
 const ERROR_TAG: u8 = 0;
 
+/// TODO[RC]: Move the below to proper place.
+
 /// TODO
 #[derive(Debug)]
 pub enum BinaryError {
@@ -218,21 +221,21 @@ const PUT_TRANSACTION_TAG: u8 = 1;
 const SPECULATIVE_EXEC_TAG: u8 = 2;
 const QUIT_EXEC_TAG: u8 = 3;
 
-pub const BLOCK_HEADER_DB: &str = "block_header";
-pub const BLOCK_HEADER_V2_DB: &str = "block_header_v2";
-pub const BLOCK_METADATA_DB: &str = "block_metadata";
-pub const DEPLOYS_DB: &str = "deploys";
-pub const TRANSACTIONS_DB: &str = "transactions";
-pub const DEPLOY_METADATA_DB: &str = "deploy_metadata";
-pub const EXECUTION_RESULTS_DB: &str = "execution_results";
-pub const TRANSFER_DB: &str = "transfer";
-pub const STATE_STORE_DB: &str = "state_store";
-pub const BLOCK_BODY_DB: &str = "block_body";
-pub const BLOCK_BODY_V2_DB: &str = "block_body_v2";
-pub const FINALIZED_APPROVALS_DB: &str = "finalized_approvals";
-pub const VERSIONED_FINALIZED_APPROVALS_DB: &str = "versioned_finalized_approvals";
-pub const APPROVALS_HASHES_DB: &str = "approvals_hashes";
-pub const VERSIONED_APPROVALS_HASHES_DB: &str = "versioned_approvals_hashes";
+const BLOCK_HEADER_DB_TAG: u8 = 0;
+const BLOCK_HEADER_V2_DB_TAG: u8 = 1;
+const BLOCK_METADATA_DB_TAG: u8 = 2;
+const DEPLOYS_DB_TAG: u8 = 3;
+const TRANSACTIONS_DB_TAG: u8 = 4;
+const DEPLOY_METADATA_DB_TAG: u8 = 5;
+const EXECUTION_RESULTS_DB_TAG: u8 = 6;
+const TRANSFER_DB_TAG: u8 = 7;
+const STATE_STORE_DB_TAG: u8 = 8;
+const BLOCKBODY_DB_TAG: u8 = 9;
+const BLOCKBODY_V2_DB_TAG: u8 = 10;
+const FINALIZED_APPROVALS_DB_TAG: u8 = 11;
+const VERSIONED_FINALIZED_APPROVALS_DB_TAG: u8 = 12;
+const APPROVALS_HASHES_DB_TAG: u8 = 13;
+const VERSIONED_APPROVALS_HASHES_DB_TAG: u8 = 14;
 
 /// TODO
 #[derive(Debug)]
@@ -241,7 +244,7 @@ pub enum BinaryRequest {
     /// TODO
     Get {
         /// TODO
-        db: u8,
+        db: DbId,
         /// TODO - bytesrepr serialized
         key: Vec<u8>,
     },
@@ -344,7 +347,7 @@ impl FromBytes for BinaryRequest {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
             GET_TAG => {
-                let (db, remainder) = u8::from_bytes(remainder)?;
+                let (db, remainder) = DbId::from_bytes(remainder)?;
                 let (key, remainder) = Bytes::from_bytes(remainder)?;
                 Ok((
                     BinaryRequest::Get {
@@ -367,9 +370,9 @@ impl FromBytes for BinaryRequest {
     }
 }
 
-#[derive(Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Serialize)]
 #[repr(u8)]
-pub enum DbTag {
+pub enum DbId {
     BlockHeader = 0,
     BlockHeaderV2 = 1,
     BlockMetadata = 2,
@@ -385,4 +388,86 @@ pub enum DbTag {
     VersionedFinalizedApprovals = 12,
     ApprovalsHashes = 13,
     VersionedApprovalsHashes = 14,
+}
+
+impl std::fmt::Display for DbId {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            DbId::BlockHeader => write!(f, "BlockHeader"),
+            DbId::BlockHeaderV2 => write!(f, "BlockHeaderV2"),
+            DbId::BlockMetadata => write!(f, "BlockMetadata"),
+            DbId::Deploys => write!(f, "Deploys"),
+            DbId::Transactions => write!(f, "Transactions"),
+            DbId::DeployMetadata => write!(f, "DeployMetadata"),
+            DbId::ExecutionResults => write!(f, "ExecutionResults"),
+            DbId::Transfer => write!(f, "Transfer"),
+            DbId::StateStore => write!(f, "StateStore"),
+            DbId::BlockBody => write!(f, "BlockBody"),
+            DbId::BlockBodyV2 => write!(f, "BlockBodyV2"),
+            DbId::FinalizedApprovals => write!(f, "FinalizedApprovals"),
+            DbId::VersionedFinalizedApprovals => write!(f, "VersionedFinalizedApprovals"),
+            DbId::ApprovalsHashes => write!(f, "ApprovalsHashes"),
+            DbId::VersionedApprovalsHashes => write!(f, "VersionedApprovalsHashes"),
+        }
+    }
+}
+
+impl ToBytes for DbId {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            // TODO[RC]: Do this less verbosely, plausibly by serializing as u8
+            DbId::BlockHeader => BLOCK_HEADER_DB_TAG,
+            DbId::BlockHeaderV2 => BLOCK_HEADER_V2_DB_TAG,
+            DbId::BlockMetadata => BLOCK_METADATA_DB_TAG,
+            DbId::Deploys => DEPLOYS_DB_TAG,
+            DbId::Transactions => TRANSACTIONS_DB_TAG,
+            DbId::DeployMetadata => DEPLOY_METADATA_DB_TAG,
+            DbId::ExecutionResults => EXECUTION_RESULTS_DB_TAG,
+            DbId::Transfer => TRANSFER_DB_TAG,
+            DbId::StateStore => STATE_STORE_DB_TAG,
+            DbId::BlockBody => BLOCKBODY_DB_TAG,
+            DbId::BlockBodyV2 => BLOCKBODY_V2_DB_TAG,
+            DbId::FinalizedApprovals => FINALIZED_APPROVALS_DB_TAG,
+            DbId::VersionedFinalizedApprovals => VERSIONED_FINALIZED_APPROVALS_DB_TAG,
+            DbId::ApprovalsHashes => APPROVALS_HASHES_DB_TAG,
+            DbId::VersionedApprovalsHashes => VERSIONED_APPROVALS_HASHES_DB_TAG,
+        }
+        .write_bytes(writer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+    }
+}
+
+impl FromBytes for DbId {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        // TODO[RC]: Error handling
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        let db_id = match tag {
+            BLOCK_HEADER_DB_TAG => DbId::BlockHeader,
+            BLOCK_HEADER_V2_DB_TAG => DbId::BlockHeaderV2,
+            BLOCK_METADATA_DB_TAG => DbId::BlockMetadata,
+            DEPLOYS_DB_TAG => DbId::Deploys,
+            TRANSACTIONS_DB_TAG => DbId::Transactions,
+            DEPLOY_METADATA_DB_TAG => DbId::DeployMetadata,
+            EXECUTION_RESULTS_DB_TAG => DbId::ExecutionResults,
+            TRANSFER_DB_TAG => DbId::Transfer,
+            STATE_STORE_DB_TAG => DbId::StateStore,
+            BLOCKBODY_DB_TAG => DbId::BlockBody,
+            BLOCKBODY_V2_DB_TAG => DbId::BlockBodyV2,
+            FINALIZED_APPROVALS_DB_TAG => DbId::FinalizedApprovals,
+            VERSIONED_FINALIZED_APPROVALS_DB_TAG => DbId::VersionedFinalizedApprovals,
+            APPROVALS_HASHES_DB_TAG => DbId::ApprovalsHashes,
+            VERSIONED_APPROVALS_HASHES_DB_TAG => DbId::VersionedApprovalsHashes,
+            _ => panic!("incorrect db"),
+        };
+        Ok((db_id, remainder))
+    }
 }

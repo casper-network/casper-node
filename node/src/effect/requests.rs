@@ -11,6 +11,7 @@ use std::{
 };
 
 use datasize::DataSize;
+
 use num_rational::Ratio;
 use serde::Serialize;
 use smallvec::SmallVec;
@@ -30,7 +31,7 @@ use casper_types::{
     contract_messages::Messages,
     execution::{ExecutionResult, ExecutionResultV2},
     system::auction::EraValidators,
-    Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash,
+    Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DbId, DeployHash,
     DeployHeader, Digest, DisplayIter, EraId, FinalitySignature, FinalitySignatureId, Key,
     ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId,
     Transfer, URef, U512,
@@ -340,6 +341,8 @@ pub(crate) enum StorageRequest {
     },
     /// Retrieve block header with given hash.
     GetRawData {
+        /// From which database.
+        db: DbId,
         /// Hash of block to get header of.
         block_hash: BlockHash,
         /// Responder to call with the result.  Returns `None` if the block header doesn't exist in
@@ -681,7 +684,8 @@ impl Display for StorageRequest {
             StorageRequest::GetRawData {
                 block_hash,
                 responder,
-            } => write!(formatter, "get raw data {}::{}", "DB", "KEY"),
+                db,
+            } => write!(formatter, "get raw data {}::{}", db, "KEY"),
         }
     }
 }

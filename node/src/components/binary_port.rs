@@ -125,11 +125,11 @@ async fn handle_client<REv, const N: usize>(
                     let (req, _): (BinaryRequest, _) = BinaryRequest::from_bytes(payload.as_ref())
                         .expect("TODO: Handle malformed payload");
                     match req {
-                        BinaryRequest::Get { key, .. } => {
+                        BinaryRequest::Get { key, db } => {
                             let (block_hash, _): (BlockHash, _) =
                                 BlockHash::from_bytes(&key).unwrap();
                             error!("XXXXX - getting block hash: {:?}", block_hash);
-                            match effect_builder.get_raw_data(block_hash).await {
+                            match effect_builder.get_raw_data(db, block_hash).await {
                                 Some(block_header_raw) => {
                                     let mut response_payload = BytesMut::new();
                                     response_payload.extend(block_header_raw);
