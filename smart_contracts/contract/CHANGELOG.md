@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Added
 * Add `storage::enable_contract_version` for enabling a specific version of a contract.
+* Add `crypto::generic_hash` with blake2b and blake3 support.
 
 
 
