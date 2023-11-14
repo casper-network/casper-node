@@ -8,7 +8,7 @@ use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
     account::AccountHash,
     package::{EntityVersion, ENTITY_INITIAL_VERSION},
-    runtime_args, AddressableEntity, EntityVersionKey, EraId, PackageHash, ProtocolVersion,
+    runtime_args, EntityVersionKey, EraId, PackageHash, ProtocolVersion,
     RuntimeArgs, U512,
 };
 

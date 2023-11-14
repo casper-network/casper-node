@@ -104,7 +104,7 @@ impl TransformKind {
             TransformKind::AddUInt128(to_add) => wrapping_addition(stored_value, to_add),
             TransformKind::AddUInt256(to_add) => wrapping_addition(stored_value, to_add),
             TransformKind::AddUInt512(to_add) => wrapping_addition(stored_value, to_add),
-            TransformKind::AddKeys(keys) => match stored_value {
+            TransformKind::AddKeys(_) => match stored_value {
                 StoredValue::Account(_)
                 | StoredValue::Contract(_)
                 | StoredValue::AddressableEntity(_) => Err(TransformError::Deprecated),

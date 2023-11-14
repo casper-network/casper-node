@@ -21,7 +21,6 @@ use casper_types::{
         ActionThresholds, EntityKind, EntityKindTag, NamedKeyAddr, NamedKeyValue, NamedKeys,
     },
     bytesrepr,
-    bytesrepr::{FromBytes, ToBytes},
     execution::Effects,
     package::{EntityVersions, Groups, PackageStatus},
     system::{
@@ -40,7 +39,7 @@ use casper_types::{
     ByteCodeHash, ByteCodeKind, CLValue, Chainspec, ChainspecRegistry, Digest, EntityAddr,
     EntryPoints, EraId, FeeHandling, GenesisAccount, Key, Motes, Package, PackageHash, Phase,
     ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemConfig, Tagged, URef,
-    WasmConfig, KEY_HASH_LENGTH, U512,
+    WasmConfig, U512,
 };
 
 use crate::{
@@ -551,6 +550,7 @@ pub enum GenesisError {
     ///
     /// This error can occur only on some private chains.
     DuplicatedAdministratorEntry,
+    /// A bytesrepr Error.
     Bytesrepr(bytesrepr::Error),
 }
 

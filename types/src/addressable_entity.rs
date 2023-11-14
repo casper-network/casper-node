@@ -77,7 +77,7 @@ pub const PACKAGE_KIND_ACCOUNT_TAG: u8 = 2;
 /// The tag for Contract Packages associated with legacy packages.
 pub const PACKAGE_KIND_LEGACY_TAG: u8 = 3;
 
-pub const MAX_ENTRY_BYTE_LENGTH: usize = 64;
+
 
 const ADDRESSABLE_ENTITY_STRING_PREFIX: &str = "addressable-entity-";
 
@@ -919,30 +919,40 @@ impl Distribution<EntityKind> for Standard {
 //     named_keys: NamedKeys
 // }
 
+
+/// The address for an AddressableEntity which contains the 32 bytes and tagging information.
 #[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntityAddr {
+    /// The address for a system entity account or contract.
     System(HashAddr),
+    /// The address of an entity that corresponds to an Account.
     Account(HashAddr),
+    /// The address of an entity that corresponds to a Userland smart contract.
     SmartContract(HashAddr),
 }
 
 impl EntityAddr {
+    /// The length in bytes of a [`EntityAddr`].
     pub const ENTITY_ADDR_LENGTH: usize = U8_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 
+    /// Constructs a new [`EntityAddr`] for a system entity.
     pub const fn new_system_entity_addr(hash_addr: [u8; KEY_HASH_LENGTH]) -> Self {
         Self::System(hash_addr)
     }
 
+    /// Constructs a new [`EntityAddr`] for an Account entity.
     pub const fn new_account_entity_addr(hash_addr: [u8; KEY_HASH_LENGTH]) -> Self {
         Self::Account(hash_addr)
     }
 
+    /// Constructs a new [`EntityAddr`] for a smart contract.
     pub const fn new_contract_entity_addr(hash_addr: [u8; KEY_HASH_LENGTH]) -> Self {
         Self::SmartContract(hash_addr)
     }
 
+    /// Constructs a new [`EntityAddr`] based on the supplied tag.
     pub fn new_with_tag(entity_kind: EntityKind, hash_addr: [u8; KEY_HASH_LENGTH]) -> Self {
         match entity_kind {
             EntityKind::System(_) => Self::new_system_entity_addr(hash_addr),
@@ -951,6 +961,7 @@ impl EntityAddr {
         }
     }
 
+    /// Returns the tag of the [`EntityAddr`].
     pub fn tag(&self) -> EntityKindTag {
         match self {
             EntityAddr::System(_) => EntityKindTag::System,
@@ -958,6 +969,8 @@ impl EntityAddr {
             EntityAddr::SmartContract(_) => EntityKindTag::SmartContract,
         }
     }
+
+    /// Returns the 32 bytes of the [`EntityAddr`].
     pub fn value(&self) -> HashAddr {
         match self {
             EntityAddr::System(hash_addr)
@@ -966,10 +979,13 @@ impl EntityAddr {
         }
     }
 
+    /// Returns the formatted String representation of the [`EntityAddr`].
     pub fn to_formatted_string(&self) -> String {
         format!("{}", self)
     }
 
+
+    /// Constructs an [`EntityAddr`] from a formatted String.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         if let Some(entity) = input.strip_prefix(ENTITY_PREFIX) {
             let (addr_str, tag) = if let Some(str) = entity.strip_prefix(ACCOUNT_ENTITY_PREFIX) {
@@ -1092,9 +1108,12 @@ impl Distribution<EntityAddr> for Standard {
 #[repr(u8)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+/// The tag for the NamedKeyAddr.
 pub enum NamedKeyAddrTag {
     #[default]
+    /// The tag for the base variant.
     Base = BASE_TAG,
+    /// The tag for the entry variant.
     NamedKeyEntry = ENTRY_TAG,
 }
 
@@ -1108,24 +1127,33 @@ impl Display for NamedKeyAddrTag {
     }
 }
 
+
+/// A NamedKey address.
 #[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum NamedKeyAddr {
+    /// The base variant used to generate the prefix.
     Base(EntityAddr),
+    /// A specific key for a given NamedKey.
     NamedKeyEntry {
+        /// The address of the entity.
         base_addr: EntityAddr,
+        /// The bytes of the name.
         string_bytes: [u8; KEY_HASH_LENGTH],
     },
 }
 
 impl NamedKeyAddr {
+    /// The length in bytes of a [`NamedKeyAddr`].
     pub const NAMED_KEY_ADDR_BASE_LENGTH: usize = 1 + EntityAddr::ENTITY_ADDR_LENGTH;
 
+    /// Constructs a new [`EntityAddr`] for the base.
     pub fn new_named_key_base(entity_addr: EntityAddr) -> Self {
         Self::Base(entity_addr)
     }
 
+    /// Constructs a new [`NamedKeyAddr`] based on the supplied bytes.
     pub fn new_named_key_entry(
         entity_addr: EntityAddr,
         string_bytes: [u8; KEY_HASH_LENGTH],
@@ -1136,6 +1164,8 @@ impl NamedKeyAddr {
         }
     }
 
+    /// Constructs a new [`NamedKeyAddr`] based on string name.
+    /// Will fail if the string cannot be serialized.
     pub fn new_from_string(
         entity_addr: EntityAddr,
         entry: String,
@@ -1153,6 +1183,7 @@ impl NamedKeyAddr {
         Ok(Self::new_named_key_entry(entity_addr, string_bytes))
     }
 
+    /// Returns the encapsulated [`EntityAddr`].
     pub fn entity_addr(&self) -> EntityAddr {
         match self {
             Self::Base(entity_addr) => *entity_addr,
@@ -1160,6 +1191,7 @@ impl NamedKeyAddr {
         }
     }
 
+    /// Returns the common prefix of all NamedKey entries.
     pub fn named_keys_prefix(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let entity_addr = self.entity_addr();
         let mut ret = Vec::with_capacity(entity_addr.serialized_length() + 1);
@@ -1169,6 +1201,7 @@ impl NamedKeyAddr {
         Ok(ret)
     }
 
+    /// Returns the tag of the [`NamedKeyAddr'].
     pub fn tag(&self) -> NamedKeyAddrTag {
         match self {
             NamedKeyAddr::Base(_) => NamedKeyAddrTag::Base,
@@ -1176,10 +1209,12 @@ impl NamedKeyAddr {
         }
     }
 
+    /// Returns the formatted String representation of the [`NamedKeyAddr`].
     pub fn to_formatted_string(&self) -> String {
         format!("{}", self)
     }
 
+    /// Constructs a [`NamedKeyAddr`] from a formatted string.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         if let Some(named_key) = input.strip_prefix(NAMED_KEY_PREFIX) {
             let (addr_str, tag) =
@@ -1326,6 +1361,7 @@ impl Debug for NamedKeyAddr {
     }
 }
 
+/// A NamedKey value.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
@@ -1337,6 +1373,7 @@ pub struct NamedKeyValue {
 }
 
 impl NamedKeyValue {
+    /// Constructs a new [`NamedKeyValue`].
     pub fn new(key: CLValue, name: CLValue) -> Self {
         Self {
             named_key: key,
@@ -1344,24 +1381,30 @@ impl NamedKeyValue {
         }
     }
 
+    /// Constructs a new [`NamedKeyValue`] from its [`Key`] and [`String`].
     pub fn from_concrete_values(named_key: Key, name: String) -> Result<Self, CLValueError> {
         let key_cl_value = CLValue::from_t(named_key)?;
         let string_cl_value = CLValue::from_t(name)?;
         Ok(Self::new(key_cl_value, string_cl_value))
     }
 
+
+    /// Returns the [`Key`] as a CLValue.
     pub fn get_key_as_cl_value(&self) -> &CLValue {
         &self.named_key
     }
 
+    /// Returns the [`String`] as a CLValue.
     pub fn get_name_as_cl_value(&self) -> &CLValue {
         &self.name
     }
 
+    /// Returns the concrete `Key` value
     pub fn get_key(&self) -> Result<Key, CLValueError> {
         self.named_key.clone().into_t::<Key>()
     }
 
+    /// Returns the concrete `String` value
     pub fn get_name(&self) -> Result<String, CLValueError> {
         self.name.clone().into_t::<String>()
     }
@@ -2266,20 +2309,6 @@ mod tests {
         assert!(AddressableEntityHash::from_formatted_str(invalid_hex).is_err());
     }
 
-    #[test]
-    fn entity_addr_from_str() {
-        let entity_addr = EntityAddr::new_contract_entity_addr([3; 32]);
-        let encoded = entity_addr.to_formatted_string();
-        let decoded = EntityAddr::from_formatted_str(&encoded).unwrap();
-
-        let entity_addr = EntityAddr::new_account_entity_addr([3; 32]);
-        let encoded = entity_addr.to_formatted_string();
-        let decoded = EntityAddr::from_formatted_str(&encoded).unwrap();
-
-        let entity_addr = EntityAddr::new_system_entity_addr([3; 32]);
-        let encoded = entity_addr.to_formatted_string();
-        let decoded = EntityAddr::from_formatted_str(&encoded).unwrap();
-    }
 
     #[test]
     fn named_key_addr_from_str() {

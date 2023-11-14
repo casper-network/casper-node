@@ -8,7 +8,7 @@ use std::{
 use casper_types::{
     account::AccountHash,
     addressable_entity::{
-        ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind, NamedKeys,
+        ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind,
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     package::PackageStatus,
@@ -450,31 +450,19 @@ fn deserialize_u512(b: &mut Bencher) {
 }
 
 fn serialize_contract(b: &mut Bencher) {
-    let contract = sample_contract(10, 10);
+    let contract = sample_contract(10);
     b.iter(|| ToBytes::to_bytes(black_box(&contract)));
 }
 
 fn deserialize_contract(b: &mut Bencher) {
-    let contract = sample_contract(10, 10);
+    let contract = sample_contract(10);
     let contract_bytes = AddressableEntity::to_bytes(&contract).unwrap();
     b.iter(|| AddressableEntity::from_bytes(black_box(&contract_bytes)).unwrap());
 }
 
-fn sample_named_keys(len: u8) -> NamedKeys {
-    NamedKeys::from(
-        (0..len)
-            .map(|i| {
-                (
-                    format!("named-key-{}", i),
-                    Key::Account(AccountHash::default()),
-                )
-            })
-            .collect::<BTreeMap<_, _>>(),
-    )
-}
 
-fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> AddressableEntity {
-    let named_keys: NamedKeys = sample_named_keys(named_keys_len);
+fn sample_contract(entry_points_len: u8) -> AddressableEntity {
+
 
     let entry_points = {
         let mut tmp = EntryPoints::new_with_default_entry_point();

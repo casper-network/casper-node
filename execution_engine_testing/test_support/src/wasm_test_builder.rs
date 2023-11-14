@@ -1,4 +1,3 @@
-use env_logger::builder;
 use std::{
     collections::BTreeMap,
     convert::{TryFrom, TryInto},
@@ -99,6 +98,7 @@ impl EntityWithNamedKeys {
         self.entity.clone()
     }
 
+    /// Returns a reference to the main purse for the inner entity.
     pub fn main_purse(&self) -> URef {
         self.entity.main_purse().clone()
     }
@@ -658,6 +658,7 @@ where
         Err(format!("{:?}", query_result))
     }
 
+    /// Query a named key in global state by account hash.
     pub fn query_named_key_by_account_hash(
         &self,
         maybe_post_state: Option<Digest>,
@@ -671,6 +672,7 @@ where
         self.query_named_key(maybe_post_state, entity_addr, name)
     }
 
+    /// Query a named key.
     pub fn query_named_key(
         &self,
         maybe_post_state: Option<Digest>,
@@ -1173,6 +1175,7 @@ where
         }
     }
 
+    /// Returns an Entity alongside its named keys queried by its account hash.
     pub fn get_entity_with_named_keys_by_account_hash(
         &self,
         account_hash: AccountHash,
@@ -1184,7 +1187,7 @@ where
 
         None
     }
-
+    /// Returns an Entity alongside its named keys queried by its entity hash.
     pub fn get_entity_with_named_keys_by_entity_hash(
         &self,
         entity_hash: AddressableEntityHash,
@@ -1389,6 +1392,8 @@ where
         get_bids_result.into_success().unwrap()
     }
 
+    /// Returns named keys for an account entity by its account hash.
+
     pub fn get_named_keys_by_account_hash(&self, account_hash: AccountHash) -> NamedKeys {
         let entity_hash = self
             .get_entity_hash_by_account_hash(account_hash)
@@ -1397,6 +1402,7 @@ where
         self.get_named_keys(entity_addr)
     }
 
+    /// Returns named keys for an account entity by its entity hash.
     pub fn get_named_keys_by_contract_entity_hash(
         &self,
         contract_hash: AddressableEntityHash,
@@ -1405,6 +1411,7 @@ where
         self.get_named_keys(entity_addr)
     }
 
+    /// Returns the named keys for a system contract.
     pub fn get_named_keys_for_system_contract(
         &self,
         system_entity_hash: AddressableEntityHash,
@@ -1412,6 +1419,8 @@ where
         self.get_named_keys(EntityAddr::System(system_entity_hash.value()))
     }
 
+
+    /// Get the named keys for an entity.
     pub fn get_named_keys(&self, entity_addr: EntityAddr) -> NamedKeys {
         let state_root_hash = self.get_post_state_hash();
 

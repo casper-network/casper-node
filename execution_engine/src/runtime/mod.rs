@@ -658,11 +658,7 @@ where
         let handle_payment_hash = self.context.get_system_contract(HANDLE_PAYMENT)?;
         let handle_payment_key =
             Key::addressable_entity_key(EntityKindTag::System, handle_payment_hash);
-        let handle_payment_contract = self
-            .context
-            .state()
-            .borrow_mut()
-            .get_contract(handle_payment_hash)?;
+
 
 
 
@@ -765,11 +761,7 @@ where
 
         let auction_hash = self.context.get_system_contract(AUCTION)?;
         let auction_key = Key::addressable_entity_key(EntityKindTag::System, auction_hash);
-        let auction_contract = self
-            .context
-            .state()
-            .borrow_mut()
-            .get_contract(auction_hash)?;
+
 
         let auction_named_keys = self
             .context

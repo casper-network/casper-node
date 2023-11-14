@@ -341,15 +341,6 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             ABITestCase::from_inputs(vec![StoredValue::ByteCode(byte_code).into()])?,
         );
 
-        let contract_named_keys = {
-            let mut named_keys = NamedKeys::new();
-            named_keys.insert("hash".to_string(), Key::Hash([43; 32]));
-            named_keys.insert(
-                "uref".to_string(),
-                Key::URef(URef::new([17; 32], AccessRights::READ_ADD_WRITE)),
-            );
-            named_keys
-        };
 
         let entry_points = {
             let mut entry_points = EntryPoints::new();

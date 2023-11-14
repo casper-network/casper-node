@@ -7,7 +7,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::engine_state::ExecuteRequest;
 use casper_types::{
     account::AccountHash, addressable_entity::EntityKindTag, bytesrepr::FromBytes, runtime_args,
-    system::mint, AddressableEntity, AddressableEntityHash, CLTyped, Key, PublicKey, URef, U512,
+    system::mint, AddressableEntityHash, CLTyped, Key, PublicKey, URef, U512,
 };
 
 use super::{

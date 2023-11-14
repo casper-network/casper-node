@@ -48,7 +48,6 @@ use casper_storage::{
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{AssociatedKeys, EntityKind, EntityKindTag, NamedKeyAddr, NamedKeys},
-    bytesrepr,
     bytesrepr::ToBytes,
     execution::Effects,
     package::{EntityVersions, Groups, PackageStatus},
@@ -457,7 +456,7 @@ where
 
         if let Some(new_auction_delay) = upgrade_config.new_auction_delay() {
             debug!(%new_auction_delay, "Auction delay changed as part of the upgrade");
-            let auction_contract = tracking_copy.borrow_mut().get_contract(auction_hash)?;
+
 
             let auction_addr = EntityAddr::new_system_entity_addr(auction_hash.value());
 
@@ -474,7 +473,7 @@ where
         }
 
         if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period_millis() {
-            let auction_contract = tracking_copy.borrow_mut().get_contract(auction_hash)?;
+
 
             let auction_addr = EntityAddr::new_system_entity_addr(auction_hash.value());
 
@@ -498,7 +497,7 @@ where
                 Ratio::new(numer.into(), denom.into())
             };
 
-            let mint_contract = tracking_copy.borrow_mut().get_contract(mint_hash)?;
+
 
             let mint_addr = EntityAddr::new_system_entity_addr(mint_hash.value());
 
@@ -577,7 +576,7 @@ where
         // We insert the new unbonding delay once the purses to be paid out have been transformed
         // based on the previous unbonding delay.
         if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
-            let auction_contract = tracking_copy.borrow_mut().get_contract(auction_hash)?;
+
 
             let auction_addr = EntityAddr::new_system_entity_addr(auction_hash.value());
 
@@ -1696,15 +1695,6 @@ where
                 Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
             })?;
 
-        let handle_payment_contract = match tracking_copy
-            .borrow_mut()
-            .get_contract(*handle_payment_contract_hash)
-        {
-            Ok(contract) => contract,
-            Err(error) => {
-                return Ok(ExecutionResult::precondition_failure(error.into()));
-            }
-        };
 
         let handle_payment_addr =
             EntityAddr::new_system_entity_addr(handle_payment_contract_hash.value());
@@ -1951,13 +1941,12 @@ where
         // Transfer the contents of the rewards purse to block proposer
         execution_result_builder.set_payment_execution_result(payment_result);
 
-        let post_payment_effects = tracking_copy.borrow().effects();
 
         // Begin session logic handling
         let post_payment_tracking_copy = tracking_copy.borrow();
         let session_tracking_copy = Rc::new(RefCell::new(post_payment_tracking_copy.fork()));
 
-        let pre_session_effects = session_tracking_copy.borrow().effects();
+
 
         let session_stack = RuntimeStack::from_account_hash(
             deploy_item.address,
@@ -2199,9 +2188,7 @@ where
             FeeHandling::Accumulate => {
                 let handle_payment_hash = self.get_handle_payment_hash(prestate_hash)?;
 
-                let handle_payment_contract = tracking_copy
-                    .borrow_mut()
-                    .get_contract(handle_payment_hash)?;
+
 
                 let handle_payment_named_keys = tracking_copy
                     .borrow_mut()

@@ -389,7 +389,6 @@ proptest! {
         pk in account_hash_arb(), // account hash
         address in account_hash_arb(), // address for account hash
     ) {
-        let named_keys = NamedKeys::from(iter::once((name.clone(), k)).collect::<BTreeMap<_, _>>());
         let purse = URef::new([0u8; 32], AccessRights::READ_ADD_WRITE);
         let associated_keys = AssociatedKeys::new(pk, Weight::new(1));
         let account = AddressableEntity::new(
@@ -609,11 +608,6 @@ fn validate_query_proof_should_work() {
 
     // create contract that refers to that account
     let account_name = "account".to_string();
-    let named_keys = {
-        let mut tmp = NamedKeys::new();
-        tmp.insert(account_name.clone(), account_key);
-        tmp
-    };
 
     let contract_value = StoredValue::AddressableEntity(AddressableEntity::new(
         [2; 32].into(),
@@ -631,11 +625,6 @@ fn validate_query_proof_should_work() {
     let account_hash = AccountHash::new([7; 32]);
     let fake_purse = URef::new([6; 32], AccessRights::READ_ADD_WRITE);
     let contract_name = "contract".to_string();
-    let named_keys = {
-        let mut tmp = NamedKeys::new();
-        tmp.insert(contract_name.clone(), contract_key);
-        tmp
-    };
 
     let main_entity_hash = AddressableEntityHash::new([81; 32]);
     let main_entity_key: Key =
@@ -1057,14 +1046,8 @@ fn query_with_large_depth_with_fixed_path_should_fail() {
     // which has a size that exceeds configured max query depth.
     for value in 1..=engine_config.max_query_depth {
         let contract_key = Key::Hash(val_to_hashaddr(value));
-        let next_contract_key = Key::Hash(val_to_hashaddr(value + 1));
         let contract_name = format!("contract{}", value);
 
-        let named_keys = {
-            let mut named_keys = NamedKeys::new();
-            named_keys.insert(contract_name.clone(), next_contract_key);
-            named_keys
-        };
         let contract = StoredValue::AddressableEntity(AddressableEntity::new(
             val_to_hashaddr(PACKAGE_OFFSET + value).into(),
             val_to_hashaddr(WASM_OFFSET + value).into(),
@@ -1122,11 +1105,6 @@ fn query_with_large_depth_with_urefs_should_fail() {
         uref_keys.push(uref);
     }
 
-    let named_keys = {
-        let mut named_keys = NamedKeys::new();
-        named_keys.insert(root_key_name.clone(), uref_keys[0]);
-        named_keys
-    };
     let contract = StoredValue::AddressableEntity(AddressableEntity::new(
         val_to_hashaddr(PACKAGE_OFFSET).into(),
         val_to_hashaddr(WASM_OFFSET).into(),

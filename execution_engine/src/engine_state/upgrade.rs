@@ -18,7 +18,6 @@ use casper_types::{
     ProtocolVersion, PublicKey, StoredValue, URef, U512,
 };
 use casper_types::addressable_entity::NamedKeyValue;
-use casper_types::execution::execution_result_v1::NamedKey;
 
 use crate::{
     engine_state::ACCOUNT_BYTE_CODE_HASH, execution::AddressGenerator, tracking_copy::TrackingCopy,

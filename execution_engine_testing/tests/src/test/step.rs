@@ -15,7 +15,7 @@ use casper_types::{
         },
         mint::TOTAL_SUPPLY_KEY,
     },
-    AddressableEntityHash, CLValue, EntityAddr, EraId, GenesisAccount, GenesisValidator, Key,
+     CLValue, EntityAddr, EraId, GenesisAccount, GenesisValidator, Key,
     Motes, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 

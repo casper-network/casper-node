@@ -18,7 +18,7 @@ use thiserror::Error;
 use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
 use casper_types::{
     addressable_entity::{NamedKeyAddr, NamedKeys},
-    bytesrepr::{self, Error},
+    bytesrepr::{self},
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
     CLType, CLValue, CLValueError, Digest, Key, KeyTag, StoredValue, StoredValueTypeMismatch,
     Tagged, U512,

@@ -7,7 +7,7 @@ use casper_types::{
     AddressableEntityHash, CLValue, EntityAddr, EntryPointType, HashAddr, Key, PackageAddr,
     PackageHash, StoredValue, U512,
 };
-use casper_types::bytesrepr::ToBytes;
+
 
 use crate::lmdb_fixture;
 
@@ -95,6 +95,7 @@ pub fn approved_amount(idx: usize) -> U512 {
 }
 
 struct EntityWithKeys {
+    #[allow(dead_code)]
     entity: AddressableEntity,
     named_keys: NamedKeys,
 }
@@ -102,14 +103,6 @@ struct EntityWithKeys {
 impl EntityWithKeys {
     fn new(entity: AddressableEntity, named_keys: NamedKeys) -> Self {
         Self { entity, named_keys }
-    }
-
-    fn entity(&self) -> AddressableEntity {
-        self.entity.clone()
-    }
-
-    fn named_keys(&self) -> NamedKeys {
-        self.named_keys.clone()
     }
 }
 
@@ -966,8 +959,6 @@ mod session {
 
             let current_contract_package_hash =
                 default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
-
-            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![
@@ -2097,8 +2088,7 @@ mod session {
 
             let default_entity = EntityWithKeys::new(default_account, named_keys);
 
-            let current_contract_package_hash =
-                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
 
             let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
@@ -2748,8 +2738,7 @@ mod session {
 
             let default_entity = EntityWithKeys::new(default_account, named_keys);
 
-            let current_contract_package_hash =
-                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
 
             let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
@@ -2991,7 +2980,6 @@ mod session {
             let current_contract_package_hash =
                 default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
-            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![
@@ -3389,7 +3377,6 @@ mod payment {
             let current_contract_package_hash =
                 default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
-            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![
@@ -3616,9 +3603,6 @@ mod payment {
 
             let default_entity = EntityWithKeys::new(default_account, named_keys);
 
-            let current_contract_package_hash =
-                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
-
             let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls = vec![
@@ -3752,7 +3736,6 @@ mod payment {
             let current_contract_package_hash =
                 default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
-            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls =
                 vec![
@@ -3808,8 +3791,6 @@ mod payment {
 
             let default_entity = EntityWithKeys::new(default_account, named_keys);
 
-            let current_contract_package_hash =
-                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 

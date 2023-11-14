@@ -2,7 +2,9 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{addressable_entity::EntityKindTag, execution::TransformKind, runtime_args, CLValue, Key, RuntimeArgs, StoredValue, EntityAddr};
+use casper_types::{runtime_args, CLValue, Key, RuntimeArgs, StoredValue, EntityAddr};
+use casper_types::addressable_entity::NamedKeyAddr;
+use casper_types::execution::TransformKind;
 
 const ARG_AMOUNT: &str = "amount";
 
@@ -36,31 +38,45 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
         .get_entity_hash_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract hash associated with default account");
 
-    let entity_key = Key::addressable_entity_key(EntityKindTag::Account, entity_hash);
-
-
-
     let effects = &builder.get_effects()[0];
-    let mut add_keys_iter = effects
+
+    let payment_uref_addr = NamedKeyAddr::new_from_string(EntityAddr::Account(entity_hash.value()), "new_uref_result-payment".to_string())
+        .expect("must get addr");
+    let payment_uref_key = Key::NamedKey(payment_uref_addr);
+
+    let mut payment_transforms = effects
         .transforms()
         .iter()
-        .filter(|transform| transform.key() == &entity_key)
+        .filter(|transform| transform.key() == &payment_uref_key)
         .map(|transform| transform.kind());
-    // let payment_uref = match add_keys_iter.next().unwrap() {
-    //     TransformKind::AddKeys(named_keys) => named_keys.get("new_uref_result-payment").unwrap(),
-    //     _ => panic!("should be an AddKeys transform"),
-    // };
-    // let session_uref = match add_keys_iter.next().unwrap() {
-    //     TransformKind::AddKeys(named_keys) => named_keys.get("new_uref_result-session").unwrap(),
-    //     _ => panic!("should be an AddKeys transform"),
-    // };
+
+    let payment_uref = match payment_transforms.next().unwrap() {
+        TransformKind::Write(StoredValue::NamedKey(named_key)) => {
+            named_key.get_key().expect("must get key")
+        }
+        _ => panic!("Should be Write transform")
+    };
+
+    let session_uref_addr = NamedKeyAddr::new_from_string(EntityAddr::Account(entity_hash.value()), "new_uref_result-session".to_string())
+        .expect("must get addr");
+
+    let session_uref_key = Key::NamedKey(session_uref_addr);
+
+    let mut session_transforms = effects
+        .transforms()
+        .iter()
+        .filter(|transform| transform.key() == &session_uref_key)
+        .map(|transform| transform.kind());
+
+    let session_uref = match session_transforms.next().unwrap() {
+        TransformKind::Write(StoredValue::NamedKey(named_key)) => {
+            named_key.get_key().expect("must get key")
+        }
+        _ => panic!("Should be Write transform")
+    };
+
 
     builder.commit();
-
-    let entity_named_keys = builder.get_named_keys(EntityAddr::Account(entity_hash.value()));
-
-    let payment_uref = entity_named_keys.get("new_uref_result-payment").unwrap();
-    let session_uref = entity_named_keys.get("new_uref_result-session").unwrap();
 
     assert_ne!(
         payment_uref, session_uref,
@@ -68,7 +84,7 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
     );
 
     let payment_value: StoredValue = builder
-        .query(None, *payment_uref, &[])
+        .query(None, payment_uref, &[])
         .expect("should find payment value");
 
     assert_eq!(
@@ -78,7 +94,7 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
     );
 
     let session_value: StoredValue = builder
-        .query(None, *session_uref, &[])
+        .query(None, session_uref, &[])
         .expect("should find session value");
 
     assert_eq!(

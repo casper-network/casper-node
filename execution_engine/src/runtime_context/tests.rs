@@ -1,8 +1,8 @@
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeSet},
     convert::TryInto,
-    iter::{self, FromIterator},
+    iter::{ FromIterator},
     rc::Rc,
 };
 
@@ -13,7 +13,7 @@ use casper_storage::global_state::state::{self, lmdb::LmdbGlobalStateView, State
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity::{
-        ActionThresholds, ActionType, AddKeyFailure, AssociatedKeys, EntityKindTag, NamedKeys,
+        ActionThresholds, ActionType, AddKeyFailure, AssociatedKeys, NamedKeys,
         RemoveKeyFailure, SetThresholdFailure, Weight,
     },
     bytesrepr::ToBytes,
@@ -71,7 +71,6 @@ fn new_addressable_entity_with_purse(
     entity_hash: AddressableEntityHash,
     entity_kind: EntityKind,
     purse: [u8; 32],
-    named_keys: NamedKeys,
 ) -> (Key, Key, AddressableEntity) {
     let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
     let entity = AddressableEntity::new(
@@ -93,14 +92,12 @@ fn new_addressable_entity_with_purse(
 fn new_addressable_entity(
     account_hash: AccountHash,
     entity_hash: AddressableEntityHash,
-    named_keys: NamedKeys,
 ) -> (Key, Key, AddressableEntity) {
     new_addressable_entity_with_purse(
         account_hash,
         entity_hash,
         EntityKind::Account(account_hash),
         [0; 32],
-        named_keys,
     )
 }
 
@@ -216,7 +213,6 @@ where
     let (_, entity_key, addressable_entity) = new_addressable_entity(
         public_key.to_account_hash(),
         entity_hash,
-        named_keys.clone(),
     );
 
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
@@ -380,7 +376,7 @@ fn contract_key_addable_valid() {
     let account_hash = AccountHash::new([0u8; 32]);
     let entity_hash = AddressableEntityHash::new([1u8; 32]);
     let (_account_key, entity_key, entity) =
-        new_addressable_entity(account_hash, entity_hash, NamedKeys::new());
+        new_addressable_entity(account_hash, entity_hash);
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
     let mut address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
 
@@ -450,9 +446,6 @@ fn contract_key_addable_valid() {
         .metered_add_gs(contract_key, named_uref_tuple)
         .expect("Adding should work.");
 
-    let named_keys =
-        NamedKeys::from(iter::once((uref_name, uref_as_key)).collect::<BTreeMap<_, _>>());
-
     let updated_contract = StoredValue::AddressableEntity(AddressableEntity::new(
         [0u8; 32].into(),
         [0u8; 32].into(),
@@ -473,7 +466,7 @@ fn contract_key_addable_invalid() {
     let account_hash = AccountHash::new([0u8; 32]);
     let entity_hash = AddressableEntityHash::new([1u8; 32]);
     let (_, entity_key, entity) =
-        new_addressable_entity(account_hash, entity_hash, NamedKeys::new());
+        new_addressable_entity(account_hash, entity_hash);
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
     let mut address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
     let mut rng = rand::thread_rng();
@@ -900,7 +893,7 @@ fn remove_uref_works() {
     let mut named_keys = NamedKeys::new();
     named_keys.insert(uref_name.clone(), uref_key);
     let (_, entity_key, addressable_entity) =
-        new_addressable_entity(account_hash, entity_hash, named_keys.clone());
+        new_addressable_entity(account_hash, entity_hash);
 
     let access_rights = addressable_entity.extract_access_rights(entity_hash, &named_keys);
 
@@ -955,7 +948,6 @@ fn an_accounts_access_rights_should_include_main_purse() {
         entity_hash,
         EntityKind::Account(account_hash),
         test_main_purse.addr(),
-        named_keys.clone(),
     );
     assert!(
         named_keys.is_empty(),
@@ -984,7 +976,6 @@ fn validate_valid_purse_of_an_account() {
         entity_hash,
         EntityKind::Account(account_hash),
         test_main_purse.addr(),
-        named_keys.clone(),
     );
 
     let mut access_rights = entity.extract_access_rights(entity_hash, &named_keys);

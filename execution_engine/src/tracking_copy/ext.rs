@@ -4,7 +4,7 @@ use std::{
 };
 
 use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
-use casper_types::{account::AccountHash, addressable_entity::{EntityKindTag, NamedKeyAddr, NamedKeys}, bytesrepr, package::{EntityVersions, Groups, PackageStatus}, AccessRights, AddressableEntity, AddressableEntityHash, CLValue, EntityAddr, EntityKind, EntryPoints, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, StoredValue, StoredValueTypeMismatch, URef, KEY_HASH_LENGTH, KeyTag};
+use casper_types::{account::AccountHash, addressable_entity::{EntityKindTag, NamedKeyAddr, NamedKeys}, bytesrepr, package::{EntityVersions, Groups, PackageStatus}, AccessRights, AddressableEntity, AddressableEntityHash, CLValue, EntityAddr, EntityKind, EntryPoints, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, StoredValue, StoredValueTypeMismatch, URef, KeyTag};
 
 use crate::{
     engine_state::{ChecksumRegistry, SystemContractRegistry, ACCOUNT_BYTE_CODE_HASH},
@@ -64,6 +64,8 @@ pub trait TrackingCopyExt<R> {
         &mut self,
         contract_hash: AddressableEntityHash,
     ) -> Result<AddressableEntity, Self::Error>;
+
+    /// Returns the collection of named keys for a given AddressableEntity.
     fn get_named_keys(&mut self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error>;
 
     /// Gets a package by Key.
@@ -81,6 +83,8 @@ pub trait TrackingCopyExt<R> {
     /// Gets the system checksum registry.
     fn get_checksum_registry(&mut self) -> Result<Option<ChecksumRegistry>, Self::Error>;
 
+
+    /// Migrate the NamedKeys for a Contract or Account.
     fn migrate_named_keys(
         &mut self,
         entity_addr: EntityAddr,
@@ -386,7 +390,7 @@ where
                                 .map_err(|cl_error| execution::Error::CLValue(cl_error.clone()))?;
                             named_keys.insert(name, key);
                         },
-                        Some(_) | None => { ;
+                        Some(_) | None => {
                             return Err(execution::Error::KeyNotFound(*entry_key));
                         }
                     }

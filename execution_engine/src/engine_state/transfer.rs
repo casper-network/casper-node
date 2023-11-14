@@ -3,10 +3,10 @@ use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{NamedKeyAddr, NamedKeys},
+    addressable_entity::{NamedKeys},
     system::mint,
-    AccessRights, AddressableEntity, AddressableEntityHash, ApiError, CLType, CLValueError,
-    EntityAddr, Key, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
+    AccessRights, AddressableEntity, ApiError, CLType, CLValueError,
+     Key, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
 use crate::{

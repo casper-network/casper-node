@@ -10,7 +10,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::AccountHash, addressable_entity::EntityKindTag, runtime_args, system::mint,
-    AccessRights, AddressableEntityHash, ApiError, CLType, CLValue, EntityAddr, EntityKind,
+    AccessRights, AddressableEntityHash, ApiError, CLType, CLValue,
     GenesisAccount, Key, Motes, RuntimeArgs, StoredValue, U512,
 };
 use std::{convert::TryFrom, path::PathBuf};

@@ -33,7 +33,7 @@ use crate::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity,
     addressable_entity::{
-        AddressableEntityHash, EntityAddr, EntityKindTag, NamedKeyAddr, NamedKeyAddrTag,
+        AddressableEntityHash, EntityAddr, EntityKindTag, NamedKeyAddr,
     },
     byte_code::ByteCodeKind,
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH},
@@ -43,7 +43,7 @@ use crate::{
     package::PackageHash,
     system::auction::{BidAddr, BidAddrTag},
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
-    DeployHash, Digest, EraId, KeyFromStrError, Tagged, TransferAddr, TransferFromStrError,
+    DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError,
     TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
 };
 
@@ -61,14 +61,10 @@ const CHAINSPEC_REGISTRY_PREFIX: &str = "chainspec-registry-";
 const CHECKSUM_REGISTRY_PREFIX: &str = "checksum-registry-";
 const BID_ADDR_PREFIX: &str = "bid-addr-";
 const PACKAGE_PREFIX: &str = "package-";
-const ENTITY_PREFIX: &str = "addressable-entity-";
-const ACCOUNT_ENTITY_PREFIX: &str = "account-";
-const CONTRACT_ENTITY_PREFIX: &str = "contract-";
-const SYSTEM_ENTITY_PREFIX: &str = "system-";
+
 const BYTE_CODE_PREFIX: &str = "byte-code-";
 const V1_WASM_PREFIX: &str = "v1-wasm-";
 const EMPTY_PREFIX: &str = "empty-";
-const NAMED_KEY_PREFIX: &str = "named-key-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -762,6 +758,8 @@ impl Key {
         Some(PackageHash::new(package_addr))
     }
 
+    /// Returns [`NamedKeyAddr`] of `self` if `self` is of type [`Key::NamedKeyAddr`], otherwise
+    /// returns `None`.
     pub fn into_named_key_addr(self) -> Option<NamedKeyAddr> {
         match self {
             Key::NamedKey(addr) => Some(addr),
@@ -769,6 +767,8 @@ impl Key {
         }
     }
 
+    /// Returns [`EntityAddr`] of `self` if `self` is of type [`Key::AddressableEntity`], otherwise
+    /// returns `None`.
     pub fn as_entity_addr(&self) -> Option<EntityAddr> {
         match self {
             Key::AddressableEntity(addr) => Some(*addr),
@@ -900,6 +900,7 @@ impl Key {
         false
     }
 
+    /// Returns true if the key is of type [`Key::NamedKey`].
     pub fn is_named_key(&self) -> bool {
         if let Key::NamedKey(_) = self {
             return true;
@@ -929,6 +930,7 @@ impl Key {
         false
     }
 
+    /// Returns true if the key is of type [`Key::NamedKey`] and its Entry variant.
     pub fn is_named_key_entry(&self) -> bool {
         if let Self::NamedKey(NamedKeyAddr::NamedKeyEntry { .. }) = self {
             true
@@ -937,6 +939,8 @@ impl Key {
         }
     }
 
+    /// Returns true if the key is of type [`Key::NamedKey`] and the variants have the
+    /// same [`EntityAddr`].
     pub fn is_entry_for_base(&self, entity_addr: &EntityAddr) -> bool {
         if let Self::NamedKey(NamedKeyAddr::NamedKeyEntry { base_addr, ..}) = self {
             base_addr ==  entity_addr
@@ -1473,6 +1477,9 @@ mod tests {
         uref::UREF_FORMATTED_STRING_PREFIX,
         AccessRights, URef,
     };
+
+    const ENTITY_PREFIX: &str = "addressable-entity-";
+    const ACCOUNT_ENTITY_PREFIX: &str = "account-";
 
     const ACCOUNT_KEY: Key = Key::Account(AccountHash::new([42; 32]));
     const HASH_KEY: Key = Key::Hash([42; 32]);
