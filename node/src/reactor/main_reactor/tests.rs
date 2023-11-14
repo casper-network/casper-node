@@ -1910,24 +1910,31 @@ async fn rewards_are_calculated() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "failpoints"), ignore)]
-async fn basic_parametrized_rewards_test() {
-    // Constants to "parametrize" the test
-    const CONSENSUS: ConsensusProtocolName = ConsensusProtocolName::Zug;
+async fn parametrized_rewards_tests() {
+    // Fundamental network parameters that are not critical for assessing reward calculation correctness
     const VALIDATOR_SLOTS: u32 = 10;
     const NETWORK_SIZE: u64 = 10;
     const STAKE: u64 = 1000000000;
-    const ERA_COUNT: u64 = 3;
+    const ERA_COUNT: u64 = 4;
     const ERA_DURATION: u64 = 30000; //milliseconds
     const MIN_HEIGHT: u64 = 10;
     const BLOCK_TIME: u64 = 3000; //milliseconds
     const TIME_OUT: u64 = 3000; //seconds
     const SEIGNIORAGE: (u64, u64) = (1u64, 100u64);
-    const FINDERS_FEE: (u64, u64) = (0u64, 1u64);
-    const FINALITY_SIG_PROP: (u64, u64) = (1u64, 1u64);
     const REPRESENTATIVE_NODE_INDEX: usize = 0;
+    // Parameters we generally want to vary
+    const CONSENSUS_ZUG: ConsensusProtocolName = ConsensusProtocolName::Zug;
+    const CONSENSUS_HIGHWAY: ConsensusProtocolName = ConsensusProtocolName::Highway;
+    const FINDERS_FEE_ZERO: (u64, u64) = (0u64, 1u64);
+    const FINDERS_FEE_HALF: (u64, u64) = (1u64, 2u64);
+    const FINDERS_FEE_ONE: (u64, u64) = (1u64, 1u64);
+    const FINALITY_SIG_PROP_ZERO: (u64, u64) = (0u64, 1u64);
+    const FINALITY_SIG_PROP_HALF: (u64, u64) = (1u64, 2u64);
+    const FINALITY_SIG_PROP_ONE: (u64, u64) = (1u64, 1u64);
     const FILTERED_NODES_INDICES: &'static [usize] = &[3, 4];
 
     async fn run_rewards_network_scenario(
+        mut rng: NodeRng,
         consensus: ConsensusProtocolName,
         initial_stakes: &[u64],
         era_count: u64,
@@ -1942,14 +1949,6 @@ async fn basic_parametrized_rewards_test() {
         filtered_nodes_indices: &[usize]) {
 
         testing::init_logging();
-
-        let total_initial_stake = &initial_stakes
-            .iter()
-            .fold(0u64, move |acc, s| acc + s);
-
-        // SETUP
-        // TODO: Consider fixing the seed
-        let mut rng = crate::new_rng();
 
         // Create random keypairs to populate our network
         let keys: Vec<Arc<SecretKey>> = (1..&initial_stakes.len() + 1)
@@ -1998,9 +1997,6 @@ async fn basic_parametrized_rewards_test() {
         // DATA COLLECTION
         // Get the switch blocks and bid structs first
         let switch_blocks = SwitchBlocks::collect(net.nodes(), era_count);
-        /*let bids = (0..era_count)
-            .map(|era_number| switch_blocks.bids(net.nodes(), era_number))
-            .collect();*/
 
         // Representative node
         // (this test should normally run a network at nominal performance with identical nodes)
@@ -2039,7 +2035,7 @@ async fn basic_parametrized_rewards_test() {
 
                 let request = QueryRequest::new(
                     state_hash.clone(),
-                    AddressableEntity(PackageKindTag::SmartContract, mint_hash.value()),
+                    AddressableEntity(PackageKindTag::System, mint_hash.value()),
                     vec![mint::TOTAL_SUPPLY_KEY.to_owned()],
                 );
 
@@ -2074,7 +2070,7 @@ async fn basic_parametrized_rewards_test() {
                     rewards.insert(recipient.clone(), reward);
                     *supply += reward;
                 }
-                (Some(value), None) => panic!("rewards present without corresponding supply increase"),
+                (Some(_), None) => panic!("rewards present without corresponding supply increase"),
                 (None, None) => {
                     total_supply.insert(era, reward);
                     rewards.insert(recipient.clone(), reward);
@@ -2227,18 +2223,25 @@ async fn basic_parametrized_rewards_test() {
 
     }
 
-    run_rewards_network_scenario(
-        CONSENSUS,
-        &[1000000000, 1000000000, 1000000000, 1000000000, 1000000000, 1000000000, 1000000000, 1000000000, 1000000000, 1000000000],
-        ERA_COUNT,
-        ERA_DURATION,
-        MIN_HEIGHT,
-        BLOCK_TIME,
-        TIME_OUT,
-        SEIGNIORAGE,
-        FINDERS_FEE,
-        FINALITY_SIG_PROP,
-        REPRESENTATIVE_NODE_INDEX,
-        FILTERED_NODES_INDICES
-    ).await;
+    for consensus in [CONSENSUS_HIGHWAY, CONSENSUS_ZUG] {
+        for finders_fee in [FINDERS_FEE_ZERO, FINDERS_FEE_HALF, FINDERS_FEE_ONE] {
+            for finality_prop in [FINALITY_SIG_PROP_ZERO, FINALITY_SIG_PROP_HALF, FINALITY_SIG_PROP_ZERO] {
+                run_rewards_network_scenario(
+                    crate::new_rng(),
+                    consensus,
+                    &[STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE],
+                    ERA_COUNT,
+                    ERA_DURATION,
+                    MIN_HEIGHT,
+                    BLOCK_TIME,
+                    TIME_OUT,
+                    SEIGNIORAGE,
+                    finders_fee,
+                    finality_prop,
+                    REPRESENTATIVE_NODE_INDEX,
+                    FILTERED_NODES_INDICES
+                ).await;
+            }
+        }
+    }
 }
