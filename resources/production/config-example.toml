@@ -578,18 +578,18 @@ max_global_state_size = 2_089_072_132_096
 #enable_manual_sync = true
 
 
-# =============================================
-# Configuration options for the deploy acceptor
-# =============================================
-[deploy_acceptor]
+# ==================================================
+# Configuration options for the transaction acceptor
+# ==================================================
+[transaction_acceptor]
 
-# The leeway allowed when considering whether a deploy is future-dated or not.
+# The leeway allowed when considering whether a transaction is future-dated or not.
 #
-# To accommodate minor clock drift, deploys whose timestamps are within `timestamp_leeway` in the
+# To accommodate minor clock drift, transactions whose timestamps are within `timestamp_leeway` in the
 # future are still acceptable.
 #
 # The maximum value to which `timestamp_leeway` can be set is defined by the chainspec setting
-# `deploys.max_timestamp_leeway`.
+# `transaction.max_timestamp_leeway`.
 timestamp_leeway = '2 seconds'
 
 
