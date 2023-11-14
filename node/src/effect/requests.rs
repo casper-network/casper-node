@@ -343,8 +343,8 @@ pub(crate) enum StorageRequest {
     GetRawData {
         /// From which database.
         db: DbId,
-        /// Hash of block to get header of.
-        block_hash: BlockHash,
+        /// bytesrepr serialized key.
+        key: Vec<u8>,
         /// Responder to call with the result.  Returns `None` if the block header doesn't exist in
         /// local storage.
         responder: Responder<Option<Vec<u8>>>,
@@ -680,12 +680,10 @@ impl Display for StorageRequest {
                     "get key block height for current activation point"
                 )
             }
-            // TODO[RC]: Log correctly
-            StorageRequest::GetRawData {
-                block_hash,
-                responder,
-                db,
-            } => write!(formatter, "get raw data {}::{}", db, "KEY"),
+            // TODO[RC]: Possibly clean up formatting
+            StorageRequest::GetRawData { key, responder, db } => {
+                write!(formatter, "get raw data {}::{:?}", db, key)
+            }
         }
     }
 }

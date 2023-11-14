@@ -8,7 +8,7 @@ mod tests;
 use std::net::SocketAddr;
 
 use bytes::BytesMut;
-use casper_types::{bytesrepr::FromBytes, BinaryRequest, BlockHash};
+use casper_types::{bytesrepr::FromBytes, testing::TestRng, BinaryRequest, BlockHash};
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use juliet::{
@@ -126,16 +126,16 @@ async fn handle_client<REv, const N: usize>(
                         .expect("TODO: Handle malformed payload");
                     match req {
                         BinaryRequest::Get { key, db } => {
-                            let (block_hash, _): (BlockHash, _) =
-                                BlockHash::from_bytes(&key).unwrap();
-                            error!("XXXXX - getting block hash: {:?}", block_hash);
-                            match effect_builder.get_raw_data(db, block_hash).await {
+                            // let (block_hash, _): (BlockHash, _) =
+                            //     BlockHash::from_bytes(&key).unwrap();
+                            // error!("XXXXX - getting block hash: {:?}", block_hash);
+                            match effect_builder.get_raw_data(db, key).await {
                                 Some(block_header_raw) => {
                                     let mut response_payload = BytesMut::new();
                                     response_payload.extend(block_header_raw);
                                     incoming_request.respond(Some(response_payload.freeze()));
                                 }
-                                None => panic!("error getting block header from storage"),
+                                None => error!("XXXXX - error getting raw from storage"),
                             }
                         }
                         BinaryRequest::PutTransaction { tbd } => todo!(),
@@ -145,7 +145,10 @@ async fn handle_client<REv, const N: usize>(
                 }
                 None => panic!("Should have payload"),
             },
-            Ok(None) => panic!("Handle no request?"),
+            Ok(None) => {
+                //error!("XXXXX - Handle no request?")
+                // TODO: We're flooded with this log
+            }
             Err(err) => {
                 println!("client {} error: {}", addr, err);
                 break;

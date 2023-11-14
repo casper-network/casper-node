@@ -1183,36 +1183,36 @@ impl Storage {
                     .respond(self.key_block_height_for_activation_point)
                     .ignore()
             }
-            StorageRequest::GetRawData {
-                block_hash,
-                responder,
-                db,
-            } => {
+            StorageRequest::GetRawData { key, responder, db } => {
                 // TODO[RC]: Contruct at the time the storage is created
                 let db_mapper = HashMap::<DbId, Database>::from_iter([
                     (DbId::BlockHeader, self.block_header_dbs.legacy),
                     (DbId::BlockHeaderV2, self.block_header_dbs.current),
+                    (DbId::BlockMetadata, self.block_metadata_db),
+                    (DbId::Deploys, self.transaction_dbs.legacy),
+                    (DbId::Transactions, self.transaction_dbs.current),
+                    (DbId::DeployMetadata, self.execution_result_dbs.legacy),
+                    (DbId::ExecutionResults, self.execution_result_dbs.current),
+                    (DbId::Transfer, self.transfer_db),
+                    (DbId::StateStore, self.state_store_db),
+                    (DbId::BlockBody, self.block_body_dbs.legacy),
+                    (DbId::BlockBodyV2, self.block_body_dbs.current),
+                    (
+                        DbId::FinalizedApprovals,
+                        self.finalized_transaction_approvals_dbs.legacy,
+                    ),
+                    (
+                        DbId::VersionedFinalizedApprovals,
+                        self.finalized_transaction_approvals_dbs.current,
+                    ),
+                    (DbId::ApprovalsHashes, self.approvals_hashes_dbs.legacy),
+                    (
+                        DbId::VersionedApprovalsHashes,
+                        self.approvals_hashes_dbs.current,
+                    ),
                 ]);
 
-                let database = match db {
-                    casper_types::DbId::BlockHeader => self.block_header_dbs.legacy,
-                    casper_types::DbId::BlockHeaderV2 => self.block_header_dbs.current,
-                    casper_types::DbId::BlockMetadata => self.block_metadata_db,
-                    casper_types::DbId::Deploys => todo!(),
-                    casper_types::DbId::Transactions => todo!(),
-                    casper_types::DbId::DeployMetadata => todo!(),
-                    casper_types::DbId::ExecutionResults => todo!(),
-                    casper_types::DbId::Transfer => todo!(),
-                    casper_types::DbId::StateStore => todo!(),
-                    casper_types::DbId::BlockBody => todo!(),
-                    casper_types::DbId::BlockBodyV2 => todo!(),
-                    casper_types::DbId::FinalizedApprovals => todo!(),
-                    casper_types::DbId::VersionedFinalizedApprovals => todo!(),
-                    casper_types::DbId::ApprovalsHashes => todo!(),
-                    casper_types::DbId::VersionedApprovalsHashes => todo!(),
-                };
-                let maybe_raw_data =
-                    self.read_raw_data(db_mapper.get(&db).unwrap(), &block_hash)?;
+                let maybe_raw_data = self.read_raw_data(db_mapper.get(&db).unwrap(), &key)?;
                 responder.respond(maybe_raw_data).ignore()
             }
         })
@@ -2289,13 +2289,16 @@ impl Storage {
     fn read_raw_data(
         &self,
         db: &Database,
-        block_hash: &BlockHash,
+        key: &Vec<u8>,
     ) -> Result<Option<Vec<u8>>, FatalStorageError> {
-        let mut txn = self.env.begin_ro_txn()?;
-        let result = txn.get(*db, block_hash);
+        let txn = self.env.begin_ro_txn()?;
+        let result = txn.get(*db, key);
         match result {
             Ok(maybe_raw_data) => return Ok(Some(maybe_raw_data.to_vec())),
-            Err(err) => panic!("XXXXX - error {}", err),
+            Err(err) => {
+                error!("XXXXX - error {}", err);
+                Ok(None)
+            }
         }
     }
 
