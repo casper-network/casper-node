@@ -1,15 +1,8 @@
 extern crate proc_macro;
-use std::str::FromStr;
 
-use casper_sdk::EntryPoint;
-use paste::paste;
-use proc_macro::{Ident, TokenStream, TokenTree};
+use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{
-    parse_macro_input,
-    token::{Crate, Pub},
-    Data, DeriveInput, Item, ItemFn, ItemImpl, Type, VisRestricted, Visibility,
-};
+use syn::{parse_macro_input, Data, DeriveInput, ItemFn, ItemImpl, Type};
 
 #[proc_macro_derive(Contract)]
 pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
@@ -18,7 +11,7 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
     let contract = parse_macro_input!(input as DeriveInput);
     // todo!("{contract:?}")
     let name = &contract.ident;
-    let vis = &contract.vis;
+    let _vis = &contract.vis;
 
     let data_struct = match &contract.data {
         Data::Struct(s) => s,
@@ -36,6 +29,7 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
         let ty = &field.ty;
         // fields.push(field.clone());
         fields.push(quote! {
+            #[allow(dead_code)]
             #name: casper_sdk::Value<#ty>
         });
 
@@ -203,7 +197,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         }
                     }
                 };
-                eprintln!("{res}");
+
                 return res.into();
             }
             proc_macro::TokenTree::Ident(ident) if ident.to_string() == "contract" => {
@@ -319,42 +313,17 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                     //     #mod_name::#func_name(#(arg_names,)*);
                     // }
                 };
-                // println!("{token:#}");
+
                 return token.into();
             }
             _ => todo!(),
         }
     }
     todo!()
-    // dbg!(&attrs);
-    // // eprintln!("{attr:#?}");
-    // let mut tokens = Vec::new();
-
-    // for attr in attrs {
-    //     if attr.to_string() == "call" {
-    //         let func_name = &func.sig.ident;
-    //         let body = &func.block;
-
-    //         let token = quote! {
-    //             #[no_mangle]
-    //             pub extern "C" fn call() {
-    //                 #func;
-    //                 #func_name()
-    //                 // wasm_export_ #func_name::#func_name();
-    //             }
-    //         };
-    //         tokens.push(token);
-    //     }
-    // }
-    // // println!("{}", &tokens.get(0).unwrap());
-    // quote! {
-    //     #(#tokens)*;
-    // }
-    // .into()
 }
 
 #[proc_macro_attribute]
-pub fn entry_point(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn entry_point(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let func = parse_macro_input!(item as ItemFn);
 
     let vis = &func.vis;

@@ -1,3 +1,5 @@
+use core::slice;
+
 #[derive(Debug)]
 pub enum Error {
     Foo,
@@ -57,18 +59,15 @@ pub struct CreateResult {
 
 #[cfg(target_arch = "wasm32")]
 mod wasm {
-    use bytes::Bytes;
-
     use std::{
-        alloc::{self, Layout},
         ffi::c_void,
-        mem::{self, MaybeUninit},
+        mem::MaybeUninit,
         ptr::{self, NonNull},
     };
 
     use crate::reserve_vec_space;
 
-    use super::{Address, CreateResult, Entry, Error, Manifest};
+    use super::{CreateResult, Entry, Error, Manifest};
 
     #[derive(Debug)]
     #[repr(C)]
@@ -86,7 +85,7 @@ mod wasm {
             key_ptr: *const u8,
             key_size: usize,
             info: *mut ReadInfo,
-            alloc: extern "C" fn(usize, *mut c_void) -> *const u8,
+            alloc: extern "C" fn(usize, *mut c_void) -> *mut u8,
             alloc_ctx: *const c_void,
         ) -> i32;
         pub fn casper_write(
@@ -121,18 +120,23 @@ mod wasm {
         unreachable!()
     }
 
-    extern "C" fn alloc_callback<F: FnOnce(usize) -> *mut u8>(
+    extern "C" fn alloc_callback<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
         len: usize,
         ctx: *mut c_void,
     ) -> *mut u8 {
         let opt_closure = ctx as *mut Option<F>;
-        let mut ptr = unsafe { (*opt_closure).take().unwrap()(len) };
-        ptr
+        let allocated_ptr = unsafe { (*opt_closure).take().unwrap()(len) };
+        match allocated_ptr {
+            Some(ptr) => ptr.as_ptr(),
+            None => ptr::null_mut(),
+        }
     }
 
     /// Provided callback should ensure that it can provide a pointer that can store `size` bytes.
     /// Function returns last pointer after writing data, or None otherwise.
-    pub fn copy_input_into<F: FnOnce(usize) -> *mut u8>(alloc: Option<F>) -> Option<NonNull<u8>> {
+    pub fn copy_input_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
+        alloc: Option<F>,
+    ) -> Option<NonNull<u8>> {
         let ret =
             unsafe { casper_copy_input(alloc_callback::<F>, &alloc as *const _ as *mut c_void) };
         NonNull::<u8>::new(ret)
@@ -151,39 +155,21 @@ mod wasm {
     pub fn copy_input_dest(dest: &mut [u8]) -> Option<&[u8]> {
         let last_ptr = copy_input_into(Some(|size| {
             if size > dest.len() {
-                return ptr::null_mut();
+                None
             } else {
-                dest.as_mut_ptr()
+                // SAFETY: `dest` is guaranteed to be non-null and large enough to hold `size`
+                // bytes.
+                Some(unsafe { ptr::NonNull::new_unchecked(dest.as_mut_ptr()) })
             }
         }));
 
-        match last_ptr {
-            Some(end_ptr) => {
-                let length = unsafe { end_ptr.as_ptr().offset_from(dest.as_mut_ptr()) };
-                let length: usize = length.try_into().unwrap();
-                Some(&dest[..length])
-            }
-            None => None,
-        }
+        let end_ptr = last_ptr?;
+        let length = unsafe { end_ptr.as_ptr().offset_from(dest.as_mut_ptr()) };
+        let length: usize = length.try_into().unwrap();
+        Some(&dest[..length])
     }
 
-    pub fn read_into<'a>(
-        key_space: u64,
-        key: &[u8],
-        destination: &'a mut [u8],
-    ) -> Option<&'a [u8]> {
-        let mut what_size: Option<usize> = None;
-        read(key_space, key, |size| {
-            what_size = Some(size);
-            destination.as_mut_ptr()
-        });
-
-        let size = what_size?;
-
-        Some(&destination[..size])
-    }
-
-    pub fn read<F: FnOnce(usize) -> *mut u8>(
+    pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
         key_space: u64,
         key: &[u8],
         f: F,
@@ -195,12 +181,16 @@ mod wasm {
             tag: 0,
         };
 
-        extern "C" fn alloc_cb<F: FnOnce(usize) -> *mut u8>(
+        extern "C" fn alloc_cb<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
             len: usize,
             ctx: *mut c_void,
-        ) -> *const u8 {
+        ) -> *mut u8 {
             let opt_closure = ctx as *mut Option<F>;
-            unsafe { (*opt_closure).take().unwrap()(len) }
+            let allocated_ptr = unsafe { (*opt_closure).take().unwrap()(len) };
+            match allocated_ptr {
+                Some(mut ptr) => unsafe { ptr.as_mut() },
+                None => ptr::null_mut(),
+            }
         }
 
         let ctx = &Some(f) as *const _ as *mut c_void;
@@ -278,12 +268,7 @@ mod wasm {
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
-    use std::{
-        borrow::{Borrow, BorrowMut},
-        cell::RefCell,
-        collections::BTreeMap,
-        ptr,
-    };
+    use std::{cell::RefCell, collections::BTreeMap, ptr};
 
     use bytes::Bytes;
 
@@ -369,15 +354,10 @@ mod native {
         panic!("revert with code {code}")
     }
 
-    pub fn create(code: Option<&[u8]>, manifest: &Manifest) -> Result<CreateResult, Error> {
+    pub fn create(_code: Option<&[u8]>, _manifest: &Manifest) -> Result<CreateResult, Error> {
         todo!()
     }
 }
-
-use core::slice;
-use std::ffi::c_void;
-
-use bytes::Bytes;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use native::{create, print, read, revert, write};

@@ -15,10 +15,6 @@ use borsh::{BorshDeserialize, BorshSerialize};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod schema_helper {
-    use once_cell::sync::Lazy;
-
-    use crate::EntryPoint;
-
     #[derive(Copy, Clone)]
     pub struct Export {
         pub name: &'static str,
@@ -161,11 +157,9 @@ impl<T> Value<T> {
 
 impl<T: BorshSerialize> Value<T> {
     pub fn set(&mut self, value: T) -> io::Result<()> {
-        // let mut value = Vec::new();
-        // value.serialize(&mut value)?;
         let v = borsh::to_vec(&value)?;
         host::write(self.key_space, self.name.as_bytes(), 0, &v)
-            .map_err(|error| io::Error::new(io::ErrorKind::Other, "todo"))?;
+            .map_err(|_error| io::Error::new(io::ErrorKind::Other, "todo"))?;
         Ok(())
     }
 }
@@ -176,9 +170,9 @@ impl<T: BorshDeserialize> Value<T> {
             *(&mut read) = Some(Vec::new());
             reserve_vec_space(read.as_mut().unwrap(), size)
         })
-        .map_err(|error| io::Error::new(io::ErrorKind::Other, "todo"))?;
+        .map_err(|_error| io::Error::new(io::ErrorKind::Other, "todo"))?;
         match read {
-            Some(mut read) => {
+            Some(read) => {
                 let value = T::deserialize(&mut read.as_slice())?;
                 Ok(Some(value))
             }

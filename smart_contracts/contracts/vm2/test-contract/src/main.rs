@@ -4,24 +4,24 @@
 #[macro_use]
 extern crate alloc;
 
-use alloc::{string::String, vec::Vec};
+use alloc::vec::Vec;
 use casper_macros::{casper, Contract};
-use casper_sdk::{Contract, Value};
+use casper_sdk::Value;
 
-#[derive(Contract, Debug)]
+#[derive(Contract)]
 struct Flipper {
     flag: Value<bool>,
 }
 
 #[casper(entry_points)]
 impl Flipper {
-    pub fn flip(&mut self) {
+    fn flip(&mut self) {
         let mut value = self.flag.get().unwrap().unwrap_or_default();
         value = !value;
         self.flag.set(value).unwrap();
     }
 
-    pub fn flag_value(&self) -> bool {
+    fn flag_value(&self) -> bool {
         self.flag.get().unwrap().unwrap_or_default()
     }
 }
@@ -33,7 +33,7 @@ mod exports {
     use alloc::{string::String, vec::Vec};
     use casper_macros::casper;
     use casper_sdk::{
-        host::{self, Entry, EntryPoint, Manifest, Param, Slice},
+        host::{self, EntryPoint, Manifest, Param},
         reserve_vec_space,
     };
     use core::ptr::NonNull;
@@ -42,10 +42,6 @@ mod exports {
 
     const KEY_SPACE_DEFAULT: u64 = 0;
     const TAG_BYTES: u64 = 0;
-
-    fn mangled_entry_point(param_1: *const Slice, param_2: *const Slice) {
-        host::revert(123);
-    }
 
     #[casper(export)]
     pub fn call2() {
@@ -91,12 +87,10 @@ mod exports {
 
         host::write(KEY_SPACE_DEFAULT, b"read back", TAG_BYTES, msg.as_bytes()).unwrap();
 
-        const NAME: &str = "test_fptr";
-
         const PARAM_1: &str = "param_1";
         const PARAM_2: &str = "param_2";
 
-        let params = [
+        let _params = [
             Param {
                 name_ptr: PARAM_1.as_ptr(),
                 name_len: PARAM_1.len(),
@@ -138,7 +132,7 @@ mod exports {
             },
         ];
 
-        type Foo = extern "C" fn() -> ();
+        type _Foo = extern "C" fn() -> ();
 
         // host::print(&format!("{:?}", mem::size_of::<
         let entry_point_1 = EntryPoint {
@@ -221,9 +215,10 @@ mod tests {
         let schema = Flipper::schema();
         assert_eq!(schema.name, "Flipper");
         assert_eq!(schema.entry_points[0].name, "flip");
-
-        let s = serde_json::to_string_pretty(&schema).expect("foo");
-        println!("{s}");
+        // assert_eq!(schema.entry_points[0].name, "flip");
+        assert_eq!(schema.entry_points[1].name, "flag_value");
+        // let s = serde_json::to_string_pretty(&schema).expect("foo");
+        // println!("{s}");
     }
 
     #[test]
