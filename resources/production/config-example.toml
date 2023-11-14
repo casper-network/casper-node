@@ -285,6 +285,19 @@ execution_results_responses = 0
 # secret_key = "local_node.pem"
 # ca_certificate = "ca_cert.pem"
 
+
+# ==================================================
+# Configuration options for the BinaryPort server
+# ==================================================
+[binary_port_server]
+
+# Flag which enables the BinaryPort server.
+enable_server = true
+
+# Listening address for BinaryPort server.
+address = '0.0.0.0:7779'
+
+
 # ==================================================
 # Configuration options for the JSON-RPC HTTP server
 # ==================================================

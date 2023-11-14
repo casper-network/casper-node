@@ -1103,7 +1103,7 @@ impl reactor::Reactor for MainReactor {
             chainspec.network_config.name.clone(),
             node_startup_instant,
         );
-        let binary_port = BinaryPort::new(registry)?;
+        let binary_port = BinaryPort::new(config.binary_port_server.clone(), registry)?;
         let event_stream_server = EventStreamServer::new(
             config.event_stream_server.clone(),
             storage.root_path().to_path_buf(),

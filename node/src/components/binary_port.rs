@@ -1,4 +1,5 @@
 //! The Binary Port
+mod config;
 mod error;
 mod event;
 mod metrics;
@@ -8,7 +9,7 @@ mod tests;
 use std::net::SocketAddr;
 
 use bytes::BytesMut;
-use casper_types::{bytesrepr::FromBytes, testing::TestRng, BinaryRequest, BlockHash};
+use casper_types::{bytesrepr::FromBytes, BinaryRequest};
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use juliet::{
@@ -28,6 +29,7 @@ use crate::{
 use self::metrics::Metrics;
 
 use super::{Component, ComponentState, InitializedComponent, PortBoundComponent};
+pub(crate) use config::Config;
 pub(crate) use event::Event;
 
 const COMPONENT_NAME: &str = "binary_port";
@@ -37,11 +39,13 @@ pub(crate) struct BinaryPort {
     #[data_size(skip)]
     metrics: Metrics,
     state: ComponentState,
+    config: Config,
 }
 
 impl BinaryPort {
-    pub(crate) fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
+    pub(crate) fn new(config: Config, registry: &Registry) -> Result<Self, prometheus::Error> {
         Ok(Self {
+            config,
             state: ComponentState::Uninitialized,
             metrics: Metrics::new(registry)?,
         })
@@ -71,7 +75,7 @@ where
             }
             ComponentState::Initializing => match event {
                 Event::Initialize => {
-                    let (effects, state) = self.bind(true, effect_builder); // TODO[RC]: `true` should become `config.enabled`
+                    let (effects, state) = self.bind(self.config.enable_server, effect_builder);
                     <Self as InitializedComponent<MainEvent>>::set_state(self, state);
                     effects
                 }
@@ -141,6 +145,7 @@ async fn handle_client<REv, const N: usize>(
                         BinaryRequest::PutTransaction { tbd } => todo!(),
                         BinaryRequest::SpeculativeExec { tbd } => todo!(),
                         BinaryRequest::Quit => todo!(),
+                        BinaryRequest::InMemRequest(_req) => todo!(),
                     }
                 }
                 None => panic!("Should have payload"),

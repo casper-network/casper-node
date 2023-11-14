@@ -5,11 +5,11 @@ use tracing::error;
 use casper_types::Chainspec;
 
 use crate::{
-    logging::LoggingConfig, types::NodeConfig, BlockAccumulatorConfig, BlockSynchronizerConfig,
-    BlockValidatorConfig, ConsensusConfig, ContractRuntimeConfig, DeployBufferConfig,
-    DiagnosticsPortConfig, EventStreamServerConfig, FetcherConfig, GossipConfig, NetworkConfig,
-    RestServerConfig, RpcServerConfig, SpeculativeExecConfig, StorageConfig,
-    TransactionAcceptorConfig, UpgradeWatcherConfig,
+    logging::LoggingConfig, types::NodeConfig, BinaryPortConfig, BlockAccumulatorConfig,
+    BlockSynchronizerConfig, BlockValidatorConfig, ConsensusConfig, ContractRuntimeConfig,
+    DeployBufferConfig, DiagnosticsPortConfig, EventStreamServerConfig, FetcherConfig,
+    GossipConfig, NetworkConfig, RestServerConfig, RpcServerConfig, SpeculativeExecConfig,
+    StorageConfig, TransactionAcceptorConfig, UpgradeWatcherConfig,
 };
 
 /// Root configuration.
@@ -55,6 +55,8 @@ pub struct Config {
     pub block_validator: BlockValidatorConfig,
     /// Config values for the upgrade watcher.
     pub upgrade_watcher: UpgradeWatcherConfig,
+    /// Config values for the BinaryPort server.
+    pub binary_port_server: BinaryPortConfig,
 }
 
 impl Config {

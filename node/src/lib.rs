@@ -52,6 +52,7 @@ use signal_hook::{consts::TERM_SIGNALS, flag};
 use tracing::warn;
 
 pub(crate) use components::{
+    binary_port::Config as BinaryPortConfig,
     block_accumulator::Config as BlockAccumulatorConfig,
     block_synchronizer::Config as BlockSynchronizerConfig,
     block_validator::Config as BlockValidatorConfig,
