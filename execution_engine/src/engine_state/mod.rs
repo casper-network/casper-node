@@ -47,7 +47,10 @@ use casper_storage::{
 
 use casper_types::{
     account::{Account, AccountHash},
-    addressable_entity::{AssociatedKeys, EntityKind, EntityKindTag, NamedKeyAddr, NamedKeys},
+    addressable_entity::{
+        ActionThresholds, AssociatedKeys, EntityKind, EntityKindTag, NamedKeyAddr, NamedKeyValue,
+        NamedKeys, Weight,
+    },
     bytesrepr::ToBytes,
     execution::Effects,
     package::{EntityVersions, Groups, PackageStatus},
@@ -67,7 +70,6 @@ use casper_types::{
     ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Package, PackageHash, Phase,
     ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
 };
-use casper_types::addressable_entity::{ActionThresholds, NamedKeyValue, Weight};
 
 use self::transfer::NewTransferTargetMode;
 pub use self::{
@@ -298,13 +300,10 @@ where
             tracking_copy,
         );
 
-
-
         genesis_installer.install(chainspec_registry)?;
 
         // Commit the transforms.
         let effects = genesis_installer.finalize();
-
 
         let post_state_hash = self
             .state
@@ -457,7 +456,6 @@ where
         if let Some(new_auction_delay) = upgrade_config.new_auction_delay() {
             debug!(%new_auction_delay, "Auction delay changed as part of the upgrade");
 
-
             let auction_addr = EntityAddr::new_system_entity_addr(auction_hash.value());
 
             let auction_named_keys = tracking_copy.borrow_mut().get_named_keys(auction_addr)?;
@@ -473,8 +471,6 @@ where
         }
 
         if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period_millis() {
-
-
             let auction_addr = EntityAddr::new_system_entity_addr(auction_hash.value());
 
             let auction_named_keys = tracking_copy.borrow_mut().get_named_keys(auction_addr)?;
@@ -496,8 +492,6 @@ where
                 let (numer, denom) = new_round_seigniorage_rate.into();
                 Ratio::new(numer.into(), denom.into())
             };
-
-
 
             let mint_addr = EntityAddr::new_system_entity_addr(mint_hash.value());
 
@@ -576,8 +570,6 @@ where
         // We insert the new unbonding delay once the purses to be paid out have been transformed
         // based on the previous unbonding delay.
         if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
-
-
             let auction_addr = EntityAddr::new_system_entity_addr(auction_hash.value());
 
             let auction_named_keys = tracking_copy.borrow_mut().get_named_keys(auction_addr)?;
@@ -817,7 +809,6 @@ where
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Result<(), Error> {
-
         let account_hash = account.account_hash();
 
         let mut generator =
@@ -835,8 +826,9 @@ where
             let new_threshold = ActionThresholds::new(
                 Weight::new(account_threshold.deployment.value()),
                 Weight::new(1u8),
-                Weight::new(account_threshold.key_management.value())
-            ).map_err(|_| Error::Authorization)?;
+                Weight::new(account_threshold.key_management.value()),
+            )
+            .map_err(|_| Error::Authorization)?;
             new_threshold
         };
 
@@ -847,8 +839,6 @@ where
             account.named_keys().clone(),
             Rc::clone(&tracking_copy),
         )?;
-
-
 
         let entity = AddressableEntity::new(
             package_hash,
@@ -899,8 +889,6 @@ where
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Result<(), Error> {
-
-
         let maybe_stored_value = tracking_copy
             .borrow_mut()
             .read(&Key::Account(account_hash))
@@ -939,15 +927,14 @@ where
             let entry_addr = NamedKeyAddr::new_from_string(entity_addr, string.clone())
                 .map_err(|error| Error::Bytesrepr(error.to_string()))?;
 
-            let named_key_value =
-                StoredValue::NamedKey(NamedKeyValue::from_concrete_values(key, string.clone())
-                    .map_err(|cl_error| Error::Bytesrepr(cl_error.to_string()))?);
+            let named_key_value = StoredValue::NamedKey(
+                NamedKeyValue::from_concrete_values(key, string.clone())
+                    .map_err(|cl_error| Error::Bytesrepr(cl_error.to_string()))?,
+            );
 
             let entry_key = Key::NamedKey(entry_addr);
 
-            tracking_copy
-                .borrow_mut()
-                .write(entry_key, named_key_value)
+            tracking_copy.borrow_mut().write(entry_key, named_key_value)
         }
 
         Ok(())
@@ -958,7 +945,6 @@ where
         entity_addr: EntityAddr,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Result<NamedKeys, Error> {
-
         tracking_copy
             .borrow_mut()
             .get_named_keys(entity_addr)
@@ -1057,7 +1043,6 @@ where
 
         let handle_payment_addr =
             EntityAddr::new_system_entity_addr(handle_payment_contract_hash.value());
-
 
         let handle_payment_named_keys =
             match self.get_named_keys(handle_payment_addr, Rc::clone(&tracking_copy)) {
@@ -1311,7 +1296,6 @@ where
                     U512::zero(),
                 );
 
-
             payment_uref = match maybe_payment_uref {
                 Some(payment_uref) => payment_uref,
                 None => return Ok(make_charged_execution_failure(Error::InsufficientPayment)),
@@ -1356,8 +1340,6 @@ where
                     // We're not changing the allowed spending limit since this is a system cost.
                     wasmless_transfer_motes.value(),
                 );
-
-
 
             if let Some(error) = payment_result.as_error().cloned() {
                 return Ok(make_charged_execution_failure(error));
@@ -1445,7 +1427,6 @@ where
                 // argument.
                 transfer_args.amount(),
             );
-
 
         // User is already charged fee for wasmless contract, and we need to make sure we will not
         // charge for anything that happens while calling transfer entrypoint.
@@ -1616,7 +1597,6 @@ where
             }
         };
 
-
         let payment = deploy_item.payment;
         let session = deploy_item.session;
 
@@ -1695,7 +1675,6 @@ where
                 Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
             })?;
 
-
         let handle_payment_addr =
             EntityAddr::new_system_entity_addr(handle_payment_contract_hash.value());
 
@@ -1706,7 +1685,6 @@ where
                     return Ok(ExecutionResult::precondition_failure(error));
                 }
             };
-
 
         // Get payment purse Key from handle payment contract
         // payment_code_spec_6: system contract validity
@@ -1874,7 +1852,6 @@ where
                 }
             };
 
-
         // Get payment purse Key from handle payment contract
         // payment_code_spec_6: system contract validity
         let payment_purse_key: Key =
@@ -1941,12 +1918,9 @@ where
         // Transfer the contents of the rewards purse to block proposer
         execution_result_builder.set_payment_execution_result(payment_result);
 
-
         // Begin session logic handling
         let post_payment_tracking_copy = tracking_copy.borrow();
         let session_tracking_copy = Rc::new(RefCell::new(post_payment_tracking_copy.fork()));
-
-
 
         let session_stack = RuntimeStack::from_account_hash(
             deploy_item.address,
@@ -2187,8 +2161,6 @@ where
             }
             FeeHandling::Accumulate => {
                 let handle_payment_hash = self.get_handle_payment_hash(prestate_hash)?;
-
-
 
                 let handle_payment_named_keys = tracking_copy
                     .borrow_mut()

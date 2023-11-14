@@ -1,10 +1,4 @@
-use std::{
-    cell::RefCell,
-    collections::{BTreeSet},
-    convert::TryInto,
-    iter::{ FromIterator},
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::BTreeSet, convert::TryInto, iter::FromIterator, rc::Rc};
 
 use once_cell::sync::Lazy;
 use rand::RngCore;
@@ -13,8 +7,8 @@ use casper_storage::global_state::state::{self, lmdb::LmdbGlobalStateView, State
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity::{
-        ActionThresholds, ActionType, AddKeyFailure, AssociatedKeys, NamedKeys,
-        RemoveKeyFailure, SetThresholdFailure, Weight,
+        ActionThresholds, ActionType, AddKeyFailure, AssociatedKeys, NamedKeys, RemoveKeyFailure,
+        SetThresholdFailure, Weight,
     },
     bytesrepr::ToBytes,
     execution::TransformKind,
@@ -210,10 +204,8 @@ where
     let account_hash = public_key.to_account_hash();
     let entity_hash = AddressableEntityHash::new([10u8; 32]);
     let deploy_hash = [1u8; 32];
-    let (_, entity_key, addressable_entity) = new_addressable_entity(
-        public_key.to_account_hash(),
-        entity_hash,
-    );
+    let (_, entity_key, addressable_entity) =
+        new_addressable_entity(public_key.to_account_hash(), entity_hash);
 
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
     let access_rights = addressable_entity.extract_access_rights(entity_hash, &named_keys);
@@ -375,8 +367,7 @@ fn contract_key_addable_valid() {
     // Contract key is addable if it is a "base" key - current context of the execution.
     let account_hash = AccountHash::new([0u8; 32]);
     let entity_hash = AddressableEntityHash::new([1u8; 32]);
-    let (_account_key, entity_key, entity) =
-        new_addressable_entity(account_hash, entity_hash);
+    let (_account_key, entity_key, entity) = new_addressable_entity(account_hash, entity_hash);
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
     let mut address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
 
@@ -465,8 +456,7 @@ fn contract_key_addable_valid() {
 fn contract_key_addable_invalid() {
     let account_hash = AccountHash::new([0u8; 32]);
     let entity_hash = AddressableEntityHash::new([1u8; 32]);
-    let (_, entity_key, entity) =
-        new_addressable_entity(account_hash, entity_hash);
+    let (_, entity_key, entity) = new_addressable_entity(account_hash, entity_hash);
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
     let mut address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
     let mut rng = rand::thread_rng();
@@ -892,8 +882,7 @@ fn remove_uref_works() {
     let entity_hash = AddressableEntityHash::new([1u8; 32]);
     let mut named_keys = NamedKeys::new();
     named_keys.insert(uref_name.clone(), uref_key);
-    let (_, entity_key, addressable_entity) =
-        new_addressable_entity(account_hash, entity_hash);
+    let (_, entity_key, addressable_entity) = new_addressable_entity(account_hash, entity_hash);
 
     let access_rights = addressable_entity.extract_access_rights(entity_hash, &named_keys);
 

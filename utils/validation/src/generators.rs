@@ -341,7 +341,6 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             ABITestCase::from_inputs(vec![StoredValue::ByteCode(byte_code).into()])?,
         );
 
-
         let entry_points = {
             let mut entry_points = EntryPoints::new();
             let public_contract_entry_point = EntryPoint::new(

@@ -8,7 +8,6 @@ use casper_types::{
     PackageHash, StoredValue, U512,
 };
 
-
 use crate::lmdb_fixture;
 
 use get_call_stack_recursive_subcall::{
@@ -182,9 +181,12 @@ impl BuilderExt for LmdbWasmTestBuilder {
             EntityAddr::new_contract_entity_addr(current_entity_hash.value());
 
         let cl_value = self
-            .query(None, current_contract_entity_key.into(), &[stored_call_stack_key.to_string()])
+            .query(
+                None,
+                current_contract_entity_key.into(),
+                &[stored_call_stack_key.to_string()],
+            )
             .unwrap();
-
 
         cl_value
             .into_cl_value()
@@ -2088,8 +2090,6 @@ mod session {
 
             let default_entity = EntityWithKeys::new(default_account, named_keys);
 
-
-
             let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
@@ -2738,8 +2738,6 @@ mod session {
 
             let default_entity = EntityWithKeys::new(default_account, named_keys);
 
-
-
             let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
@@ -2979,7 +2977,6 @@ mod session {
 
             let current_contract_package_hash =
                 default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
-
 
             let mut subcalls =
                 vec![
@@ -3377,7 +3374,6 @@ mod payment {
             let current_contract_package_hash =
                 default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
-
             let mut subcalls =
                 vec![
                     super::stored_versioned_session(current_contract_package_hash.into());
@@ -3736,7 +3732,6 @@ mod payment {
             let current_contract_package_hash =
                 default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
-
             let subcalls =
                 vec![
                     super::stored_versioned_session(current_contract_package_hash.into());
@@ -3790,7 +3785,6 @@ mod payment {
             let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 
             let default_entity = EntityWithKeys::new(default_account, named_keys);
-
 
             let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 

@@ -15,8 +15,8 @@ use casper_types::{
         },
         mint::TOTAL_SUPPLY_KEY,
     },
-     CLValue, EntityAddr, EraId, GenesisAccount, GenesisValidator, Key,
-    Motes, ProtocolVersion, PublicKey, SecretKey, U512,
+    CLValue, EntityAddr, EraId, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion,
+    PublicKey, SecretKey, U512,
 };
 
 static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {

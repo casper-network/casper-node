@@ -518,27 +518,30 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                         return Ok(query.into_not_found_result(&msg_prefix));
                     }
                 }
-                StoredValue::NamedKey(named_key_value) => {
-                    match query.visited_names.last() {
-                        Some(expected_name) => {
-                            match named_key_value.get_name() {
-                                Ok(actual_name) => {
-                                    if &actual_name != expected_name {
-                                        return Ok(query.into_not_found_result("Queried and retrieved names do not match"))
-                                    } else {
-                                        if let Ok(key) = named_key_value.get_key() {
-                                            query.navigate(key)
-                                        } else {
-                                            return Ok(query.into_not_found_result("Failed to parse CLValue as Key"));
-                                        }
-                                    }
+                StoredValue::NamedKey(named_key_value) => match query.visited_names.last() {
+                    Some(expected_name) => match named_key_value.get_name() {
+                        Ok(actual_name) => {
+                            if &actual_name != expected_name {
+                                return Ok(query.into_not_found_result(
+                                    "Queried and retrieved names do not match",
+                                ));
+                            } else {
+                                if let Ok(key) = named_key_value.get_key() {
+                                    query.navigate(key)
+                                } else {
+                                    return Ok(query
+                                        .into_not_found_result("Failed to parse CLValue as Key"));
                                 }
-                                Err(_) => return Ok(query.into_not_found_result("Failed to parse CLValue as String"))
                             }
                         }
-                        None => return Ok(query.into_not_found_result("No visited names"))
-                    }
-                }
+                        Err(_) => {
+                            return Ok(
+                                query.into_not_found_result("Failed to parse CLValue as String")
+                            )
+                        }
+                    },
+                    None => return Ok(query.into_not_found_result("No visited names")),
+                },
                 StoredValue::CLValue(cl_value) if cl_value.cl_type() == &CLType::Key => {
                     if let Ok(key) = cl_value.to_owned().into_t::<Key>() {
                         query.navigate(key);

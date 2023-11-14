@@ -8,8 +8,8 @@ use casper_execution_engine::{
     execution::Error as ExecError,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, AccessRights,
-    AddressableEntityHash, PublicKey, RuntimeArgs, SecretKey, URef, U512,
+    account::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntityHash,
+    PublicKey, RuntimeArgs, SecretKey, URef, U512,
 };
 use once_cell::sync::Lazy;
 

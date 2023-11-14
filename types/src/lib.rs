@@ -77,7 +77,7 @@ pub use crate::uint::{UIntParseError, U128, U256, U512};
 pub use access_rights::{
     AccessRights, ContextAccessRights, GrantedAccess, ACCESS_RIGHTS_SERIALIZED_LENGTH,
 };
-pub use account::{Account};
+pub use account::Account;
 #[doc(inline)]
 pub use addressable_entity::{
     AddressableEntity, AddressableEntityHash, EntityAddr, EntityKind, EntryPoint, EntryPointAccess,

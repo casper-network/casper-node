@@ -1316,7 +1316,6 @@ where
 
         self.store_chainspec_registry(chainspec_registry)?;
 
-
         Ok(())
     }
 }

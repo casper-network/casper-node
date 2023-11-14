@@ -8,8 +8,7 @@ use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
     account::AccountHash,
     package::{EntityVersion, ENTITY_INITIAL_VERSION},
-    runtime_args, EntityVersionKey, EraId, PackageHash, ProtocolVersion,
-    RuntimeArgs, U512,
+    runtime_args, EntityVersionKey, EraId, PackageHash, ProtocolVersion, RuntimeArgs, U512,
 };
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);

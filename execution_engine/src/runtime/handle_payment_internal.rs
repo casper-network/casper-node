@@ -2,10 +2,10 @@ use casper_storage::global_state::state::StateReader;
 use std::collections::BTreeSet;
 
 use casper_types::{
-    account::AccountHash, system::handle_payment::Error, BlockTime, CLValue, FeeHandling, Key,
-    Phase, RefundHandling, StoredValue, TransferredTo, URef, U512,
+    account::AccountHash, addressable_entity::NamedKeyAddr, system::handle_payment::Error,
+    BlockTime, CLValue, FeeHandling, Key, Phase, RefundHandling, StoredValue, TransferredTo, URef,
+    U512,
 };
-use casper_types::addressable_entity::NamedKeyAddr;
 
 use crate::{
     execution,
@@ -96,15 +96,16 @@ where
     fn get_key(&mut self, name: &str) -> Option<Key> {
         match self.context.named_keys_get(name).cloned() {
             None => {
-                let entity_addr = match self.context.get_entity_key()
-                    .as_entity_addr(){
+                let entity_addr = match self.context.get_entity_key().as_entity_addr() {
                     Some(addr) => addr,
-                    None => return None
+                    None => return None,
                 };
-                let key = if let Ok(addr) = NamedKeyAddr::new_from_string(entity_addr, name.to_string()) {
+                let key = if let Ok(addr) =
+                    NamedKeyAddr::new_from_string(entity_addr, name.to_string())
+                {
                     Key::NamedKey(addr)
                 } else {
-                    return None
+                    return None;
                 };
                 if let Ok(Some(StoredValue::NamedKey(value))) = self.context.read_gs(&key) {
                     value.get_key().ok()
@@ -112,7 +113,7 @@ where
                     None
                 }
             }
-            Some(key) => {Some(key)}
+            Some(key) => Some(key),
         }
     }
 

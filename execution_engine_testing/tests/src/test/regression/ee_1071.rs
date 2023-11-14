@@ -44,13 +44,11 @@ fn should_run_ee_1071_regression() {
     )
     .build();
 
-    let contract_before = builder
-        .get_named_keys(EntityAddr::SmartContract(contract_hash.value()));
+    let contract_before = builder.get_named_keys(EntityAddr::SmartContract(contract_hash.value()));
 
     builder.exec(exec_request_2).expect_success().commit();
 
-    let contract_after = builder
-        .get_named_keys(EntityAddr::SmartContract(contract_hash.value()));
+    let contract_after = builder.get_named_keys(EntityAddr::SmartContract(contract_hash.value()));
 
     assert_ne!(
         contract_after, contract_before,

@@ -659,15 +659,11 @@ where
         let handle_payment_key =
             Key::addressable_entity_key(EntityKindTag::System, handle_payment_hash);
 
-
-
-
         let handle_payment_named_keys = self
             .context
             .state()
             .borrow_mut()
             .get_named_keys(EntityAddr::System(handle_payment_hash.value()))?;
-
 
         let mut named_keys = handle_payment_named_keys.clone();
 
@@ -761,7 +757,6 @@ where
 
         let auction_hash = self.context.get_system_contract(AUCTION)?;
         let auction_key = Key::addressable_entity_key(EntityKindTag::System, auction_hash);
-
 
         let auction_named_keys = self
             .context
@@ -1331,7 +1326,6 @@ where
             .borrow_mut()
             .get_named_keys(entity_addr)?;
 
-
         let access_rights = {
             let mut access_rights = entity.extract_access_rights(entity_hash, &entity_named_keys);
             access_rights.extend(&extended_access_rights);
@@ -1835,7 +1829,6 @@ where
         &mut self,
         package: &Package,
     ) -> Result<(URef, NamedKeys, ActionThresholds, AssociatedKeys), Error> {
-
         if let Some(previous_entity_hash) = package.current_entity_hash() {
             let previous_entity_key = Key::contract_entity_key(previous_entity_hash);
 
@@ -1852,11 +1845,7 @@ where
                 let account_hash = self.context.get_caller();
                 let has_access = self.context.validate_uref(&package.access_key()).is_ok();
 
-
-
-                if has_access
-                    && !associated_keys.contains_key(&account_hash)
-                {
+                if has_access && !associated_keys.contains_key(&account_hash) {
                     previous_entity.add_associated_key(
                         account_hash,
                         *action_thresholds.upgrade_management(),

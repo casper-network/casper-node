@@ -4,7 +4,11 @@ use casper_engine_test_support::{
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::EngineConfigBuilder;
-use casper_types::{runtime_args, system::{handle_payment::ACCUMULATION_PURSE_KEY, mint}, EraId, FeeHandling, Key, ProtocolVersion, RuntimeArgs, U512, EntityAddr};
+use casper_types::{
+    runtime_args,
+    system::{handle_payment::ACCUMULATION_PURSE_KEY, mint},
+    EntityAddr, EraId, FeeHandling, Key, ProtocolVersion, RuntimeArgs, U512,
+};
 use once_cell::sync::Lazy;
 
 use crate::{
@@ -31,12 +35,11 @@ fn default_genesis_config_should_not_have_rewards_purse() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let handle_payment = builder.get_handle_payment_contract_hash();
-    let handle_payment_contract = builder
-        .get_named_keys(EntityAddr::System(handle_payment.value()));
+    let handle_payment_contract =
+        builder.get_named_keys(EntityAddr::System(handle_payment.value()));
 
     assert!(
-        handle_payment_contract
-            .contains(ACCUMULATION_PURSE_KEY),
+        handle_payment_contract.contains(ACCUMULATION_PURSE_KEY),
         "Did not find rewards purse in handle payment's named keys {:?}",
         handle_payment_contract
     );
@@ -48,8 +51,7 @@ fn should_finalize_and_accumulate_rewards_purse() {
     let mut builder = private_chain::setup_genesis_only();
 
     let handle_payment = builder.get_handle_payment_contract_hash();
-    let handle_payment_1 = builder
-        .get_named_keys(EntityAddr::System(handle_payment.value()));
+    let handle_payment_1 = builder.get_named_keys(EntityAddr::System(handle_payment.value()));
 
     let rewards_purse_key = handle_payment_1
         .get(ACCUMULATION_PURSE_KEY)
@@ -74,12 +76,10 @@ fn should_finalize_and_accumulate_rewards_purse() {
         U512::zero()
     );
 
-    let handle_payment_2 = builder
-        .get_named_keys(EntityAddr::System(handle_payment.value()));
+    let handle_payment_2 = builder.get_named_keys(EntityAddr::System(handle_payment.value()));
 
     assert_eq!(
-        handle_payment_1,
-        handle_payment_2,
+        handle_payment_1, handle_payment_2,
         "none of the named keys should change before and after execution"
     );
 
@@ -103,17 +103,14 @@ fn should_finalize_and_accumulate_rewards_purse() {
         U512::zero()
     );
 
-    let handle_payment_3 = builder
-        .get_named_keys(EntityAddr::System(handle_payment.value()));
+    let handle_payment_3 = builder.get_named_keys(EntityAddr::System(handle_payment.value()));
 
     assert_eq!(
-        handle_payment_1,
-        handle_payment_2,
+        handle_payment_1, handle_payment_2,
         "none of the named keys should change before and after execution"
     );
     assert_eq!(
-        handle_payment_2,
-        handle_payment_3,
+        handle_payment_2, handle_payment_3,
         "none of the named keys should change before and after execution"
     );
 }
@@ -125,8 +122,8 @@ fn should_accumulate_deploy_fees() {
 
     // Check handle payments has rewards purse
     let handle_payment_hash = builder.get_handle_payment_contract_hash();
-    let handle_payment_contract = builder
-        .get_named_keys(EntityAddr::System(handle_payment_hash.value()));
+    let handle_payment_contract =
+        builder.get_named_keys(EntityAddr::System(handle_payment_hash.value()));
 
     let rewards_purse = handle_payment_contract
         .get(ACCUMULATION_PURSE_KEY)
@@ -149,15 +146,12 @@ fn should_accumulate_deploy_fees() {
 
     builder.exec(exec_request).expect_success().commit();
 
-    let handle_payment_after  = builder
-        .get_named_keys(EntityAddr::System(handle_payment_hash.value()));
-
+    let handle_payment_after =
+        builder.get_named_keys(EntityAddr::System(handle_payment_hash.value()));
 
     assert_eq!(
-        handle_payment_after
-            .get(ACCUMULATION_PURSE_KEY),
-        handle_payment_contract
-            .get(ACCUMULATION_PURSE_KEY),
+        handle_payment_after.get(ACCUMULATION_PURSE_KEY),
+        handle_payment_contract.get(ACCUMULATION_PURSE_KEY),
         "keys should not change before and after deploy has been processed",
     );
 
@@ -189,8 +183,7 @@ fn should_distribute_accumulated_fees_to_admins() {
     let mut builder = super::private_chain_setup();
 
     let handle_payment_hash = builder.get_handle_payment_contract_hash();
-    let handle_payment = builder
-        .get_named_keys(EntityAddr::System(handle_payment_hash.value()));
+    let handle_payment = builder.get_named_keys(EntityAddr::System(handle_payment_hash.value()));
 
     let accumulation_purse = handle_payment
         .get(ACCUMULATION_PURSE_KEY)
@@ -297,8 +290,8 @@ fn should_accumulate_fees_after_upgrade() {
         .expect_upgrade_success();
     // Check handle payments has rewards purse
     let handle_payment_hash = builder.get_handle_payment_contract_hash();
-    let handle_payment_contract = builder
-        .get_named_keys(EntityAddr::System(handle_payment_hash.value()));
+    let handle_payment_contract =
+        builder.get_named_keys(EntityAddr::System(handle_payment_hash.value()));
     let rewards_purse = handle_payment_contract
         .get(ACCUMULATION_PURSE_KEY)
         .expect("should have accumulation purse")
@@ -318,14 +311,12 @@ fn should_accumulate_fees_after_upgrade() {
 
     builder.exec(exec_request).expect_success().commit();
 
-    let handle_payment_after = builder
-        .get_named_keys(EntityAddr::System(handle_payment_hash.value()));
+    let handle_payment_after =
+        builder.get_named_keys(EntityAddr::System(handle_payment_hash.value()));
 
     assert_eq!(
-        handle_payment_after
-            .get(ACCUMULATION_PURSE_KEY),
-        handle_payment_contract
-            .get(ACCUMULATION_PURSE_KEY),
+        handle_payment_after.get(ACCUMULATION_PURSE_KEY),
+        handle_payment_contract.get(ACCUMULATION_PURSE_KEY),
         "keys should not change before and after deploy has been processed",
     );
 

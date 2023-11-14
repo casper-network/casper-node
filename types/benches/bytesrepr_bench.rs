@@ -7,9 +7,7 @@ use std::{
 
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{
-        ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind,
-    },
+    addressable_entity::{ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind},
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     package::PackageStatus,
     system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
@@ -460,10 +458,7 @@ fn deserialize_contract(b: &mut Bencher) {
     b.iter(|| AddressableEntity::from_bytes(black_box(&contract_bytes)).unwrap());
 }
 
-
 fn sample_contract(entry_points_len: u8) -> AddressableEntity {
-
-
     let entry_points = {
         let mut tmp = EntryPoints::new_with_default_entry_point();
         (1..entry_points_len).for_each(|i| {

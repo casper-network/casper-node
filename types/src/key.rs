@@ -32,9 +32,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use crate::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity,
-    addressable_entity::{
-        AddressableEntityHash, EntityAddr, EntityKindTag, NamedKeyAddr,
-    },
+    addressable_entity::{AddressableEntityHash, EntityAddr, EntityKindTag, NamedKeyAddr},
     byte_code::ByteCodeKind,
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH},
     checksummed_hex,
@@ -43,8 +41,8 @@ use crate::{
     package::PackageHash,
     system::auction::{BidAddr, BidAddrTag},
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
-    DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError,
-    TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
+    DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError, TRANSFER_ADDR_LENGTH,
+    UREF_ADDR_LENGTH,
 };
 
 const HASH_PREFIX: &str = "hash-";
@@ -942,14 +940,12 @@ impl Key {
     /// Returns true if the key is of type [`Key::NamedKey`] and the variants have the
     /// same [`EntityAddr`].
     pub fn is_entry_for_base(&self, entity_addr: &EntityAddr) -> bool {
-        if let Self::NamedKey(NamedKeyAddr::NamedKeyEntry { base_addr, ..}) = self {
-            base_addr ==  entity_addr
+        if let Self::NamedKey(NamedKeyAddr::NamedKeyEntry { base_addr, .. }) = self {
+            base_addr == entity_addr
         } else {
             false
         }
     }
-
-
 }
 
 impl Display for Key {

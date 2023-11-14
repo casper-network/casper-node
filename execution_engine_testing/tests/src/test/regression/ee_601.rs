@@ -2,9 +2,10 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{runtime_args, CLValue, Key, RuntimeArgs, StoredValue, EntityAddr};
-use casper_types::addressable_entity::NamedKeyAddr;
-use casper_types::execution::TransformKind;
+use casper_types::{
+    addressable_entity::NamedKeyAddr, execution::TransformKind, runtime_args, CLValue, EntityAddr,
+    Key, RuntimeArgs, StoredValue,
+};
 
 const ARG_AMOUNT: &str = "amount";
 
@@ -40,8 +41,11 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
 
     let effects = &builder.get_effects()[0];
 
-    let payment_uref_addr = NamedKeyAddr::new_from_string(EntityAddr::Account(entity_hash.value()), "new_uref_result-payment".to_string())
-        .expect("must get addr");
+    let payment_uref_addr = NamedKeyAddr::new_from_string(
+        EntityAddr::Account(entity_hash.value()),
+        "new_uref_result-payment".to_string(),
+    )
+    .expect("must get addr");
     let payment_uref_key = Key::NamedKey(payment_uref_addr);
 
     let mut payment_transforms = effects
@@ -54,11 +58,14 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
         TransformKind::Write(StoredValue::NamedKey(named_key)) => {
             named_key.get_key().expect("must get key")
         }
-        _ => panic!("Should be Write transform")
+        _ => panic!("Should be Write transform"),
     };
 
-    let session_uref_addr = NamedKeyAddr::new_from_string(EntityAddr::Account(entity_hash.value()), "new_uref_result-session".to_string())
-        .expect("must get addr");
+    let session_uref_addr = NamedKeyAddr::new_from_string(
+        EntityAddr::Account(entity_hash.value()),
+        "new_uref_result-session".to_string(),
+    )
+    .expect("must get addr");
 
     let session_uref_key = Key::NamedKey(session_uref_addr);
 
@@ -72,9 +79,8 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
         TransformKind::Write(StoredValue::NamedKey(named_key)) => {
             named_key.get_key().expect("must get key")
         }
-        _ => panic!("Should be Write transform")
+        _ => panic!("Should be Write transform"),
     };
-
 
     builder.commit();
 

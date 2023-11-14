@@ -77,8 +77,6 @@ pub const PACKAGE_KIND_ACCOUNT_TAG: u8 = 2;
 /// The tag for Contract Packages associated with legacy packages.
 pub const PACKAGE_KIND_LEGACY_TAG: u8 = 3;
 
-
-
 const ADDRESSABLE_ENTITY_STRING_PREFIX: &str = "addressable-entity-";
 
 const BASE_TAG: u8 = 0;
@@ -919,7 +917,6 @@ impl Distribution<EntityKind> for Standard {
 //     named_keys: NamedKeys
 // }
 
-
 /// The address for an AddressableEntity which contains the 32 bytes and tagging information.
 #[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -983,7 +980,6 @@ impl EntityAddr {
     pub fn to_formatted_string(&self) -> String {
         format!("{}", self)
     }
-
 
     /// Constructs an [`EntityAddr`] from a formatted String.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
@@ -1126,7 +1122,6 @@ impl Display for NamedKeyAddrTag {
         write!(f, "{}", base16::encode_lower(&[tag]))
     }
 }
-
 
 /// A NamedKey address.
 #[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
@@ -1387,7 +1382,6 @@ impl NamedKeyValue {
         let string_cl_value = CLValue::from_t(name)?;
         Ok(Self::new(key_cl_value, string_cl_value))
     }
-
 
     /// Returns the [`Key`] as a CLValue.
     pub fn get_key_as_cl_value(&self) -> &CLValue {
@@ -2308,7 +2302,6 @@ mod tests {
             "addressable-entity-000000000000000000000000000000000000000000000000000000000000000g";
         assert!(AddressableEntityHash::from_formatted_str(invalid_hex).is_err());
     }
-
 
     #[test]
     fn named_key_addr_from_str() {

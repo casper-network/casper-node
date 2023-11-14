@@ -427,7 +427,6 @@ fn should_support_extending_functionality() {
         .into_package_addr()
         .expect("should have hash");
 
-
     let stored_hash = account
         .named_keys()
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)

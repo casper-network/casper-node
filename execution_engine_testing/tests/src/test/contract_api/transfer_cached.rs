@@ -7,9 +7,12 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_INITIAL_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::{DeployItem, MAX_PAYMENT_AMOUNT};
-use casper_types::{account::AccountHash, runtime_args, system::mint::{ARG_AMOUNT, ARG_ID, ARG_TARGET}, PublicKey, RuntimeArgs, SecretKey, U512};
-
-
+use casper_types::{
+    account::AccountHash,
+    runtime_args,
+    system::mint::{ARG_AMOUNT, ARG_ID, ARG_TARGET},
+    PublicKey, RuntimeArgs, SecretKey, U512,
+};
 
 static TRANSFER_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
 

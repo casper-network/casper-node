@@ -4,7 +4,15 @@ use std::{
 };
 
 use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
-use casper_types::{account::AccountHash, addressable_entity::{EntityKindTag, NamedKeyAddr, NamedKeys}, bytesrepr, package::{EntityVersions, Groups, PackageStatus}, AccessRights, AddressableEntity, AddressableEntityHash, CLValue, EntityAddr, EntityKind, EntryPoints, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, StoredValue, StoredValueTypeMismatch, URef, KeyTag};
+use casper_types::{
+    account::AccountHash,
+    addressable_entity::{EntityKindTag, NamedKeyAddr, NamedKeys},
+    bytesrepr,
+    package::{EntityVersions, Groups, PackageStatus},
+    AccessRights, AddressableEntity, AddressableEntityHash, CLValue, EntityAddr, EntityKind,
+    EntryPoints, Key, KeyTag, Motes, Package, PackageHash, Phase, ProtocolVersion, StoredValue,
+    StoredValueTypeMismatch, URef,
+};
 
 use crate::{
     engine_state::{ChecksumRegistry, SystemContractRegistry, ACCOUNT_BYTE_CODE_HASH},
@@ -82,7 +90,6 @@ pub trait TrackingCopyExt<R> {
 
     /// Gets the system checksum registry.
     fn get_checksum_registry(&mut self) -> Result<Option<ChecksumRegistry>, Self::Error>;
-
 
     /// Migrate the NamedKeys for a Contract or Account.
     fn migrate_named_keys(
@@ -362,7 +369,6 @@ where
 
         let mut named_keys = NamedKeys::new();
 
-
         for entry_key in ret.iter() {
             match self.read(entry_key).map_err(Into::into)? {
                 Some(StoredValue::NamedKey(named_key)) => {
@@ -379,20 +385,18 @@ where
                         StoredValueTypeMismatch::new("CLValue".to_string(), other.type_name()),
                     ))
                 }
-                None => {
-                    match self.cache.reads_cached.get(entry_key) {
-                        Some(StoredValue::NamedKey(named_key_value)) => {
-                            let key = named_key_value
-                                .get_key()
-                                .map_err(|cl_error| execution::Error::CLValue(cl_error.clone()))?;
-                            let name = named_key_value
-                                .get_name()
-                                .map_err(|cl_error| execution::Error::CLValue(cl_error.clone()))?;
-                            named_keys.insert(name, key);
-                        },
-                        Some(_) | None => {
-                            return Err(execution::Error::KeyNotFound(*entry_key));
-                        }
+                None => match self.cache.reads_cached.get(entry_key) {
+                    Some(StoredValue::NamedKey(named_key_value)) => {
+                        let key = named_key_value
+                            .get_key()
+                            .map_err(|cl_error| execution::Error::CLValue(cl_error.clone()))?;
+                        let name = named_key_value
+                            .get_name()
+                            .map_err(|cl_error| execution::Error::CLValue(cl_error.clone()))?;
+                        named_keys.insert(name, key);
+                    }
+                    Some(_) | None => {
+                        return Err(execution::Error::KeyNotFound(*entry_key));
                     }
                 },
             };
