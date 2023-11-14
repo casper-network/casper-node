@@ -186,7 +186,6 @@ where
                     ?transform_kind,
                     "commit: key not found while attempting to apply transform"
                 );
-                println!("{:?}", transform_kind);
                 return Err(CommitError::KeyNotFound(key).into());
             }
             (ReadResult::Found(current_value), transform_kind) => {

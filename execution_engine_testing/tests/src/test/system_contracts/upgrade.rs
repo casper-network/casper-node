@@ -460,8 +460,6 @@ fn should_upgrade_only_round_seigniorage_rate() {
     let keys = builder
         .get_named_keys(EntityAddr::System(builder.get_mint_contract_hash().value()));
 
-    println!("{:?}", keys);
-
     let round_seigniorage_rate_key = *keys
         .get(ROUND_SEIGNIORAGE_RATE_KEY)
         .unwrap();

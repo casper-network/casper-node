@@ -306,7 +306,6 @@ where
         // Commit the transforms.
         let effects = genesis_installer.finalize();
 
-        println!("Installation completed");
 
         let post_state_hash = self
             .state
@@ -637,8 +636,6 @@ where
             .commit(pre_state_hash, effects.clone())
             .map_err(Into::into)?;
 
-        println!("Upgrade complete");
-
         // return result and effects
         Ok(UpgradeSuccess {
             post_state_hash,
@@ -821,7 +818,7 @@ where
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Result<(), Error> {
-        println!("Creating new entity for account");
+
         let account_hash = account.account_hash();
 
         let mut generator =
@@ -852,7 +849,7 @@ where
             Rc::clone(&tracking_copy),
         )?;
 
-        println!("migrated named keys");
+
 
         let entity = AddressableEntity::new(
             package_hash,
@@ -903,7 +900,7 @@ where
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Result<(), Error> {
-        println!("In migrate account");
+
 
         let maybe_stored_value = tracking_copy
             .borrow_mut()
@@ -1062,7 +1059,6 @@ where
         let handle_payment_addr =
             EntityAddr::new_system_entity_addr(handle_payment_contract_hash.value());
 
-        println!("HP ADDR {}", handle_payment_addr);
 
         let handle_payment_named_keys =
             match self.get_named_keys(handle_payment_addr, Rc::clone(&tracking_copy)) {
@@ -1316,7 +1312,6 @@ where
                     U512::zero(),
                 );
 
-            println!("Got payment purse");
 
             payment_uref = match maybe_payment_uref {
                 Some(payment_uref) => payment_uref,
@@ -1363,7 +1358,7 @@ where
                     wasmless_transfer_motes.value(),
                 );
 
-            println!("Transfer complete for payment phase");
+
 
             if let Some(error) = payment_result.as_error().cloned() {
                 return Ok(make_charged_execution_failure(error));
@@ -1452,7 +1447,6 @@ where
                 transfer_args.amount(),
             );
 
-        println!("Transfer complete for session phase");
 
         // User is already charged fee for wasmless contract, and we need to make sure we will not
         // charge for anything that happens while calling transfer entrypoint.

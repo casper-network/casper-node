@@ -325,8 +325,6 @@ where
     }
 
     fn get_named_keys(&mut self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error> {
-        println!("Getting named keys");
-
         let base_named_key_addr = NamedKeyAddr::Base(entity_addr);
 
         let prefix = base_named_key_addr
@@ -346,12 +344,9 @@ where
 
         let cache = self.cache.get_key_tag_muts_cached(&KeyTag::NamedKey);
 
-        println!("the cache: {:?}", cache);
-
         // there may be newly inserted keys which have not been committed yet
         if let Some(keys) = cache {
             for key in keys {
-                println!("Cached keys: {:?}", key);
                 if ret.contains(&key) {
                     continue;
                 }
@@ -391,8 +386,7 @@ where
                                 .map_err(|cl_error| execution::Error::CLValue(cl_error.clone()))?;
                             named_keys.insert(name, key);
                         },
-                        Some(_) | None => {
-                            println!("Cache doesnt have it either");
+                        Some(_) | None => { ;
                             return Err(execution::Error::KeyNotFound(*entry_key));
                         }
                     }

@@ -731,7 +731,6 @@ where
         let mut named_keys = NamedKeys::new();
 
         let genesis_validators: Vec<_> = self.exec_config.get_bonded_validators().collect();
-        println!("L: {} | R: {}", self.exec_config.validator_slots() as usize, genesis_validators.len());
         if (self.exec_config.validator_slots() as usize) < genesis_validators.len() {
             return Err(GenesisError::InvalidValidatorSlots {
                 validators: genesis_validators.len(),

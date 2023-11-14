@@ -98,8 +98,6 @@ fn should_transfer_from_default_and_then_to_another_account() {
     let named_key_addr = NamedKeyAddr::new_from_string(handle_payment_addr, system::handle_payment::REFUND_PURSE_KEY.to_string())
         .expect("must get addr");
 
-    println!("{:?}", Key::NamedKey(named_key_addr));
-
     // Default account to account 1
     let mut exec_builder = ExecuteRequestBuilder::new();
     // We must first transfer the amount account 1 will transfer to account 2, along with the fee

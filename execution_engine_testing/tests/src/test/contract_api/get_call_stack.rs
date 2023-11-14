@@ -163,8 +163,6 @@ impl BuilderExt for LmdbWasmTestBuilder {
             )
             .unwrap();
 
-        println!("{:?}", cl_value);
-
         cl_value
             .into_cl_value()
             .map(CLValue::into_t::<Vec<CallStackElement>>)
@@ -194,7 +192,6 @@ impl BuilderExt for LmdbWasmTestBuilder {
             .query(None, current_contract_entity_key.into(), &[stored_call_stack_key.to_string()])
             .unwrap();
 
-        println!("{:?}", cl_value);
 
         cl_value
             .into_cl_value()

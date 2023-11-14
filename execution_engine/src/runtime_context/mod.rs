@@ -360,7 +360,6 @@ where
 
     /// Puts `key` to the map of named keys of current context.
     pub fn put_key(&mut self, name: String, key: Key) -> Result<(), Error> {
-        println!("putting {}", name);
         // No need to perform actual validation on the base key because an account or contract (i.e.
         // the element stored under `base_key`) is allowed to add new named keys to itself.
         let entity_addr = if let Key::AddressableEntity(entity_addr) = self.get_entity_key() {
@@ -841,7 +840,6 @@ where
                 Err(Error::GasLimit)
             }
             Some(val) if val > gas_limit => {
-                println!("Val/limit {}/{}", val, gas_limit);
                 self.set_gas_counter(gas_limit);
                 Err(Error::GasLimit)
             }

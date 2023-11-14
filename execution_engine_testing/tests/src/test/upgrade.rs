@@ -434,7 +434,6 @@ fn should_support_extending_functionality() {
         .into_uref()
         .expect("must get uref");
 
-    println!("{:?}", access_uref);
 
     let stored_hash = account
         .named_keys()

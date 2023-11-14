@@ -184,8 +184,6 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
             .or_insert_with(BTreeSet::new);
 
         key_set.insert(key);
-
-        println!("{:?}", key_set);
     }
 
     /// Inserts `key` and `value` pair to Write/Add cache.
@@ -521,7 +519,6 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                     }
                 }
                 StoredValue::NamedKey(named_key_value) => {
-                    println!("{:?}", query.visited_names);
                     match query.visited_names.last() {
                         Some(expected_name) => {
                             match named_key_value.get_name() {

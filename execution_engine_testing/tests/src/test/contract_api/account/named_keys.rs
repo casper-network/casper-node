@@ -49,7 +49,6 @@ fn should_run_named_keys_contract() {
     run_command(&mut builder, COMMAND_CREATE_UREF1);
 
     let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
-    println!("{:?}", named_keys);
 
     assert!(named_keys.contains(KEY1));
     assert!(!named_keys.contains(KEY2));
