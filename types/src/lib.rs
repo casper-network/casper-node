@@ -241,6 +241,24 @@ const VERSIONED_FINALIZED_APPROVALS_DB_TAG: u8 = 12;
 const APPROVALS_HASHES_DB_TAG: u8 = 13;
 const VERSIONED_APPROVALS_HASHES_DB_TAG: u8 = 14;
 
+#[derive(Debug)]
+enum InMemRequest {
+    /// Returns hash for a given height
+    BlockHeight2Hash {
+        height: u64,
+    },
+    /// Returns height&hash for the currently highest block
+    HighestBlock,
+    /// Returns true if `self.completed_blocks.highest_sequence()` contains the given hash
+    CompletedBlockContains {
+        block_hash: BlockHash,
+    },
+    /// TODO
+    TransactionHash2BlockHashAndHeight {
+        transaction_hash: Digest,
+    },
+}
+
 /// TODO
 #[derive(Debug)]
 pub enum BinaryRequest {
@@ -252,6 +270,7 @@ pub enum BinaryRequest {
         /// TODO - bytesrepr serialized
         key: Vec<u8>,
     },
+    InMemRequest(InMemRequest),
     /// TODO
     PutTransaction {
         /// TODO
