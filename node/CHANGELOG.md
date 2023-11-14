@@ -11,17 +11,57 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## Unreleased
+## Unreleased (2.0.0)
+
+### Changed
+* All SSE events are emitted via the `<IP:Port>/events` endpoint. None of the previous ones (`/events/main`, `/events/deploys`, and `/events/sigs`) is available any longer.
+
+
+
+## 1.5.4
 
 ### Added
 * New environment variable `CL_EVENT_QUEUE_DUMP_THRESHOLD` to enable dumping of queue event counts to log when a certain threshold is exceeded.
-
-### Fixed
-* Now possible to build outside a git repository context (e.g. from a source tarball). In such cases, the node's build version (as reported vie status endpoints) will not contain a trailing git short hash.
+* Add initial support for private chain. 
+* Add support for CA signed client certificates for private chain.
+* Add a Highway Analysis tool for checking the state of the consensus.
 
 ### Changed
 * The `state_identifier` parameter of the `query_global_state` JSON-RPC method is now optional. If no `state_identifier` is specified, the highest complete block known to the node will be used to fulfill the request.
-* All SSE events are emitted via the `<IP:Port>/events` endpoint. None of the previous ones (`/events/main`, `/events/deploys`, and `/events/sigs`) is available any longer.
+* `state_get_account_info` RPC handler can now handle an `AccountIdentifier` as a parameter.
+* Replace the `sync_to_genesis` node config field with `sync_handling`.
+  * The new `sync_handling` field accepts three values:
+    - `genesis` - node will attempt to acquire all block data back to genesis
+    - `ttl` - node will attempt to acquire all block data to comply with time to live enforcement
+    - `nosync` - node will only acquire blocks moving forward
+
+### Fixed
+* Now possible to build outside a git repository context (e.g. from a source tarball). In such cases, the node's build version (as reported vie status endpoints) will not contain a trailing git short hash.
+* Remove an error that would unnecessarily be raised when a node includes its highest orphaned block within the current era.
+* Short-circuit initialization of block and deploy metadata DB to resolve delays after an upgrade.
+
+### Security
+* Update `openssl` to version 0.10.55 as mitigation for [RUSTSEC-2023-0044](https://rustsec.org/advisories/RUSTSEC-2023-0044).
+
+
+
+## 1.5.3
+
+### Added
+* Add `deploy_acceptor` section to config with a single option `timestamp_leeway` to allow a small leeway when deciding if a deploy is future-dated.
+* Add `deploys.max_timestamp_leeway` chainspec option to define the upper limit for the new config option `deploy_acceptor.timestamp_leeway`.
+* Add `block_validator.max_completed_entries` config option to control the number of recently validated proposed blocks to retain.
+
+### Changed
+* Change the limit of the `core_config.simultaneous_peer_requests` chainspec parameter to 255.
+* Optimize the `BlockValidator` component to reduce the number of simultaneous fetch events created for a given proposed block.
+
+### Fixed
+* Fix issue in `chain_get_block_transfers` JSON-RPC where blocks with no deploys could be reported as having `null` transfers rather than `[]`.
+* Fix issue in `chain_get_block_transfers` JSON-RPC where blocks containing successful transfers could erroneously be reported as having none.
+
+### Removed
+* Remove the `block_synchronizer.stall_limit` node config parameter since it is no longer needed.
 
 
 

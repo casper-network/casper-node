@@ -1,6 +1,6 @@
 //! A library to support testing of Wasm smart contracts for use on the Casper Platform.
 
-#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/5.0.0")]
+#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/6.0.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon_48.png",
     html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png",
@@ -64,11 +64,11 @@ pub const DEFAULT_UNBONDING_DELAY: u64 = 7;
 /// Round seigniorage rate represented as a fraction of the total supply.
 ///
 /// Annual issuance: 8%
-/// Minimum round length: 2^15 ms
+/// Minimum round length: 2^14 ms
 /// Ticks per year: 31536000000
 ///
-/// (1+0.08)^((2^15)/31536000000)-1 is expressed as a fractional number below.
-pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(7, 87535408);
+/// (1+0.08)^((2^14)/31536000000)-1 is expressed as a fractional number below.
+pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(7, 175070816);
 
 /// Default chain name.
 pub const DEFAULT_CHAIN_NAME: &str = "casper-execution-engine-testing";

@@ -181,24 +181,34 @@ where
         txn.value_exists(self.legacy, legacy_key)
     }
 
+    /// Deletes the value under `key` from both the current and legacy DBs.
+    ///
+    /// Returns `Ok` if the value is successfully deleted from either or both the DBs, or if the
+    /// value did not exist in either.
     pub(super) fn delete(&self, txn: &mut RwTransaction, key: &K) -> Result<(), LmdbExtError> {
         let serialized_key = lmdb_ext::serialize_bytesrepr(key)?;
-        let current_result = txn.del(self.current, &serialized_key, None);
-        // Avoid returning early for the case where `del_result` is Ok, since some
+        let current_result = match txn.del(self.current, &serialized_key, None) {
+            Ok(_) | Err(lmdb::Error::NotFound) => Ok(()),
+            Err(error) => Err(error.into()),
+        };
+        // Avoid returning early for the case where `current_result` is Ok, since some
         // `VersionedDatabases` could possibly have the same entry in both DBs.
 
         let legacy_key = match key.legacy_key() {
             Some(key) => key,
-            None => return current_result.map_err(Into::into),
+            None => return current_result,
         };
 
-        let legacy_result = txn.del(self.legacy, legacy_key, None).map_err(Into::into);
+        let legacy_result = match txn.del(self.legacy, legacy_key, None) {
+            Ok(_) | Err(lmdb::Error::NotFound) => Ok(()),
+            Err(error) => Err(error.into()),
+        };
 
-        if current_result.is_ok() || legacy_result.is_ok() {
-            return Ok(());
+        match (current_result, legacy_result) {
+            (Err(error), _) => Err(error),
+            (_, Err(error)) => Err(error),
+            (Ok(_), Ok(_)) => Ok(()),
         }
-
-        legacy_result
     }
 
     /// Iterates every row in the current database, deserializing the value and calling `f` with the
@@ -457,9 +467,9 @@ mod tests {
         fixture.dbs.delete(&mut txn, transaction_hash).unwrap();
         assert!(!fixture.dbs.exists(&mut txn, transaction_hash).unwrap());
 
-        // Should fail to delete non-existent data.
+        // Should report success when attempting to delete non-existent data.
         let random_hash = Transaction::random(&mut fixture.rng).hash();
-        assert!(fixture.dbs.delete(&mut txn, &random_hash).is_err());
+        fixture.dbs.delete(&mut txn, &random_hash).unwrap();
     }
 
     #[test]

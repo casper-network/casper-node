@@ -1,4 +1,5 @@
 //! Support for Wasm opcode costs.
+
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 use derive_more::Add;
@@ -50,21 +51,21 @@ pub const DEFAULT_CONTROL_FLOW_ELSE_OPCODE: u32 = 440;
 /// Default cost of the `end` Wasm opcode.
 pub const DEFAULT_CONTROL_FLOW_END_OPCODE: u32 = 440;
 /// Default cost of the `br` Wasm opcode.
-pub const DEFAULT_CONTROL_FLOW_BR_OPCODE: u32 = 440_000;
+pub const DEFAULT_CONTROL_FLOW_BR_OPCODE: u32 = 35_000;
 /// Default cost of the `br_if` Wasm opcode.
-pub const DEFAULT_CONTROL_FLOW_BR_IF_OPCODE: u32 = 440_000;
+pub const DEFAULT_CONTROL_FLOW_BR_IF_OPCODE: u32 = 35_000;
 /// Default cost of the `return` Wasm opcode.
 pub const DEFAULT_CONTROL_FLOW_RETURN_OPCODE: u32 = 440;
 /// Default cost of the `select` Wasm opcode.
 pub const DEFAULT_CONTROL_FLOW_SELECT_OPCODE: u32 = 440;
 /// Default cost of the `call` Wasm opcode.
-pub const DEFAULT_CONTROL_FLOW_CALL_OPCODE: u32 = 140_000;
+pub const DEFAULT_CONTROL_FLOW_CALL_OPCODE: u32 = 68_000;
 /// Default cost of the `call_indirect` Wasm opcode.
-pub const DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE: u32 = 140_000;
+pub const DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE: u32 = 68_000;
 /// Default cost of the `drop` Wasm opcode.
 pub const DEFAULT_CONTROL_FLOW_DROP_OPCODE: u32 = 440;
 /// Default fixed cost of the `br_table` Wasm opcode.
-pub const DEFAULT_CONTROL_FLOW_BR_TABLE_OPCODE: u32 = 440_000;
+pub const DEFAULT_CONTROL_FLOW_BR_TABLE_OPCODE: u32 = 35_000;
 /// Default multiplier for the size of targets in `br_table` Wasm opcode.
 pub const DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER: u32 = 100;
 

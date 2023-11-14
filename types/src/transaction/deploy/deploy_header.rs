@@ -104,11 +104,12 @@ impl DeployHeader {
     }
 
     /// Returns `Ok` if and only if the dependencies count and TTL are within limits, and the
-    /// timestamp is not later than `at`.  Does NOT check for expiry.
+    /// timestamp is not later than `at + timestamp_leeway`.  Does NOT check for expiry.
     #[cfg(any(feature = "std", test))]
     pub fn is_valid(
         &self,
         config: &TransactionConfig,
+        timestamp_leeway: TimeDiff,
         at: Timestamp,
         deploy_hash: &DeployHash,
     ) -> Result<(), DeployConfigFailure> {
@@ -138,10 +139,11 @@ impl DeployHeader {
             });
         }
 
-        if self.timestamp() > at {
+        if self.timestamp() > at + timestamp_leeway {
             debug!(%deploy_hash, deploy_header = %self, %at, "deploy timestamp in the future");
             return Err(DeployConfigFailure::TimestampInFuture {
                 validation_timestamp: at,
+                timestamp_leeway,
                 got: self.timestamp(),
             });
         }

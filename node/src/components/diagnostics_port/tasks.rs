@@ -4,6 +4,7 @@ use std::{
     fs::{self, File},
     io,
     path::PathBuf,
+    str::FromStr,
 };
 
 use bincode::{
@@ -36,6 +37,7 @@ use crate::{
         requests::{NetworkInfoRequest, SetNodeStopRequest},
         EffectBuilder,
     },
+    failpoints::FailpointActivation,
     logging,
     utils::{display_error, opt_display::OptDisplay},
 };
@@ -335,6 +337,29 @@ impl Session {
                             &OptDisplay::new(prev, "no previous stop-at spec"),
                         )
                         .await?;
+                    }
+                    Action::SetFailpoint { ref activation } => {
+                        match FailpointActivation::from_str(activation) {
+                            Ok(fp_activation) => {
+                                effect_builder.activate_failpoint(fp_activation).await;
+
+                                self.send_outcome(
+                                    writer,
+                                    &Outcome::success("failpoint activation sent".to_string()),
+                                )
+                                .await?;
+                            }
+                            Err(ref err) => {
+                                self.send_outcome(
+                                    writer,
+                                    &Outcome::failed(format!(
+                                        "invalid failpoint activation: {}",
+                                        display_error(err)
+                                    )),
+                                )
+                                .await?;
+                            }
+                        }
                     }
                     Action::Quit => {
                         self.send_outcome(writer, &Outcome::success("goodbye!"))

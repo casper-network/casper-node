@@ -24,12 +24,12 @@ maximum_net_message_size = 25_165_824
 
 [core]
 # Era duration.
-era_duration = '41seconds'
+era_duration = '41 seconds'
 # Minimum number of blocks per era.  An era will take longer than `era_duration` if that is necessary to reach the
 # minimum height.
 minimum_era_height = 5
 # Minimum difference between a block's and its child's timestamp.
-minimum_block_time = '4096ms'
+minimum_block_time = '4096 ms'
 # Number of slots available in validator auction.
 validator_slots = 7
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
@@ -92,7 +92,7 @@ compute_rewards = true
 # The only valid value for 'type' is currently 'refund'.  This causes excess payment amounts to be sent to either a
 # pre-defined purse, or back to the sender.  The refunded amount is calculated as the given ratio of the payment amount
 # minus the execution costs.
-refund_handling = { type = 'refund', refund_ratio = [0, 1] }
+refund_handling = { type = 'refund', refund_ratio = [99, 100] }
 # Defines how fees are handled.
 #
 # Valid options are:
@@ -107,14 +107,14 @@ administrators = []
 
 [highway]
 # Highway dynamically chooses its round length, between minimum_block_time and maximum_round_length.
-maximum_round_length = '525seconds'
+maximum_round_length = '525 seconds'
 # The factor by which rewards for a round are multiplied if the greatest summit has ≤50% quorum, i.e. no finality.
 # Expressed as a fraction (1/5 by default).
 reduced_reward_multiplier = [1, 5]
 
 [transactions]
 # The duration after the transaction timestamp that it can be included in a block.
-max_ttl = '18hours'
+max_ttl = '18 hours'
 # Maximum transaction size in bytes.  Size is of the transaction when serialized via ToBytes.
 max_transaction_size = 1_048_576
 # Maximum number of transfer transactions allowed in a block.
@@ -133,6 +133,8 @@ max_block_size = 10_485_760
 block_gas_limit = 10_000_000_000_000
 # The minimum amount in motes for a valid native transfer.
 native_transfer_minimum_motes = 2_500_000_000
+# The maximum value to which `transaction_acceptor.timestamp_leeway` can be set in the config.toml file.
+max_timestamp_leeway = '5 seconds'
 
 [transactions.v1]
 # The maximum length in bytes of runtime args per V1 transaction.
@@ -197,17 +199,17 @@ loop = 440
 if = 440
 else = 440
 end = 440
-br = 440_000
-br_if = 440_000
+br = 35_000
+br_if = 35_000
 return = 440
 select = 440
-call = 140_000
-call_indirect = 140_000
+call = 68_000
+call_indirect = 68_000
 drop = 440
 
 [wasm.opcode_costs.control_flow.br_table]
 # Fixed cost per `br_table` opcode
-cost = 440_000
+cost = 35_000
 # Size of target labels in the `br_table` opcode will be multiplied by `size_multiplier`
 size_multiplier = 100
 

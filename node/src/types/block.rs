@@ -16,7 +16,7 @@ use casper_types::{
 pub(crate) use approvals_hashes::ApprovalsHashes;
 pub use block_execution_results_or_chunk::BlockExecutionResultsOrChunk;
 pub(crate) use block_execution_results_or_chunk_id::BlockExecutionResultsOrChunkId;
-pub(crate) use block_payload::BlockPayload;
+pub use block_payload::BlockPayload;
 pub(crate) use block_with_metadata::BlockWithMetadata;
 pub use executable_block::ExecutableBlock;
 pub use finalized_block::{FinalizedBlock, InternalEraReport};

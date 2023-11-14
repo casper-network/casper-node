@@ -29,7 +29,8 @@ use casper_types::{
     testing::TestRng,
     Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, DeployConfigFailure,
     EraId, Package, PublicKey, RuntimeArgs, SecretKey, StoredValue, TestBlockBuilder,
-    TestTransactionV1Builder, Timestamp, Transaction, TransactionV1, TransactionV1Kind, URef, U512,
+    TestTransactionV1Builder, TimeDiff, Timestamp, Transaction, TransactionV1,
+    TransactionV1ConfigFailure, TransactionV1Kind, URef, U512,
 };
 
 use super::*;
@@ -174,6 +175,8 @@ enum TestScenario {
     FromPeerSessionContract(TxnType, ContractScenario),
     FromPeerSessionContractPackage(TxnType, ContractPackageScenario),
     FromClientInvalidTransaction(TxnType),
+    FromClientSlightlyFutureDatedTransaction(TxnType),
+    FromClientFutureDatedTransaction(TxnType),
     FromClientExpired(TxnType),
     FromClientMissingAccount(TxnType),
     FromClientInsufficientBalance(TxnType),
@@ -213,6 +216,8 @@ impl TestScenario {
             | TestScenario::FromPeerSessionContract(..)
             | TestScenario::FromPeerSessionContractPackage(..) => Source::Peer(NodeId::random(rng)),
             TestScenario::FromClientInvalidTransaction(_)
+            | TestScenario::FromClientSlightlyFutureDatedTransaction(_)
+            | TestScenario::FromClientFutureDatedTransaction(_)
             | TestScenario::FromClientExpired(_)
             | TestScenario::FromClientMissingAccount(_)
             | TestScenario::FromClientInsufficientBalance(_)
@@ -495,6 +500,56 @@ impl TestScenario {
             TestScenario::DeployWithNativeTransferInPayment => {
                 Transaction::from(Deploy::random_with_native_transfer_in_payment_logic(rng))
             }
+            TestScenario::FromClientSlightlyFutureDatedTransaction(txn_type) => {
+                let timestamp = Timestamp::now() + (Config::default().timestamp_leeway / 2);
+                let ttl = TimeDiff::from_seconds(300);
+                match txn_type {
+                    TxnType::Deploy => Transaction::from(
+                        Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
+                            rng, timestamp, ttl,
+                        ),
+                    ),
+                    TxnType::V1 => {
+                        let body = TransactionV1Kind::new_userland_standard(
+                            Bytes::from(vec![1]),
+                            RuntimeArgs::new(),
+                        );
+                        let txn = TestTransactionV1Builder::new(rng)
+                            .with_chain_name("casper-example")
+                            .with_timestamp(timestamp)
+                            .with_ttl(ttl)
+                            .with_body(body)
+                            .build();
+                        Transaction::from(txn)
+                    }
+                }
+            }
+            TestScenario::FromClientFutureDatedTransaction(txn_type) => {
+                let timestamp = Timestamp::now()
+                    + Config::default().timestamp_leeway
+                    + TimeDiff::from_millis(100);
+                let ttl = TimeDiff::from_seconds(300);
+                match txn_type {
+                    TxnType::Deploy => Transaction::from(
+                        Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
+                            rng, timestamp, ttl,
+                        ),
+                    ),
+                    TxnType::V1 => {
+                        let body = TransactionV1Kind::new_userland_standard(
+                            Bytes::from(vec![1]),
+                            RuntimeArgs::new(),
+                        );
+                        let txn = TestTransactionV1Builder::new(rng)
+                            .with_chain_name("casper-example")
+                            .with_timestamp(timestamp)
+                            .with_ttl(ttl)
+                            .with_body(body)
+                            .build();
+                        Transaction::from(txn)
+                    }
+                }
+            }
         }
     }
 
@@ -508,11 +563,13 @@ impl TestScenario {
             | TestScenario::FromPeerAccountWithInvalidAssociatedKeys(_) // account check skipped if from peer
             | TestScenario::FromClientRepeatedValidTransaction(_)
             | TestScenario::FromClientValidTransaction(_)
+            | TestScenario::FromClientSlightlyFutureDatedTransaction(_)
             | TestScenario::FromClientSignedByAdmin(..) => true,
             TestScenario::FromPeerInvalidTransaction(_)
             | TestScenario::FromClientInsufficientBalance(_)
             | TestScenario::FromClientMissingAccount(_)
             | TestScenario::FromClientInvalidTransaction(_)
+            | TestScenario::FromClientFutureDatedTransaction(_)
             | TestScenario::FromClientAccountWithInsufficientWeight(_)
             | TestScenario::FromClientAccountWithInvalidAssociatedKeys(_)
             | TestScenario::AccountWithUnknownBalance
@@ -605,7 +662,8 @@ impl reactor::Reactor for Reactor {
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
 
-        let transaction_acceptor = TransactionAcceptor::new(chainspec.as_ref(), registry).unwrap();
+        let transaction_acceptor =
+            TransactionAcceptor::new(Config::default(), chainspec.as_ref(), registry).unwrap();
 
         let storage = Storage::new(
             &storage_withdir,
@@ -968,6 +1026,7 @@ async fn run_transaction_acceptor_without_timeout(
             // Check that invalid transactions sent by a client raise the `InvalidTransaction`
             // announcement with the appropriate source.
             TestScenario::FromClientInvalidTransaction(_)
+            | TestScenario::FromClientFutureDatedTransaction(_)
             | TestScenario::FromClientMissingAccount(_)
             | TestScenario::FromClientInsufficientBalance(_)
             | TestScenario::FromClientAccountWithInvalidAssociatedKeys(_)
@@ -1081,6 +1140,7 @@ async fn run_transaction_acceptor_without_timeout(
             // Check that a new and valid transaction sent by a client raises an
             // `AcceptedNewTransaction` announcement with the appropriate source.
             TestScenario::FromClientValidTransaction(_)
+            | TestScenario::FromClientSlightlyFutureDatedTransaction(_)
             | TestScenario::FromClientSignedByAdmin(_) => {
                 matches!(
                     event,
@@ -1269,6 +1329,50 @@ async fn should_reject_invalid_transaction_v1_from_client() {
     assert!(matches!(
         result,
         Err(super::Error::InvalidV1Configuration(_))
+    ))
+}
+
+#[tokio::test]
+async fn should_accept_slightly_future_dated_deploy_from_client() {
+    let result = run_transaction_acceptor(TestScenario::FromClientSlightlyFutureDatedTransaction(
+        TxnType::Deploy,
+    ))
+    .await;
+    assert!(result.is_ok())
+}
+
+#[tokio::test]
+async fn should_accept_slightly_future_dated_transaction_v1_from_client() {
+    let result = run_transaction_acceptor(TestScenario::FromClientSlightlyFutureDatedTransaction(
+        TxnType::V1,
+    ))
+    .await;
+    assert!(result.is_ok())
+}
+
+#[tokio::test]
+async fn should_reject_future_dated_deploy_from_client() {
+    let result = run_transaction_acceptor(TestScenario::FromClientFutureDatedTransaction(
+        TxnType::Deploy,
+    ))
+    .await;
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidDeployConfiguration(
+            DeployConfigFailure::TimestampInFuture { .. }
+        ))
+    ))
+}
+
+#[tokio::test]
+async fn should_reject_future_dated_transaction_v1_from_client() {
+    let result =
+        run_transaction_acceptor(TestScenario::FromClientFutureDatedTransaction(TxnType::V1)).await;
+    assert!(matches!(
+        result,
+        Err(super::Error::InvalidV1Configuration(
+            TransactionV1ConfigFailure::TimestampInFuture { .. }
+        ))
     ))
 }
 

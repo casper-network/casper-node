@@ -8,14 +8,14 @@ use casper_types::{
 
 use super::value_or_chunk::HashingTrieRaw;
 
-/// Implemented for types that are chunked when sending over the wire and/or before storing the the
+/// Implemented for types that are chunked when sending over the wire and/or before storing the
 /// trie store.
 pub trait Chunkable {
     /// Error returned when mapping `Self` into bytes.
     type Error: std::fmt::Debug;
     /// Maps `Self` into bytes.
     ///
-    /// Returnes a [`Cow`] instance in case the resulting bytes are the same as input and we don't
+    /// Returns a [`Cow`] instance in case the resulting bytes are the same as input and we don't
     /// want to reinitialize. This also helps with a case where returning a vector of bytes
     /// would require instantiating a `Vec<u8>` locally (see [`casper_types::bytesrepr::ToBytes`])
     /// but can't be returned as reference. Alternative encoding would be to consume `Self` and

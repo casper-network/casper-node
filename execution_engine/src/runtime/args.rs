@@ -1,4 +1,4 @@
-use wasmi::{FromRuntimeValue, RuntimeArgs, Trap};
+use casper_wasmi::{FromValue, RuntimeArgs, Trap};
 
 pub(crate) trait Args
 where
@@ -9,7 +9,7 @@ where
 
 impl<T1> Args for (T1,)
 where
-    T1: FromRuntimeValue + Sized,
+    T1: FromValue + Sized,
 {
     fn parse(args: RuntimeArgs) -> Result<Self, Trap> {
         let a0: T1 = args.nth_checked(0)?;
@@ -19,8 +19,8 @@ where
 
 impl<T1, T2> Args for (T1, T2)
 where
-    T1: FromRuntimeValue + Sized,
-    T2: FromRuntimeValue + Sized,
+    T1: FromValue + Sized,
+    T2: FromValue + Sized,
 {
     fn parse(args: RuntimeArgs) -> Result<Self, Trap> {
         let a0: T1 = args.nth_checked(0)?;
@@ -31,9 +31,9 @@ where
 
 impl<T1, T2, T3> Args for (T1, T2, T3)
 where
-    T1: FromRuntimeValue + Sized,
-    T2: FromRuntimeValue + Sized,
-    T3: FromRuntimeValue + Sized,
+    T1: FromValue + Sized,
+    T2: FromValue + Sized,
+    T3: FromValue + Sized,
 {
     fn parse(args: RuntimeArgs) -> Result<Self, Trap> {
         let a0: T1 = args.nth_checked(0)?;
@@ -45,10 +45,10 @@ where
 
 impl<T1, T2, T3, T4> Args for (T1, T2, T3, T4)
 where
-    T1: FromRuntimeValue + Sized,
-    T2: FromRuntimeValue + Sized,
-    T3: FromRuntimeValue + Sized,
-    T4: FromRuntimeValue + Sized,
+    T1: FromValue + Sized,
+    T2: FromValue + Sized,
+    T3: FromValue + Sized,
+    T4: FromValue + Sized,
 {
     fn parse(args: RuntimeArgs) -> Result<Self, Trap> {
         let a0: T1 = args.nth_checked(0)?;
@@ -61,11 +61,11 @@ where
 
 impl<T1, T2, T3, T4, T5> Args for (T1, T2, T3, T4, T5)
 where
-    T1: FromRuntimeValue + Sized,
-    T2: FromRuntimeValue + Sized,
-    T3: FromRuntimeValue + Sized,
-    T4: FromRuntimeValue + Sized,
-    T5: FromRuntimeValue + Sized,
+    T1: FromValue + Sized,
+    T2: FromValue + Sized,
+    T3: FromValue + Sized,
+    T4: FromValue + Sized,
+    T5: FromValue + Sized,
 {
     fn parse(args: RuntimeArgs) -> Result<Self, Trap> {
         let a0: T1 = args.nth_checked(0)?;
@@ -79,12 +79,12 @@ where
 
 impl<T1, T2, T3, T4, T5, T6> Args for (T1, T2, T3, T4, T5, T6)
 where
-    T1: FromRuntimeValue + Sized,
-    T2: FromRuntimeValue + Sized,
-    T3: FromRuntimeValue + Sized,
-    T4: FromRuntimeValue + Sized,
-    T5: FromRuntimeValue + Sized,
-    T6: FromRuntimeValue + Sized,
+    T1: FromValue + Sized,
+    T2: FromValue + Sized,
+    T3: FromValue + Sized,
+    T4: FromValue + Sized,
+    T5: FromValue + Sized,
+    T6: FromValue + Sized,
 {
     fn parse(args: RuntimeArgs) -> Result<Self, Trap> {
         let a0: T1 = args.nth_checked(0)?;
@@ -99,13 +99,13 @@ where
 
 impl<T1, T2, T3, T4, T5, T6, T7> Args for (T1, T2, T3, T4, T5, T6, T7)
 where
-    T1: FromRuntimeValue + Sized,
-    T2: FromRuntimeValue + Sized,
-    T3: FromRuntimeValue + Sized,
-    T4: FromRuntimeValue + Sized,
-    T5: FromRuntimeValue + Sized,
-    T6: FromRuntimeValue + Sized,
-    T7: FromRuntimeValue + Sized,
+    T1: FromValue + Sized,
+    T2: FromValue + Sized,
+    T3: FromValue + Sized,
+    T4: FromValue + Sized,
+    T5: FromValue + Sized,
+    T6: FromValue + Sized,
+    T7: FromValue + Sized,
 {
     fn parse(args: RuntimeArgs) -> Result<Self, Trap> {
         let a0: T1 = args.nth_checked(0)?;
@@ -121,14 +121,14 @@ where
 
 impl<T1, T2, T3, T4, T5, T6, T7, T8> Args for (T1, T2, T3, T4, T5, T6, T7, T8)
 where
-    T1: FromRuntimeValue + Sized,
-    T2: FromRuntimeValue + Sized,
-    T3: FromRuntimeValue + Sized,
-    T4: FromRuntimeValue + Sized,
-    T5: FromRuntimeValue + Sized,
-    T6: FromRuntimeValue + Sized,
-    T7: FromRuntimeValue + Sized,
-    T8: FromRuntimeValue + Sized,
+    T1: FromValue + Sized,
+    T2: FromValue + Sized,
+    T3: FromValue + Sized,
+    T4: FromValue + Sized,
+    T5: FromValue + Sized,
+    T6: FromValue + Sized,
+    T7: FromValue + Sized,
+    T8: FromValue + Sized,
 {
     fn parse(args: RuntimeArgs) -> Result<Self, Trap> {
         let a0: T1 = args.nth_checked(0)?;
@@ -145,15 +145,15 @@ where
 
 impl<T1, T2, T3, T4, T5, T6, T7, T8, T9> Args for (T1, T2, T3, T4, T5, T6, T7, T8, T9)
 where
-    T1: FromRuntimeValue + Sized,
-    T2: FromRuntimeValue + Sized,
-    T3: FromRuntimeValue + Sized,
-    T4: FromRuntimeValue + Sized,
-    T5: FromRuntimeValue + Sized,
-    T6: FromRuntimeValue + Sized,
-    T7: FromRuntimeValue + Sized,
-    T8: FromRuntimeValue + Sized,
-    T9: FromRuntimeValue + Sized,
+    T1: FromValue + Sized,
+    T2: FromValue + Sized,
+    T3: FromValue + Sized,
+    T4: FromValue + Sized,
+    T5: FromValue + Sized,
+    T6: FromValue + Sized,
+    T7: FromValue + Sized,
+    T8: FromValue + Sized,
+    T9: FromValue + Sized,
 {
     fn parse(args: RuntimeArgs) -> Result<Self, Trap> {
         let a0: T1 = args.nth_checked(0)?;
@@ -171,16 +171,16 @@ where
 
 impl<T1, T2, T3, T4, T5, T6, T7, T8, T9, T10> Args for (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10)
 where
-    T1: FromRuntimeValue + Sized,
-    T2: FromRuntimeValue + Sized,
-    T3: FromRuntimeValue + Sized,
-    T4: FromRuntimeValue + Sized,
-    T5: FromRuntimeValue + Sized,
-    T6: FromRuntimeValue + Sized,
-    T7: FromRuntimeValue + Sized,
-    T8: FromRuntimeValue + Sized,
-    T9: FromRuntimeValue + Sized,
-    T10: FromRuntimeValue + Sized,
+    T1: FromValue + Sized,
+    T2: FromValue + Sized,
+    T3: FromValue + Sized,
+    T4: FromValue + Sized,
+    T5: FromValue + Sized,
+    T6: FromValue + Sized,
+    T7: FromValue + Sized,
+    T8: FromValue + Sized,
+    T9: FromValue + Sized,
+    T10: FromValue + Sized,
 {
     fn parse(args: RuntimeArgs) -> Result<Self, Trap> {
         let a0: T1 = args.nth_checked(0)?;
@@ -200,17 +200,17 @@ where
 impl<T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11> Args
     for (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11)
 where
-    T1: FromRuntimeValue + Sized,
-    T2: FromRuntimeValue + Sized,
-    T3: FromRuntimeValue + Sized,
-    T4: FromRuntimeValue + Sized,
-    T5: FromRuntimeValue + Sized,
-    T6: FromRuntimeValue + Sized,
-    T7: FromRuntimeValue + Sized,
-    T8: FromRuntimeValue + Sized,
-    T9: FromRuntimeValue + Sized,
-    T10: FromRuntimeValue + Sized,
-    T11: FromRuntimeValue + Sized,
+    T1: FromValue + Sized,
+    T2: FromValue + Sized,
+    T3: FromValue + Sized,
+    T4: FromValue + Sized,
+    T5: FromValue + Sized,
+    T6: FromValue + Sized,
+    T7: FromValue + Sized,
+    T8: FromValue + Sized,
+    T9: FromValue + Sized,
+    T10: FromValue + Sized,
+    T11: FromValue + Sized,
 {
     fn parse(args: RuntimeArgs) -> Result<Self, Trap> {
         let a0: T1 = args.nth_checked(0)?;

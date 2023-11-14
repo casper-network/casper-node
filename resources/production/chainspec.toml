@@ -1,6 +1,6 @@
 [protocol]
 # Protocol version.
-version = '1.5.2'
+version = '1.5.3'
 # Whether we need to clear latest blocks back to the switch block just before the activation point or not.
 hard_reset = true
 # This protocol version becomes active at this point.
@@ -11,7 +11,7 @@ hard_reset = true
 # in contract-runtime for computing genesis post-state hash.
 #
 # If it is an integer, it represents an era ID, meaning the protocol version becomes active at the start of this era.
-activation_point = 9100
+activation_point = 11000
 
 [network]
 # Human readable name for convenience; the genesis_hash is the true identifier.  The name influences the genesis hash by
@@ -24,12 +24,12 @@ maximum_net_message_size = 25_165_824
 
 [core]
 # Era duration.
-era_duration = '120min'
+era_duration = '120 minutes'
 # Minimum number of blocks per era.  An era will take longer than `era_duration` if that is necessary to reach the
 # minimum height.
 minimum_era_height = 20
 # Minimum difference between a block's and its child's timestamp.
-minimum_block_time = '32768ms'
+minimum_block_time = '16384 ms'
 # Number of slots available in validator auction.
 validator_slots = 100
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
@@ -56,14 +56,14 @@ unbonding_delay = 7
 # Round seigniorage rate represented as a fraction of the total supply.
 #
 # Annual issuance: 8%
-# Minimum block time: 2^15 milliseconds
+# Minimum block time: 2^14 milliseconds
 # Ticks per year: 31536000000
 #
-# (1+0.08)^((2^15)/31536000000)-1 is expressed as a fractional number below
+# (1+0.08)^((2^14)/31536000000)-1 is expressed as a fractional number below
 # Python:
 # from fractions import Fraction
-# Fraction((1 + 0.08)**((2**15)/31536000000) - 1).limit_denominator(1000000000)
-round_seigniorage_rate = [7, 87535408]
+# Fraction((1 + 0.08)**((2**14)/31536000000) - 1).limit_denominator(1000000000)
+round_seigniorage_rate = [7, 175070816]
 # Maximum number of associated keys for a single account.
 max_associated_keys = 100
 # Maximum height of contract runtime call stack.
@@ -103,7 +103,7 @@ compute_rewards = true
 #   'refund': this causes excess payment amounts to be sent to either a pre-defined purse, or back to the sender.
 #             the refunded amount is calculated as the given ratio of the payment amount minus the execution costs.
 #   'burn': similar to what refund does; except the refund amount is burned.
-refund_handling = { type = 'refund', refund_ratio = [0, 1] }
+refund_handling = { type = 'refund', refund_ratio = [99, 100] }
 # Defines how fees are handled.
 #
 # Valid options are:
@@ -118,14 +118,14 @@ administrators = []
 
 [highway]
 # Highway dynamically chooses its round length, between minimum_block_time and maximum_round_length.
-maximum_round_length = '132seconds'
+maximum_round_length = '132 seconds'
 # The factor by which rewards for a round are multiplied if the greatest summit has ≤50% quorum, i.e. no finality.
 # Expressed as a fraction (1/5 by default).
 reduced_reward_multiplier = [1, 5]
 
 [transactions]
 # The duration after the transaction timestamp that it can be included in a block.
-max_ttl = '18hours'
+max_ttl = '18 hours'
 # Maximum transaction size in bytes.  Size is of the transaction when serialized via ToBytes.
 max_transaction_size = 1_048_576
 # Maximum number of transfer transactions allowed in a block.
@@ -141,9 +141,11 @@ block_max_approval_count = 2600
 # Maximum block size in bytes including transactions contained by the block.  0 means unlimited.
 max_block_size = 10_485_760
 # The upper limit of total gas of all transactions in a block.
-block_gas_limit = 10_000_000_000_000
+block_gas_limit = 4_000_000_000_000
 # The minimum amount in motes for a valid native transfer.
 native_transfer_minimum_motes = 2_500_000_000
+# The maximum value to which `transaction_acceptor.timestamp_leeway` can be set in the config.toml file.
+max_timestamp_leeway = '5 seconds'
 
 [transactions.v1]
 # The maximum length in bytes of runtime args per V1 transaction.
@@ -208,17 +210,17 @@ loop = 440
 if = 440
 else = 440
 end = 440
-br = 440_000
-br_if = 440_000
+br = 35_000
+br_if = 35_000
 return = 440
 select = 440
-call = 140_000
-call_indirect = 140_000
+call = 68_000
+call_indirect = 68_000
 drop = 440
 
 [wasm.opcode_costs.control_flow.br_table]
 # Fixed cost per `br_table` opcode
-cost = 440_000
+cost = 35_000
 # Size of target labels in the `br_table` opcode will be multiplied by `size_multiplier`
 size_multiplier = 100
 
@@ -229,28 +231,9 @@ add_associated_key = { cost = 9_000, arguments = [0, 0, 0] }
 add_contract_version = { cost = 200, arguments = [0, 0, 0, 0, 0, 0, 0, 0, 0] }
 blake2b = { cost = 200, arguments = [0, 0, 0, 0] }
 call_contract = { cost = 4_500, arguments = [0, 0, 0, 0, 0, 420, 0] }
-call_versioned_contract = { cost = 4_500, arguments = [
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    420,
-    0,
-] }
+call_versioned_contract = { cost = 4_500, arguments = [0, 0, 0, 0, 0, 0, 0, 420, 0] }
 create_contract_package_at_hash = { cost = 200, arguments = [0, 0] }
-create_contract_user_group = { cost = 200, arguments = [
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-] }
+create_contract_user_group = { cost = 200, arguments = [0, 0, 0, 0, 0, 0, 0, 0] }
 create_purse = { cost = 2_500_000_000, arguments = [0, 0] }
 disable_contract_version = { cost = 200, arguments = [0, 0, 0, 0] }
 get_balance = { cost = 3_800, arguments = [0, 0, 0] }
@@ -275,48 +258,14 @@ read_value = { cost = 6_000, arguments = [0, 0, 0] }
 read_value_local = { cost = 5_500, arguments = [0, 590, 0] }
 remove_associated_key = { cost = 4_200, arguments = [0, 0] }
 remove_contract_user_group = { cost = 200, arguments = [0, 0, 0, 0] }
-remove_contract_user_group_urefs = { cost = 200, arguments = [
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-] }
+remove_contract_user_group_urefs = { cost = 200, arguments = [0, 0, 0, 0, 0, 0] }
 remove_key = { cost = 61_000, arguments = [0, 3_200] }
 ret = { cost = 23_000, arguments = [0, 420_000] }
 revert = { cost = 500, arguments = [0] }
 set_action_threshold = { cost = 74_000, arguments = [0, 0] }
-transfer_from_purse_to_account = { cost = 2_500_000_000, arguments = [
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-] }
-transfer_from_purse_to_purse = { cost = 82_000, arguments = [
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-] }
-transfer_to_account = { cost = 2_500_000_000, arguments = [
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-] }
+transfer_from_purse_to_account = { cost = 2_500_000_000, arguments = [0, 0, 0, 0, 0, 0, 0, 0, 0] }
+transfer_from_purse_to_purse = { cost = 82_000, arguments = [0, 0, 0, 0, 0, 0, 0, 0] }
+transfer_to_account = { cost = 2_500_000_000, arguments = [0, 0, 0, 0, 0, 0, 0] }
 update_associated_key = { cost = 4_200, arguments = [0, 0, 0] }
 write = { cost = 14_000, arguments = [0, 0, 0, 980] }
 write_local = { cost = 9_500, arguments = [0, 1_800, 0, 520] }

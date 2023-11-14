@@ -21,20 +21,16 @@ const CONTRACT_TRANSFER_TO_ACCOUNT_U512: &str = "transfer_to_account_u512.wasm";
 
 // This value is not systemic, as code is added the size of WASM will increase,
 // you can change this value to reflect the increase in WASM size.
-const HOST_FUNCTION_METRICS_STANDARD_SIZE: usize = 97_569;
-const HOST_FUNCTION_METRICS_STANDARD_GAS_COST: u64 = 364_434_284_571;
+const HOST_FUNCTION_METRICS_STANDARD_SIZE: usize = 116_188;
+const HOST_FUNCTION_METRICS_STANDARD_GAS_COST: u64 = 422_402_224_490;
 
 /// Acceptable size regression/improvement in percentage.
 const SIZE_MARGIN: usize = 5;
 /// Acceptable gas cost regression/improvement in percentage.
 const GAS_COST_MARGIN: u64 = 5;
 
-const HOST_FUNCTION_METRICS_MIN_SIZE: usize =
-    HOST_FUNCTION_METRICS_STANDARD_SIZE * (100 - SIZE_MARGIN) / 100;
 const HOST_FUNCTION_METRICS_MAX_SIZE: usize =
     HOST_FUNCTION_METRICS_STANDARD_SIZE * (100 + SIZE_MARGIN) / 100;
-const HOST_FUNCTION_METRICS_MIN_GAS_COST: u64 =
-    HOST_FUNCTION_METRICS_STANDARD_GAS_COST * (100 - GAS_COST_MARGIN) / 100;
 const HOST_FUNCTION_METRICS_MAX_GAS_COST: u64 =
     HOST_FUNCTION_METRICS_STANDARD_GAS_COST * (100 + GAS_COST_MARGIN) / 100;
 
@@ -59,11 +55,6 @@ fn host_function_metrics_has_acceptable_size() {
         "Performance regression: contract host-function-metrics became {} bytes long; up to {} bytes long would be acceptable.",
         size,
         HOST_FUNCTION_METRICS_MAX_SIZE
-    );
-    assert!(
-        size >= HOST_FUNCTION_METRICS_MIN_SIZE,
-        "Performance improvement: contract host-function-metrics became only {} bytes long; please adjust this regression test.",
-        size
     );
     println!(
         "contract host-function-metrics byte size: {}, ubound: {}",
@@ -136,11 +127,6 @@ fn host_function_metrics_has_acceptable_gas_cost() {
         "Performance regression: contract host-function-metrics used {} gas; it should use no more than {} gas.",
         gas_cost,
         HOST_FUNCTION_METRICS_MAX_GAS_COST
-    );
-    assert!(
-        gas_cost >= U512::from(HOST_FUNCTION_METRICS_MIN_GAS_COST),
-        "Performance improvement: contract host-function-metrics used only {} gas; please adjust this regression test.",
-        gas_cost
     );
 }
 

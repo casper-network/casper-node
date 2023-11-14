@@ -1,5 +1,5 @@
 use assert_matches::assert_matches;
-use parity_wasm::{
+use casper_wasm::{
     builder,
     elements::{BlockType, Instruction, Instructions},
 };
@@ -33,7 +33,7 @@ fn make_session_code_with(instructions: Vec<Instruction>) -> Vec<u8> {
         .memory()
         .build()
         .build();
-    parity_wasm::serialize(module).expect("should serialize")
+    casper_wasm::serialize(module).expect("should serialize")
 }
 
 #[ignore]

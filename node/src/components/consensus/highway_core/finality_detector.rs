@@ -1,3 +1,5 @@
+//! Functions for detecting finality of proposed blocks and calculating rewards.
+
 mod horizon;
 
 use std::iter;

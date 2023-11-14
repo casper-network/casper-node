@@ -1606,8 +1606,6 @@ where
 
         // amount declared to be paid in payment code MINUS gas spent in last execution.
         let refundable_amount = Ratio::from(payment_amount) - Ratio::from(gas_amount.value());
-        (refundable_amount * refund_ratio)
-            .ceil() // assumes possible dust amounts are always transferred to the user
-            .to_integer()
+        (refundable_amount * refund_ratio).to_integer()
     }
 }
