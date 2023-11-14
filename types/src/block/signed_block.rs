@@ -22,6 +22,11 @@ impl SignedBlock {
         }
     }
 
+    /// Returns the inner block.
+    pub fn block(&self) -> &Block {
+        &self.block
+    }
+
     /// Converts `self` into the block and signatures.
     pub fn into_inner(self) -> (Block, BlockSignatures) {
         (self.block, self.block_signatures)

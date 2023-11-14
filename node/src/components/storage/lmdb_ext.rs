@@ -17,15 +17,12 @@ use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
 use tracing::warn;
 
-use crate::{
-    storage::deploy_metadata_v1::DeployMetadataV1,
-    types::{ApprovalsHashes, FinalizedApprovals},
-};
+use crate::{storage::deploy_metadata_v1::DeployMetadataV1, types::ApprovalsHashes};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     execution::ExecutionResult,
     system::auction::UnbondingPurse,
-    BlockBody, BlockHeader, BlockSignatures, Deploy, DeployHash, Transfer,
+    BlockBody, BlockHeader, BlockSignatures, Deploy, DeployHash, FinalizedApprovals, Transfer,
 };
 
 const UNBONDING_PURSE_V2_MAGIC_BYTES: &[u8] = &[121, 17, 133, 179, 91, 63, 69, 222];

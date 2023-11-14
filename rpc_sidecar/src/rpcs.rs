@@ -33,7 +33,7 @@ pub use common::ErrorData;
 use docs::DocExample;
 pub use error_code::ErrorCode;
 
-use crate::node_interface::NodeInterface;
+use crate::node_client::NodeClient;
 
 /// This setting causes the server to ignore extra fields in JSON-RPC requests other than the
 /// standard 'id', 'jsonrpc', 'method', and 'params' fields.
@@ -86,15 +86,15 @@ pub(super) trait RpcWithParams {
     /// Registers this RPC as the handler for JSON-RPC requests whose "method" field is the same as
     /// `Self::METHOD`.
     fn register_as_handler(
-        node_interface: Arc<dyn NodeInterface>,
+        node_client: Arc<dyn NodeClient>,
         api_version: ProtocolVersion,
         handlers_builder: &mut RequestHandlersBuilder,
     ) {
         let handler = move |maybe_params| {
-            let node_interface = Arc::clone(&node_interface);
+            let node_client = Arc::clone(&node_client);
             async move {
                 let params = Self::try_parse_params(maybe_params)?;
-                Self::do_handle_request(node_interface, api_version, params).await
+                Self::do_handle_request(node_client, api_version, params).await
             }
         };
         handlers_builder.register_handler(Self::METHOD, Arc::new(handler))
@@ -112,7 +112,7 @@ pub(super) trait RpcWithParams {
     }
 
     async fn do_handle_request(
-        node_interface: Arc<dyn NodeInterface>,
+        node_client: Arc<dyn NodeClient>,
         api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error>;
@@ -148,15 +148,15 @@ pub(super) trait RpcWithoutParams {
     /// Registers this RPC as the handler for JSON-RPC requests whose "method" field is the same as
     /// `Self::METHOD`.
     fn register_as_handler(
-        node_interface: Arc<dyn NodeInterface>,
+        node_client: Arc<dyn NodeClient>,
         api_version: ProtocolVersion,
         handlers_builder: &mut RequestHandlersBuilder,
     ) {
         let handler = move |maybe_params| {
-            let node_interface = Arc::clone(&node_interface);
+            let node_client = Arc::clone(&node_client);
             async move {
                 Self::check_no_params(maybe_params)?;
-                Self::do_handle_request(node_interface.clone(), api_version).await
+                Self::do_handle_request(node_client.clone(), api_version).await
             }
         };
         handlers_builder.register_handler(Self::METHOD, Arc::new(handler))
@@ -173,7 +173,7 @@ pub(super) trait RpcWithoutParams {
     }
 
     async fn do_handle_request(
-        node_interface: Arc<dyn NodeInterface>,
+        node_client: Arc<dyn NodeClient>,
         api_version: ProtocolVersion,
     ) -> Result<Self::ResponseResult, Error>;
 }
@@ -231,15 +231,15 @@ pub(super) trait RpcWithOptionalParams {
     /// Registers this RPC as the handler for JSON-RPC requests whose "method" field is the same as
     /// `Self::METHOD`.
     fn register_as_handler(
-        node_interface: Arc<dyn NodeInterface>,
+        node_client: Arc<dyn NodeClient>,
         api_version: ProtocolVersion,
         handlers_builder: &mut RequestHandlersBuilder,
     ) {
         let handler = move |maybe_params| {
-            let node_interface = Arc::clone(&node_interface);
+            let node_client = Arc::clone(&node_client);
             async move {
                 let params = Self::try_parse_params(maybe_params)?;
-                Self::do_handle_request(node_interface, api_version, params).await
+                Self::do_handle_request(node_client, api_version, params).await
             }
         };
         handlers_builder.register_handler(Self::METHOD, Arc::new(handler))
@@ -257,7 +257,7 @@ pub(super) trait RpcWithOptionalParams {
     }
 
     async fn do_handle_request(
-        node_interface: Arc<dyn NodeInterface>,
+        node_client: Arc<dyn NodeClient>,
         api_version: ProtocolVersion,
         params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, Error>;

@@ -131,8 +131,8 @@ use casper_types::{
     system::auction::EraValidators,
     AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader,
     BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash, DeployHeader, Digest, EraId,
-    FinalitySignature, FinalitySignatureId, Key, PublicKey, SignedBlock, TimeDiff, Timestamp,
-    Transaction, TransactionHash, TransactionId, Transfer, U512,
+    ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key, PublicKey,
+    SignedBlock, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId, Transfer, U512,
 };
 
 use crate::{
@@ -157,9 +157,9 @@ use crate::{
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, BlockExecutionResultsOrChunk,
-        BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, ExecutionInfo,
-        FinalizedApprovals, FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState, NodeId,
-        TransactionWithFinalizedApprovals, TrieOrChunk, TrieOrChunkId,
+        BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, FinalizedBlock,
+        LegacyDeploy, MetaBlock, MetaBlockState, NodeId, TransactionWithFinalizedApprovals,
+        TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };

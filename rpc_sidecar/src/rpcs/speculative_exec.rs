@@ -12,7 +12,7 @@ use casper_types::{
     Transaction,
 };
 
-use crate::node_interface::NodeInterface;
+use crate::node_client::NodeClient;
 
 use super::{
     chain::BlockIdentifier,
@@ -84,12 +84,12 @@ impl RpcWithParams for SpeculativeExecTxn {
     type ResponseResult = SpeculativeExecTxnResult;
 
     async fn do_handle_request(
-        node_interface: Arc<dyn NodeInterface>,
+        node_client: Arc<dyn NodeClient>,
         api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
         handle_request(
-            node_interface,
+            node_client,
             api_version,
             params.block_identifier,
             params.transaction,
@@ -124,12 +124,12 @@ impl RpcWithParams for SpeculativeExec {
     type ResponseResult = SpeculativeExecTxnResult;
 
     async fn do_handle_request(
-        node_interface: Arc<dyn NodeInterface>,
+        node_client: Arc<dyn NodeClient>,
         api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
         handle_request(
-            node_interface,
+            node_client,
             api_version,
             params.block_identifier,
             Transaction::from(params.deploy),
@@ -139,7 +139,7 @@ impl RpcWithParams for SpeculativeExec {
 }
 
 async fn handle_request(
-    _node_interface: Arc<dyn NodeInterface>,
+    _node_client: Arc<dyn NodeClient>,
     _api_version: ProtocolVersion,
     _maybe_block_id: Option<BlockIdentifier>,
     _transaction: Transaction,

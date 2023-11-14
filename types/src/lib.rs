@@ -101,7 +101,7 @@ pub use block::{
 #[cfg(any(feature = "testing", test))]
 pub use block::{TestBlockBuilder, TestBlockV1Builder};
 
-pub use binary_port::BinaryRequest;
+pub use binary_port::binary_request::BinaryRequest;
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
 pub use byte_code::{ByteCode, ByteCodeHash, ByteCodeKind};
 #[cfg(any(feature = "std", test))]
@@ -181,7 +181,8 @@ pub use transaction::{
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction::{
-    DeployBuilder, DeployBuilderError, TransactionV1Builder, TransactionV1BuilderError,
+    DeployBuilder, DeployBuilderError, ExecutionInfo, FinalizedApprovals, FinalizedDeployApprovals,
+    FinalizedTransactionV1Approvals, TransactionV1Builder, TransactionV1BuilderError,
 };
 pub use transfer::{
     FromStrError as TransferFromStrError, Transfer, TransferAddr, TRANSFER_ADDR_LENGTH,

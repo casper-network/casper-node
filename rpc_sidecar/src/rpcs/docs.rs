@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 
 use casper_types::ProtocolVersion;
 
-use crate::node_interface::NodeInterface;
+use crate::node_client::NodeClient;
 
 use super::{
     account::{PutDeploy, PutTransaction},
@@ -460,7 +460,7 @@ impl RpcWithoutParams for ListRpcs {
     type ResponseResult = ListRpcsResult;
 
     async fn do_handle_request(
-        _node_interface: Arc<dyn NodeInterface>,
+        _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
     ) -> Result<Self::ResponseResult, Error> {
         Ok(ListRpcsResult::doc_example().clone())

@@ -689,6 +689,7 @@ dependencies = [
  "datasize",
  "http",
  "hyper",
+ "juliet",
  "num_cpus",
  "once_cell",
  "schemars",

@@ -35,8 +35,9 @@ use casper_types::{
     system::auction::EraValidators,
     AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
     BlockV2, ChainspecRawBytes, DeployHash, DeployHeader, Digest, DisplayIter, EraId,
-    FinalitySignature, FinalitySignatureId, Key, ProtocolVersion, PublicKey, SignedBlock, TimeDiff,
-    Timestamp, Transaction, TransactionHash, TransactionId, Transfer, URef, U512,
+    ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key,
+    ProtocolVersion, PublicKey, SignedBlock, TimeDiff, Timestamp, Transaction, TransactionHash,
+    TransactionId, Transfer, URef, U512,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -63,9 +64,9 @@ use crate::{
     rpcs::docs::OpenRpcSchema,
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, BlockExecutionResultsOrChunk,
-        BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, ExecutionInfo,
-        FinalizedApprovals, LegacyDeploy, MetaBlockState, NodeId, StatusFeed,
-        TransactionWithFinalizedApprovals, TrieOrChunk, TrieOrChunkId,
+        BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, LegacyDeploy,
+        MetaBlockState, NodeId, StatusFeed, TransactionWithFinalizedApprovals, TrieOrChunk,
+        TrieOrChunkId,
     },
     utils::Source,
 };

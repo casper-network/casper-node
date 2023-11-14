@@ -15,7 +15,7 @@ use casper_types::{
 };
 
 use crate::{
-    node_interface::NodeInterface,
+    node_client::NodeClient,
     rpcs::{
         chain::BlockIdentifier,
         common::MERKLE_PROOF,
@@ -165,7 +165,7 @@ impl RpcWithParams for GetItem {
     type ResponseResult = GetItemResult;
 
     async fn do_handle_request(
-        _node_interface: Arc<dyn NodeInterface>,
+        _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
         _params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
@@ -218,7 +218,7 @@ impl RpcWithParams for GetBalance {
     type ResponseResult = GetBalanceResult;
 
     async fn do_handle_request(
-        _node_interface: Arc<dyn NodeInterface>,
+        _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
         _params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
@@ -267,7 +267,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
     type ResponseResult = GetAuctionInfoResult;
 
     async fn do_handle_request(
-        _node_interface: Arc<dyn NodeInterface>,
+        _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
         _maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, Error> {
@@ -331,7 +331,7 @@ impl RpcWithParams for GetAccountInfo {
     type ResponseResult = GetAccountInfoResult;
 
     async fn do_handle_request(
-        _node_interface: Arc<dyn NodeInterface>,
+        _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
         _params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
@@ -499,7 +499,7 @@ impl RpcWithParams for GetDictionaryItem {
     type ResponseResult = GetDictionaryItemResult;
 
     async fn do_handle_request(
-        _node_interface: Arc<dyn NodeInterface>,
+        _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
         _params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
@@ -569,7 +569,7 @@ impl RpcWithParams for QueryGlobalState {
     type ResponseResult = QueryGlobalStateResult;
 
     async fn do_handle_request(
-        _node_interface: Arc<dyn NodeInterface>,
+        _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
         _params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
@@ -631,7 +631,7 @@ impl RpcWithParams for QueryBalance {
     type ResponseResult = QueryBalanceResult;
 
     async fn do_handle_request(
-        _node_interface: Arc<dyn NodeInterface>,
+        _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
         _params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
@@ -683,7 +683,7 @@ impl RpcWithParams for GetTrie {
     type ResponseResult = GetTrieResult;
 
     async fn do_handle_request(
-        _node_interface: Arc<dyn NodeInterface>,
+        _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
         _params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {

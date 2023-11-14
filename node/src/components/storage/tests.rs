@@ -24,11 +24,11 @@ use casper_types::{
     generate_ed25519_keypair,
     system::auction::UnbondingPurse,
     testing::TestRng,
-    AccessRights, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2,
-    Chainspec, ChainspecRawBytes, Deploy, DeployApprovalsHash, DeployHash, Digest, EraId,
-    FinalitySignature, Key, ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader,
-    TestBlockBuilder, TestBlockV1Builder, TimeDiff, Transaction, TransactionApprovalsHash,
-    TransactionHash, TransactionV1Hash, Transfer, URef, U512,
+    AccessRights, AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader,
+    BlockSignatures, BlockV2, Chainspec, ChainspecRawBytes, Deploy, DeployApprovalsHash,
+    DeployHash, Digest, EraId, FinalitySignature, Key, ProtocolVersion, PublicKey, SecretKey,
+    SignedBlock, SignedBlockHeader, TestBlockBuilder, TestBlockV1Builder, TimeDiff, Transaction,
+    TransactionApprovalsHash, TransactionHash, TransactionV1Hash, Transfer, URef, U512,
 };
 use tempfile::tempdir;
 
@@ -47,7 +47,7 @@ use crate::{
     testing::{ComponentHarness, UnitTestEvent},
     types::{
         sync_leap_validation_metadata::SyncLeapValidationMetaData, ApprovalsHashes, ExecutionInfo,
-        LegacyDeploy, SignedBlock, SyncLeapIdentifier, TransactionWithFinalizedApprovals,
+        LegacyDeploy, SyncLeapIdentifier, TransactionWithFinalizedApprovals,
     },
     utils::{Loadable, WithDir},
 };
@@ -2794,14 +2794,14 @@ fn assert_block_exists_in_storage(
                 only_from_available_block_range
             )
             .unwrap()
-            .block
+            .block()
             .height(),
             block_height
         );
         assert_eq!(
             get_signed_block_by_hash(harness, storage, *block_hash, false)
                 .unwrap()
-                .block
+                .block()
                 .height(),
             block_height
         );
@@ -2813,14 +2813,14 @@ fn assert_block_exists_in_storage(
                 only_from_available_block_range
             )
             .unwrap()
-            .block
+            .block()
             .hash(),
             block_hash
         );
         assert_eq!(
             get_signed_block_by_height(harness, storage, block_height, false)
                 .unwrap()
-                .block
+                .block()
                 .hash(),
             block_hash
         );
@@ -2830,7 +2830,7 @@ fn assert_block_exists_in_storage(
                 .read_signed_block_by_height(block_height)
                 .unwrap()
                 .unwrap()
-                .block
+                .block()
                 .hash(),
             block_hash
         );
@@ -2884,7 +2884,7 @@ fn assert_highest_block_in_storage(
         assert_eq!(
             get_highest_signed_block(harness, storage, true)
                 .unwrap()
-                .block
+                .block()
                 .hash(),
             expected_block_hash
         );
@@ -2905,7 +2905,7 @@ fn assert_highest_block_in_storage(
     assert_eq!(
         get_highest_signed_block(harness, storage, false)
             .unwrap()
-            .block
+            .block()
             .hash(),
         expected_block_hash
     );

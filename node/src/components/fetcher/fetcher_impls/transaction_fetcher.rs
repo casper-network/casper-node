@@ -5,7 +5,9 @@ use futures::FutureExt;
 use thiserror::Error;
 use tracing::error;
 
-use casper_types::{DeployConfigFailure, Transaction, TransactionId, TransactionV1ConfigFailure};
+use casper_types::{
+    DeployConfigFailure, FinalizedApprovals, Transaction, TransactionId, TransactionV1ConfigFailure,
+};
 
 use crate::{
     components::fetcher::{
@@ -13,7 +15,7 @@ use crate::{
         StoringState, Tag,
     },
     effect::{requests::StorageRequest, EffectBuilder},
-    types::{FinalizedApprovals, NodeId},
+    types::NodeId,
 };
 
 #[derive(Debug, Error)]

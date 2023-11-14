@@ -6,8 +6,8 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
-use casper_types::testing::TestRng;
-use casper_types::{
+use crate::testing::TestRng;
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     TransactionV1Approval,
 };
@@ -15,18 +15,21 @@ use casper_types::{
 /// A set of approvals that has been agreed upon by consensus to approve of a specific
 /// `TransactionV1`.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, DataSize, Debug)]
-pub(crate) struct FinalizedTransactionV1Approvals(BTreeSet<TransactionV1Approval>);
+pub struct FinalizedTransactionV1Approvals(BTreeSet<TransactionV1Approval>);
 
 impl FinalizedTransactionV1Approvals {
-    pub(crate) fn new(approvals: BTreeSet<TransactionV1Approval>) -> Self {
+    /// Creates a new set of finalized transaction approvals.
+    pub fn new(approvals: BTreeSet<TransactionV1Approval>) -> Self {
         Self(approvals)
     }
 
-    pub(crate) fn inner(&self) -> &BTreeSet<TransactionV1Approval> {
+    /// Returns the inner `BTreeSet` of approvals.
+    pub fn inner(&self) -> &BTreeSet<TransactionV1Approval> {
         &self.0
     }
 
-    pub(crate) fn into_inner(self) -> BTreeSet<TransactionV1Approval> {
+    /// Converts this set of finalized approvals into the inner `BTreeSet`.
+    pub fn into_inner(self) -> BTreeSet<TransactionV1Approval> {
         self.0
     }
 

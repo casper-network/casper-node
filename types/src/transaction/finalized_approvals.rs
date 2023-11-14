@@ -1,25 +1,29 @@
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     Transaction,
 };
 
-use super::{FinalizedDeployApprovals, FinalizedTransactionV1Approvals};
+use super::deploy::FinalizedDeployApprovals;
+use super::transaction_v1::FinalizedTransactionV1Approvals;
 
 const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;
 
 /// A set of approvals that has been agreed upon by consensus to approve of a specific transaction.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, DataSize, Debug)]
-pub(crate) enum FinalizedApprovals {
+pub enum FinalizedApprovals {
+    /// Approvals for a Deploy.
     Deploy(FinalizedDeployApprovals),
+    /// Approvals for a TransactionV1.
     V1(FinalizedTransactionV1Approvals),
 }
 
 impl FinalizedApprovals {
-    pub(crate) fn new(transaction: &Transaction) -> Self {
+    /// Creates a new set of finalized approvals from a transaction.
+    pub fn new(transaction: &Transaction) -> Self {
         match transaction {
             Transaction::Deploy(deploy) => {
                 Self::Deploy(FinalizedDeployApprovals::new(deploy.approvals().clone()))
@@ -93,7 +97,7 @@ impl FromBytes for FinalizedApprovals {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use casper_types::testing::TestRng;
+    use crate::testing::TestRng;
 
     #[test]
     fn bytesrepr_roundtrip() {

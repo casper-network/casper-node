@@ -14,7 +14,7 @@ use casper_types::{
     Transfer,
 };
 
-use crate::NodeInterface;
+use crate::NodeClient;
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
@@ -150,7 +150,7 @@ impl RpcWithOptionalParams for GetBlock {
     type ResponseResult = GetBlockResult;
 
     async fn do_handle_request(
-        _node_interface: Arc<dyn NodeInterface>,
+        _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
         _maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, Error> {
@@ -218,7 +218,7 @@ impl RpcWithOptionalParams for GetBlockTransfers {
     type ResponseResult = GetBlockTransfersResult;
 
     async fn do_handle_request(
-        _node_interface: Arc<dyn NodeInterface>,
+        _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
         _maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, Error> {
@@ -267,7 +267,7 @@ impl RpcWithOptionalParams for GetStateRootHash {
     type ResponseResult = GetStateRootHashResult;
 
     async fn do_handle_request(
-        _node_interface: Arc<dyn NodeInterface>,
+        _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
         _maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, Error> {
@@ -316,7 +316,7 @@ impl RpcWithOptionalParams for GetEraInfoBySwitchBlock {
     type ResponseResult = GetEraInfoResult;
 
     async fn do_handle_request(
-        _node_interface: Arc<dyn NodeInterface>,
+        _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
         _maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, Error> {
@@ -365,7 +365,7 @@ impl RpcWithOptionalParams for GetEraSummary {
     type ResponseResult = GetEraSummaryResult;
 
     async fn do_handle_request(
-        _node_interface: Arc<dyn NodeInterface>,
+        _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
         _maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, Error> {

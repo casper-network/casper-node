@@ -1,9 +1,9 @@
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{Deploy, Transaction, TransactionV1};
-
-use crate::types::{FinalizedDeployApprovals, FinalizedTransactionV1Approvals};
+use casper_types::{
+    Deploy, FinalizedDeployApprovals, FinalizedTransactionV1Approvals, Transaction, TransactionV1,
+};
 
 /// A transaction combined with a potential set of finalized approvals.
 ///

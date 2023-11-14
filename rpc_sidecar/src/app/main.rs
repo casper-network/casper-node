@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::Context;
-use casper_rpc_sidecar::{run_server, Config, DummyNodeInterface};
+use casper_rpc_sidecar::{run_server, Config, JulietNodeClient};
 use casper_types::ProtocolVersion;
 
 use hyper::{
@@ -53,9 +53,9 @@ fn main() -> anyhow::Result<()> {
 
 async fn run(config: Config, version: ProtocolVersion) -> anyhow::Result<()> {
     let builder = start_listening(&config.address)?;
-    let node_interface = DummyNodeInterface;
+    let node_client = JulietNodeClient::new().await;
     run_server(
-        Arc::new(node_interface),
+        Arc::new(node_client),
         builder,
         version,
         config.qps_limit,

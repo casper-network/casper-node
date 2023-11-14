@@ -17,14 +17,14 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     execution::ExecutionResult,
     BlockBody, BlockBodyV1, BlockHash, BlockHeader, BlockHeaderV1, Deploy, DeployHash, Digest,
-    Transaction, TransactionHash,
+    FinalizedApprovals, FinalizedDeployApprovals, Transaction, TransactionHash,
 };
 
 use super::{
     lmdb_ext::{self, LmdbExtError, TransactionExt, WriteTransactionExt},
     DeployMetadataV1, FatalStorageError, LegacyApprovalsHashes,
 };
-use crate::types::{ApprovalsHashes, FinalizedApprovals, FinalizedDeployApprovals};
+use crate::types::ApprovalsHashes;
 
 pub(super) trait VersionedKey: ToBytes {
     type Legacy: AsRef<[u8]>;

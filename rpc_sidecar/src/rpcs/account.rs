@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{Deploy, DeployHash, ProtocolVersion, Transaction, TransactionHash};
 
-use crate::node_interface::NodeInterface;
+use crate::node_client::NodeClient;
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
@@ -73,7 +73,7 @@ impl RpcWithParams for PutDeploy {
     type ResponseResult = PutDeployResult;
 
     async fn do_handle_request(
-        _node_interface: Arc<dyn NodeInterface>,
+        _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
         _params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
@@ -122,7 +122,7 @@ impl RpcWithParams for PutTransaction {
     type ResponseResult = PutTransactionResult;
 
     async fn do_handle_request(
-        _node_interface: Arc<dyn NodeInterface>,
+        _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
         _params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
