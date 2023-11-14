@@ -36,6 +36,9 @@ All notable changes to this project will be documented in this file.  The format
 ### Security
 * Update `openssl` to version 0.10.55 as mitigation for [RUSTSEC-2023-0044](https://rustsec.org/advisories/RUSTSEC-2023-0044).
 
+### Removed
+* The section `consensus.highway.round_success_meter` has been removed from the config file as no longer relevant with the introduction of a new method of determining the round exponent in Highway.
+
 
 
 ## 1.5.3
