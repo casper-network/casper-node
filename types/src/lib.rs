@@ -223,7 +223,8 @@ pub enum BinaryError {
 const GET_TAG: u8 = 0;
 const PUT_TRANSACTION_TAG: u8 = 1;
 const SPECULATIVE_EXEC_TAG: u8 = 2;
-const QUIT_EXEC_TAG: u8 = 3;
+const IN_MEM_REQUEST_TAG: u8 = 3;
+const QUIT_EXEC_TAG: u8 = 4;
 
 const BLOCK_HEADER_DB_TAG: u8 = 0;
 const BLOCK_HEADER_V2_DB_TAG: u8 = 1;
@@ -242,21 +243,88 @@ const APPROVALS_HASHES_DB_TAG: u8 = 13;
 const VERSIONED_APPROVALS_HASHES_DB_TAG: u8 = 14;
 
 #[derive(Debug)]
-enum InMemRequest {
+pub enum InMemRequest {
     /// Returns hash for a given height
-    BlockHeight2Hash {
-        height: u64,
-    },
+    BlockHeight2Hash { height: u64 },
     /// Returns height&hash for the currently highest block
     HighestBlock,
     /// Returns true if `self.completed_blocks.highest_sequence()` contains the given hash
-    CompletedBlockContains {
-        block_hash: BlockHash,
-    },
+    CompletedBlockContains { block_hash: BlockHash },
     /// TODO
-    TransactionHash2BlockHashAndHeight {
-        transaction_hash: Digest,
-    },
+    TransactionHash2BlockHashAndHeight { transaction_hash: Digest },
+}
+
+const BLOCK_HEIGHT_2_HASH_TAG: u8 = 0;
+const HIGHEST_BLOCK_TAG: u8 = 1;
+const COMPLETED_BLOCK_CONTAINS_TAG: u8 = 2;
+const TRANSACTION_HASH_2_BLOCK_HASH_AND_HEIGHT_TAG: u8 = 3;
+
+impl ToBytes for InMemRequest {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            InMemRequest::BlockHeight2Hash { height } => {
+                ERROR_TAG.write_bytes(writer)?;
+                height.write_bytes(writer)
+            }
+            InMemRequest::HighestBlock => HIGHEST_BLOCK_TAG.write_bytes(writer),
+            InMemRequest::CompletedBlockContains { block_hash } => {
+                COMPLETED_BLOCK_CONTAINS_TAG.write_bytes(writer)?;
+                block_hash.write_bytes(writer)
+            }
+            InMemRequest::TransactionHash2BlockHashAndHeight { transaction_hash } => {
+                TRANSACTION_HASH_2_BLOCK_HASH_AND_HEIGHT_TAG.write_bytes(writer)?;
+                transaction_hash.write_bytes(writer)
+            }
+        }
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+            + match self {
+                InMemRequest::BlockHeight2Hash { height } => height.serialized_length(),
+                InMemRequest::HighestBlock => 0,
+                InMemRequest::CompletedBlockContains { block_hash } => {
+                    block_hash.serialized_length()
+                }
+                InMemRequest::TransactionHash2BlockHashAndHeight { transaction_hash } => {
+                    transaction_hash.serialized_length()
+                }
+            }
+    }
+}
+
+impl FromBytes for InMemRequest {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            BLOCK_HEIGHT_2_HASH_TAG => {
+                let (height, remainder) = u64::from_bytes(remainder)?;
+                Ok((InMemRequest::BlockHeight2Hash { height }, remainder))
+            }
+            HIGHEST_BLOCK_TAG => Ok((InMemRequest::HighestBlock, remainder)),
+            COMPLETED_BLOCK_CONTAINS_TAG => {
+                let (block_hash, remainder) = BlockHash::from_bytes(remainder)?;
+                Ok((
+                    InMemRequest::CompletedBlockContains { block_hash },
+                    remainder,
+                ))
+            }
+            TRANSACTION_HASH_2_BLOCK_HASH_AND_HEIGHT_TAG => {
+                let (transaction_hash, remainder) = Digest::from_bytes(remainder)?;
+                Ok((
+                    InMemRequest::TransactionHash2BlockHashAndHeight { transaction_hash },
+                    remainder,
+                ))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
 }
 
 /// TODO
@@ -351,6 +419,10 @@ impl ToBytes for BinaryRequest {
                 tbd.write_bytes(writer)
             }
             BinaryRequest::Quit => QUIT_EXEC_TAG.write_bytes(writer),
+            BinaryRequest::InMemRequest(req) => {
+                IN_MEM_REQUEST_TAG.write_bytes(writer)?;
+                req.write_bytes(writer)
+            }
         }
     }
 
@@ -361,6 +433,7 @@ impl ToBytes for BinaryRequest {
                 BinaryRequest::PutTransaction { tbd } => tbd.serialized_length(),
                 BinaryRequest::SpeculativeExec { tbd } => tbd.serialized_length(),
                 BinaryRequest::Quit => 0,
+                BinaryRequest::InMemRequest(req) => req.serialized_length(),
             }
     }
 }
