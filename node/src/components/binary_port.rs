@@ -167,7 +167,7 @@ async fn handle_client<REv, const N: usize>(
 }
 
 // TODO[RC]: Move to Self::
-async fn run_server<REv>(effect_builder: EffectBuilder<REv>)
+async fn run_server<REv>(effect_builder: EffectBuilder<REv>, config: Config)
 where
     REv: Send + From<StorageRequest>,
 {
@@ -180,8 +180,7 @@ where
     let io_builder = IoCoreBuilder::new(protocol_builder).buffer_size(ChannelId::new(0), 16);
     let rpc_builder = Box::leak(Box::new(RpcBuilder::new(io_builder))); // TODO[RC]: Leak?
 
-    let listener = TcpListener::bind("127.0.0.1:34568") // TODO[RC]: Take from config
-        .await;
+    let listener = TcpListener::bind(config.address).await;
     match listener {
         Ok(listener) => loop {
             match listener.accept().await {
@@ -209,7 +208,7 @@ where
         &mut self,
         effect_builder: EffectBuilder<REv>,
     ) -> Result<Effects<Self::ComponentEvent>, Self::Error> {
-        let server_join_handle = tokio::spawn(run_server(effect_builder));
+        let server_join_handle = tokio::spawn(run_server(effect_builder, self.config.clone()));
         Ok(Effects::new())
     }
 }

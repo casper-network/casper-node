@@ -80,6 +80,7 @@ function _upgrade_node() {
             "cfg['storage']['path']='../../storage';"
             "cfg['rest_server']['address']='0.0.0.0:$(get_node_port_rest "$NODE_ID")';"
             "cfg['rpc_server']['address']='0.0.0.0:$(get_node_port_rpc "$NODE_ID")';"
+            "cfg['binary_port_server']['address']='0.0.0.0:$(get_node_port_binary "$IDX")';"
             "cfg['event_stream_server']['address']='0.0.0.0:$(get_node_port_sse "$NODE_ID")';"
         )
 

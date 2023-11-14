@@ -38,14 +38,16 @@ function do_render()
     local PORT_RPC
     local PORT_SSE
     local PORT_SPECULATIVE_EXEC
+    local PORT_BINARY
 
     PORT_VNET=$(get_node_port "$NCTL_BASE_PORT_NETWORK" "$NODE_ID")
     PORT_REST=$(get_node_port_rest "$NODE_ID")
     PORT_RPC=$(get_node_port_rpc "$NODE_ID")
     PORT_SSE=$(get_node_port_sse "$NODE_ID")
     PORT_SPECULATIVE_EXEC=$(get_node_port_speculative_exec "$NODE_ID")
+    PORT_BINARY=$(get_node_port_binary "$NODE_ID")
 
-    log "node-$NODE_ID :: VNET @ $PORT_VNET :: RPC @ $PORT_RPC :: REST @ $PORT_REST :: SSE @ $PORT_SSE :: SPECULATIVE_EXEC @ $PORT_SPECULATIVE_EXEC"
+    log "node-$NODE_ID :: VNET @ $PORT_VNET :: RPC @ $PORT_RPC :: REST @ $PORT_REST :: SSE @ $PORT_SSE :: SPECULATIVE_EXEC @ $PORT_SPECULATIVE_EXEC :: BINARY @ $PORT_BINARY"
 }
 
 # ----------------------------------------------------------------

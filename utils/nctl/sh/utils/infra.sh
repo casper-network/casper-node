@@ -218,6 +218,18 @@ function get_node_port_speculative_exec()
 }
 
 #######################################
+# Calculates binary port.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function get_node_port_binary()
+{
+    local NODE_ID=${1}
+
+    get_node_port "$NCTL_BASE_PORT_BINARY" "$NODE_ID"
+}
+
+#######################################
 # Calculates REST port.
 # Arguments:
 #   Node ordinal identifier.
