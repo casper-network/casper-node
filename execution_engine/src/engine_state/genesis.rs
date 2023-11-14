@@ -731,6 +731,7 @@ where
         let mut named_keys = NamedKeys::new();
 
         let genesis_validators: Vec<_> = self.exec_config.get_bonded_validators().collect();
+        println!("L: {} | R: {}", self.exec_config.validator_slots() as usize, genesis_validators.len());
         if (self.exec_config.validator_slots() as usize) < genesis_validators.len() {
             return Err(GenesisError::InvalidValidatorSlots {
                 validators: genesis_validators.len(),
@@ -1297,40 +1298,25 @@ where
         chainspec_registry: ChainspecRegistry,
     ) -> Result<(), Box<GenesisError>> {
         // Setup system account
-        if let Err(error) = self.setup_system_account() {
-            println!("{:?}", error);
-            return Err(error);
-        };
 
-        println!("Created accounts");
+        self.setup_system_account()?;
 
         // Create mint
         let total_supply_key = self.create_mint()?;
 
-        println!("Created total supply");
-
         let payment_purse_uref = self.create_purse(U512::zero())?;
-
-        println!("Created payment uref");
 
         // Create all genesis accounts
         self.create_accounts(total_supply_key, payment_purse_uref)?;
 
-        println!("Created accounts");
-
         // Create the auction and setup the stake of all genesis validators.
         self.create_auction(total_supply_key)?;
-
-        println!("Created auction");
 
         // Create handle payment
         self.create_handle_payment(payment_purse_uref)?;
 
-        println!("Created hp");
-
         self.store_chainspec_registry(chainspec_registry)?;
 
-        println!("marker");
 
         Ok(())
     }

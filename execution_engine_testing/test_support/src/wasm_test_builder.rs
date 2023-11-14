@@ -757,17 +757,8 @@ where
     /// # Panics
     /// Panics if the total supply or seigniorage rate can't be found.
     pub fn base_round_reward(&mut self, maybe_post_state: Option<Digest>) -> U512 {
-        let mint_key: Key =
-            Key::addressable_entity_key(EntityKindTag::System, self.get_mint_contract_hash());
-
-        let mint_contract = self
-            .query(maybe_post_state, mint_key, &[])
-            .expect("must get mint stored value")
-            .into_addressable_entity()
-            .expect("must convert to mint contract");
-
         let mint_named_keys =
-            self.get_named_keys_by_contract_entity_hash(self.get_mint_contract_hash());
+            self.get_named_keys(EntityAddr::System(self.get_mint_contract_hash().value()));
 
         let total_supply_uref = *mint_named_keys
             .get(TOTAL_SUPPLY_KEY)

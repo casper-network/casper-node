@@ -8,29 +8,12 @@ use casper_engine_test_support::{
     DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_UNBONDING_DELAY, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 
-use casper_types::{
-    account::{AccountHash, ACCOUNT_HASH_LENGTH},
-    runtime_args,
-    system::{
-        auction::{
-            AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
-        },
-        mint::ROUND_SEIGNIORAGE_RATE_KEY,
+use casper_types::{account::{AccountHash, ACCOUNT_HASH_LENGTH}, runtime_args, system::{
+    auction::{
+        AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
     },
-    BrTableCost, CLValue, ControlFlowCosts, EraId, HostFunctionCosts, OpcodeCosts, ProtocolVersion,
-    StorageCosts, StoredValue, WasmConfig, DEFAULT_ADD_COST, DEFAULT_BIT_COST, DEFAULT_CONST_COST,
-    DEFAULT_CONTROL_FLOW_BLOCK_OPCODE, DEFAULT_CONTROL_FLOW_BR_IF_OPCODE,
-    DEFAULT_CONTROL_FLOW_BR_OPCODE, DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER,
-    DEFAULT_CONTROL_FLOW_BR_TABLE_OPCODE, DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE,
-    DEFAULT_CONTROL_FLOW_CALL_OPCODE, DEFAULT_CONTROL_FLOW_DROP_OPCODE,
-    DEFAULT_CONTROL_FLOW_ELSE_OPCODE, DEFAULT_CONTROL_FLOW_END_OPCODE,
-    DEFAULT_CONTROL_FLOW_IF_OPCODE, DEFAULT_CONTROL_FLOW_LOOP_OPCODE,
-    DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE,
-    DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DIV_COST, DEFAULT_GLOBAL_COST,
-    DEFAULT_GROW_MEMORY_COST, DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST,
-    DEFAULT_LOCAL_COST, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST, DEFAULT_NOP_COST,
-    DEFAULT_STORE_COST, DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY, U256, U512,
-};
+    mint::ROUND_SEIGNIORAGE_RATE_KEY,
+}, BrTableCost, CLValue, ControlFlowCosts, EraId, HostFunctionCosts, OpcodeCosts, ProtocolVersion, StorageCosts, StoredValue, WasmConfig, DEFAULT_ADD_COST, DEFAULT_BIT_COST, DEFAULT_CONST_COST, DEFAULT_CONTROL_FLOW_BLOCK_OPCODE, DEFAULT_CONTROL_FLOW_BR_IF_OPCODE, DEFAULT_CONTROL_FLOW_BR_OPCODE, DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER, DEFAULT_CONTROL_FLOW_BR_TABLE_OPCODE, DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE, DEFAULT_CONTROL_FLOW_CALL_OPCODE, DEFAULT_CONTROL_FLOW_DROP_OPCODE, DEFAULT_CONTROL_FLOW_ELSE_OPCODE, DEFAULT_CONTROL_FLOW_END_OPCODE, DEFAULT_CONTROL_FLOW_IF_OPCODE, DEFAULT_CONTROL_FLOW_LOOP_OPCODE, DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE, DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DIV_COST, DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST, DEFAULT_NOP_COST, DEFAULT_STORE_COST, DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY, U256, U512, EntityAddr};
 
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
@@ -310,9 +293,7 @@ fn should_upgrade_only_validator_slots() {
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
     let validator_slot_key = *builder
-        .get_entity_with_named_keys_by_entity_hash(builder.get_auction_contract_hash())
-        .expect("auction should exist")
-        .named_keys()
+        .get_named_keys(EntityAddr::System(builder.get_auction_contract_hash().value()))
         .get(VALIDATOR_SLOTS_KEY)
         .unwrap();
 
@@ -367,9 +348,7 @@ fn should_upgrade_only_auction_delay() {
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
     let auction_delay_key = *builder
-        .get_entity_with_named_keys_by_entity_hash(builder.get_auction_contract_hash())
-        .expect("auction should exist")
-        .named_keys()
+        .get_named_keys(EntityAddr::System(builder.get_auction_contract_hash().value()))
         .get(AUCTION_DELAY_KEY)
         .unwrap();
 
@@ -424,9 +403,7 @@ fn should_upgrade_only_locked_funds_period() {
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
     let locked_funds_period_key = *builder
-        .get_entity_with_named_keys_by_entity_hash(builder.get_auction_contract_hash())
-        .expect("auction should exist")
-        .named_keys()
+        .get_named_keys(EntityAddr::System(builder.get_auction_contract_hash().value()))
         .get(LOCKED_FUNDS_PERIOD_KEY)
         .unwrap();
 
@@ -480,10 +457,12 @@ fn should_upgrade_only_round_seigniorage_rate() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
-    let round_seigniorage_rate_key = *builder
-        .get_entity_with_named_keys_by_entity_hash(builder.get_auction_contract_hash())
-        .expect("mint should exist")
-        .named_keys()
+    let keys = builder
+        .get_named_keys(EntityAddr::System(builder.get_mint_contract_hash().value()));
+
+    println!("{:?}", keys);
+
+    let round_seigniorage_rate_key = *keys
         .get(ROUND_SEIGNIORAGE_RATE_KEY)
         .unwrap();
 
@@ -544,10 +523,10 @@ fn should_upgrade_only_unbonding_delay() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
+    let entity_addr = EntityAddr::System(builder.get_auction_contract_hash().value());
+
     let unbonding_delay_key = *builder
-        .get_entity_with_named_keys_by_entity_hash(builder.get_auction_contract_hash())
-        .expect("auction should exist")
-        .named_keys()
+        .get_named_keys(entity_addr)
         .get(UNBONDING_DELAY_KEY)
         .unwrap();
 
@@ -603,11 +582,11 @@ fn should_apply_global_state_upgrade() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
+
+
     // We'll try writing directly to this key.
     let unbonding_delay_key = *builder
-        .get_entity_with_named_keys_by_entity_hash(builder.get_auction_contract_hash())
-        .expect("auction should exist")
-        .named_keys()
+        .get_named_keys(EntityAddr::System(builder.get_auction_contract_hash().value()))
         .get(UNBONDING_DELAY_KEY)
         .unwrap();
 

@@ -184,6 +184,8 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
             .or_insert_with(BTreeSet::new);
 
         key_set.insert(key);
+
+        println!("{:?}", key_set);
     }
 
     /// Inserts `key` and `value` pair to Write/Add cache.
@@ -558,7 +560,6 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                 StoredValue::AddressableEntity(_) => {
                     let current_key = query.current_key;
                     let name = query.next_name();
-
 
                     if let Key::AddressableEntity(addr) = current_key {
                         let named_key_addr = match NamedKeyAddr::new_from_string(addr, name.clone())

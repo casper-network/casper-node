@@ -666,11 +666,15 @@ where
             .borrow_mut()
             .get_contract(handle_payment_hash)?;
 
+        println!("{entry_point_name}");
+
         let handle_payment_named_keys = self
             .context
             .state()
             .borrow_mut()
             .get_named_keys(EntityAddr::System(handle_payment_hash.value()))?;
+
+        println!("{entry_point_name} | CHP {:?}", handle_payment_named_keys);
 
         let mut named_keys = handle_payment_named_keys.clone();
 
@@ -719,9 +723,14 @@ where
                     Self::get_named_argument(runtime_args, handle_payment::ARG_ACCOUNT)?;
                 let target: URef =
                     Self::get_named_argument(runtime_args, handle_payment::ARG_TARGET)?;
-                runtime
+                let result = runtime
                     .finalize_payment(amount_spent, account, target)
-                    .map_err(Self::reverter)?;
+                    .map_err(Self::reverter);
+
+                if let Err(error) = result {
+                    println!("error {:?}", error);
+                    return Err(error)
+                }
 
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
@@ -1338,7 +1347,7 @@ where
             .borrow_mut()
             .get_named_keys(entity_addr)?;
 
-        println!("In execute contract {:?}", entity_named_keys);
+        // println!("In execute contract {:?}", entity_named_keys);
 
         let access_rights = {
             let mut access_rights = entity.extract_access_rights(entity_hash, &entity_named_keys);
@@ -1845,7 +1854,9 @@ where
         &mut self,
         package: &Package,
     ) -> Result<(URef, NamedKeys, ActionThresholds, AssociatedKeys), Error> {
+        println!("In new version");
         if let Some(previous_entity_hash) = package.current_entity_hash() {
+            println!("Some previous version");
             let previous_entity_key = Key::contract_entity_key(previous_entity_hash);
 
             let (mut previous_entity, requires_purse_creation) =
@@ -1859,8 +1870,13 @@ where
                 // Check if the calling entity must be grandfathered into the new
                 // addressable entity format
                 let account_hash = self.context.get_caller();
+                println!("context of {}", self.context.get_entity_key());
+                println!("access: {}", &package.access_key());
+                let has_access = self.context.validate_uref(&package.access_key()).is_ok();
 
-                if self.context.validate_uref(&package.access_key()).is_ok()
+
+
+                if has_access
                     && !associated_keys.contains_key(&account_hash)
                 {
                     previous_entity.add_associated_key(

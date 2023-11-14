@@ -769,6 +769,13 @@ impl Key {
         }
     }
 
+    pub fn as_entity_addr(&self) -> Option<EntityAddr> {
+        match self {
+            Key::AddressableEntity(addr) => Some(*addr),
+            _ => None,
+        }
+    }
+
     /// Returns a reference to the inner [`URef`] if `self` is of type [`Key::URef`], otherwise
     /// returns `None`.
     pub fn as_uref(&self) -> Option<&URef> {
@@ -929,6 +936,16 @@ impl Key {
             false
         }
     }
+
+    pub fn is_entry_for_base(&self, entity_addr: &EntityAddr) -> bool {
+        if let Self::NamedKey(NamedKeyAddr::NamedKeyEntry { base_addr, ..}) = self {
+            base_addr ==  entity_addr
+        } else {
+            false
+        }
+    }
+
+
 }
 
 impl Display for Key {

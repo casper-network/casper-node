@@ -4,11 +4,7 @@ use casper_engine_test_support::{
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::EngineConfigBuilder;
-use casper_types::{
-    runtime_args,
-    system::{handle_payment::ACCUMULATION_PURSE_KEY, mint},
-    EraId, FeeHandling, Key, ProtocolVersion, RuntimeArgs, U512,
-};
+use casper_types::{runtime_args, system::{handle_payment::ACCUMULATION_PURSE_KEY, mint}, EraId, FeeHandling, Key, ProtocolVersion, RuntimeArgs, U512, EntityAddr};
 use once_cell::sync::Lazy;
 
 use crate::{
@@ -36,15 +32,13 @@ fn default_genesis_config_should_not_have_rewards_purse() {
 
     let handle_payment = builder.get_handle_payment_contract_hash();
     let handle_payment_contract = builder
-        .get_entity_with_named_keys_by_entity_hash(handle_payment)
-        .expect("should have handle payment contract");
+        .get_named_keys(EntityAddr::System(handle_payment.value()));
 
     assert!(
         handle_payment_contract
-            .named_keys()
             .contains(ACCUMULATION_PURSE_KEY),
         "Did not find rewards purse in handle payment's named keys {:?}",
-        handle_payment_contract.named_keys()
+        handle_payment_contract
     );
 }
 
@@ -55,11 +49,9 @@ fn should_finalize_and_accumulate_rewards_purse() {
 
     let handle_payment = builder.get_handle_payment_contract_hash();
     let handle_payment_1 = builder
-        .get_entity_with_named_keys_by_entity_hash(handle_payment)
-        .expect("should have handle payment contract");
+        .get_named_keys(EntityAddr::System(handle_payment.value()));
 
     let rewards_purse_key = handle_payment_1
-        .named_keys()
         .get(ACCUMULATION_PURSE_KEY)
         .expect("should have rewards purse");
     let rewards_purse_uref = rewards_purse_key.into_uref().expect("should be uref");
@@ -83,12 +75,11 @@ fn should_finalize_and_accumulate_rewards_purse() {
     );
 
     let handle_payment_2 = builder
-        .get_entity_with_named_keys_by_entity_hash(handle_payment)
-        .expect("should have handle payment contract");
+        .get_named_keys(EntityAddr::System(handle_payment.value()));
 
     assert_eq!(
-        handle_payment_1.named_keys(),
-        handle_payment_2.named_keys(),
+        handle_payment_1,
+        handle_payment_2,
         "none of the named keys should change before and after execution"
     );
 
@@ -113,17 +104,16 @@ fn should_finalize_and_accumulate_rewards_purse() {
     );
 
     let handle_payment_3 = builder
-        .get_entity_with_named_keys_by_entity_hash(handle_payment)
-        .expect("should have handle payment contract");
+        .get_named_keys(EntityAddr::System(handle_payment.value()));
 
     assert_eq!(
-        handle_payment_1.named_keys(),
-        handle_payment_2.named_keys(),
+        handle_payment_1,
+        handle_payment_2,
         "none of the named keys should change before and after execution"
     );
     assert_eq!(
-        handle_payment_2.named_keys(),
-        handle_payment_3.named_keys(),
+        handle_payment_2,
+        handle_payment_3,
         "none of the named keys should change before and after execution"
     );
 }
@@ -136,11 +126,9 @@ fn should_accumulate_deploy_fees() {
     // Check handle payments has rewards purse
     let handle_payment_hash = builder.get_handle_payment_contract_hash();
     let handle_payment_contract = builder
-        .get_entity_with_named_keys_by_entity_hash(handle_payment_hash)
-        .expect("should have handle payment contract");
+        .get_named_keys(EntityAddr::System(handle_payment_hash.value()));
 
     let rewards_purse = handle_payment_contract
-        .named_keys()
         .get(ACCUMULATION_PURSE_KEY)
         .unwrap()
         .into_uref()
@@ -161,22 +149,19 @@ fn should_accumulate_deploy_fees() {
 
     builder.exec(exec_request).expect_success().commit();
 
-    let handle_payment_after = builder
-        .get_entity_with_named_keys_by_entity_hash(handle_payment_hash)
-        .expect("should have handle payment contract");
+    let handle_payment_after  = builder
+        .get_named_keys(EntityAddr::System(handle_payment_hash.value()));
+
 
     assert_eq!(
         handle_payment_after
-            .named_keys()
             .get(ACCUMULATION_PURSE_KEY),
         handle_payment_contract
-            .named_keys()
             .get(ACCUMULATION_PURSE_KEY),
         "keys should not change before and after deploy has been processed",
     );
 
     let rewards_purse = handle_payment_contract
-        .named_keys()
         .get(ACCUMULATION_PURSE_KEY)
         .unwrap()
         .into_uref()
@@ -205,11 +190,9 @@ fn should_distribute_accumulated_fees_to_admins() {
 
     let handle_payment_hash = builder.get_handle_payment_contract_hash();
     let handle_payment = builder
-        .get_entity_with_named_keys_by_entity_hash(handle_payment_hash)
-        .expect("should have handle payment contract");
+        .get_named_keys(EntityAddr::System(handle_payment_hash.value()));
 
     let accumulation_purse = handle_payment
-        .named_keys()
         .get(ACCUMULATION_PURSE_KEY)
         .expect("handle payment should have named key")
         .into_uref()
@@ -315,10 +298,8 @@ fn should_accumulate_fees_after_upgrade() {
     // Check handle payments has rewards purse
     let handle_payment_hash = builder.get_handle_payment_contract_hash();
     let handle_payment_contract = builder
-        .get_entity_with_named_keys_by_entity_hash(handle_payment_hash)
-        .expect("should have handle payment contract");
+        .get_named_keys(EntityAddr::System(handle_payment_hash.value()));
     let rewards_purse = handle_payment_contract
-        .named_keys()
         .get(ACCUMULATION_PURSE_KEY)
         .expect("should have accumulation purse")
         .into_uref()
@@ -338,21 +319,17 @@ fn should_accumulate_fees_after_upgrade() {
     builder.exec(exec_request).expect_success().commit();
 
     let handle_payment_after = builder
-        .get_entity_with_named_keys_by_entity_hash(handle_payment_hash)
-        .expect("should have handle payment contract");
+        .get_named_keys(EntityAddr::System(handle_payment_hash.value()));
 
     assert_eq!(
         handle_payment_after
-            .named_keys()
             .get(ACCUMULATION_PURSE_KEY),
         handle_payment_contract
-            .named_keys()
             .get(ACCUMULATION_PURSE_KEY),
         "keys should not change before and after deploy has been processed",
     );
 
     let rewards_purse = handle_payment_contract
-        .named_keys()
         .get(ACCUMULATION_PURSE_KEY)
         .unwrap()
         .into_uref()

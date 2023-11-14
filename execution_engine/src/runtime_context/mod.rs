@@ -231,8 +231,9 @@ where
         };
 
         let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, name.to_string())?;
-
-        self.prune_gs_unsafe(Key::NamedKey(named_key_addr));
+        if let Some(StoredValue::NamedKey(_)) = self.read_gs(&Key::NamedKey(named_key_addr))? {
+            self.prune_gs_unsafe(Key::NamedKey(named_key_addr));
+        }
         Ok(())
     }
 
@@ -342,7 +343,6 @@ where
             .borrow_mut()
             .new_uref(AccessRights::READ_ADD_WRITE);
         self.insert_uref(uref);
-        println!("Writing URef {}", uref);
         self.metered_write_gs(Key::URef(uref), value)?;
         Ok(uref)
     }
@@ -360,6 +360,7 @@ where
 
     /// Puts `key` to the map of named keys of current context.
     pub fn put_key(&mut self, name: String, key: Key) -> Result<(), Error> {
+        println!("putting {}", name);
         // No need to perform actual validation on the base key because an account or contract (i.e.
         // the element stored under `base_key`) is allowed to add new named keys to itself.
         let entity_addr = if let Key::AddressableEntity(entity_addr) = self.get_entity_key() {
@@ -367,23 +368,13 @@ where
         } else {
             return Err(Error::InvalidContext);
         };
-        self.write_named_key(entity_addr, name.clone(), key)?;
-        self.insert_named_key(name, key);
-        Ok(())
-    }
-
-    fn write_named_key(
-        &mut self,
-        entity_addr: EntityAddr,
-        name: String,
-        key: Key,
-    ) -> Result<(), Error> {
         let named_key_value =
             StoredValue::NamedKey(NamedKeyValue::from_concrete_values(key, name.clone())?);
         self.validate_value(&named_key_value)?;
-        let named_key_entry =
-            Key::NamedKey(NamedKeyAddr::new_from_string(entity_addr, name.clone())?);
-        self.metered_write_gs_unsafe(named_key_entry, named_key_value)
+        let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, name.clone())?;
+        self.metered_write_gs_unsafe(Key::NamedKey(named_key_addr), named_key_value)?;
+        self.insert_named_key(name, key);
+        Ok(())
     }
 
     pub(crate) fn write_named_keys(
@@ -397,7 +388,10 @@ where
         )?;
 
         for (name, key) in named_keys.iter() {
-            self.write_named_key(entity_addr, name.clone(), *key)?
+            let named_key_value =
+                StoredValue::NamedKey(NamedKeyValue::from_concrete_values(*key, name.clone())?);
+            let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, name.clone())?;
+            self.metered_write_gs_unsafe(Key::NamedKey(named_key_addr), named_key_value)?;
         }
 
         Ok(())

@@ -3,12 +3,7 @@ use casper_engine_test_support::{
     SYSTEM_ADDR,
 };
 use casper_execution_engine::{engine_state::Error, execution};
-use casper_types::{
-    account::AccountHash,
-    runtime_args,
-    system::{handle_payment, mint, standard_payment},
-    Key, PublicKey, RuntimeArgs, StoredValue, URef, U512,
-};
+use casper_types::{account::AccountHash, runtime_args, system::{handle_payment, mint, standard_payment}, Key, PublicKey, RuntimeArgs, StoredValue, URef, U512, EntityAddr};
 
 use crate::{test::private_chain::ADMIN_1_ACCOUNT_ADDR, wasm_utils};
 
@@ -742,10 +737,8 @@ fn should_allow_custom_payment_by_paying_to_system_account() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let handle_payment_contract = builder
-        .get_entity_with_named_keys_by_entity_hash(builder.get_handle_payment_contract_hash())
-        .unwrap();
+        .get_named_keys(EntityAddr::System(builder.get_handle_payment_contract_hash().value()));
     let payment_purse_key = handle_payment_contract
-        .named_keys()
         .get(handle_payment::PAYMENT_PURSE_KEY)
         .unwrap();
     let payment_purse_uref = payment_purse_key.into_uref().unwrap();
@@ -789,10 +782,8 @@ fn should_allow_transfer_to_system_in_a_session_code() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let handle_payment_contract = builder
-        .get_entity_with_named_keys_by_entity_hash(builder.get_handle_payment_contract_hash())
-        .unwrap();
+        .get_named_keys(EntityAddr::System(builder.get_handle_payment_contract_hash().value()));
     let payment_purse_key = handle_payment_contract
-        .named_keys()
         .get(handle_payment::PAYMENT_PURSE_KEY)
         .unwrap();
     let payment_purse_uref = payment_purse_key.into_uref().unwrap();
@@ -827,10 +818,8 @@ fn should_allow_transfer_to_system_in_a_native_transfer() {
     builder.exec(fund_transfer_1).expect_success().commit();
 
     let handle_payment_contract = builder
-        .get_entity_with_named_keys_by_entity_hash(builder.get_handle_payment_contract_hash())
-        .unwrap();
+        .get_named_keys(EntityAddr::System(builder.get_handle_payment_contract_hash().value()));
     let payment_purse_key = handle_payment_contract
-        .named_keys()
         .get(handle_payment::PAYMENT_PURSE_KEY)
         .unwrap();
     let payment_purse_uref = payment_purse_key.into_uref().unwrap();

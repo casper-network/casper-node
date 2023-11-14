@@ -1,12 +1,7 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_types::{
-    runtime_args,
-    system::{handle_payment::ACCUMULATION_PURSE_KEY, mint},
-    FeeHandling, RefundHandling, RuntimeArgs, DEFAULT_NOP_COST, DEFAULT_WASMLESS_TRANSFER_COST,
-    U512,
-};
+use casper_types::{runtime_args, system::{handle_payment::ACCUMULATION_PURSE_KEY, mint}, FeeHandling, RefundHandling, RuntimeArgs, DEFAULT_NOP_COST, DEFAULT_WASMLESS_TRANSFER_COST, U512, EntityAddr};
 use num_rational::Ratio;
 use num_traits::{One, Zero};
 
@@ -109,10 +104,8 @@ fn test_burning_fees(
     );
     let handle_payment = builder.get_handle_payment_contract_hash();
     let handle_payment_1 = builder
-        .get_entity_with_named_keys_by_entity_hash(handle_payment)
-        .expect("should have handle payment contract");
+        .get_named_keys(EntityAddr::System(handle_payment.value()));
     let rewards_purse_key = handle_payment_1
-        .named_keys()
         .get(ACCUMULATION_PURSE_KEY)
         .expect("should have rewards purse");
     let rewards_purse_uref = rewards_purse_key.into_uref().expect("should be uref");

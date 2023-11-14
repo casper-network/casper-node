@@ -68,6 +68,7 @@ use casper_types::{
     ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Package, PackageHash, Phase,
     ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
 };
+use casper_types::addressable_entity::{ActionThresholds, NamedKeyValue, Weight};
 
 use self::transfer::NewTransferTargetMode;
 pub use self::{
@@ -298,9 +299,9 @@ where
             tracking_copy,
         );
 
-        if let Err(error) = genesis_installer.install(chainspec_registry) {
-            println!("{:?}", error)
-        };
+
+
+        genesis_installer.install(chainspec_registry)?;
 
         // Commit the transforms.
         let effects = genesis_installer.finalize();
@@ -636,6 +637,8 @@ where
             .commit(pre_state_hash, effects.clone())
             .map_err(Into::into)?;
 
+        println!("Upgrade complete");
+
         // return result and effects
         Ok(UpgradeSuccess {
             post_state_hash,
@@ -818,6 +821,7 @@ where
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Result<(), Error> {
+        println!("Creating new entity for account");
         let account_hash = account.account_hash();
 
         let mut generator =
@@ -830,6 +834,15 @@ where
         let entry_points = EntryPoints::new();
 
         let associated_keys = AssociatedKeys::from(account.associated_keys().clone());
+        let action_thresholds = {
+            let account_threshold = account.action_thresholds().clone();
+            let new_threshold = ActionThresholds::new(
+                Weight::new(account_threshold.deployment.value()),
+                Weight::new(1u8),
+                Weight::new(account_threshold.key_management.value())
+            ).map_err(|_| Error::Authorization)?;
+            new_threshold
+        };
 
         let entity_addr = EntityAddr::new_account_entity_addr(entity_hash.value());
 
@@ -839,6 +852,8 @@ where
             Rc::clone(&tracking_copy),
         )?;
 
+        println!("migrated named keys");
+
         let entity = AddressableEntity::new(
             package_hash,
             contract_wasm_hash,
@@ -846,7 +861,7 @@ where
             protocol_version,
             account.main_purse(),
             associated_keys,
-            account.action_thresholds().clone().into(),
+            action_thresholds,
             EntityKind::Account(account_hash),
         );
 
@@ -888,6 +903,8 @@ where
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Result<(), Error> {
+        println!("In migrate account");
+
         let maybe_stored_value = tracking_copy
             .borrow_mut()
             .read(&Key::Account(account_hash))
@@ -923,23 +940,18 @@ where
             .write(base_key, StoredValue::CLValue(CLValue::unit()));
 
         for (string, key) in named_keys.into_inner().into_iter() {
-            let bytes = string
-                .to_bytes()
+            let entry_addr = NamedKeyAddr::new_from_string(entity_addr, string.clone())
                 .map_err(|error| Error::Bytesrepr(error.to_string()))?;
 
-            let string_bytes = bytesrepr::deserialize_from_slice(bytes.as_slice())
-                .map_err(|error| Error::Bytesrepr(error.to_string()))?;
-
-            let entry_addr = NamedKeyAddr::new_named_key_entry(entity_addr, string_bytes);
-
-            let cl_value =
-                CLValue::from_t(key).map_err(|error| Error::Bytesrepr(error.to_string()))?;
+            let named_key_value =
+                StoredValue::NamedKey(NamedKeyValue::from_concrete_values(key, string.clone())
+                    .map_err(|cl_error| Error::Bytesrepr(cl_error.to_string()))?);
 
             let entry_key = Key::NamedKey(entry_addr);
 
             tracking_copy
                 .borrow_mut()
-                .write(entry_key, StoredValue::CLValue(cl_value))
+                .write(entry_key, named_key_value)
         }
 
         Ok(())
@@ -950,48 +962,11 @@ where
         entity_addr: EntityAddr,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Result<NamedKeys, Error> {
-        let base_named_key_addr = NamedKeyAddr::new_named_key_base(entity_addr);
 
-        let prefix = base_named_key_addr
-            .named_keys_prefix()
-            .map_err(|error| Error::Bytesrepr(error.to_string()))?;
-
-        println!("{:?}", prefix);
-
-        let named_key_entries = tracking_copy
+        tracking_copy
             .borrow_mut()
-            .reader()
-            .keys_with_prefix(&prefix)
-            .map_err(Into::into)?;
-
-        println!("entries {:?}", named_key_entries);
-
-        let mut named_keys = NamedKeys::new();
-
-        for named_key_entry in named_key_entries.iter() {
-            let maybe_stored_value = tracking_copy
-                .borrow_mut()
-                .read(named_key_entry)
-                .map_err(Into::into)?;
-
-            match maybe_stored_value {
-                Some(StoredValue::NamedKey(cl_value)) => {
-                    let key = cl_value.get_key().map_err(|_| {
-                        Error::Bytesrepr("Failed to convert to CLValue".to_string())
-                    })?;
-
-                    let string = cl_value.get_name().map_err(|_| {
-                        Error::Bytesrepr("Failed to convert to CLValue".to_string())
-                    })?;
-
-                    named_keys.insert(string, key);
-                }
-
-                Some(_) | None => return Err(Error::FailedToGetKeys(KeyTag::NamedKey)),
-            }
-        }
-
-        Ok(named_keys)
+            .get_named_keys(entity_addr)
+            .map_err(Into::into)
     }
 
     /// Get the balance of a passed purse referenced by its [`URef`].
@@ -1086,6 +1061,8 @@ where
 
         let handle_payment_addr =
             EntityAddr::new_system_entity_addr(handle_payment_contract_hash.value());
+
+        println!("HP ADDR {}", handle_payment_addr);
 
         let handle_payment_named_keys =
             match self.get_named_keys(handle_payment_addr, Rc::clone(&tracking_copy)) {
@@ -1339,6 +1316,8 @@ where
                     U512::zero(),
                 );
 
+            println!("Got payment purse");
+
             payment_uref = match maybe_payment_uref {
                 Some(payment_uref) => payment_uref,
                 None => return Ok(make_charged_execution_failure(Error::InsufficientPayment)),
@@ -1383,6 +1362,8 @@ where
                     // We're not changing the allowed spending limit since this is a system cost.
                     wasmless_transfer_motes.value(),
                 );
+
+            println!("Transfer complete for payment phase");
 
             if let Some(error) = payment_result.as_error().cloned() {
                 return Ok(make_charged_execution_failure(error));
@@ -1470,6 +1451,8 @@ where
                 // argument.
                 transfer_args.amount(),
             );
+
+        println!("Transfer complete for session phase");
 
         // User is already charged fee for wasmless contract, and we need to make sure we will not
         // charge for anything that happens while calling transfer entrypoint.
@@ -1640,7 +1623,6 @@ where
             }
         };
 
-        println!("In exec {:?}", entity_named_keys);
 
         let payment = deploy_item.payment;
         let session = deploy_item.session;
@@ -1740,6 +1722,7 @@ where
                     return Ok(ExecutionResult::precondition_failure(error));
                 }
             };
+
 
         // Get payment purse Key from handle payment contract
         // payment_code_spec_6: system contract validity
@@ -1907,6 +1890,7 @@ where
                 }
             };
 
+
         // Get payment purse Key from handle payment contract
         // payment_code_spec_6: system contract validity
         let payment_purse_key: Key =
@@ -1973,9 +1957,13 @@ where
         // Transfer the contents of the rewards purse to block proposer
         execution_result_builder.set_payment_execution_result(payment_result);
 
+        let post_payment_effects = tracking_copy.borrow().effects();
+
         // Begin session logic handling
         let post_payment_tracking_copy = tracking_copy.borrow();
         let session_tracking_copy = Rc::new(RefCell::new(post_payment_tracking_copy.fork()));
+
+        let pre_session_effects = session_tracking_copy.borrow().effects();
 
         let session_stack = RuntimeStack::from_account_hash(
             deploy_item.address,

@@ -427,6 +427,15 @@ fn should_support_extending_functionality() {
         .into_package_addr()
         .expect("should have hash");
 
+    let access_uref = account
+        .named_keys()
+        .get("purse_holder_access")
+        .expect("must have access uref")
+        .into_uref()
+        .expect("must get uref");
+
+    println!("{:?}", access_uref);
+
     let stored_hash = account
         .named_keys()
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)

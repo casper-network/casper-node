@@ -4,15 +4,7 @@ use std::{
 };
 
 use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
-use casper_types::{
-    account::AccountHash,
-    addressable_entity::{EntityKindTag, NamedKeyAddr, NamedKeys},
-    bytesrepr,
-    package::{EntityVersions, Groups, PackageStatus},
-    AccessRights, AddressableEntity, AddressableEntityHash, CLValue, EntityAddr, EntityKind,
-    EntryPoints, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, StoredValue,
-    StoredValueTypeMismatch, URef, KEY_HASH_LENGTH,
-};
+use casper_types::{account::AccountHash, addressable_entity::{EntityKindTag, NamedKeyAddr, NamedKeys}, bytesrepr, package::{EntityVersions, Groups, PackageStatus}, AccessRights, AddressableEntity, AddressableEntityHash, CLValue, EntityAddr, EntityKind, EntryPoints, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, StoredValue, StoredValueTypeMismatch, URef, KEY_HASH_LENGTH, KeyTag};
 
 use crate::{
     engine_state::{ChecksumRegistry, SystemContractRegistry, ACCOUNT_BYTE_CODE_HASH},
@@ -333,17 +325,46 @@ where
     }
 
     fn get_named_keys(&mut self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error> {
+        println!("Getting named keys");
+
         let base_named_key_addr = NamedKeyAddr::Base(entity_addr);
 
         let prefix = base_named_key_addr
             .named_keys_prefix()
             .map_err(|error| Self::Error::BytesRepr(error))?;
 
-        let entries = self.reader.keys_with_prefix(&prefix).map_err(Into::into)?;
+        let mut ret: BTreeSet<Key> = BTreeSet::new();
+        let keys = self.reader.keys_with_prefix(&prefix).map_err(Into::into)?;
+        let pruned = &self.cache.prunes_cached;
+        // don't include keys marked for pruning
+        for key in keys {
+            if pruned.contains(&key) {
+                continue;
+            }
+            ret.insert(key);
+        }
+
+        let cache = self.cache.get_key_tag_muts_cached(&KeyTag::NamedKey);
+
+        println!("the cache: {:?}", cache);
+
+        // there may be newly inserted keys which have not been committed yet
+        if let Some(keys) = cache {
+            for key in keys {
+                println!("Cached keys: {:?}", key);
+                if ret.contains(&key) {
+                    continue;
+                }
+                if key.is_entry_for_base(&entity_addr) {
+                    ret.insert(key);
+                }
+            }
+        }
 
         let mut named_keys = NamedKeys::new();
 
-        for entry_key in entries.iter() {
+
+        for entry_key in ret.iter() {
             match self.read(entry_key).map_err(Into::into)? {
                 Some(StoredValue::NamedKey(named_key)) => {
                     let key = named_key
@@ -359,7 +380,23 @@ where
                         StoredValueTypeMismatch::new("CLValue".to_string(), other.type_name()),
                     ))
                 }
-                None => return Err(execution::Error::KeyNotFound(*entry_key)),
+                None => {
+                    match self.cache.reads_cached.get(entry_key) {
+                        Some(StoredValue::NamedKey(named_key_value)) => {
+                            let key = named_key_value
+                                .get_key()
+                                .map_err(|cl_error| execution::Error::CLValue(cl_error.clone()))?;
+                            let name = named_key_value
+                                .get_name()
+                                .map_err(|cl_error| execution::Error::CLValue(cl_error.clone()))?;
+                            named_keys.insert(name, key);
+                        },
+                        Some(_) | None => {
+                            println!("Cache doesnt have it either");
+                            return Err(execution::Error::KeyNotFound(*entry_key));
+                        }
+                    }
+                },
             };
         }
 

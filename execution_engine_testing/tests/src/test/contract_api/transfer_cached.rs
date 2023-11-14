@@ -5,14 +5,10 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_INITIAL_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::{DeployItem, MAX_PAYMENT_AMOUNT};
-use casper_types::{
-    account::AccountHash,
-    runtime_args,
-    system::mint::{ARG_AMOUNT, ARG_ID, ARG_TARGET},
-    PublicKey, RuntimeArgs, SecretKey, U512,
-};
+use casper_types::{account::AccountHash, runtime_args, system::mint::{ARG_AMOUNT, ARG_ID, ARG_TARGET}, PublicKey, RuntimeArgs, SecretKey, U512, EntityAddr, system, Key};
 use rand::Rng;
 use tempfile::TempDir;
+use casper_types::addressable_entity::NamedKeyAddr;
 
 static TRANSFER_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
 
@@ -97,6 +93,12 @@ fn should_transfer_from_default_and_then_to_another_account() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let pre_state_hash = builder.get_post_state_hash();
+
+    let handle_payment_addr = EntityAddr::new_system_entity_addr(builder.get_handle_payment_contract_hash().value());
+    let named_key_addr = NamedKeyAddr::new_from_string(handle_payment_addr, system::handle_payment::REFUND_PURSE_KEY.to_string())
+        .expect("must get addr");
+
+    println!("{:?}", Key::NamedKey(named_key_addr));
 
     // Default account to account 1
     let mut exec_builder = ExecuteRequestBuilder::new();

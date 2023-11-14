@@ -244,6 +244,7 @@ impl CommitProvider for ScratchGlobalState {
                                 ?transform_kind,
                                 "Key not found while attempting to apply transform"
                             );
+                            println!("{:?}", transform_kind);
                             return Err(CommitError::KeyNotFound(key).into());
                         }
                         ReadResult::RootNotFound => {
