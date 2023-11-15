@@ -18,25 +18,27 @@ use tokio::{net::TcpStream, task::JoinHandle};
 
 #[async_trait]
 pub trait NodeClient: Send + Sync + 'static {
-    async fn read_from_db(&self, db: DbId, key: &[u8]) -> Result<Vec<u8>, Error>;
-    async fn read_from_mem(&self, req: NonPersistedDataRequest) -> Result<Vec<u8>, Error>;
+    async fn read_from_db(&self, db: DbId, key: &[u8]) -> Result<Option<Vec<u8>>, Error>;
+    async fn read_from_mem(&self, req: NonPersistedDataRequest) -> Result<Option<Vec<u8>>, Error>;
 
-    async fn read_transaction(&self, hash: TransactionHash) -> Result<Transaction, Error> {
+    async fn read_transaction(&self, hash: TransactionHash) -> Result<Option<Transaction>, Error> {
         let key = hash.to_bytes().expect("should always serialize a digest");
-        let bytes = self.read_from_db(DbId::Transactions, &key).await?;
-        bytesrepr::deserialize_from_slice::<_, Transaction>(&bytes)
+        self.read_from_db(DbId::Transactions, &key)
+            .await?
+            .map(|bytes| bytesrepr::deserialize_from_slice::<_, Transaction>(&bytes))
+            .transpose()
             .map_err(|err| Error::Deserialization(err.to_string()))
     }
 
     async fn read_finalized_approvals(
         &self,
         hash: TransactionHash,
-    ) -> Result<FinalizedApprovals, Error> {
+    ) -> Result<Option<FinalizedApprovals>, Error> {
         let key = hash.to_bytes().expect("should always serialize a digest");
-        let bytes = self
-            .read_from_db(DbId::VersionedFinalizedApprovals, &key)
-            .await?;
-        bytesrepr::deserialize_from_slice::<_, FinalizedApprovals>(&bytes)
+        self.read_from_db(DbId::VersionedFinalizedApprovals, &key)
+            .await?
+            .map(|bytes| bytesrepr::deserialize_from_slice::<_, FinalizedApprovals>(&bytes))
+            .transpose()
             .map_err(|err| Error::Deserialization(err.to_string()))
     }
 }
@@ -45,8 +47,6 @@ pub trait NodeClient: Send + Sync + 'static {
 pub enum Error {
     #[error("request error: {0}")]
     RequestFailed(String),
-    #[error("node response had an empty body")]
-    EmptyResponseBody,
     #[error("failed to deserialize a response: {0}")]
     Deserialization(String),
     #[error("failed to serialize a request: {0}")]
@@ -88,7 +88,7 @@ impl JulietNodeClient {
         Self { client, handle }
     }
 
-    async fn dispatch(&self, req: BinaryRequest) -> Result<Vec<u8>, Error> {
+    async fn dispatch(&self, req: BinaryRequest) -> Result<Option<Vec<u8>>, Error> {
         let payload = req.to_bytes().expect("should always serialize a request");
         let request_guard = self
             .client
@@ -100,13 +100,13 @@ impl JulietNodeClient {
             .wait_for_response()
             .await
             .map_err(|err| Error::RequestFailed(err.to_string()))?;
-        Ok(response.ok_or(Error::EmptyResponseBody)?.to_vec())
+        Ok(response.map(|bytes| bytes.to_vec()))
     }
 }
 
 #[async_trait]
 impl NodeClient for JulietNodeClient {
-    async fn read_from_db(&self, db: DbId, key: &[u8]) -> Result<Vec<u8>, Error> {
+    async fn read_from_db(&self, db: DbId, key: &[u8]) -> Result<Option<Vec<u8>>, Error> {
         let get = GetRequest::Db {
             db,
             key: key.to_vec(),
@@ -114,7 +114,7 @@ impl NodeClient for JulietNodeClient {
         self.dispatch(BinaryRequest::Get(get)).await
     }
 
-    async fn read_from_mem(&self, req: NonPersistedDataRequest) -> Result<Vec<u8>, Error> {
+    async fn read_from_mem(&self, req: NonPersistedDataRequest) -> Result<Option<Vec<u8>>, Error> {
         let get = GetRequest::NonPersistedData(req);
         self.dispatch(BinaryRequest::Get(get)).await
     }

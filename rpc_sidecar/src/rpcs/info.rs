@@ -139,19 +139,27 @@ impl RpcWithParams for GetDeploy {
         //     execution_result,
         // };
 
-        let deploy = if let (Transaction::Deploy(deploy), FinalizedApprovals::Deploy(approvals)) =
-            (txn, approvals)
-        {
-            if params.finalized_approvals {
-                deploy.with_approvals(approvals.into_inner())
-            } else {
-                deploy
+        let deploy = match (txn, approvals) {
+            (Some(Transaction::Deploy(deploy)), Some(FinalizedApprovals::Deploy(approvals))) => {
+                if params.finalized_approvals {
+                    deploy.with_approvals(approvals.into_inner())
+                } else {
+                    deploy
+                }
             }
-        } else {
-            return Err(Error::new(
-                ErrorCode::VariantMismatch,
-                "transaction is not a deploy".to_string(),
-            ));
+            (Some(Transaction::Deploy(deploy)), None) => deploy,
+            (Some(_), _) => {
+                return Err(Error::new(
+                    ErrorCode::VariantMismatch,
+                    "inconsistent transaction data".to_string(),
+                ))
+            }
+            (None, _) => {
+                return Err(Error::new(
+                    ErrorCode::NoSuchTransaction,
+                    "transaction not found".to_string(),
+                ))
+            }
         };
 
         Ok(Self::ResponseResult {
