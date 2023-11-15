@@ -90,7 +90,7 @@ impl ToBytes for DbId {
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            // TODO[RC]: Do this less verbosely, plausibly by serializing as u8
+            // TODO[RC]: Do this less verbosely, plausibly by serializing as u8 or using the `bytesprepr derive` macro when available.
             DbId::BlockHeader => BLOCK_HEADER_DB_TAG,
             DbId::BlockHeaderV2 => BLOCK_HEADER_V2_DB_TAG,
             DbId::BlockMetadata => BLOCK_METADATA_DB_TAG,
@@ -117,7 +117,6 @@ impl ToBytes for DbId {
 
 impl FromBytes for DbId {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        // TODO[RC]: Error handling
         let (tag, remainder) = u8::from_bytes(bytes)?;
         let db_id = match tag {
             BLOCK_HEADER_DB_TAG => DbId::BlockHeader,
@@ -135,7 +134,7 @@ impl FromBytes for DbId {
             VERSIONED_FINALIZED_APPROVALS_DB_TAG => DbId::VersionedFinalizedApprovals,
             APPROVALS_HASHES_DB_TAG => DbId::ApprovalsHashes,
             VERSIONED_APPROVALS_HASHES_DB_TAG => DbId::VersionedApprovalsHashes,
-            _ => panic!("incorrect db"),
+            _ => return Err(bytesrepr::Error::NotRepresentable),
         };
         Ok((db_id, remainder))
     }

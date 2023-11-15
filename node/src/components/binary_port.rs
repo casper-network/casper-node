@@ -125,10 +125,12 @@ async fn handle_client<REv, const N: usize>(
     loop {
         match server.next_request().await {
             Ok(Some(incoming_request)) => match incoming_request.payload() {
-                Some(payload) => {
-                    let (req, _): (BinaryRequest, _) = BinaryRequest::from_bytes(payload.as_ref())
-                        .expect("TODO: Handle malformed payload");
-                    match req {
+                Some(payload) => match BinaryRequest::from_bytes(payload.as_ref()) {
+                    Ok((_, reminder)) if !reminder.is_empty() => {
+                        info!("binary request leftover bytes detected, closing connection");
+                        break;
+                    }
+                    Ok((req, _)) => match req {
                         BinaryRequest::Get { key, db } => {
                             incoming_request.respond(
                                 effect_builder
@@ -141,8 +143,15 @@ async fn handle_client<REv, const N: usize>(
                         BinaryRequest::SpeculativeExec { tbd: _tbd } => todo!(),
                         BinaryRequest::Quit => todo!(),
                         BinaryRequest::GetInMem(_req) => todo!(),
+                    },
+                    Err(err) => {
+                        info!(
+                            %err,
+                            "unable to deserialize binary request, closing connection"
+                        );
+                        break;
                     }
-                }
+                },
                 None => panic!("Should have payload"),
             },
             Ok(None) => {
