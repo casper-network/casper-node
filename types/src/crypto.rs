@@ -3,20 +3,17 @@
 mod asymmetric_key;
 mod error;
 
-use alloc::vec::Vec;
+use core::convert::TryFrom;
 
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
 
-#[cfg(feature = "datasize")]
-use datasize::DataSize;
-#[cfg(feature = "json-schema")]
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use num::FromPrimitive;
+use num_derive::FromPrimitive;
 
-use crate::bytesrepr::{self, FromBytes, ToBytes};
+use crate::bytesrepr;
 
 use crate::key::BLAKE2B_DIGEST_LENGTH;
 #[cfg(any(feature = "std", test))]
@@ -46,9 +43,7 @@ pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
 
 /// A type of hashing algorithm.
 #[repr(u8)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive)]
 pub enum HashAlgoType {
     /// Blake2b
     Blake2b = 0,
@@ -56,40 +51,10 @@ pub enum HashAlgoType {
     Blake3 = 1,
 }
 
-impl ToBytes for HashAlgoType {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        (*self as u8).to_bytes()
-    }
+impl TryFrom<u8> for HashAlgoType {
+    type Error = bytesrepr::Error;
 
-    fn serialized_length(&self) -> usize {
-        1
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.push(*self as u8);
-        Ok(())
-    }
-}
-
-impl FromBytes for HashAlgoType {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (value, bytes) = u8::from_bytes(bytes)?;
-        match value {
-            0 => Ok((HashAlgoType::Blake2b, bytes)),
-            1 => Ok((HashAlgoType::Blake3, bytes)),
-            _ => Err(bytesrepr::Error::Formatting),
-        }
-    }
-}
-
-// Statics representing the discriminant values of the enum
-static VARIANT_BLAKE_2B: u8 = HashAlgoType::Blake2b as u8;
-static VARIANT_BLAKE_3: u8 = HashAlgoType::Blake3 as u8;
-impl AsRef<u8> for HashAlgoType {
-    fn as_ref(&self) -> &u8 {
-        match self {
-            HashAlgoType::Blake2b => &VARIANT_BLAKE_2B,
-            HashAlgoType::Blake3 => &VARIANT_BLAKE_3,
-        }
+    fn try_from(value: u8) -> Result<Self, bytesrepr::Error> {
+        FromPrimitive::from_u8(value).ok_or(bytesrepr::Error::Formatting)
     }
 }

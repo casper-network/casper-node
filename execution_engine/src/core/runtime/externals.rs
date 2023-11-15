@@ -1102,24 +1102,17 @@ where
             FunctionIndex::GenericHash => {
                 // args(0) = pointer to input in Wasm memory
                 // args(1) = size of input in Wasm memory
-                // args(2) = pointer to hash type pointer in Wasm memory
-                // args(3) = size of hash type in Wasm memory
-                // args(4) = pointer to output pointer in Wasm memory
-                // args(5) = size of output
-                let (in_ptr, in_size, hash_algo_type_ptr, hash_algo_type_size, out_ptr, out_size) =
-                    Args::parse(args)?;
+                // args(2) = integer representation of HashAlgoType enum variant
+                // args(3) = pointer to output pointer in Wasm memory
+                // args(4) = size of output
+                let (in_ptr, in_size, hash_algo_type, out_ptr, out_size) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.generic_hash,
-                    [
-                        in_ptr,
-                        in_size,
-                        hash_algo_type_ptr,
-                        hash_algo_type_size,
-                        out_ptr,
-                        out_size,
-                    ],
+                    [in_ptr, in_size, hash_algo_type, out_ptr, out_size],
                 )?;
-                let hash_algo_type = self.t_from_mem(hash_algo_type_ptr, hash_algo_type_size)?;
+                let hash_algo_type =
+                    HashAlgoType::try_from(hash_algo_type as u8).map_err(|e| Error::from(e))?;
+
                 let digest =
                     self.checked_memory_slice(in_ptr as usize, in_size as usize, |input| {
                         match hash_algo_type {

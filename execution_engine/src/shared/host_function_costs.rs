@@ -289,7 +289,7 @@ pub struct HostFunctionCosts {
     /// Cost of calling the `enable_contract_version` host function.
     pub enable_contract_version: HostFunction<[Cost; 4]>,
     /// Cost of calling the `generic_hash` host function.
-    pub generic_hash: HostFunction<[Cost; 6]>,
+    pub generic_hash: HostFunction<[Cost; 5]>,
 }
 
 impl Default for HostFunctionCosts {
