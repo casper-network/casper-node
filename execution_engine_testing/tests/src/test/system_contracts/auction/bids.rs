@@ -1911,8 +1911,7 @@ fn should_handle_evictions() {
         let era_validators: EraValidators = builder.get_era_validators();
         let validators = era_validators
             .iter()
-            .rev()
-            .next()
+            .next_back()
             .map(|(_era_id, validators)| validators)
             .expect("should have validators");
         validators.keys().cloned().collect::<BTreeSet<PublicKey>>()
@@ -2557,7 +2556,7 @@ fn should_not_undelegate_vfta_holder_stake() {
             .vesting_schedule()
             .expect("should have vesting schedule");
         assert!(
-            matches!(vesting_schedule.locked_amounts(), Some(_)),
+            vesting_schedule.locked_amounts().is_some(),
             "{:?}",
             vesting_schedule
         );

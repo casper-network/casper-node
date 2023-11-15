@@ -531,9 +531,7 @@ pub(crate) struct EffectBuilder<REv: 'static> {
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `REv` otherwise.
 impl<REv> Clone for EffectBuilder<REv> {
     fn clone(&self) -> Self {
-        EffectBuilder {
-            event_queue: self.event_queue,
-        }
+        *self
     }
 }
 

@@ -1243,9 +1243,9 @@ impl<C: Context + 'static> Zug<C> {
                 );
                 self.proposals_waiting_for_parent
                     .entry(parent_round_id)
-                    .or_insert_with(HashMap::new)
+                    .or_default()
                     .entry(hashed_prop)
-                    .or_insert_with(HashSet::new)
+                    .or_default()
                     .insert((round_id, sender));
                 return vec![];
             }

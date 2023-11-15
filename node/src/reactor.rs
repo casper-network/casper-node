@@ -190,10 +190,7 @@ where
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `R` and `Ev` otherwise.
 impl<REv> Clone for EventQueueHandle<REv> {
     fn clone(&self) -> Self {
-        EventQueueHandle {
-            scheduler: self.scheduler,
-            is_shutting_down: self.is_shutting_down,
-        }
+        *self
     }
 }
 impl<REv> Copy for EventQueueHandle<REv> {}

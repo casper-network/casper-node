@@ -508,7 +508,7 @@ impl ExecutionResultBuilder {
             }
             Some(ExecutionResult::Success {
                 execution_journal, ..
-            }) => journal.extend(execution_journal.into_iter()),
+            }) => journal.extend(execution_journal),
             None => return Err(ExecutionResultBuilderError::MissingSessionExecutionResult),
         };
 
@@ -521,7 +521,7 @@ impl ExecutionResultBuilder {
             }
             Some(ExecutionResult::Success {
                 execution_journal, ..
-            }) => journal.extend(execution_journal.into_iter()),
+            }) => journal.extend(execution_journal),
             None => return Err(ExecutionResultBuilderError::MissingFinalizeExecutionResult),
         }
 

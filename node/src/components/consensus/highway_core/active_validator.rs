@@ -653,7 +653,7 @@ pub(crate) fn write_last_unit<C: Context>(
 }
 
 #[cfg(test)]
-#[allow(clippy::integer_arithmetic)] // Overflows in tests panic anyway.
+#[allow(clippy::arithmetic_side_effects)] // Overflows in tests panic anyway.
 mod tests {
     use std::{collections::BTreeSet, fmt::Debug};
     use tempfile::tempdir;

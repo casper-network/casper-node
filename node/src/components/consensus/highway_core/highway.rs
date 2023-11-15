@@ -223,7 +223,7 @@ impl<C: Context> Highway<C> {
 
     /// Gets the round exponent for the next message this instance will create.
     #[cfg(test)]
-    #[allow(clippy::integer_arithmetic)]
+    #[allow(clippy::arithmetic_side_effects)]
     pub(crate) fn get_round_exp(&self) -> Option<u8> {
         self.active_validator.as_ref().map(|av| {
             (av.next_round_length().millis() / self.state.params().min_round_length().millis())
@@ -770,6 +770,7 @@ impl<C: Context> Highway<C> {
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 pub(crate) mod tests {
     use std::{collections::BTreeSet, iter::FromIterator};
 

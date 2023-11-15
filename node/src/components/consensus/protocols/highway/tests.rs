@@ -42,7 +42,7 @@ where
     I: IntoIterator<Item = T>,
     T: Into<Weight>,
 {
-    #[allow(clippy::integer_arithmetic)] // Left shift with small enough constants.
+    #[allow(clippy::arithmetic_side_effects)] // Left shift with small enough constants.
     let params = state::Params::new(
         seed,
         highway_testing::TEST_BLOCK_REWARD,

@@ -114,7 +114,7 @@ impl PerformanceMeter {
         let current_round_id = state.unit(latest_block).round_id();
         let current_round_index = round_index(current_round_id, self.current_round_len);
 
-        #[allow(clippy::integer_arithmetic)]
+        #[allow(clippy::arithmetic_side_effects)]
         if avg_max_quorum < SLOW_DOWN_THRESHOLD {
             let new_round_len = min(self.current_round_len * 2, self.max_round_len);
             if new_round_len != self.current_round_len {
@@ -136,7 +136,7 @@ impl PerformanceMeter {
 }
 
 /// Returns the round index `i`, if `r_id` is the ID of the `i`-th round after the epoch.
-#[allow(clippy::integer_arithmetic)] // Checking for division by 0.
+#[allow(clippy::arithmetic_side_effects)] // Checking for division by 0.
 fn round_index(r_id: Timestamp, round_len: TimeDiff) -> u64 {
     if round_len.millis() == 0 {
         error!("called round_index with round_len 0.");

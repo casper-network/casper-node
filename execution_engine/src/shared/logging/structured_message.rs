@@ -239,9 +239,9 @@ impl<'kvs> Visitor<'kvs> for MessageProperties {
         let value = value
             .to_string()
             .trim_matches('"')
-            .replace(r#"\'"#, r#"'"#)
+            .replace(r"\'", "'")
             .replace(r#"\""#, r#"""#)
-            .replace(r#"\\"#, r#"\"#);
+            .replace(r"\\", r"\");
         self.0.insert(key.to_string(), value);
         Ok(())
     }
