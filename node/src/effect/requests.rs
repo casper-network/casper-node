@@ -345,7 +345,7 @@ pub(crate) enum StorageRequest {
         db: DbId,
         /// bytesrepr serialized key.
         key: Vec<u8>,
-        /// Responder to call with the result.  Returns `None` if the block header doesn't exist in
+        /// Responder to call with the result.  Returns `None` if the data doesn't exist in
         /// local storage.
         responder: Responder<Option<Vec<u8>>>,
     },
