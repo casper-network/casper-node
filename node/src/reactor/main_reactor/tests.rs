@@ -2121,12 +2121,12 @@ async fn run_rewards_network_scenario(
                     } else {
                         Some(switch_block.height() - switch_blocks.headers[i - 2].height())
                     };
-                let total_expected_pot = Ratio::from(recomputed_total_supply[&(previous_switch_block_height as usize)] * chain.chainspec.core_config.minimum_era_height) * chain.chainspec.core_config.round_seigniorage_rate;
+                let total_expected_pot = Ratio::from(recomputed_total_supply[&(i - 1)] * chain.chainspec.core_config.minimum_era_height) * chain.chainspec.core_config.round_seigniorage_rate;
                 let total_previous_expected_pot =
                     if switch_blocks.headers[i - 1].is_genesis() {
                         None
                     } else {
-                        Some(Ratio::from(recomputed_total_supply[&(switch_blocks.headers[i - 2].height() as usize)] * chain.chainspec.core_config.minimum_era_height) * chain.chainspec.core_config.round_seigniorage_rate)
+                        Some(Ratio::from(recomputed_total_supply[&(i - 2)] * chain.chainspec.core_config.minimum_era_height) * chain.chainspec.core_config.round_seigniorage_rate)
                     };
 
                 // TODO: Investigate whether the rewards pay out for the signatures _in the switch block itself_
@@ -2218,6 +2218,27 @@ async fn run_rewards_network_scenario(
         }
         )
 
+}
+
+
+#[tokio::test]
+#[cfg_attr(not(feature = "failpoints"), ignore)]
+async fn run_reward_network_zug_half_finality_half_finders_small_nominal_five_eras() {
+    run_rewards_network_scenario(
+        crate::new_rng(),
+        CONSENSUS_ZUG,
+        &[STAKE, STAKE, STAKE, STAKE, STAKE],
+        5,
+        ERA_DURATION,
+        MIN_HEIGHT,
+        BLOCK_TIME,
+        TIME_OUT,
+        SEIGNIORAGE,
+        FINDERS_FEE_HALF,
+        FINALITY_SIG_PROP_HALF,
+        REPRESENTATIVE_NODE_INDEX,
+        &[]
+    ).await;
 }
 
 #[tokio::test]
