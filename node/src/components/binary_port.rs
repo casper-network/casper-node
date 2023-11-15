@@ -17,7 +17,7 @@ use juliet::{
 };
 use prometheus::Registry;
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::{
     effect::{requests::StorageRequest, EffectBuilder, Effects},
@@ -160,14 +160,17 @@ async fn handle_client<REv, const N: usize>(
                         break;
                     }
                 },
-                None => panic!("Should have payload"),
+                None => {
+                    info!("binary request without payload, closing connection");
+                    break;
+                }
             },
             Ok(None) => {
-                warn!("XXXXX - Handle no request?")
-                // TODO: We're flooded with this log
+                debug!("remote party closed the connection");
+                break;
             }
             Err(err) => {
-                println!("client {} error: {}, closing connection", addr, err);
+                warn!(%addr, %err, "closing connection");
                 break;
             }
         }
