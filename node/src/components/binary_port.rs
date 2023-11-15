@@ -109,6 +109,25 @@ where
     }
 }
 
+async fn handle_request<REv>(
+    req: BinaryRequest,
+    effect_builder: EffectBuilder<REv>,
+) -> Option<Bytes>
+where
+    REv: From<StorageRequest>,
+{
+    match req {
+        BinaryRequest::Get { key, db } => effect_builder
+            .get_raw_data(db, key)
+            .await
+            .map(|raw_data| Bytes::from(raw_data)),
+        BinaryRequest::PutTransaction { tbd: _tbd } => todo!(),
+        BinaryRequest::SpeculativeExec { tbd: _tbd } => todo!(),
+        BinaryRequest::Quit => todo!(),
+        BinaryRequest::GetInMem(_req) => todo!(),
+    }
+}
+
 // TODO[RC]: Move to Self::
 // TODO[RC]: Handle graceful shutdown
 async fn handle_client<REv, const N: usize>(
@@ -130,20 +149,9 @@ async fn handle_client<REv, const N: usize>(
                         info!("binary request leftover bytes detected, closing connection");
                         break;
                     }
-                    Ok((req, _)) => match req {
-                        BinaryRequest::Get { key, db } => {
-                            incoming_request.respond(
-                                effect_builder
-                                    .get_raw_data(db, key)
-                                    .await
-                                    .map(|raw_data| Bytes::from(raw_data)),
-                            );
-                        }
-                        BinaryRequest::PutTransaction { tbd: _tbd } => todo!(),
-                        BinaryRequest::SpeculativeExec { tbd: _tbd } => todo!(),
-                        BinaryRequest::Quit => todo!(),
-                        BinaryRequest::GetInMem(_req) => todo!(),
-                    },
+                    Ok((req, _)) => {
+                        incoming_request.respond(handle_request(req, effect_builder).await)
+                    }
                     Err(err) => {
                         info!(
                             %err,
@@ -155,11 +163,11 @@ async fn handle_client<REv, const N: usize>(
                 None => panic!("Should have payload"),
             },
             Ok(None) => {
-                //error!("XXXXX - Handle no request?")
+                warn!("XXXXX - Handle no request?")
                 // TODO: We're flooded with this log
             }
             Err(err) => {
-                println!("client {} error: {}", addr, err);
+                println!("client {} error: {}, closing connection", addr, err);
                 break;
             }
         }
