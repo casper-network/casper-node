@@ -243,13 +243,6 @@ impl FromBytes for BinaryRequest {
     }
 }
 
-pub(crate) const ERROR_TAG: u8 = 0;
-pub(crate) const _OK_TAG: u8 = 1;
-
-/// TODO
-#[derive(Debug)]
-pub struct BinaryResponse(pub Vec<u8>);
-
 const BLOCK_HEIGHT_2_HASH_TAG: u8 = 0;
 const HIGHEST_BLOCK_TAG: u8 = 1;
 const COMPLETED_BLOCK_CONTAINS_TAG: u8 = 2;
@@ -287,7 +280,7 @@ impl ToBytes for InMemRequest {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
             InMemRequest::BlockHeight2Hash { height } => {
-                ERROR_TAG.write_bytes(writer)?;
+                BLOCK_HEIGHT_2_HASH_TAG.write_bytes(writer)?;
                 height.write_bytes(writer)
             }
             InMemRequest::HighestBlock => HIGHEST_BLOCK_TAG.write_bytes(writer),
@@ -339,51 +332,6 @@ impl FromBytes for InMemRequest {
                     InMemRequest::TransactionHash2BlockHashAndHeight { transaction_hash },
                     remainder,
                 ))
-            }
-            _ => Err(bytesrepr::Error::Formatting),
-        }
-    }
-}
-
-/// TODO
-#[derive(Debug)]
-pub enum BinaryError {
-    /// TODO
-    Error(String),
-}
-
-// TODO[RC]: Roundtrip tests for serialization
-impl ToBytes for BinaryError {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        match self {
-            BinaryError::Error(msg) => {
-                ERROR_TAG.write_bytes(writer)?;
-                msg.write_bytes(writer)
-            }
-        }
-    }
-
-    fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH
-            + match self {
-                BinaryError::Error(msg) => msg.serialized_length(),
-            }
-    }
-}
-
-impl FromBytes for BinaryError {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
-        match tag {
-            ERROR_TAG => {
-                let (msg, remainder) = String::from_bytes(remainder)?;
-                Ok((BinaryError::Error(msg), remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
