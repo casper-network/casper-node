@@ -1,7 +1,7 @@
 [package]
 name = "casper-hashing"
 version = "2.0.0"
-edition = "2018"
+edition = "2021"
 description = "A library providing hashing functionality including Merkle Proof utilities."
 readme = "README.md"
 documentation = "https://docs.rs/casper-hashing"

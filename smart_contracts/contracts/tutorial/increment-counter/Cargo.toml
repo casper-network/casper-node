@@ -2,7 +2,7 @@
 name = "increment-counter"
 version = "1.0.0"
 authors = ["Maciej Zielinski <maciej@casperlabs.io>", "Michał Papierski <michal@casperlabs.io>"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "increment_counter"
