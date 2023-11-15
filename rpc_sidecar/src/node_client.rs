@@ -33,7 +33,9 @@ pub trait NodeClient: Send + Sync + 'static {
         hash: TransactionHash,
     ) -> Result<FinalizedApprovals, Error> {
         let key = hash.to_bytes().expect("should always serialize a digest");
-        let bytes = self.read_from_db(DbId::FinalizedApprovals, &key).await?;
+        let bytes = self
+            .read_from_db(DbId::VersionedFinalizedApprovals, &key)
+            .await?;
         bytesrepr::deserialize_from_slice::<_, FinalizedApprovals>(&bytes)
             .map_err(|err| Error::Deserialization(err.to_string()))
     }
@@ -63,13 +65,13 @@ impl JulietNodeClient {
         let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
             ChannelConfiguration::default()
                 .with_request_limit(3)
-                .with_max_request_payload_size(4096)
-                .with_max_response_payload_size(4096),
+                .with_max_request_payload_size(4 * 1024 * 1024)
+                .with_max_response_payload_size(4 * 1024 * 1024),
         );
         let io_builder = IoCoreBuilder::new(protocol_builder).buffer_size(ChannelId::new(0), 16);
         let rpc_builder = RpcBuilder::new(io_builder);
 
-        let remote_server = TcpStream::connect("127.0.0.1:34568")
+        let remote_server = TcpStream::connect("127.0.0.1:28104")
             .await
             .expect("failed to connect to server");
 
