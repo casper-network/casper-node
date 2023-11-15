@@ -277,8 +277,6 @@ impl Display for Error {
 
 #[cfg(test)]
 mod tests {
-    use std::convert::TryFrom;
-
     use super::{Error, TryFromU8ForError, MAX_ERROR_VALUE};
 
     #[test]

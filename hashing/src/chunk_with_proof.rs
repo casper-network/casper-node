@@ -124,8 +124,6 @@ impl ChunkWithProof {
 
 #[cfg(test)]
 mod tests {
-    use std::convert::TryInto;
-
     use proptest::{
         arbitrary::Arbitrary,
         strategy::{BoxedStrategy, Strategy},

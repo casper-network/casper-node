@@ -2,7 +2,7 @@
 name = "test-payment-stored"
 version = "0.1.0"
 authors = ["Henry Till <henrytill@gmail.com>", "Ed Hastings <ed@casperlabs.io>"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "test_payment_stored"

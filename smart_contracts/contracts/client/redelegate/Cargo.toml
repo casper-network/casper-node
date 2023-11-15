@@ -2,7 +2,7 @@
 name = "redelegate"
 version = "0.1.0"
 authors = ["Karan Dhareshwar <karan@casperlabs.io>"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "redelegate"
