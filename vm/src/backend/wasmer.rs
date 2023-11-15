@@ -11,7 +11,7 @@ use wasmer::{
     wasmparser::{Export, MemoryType},
     AsStoreMut, AsStoreRef, CompilerConfig, Engine, Exports, Function, FunctionEnv, FunctionEnvMut,
     Imports, Instance, Memory, MemoryView, Module, RuntimeError, Store, Table, TypedFunction,
-    Value,
+    Value, ExportError,
 };
 use wasmer_compiler_singlepass::Singlepass;
 use wasmer_middlewares::{
@@ -143,36 +143,13 @@ impl<'a, S: Storage + 'static> Caller<S> for WasmerCaller<'a, S> {
         let value = data
             .exported_runtime()
             .exported_table
+            .as_ref()
+            .expect("should have table exported") // TODO: if theres no table then no function pointer is stored in the wasm blob - probably safe
             .get(&mut store.as_store_mut(), idx)
-            .expect("has entry in the table"); // NOTE: better error handling - pass 0 as nullptr?
+            .expect("has entry in the table"); // TODO: better error handling - pass 0 as nullptr?
         let funcref = value.funcref().expect("is funcref");
         let valid_funcref = funcref.as_ref().expect("valid funcref");
-        // let typed_func: valid_funcref.typed(&mut store)
         let alloc_callback: TypedFunction<(u32, u32), u32> = valid_funcref.typed(&mut store)?;
-
-        // match value {
-        //     Value::I32(_) => todo!(),
-        //     Value::I64(_) => todo!(),
-        //     Value::F32(_) => todo!(),
-        //     Value::F64(_) => todo!(),
-        //     Value::ExternRef(_) => todo!(),
-        //     Value::FuncRef(_) => todo!(),
-        //     Value::V128(_) => todo!(),
-        // }
-
-        // let func
-        // let tref = self.env.data().instance.as_ref();
-        // let instance = self
-        //     .env
-        //     .data()
-        //     .instance
-        //     .upgrade()
-        //     .expect("instance should be alive");
-        // let alloc = self.env.data().exported_runtime().exported_alloc_func;
-        // let (data, mut store) = self.env.data_and_store_mut();
-        // let ptr = data
-        //     .exported_runtime()
-        //     .exported_alloc_func
         let ptr = alloc_callback.call(&mut store.as_store_mut(), size.try_into().unwrap(), ctx)?;
         Ok(ptr)
     }
@@ -221,7 +198,7 @@ impl<S: Storage> WasmerEnv<S> {
 #[derive(Clone)]
 pub(crate) struct ExportedRuntime {
     pub(crate) memory: Memory,
-    pub(crate) exported_table: Table,
+    pub(crate) exported_table: Option<Table>,
     pub(crate) exported_call_func: TypedFunction<(), ()>,
 }
 
@@ -554,10 +531,13 @@ where
         // TODO: get first export of type table as some compilers generate different names (i.e.
         // rust __indirect_function_table, assemblyscript `table` etc). There's only one table
         // allowed in a valid module.
-        let table = instance
+        let table = match instance
             .exports
-            .get_table("__indirect_function_table")
-            .map_err(|error| BackendError::Export(error.to_string()))?;
+            .get_table("__indirect_function_table") {
+                Ok(table) => Some(table.clone()),
+                Err(error @ ExportError::IncompatibleType) => return Err(BackendError::Export(error.to_string())),
+                Err(ExportError::Missing(_)) => None,
+            };
 
         let exported_call_func = instance
             .exports
@@ -574,7 +554,7 @@ where
             function_env_mut.instance = Arc::downgrade(&instance);
             function_env_mut.exported_runtime = Some(ExportedRuntime {
                 memory: memory.clone(),
-                exported_table: table.clone(),
+                exported_table: table,
                 exported_call_func,
             });
         }

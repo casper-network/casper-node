@@ -15,7 +15,7 @@ use vm::{
 };
 
 // use super::*;
-const TEST_CONTRACT_WASM: &[u8] = include_bytes!("../test-contract.wasm");
+const TEST_CONTRACT_WASM: &[u8] = include_bytes!("../vm2-test-contract.wasm");
 
 type Blake2b256 = Blake2b<U32>;
 
