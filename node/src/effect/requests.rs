@@ -681,7 +681,11 @@ impl Display for StorageRequest {
                 )
             }
             // TODO[RC]: Possibly clean up formatting
-            StorageRequest::GetRawData { key, responder, db } => {
+            StorageRequest::GetRawData {
+                key,
+                responder: _responder,
+                db,
+            } => {
                 write!(formatter, "get raw data {}::{:?}", db, key)
             }
         }

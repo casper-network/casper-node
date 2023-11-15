@@ -1,7 +1,9 @@
 use std::fmt::{self, Display, Formatter};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
-use casper_types::AvailableBlockRange;
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    AvailableBlockRange,
+};
 use datasize::DataSize;
 use itertools::Itertools;
 use tracing::trace;

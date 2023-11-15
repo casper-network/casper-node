@@ -9,7 +9,7 @@ mod tests;
 use std::net::SocketAddr;
 
 use bytes::BytesMut;
-use casper_types::{bytesrepr::FromBytes, BinaryRequest};
+use casper_types::{binary_port::BinaryRequest, bytesrepr::FromBytes};
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use juliet::{
@@ -37,7 +37,7 @@ const COMPONENT_NAME: &str = "binary_port";
 #[derive(Debug, DataSize)]
 pub(crate) struct BinaryPort {
     #[data_size(skip)]
-    metrics: Metrics,
+    _metrics: Metrics,
     state: ComponentState,
     config: Config,
 }
@@ -47,7 +47,7 @@ impl BinaryPort {
         Ok(Self {
             config,
             state: ComponentState::Uninitialized,
-            metrics: Metrics::new(registry)?,
+            _metrics: Metrics::new(registry)?,
         })
     }
 }
@@ -142,10 +142,10 @@ async fn handle_client<REv, const N: usize>(
                                 None => error!("XXXXX - error getting raw from storage"),
                             }
                         }
-                        BinaryRequest::PutTransaction { tbd } => todo!(),
-                        BinaryRequest::SpeculativeExec { tbd } => todo!(),
+                        BinaryRequest::PutTransaction { tbd: _tbd } => todo!(),
+                        BinaryRequest::SpeculativeExec { tbd: _tbd } => todo!(),
                         BinaryRequest::Quit => todo!(),
-                        BinaryRequest::InMemRequest(_req) => todo!(),
+                        BinaryRequest::GetInMem(_req) => todo!(),
                     }
                 }
                 None => panic!("Should have payload"),
@@ -208,7 +208,7 @@ where
         &mut self,
         effect_builder: EffectBuilder<REv>,
     ) -> Result<Effects<Self::ComponentEvent>, Self::Error> {
-        let server_join_handle = tokio::spawn(run_server(effect_builder, self.config.clone()));
+        let _server_join_handle = tokio::spawn(run_server(effect_builder, self.config.clone()));
         Ok(Effects::new())
     }
 }

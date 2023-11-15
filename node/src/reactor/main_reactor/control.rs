@@ -5,9 +5,9 @@ use casper_types::{BlockHash, BlockHeader, Digest, EraId, PublicKey, Timestamp};
 
 use crate::{
     components::{
-        block_synchronizer, block_synchronizer::BlockSynchronizerProgress,
+        binary_port, block_synchronizer, block_synchronizer::BlockSynchronizerProgress,
         contract_runtime::ExecutionPreState, diagnostics_port, event_stream_server, network,
-        rest_server, rpc_server, upgrade_watcher, binary_port,
+        rest_server, rpc_server, upgrade_watcher,
     },
     effect::{EffectBuilder, EffectExt, Effects},
     fatal,

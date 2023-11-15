@@ -1164,7 +1164,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    // TODO[RC]: Allow for different databases
     pub(crate) async fn get_raw_data(self, db: DbId, key: Vec<u8>) -> Option<Vec<u8>>
     where
         REv: From<StorageRequest>,

@@ -505,8 +505,8 @@ mod tests {
     //             rpc_response.error().unwrap(),
     //             &Error::new(
     //                 ReservedErrorCode::InvalidParams,
-    //                 "'params' field should be an empty Array '[]', an empty Object '{}' or absent"
-    //             )
+    //                 "'params' field should be an empty Array '[]', an empty Object '{}' or
+    // absent"             )
     //         );
     //     }
     // }
