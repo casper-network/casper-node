@@ -292,7 +292,7 @@ impl<C: Context + 'static> Zug<C> {
             core_config.minimum_block_time,
             era_start_time,
             core_config.minimum_era_height,
-            era_start_time + core_config.era_duration,
+            era_start_time.saturating_add(core_config.era_duration),
             protocols::common::ftt::<C>(core_config.finality_threshold_fraction, &validators),
         );
 
@@ -440,7 +440,7 @@ impl<C: Context + 'static> Zug<C> {
         // Periodically sync the state with a random peer.
         if let Some(interval) = self.config.sync_state_interval {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
-                now + interval,
+                now.saturating_add(interval),
                 TIMER_ID_SYNC_PEER,
             ));
         }
@@ -1171,7 +1171,7 @@ impl<C: Context + 'static> Zug<C> {
             }
         }
 
-        if proposal.timestamp > now + self.config.clock_tolerance {
+        if proposal.timestamp > now.saturating_add(self.config.clock_tolerance) {
             log_proposal!(
                 Level::TRACE,
                 proposal,
@@ -2007,7 +2007,7 @@ impl<C: Context + 'static> Zug<C> {
         }
         for vidx in vidxs {
             if !self.faults.contains_key(&vidx) {
-                sum += self.validators.weight(vidx);
+                sum = sum.saturating_add(self.validators.weight(vidx));
                 if sum > quorum_threshold {
                     return true;
                 }
@@ -2183,7 +2183,10 @@ where
                 self.log_participation();
                 match self.config.log_participation_interval {
                     Some(interval) if !self.evidence_only && !self.finalized_switch_block() => {
-                        vec![ProtocolOutcome::ScheduleTimer(now + interval, timer_id)]
+                        vec![ProtocolOutcome::ScheduleTimer(
+                            now.saturating_add(interval),
+                            timer_id,
+                        )]
                     }
                     _ => vec![],
                 }
@@ -2206,13 +2209,15 @@ where
         let mut outcomes = vec![];
         if let Some(interval) = self.config.sync_state_interval {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
-                now.max(self.params.start_timestamp()) + interval,
+                now.max(self.params.start_timestamp())
+                    .saturating_add(interval),
                 TIMER_ID_SYNC_PEER,
             ));
         }
         if let Some(interval) = self.config.log_participation_interval {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
-                now.max(self.params.start_timestamp()) + interval,
+                now.max(self.params.start_timestamp())
+                    .saturating_add(interval),
                 TIMER_ID_LOG_PARTICIPATION,
             ));
         }

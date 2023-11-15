@@ -21,10 +21,12 @@ pub fn validators<C: Context>(
 ) -> Validators<C::ValidatorId> {
     let sum_stakes = safe_sum(validator_stakes.values().copied()).expect("should not overflow");
     // We use u64 weights. Scale down by floor(sum / u64::MAX) + 1.
-    // This guarantees that the resulting sum is less than u64::MAX.
+    // This guarantees that the resulting sum is greater than 0 less than u64::MAX.
+    #[allow(clippy::arithmetic_side_effects)] // Divisor isn't 0 and addition can't overflow.
     let scaling_factor: U512 = sum_stakes / U512::from(u64::MAX) + 1;
 
     // TODO sort validators by descending weight
+    #[allow(clippy::arithmetic_side_effects)] // Divisor isn't 0.
     let mut validators: Validators<C::ValidatorId> = validator_stakes
         .into_iter()
         .map(|(key, stake)| (key, AsPrimitive::<u64>::as_(stake / scaling_factor)))
@@ -63,7 +65,7 @@ pub(crate) fn ftt<C: Context>(
         finality_threshold_fraction < 1.into(),
         "finality threshold must be less than 100%"
     );
-    #[allow(clippy::integer_arithmetic)] // FTT is less than 1, so this can't overflow
+    #[allow(clippy::arithmetic_side_effects)] // FTT is less than 1, so this can't overflow
     let ftt = total_weight * *finality_threshold_fraction.numer() as u128
         / *finality_threshold_fraction.denom() as u128;
     (ftt as u64).into()

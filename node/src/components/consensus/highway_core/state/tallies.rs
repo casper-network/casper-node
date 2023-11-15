@@ -65,7 +65,7 @@ impl<'a, C: Context> Tally<'a, C> {
     /// Adds a vote for a block to the tally, possibly updating the current maximum.
     fn add(&mut self, bhash: &'a C::Hash, weight: Weight) {
         let w = self.votes.entry(bhash).or_default();
-        *w += weight;
+        *w = (*w).saturating_add(weight);
         self.max = (*w, bhash).max(self.max);
     }
 
@@ -150,8 +150,8 @@ impl<'a, C: Context> Tallies<'a, C> {
             }
             // If any block received more than 50%, a decision can be made: Either that block is
             // the fork choice, or we can pick its highest scoring child from `prev_tally`.
+            #[allow(clippy::arithmetic_side_effects)]
             if h_tally.max_w() > total_weight / 2 {
-                #[allow(clippy::arithmetic_side_effects)]
                 // height < max_height, so height < u64::MAX
                 return Some(
                     match prev_tally.filter_descendants(height, h_tally.max_bhash(), state) {

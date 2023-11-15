@@ -39,7 +39,11 @@ impl Status {
         if state.panorama()[idx].is_none() {
             return Some(Status::Inactive);
         }
-        if state.last_seen(idx) + state.params().max_round_length() < now {
+        if state
+            .last_seen(idx)
+            .saturating_add(state.params().max_round_length())
+            < now
+        {
             let seconds = now.saturating_diff(state.last_seen(idx)).millis() / 1000;
             return Some(Status::LastSeenSecondsAgo(seconds));
         }

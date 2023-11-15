@@ -483,6 +483,8 @@ impl<C: Context> State<C> {
             .map(|vidx| self.weight(*vidx))
             .sum();
         // Stake required to consider unit to be endorsed.
+        // TODO - remove `allow` once false positive ceases.
+        #[allow(clippy::arithmetic_side_effects)] // False positive on `/ 2`.
         let threshold = self.total_weight() / 2;
         if endorsed > threshold {
             info!(%uhash, "Unit endorsed by at least 1/2 of validators.");
@@ -526,7 +528,9 @@ impl<C: Context> State<C> {
     /// lengths old.
     pub(crate) fn is_online(&self, vidx: ValidatorIndex, now: Timestamp) -> bool {
         self.pings.has(vidx)
-            && self.pings[vidx] + self.params.max_round_length() * PING_TIMEOUT >= now
+            && self.pings[vidx]
+                .saturating_add(self.params.max_round_length().saturating_mul(PING_TIMEOUT))
+                >= now
     }
 
     /// Creates new `Evidence` if the new endorsements contain any that conflict with existing
@@ -626,6 +630,7 @@ impl<C: Context> State<C> {
         let maybe_block = self.maybe_block(hash);
         let value = maybe_block.map(|block| block.value.clone());
         let endorsed = unit.claims_endorsed().cloned().collect();
+        #[allow(clippy::arithmetic_side_effects)] // min_round_length is guaranteed to be > 0.
         let round_exp =
             (unit.round_len() / self.params().min_round_length()).trailing_zeros() as u8;
         let wunit = WireUnit {

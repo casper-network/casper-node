@@ -40,6 +40,11 @@ impl Weight {
         Weight(self.0.saturating_add(rhs.0))
     }
 
+    /// Saturating subtraction. Returns `Weight(0)` if underflow would occur.
+    pub fn saturating_sub(self, rhs: Weight) -> Weight {
+        Weight(self.0.saturating_sub(rhs.0))
+    }
+
     /// Returns `true` if this weight is zero.
     pub fn is_zero(self) -> bool {
         self.0 == 0

@@ -60,7 +60,9 @@ impl<C: Context> FinalityDetector<C> {
     ) -> Result<impl Iterator<Item = FinalizedBlock<C>> + 'a, FttExceeded> {
         let state = highway.state();
         let fault_w = state.faulty_weight();
-        if fault_w >= self.ftt || fault_w > (state.total_weight() - Weight(1)) / 2 {
+        // TODO - remove `allow` once false positive ceases.
+        #[allow(clippy::arithmetic_side_effects)] // False positive on `/ 2`.
+        if fault_w >= self.ftt || fault_w > (state.total_weight().saturating_sub(Weight(1))) / 2 {
             warn!(panorama = ?state.panorama(), "fault tolerance threshold exceeded");
             return Err(FttExceeded(fault_w));
         }
@@ -193,8 +195,11 @@ impl<C: Context> FinalityDetector<C> {
         // if at least one maximum-length round passed between the first and last block.
         // Safe to unwrap: Ancestor at height 0 always exists.
         let first_bhash = state.find_ancestor_proposal(bhash, 0).unwrap();
-        let sufficient_time_for_activity =
-            unit.timestamp >= state.unit(first_bhash).timestamp + state.params().max_round_length();
+        let sufficient_time_for_activity = unit.timestamp
+            >= state
+                .unit(first_bhash)
+                .timestamp
+                .saturating_add(state.params().max_round_length());
         let inactive_validators = if sufficient_time_for_activity {
             unit.panorama.iter_none().map(to_id).collect()
         } else {

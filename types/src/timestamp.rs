@@ -270,6 +270,12 @@ impl TimeDiff {
         TimeDiff(millis)
     }
 
+    /// Returns the sum, or `TimeDiff(u64::MAX)` if it would overflow.
+    #[must_use]
+    pub fn saturating_add(self, rhs: u64) -> Self {
+        TimeDiff(self.0.saturating_add(rhs))
+    }
+
     /// Returns the product, or `TimeDiff(u64::MAX)` if it would overflow.
     #[must_use]
     pub fn saturating_mul(self, rhs: u64) -> Self {
