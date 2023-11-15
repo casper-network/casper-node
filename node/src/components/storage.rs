@@ -206,6 +206,9 @@ pub struct Storage {
     metrics: Option<Metrics>,
     /// The maximum TTL of a deploy.
     max_ttl: MaxTtl,
+    /// Maps the db identifier used by binary port to a specific database.
+    #[data_size(skip)]
+    db_mapper: HashMap<DbId, Database>,
 }
 
 pub(crate) enum HighestOrphanedBlockResult {
@@ -347,6 +350,30 @@ impl Storage {
         let approvals_hashes_dbs =
             VersionedDatabases::new(&env, "approvals_hashes", "versioned_approvals_hashes")?;
 
+        let db_mapper = HashMap::<_, _>::from_iter([
+            (DbId::BlockHeader, block_header_dbs.legacy),
+            (DbId::BlockHeaderV2, block_header_dbs.current),
+            (DbId::BlockMetadata, block_metadata_db),
+            (DbId::Deploys, transaction_dbs.legacy),
+            (DbId::Transactions, transaction_dbs.current),
+            (DbId::DeployMetadata, execution_result_dbs.legacy),
+            (DbId::ExecutionResults, execution_result_dbs.current),
+            (DbId::Transfer, transfer_db),
+            (DbId::StateStore, state_store_db),
+            (DbId::BlockBody, block_body_dbs.legacy),
+            (DbId::BlockBodyV2, block_body_dbs.current),
+            (
+                DbId::FinalizedApprovals,
+                finalized_transaction_approvals_dbs.legacy,
+            ),
+            (
+                DbId::VersionedFinalizedApprovals,
+                finalized_transaction_approvals_dbs.current,
+            ),
+            (DbId::ApprovalsHashes, approvals_hashes_dbs.legacy),
+            (DbId::VersionedApprovalsHashes, approvals_hashes_dbs.current),
+        ]);
+
         // We now need to restore the block-height index. Log messages allow timing here.
         info!("indexing block store");
         let mut block_height_index = BTreeMap::new();
@@ -476,6 +503,7 @@ impl Storage {
             recent_era_count,
             max_ttl,
             metrics,
+            db_mapper,
         };
 
         if force_resync {
@@ -1176,35 +1204,12 @@ impl Storage {
                     .ignore()
             }
             StorageRequest::GetRawData { key, responder, db } => {
-                // TODO[RC]: Contruct at the time the storage is created
-                let db_mapper = HashMap::<DbId, Database>::from_iter([
-                    (DbId::BlockHeader, self.block_header_dbs.legacy),
-                    (DbId::BlockHeaderV2, self.block_header_dbs.current),
-                    (DbId::BlockMetadata, self.block_metadata_db),
-                    (DbId::Deploys, self.transaction_dbs.legacy),
-                    (DbId::Transactions, self.transaction_dbs.current),
-                    (DbId::DeployMetadata, self.execution_result_dbs.legacy),
-                    (DbId::ExecutionResults, self.execution_result_dbs.current),
-                    (DbId::Transfer, self.transfer_db),
-                    (DbId::StateStore, self.state_store_db),
-                    (DbId::BlockBody, self.block_body_dbs.legacy),
-                    (DbId::BlockBodyV2, self.block_body_dbs.current),
-                    (
-                        DbId::FinalizedApprovals,
-                        self.finalized_transaction_approvals_dbs.legacy,
-                    ),
-                    (
-                        DbId::VersionedFinalizedApprovals,
-                        self.finalized_transaction_approvals_dbs.current,
-                    ),
-                    (DbId::ApprovalsHashes, self.approvals_hashes_dbs.legacy),
-                    (
-                        DbId::VersionedApprovalsHashes,
-                        self.approvals_hashes_dbs.current,
-                    ),
-                ]);
-
-                let maybe_raw_data = self.read_raw_data(db_mapper.get(&db).unwrap(), &key)?;
+                let maybe_raw_data = self.read_raw_data(
+                    self.db_mapper
+                        .get(&db)
+                        .ok_or(FatalStorageError::DatabaseNotFound(db))?,
+                    &key,
+                )?;
                 responder.respond(maybe_raw_data).ignore()
             }
         })

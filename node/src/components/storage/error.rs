@@ -4,8 +4,8 @@ use thiserror::Error;
 use tracing::error;
 
 use casper_types::{
-    bytesrepr, crypto, BlockBody, BlockHash, BlockHeader, BlockValidationError, DeployHash, Digest,
-    EraId, FinalitySignature, FinalitySignatureId, TransactionHash,
+    bytesrepr, crypto, BlockBody, BlockHash, BlockHeader, BlockValidationError, DbId, DeployHash,
+    Digest, EraId, FinalitySignature, FinalitySignatureId, TransactionHash,
 };
 
 use super::lmdb_ext::LmdbExtError;
@@ -56,6 +56,9 @@ pub enum FatalStorageError {
     /// An internal DB error - blocks should be overwritten.
     #[error("failed overwriting block")]
     FailedToOverwriteBlock,
+    /// Db specified in raw request has not been found in the storage module.
+    #[error("unable to find db: {0}")]
+    DatabaseNotFound(DbId),
     /// Filesystem error while trying to move file.
     #[error("unable to move file {source_path} to {dest_path}: {original_error}")]
     UnableToMoveFile {
