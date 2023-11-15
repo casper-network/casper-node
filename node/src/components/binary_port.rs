@@ -8,7 +8,7 @@ mod tests;
 
 use std::{net::SocketAddr, sync::Arc};
 
-use bytes::BytesMut;
+use bytes::Bytes;
 use casper_types::{binary_port::BinaryRequest, bytesrepr::FromBytes};
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
@@ -17,7 +17,7 @@ use juliet::{
 };
 use prometheus::Registry;
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 use crate::{
     effect::{requests::StorageRequest, EffectBuilder, Effects},
@@ -130,17 +130,12 @@ async fn handle_client<REv, const N: usize>(
                         .expect("TODO: Handle malformed payload");
                     match req {
                         BinaryRequest::Get { key, db } => {
-                            // let (block_hash, _): (BlockHash, _) =
-                            //     BlockHash::from_bytes(&key).unwrap();
-                            // error!("XXXXX - getting block hash: {:?}", block_hash);
-                            match effect_builder.get_raw_data(db, key).await {
-                                Some(block_header_raw) => {
-                                    let mut response_payload = BytesMut::new();
-                                    response_payload.extend(block_header_raw);
-                                    incoming_request.respond(Some(response_payload.freeze()));
-                                }
-                                None => error!("XXXXX - error getting raw from storage"),
-                            }
+                            incoming_request.respond(
+                                effect_builder
+                                    .get_raw_data(db, key)
+                                    .await
+                                    .map(|raw_data| Bytes::from(raw_data)),
+                            );
                         }
                         BinaryRequest::PutTransaction { tbd: _tbd } => todo!(),
                         BinaryRequest::SpeculativeExec { tbd: _tbd } => todo!(),
