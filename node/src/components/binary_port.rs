@@ -6,7 +6,7 @@ mod metrics;
 #[cfg(test)]
 mod tests;
 
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
 
 use bytes::BytesMut;
 use casper_types::{binary_port::BinaryRequest, bytesrepr::FromBytes};
@@ -114,7 +114,7 @@ where
 async fn handle_client<REv, const N: usize>(
     addr: SocketAddr,
     mut client: TcpStream,
-    rpc_builder: &RpcBuilder<N>,
+    rpc_builder: Arc<RpcBuilder<N>>,
     effect_builder: EffectBuilder<REv>,
 ) where
     REv: From<StorageRequest>,
@@ -178,15 +178,20 @@ where
             .with_max_response_payload_size(4096),
     );
     let io_builder = IoCoreBuilder::new(protocol_builder).buffer_size(ChannelId::new(0), 16);
-    let rpc_builder = Box::leak(Box::new(RpcBuilder::new(io_builder))); // TODO[RC]: Leak?
+    let rpc_builder = Arc::new(RpcBuilder::new(io_builder));
 
     let listener = TcpListener::bind(config.address).await;
     match listener {
         Ok(listener) => loop {
             match listener.accept().await {
                 Ok((client, addr)) => {
-                    println!("new connection from {}", addr);
-                    tokio::spawn(handle_client(addr, client, rpc_builder, effect_builder));
+                    let rpc_builder_clone = Arc::clone(&rpc_builder);
+                    tokio::spawn(handle_client(
+                        addr,
+                        client,
+                        rpc_builder_clone,
+                        effect_builder,
+                    ));
                 }
                 Err(io_err) => {
                     println!("acceptance failure: {:?}", io_err);
