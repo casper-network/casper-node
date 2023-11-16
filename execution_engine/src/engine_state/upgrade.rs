@@ -183,7 +183,7 @@ where
 
             for (string, key) in named_keys.into_inner().into_iter() {
                 let entry_addr = NamedKeyAddr::new_from_string(entity_addr, string.clone())
-                    .map_err(|error| ProtocolUpgradeError::Bytesrepr(error))?;
+                    .map_err(ProtocolUpgradeError::Bytesrepr)?;
 
                 let named_key_value = NamedKeyValue::from_concrete_values(key, string)
                     .map_err(|error| ProtocolUpgradeError::CLValue(error.to_string()))?;
@@ -406,7 +406,7 @@ where
 
             for (string, key) in named_keys.into_inner().into_iter() {
                 let entry_addr = NamedKeyAddr::new_from_string(entity_addr, string.clone())
-                    .map_err(|error| ProtocolUpgradeError::Bytesrepr(error))?;
+                    .map_err(ProtocolUpgradeError::Bytesrepr)?;
 
                 let named_key_value = NamedKeyValue::from_concrete_values(key, string)
                     .map_err(|error| ProtocolUpgradeError::CLValue(error.to_string()))?;
@@ -421,7 +421,7 @@ where
 
         let named_key_addr =
             NamedKeyAddr::new_from_string(entity_addr, ACCUMULATION_PURSE_KEY.to_string())
-                .map_err(|error| ProtocolUpgradeError::Bytesrepr(error))?;
+                .map_err(ProtocolUpgradeError::Bytesrepr)?;
 
         let requries_accumulation_purse = self
             .tracking_copy

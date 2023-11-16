@@ -531,7 +531,7 @@ where
             .borrow_mut()
             .get_named_keys(mint_addr)?;
 
-        let mut named_keys = mint_named_keys.clone();
+        let mut named_keys = mint_named_keys;
 
         let runtime_context = self.context.new_from_self(
             mint_addr.into(),
@@ -665,7 +665,7 @@ where
             .borrow_mut()
             .get_named_keys(EntityAddr::System(handle_payment_hash.value()))?;
 
-        let mut named_keys = handle_payment_named_keys.clone();
+        let mut named_keys = handle_payment_named_keys;
 
         let runtime_context = self.context.new_from_self(
             handle_payment_key,
@@ -764,7 +764,7 @@ where
             .borrow_mut()
             .get_named_keys(EntityAddr::System(auction_hash.value()))?;
 
-        let mut named_keys = auction_named_keys.clone();
+        let mut named_keys = auction_named_keys;
 
         let runtime_context = self.context.new_from_self(
             auction_key,
@@ -1743,9 +1743,9 @@ where
         mut named_keys: NamedKeys,
         output_ptr: u32,
     ) -> Result<Result<(), ApiError>, Error> {
-        if entry_points.contains_stored_session() {
-            return Err(Error::InvalidEntryPointType);
-        }
+        // if entry_points.contains_stored_session() {
+        //     return Err(Error::InvalidEntryPointType);
+        // }
 
         let mut package = self.context.get_package(package_hash)?;
 
@@ -2521,7 +2521,7 @@ where
                 } else {
                     let contract_hash = if let Some(entity_hash) = entity_key
                         .into_entity_addr()
-                        .map(|entity_addr| AddressableEntityHash::new(entity_addr))
+                        .map(AddressableEntityHash::new)
                     {
                         entity_hash
                     } else {

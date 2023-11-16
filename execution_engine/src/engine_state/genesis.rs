@@ -1232,7 +1232,7 @@ where
 
         for (string, key) in named_keys.iter() {
             let named_key_entry = NamedKeyAddr::new_from_string(entity_addr, string.clone())
-                .map_err(|error| GenesisError::Bytesrepr(error))?;
+                .map_err(GenesisError::Bytesrepr)?;
 
             let named_key_value = NamedKeyValue::from_concrete_values(*key, string.clone())
                 .map_err(|error| GenesisError::CLValue(error.to_string()))?;

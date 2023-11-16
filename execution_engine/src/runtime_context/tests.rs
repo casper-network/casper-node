@@ -7,7 +7,7 @@ use casper_storage::global_state::state::{self, lmdb::LmdbGlobalStateView, State
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity::{
-        ActionThresholds, ActionType, AddKeyFailure, AssociatedKeys, NamedKeys, RemoveKeyFailure,
+        ActionType, AddKeyFailure, AssociatedKeys, NamedKeys, RemoveKeyFailure,
         SetThresholdFailure, Weight,
     },
     bytesrepr::ToBytes,
@@ -406,7 +406,7 @@ fn contract_key_addable_valid() {
     let named_uref_tuple =
         StoredValue::CLValue(CLValue::from_t((uref_name.clone(), uref_as_key)).unwrap());
     let mut named_keys = NamedKeys::new();
-    named_keys.insert(uref_name.clone(), uref_as_key);
+    named_keys.insert(uref_name, uref_as_key);
 
     access_rights.extend(&[uref_as_key.into_uref().expect("should be a URef")]);
 
@@ -433,23 +433,9 @@ fn contract_key_addable_valid() {
         EntryPointType::Session,
     );
 
-    runtime_context
+    assert!(runtime_context
         .metered_add_gs(contract_key, named_uref_tuple)
-        .expect("Adding should work.");
-
-    let updated_contract = StoredValue::AddressableEntity(AddressableEntity::new(
-        [0u8; 32].into(),
-        [0u8; 32].into(),
-        EntryPoints::new_with_default_entry_point(),
-        ProtocolVersion::V1_0_0,
-        URef::default(),
-        AssociatedKeys::default(),
-        ActionThresholds::default(),
-        EntityKind::SmartContract,
-    ));
-
-    let read_contract = runtime_context.read_gs(&contract_key).unwrap();
-    assert_eq!(read_contract, Some(updated_contract));
+        .is_err())
 }
 
 #[test]
@@ -901,11 +887,8 @@ fn remove_uref_works() {
     // even if you remove the URef from the named keys.
     assert!(runtime_context.validate_key(&uref_key).is_ok());
     assert!(!runtime_context.named_keys_contains_key(&uref_name));
-    let transform_kind = last_transform_kind_on_addressable_entity(&runtime_context);
-    let entity = match transform_kind {
-        TransformKind::Write(StoredValue::AddressableEntity(entity)) => entity,
-        _ => panic!("Invalid transform operation found"),
-    };
+    let entity = runtime_context.get_entity();
+
     let entity_named_keys = runtime_context
         .get_named_keys(entity_key)
         .expect("must get named keys for entity");

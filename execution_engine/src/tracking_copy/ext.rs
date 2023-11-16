@@ -326,8 +326,7 @@ where
                 Key::NamedKey(entry_addr)
             };
 
-            let cl_value =
-                CLValue::from_t(*key).map_err(|cl_error| Self::Error::CLValue(cl_error.clone()))?;
+            let cl_value = CLValue::from_t(*key).map_err(execution::Error::CLValue)?;
 
             self.write(entry_key, StoredValue::CLValue(cl_value))
         }
@@ -340,7 +339,7 @@ where
 
         let prefix = base_named_key_addr
             .named_keys_prefix()
-            .map_err(|error| Self::Error::BytesRepr(error))?;
+            .map_err(Self::Error::BytesRepr)?;
 
         let mut ret: BTreeSet<Key> = BTreeSet::new();
         let keys = self.reader.keys_with_prefix(&prefix).map_err(Into::into)?;
@@ -372,12 +371,8 @@ where
         for entry_key in ret.iter() {
             match self.read(entry_key).map_err(Into::into)? {
                 Some(StoredValue::NamedKey(named_key)) => {
-                    let key = named_key
-                        .get_key()
-                        .map_err(|cl_error| execution::Error::CLValue(cl_error.clone()))?;
-                    let name = named_key
-                        .get_name()
-                        .map_err(|cl_error| execution::Error::CLValue(cl_error.clone()))?;
+                    let key = named_key.get_key().map_err(execution::Error::CLValue)?;
+                    let name = named_key.get_name().map_err(execution::Error::CLValue)?;
                     named_keys.insert(name, key);
                 }
                 Some(other) => {
@@ -389,10 +384,10 @@ where
                     Some(StoredValue::NamedKey(named_key_value)) => {
                         let key = named_key_value
                             .get_key()
-                            .map_err(|cl_error| execution::Error::CLValue(cl_error.clone()))?;
+                            .map_err(execution::Error::CLValue)?;
                         let name = named_key_value
                             .get_name()
-                            .map_err(|cl_error| execution::Error::CLValue(cl_error.clone()))?;
+                            .map_err(execution::Error::CLValue)?;
                         named_keys.insert(name, key);
                     }
                     Some(_) | None => {

@@ -40,9 +40,9 @@ enum Tag {
     Bid = 8,
     Withdraw = 9,
     Unbonding = 10,
-    AddressableEntity = 11,
-    BidKind = 12,
-    Package = 13,
+    BidKind = 11,
+    Package = 12,
+    AddressableEntity = 13,
     ByteCode = 14,
     NamedKeyValue = 15,
 }

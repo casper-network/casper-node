@@ -993,10 +993,8 @@ impl EntityAddr {
             } else {
                 return Err(FromStrError::InvalidPrefix);
             };
-            let addr =
-                checksummed_hex::decode(addr_str).map_err(|error| FromStrError::Hex(error))?;
-            let hash_addr =
-                HashAddr::try_from(addr.as_ref()).map_err(|error| FromStrError::Hash(error))?;
+            let addr = checksummed_hex::decode(addr_str).map_err(FromStrError::Hex)?;
+            let hash_addr = HashAddr::try_from(addr.as_ref()).map_err(FromStrError::Hash)?;
             let entity_addr = match tag {
                 EntityKindTag::System => EntityAddr::new_system_entity_addr(hash_addr),
                 EntityKindTag::Account => EntityAddr::new_account_entity_addr(hash_addr),
@@ -1231,15 +1229,15 @@ impl NamedKeyAddr {
                 NamedKeyAddrTag::NamedKeyEntry => {
                     let reverse_string = addr_str.chars().rev().collect::<String>();
                     if let Some((reverse_bytes, reverse_entity_addr)) =
-                        reverse_string.split_once("-")
+                        reverse_string.split_once('-')
                     {
                         let entity_addr_str = reverse_entity_addr.chars().rev().collect::<String>();
                         let entity_addr = EntityAddr::from_formatted_str(&entity_addr_str)?;
                         let string_bytes_str = reverse_bytes.chars().rev().collect::<String>();
-                        let string_bytes = checksummed_hex::decode(&string_bytes_str)
-                            .map_err(|decode_error| FromStrError::Hex(decode_error))?;
-                        let (string_bytes, _) = FromBytes::from_vec(string_bytes)
-                            .map_err(|error| FromStrError::BytesRepr(error))?;
+                        let string_bytes =
+                            checksummed_hex::decode(string_bytes_str).map_err(FromStrError::Hex)?;
+                        let (string_bytes, _) =
+                            FromBytes::from_vec(string_bytes).map_err(FromStrError::BytesRepr)?;
                         return Ok(Self::new_named_key_entry(entity_addr, string_bytes));
                     };
                 }

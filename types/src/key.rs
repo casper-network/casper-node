@@ -756,7 +756,7 @@ impl Key {
         Some(PackageHash::new(package_addr))
     }
 
-    /// Returns [`NamedKeyAddr`] of `self` if `self` is of type [`Key::NamedKeyAddr`], otherwise
+    /// Returns [`NamedKeyAddr`] of `self` if `self` is of type [`Key::NamedKey`], otherwise
     /// returns `None`.
     pub fn into_named_key_addr(self) -> Option<NamedKeyAddr> {
         match self {
@@ -930,11 +930,7 @@ impl Key {
 
     /// Returns true if the key is of type [`Key::NamedKey`] and its Entry variant.
     pub fn is_named_key_entry(&self) -> bool {
-        if let Self::NamedKey(NamedKeyAddr::NamedKeyEntry { .. }) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Self::NamedKey(NamedKeyAddr::NamedKeyEntry { .. }))
     }
 
     /// Returns true if the key is of type [`Key::NamedKey`] and the variants have the

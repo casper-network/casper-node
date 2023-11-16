@@ -4140,6 +4140,19 @@
                   }
                 },
                 "additionalProperties": false
+              },
+              {
+                "description": "A NamedKey record.",
+                "type": "object",
+                "required": [
+                  "NamedKey"
+                ],
+                "properties": {
+                  "NamedKey": {
+                    "$ref": "#/components/schemas/NamedKeyValue"
+                  }
+                },
+                "additionalProperties": false
               }
             ]
           },
@@ -4468,7 +4481,6 @@
               "entity_kind",
               "entry_points",
               "main_purse",
-              "named_keys",
               "package_hash",
               "protocol_version"
             ],
@@ -4478,9 +4490,6 @@
               },
               "byte_code_hash": {
                 "$ref": "#/components/schemas/ByteCodeHash"
-              },
-              "named_keys": {
-                "$ref": "#/components/schemas/NamedKeys"
               },
               "entry_points": {
                 "$ref": "#/components/schemas/Array_of_NamedEntryPoint"
@@ -4742,6 +4751,32 @@
                 ]
               }
             ]
+          },
+          "NamedKeyValue": {
+            "description": "A NamedKey value.",
+            "type": "object",
+            "required": [
+              "name",
+              "named_key"
+            ],
+            "properties": {
+              "named_key": {
+                "description": "The actual `Key` encoded as a CLValue.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CLValue"
+                  }
+                ]
+              },
+              "name": {
+                "description": "The name of the `Key` encoded as a CLValue.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CLValue"
+                  }
+                ]
+              }
+            }
           },
           "GlobalStateIdentifier": {
             "description": "Identifier for possible ways to query Global State",

@@ -823,13 +823,12 @@ where
         let associated_keys = AssociatedKeys::from(account.associated_keys().clone());
         let action_thresholds = {
             let account_threshold = account.action_thresholds().clone();
-            let new_threshold = ActionThresholds::new(
+            ActionThresholds::new(
                 Weight::new(account_threshold.deployment.value()),
                 Weight::new(1u8),
                 Weight::new(account_threshold.key_management.value()),
             )
-            .map_err(|_| Error::Authorization)?;
-            new_threshold
+            .map_err(|_| Error::Authorization)?
         };
 
         let entity_addr = EntityAddr::new_account_entity_addr(entity_hash.value());

@@ -100,7 +100,7 @@ impl EntityWithNamedKeys {
 
     /// Returns a reference to the main purse for the inner entity.
     pub fn main_purse(&self) -> URef {
-        self.entity.main_purse().clone()
+        self.entity.main_purse()
     }
 
     /// Returns a reference to the NamedKeys.
@@ -690,7 +690,7 @@ where
             .map(|cl_val| CLValue::into_t::<Key>(cl_val.clone()))
             .expect("must be cl_value")
             .expect("must get key");
-        self.query(maybe_post_state, key, &vec![])
+        self.query(maybe_post_state, key, &[])
     }
 
     /// Queries state for a dictionary item.

@@ -518,30 +518,29 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                         return Ok(query.into_not_found_result(&msg_prefix));
                     }
                 }
-                StoredValue::NamedKey(named_key_value) => match query.visited_names.last() {
-                    Some(expected_name) => match named_key_value.get_name() {
-                        Ok(actual_name) => {
-                            if &actual_name != expected_name {
-                                return Ok(query.into_not_found_result(
-                                    "Queried and retrieved names do not match",
-                                ));
-                            } else {
-                                if let Ok(key) = named_key_value.get_key() {
+                StoredValue::NamedKey(named_key_value) => {
+                    match query.visited_names.last() {
+                        Some(expected_name) => match named_key_value.get_name() {
+                            Ok(actual_name) => {
+                                if &actual_name != expected_name {
+                                    return Ok(query.into_not_found_result(
+                                        "Queried and retrieved names do not match",
+                                    ));
+                                } else if let Ok(key) = named_key_value.get_key() {
                                     query.navigate(key)
                                 } else {
                                     return Ok(query
                                         .into_not_found_result("Failed to parse CLValue as Key"));
                                 }
                             }
-                        }
-                        Err(_) => {
-                            return Ok(
-                                query.into_not_found_result("Failed to parse CLValue as String")
-                            )
-                        }
-                    },
-                    None => return Ok(query.into_not_found_result("No visited names")),
-                },
+                            Err(_) => {
+                                return Ok(query
+                                    .into_not_found_result("Failed to parse CLValue as String"))
+                            }
+                        },
+                        None => return Ok(query.into_not_found_result("No visited names")),
+                    }
+                }
                 StoredValue::CLValue(cl_value) if cl_value.cl_type() == &CLType::Key => {
                     if let Ok(key) = cl_value.to_owned().into_t::<Key>() {
                         query.navigate(key);
@@ -572,7 +571,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                         };
                         query.navigate_for_named_key(named_key_addr);
                     } else {
-                        let msg_prefix = format!("Invalid base key");
+                        let msg_prefix = "Invalid base key".to_string();
                         return Ok(query.into_not_found_result(&msg_prefix));
                     }
                 }
@@ -731,11 +730,6 @@ pub fn validate_query_proof(
         let named_keys = match proof_value {
             StoredValue::Account(account) => account.named_keys(),
             StoredValue::Contract(contract) => contract.named_keys(),
-            // StoredValue::AddressableEntity(entity) => entity.named_keys(),
-            StoredValue::CLValue(_) => {
-                proof_value = proof.value();
-                continue;
-            }
             _ => return Err(ValidationError::PathCold),
         };
 
@@ -762,6 +756,42 @@ pub fn validate_query_proof(
 
     if proof_value != expected_value {
         return Err(ValidationError::UnexpectedValue);
+    }
+
+    Ok(())
+}
+
+/// Validates proof of the query.
+///
+/// Returns [`ValidationError`] for any of
+pub fn validate_query_merkle_proof(
+    hash: &Digest,
+    proofs: &[TrieMerkleProof<Key, StoredValue>],
+    expected_key_trace: &[Key],
+    expected_value: &StoredValue,
+) -> Result<(), ValidationError> {
+    let expected_len = expected_key_trace.len();
+    if proofs.len() != expected_len {
+        return Err(ValidationError::PathLengthDifferentThanProofLessOne);
+    }
+
+    let proof_keys: Vec<Key> = proofs.iter().map(|proof| *proof.key()).collect();
+
+    if !expected_key_trace.eq(&proof_keys) {
+        return Err(ValidationError::UnexpectedKey);
+    }
+
+    if expected_value != proofs[expected_len - 1].value() {
+        return Err(ValidationError::UnexpectedValue);
+    }
+
+    let mut proofs_iter = proofs.iter();
+
+    // length check above means we are safe to unwrap here
+    let first_proof = proofs_iter.next().unwrap();
+
+    if hash != &first_proof.compute_state_hash()? {
+        return Err(ValidationError::InvalidProofHash);
     }
 
     Ok(())
