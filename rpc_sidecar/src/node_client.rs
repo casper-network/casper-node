@@ -6,6 +6,7 @@ use casper_types::{
         non_persistent_data::NonPersistedDataRequest,
     },
     bytesrepr::{self, ToBytes},
+    BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest,
     FinalizedApprovals, Transaction, TransactionHash,
 };
 use juliet::{
@@ -25,7 +26,7 @@ pub trait NodeClient: Send + Sync + 'static {
         let key = hash.to_bytes().expect("should always serialize a digest");
         self.read_from_db(DbId::Transactions, &key)
             .await?
-            .map(|bytes| bytesrepr::deserialize_from_slice::<_, Transaction>(&bytes))
+            .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
             .transpose()
             .map_err(|err| Error::Deserialization(err.to_string()))
     }
@@ -37,7 +38,37 @@ pub trait NodeClient: Send + Sync + 'static {
         let key = hash.to_bytes().expect("should always serialize a digest");
         self.read_from_db(DbId::VersionedFinalizedApprovals, &key)
             .await?
-            .map(|bytes| bytesrepr::deserialize_from_slice::<_, FinalizedApprovals>(&bytes))
+            .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
+            .transpose()
+            .map_err(|err| Error::Deserialization(err.to_string()))
+    }
+
+    async fn read_block_header(&self, hash: BlockHash) -> Result<Option<BlockHeader>, Error> {
+        let key = hash.to_bytes().expect("should always serialize a digest");
+        self.read_from_db(DbId::BlockHeaderV2, &key)
+            .await?
+            .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
+            .transpose()
+            .map_err(|err| Error::Deserialization(err.to_string()))
+    }
+
+    async fn read_block_body(&self, hash: Digest) -> Result<Option<BlockBody>, Error> {
+        let key = hash.to_bytes().expect("should always serialize a digest");
+        self.read_from_db(DbId::BlockBodyV2, &key)
+            .await?
+            .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
+            .transpose()
+            .map_err(|err| Error::Deserialization(err.to_string()))
+    }
+
+    async fn read_block_signatures(
+        &self,
+        hash: BlockHash,
+    ) -> Result<Option<BlockSignatures>, Error> {
+        let key = hash.to_bytes().expect("should always serialize a digest");
+        self.read_from_db(DbId::BlockMetadata, &key)
+            .await?
+            .map(|bytes| bincode::deserialize(&bytes))
             .transpose()
             .map_err(|err| Error::Deserialization(err.to_string()))
     }

@@ -413,8 +413,8 @@ where
     let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
         ChannelConfiguration::default()
             .with_request_limit(3)
-            .with_max_request_payload_size(4096)
-            .with_max_response_payload_size(4096),
+            .with_max_request_payload_size(4 * 1024 * 1024)
+            .with_max_response_payload_size(4 * 1024 * 1024),
     );
     let io_builder = IoCoreBuilder::new(protocol_builder).buffer_size(ChannelId::new(0), 16);
     let rpc_builder = Arc::new(RpcBuilder::new(io_builder));

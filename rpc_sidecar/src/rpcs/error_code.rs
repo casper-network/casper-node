@@ -43,6 +43,8 @@ pub enum ErrorCode {
     VariantMismatch = -32015,
     /// The given Transaction cannot be executed as it is invalid.
     InvalidTransaction = -32016,
+    /// The given Block could not be verified.
+    InvalidBlock = -32017,
 }
 
 impl From<ErrorCode> for (i64, &'static str) {
@@ -71,6 +73,7 @@ impl From<ErrorCode> for (i64, &'static str) {
             ErrorCode::NoSuchTransaction => (error_code as i64, "No such transaction"),
             ErrorCode::VariantMismatch => (error_code as i64, "Variant mismatch internal error"),
             ErrorCode::InvalidTransaction => (error_code as i64, "Invalid transaction"),
+            ErrorCode::InvalidBlock => (error_code as i64, "Invalid block"),
         }
     }
 }

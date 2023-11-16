@@ -10,10 +10,11 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    BlockHash, BlockHeaderV2, Digest, DigestError, JsonBlockWithSignatures, ProtocolVersion,
-    Transfer,
+    Block, BlockHash, BlockHeaderV2, BlockSignatures, Digest, DigestError, JsonBlockWithSignatures,
+    ProtocolVersion, Transfer,
 };
 
+use crate::rpcs::ErrorCode;
 use crate::NodeClient;
 
 use super::{
@@ -150,11 +151,54 @@ impl RpcWithOptionalParams for GetBlock {
     type ResponseResult = GetBlockResult;
 
     async fn do_handle_request(
-        _node_client: Arc<dyn NodeClient>,
-        _api_version: ProtocolVersion,
-        _maybe_params: Option<Self::OptionalRequestParams>,
+        node_client: Arc<dyn NodeClient>,
+        api_version: ProtocolVersion,
+        maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, Error> {
-        todo!()
+        let Some(GetBlockParams { block_identifier: BlockIdentifier::Hash(block_hash) }) =
+            maybe_params
+        else {
+           todo!()
+        };
+
+        let header = node_client
+            .read_block_header(block_hash)
+            .await
+            .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorCode::NoSuchBlock,
+                    format!("block header not found for {block_hash}"),
+                )
+            })?;
+        let body = node_client
+            .read_block_body(*header.body_hash())
+            .await
+            .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorCode::NoSuchBlock,
+                    format!("block body not found for {block_hash}"),
+                )
+            })?;
+        let signatures = node_client
+            .read_block_signatures(block_hash)
+            .await
+            .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?
+            .unwrap_or_else(|| BlockSignatures::new(block_hash, header.era_id()));
+        let block = Block::new_from_header_and_body(header, body).unwrap();
+
+        if signatures.is_verified().is_err() {
+            return Err(Error::new(
+                ErrorCode::InvalidBlock,
+                format!("block {} could not be verified", block_hash),
+            ));
+        };
+
+        Ok(Self::ResponseResult {
+            api_version,
+            block_with_signatures: Some(JsonBlockWithSignatures::new(block, Some(signatures))),
+        })
     }
 }
 

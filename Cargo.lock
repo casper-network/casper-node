@@ -684,6 +684,7 @@ dependencies = [
  "async-trait",
  "backtrace",
  "base16",
+ "bincode",
  "casper-json-rpc",
  "casper-types",
  "datasize",
