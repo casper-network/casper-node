@@ -126,10 +126,10 @@ use casper_types::{
     execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},
     package::Package,
     system::auction::EraValidators,
-    AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
-    BlockV2, ChainspecRawBytes, DbId, DeployHash, DeployHeader, Digest, EraId, FinalitySignature,
-    FinalitySignatureId, Key, PublicKey, SignedBlock, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionId, Transfer, U512,
+    AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader,
+    BlockSignatures, BlockV2, ChainspecRawBytes, DbId, DeployHash, DeployHeader, Digest, EraId,
+    FinalitySignature, FinalitySignatureId, Key, PublicKey, SignedBlock, TimeDiff, Timestamp,
+    Transaction, TransactionHash, TransactionId, Transfer, U512,
 };
 
 use crate::{
@@ -1072,6 +1072,25 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::PutBlock { block, responder },
+            QueueKind::ToStorage,
+        )
+        .await
+    }
+
+    /// Returns block hash and height for a given transaction.
+    /// TODO[RC]: Not using `get_transaction_and_execution_info_from_storage` since it'll be gone with RPC server
+    pub(crate) async fn get_block_hash_and_height_for_transaction(
+        self,
+        transaction_hash: TransactionHash,
+    ) -> Option<BlockHashAndHeight>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockHashAndHeightForTransaction {
+                transaction_hash,
+                responder,
+            },
             QueueKind::ToStorage,
         )
         .await

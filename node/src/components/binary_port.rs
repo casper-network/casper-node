@@ -9,7 +9,10 @@ mod tests;
 use std::{net::SocketAddr, sync::Arc};
 
 use bytes::Bytes;
-use casper_types::{binary_port::BinaryRequest, bytesrepr::FromBytes};
+use casper_types::{
+    binary_port::{BinaryRequest, InMemRequest},
+    bytesrepr::{FromBytes, ToBytes},
+};
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use juliet::{
@@ -26,7 +29,7 @@ use crate::{
     utils::ListeningError,
 };
 
-use self::metrics::Metrics;
+use self::{error::Error, metrics::Metrics};
 
 use super::{Component, ComponentState, InitializedComponent, PortBoundComponent};
 pub(crate) use config::Config;
@@ -80,6 +83,7 @@ where
                     effects
                 }
             },
+            // TODO[RC]: Handle this
             ComponentState::Initialized => todo!(),
             ComponentState::Fatal(_) => todo!(),
         }
@@ -112,19 +116,33 @@ where
 async fn handle_request<REv>(
     req: BinaryRequest,
     effect_builder: EffectBuilder<REv>,
-) -> Option<Bytes>
+) -> Result<Option<Bytes>, Error>
 where
     REv: From<StorageRequest>,
 {
     match req {
-        BinaryRequest::Get { key, db } => effect_builder
+        BinaryRequest::Get { key, db } => Ok(effect_builder
             .get_raw_data(db, key)
             .await
-            .map(|raw_data| Bytes::from(raw_data)),
+            .map(|raw_data| Bytes::from(raw_data))),
         BinaryRequest::PutTransaction { tbd: _tbd } => todo!(),
         BinaryRequest::SpeculativeExec { tbd: _tbd } => todo!(),
         BinaryRequest::Quit => todo!(),
-        BinaryRequest::GetInMem(_req) => todo!(),
+        BinaryRequest::GetInMem(req) => match req {
+            InMemRequest::BlockHeight2Hash { height } => todo!(),
+            InMemRequest::HighestBlock => todo!(),
+            InMemRequest::CompletedBlockContains { block_hash } => {
+                todo!()
+            }
+            InMemRequest::TransactionHash2BlockHashAndHeight { transaction_hash } => {
+                let block_hash_and_height = effect_builder
+                    .get_block_hash_and_height_for_transaction(transaction_hash)
+                    .await;
+                let payload = ToBytes::to_bytes(&block_hash_and_height)
+                    .map_err(|err| Error::BytesRepr(err))?;
+                Ok(Some(Bytes::from(payload)))
+            }
+        },
     }
 }
 
@@ -150,7 +168,17 @@ async fn handle_client<REv, const N: usize>(
                         break;
                     }
                     Ok((req, _)) => {
-                        incoming_request.respond(handle_request(req, effect_builder).await)
+                        let response = handle_request(req, effect_builder).await;
+                        match response {
+                            Ok(response) => incoming_request.respond(response),
+                            Err(err) => {
+                                info!(
+                                    %err,
+                                    "unable to serialize binary response, closing connection"
+                                );
+                                break;
+                            }
+                        }
                     }
                     Err(err) => {
                         info!(

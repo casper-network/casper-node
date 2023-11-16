@@ -76,10 +76,10 @@ use casper_types::{
     execution::{
         execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
     },
-    AvailableBlockRange, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, BlockV2, DbId,
-    DeployApprovalsHash, DeployHash, DeployHeader, Digest, EraId, FinalitySignature,
-    ProtocolVersion, PublicKey, SignedBlock, SignedBlockHeader, StoredValue, Timestamp,
-    Transaction, TransactionApprovalsHash, TransactionHash, TransactionId,
+    AvailableBlockRange, Block, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader,
+    BlockSignatures, BlockV2, DbId, DeployApprovalsHash, DeployHash, DeployHeader, Digest, EraId,
+    FinalitySignature, ProtocolVersion, PublicKey, SignedBlock, SignedBlockHeader, StoredValue,
+    Timestamp, Transaction, TransactionApprovalsHash, TransactionHash, TransactionId,
     TransactionV1ApprovalsHash, Transfer,
 };
 
@@ -1211,6 +1211,17 @@ impl Storage {
                     &key,
                 )?;
                 responder.respond(maybe_raw_data).ignore()
+            }
+            StorageRequest::GetBlockHashAndHeightForTransaction {
+                transaction_hash,
+                responder,
+            } => {
+                let block_hash_and_height = self
+                    .transaction_hash_index
+                    .get(&transaction_hash)
+                    .copied()
+                    .map(BlockHashAndHeight::from);
+                responder.respond(block_hash_and_height).ignore()
             }
         })
     }

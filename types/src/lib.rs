@@ -91,9 +91,9 @@ pub use api_error::ApiError;
 #[cfg(all(feature = "std", feature = "json-schema"))]
 pub use block::JsonBlockWithSignatures;
 pub use block::{
-    AvailableBlockRange, Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHeader,
-    BlockHeaderV1, BlockHeaderV2, BlockSignatures, BlockSignaturesMergeError, BlockV1, BlockV2,
-    BlockValidationError, EraEnd, EraEndV1, EraEndV2, EraReport, FinalitySignature,
+    AvailableBlockRange, Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHashAndHeight,
+    BlockHeader, BlockHeaderV1, BlockHeaderV2, BlockSignatures, BlockSignaturesMergeError, BlockV1,
+    BlockV2, BlockValidationError, EraEnd, EraEndV1, EraEndV2, EraReport, FinalitySignature,
     FinalitySignatureId, RewardedSignatures, Rewards, SignedBlock, SignedBlockHeader,
     SignedBlockHeaderValidationError, SingleBlockRewardedSignatures,
 };

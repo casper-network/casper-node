@@ -4,7 +4,7 @@ use rand::Rng;
 
 #[cfg(test)]
 use casper_types::testing::TestRng;
-use casper_types::{BlockHash, EraId};
+use casper_types::{BlockHash, BlockHashAndHeight, EraId};
 
 #[derive(Clone, Copy, Debug, DataSize)]
 pub(super) struct BlockHashHeightAndEra {
@@ -29,5 +29,11 @@ impl BlockHashHeightAndEra {
             block_height: rng.gen(),
             era_id: EraId::random(rng),
         }
+    }
+}
+
+impl From<BlockHashHeightAndEra> for BlockHashAndHeight {
+    fn from(bhhe: BlockHashHeightAndEra) -> Self {
+        BlockHashAndHeight::new(bhhe.block_hash, bhhe.block_height)
     }
 }
