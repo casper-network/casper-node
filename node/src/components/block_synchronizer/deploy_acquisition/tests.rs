@@ -11,7 +11,6 @@ use super::*;
 fn gen_test_deploys(rng: &mut TestRng) -> BTreeMap<DeployHash, Deploy> {
     let num_deploys = rng.gen_range(2..15);
     (0..num_deploys)
-        .into_iter()
         .map(|_| {
             let deploy = Deploy::random(rng);
             (*deploy.hash(), deploy)

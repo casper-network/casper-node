@@ -261,7 +261,7 @@ pub mod chainspec_protocol_version {
             ),
             DependentFile::new(
                 "node/src/components/rpc_server/rpcs/docs.rs",
-                Regex::new(r#"(?m)(DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =\s*ProtocolVersion::from_parts)\((\d+,\s*\d+,\s*\d+)\)"#).unwrap(),
+                Regex::new(r"(?m)(DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =\s*ProtocolVersion::from_parts)\((\d+,\s*\d+,\s*\d+)\)").unwrap(),
                 rpcs_docs_rs_replacement,
             ),
             DependentFile::new(
