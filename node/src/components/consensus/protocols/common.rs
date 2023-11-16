@@ -21,7 +21,7 @@ pub fn validators<C: Context>(
 ) -> Validators<C::ValidatorId> {
     let sum_stakes = safe_sum(validator_stakes.values().copied()).expect("should not overflow");
     // We use u64 weights. Scale down by floor(sum / u64::MAX) + 1.
-    // This guarantees that the resulting sum is greater than 0 less than u64::MAX.
+    // This guarantees that the resulting sum is greater than 0 and less than u64::MAX.
     #[allow(clippy::arithmetic_side_effects)] // Divisor isn't 0 and addition can't overflow.
     let scaling_factor: U512 = sum_stakes / U512::from(u64::MAX) + 1;
 

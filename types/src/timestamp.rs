@@ -281,6 +281,12 @@ impl TimeDiff {
     pub fn saturating_mul(self, rhs: u64) -> Self {
         TimeDiff(self.0.saturating_mul(rhs))
     }
+
+    /// Returns the product, or `None` if it would overflow.
+    #[must_use]
+    pub fn checked_mul(self, rhs: u64) -> Option<Self> {
+        Some(TimeDiff(self.0.checked_mul(rhs)?))
+    }
 }
 
 impl Add<TimeDiff> for TimeDiff {

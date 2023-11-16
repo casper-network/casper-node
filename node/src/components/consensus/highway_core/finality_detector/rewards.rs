@@ -72,8 +72,11 @@ pub fn find_max_quora<C: Context>(
     let mut max_quorum = ValidatorMap::from(vec![Weight(0); latest.len()]);
     while let Some(quorum) = horizon.committee_quorum(&committee) {
         // The current committee is a level-1 summit with `quorum`. Try to go higher:
-        let (new_committee, pruned) =
-            horizon.prune_committee(quorum.saturating_add(Weight(1)), committee);
+        let new_quorum = match quorum.checked_add(Weight(1)) {
+            Some(weight) => weight,
+            None => break, // we reached the maximum, it's valid, so just return it.
+        };
+        let (new_committee, pruned) = horizon.prune_committee(new_quorum, committee);
         committee = new_committee;
         // Pruned validators are not part of any summit with a higher quorum than this.
         for vidx in pruned {
