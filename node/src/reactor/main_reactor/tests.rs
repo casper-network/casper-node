@@ -2220,6 +2220,25 @@ async fn run_rewards_network_scenario(
 
 }
 
+#[tokio::test]
+#[cfg_attr(not(feature = "failpoints"), ignore)]
+async fn run_reward_network_zug_no_finality_small_nominal_five_eras() {
+    run_rewards_network_scenario(
+        crate::new_rng(),
+        CONSENSUS_ZUG,
+        &[STAKE, STAKE, STAKE, STAKE, STAKE],
+        5,
+        ERA_DURATION,
+        MIN_HEIGHT,
+        BLOCK_TIME,
+        TIME_OUT,
+        SEIGNIORAGE,
+        FINDERS_FEE_ZERO,
+        FINALITY_SIG_PROP_ZERO,
+        REPRESENTATIVE_NODE_INDEX,
+        &[]
+    ).await;
+}
 
 #[tokio::test]
 #[cfg_attr(not(feature = "failpoints"), ignore)]
