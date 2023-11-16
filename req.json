@@ -1,0 +1,75 @@
+{
+    "jsonrpc": "2.0",
+    "method": "speculative_exec",
+    "id": 0,
+    "params": {
+        "block_identifier": {
+            "Hash": "d71a9c3ff1a23a67c4085acf0408e357ff9ec2d880f556269211d59909322945"
+        },
+        "deploy": {
+            "hash": "0ef8eba05db0bc0cb73649e3c29b7428906d9065bb7ed09669db9a196349dfa3",
+            "header": {
+                "account": "0131847c60259d6be856fed84badb388ebe90f048ffb74c26ae74f4aec5ba6ed07",
+                "timestamp": "2023-11-23T10:21:18.149Z",
+                "ttl": "5m",
+                "gas_price": 1,
+                "body_hash": "acd6581ba80f44c075f3d2fdee021d305cf26fc02b3b683ccea31039d8f6d4bd",
+                "dependencies": [],
+                "chain_name": "casper-net-1"
+            },
+            "payment": {
+                "ModuleBytes": {
+                    "module_bytes": "",
+                    "args": [
+                        [
+                            "amount",
+                            {
+                                "cl_type": "U512",
+                                "bytes": "0500e8764817",
+                                "parsed": "100000000000"
+                            }
+                        ]
+                    ]
+                }
+            },
+            "session": {
+                "Transfer": {
+                    "args": [
+                        [
+                            "amount",
+                            {
+                                "cl_type": "U512",
+                                "bytes": "0400f90295",
+                                "parsed": "2500000000"
+                            }
+                        ],
+                        [
+                            "target",
+                            {
+                                "cl_type": "PublicKey",
+                                "bytes": "01c9652613a383a1867118080f0175bb228e1d72c99c7b6e64d7c63c41f5726d57",
+                                "parsed": "01c9652613a383a1867118080f0175bb228e1d72c99c7b6e64d7c63c41f5726d57"
+                            }
+                        ],
+                        [
+                            "id",
+                            {
+                                "cl_type": {
+                                    "Option": "U64"
+                                },
+                                "bytes": "010200000000000000",
+                                "parsed": 2
+                            }
+                        ]
+                    ]
+                }
+            },
+            "approvals": [
+                {
+                    "signer": "0131847c60259d6be856fed84badb388ebe90f048ffb74c26ae74f4aec5ba6ed07",
+                    "signature": "01394a5afbd44c0d4e92254a05484ce5b2e76a66de2d26585b539db5bb11c0b0f381da126fc91850ba323fbdf75fcb8ed181b886c36d5b59a483e99f7b0aa1380f"
+                }
+            ]
+        }
+    }
+}
