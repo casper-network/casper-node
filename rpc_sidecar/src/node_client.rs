@@ -24,7 +24,7 @@ use tokio::{
     },
     sync::RwLock,
 };
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 #[async_trait]
 pub trait NodeClient: Send + Sync + 'static {
@@ -129,7 +129,7 @@ impl JulietNodeClient {
         loop {
             match server.next_request().await {
                 Ok(None) | Err(_) => {
-                    info!("node connection closed, will attempt to reconnect");
+                    error!("node connection closed, will attempt to reconnect");
                     let (reader, writer) = Self::connect_with_retries(addr).await.into_split();
                     let (new_client, new_server) = rpc_builder.build(reader, writer);
 
@@ -138,7 +138,7 @@ impl JulietNodeClient {
                     server = new_server;
                 }
                 Ok(Some(_)) => {
-                    warn!("node client received a request from the node, it's going to be ignored")
+                    error!("node client received a request from the node, it's going to be ignored")
                 }
             }
         }
@@ -147,7 +147,7 @@ impl JulietNodeClient {
     async fn connect_with_retries(addr: SocketAddr) -> TcpStream {
         const BACKOFF_MULT: u64 = 2;
         const MIN_WAIT: u64 = 1000;
-        const MAX_WAIT: u64 = 60_000;
+        const MAX_WAIT: u64 = 64_000;
 
         let mut wait = MIN_WAIT;
         loop {
