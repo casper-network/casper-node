@@ -528,6 +528,11 @@ pub(crate) enum StorageRequest {
         transaction_hash: TransactionHash,
         responder: Responder<Option<BlockHashAndHeight>>,
     },
+    /// Retrieve hash of block of a given height.
+    GetBlockHashForHeight {
+        height: u64,
+        responder: Responder<Option<BlockHash>>,
+    },
 }
 
 impl Display for StorageRequest {
@@ -702,6 +707,12 @@ impl Display for StorageRequest {
                     "get block hash and height for transaction {}",
                     transaction_hash
                 )
+            }
+            StorageRequest::GetBlockHashForHeight {
+                height,
+                responder: _responder,
+            } => {
+                write!(formatter, "get block hash for height {}", height)
             }
         }
     }

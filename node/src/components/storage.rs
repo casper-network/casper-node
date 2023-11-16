@@ -1223,6 +1223,10 @@ impl Storage {
                     .map(BlockHashAndHeight::from);
                 responder.respond(block_hash_and_height).ignore()
             }
+            StorageRequest::GetBlockHashForHeight { height, responder } => {
+                let block_hash = self.block_height_index.get(&height).copied();
+                responder.respond(block_hash).ignore()
+            }
         })
     }
 

@@ -129,7 +129,12 @@ where
         BinaryRequest::SpeculativeExec { tbd: _tbd } => todo!(),
         BinaryRequest::Quit => todo!(),
         BinaryRequest::GetInMem(req) => match req {
-            InMemRequest::BlockHeight2Hash { height } => todo!(),
+            InMemRequest::BlockHeight2Hash { height } => {
+                let block_hash = effect_builder.get_block_hash_for_height(height).await;
+                let payload =
+                    ToBytes::to_bytes(&block_hash).map_err(|err| Error::BytesRepr(err))?;
+                Ok(Some(Bytes::from(payload)))
+            }
             InMemRequest::HighestBlock => todo!(),
             InMemRequest::CompletedBlockContains { block_hash } => {
                 todo!()

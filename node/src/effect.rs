@@ -1078,7 +1078,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Returns block hash and height for a given transaction.
-    /// TODO[RC]: Not using `get_transaction_and_execution_info_from_storage` since it'll be gone with RPC server
     pub(crate) async fn get_block_hash_and_height_for_transaction(
         self,
         transaction_hash: TransactionHash,
@@ -1091,6 +1090,18 @@ impl<REv> EffectBuilder<REv> {
                 transaction_hash,
                 responder,
             },
+            QueueKind::ToStorage,
+        )
+        .await
+    }
+
+    /// Returns block hash for a given height.
+    pub(crate) async fn get_block_hash_for_height(self, height: u64) -> Option<BlockHash>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockHashForHeight { height, responder },
             QueueKind::ToStorage,
         )
         .await
