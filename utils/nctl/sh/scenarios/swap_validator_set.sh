@@ -46,6 +46,12 @@ function main() {
 
     # 10. Wait auction_delay + 2
     log_step "waiting until era 8 where swap should take place"
+    nctl-await-until-era-n era='7' log='true'
+
+    # We're refreshing the PRE_SWAP_HASH here since 5 eras have passed since we initialized it.
+    # It will be used later to re-start node 1 in step 18 and we don't want the node to fail
+    # because the hash was too old. 
+    PRE_SWAP_HASH=$(do_read_lfb_hash 1)
     nctl-await-until-era-n era='8' log='true'
 
     # Since this walks back to first found switch block, keep this immediately after era 8 starts
