@@ -53,16 +53,16 @@ fn main() -> anyhow::Result<()> {
 
 async fn run(config: Config, version: ProtocolVersion) -> anyhow::Result<()> {
     let builder = start_listening(&config.address)?;
-    let node_client = JulietNodeClient::new().await;
-    run_server(
+    let (node_client, client_loop) = JulietNodeClient::new(([127, 0, 0, 1], 28104)).await;
+    let server_loop = run_server(
         Arc::new(node_client),
         builder,
         version,
         config.qps_limit,
         config.max_body_bytes,
         config.cors_origin.clone(),
-    )
-    .await;
+    );
+    tokio::join!(client_loop, server_loop);
     Ok(())
 }
 
