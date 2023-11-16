@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use super::*;
 
 pub(super) struct TestChainBuilder {
@@ -54,6 +52,7 @@ impl TestChainBuilder {
         }
     }
 
+    #[allow(unused)]
     pub(super) fn new_with_stakes(initial_stakes: Vec<U512>) -> Self {
         Self {
             nodes: Nodes::RandomWithStake(initial_stakes),
@@ -61,6 +60,7 @@ impl TestChainBuilder {
         }
     }
 
+    #[allow(unused)]
     pub(super) fn new_with_keys(initial_stakes: BTreeMap<Arc<SecretKey>, U512>) -> Self {
         Self {
             nodes: Nodes::Stake(initial_stakes),
@@ -70,6 +70,7 @@ impl TestChainBuilder {
 
     /// Use custom validator public keys which may be different from the one
     /// used for the stake (for creating an equivocation).
+    #[allow(unused)]
     pub(super) fn keys(self, keys: Vec<Arc<SecretKey>>) -> Self {
         Self {
             keys: Some(keys),
