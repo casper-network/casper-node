@@ -151,7 +151,7 @@ steps:
 - name: check CPU features
   <<: *buildenv
   commands:
-  - bash -i ./ci/check_cpu_features.sh
+  - bash -c ./ci/check_cpu_features.sh
 
 volumes:
 - name: rustup

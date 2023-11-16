@@ -1,5 +1,3 @@
-use std::convert::TryInto;
-
 use rand::Rng;
 
 use casper_execution_engine::core::engine_state::{

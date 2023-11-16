@@ -628,7 +628,7 @@ where
     fn handle_incoming_closed(
         &mut self,
         result: io::Result<()>,
-        peer_id: Box<NodeId>,
+        peer_id: NodeId,
         peer_addr: SocketAddr,
         span: Span,
     ) -> Effects<Event<P>> {
@@ -645,7 +645,7 @@ where
 
             // Update the connection symmetries.
             self.connection_symmetries
-                .entry(*peer_id)
+                .entry(peer_id)
                 .or_default()
                 .remove_incoming(peer_addr, Instant::now());
 
@@ -1197,7 +1197,7 @@ where
                     peer_id,
                     peer_addr,
                     span,
-                } => self.handle_incoming_closed(result, peer_id, peer_addr, *span),
+                } => self.handle_incoming_closed(result, *peer_id, peer_addr, *span),
                 Event::OutgoingConnection { outgoing, span } => {
                     self.handle_outgoing_connection(*outgoing, span)
                 }

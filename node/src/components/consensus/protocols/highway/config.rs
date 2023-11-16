@@ -4,8 +4,6 @@ use datasize::DataSize;
 
 use casper_types::{serde_option_time_diff, TimeDiff};
 
-use super::round_success_meter::config::Config as RSMConfig;
-
 /// Highway-specific configuration.
 /// NOTE: This is *NOT* protocol configuration that has to be the same on all nodes.
 #[derive(DataSize, Debug, Clone, Serialize, Deserialize)]
@@ -30,7 +28,6 @@ pub struct Config {
     /// Limits requests per validator in panorama - in order to get a total number of
     /// requests, multiply by # of validators.
     pub max_request_batch_size: usize,
-    pub round_success_meter: RSMConfig,
 }
 
 impl Default for Config {
@@ -43,7 +40,6 @@ impl Default for Config {
             log_unit_sizes: false,
             max_requests_for_vertex: 5,
             max_request_batch_size: 20,
-            round_success_meter: RSMConfig::default(),
         }
     }
 }

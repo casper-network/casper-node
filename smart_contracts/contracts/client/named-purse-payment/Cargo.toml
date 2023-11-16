@@ -2,7 +2,7 @@
 name = "named-purse-payment"
 version = "0.1.0"
 authors = ["Ed Hastings <ed@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "named_purse_payment"

@@ -1,5 +1,3 @@
-use std::convert::TryInto;
-
 use datasize::DataSize;
 use itertools::Itertools;
 use once_cell::sync::OnceCell;

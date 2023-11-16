@@ -2,7 +2,7 @@
 name = "transfer-purse-to-account-with-id"
 version = "0.1.0"
 authors = ["Michał Papierski <michal@casperlabs.io>"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "transfer_purse_to_account_with_id"
