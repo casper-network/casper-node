@@ -242,13 +242,13 @@ fn all_signatures_rewards_without_contribution_fee() {
             ]),
             EraId::new(1) => (weights.clone(), era_1_reward_per_round, vec![
                 (1, VALIDATOR_1.deref(), vec![set!{}]), // Nobody signed the genesis finality
-                (2, VALIDATOR_2.deref(), vec![set!{}, set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}]),
-                (3, VALIDATOR_3.deref(), vec![set!{}, set!{}, set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}]),
+                (2, VALIDATOR_2.deref(), vec![set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}, set!{}]),
+                (3, VALIDATOR_3.deref(), vec![set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}, set!{}, set!{}]),
             ]),
             EraId::new(2) => (weights, era_2_reward_per_round, vec![
-                (4, VALIDATOR_1.deref(), vec![set!{}, set!{}, set!{}, set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}]),
-                (5, VALIDATOR_2.deref(), vec![set!{}, set!{}, set!{}, set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}]),
-                (6, VALIDATOR_3.deref(), vec![set!{}, set!{}, set!{}, set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}]),
+                (4, VALIDATOR_1.deref(), vec![set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}, set!{}, set!{}, set!{}]),
+                (5, VALIDATOR_2.deref(), vec![set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}, set!{}, set!{}, set!{}]),
+                (6, VALIDATOR_3.deref(), vec![set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}, set!{}, set!{}, set!{}]),
             ]),
         },
     );
@@ -356,13 +356,13 @@ fn all_signatures_rewards_without_finder_fee() {
             ]),
             EraId::new(1) => (weights.clone(), era_1_reward_per_round, vec![
                 (1, VALIDATOR_1.deref(), vec![set!{}]), // Nobody signed the genesis finality
-                (2, VALIDATOR_2.deref(), vec![set!{}, set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}]),
-                (3, VALIDATOR_3.deref(), vec![set!{}, set!{}, set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}]),
+                (2, VALIDATOR_2.deref(), vec![set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}, set!{}]),
+                (3, VALIDATOR_3.deref(), vec![set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}, set!{}, set!{}]),
             ]),
             EraId::new(2) => (weights, era_2_reward_per_round, vec![
-                (4, VALIDATOR_1.deref(), vec![set!{}, set!{}, set!{}, set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}]),
-                (5, VALIDATOR_2.deref(), vec![set!{}, set!{}, set!{}, set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}]),
-                (6, VALIDATOR_3.deref(), vec![set!{}, set!{}, set!{}, set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}]),
+                (4, VALIDATOR_1.deref(), vec![set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}, set!{}, set!{}, set!{}]),
+                (5, VALIDATOR_2.deref(), vec![set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}, set!{}, set!{}, set!{}]),
+                (6, VALIDATOR_3.deref(), vec![set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}, set!{}, set!{}, set!{}]),
             ]),
         },
     );
@@ -436,13 +436,13 @@ fn all_signatures_rewards() {
             ]),
             EraId::new(1) => (weights.clone(), era_1_reward_per_round, vec![
                 (1, VALIDATOR_1.deref(), vec![set!{}]), // Nobody signed the genesis finality
-                (2, VALIDATOR_2.deref(), vec![set!{}, set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}]),
-                (3, VALIDATOR_3.deref(), vec![set!{}, set!{}, set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}]),
+                (2, VALIDATOR_2.deref(), vec![set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}, set!{}]),
+                (3, VALIDATOR_3.deref(), vec![set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}, set!{}, set!{}]),
             ]),
             EraId::new(2) => (weights, era_2_reward_per_round, vec![
-                (4, VALIDATOR_1.deref(), vec![set!{}, set!{}, set!{}, set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}]),
-                (5, VALIDATOR_2.deref(), vec![set!{}, set!{}, set!{}, set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}]),
-                (6, VALIDATOR_3.deref(), vec![set!{}, set!{}, set!{}, set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}]),
+                (4, VALIDATOR_1.deref(), vec![set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}, set!{}, set!{}, set!{}]),
+                (5, VALIDATOR_2.deref(), vec![set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}, set!{}, set!{}, set!{}]),
+                (6, VALIDATOR_3.deref(), vec![set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}, set!{}, set!{}, set!{}]),
             ]),
         },
     );
@@ -535,15 +535,15 @@ fn mixed_signatures_pattern() {
             ]),
             EraId::new(1) => (weights_1, era_1_reward_per_round, vec![
                 (1, VALIDATOR_2.deref(), vec![set!{}]), // Nobody signed the genesis finality
-                (2, VALIDATOR_2.deref(), vec![set!{}, set!{VALIDATOR_1.clone(),VALIDATOR_3.clone()}]),
-                (3, VALIDATOR_1.deref(), vec![set!{}, set!{VALIDATOR_2.clone()}, set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}]), // the validator 2 signature is fetched later
-                (4, VALIDATOR_1.deref(), vec![set!{}, set!{}, set!{VALIDATOR_1.clone(),VALIDATOR_2.clone()}]), // validator 3 doesn't sign the block 3
+                (2, VALIDATOR_2.deref(), vec![set!{VALIDATOR_1.clone(),VALIDATOR_3.clone()}, set!{}]),
+                (3, VALIDATOR_1.deref(), vec![set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}, set!{VALIDATOR_2.clone()}, set!{}]), // the validator 2 signature is fetched later
+                (4, VALIDATOR_1.deref(), vec![set!{VALIDATOR_1.clone(),VALIDATOR_2.clone()}, set!{}, set!{}]), // validator 3 doesn't sign the block 3
             ]),
             EraId::new(2) => (weights_2, era_2_reward_per_round, vec![
                 (5, VALIDATOR_2.deref(), vec![set!{}, set!{}, set!{}, set!{}]),
-                (6, VALIDATOR_3.deref(), vec![set!{}, set!{}, set!{VALIDATOR_1.clone()}, set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone(),VALIDATOR_4.clone()}]),
-                (7, VALIDATOR_4.deref(), vec![set!{}, set!{VALIDATOR_3.clone()}, set!{VALIDATOR_3.clone(),VALIDATOR_4.clone()}, set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}]),
-                (8, VALIDATOR_1.deref(), vec![set!{}, set!{}, set!{}, set!{VALIDATOR_1.clone(),VALIDATOR_2.clone()}]),
+                (6, VALIDATOR_3.deref(), vec![set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone(),VALIDATOR_4.clone()}, set!{VALIDATOR_1.clone()}, set!{}, set!{}]),
+                (7, VALIDATOR_4.deref(), vec![set!{VALIDATOR_1.clone(),VALIDATOR_2.clone(),VALIDATOR_3.clone()}, set!{VALIDATOR_3.clone(),VALIDATOR_4.clone()}, set!{VALIDATOR_3.clone()}, set!{}]),
+                (8, VALIDATOR_1.deref(), vec![set!{VALIDATOR_1.clone(),VALIDATOR_2.clone()}, set!{}, set!{}, set!{}]),
             ]),
         },
     );
@@ -748,7 +748,7 @@ mod constructors {
                     blocks.clone().into_iter().rev().map(
                         move |(height, proposer, rewarded_signatures)| {
                             let rewarded_signatures = RewardedSignatures::new(
-                                rewarded_signatures.into_iter().rev().enumerate().map(
+                                rewarded_signatures.into_iter().enumerate().map(
                                     |(height_offset, signing_validators)| {
                                         let height =
                                             height.saturating_sub(height_offset as u64 + 1);
@@ -784,20 +784,20 @@ mod constructors {
                         },
                     )
                 })
-                .map(move |block_builder| Block::from(block_builder.build(rng)))
+                .map(move |block_builder| CitedBlock::from(Block::from(block_builder.build(rng))))
                 .take(number_blocks)
                 .collect();
             let cited_blocks: Vec<_> = cited_blocks.into_iter().rev().collect();
 
             let first_block = cited_blocks.first().expect("at least one cited block");
             assert!(
-                cited_blocks.len() >= number_blocks || first_block.is_genesis(),
+                cited_blocks.len() >= number_blocks || first_block.is_genesis,
                 "Not enough blocks provided"
             );
 
             let eras_info = self
                 .blocks
-                .range(first_block.era_id()..=era_id)
+                .range(first_block.era_id..=era_id)
                 .map(|(era_id, (weights, reward_per_round, _))| {
                     (
                         *era_id,

@@ -17,7 +17,7 @@ use crate::{
     types::ExecutableBlock,
 };
 use casper_types::{
-    Block, BlockV2, Chainspec, CoreConfig, Digest, EraEndV2, EraId, ProtocolVersion, PublicKey,
+    Block, Chainspec, CoreConfig, Digest, EraId, ProtocolVersion, PublicKey, RewardedSignatures,
     U512,
 };
 
@@ -29,9 +29,20 @@ pub(crate) trait ReactorEventT:
 impl<T> ReactorEventT for T where T: Send + From<StorageRequest> + From<ContractRuntimeRequest> {}
 
 #[derive(Debug)]
+pub(crate) struct CitedBlock {
+    height: u64,
+    era_id: EraId,
+    proposer: PublicKey,
+    rewarded_signatures: RewardedSignatures,
+    state_root_hash: Digest,
+    is_switch_block: bool,
+    is_genesis: bool,
+}
+
+#[derive(Debug)]
 pub(crate) struct RewardsInfo {
     eras_info: BTreeMap<EraId, EraInfo>,
-    cited_blocks: Vec<Block>,
+    cited_blocks: Vec<CitedBlock>,
 }
 
 /// The era information needed in the rewards computation:
@@ -109,7 +120,7 @@ impl RewardsInfo {
         )
         .await?;
 
-        cited_blocks.push(block_from_executable(executable_block));
+        cited_blocks.push(executable_block.into());
 
         Ok(RewardsInfo {
             eras_info,
@@ -118,7 +129,7 @@ impl RewardsInfo {
     }
 
     #[cfg(test)]
-    pub fn new_testing(eras_info: BTreeMap<EraId, EraInfo>, cited_blocks: Vec<Block>) -> Self {
+    pub fn new_testing(eras_info: BTreeMap<EraId, EraInfo>, cited_blocks: Vec<CitedBlock>) -> Self {
         Self {
             eras_info,
             cited_blocks,
@@ -131,13 +142,13 @@ impl RewardsInfo {
         effect_builder: EffectBuilder<REv>,
         current_era_id: EraId,
         protocol_version: ProtocolVersion,
-        mut cited_blocks: impl Iterator<Item = &Block>,
+        mut cited_blocks: impl Iterator<Item = &CitedBlock>,
     ) -> Result<BTreeMap<EraId, EraInfo>, RewardsError> {
         let oldest_block = cited_blocks.next();
 
         // If the oldest block is genesis, we add the validator information for genesis (era 0) from
         // era 1, because it's the same:
-        let oldest_block_is_genesis = oldest_block.map_or(false, |block| block.is_genesis());
+        let oldest_block_is_genesis = oldest_block.map_or(false, |block| block.is_genesis);
 
         // Here, we gather a list of all of the era ID we need to fetch to calculate the rewards,
         // as well as the state root hash allowing to query this information.
@@ -149,13 +160,13 @@ impl RewardsInfo {
         // in the first place to handle this case.
         let eras_and_state_root_hashes: Vec<_> = oldest_block
             .into_iter()
-            .chain(cited_blocks.filter(|&block| block.is_switch_block()))
+            .chain(cited_blocks.filter(|&block| block.is_switch_block))
             .map(|block| {
-                let state_root_hash = *block.state_root_hash();
-                let era = if block.is_switch_block() {
-                    block.era_id().successor()
+                let state_root_hash = block.state_root_hash;
+                let era = if block.is_switch_block {
+                    block.era_id.successor()
                 } else {
-                    block.era_id()
+                    block.era_id
                 };
 
                 (era, state_root_hash)
@@ -271,15 +282,15 @@ impl RewardsInfo {
     pub fn era_for_block_height(&self, height: u64) -> Result<EraId, RewardsError> {
         self.cited_blocks
             .iter()
-            .find_map(|block| (block.height() == height).then_some(block.era_id()))
+            .find_map(|block| (block.height == height).then_some(block.era_id))
             .ok_or_else(|| RewardsError::HeightNotInEraRange(height))
     }
 
     /// Returns all the blocks belonging to an era.
-    pub fn blocks_from_era(&self, era_id: EraId) -> impl Iterator<Item = &Block> {
+    pub fn blocks_from_era(&self, era_id: EraId) -> impl Iterator<Item = &CitedBlock> {
         self.cited_blocks
             .iter()
-            .filter(move |block| block.era_id() == era_id)
+            .filter(move |block| block.era_id == era_id)
     }
 }
 
@@ -376,14 +387,14 @@ pub(crate) fn rewards_for_era(
         // Collect all rewards as a ratio:
         for block in rewards_info.blocks_from_era(current_era_id) {
             // Transfer the block production reward for this block proposer:
-            increase_value_for_key(block.proposer().clone(), production_reward)?;
+            increase_value_for_key(block.proposer.clone(), production_reward)?;
 
             // Now, let's compute the reward attached to each signed block reported by the block
             // we examine:
             for (signature_rewards, signed_block_height) in block
-                .rewarded_signatures()
+                .rewarded_signatures
                 .iter()
-                .zip((0..block.height()).rev())
+                .zip((0..block.height).rev())
             {
                 let signed_block_era = rewards_info.era_for_block_height(signed_block_height)?;
                 let validators_providing_signature = signature_rewards
@@ -407,7 +418,7 @@ pub(crate) fn rewards_for_era(
                         .ok_or(RewardsError::ArithmeticOverflow)?;
 
                     increase_value_for_key(signing_validator, contribution_reward)?;
-                    increase_value_for_key(block.proposer().clone(), collection_reward)?;
+                    increase_value_for_key(block.proposer.clone(), collection_reward)?;
                 }
             }
         }
@@ -424,7 +435,7 @@ pub(crate) fn rewards_for_era(
 async fn collect_past_blocks_batched<REv: From<StorageRequest>>(
     effect_builder: EffectBuilder<REv>,
     era_height_span: Range<u64>,
-) -> Result<Vec<Block>, RewardsError> {
+) -> Result<Vec<CitedBlock>, RewardsError> {
     const STEP: usize = 100;
     let only_from_available_block_range = false;
 
@@ -450,42 +461,40 @@ async fn collect_past_blocks_batched<REv: From<StorageRequest>>(
                     .map(|(maybe_block_with_metadata, height)| {
                         maybe_block_with_metadata
                             .ok_or(RewardsError::FailedToFetchBlockWithHeight(height))
-                            .map(|b| b.block)
+                            .map(|b| CitedBlock::from(b.block))
                     }),
             )
         })
         .flatten()
-        .inspect(|b| eprintln!("{b:?}"))
         .try_collect()
         .await
 }
 
-fn block_from_executable(eb: ExecutableBlock) -> Block {
-    let era_end = eb.era_report.map(|er| {
-        EraEndV2::new(
-            er.equivocators,
-            er.inactive_validators,
-            Default::default(),
-            Default::default(),
-        )
-    });
+impl From<Block> for CitedBlock {
+    fn from(block: Block) -> Self {
+        Self {
+            era_id: block.era_id(),
+            height: block.height(),
+            proposer: block.proposer().clone(),
+            rewarded_signatures: block.rewarded_signatures().clone(),
+            state_root_hash: *block.state_root_hash(),
+            is_switch_block: block.is_switch_block(),
+            is_genesis: block.is_genesis(),
+        }
+    }
+}
 
-    BlockV2::new(
-        Default::default(),
-        Default::default(),
-        Default::default(),
-        eb.random_bit,
-        era_end,
-        eb.timestamp,
-        eb.era_id,
-        eb.height,
-        Default::default(),
-        *eb.proposer,
-        vec![],
-        vec![],
-        vec![],
-        vec![],
-        eb.rewarded_signatures,
-    )
-    .into()
+impl From<ExecutableBlock> for CitedBlock {
+    fn from(block: ExecutableBlock) -> Self {
+        Self {
+            era_id: block.era_id,
+            height: block.height,
+            proposer: *block.proposer,
+            rewarded_signatures: block.rewarded_signatures,
+            state_root_hash: Digest::default(),
+            is_switch_block: block.era_report.is_some(),
+            // When the executable block is genesis, it's a different path:
+            is_genesis: false,
+        }
+    }
 }
