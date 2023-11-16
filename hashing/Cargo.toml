@@ -12,7 +12,10 @@ license = "Apache-2.0"
 [dependencies]
 blake2 = "0.9.0"
 base16 = "0.2.1"
-casper-types = { version = "3.0.0", path = "../types", features = ["datasize", "std"] }
+casper-types = { version = "3.0.0", path = "../types", default-features = false, features = [
+  "datasize",
+  "std",
+] }
 datasize = "0.2.9"
 hex = { version = "0.4.2", default-features = false, features = ["serde"] }
 hex-buffer-serde = "0.3.0"

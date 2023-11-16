@@ -18,8 +18,7 @@ use crate::{
 };
 
 mod jsonrepr;
-
-#[cfg(feature = "sdk")]
+#[cfg(not(feature = "std-fs-io"))]
 pub use jsonrepr::cl_value_to_json;
 
 /// Error while converting a [`CLValue`] into a given type.

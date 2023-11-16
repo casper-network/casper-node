@@ -28,9 +28,9 @@ mod block_time;
 pub mod bytesrepr;
 pub mod checksummed_hex;
 mod cl_type;
-#[cfg(not(any(feature = "sdk")))]
+#[cfg(feature = "std-fs-io")]
 mod cl_value;
-#[cfg(feature = "sdk")]
+#[cfg(not(feature = "std-fs-io"))]
 pub mod cl_value;
 mod contract_wasm;
 pub mod contracts;
@@ -38,7 +38,7 @@ pub mod crypto;
 mod deploy_info;
 mod era_id;
 mod execution_result;
-#[cfg(any(feature = "std", test))]
+#[cfg(any(feature = "std", feature = "std-fs-io", test))]
 pub mod file_utils;
 mod gas;
 #[cfg(any(feature = "testing", feature = "gens", test))]
@@ -69,7 +69,7 @@ pub use access_rights::{
 pub use api_error::ApiError;
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
 pub use cl_type::{named_key_type, CLType, CLTyped};
-#[cfg(feature = "sdk")]
+#[cfg(not(feature = "std-fs-io"))]
 pub use cl_value::cl_value_to_json;
 pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
 pub use contract_wasm::{ContractWasm, ContractWasmHash};

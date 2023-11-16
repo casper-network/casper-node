@@ -1,15 +1,14 @@
 //! Utilities for handling reading from and writing to files.
 
-#[cfg(not(any(feature = "sdk")))]
-use std::{fs, io::Write, os::unix::fs::OpenOptionsExt};
-use std::{
-    io::{self},
-    path::{Path, PathBuf},
-};
-
+#[cfg(all(feature = "std", feature = "std-fs-io"))]
+use std::{fs, io::Write, os::unix::fs::OpenOptionsExt, path::Path};
+#[cfg(any(all(feature = "std", feature = "std-fs-io"), test))]
+use std::{io, path::PathBuf};
+#[cfg(any(all(feature = "std", feature = "std-fs-io"), test))]
 use thiserror::Error;
 
 /// Error reading a file.
+#[cfg(any(all(feature = "std", feature = "std-fs-io"), test))]
 #[derive(Debug, Error)]
 #[error("could not read '{0}': {error}", .path.display())]
 pub struct ReadFileError {
@@ -21,6 +20,7 @@ pub struct ReadFileError {
 }
 
 /// Error writing a file
+#[cfg(any(all(feature = "std", feature = "std-fs-io"), test))]
 #[derive(Debug, Error)]
 #[error("could not write to '{0}': {error}", .path.display())]
 pub struct WriteFileError {
@@ -34,71 +34,47 @@ pub struct WriteFileError {
 /// Read complete at `path` into memory.
 ///
 /// Wraps `fs::read`, but preserves the filename for better error printing.
-/// No operation the sdk feature
-#[allow(unused_variables)]
+#[cfg(all(feature = "std", feature = "std-fs-io"))]
 pub fn read_file<P: AsRef<Path>>(filename: P) -> Result<Vec<u8>, ReadFileError> {
-    #[cfg(feature = "sdk")]
-    {
-        Ok(vec![])
-    }
-    #[cfg(not(any(feature = "sdk")))]
-    {
-        let path = filename.as_ref();
-        fs::read(path).map_err(|error| ReadFileError {
-            path: path.to_owned(),
-            error,
-        })
-    }
+    let path = filename.as_ref();
+    fs::read(path).map_err(|error| ReadFileError {
+        path: path.to_owned(),
+        error,
+    })
 }
 
 /// Write data to `path`.
 ///
 /// Wraps `fs::write`, but preserves the filename for better error printing.
-/// No operation the sdk feature
-#[allow(unused_variables, unused)]
+#[cfg(all(feature = "std", feature = "std-fs-io"))]
 pub(crate) fn write_file<P: AsRef<Path>, B: AsRef<[u8]>>(
     filename: P,
     data: B,
 ) -> Result<(), WriteFileError> {
-    #[cfg(feature = "sdk")]
-    {
-        Ok(())
-    }
-    #[cfg(not(any(feature = "sdk")))]
-    {
-        let path = filename.as_ref();
-        fs::write(path, data.as_ref()).map_err(|error| WriteFileError {
-            path: path.to_owned(),
-            error,
-        })
-    }
+    let path = filename.as_ref();
+    fs::write(path, data.as_ref()).map_err(|error| WriteFileError {
+        path: path.to_owned(),
+        error,
+    })
 }
 
 /// Writes data to `path`, ensuring only the owner can read or write it.
 ///
 /// Otherwise functions like [`write_file`].
-/// No operation the sdk feature
-#[allow(unused_variables, unused)]
+#[cfg(all(feature = "std", feature = "std-fs-io"))]
 pub(crate) fn write_private_file<P: AsRef<Path>, B: AsRef<[u8]>>(
     filename: P,
     data: B,
 ) -> Result<(), WriteFileError> {
-    #[cfg(feature = "sdk")]
-    {
-        Ok(())
-    }
-    #[cfg(not(any(feature = "sdk")))]
-    {
-        let path = filename.as_ref();
-        fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .mode(0o600)
-            .open(path)
-            .and_then(|mut file| file.write_all(data.as_ref()))
-            .map_err(|error| WriteFileError {
-                path: path.to_owned(),
-                error,
-            })
-    }
+    let path = filename.as_ref();
+    fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .mode(0o600)
+        .open(path)
+        .and_then(|mut file| file.write_all(data.as_ref()))
+        .map_err(|error| WriteFileError {
+            path: path.to_owned(),
+            error,
+        })
 }

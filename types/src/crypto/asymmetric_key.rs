@@ -59,8 +59,7 @@ use crate::{
 #[cfg(any(feature = "std", test))]
 use crate::crypto::ErrorExt;
 
-#[cfg(any(feature = "std", test))]
-#[cfg(not(any(feature = "sdk")))]
+#[cfg(all(feature = "std", feature = "std-fs-io"))]
 use crate::file_utils::{read_file, write_file, write_private_file};
 
 #[cfg(any(feature = "testing", test))]
@@ -249,33 +248,32 @@ impl SecretKey {
     }
 
     /// Attempts to write the key bytes to the configured file path.
-    /// No operation the sdk feature
+    #[cfg(feature = "std-fs-io")]
+    pub fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<(), ErrorExt> {
+        write_private_file(file, self.to_pem()?).map_err(ErrorExt::SecretKeySave)
+    }
+
+    /// No operation without std-fs-io
+    #[cfg(not(feature = "std-fs-io"))]
     #[allow(unused_variables)]
     pub fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<(), ErrorExt> {
-        #[cfg(not(any(feature = "sdk")))]
-        {
-            write_private_file(file, self.to_pem()?).map_err(ErrorExt::SecretKeySave)
-        }
-        #[cfg(feature = "sdk")]
-        {
-            Ok(())
-        }
+        Ok(())
     }
 
     /// Attempts to read the key bytes from configured file path.
-    /// No operation the sdk feature, use SecretKey::from_pem
+    #[cfg(feature = "std-fs-io")]
+    pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self, ErrorExt> {
+        let data = read_file(file).map_err(ErrorExt::SecretKeyLoad)?;
+        Self::from_pem(data)
+    }
+
+    /// Attempts to read the key bytes from configured file path.
+    /// No operation without std-fs-io, use SecretKey::from_pem
+    #[cfg(not(feature = "std-fs-io"))]
     #[allow(unused_variables)]
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self, ErrorExt> {
-        #[cfg(not(any(feature = "sdk")))]
-        {
-            let data = read_file(file).map_err(ErrorExt::SecretKeyLoad)?;
-            Self::from_pem(data)
-        }
-        #[cfg(feature = "sdk")]
-        {
-            let data = vec![];
-            Self::from_pem(data)
-        }
+        let data = vec![];
+        Self::from_pem(data)
     }
 
     /// DER encodes a key.
@@ -549,33 +547,31 @@ impl PublicKey {
     }
 
     /// Attempts to write the key bytes to the configured file path.
-    /// No operation the sdk feature
+    #[cfg(feature = "std-fs-io")]
+    pub fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<(), ErrorExt> {
+        write_file(file, self.to_pem()?).map_err(ErrorExt::PublicKeySave)
+    }
+
+    /// No operation without std-fs-io
+    #[cfg(not(feature = "std-fs-io"))]
     #[allow(unused_variables)]
     pub fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<(), ErrorExt> {
-        #[cfg(not(any(feature = "sdk")))]
-        {
-            write_file(file, self.to_pem()?).map_err(ErrorExt::PublicKeySave)
-        }
-        #[cfg(feature = "sdk")]
-        {
-            Ok(())
-        }
+        Ok(())
     }
 
     /// Attempts to read the key bytes from configured file path.
-    /// No operation the sdk feature, use SecretKey::from_pem
+    #[cfg(feature = "std-fs-io")]
+    pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self, ErrorExt> {
+        let data = read_file(file).map_err(ErrorExt::PublicKeyLoad)?;
+        Self::from_pem(data)
+    }
+
+    /// No operation without std-fs-io, use SecretKey::from_pem
+    #[cfg(not(feature = "std-fs-io"))]
     #[allow(unused_variables)]
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self, ErrorExt> {
-        #[cfg(not(any(feature = "sdk")))]
-        {
-            let data = read_file(file).map_err(ErrorExt::PublicKeyLoad)?;
-            Self::from_pem(data)
-        }
-        #[cfg(feature = "sdk")]
-        {
-            let data = vec![];
-            Self::from_pem(data)
-        }
+        let data = vec![];
+        Self::from_pem(data)
     }
 
     /// DER encodes a key.
