@@ -267,7 +267,6 @@ impl SecretKey {
         Self::from_pem(data)
     }
 
-    /// Attempts to read the key bytes from configured file path.
     /// No operation without std-fs-io, use SecretKey::from_pem
     #[cfg(not(feature = "std-fs-io"))]
     #[allow(unused_variables)]
