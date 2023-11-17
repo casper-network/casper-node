@@ -1,5 +1,5 @@
 //! A library providing hashing functionality including Merkle Proof utilities.
-#![doc(html_root_url = "https://docs.rs/casper-hashing/2.0.0")]
+#![doc(html_root_url = "https://docs.rs/casper-hashing/3.0.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon_48.png",
     html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png",
