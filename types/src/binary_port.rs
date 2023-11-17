@@ -90,7 +90,8 @@ impl ToBytes for DbId {
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            // TODO[RC]: Do this less verbosely, plausibly by serializing as u8 or using the `bytesprepr derive` macro when available.
+            // TODO[RC]: Do this less verbosely, plausibly by serializing as u8 or using the
+            // `bytesprepr derive` macro when available.
             DbId::BlockHeader => BLOCK_HEADER_DB_TAG,
             DbId::BlockHeaderV2 => BLOCK_HEADER_V2_DB_TAG,
             DbId::BlockMetadata => BLOCK_METADATA_DB_TAG,
