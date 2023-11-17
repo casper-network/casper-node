@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::rpcs::Error;
 use casper_types::{
-    AvailableBlockRange, Block, BlockHash, BlockSignatures, FinalizedApprovals, SignedBlock,
-    Transaction, TransactionHash,
+    AvailableBlockRange, Block, BlockHash, BlockSignatures, ExecutionInfo, FinalizedApprovals,
+    SignedBlock, Transaction, TransactionHash,
 };
 
 use crate::NodeClient;
@@ -100,4 +100,25 @@ pub async fn get_transaction_with_approvals(
         .await
         .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?;
     Ok((txn, approvals))
+}
+
+pub async fn get_transaction_execution_info(
+    node_client: &dyn NodeClient,
+    hash: TransactionHash,
+) -> Result<Option<ExecutionInfo>, Error> {
+    let Some(block_hash_and_height) = node_client
+        .read_transaction_block_info(hash)
+        .await
+        .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?
+        else { return Ok(None) };
+    let execution_result = node_client
+        .read_execution_result(hash)
+        .await
+        .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?;
+
+    Ok(Some(ExecutionInfo {
+        block_hash: *block_hash_and_height.block_hash(),
+        block_height: block_hash_and_height.block_height(),
+        execution_result,
+    }))
 }

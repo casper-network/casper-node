@@ -123,17 +123,6 @@ impl RpcWithParams for GetDeploy {
         let (transaction, approvals) =
             common::get_transaction_with_approvals(&*node_client, hash).await?;
 
-        // TODO: execution_info will require an in-memory request
-        // let execution_result = node_client
-        //     .read_execution_result(txn_hash)
-        //     .await
-        //     .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?;
-        // let execution_info = ExecutionInfo {
-        //     block_hash: *block_hash_and_height.block_hash(),
-        //     block_height: block_hash_and_height.block_height(),
-        //     execution_result,
-        // };
-
         let deploy = match (transaction, approvals) {
             (Transaction::Deploy(deploy), Some(FinalizedApprovals::Deploy(approvals)))
                 if params.finalized_approvals =>
@@ -149,10 +138,12 @@ impl RpcWithParams for GetDeploy {
             }
         };
 
+        let execution_info = common::get_transaction_execution_info(&*node_client, hash).await?;
+
         Ok(Self::ResponseResult {
             api_version,
             deploy,
-            execution_info: None,
+            execution_info,
         })
     }
 }
@@ -238,10 +229,13 @@ impl RpcWithParams for GetTransaction {
             }
         };
 
+        let execution_info =
+            common::get_transaction_execution_info(&*node_client, params.transaction_hash).await?;
+
         Ok(Self::ResponseResult {
             transaction,
             api_version,
-            execution_info: None, // TODO: execution_info will require an in-memory request
+            execution_info,
         })
     }
 }

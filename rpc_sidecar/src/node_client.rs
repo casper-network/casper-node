@@ -8,8 +8,9 @@ use casper_types::{
         non_persistent_data::NonPersistedDataRequest,
     },
     bytesrepr::{self, ToBytes},
-    BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest,
-    FinalizedApprovals, Transaction, TransactionHash, Transfer,
+    execution::ExecutionResult,
+    BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
+    Digest, FinalizedApprovals, Transaction, TransactionHash, Transfer,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -85,6 +86,29 @@ pub trait NodeClient: Send + Sync + 'static {
     async fn read_block_transfers(&self, hash: BlockHash) -> Result<Option<Vec<Transfer>>, Error> {
         let key = hash.to_bytes().expect("should always serialize a digest");
         self.read_from_db(DbId::Transfer, &key)
+            .await?
+            .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
+            .transpose()
+            .map_err(|err| Error::Deserialization(err.to_string()))
+    }
+
+    async fn read_execution_result(
+        &self,
+        hash: TransactionHash,
+    ) -> Result<Option<ExecutionResult>, Error> {
+        let key = hash.to_bytes().expect("should always serialize a digest");
+        self.read_from_db(DbId::ExecutionResults, &key)
+            .await?
+            .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
+            .transpose()
+            .map_err(|err| Error::Deserialization(err.to_string()))
+    }
+
+    async fn read_transaction_block_info(
+        &self,
+        transaction_hash: TransactionHash,
+    ) -> Result<Option<BlockHashAndHeight>, Error> {
+        self.read_from_mem(NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { transaction_hash })
             .await?
             .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
             .transpose()
