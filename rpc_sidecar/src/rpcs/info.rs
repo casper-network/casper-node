@@ -16,6 +16,7 @@ use casper_types::{
 use crate::node_client::NodeClient;
 
 use super::{
+    common,
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     Error, ErrorCode, RpcWithParams, RpcWithoutParams,
 };
@@ -118,15 +119,9 @@ impl RpcWithParams for GetDeploy {
         api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
-        let txn_hash = TransactionHash::from(params.deploy_hash);
-        let txn = node_client
-            .read_transaction(txn_hash)
-            .await
-            .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?;
-        let approvals = node_client
-            .read_finalized_approvals(txn_hash)
-            .await
-            .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?;
+        let hash = TransactionHash::from(params.deploy_hash);
+        let (transaction, approvals) =
+            common::get_transaction_with_approvals(&*node_client, hash).await?;
 
         // TODO: execution_info will require an in-memory request
         // let execution_result = node_client
@@ -139,25 +134,17 @@ impl RpcWithParams for GetDeploy {
         //     execution_result,
         // };
 
-        let deploy = match (txn, approvals) {
-            (Some(Transaction::Deploy(deploy)), Some(FinalizedApprovals::Deploy(approvals))) => {
-                if params.finalized_approvals {
-                    deploy.with_approvals(approvals.into_inner())
-                } else {
-                    deploy
-                }
+        let deploy = match (transaction, approvals) {
+            (Transaction::Deploy(deploy), Some(FinalizedApprovals::Deploy(approvals)))
+                if params.finalized_approvals =>
+            {
+                deploy.with_approvals(approvals.into_inner())
             }
-            (Some(Transaction::Deploy(deploy)), None) => deploy,
-            (Some(_), _) => {
+            (Transaction::Deploy(deploy), Some(FinalizedApprovals::Deploy(_)) | None) => deploy,
+            _ => {
                 return Err(Error::new(
                     ErrorCode::VariantMismatch,
-                    "inconsistent transaction data".to_string(),
-                ))
-            }
-            (None, _) => {
-                return Err(Error::new(
-                    ErrorCode::NoSuchTransaction,
-                    "transaction not found".to_string(),
+                    "deploy variant does not match approvals".to_string(),
                 ))
             }
         };
@@ -219,11 +206,43 @@ impl RpcWithParams for GetTransaction {
     type ResponseResult = GetTransactionResult;
 
     async fn do_handle_request(
-        _node_client: Arc<dyn NodeClient>,
-        _api_version: ProtocolVersion,
-        _params: Self::RequestParams,
+        node_client: Arc<dyn NodeClient>,
+        api_version: ProtocolVersion,
+        params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
-        todo!()
+        let (transaction, approvals) =
+            common::get_transaction_with_approvals(&*node_client, params.transaction_hash).await?;
+
+        let transaction = match (transaction, approvals) {
+            (Transaction::V1(txn), Some(FinalizedApprovals::V1(approvals)))
+                if params.finalized_approvals =>
+            {
+                Transaction::from(txn.with_approvals(approvals.into_inner()))
+            }
+            (Transaction::V1(txn), Some(FinalizedApprovals::V1(_)) | None) => {
+                Transaction::from(txn)
+            }
+            (Transaction::Deploy(deploy), Some(FinalizedApprovals::Deploy(approvals)))
+                if params.finalized_approvals =>
+            {
+                Transaction::from(deploy.with_approvals(approvals.into_inner()))
+            }
+            (Transaction::Deploy(deploy), Some(FinalizedApprovals::Deploy(_)) | None) => {
+                Transaction::from(deploy)
+            }
+            _ => {
+                return Err(Error::new(
+                    ErrorCode::VariantMismatch,
+                    "transaction variant does not match approvals".to_string(),
+                ))
+            }
+        };
+
+        Ok(Self::ResponseResult {
+            transaction,
+            api_version,
+            execution_info: None, // TODO: execution_info will require an in-memory request
+        })
     }
 }
 

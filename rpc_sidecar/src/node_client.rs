@@ -9,7 +9,7 @@ use casper_types::{
     },
     bytesrepr::{self, ToBytes},
     BlockBody, BlockHash, BlockHeader, BlockSignatures, Digest,
-    FinalizedApprovals, Transaction, TransactionHash,
+    FinalizedApprovals, Transaction, TransactionHash, Transfer,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -78,6 +78,15 @@ pub trait NodeClient: Send + Sync + 'static {
         self.read_from_db(DbId::BlockMetadata, &key)
             .await?
             .map(|bytes| bincode::deserialize(&bytes))
+            .transpose()
+            .map_err(|err| Error::Deserialization(err.to_string()))
+    }
+
+    async fn read_block_transfers(&self, hash: BlockHash) -> Result<Option<Vec<Transfer>>, Error> {
+        let key = hash.to_bytes().expect("should always serialize a digest");
+        self.read_from_db(DbId::Transfer, &key)
+            .await?
+            .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
             .transpose()
             .map_err(|err| Error::Deserialization(err.to_string()))
     }

@@ -2,7 +2,15 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types::AvailableBlockRange;
+use crate::rpcs::Error;
+use casper_types::{
+    AvailableBlockRange, Block, BlockHash, BlockSignatures, FinalizedApprovals, SignedBlock,
+    Transaction, TransactionHash,
+};
+
+use crate::NodeClient;
+
+use super::ErrorCode;
 
 pub(super) static MERKLE_PROOF: Lazy<String> = Lazy::new(|| {
     String::from(
@@ -30,4 +38,66 @@ pub enum ErrorData {
         /// The height range (inclusive) of fully available blocks.
         available_block_range: AvailableBlockRange,
     },
+}
+
+pub async fn get_signed_block(
+    node_client: &dyn NodeClient,
+    hash: BlockHash,
+) -> Result<SignedBlock, Error> {
+    let header = node_client
+        .read_block_header(hash)
+        .await
+        .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?
+        .ok_or_else(|| {
+            Error::new(
+                ErrorCode::NoSuchBlock,
+                format!("block header not found for {hash}"),
+            )
+        })?;
+    let body = node_client
+        .read_block_body(*header.body_hash())
+        .await
+        .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?
+        .ok_or_else(|| {
+            Error::new(
+                ErrorCode::NoSuchBlock,
+                format!("block body not found for {hash}"),
+            )
+        })?;
+    let signatures = node_client
+        .read_block_signatures(hash)
+        .await
+        .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?
+        .unwrap_or_else(|| BlockSignatures::new(hash, header.era_id()));
+    let block = Block::new_from_header_and_body(header, body).unwrap();
+
+    if signatures.is_verified().is_err() {
+        return Err(Error::new(
+            ErrorCode::InvalidBlock,
+            format!("block {} could not be verified", hash),
+        ));
+    };
+
+    Ok(SignedBlock::new(block, signatures))
+}
+
+pub async fn get_transaction_with_approvals(
+    node_client: &dyn NodeClient,
+    hash: TransactionHash,
+) -> Result<(Transaction, Option<FinalizedApprovals>), Error> {
+    let txn = node_client
+        .read_transaction(hash)
+        .await
+        .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?
+        .ok_or_else(|| {
+            Error::new(
+                ErrorCode::NoSuchTransaction,
+                format!("transaction not found for {hash}"),
+            )
+        })?;
+    let approvals = node_client
+        .read_finalized_approvals(hash)
+        .await
+        .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?;
+    Ok((txn, approvals))
 }
