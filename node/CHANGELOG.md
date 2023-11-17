@@ -11,15 +11,19 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## Unreleased
+## 1.5.4
 
 ### Added
 * New environment variable `CL_EVENT_QUEUE_DUMP_THRESHOLD` to enable dumping of queue event counts to log when a certain threshold is exceeded.
-* Add initial support for private chain. 
-* Add support for CA signed client certificates for private chain.
+* Add initial support for private chains.
+* Add support for CA signed client certificates for private chains.
 * Add a Highway Analysis tool for checking the state of the consensus.
 
 ### Changed
+* Minimum block time reduced from 32.768s to 16.384s, with corresponding changes to related chainspec settings:
+  * `core.minimum_block_time` reduced to `16384 ms`.
+  * `core.round_seigniorage_rate` reduced to `[7, 175070816]`.
+  * `highway.block_gas_limit` reduced to `4_000_000_000_000`.
 * The `state_identifier` parameter of the `query_global_state` JSON-RPC method is now optional. If no `state_identifier` is specified, the highest complete block known to the node will be used to fulfill the request.
 * `state_get_account_info` RPC handler can now handle an `AccountIdentifier` as a parameter.
 * Replace the `sync_to_genesis` node config field with `sync_handling`.
@@ -27,6 +31,10 @@ All notable changes to this project will be documented in this file.  The format
     - `genesis` - node will attempt to acquire all block data back to genesis
     - `ttl` - node will attempt to acquire all block data to comply with time to live enforcement
     - `nosync` - node will only acquire blocks moving forward
+* Make the `network.estimator_weights` section of the node config more fine-grained to provide more precise throttling of non-validator traffic.
+
+### Removed
+* The section `consensus.highway.round_success_meter` has been removed from the config file as no longer relevant with the introduction of a new method of determining the round exponent in Highway.
 
 ### Fixed
 * Now possible to build outside a git repository context (e.g. from a source tarball). In such cases, the node's build version (as reported vie status endpoints) will not contain a trailing git short hash.
@@ -35,9 +43,6 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Security
 * Update `openssl` to version 0.10.55 as mitigation for [RUSTSEC-2023-0044](https://rustsec.org/advisories/RUSTSEC-2023-0044).
-
-### Removed
-* The section `consensus.highway.round_success_meter` has been removed from the config file as no longer relevant with the introduction of a new method of determining the round exponent in Highway.
 
 
 

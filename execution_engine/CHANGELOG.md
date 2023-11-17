@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [Unreleased]
+## 7.0.0
 
 ### Added
 * Add chainspec option `core.allow_unrestricted_transfers` that, if enabled, allows token transfers between any two peers. Disabling this option makes sense only for private chains.
@@ -46,6 +46,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Security
 * Fix unbounded memory allocation issue while parsing Wasm.
+
 
 
 ## 5.0.0

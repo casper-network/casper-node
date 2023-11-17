@@ -11,6 +11,14 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 7.0.0
+
+### Added
+* Provide `calculate_refund_amount` on `WamTestBuilder`.
+* Provide `upgrade_with_upgrade_request_and_config` on `WamTestBuilder`.
+
+
+
 ## 6.0.0
 
 ### Changed
