@@ -13,6 +13,7 @@ use casper_types::Timestamp;
 use crate::types::DeployHash;
 use crate::{
     components::consensus::{ClContext, ProposedBlock},
+    consensus::ValidationError,
     effect::Responder,
     types::{
         appendable_block::AppendableBlock, Approval, ApprovalsHash, Chainspec, DeployFootprint,
@@ -38,8 +39,8 @@ pub(super) enum AddResponderResult {
     Added,
     /// Validation is completed, so the responder should be called with the provided value.
     ValidationCompleted {
-        responder: Responder<bool>,
-        response_to_send: bool,
+        responder: Responder<Result<(), ValidationError>>,
+        response_to_send: Result<(), ValidationError>,
     },
 }
 
@@ -91,7 +92,7 @@ pub(super) enum BlockValidationState {
         /// The set of peers which each claim to hold all the deploys.
         holders: HashMap<NodeId, HolderState>,
         /// A list of responders that are awaiting an answer.
-        responders: Vec<Responder<bool>>,
+        responders: Vec<Responder<Result<(), ValidationError>>>,
     },
     /// The proposed block with the given timestamp is valid.
     Valid(Timestamp),
@@ -112,9 +113,9 @@ impl BlockValidationState {
     pub(super) fn new(
         block: &ProposedBlock<ClContext>,
         sender: NodeId,
-        responder: Responder<bool>,
+        responder: Responder<Result<(), ValidationError>>,
         chainspec: &Chainspec,
-    ) -> (Self, Option<Responder<bool>>) {
+    ) -> (Self, Option<Responder<Result<(), ValidationError>>>) {
         let deploy_count = block.deploys().len() + block.transfers().len();
         if deploy_count == 0 {
             let state = BlockValidationState::Valid(block.timestamp());
@@ -175,7 +176,10 @@ impl BlockValidationState {
     ///
     /// If the state is not `InProgress`, `ValidationCompleted` is returned with the responder and
     /// the value which should be provided to the responder.
-    pub(super) fn add_responder(&mut self, responder: Responder<bool>) -> AddResponderResult {
+    pub(super) fn add_responder(
+        &mut self,
+        responder: Responder<Result<(), ValidationError>>,
+    ) -> AddResponderResult {
         match self {
             BlockValidationState::InProgress { responders, .. } => {
                 responders.push(responder);
@@ -183,11 +187,11 @@ impl BlockValidationState {
             }
             BlockValidationState::Valid(_) => AddResponderResult::ValidationCompleted {
                 responder,
-                response_to_send: true,
+                response_to_send: Ok(()),
             },
             BlockValidationState::Invalid(_) => AddResponderResult::ValidationCompleted {
                 responder,
-                response_to_send: false,
+                response_to_send: Err(ValidationError::TodoUnknown),
             },
         }
     }
@@ -279,7 +283,7 @@ impl BlockValidationState {
         }
     }
 
-    pub(super) fn take_responders(&mut self) -> Vec<Responder<bool>> {
+    pub(super) fn take_responders(&mut self) -> Vec<Responder<Result<(), ValidationError>>> {
         match self {
             BlockValidationState::InProgress { responders, .. } => mem::take(responders),
             BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => vec![],
@@ -292,7 +296,7 @@ impl BlockValidationState {
         &mut self,
         dt_hash: &DeployOrTransferHash,
         footprint: &DeployFootprint,
-    ) -> Vec<Responder<bool>> {
+    ) -> Vec<Responder<Result<(), ValidationError>>> {
         let (new_state, responders) = match self {
             BlockValidationState::InProgress {
                 appendable_block,
@@ -354,7 +358,7 @@ impl BlockValidationState {
     pub(super) fn try_mark_invalid(
         &mut self,
         dt_hash: &DeployOrTransferHash,
-    ) -> Vec<Responder<bool>> {
+    ) -> Vec<Responder<Result<(), ValidationError>>> {
         let (timestamp, responders) = match self {
             BlockValidationState::InProgress {
                 appendable_block,
@@ -482,7 +486,10 @@ mod tests {
             &mut self,
             deploy_count: u64,
             transfer_count: u64,
-        ) -> (BlockValidationState, Option<Responder<bool>>) {
+        ) -> (
+            BlockValidationState,
+            Option<Responder<Result<(), ValidationError>>>,
+        ) {
             let ttl = TimeDiff::from_seconds(10);
             let deploys: Vec<_> = (0..deploy_count)
                 .map(|index| new_deploy(&mut self.rng, Timestamp::from(1000 + index), ttl))
@@ -539,7 +546,7 @@ mod tests {
         }
     }
 
-    fn new_responder() -> Responder<bool> {
+    fn new_responder() -> Responder<Result<(), ValidationError>> {
         let (sender, _receiver) = oneshot::channel();
         Responder::without_shutdown(sender)
     }
@@ -642,7 +649,7 @@ mod tests {
         assert!(matches!(
             add_responder_result,
             AddResponderResult::ValidationCompleted {
-                response_to_send: true,
+                response_to_send: Ok(()),
                 ..
             }
         ));
@@ -656,7 +663,7 @@ mod tests {
         assert!(matches!(
             add_responder_result,
             AddResponderResult::ValidationCompleted {
-                response_to_send: false,
+                response_to_send: Err(ValidationError::TodoUnknown),
                 ..
             }
         ));

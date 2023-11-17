@@ -208,7 +208,7 @@ async fn validate_block(
         for effect in effects {
             tokio::spawn(effect).await.unwrap(); // Response.
         }
-        return validation_result.await.unwrap();
+        return validation_result.await.unwrap().is_ok();
     }
 
     // Otherwise the effects must be requests to fetch the block's deploys.
@@ -238,7 +238,7 @@ async fn validate_block(
     for effect in effects {
         tokio::spawn(effect).await.unwrap(); // Response.
     }
-    validation_result.await.unwrap()
+    validation_result.await.unwrap().is_ok()
 }
 
 /// Verifies that a block without any deploys or transfers is valid.
@@ -480,7 +480,7 @@ async fn should_fetch_from_multiple_peers() {
         }
 
         for validation_result in validation_results {
-            assert!(validation_result.await.unwrap());
+            assert!(validation_result.await.unwrap().is_ok());
         }
     })
     .await

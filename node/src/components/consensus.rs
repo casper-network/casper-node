@@ -28,6 +28,7 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use tracing::{info, trace};
 
 use casper_types::{EraId, Timestamp};
@@ -50,7 +51,7 @@ use crate::{
     },
     protocol::Message,
     reactor::ReactorEvent,
-    types::{BlockHash, BlockHeader, BlockPayload, NodeId},
+    types::{BlockHash, BlockHeader, BlockPayload, DeployHash, NodeId},
     NodeRng,
 };
 use protocols::{highway::HighwayProtocol, zug::Zug};
@@ -133,11 +134,57 @@ pub struct NewBlockPayload {
 
 /// The result of validation of a ProposedBlock.
 #[derive(DataSize, Debug, From)]
-pub struct ResolveValidity {
+pub struct ValidationResult {
     era_id: EraId,
     sender: NodeId,
     proposed_block: ProposedBlock<ClContext>,
-    valid: bool,
+    error: Option<ValidationError>,
+}
+
+#[derive(Clone, Copy, DataSize, Debug, Error)]
+/// A proposed block validation error.
+pub enum ValidationError {
+    /// A deploy hash in the proposed block has been found in an ancestor block.
+    #[error("deploy hash {0} has been replayed")]
+    ContainsReplayedDeploy(DeployHash),
+    /// TODO: Placeholder variant, all instances of this should be removed.
+    #[error("unspecified error")]
+    TodoUnknown,
+}
+
+impl ValidationResult {
+    /// Creates a new valid `ValidationResult`.
+    #[inline(always)]
+    fn new_valid(era_id: EraId, sender: NodeId, proposed_block: ProposedBlock<ClContext>) -> Self {
+        Self {
+            era_id,
+            sender,
+            proposed_block,
+            error: None,
+        }
+    }
+
+    /// Creates a new invalid `ValidationResult`.
+    #[inline(always)]
+    fn new_invalid(
+        era_id: EraId,
+        sender: NodeId,
+        proposed_block: ProposedBlock<ClContext>,
+        error: ValidationError,
+    ) -> Self {
+        Self {
+            era_id,
+            sender,
+            proposed_block,
+            error: Some(error),
+        }
+    }
+
+    /// Returns whether or not the validation was free of errors.
+    #[inline(always)]
+    fn is_valid(&self) -> bool {
+        self.error.is_some()
+    }
 }
 
 /// Consensus component event.
@@ -167,7 +214,7 @@ pub(crate) enum Event {
         header_hash: BlockHash,
     },
     /// The proposed block has been validated.
-    ResolveValidity(ResolveValidity),
+    ResolveValidity(ValidationResult),
     /// Deactivate the era with the given ID, unless the number of faulty validators increases.
     DeactivateEra {
         era_id: EraId,
@@ -277,19 +324,28 @@ impl Display for Event {
                 "A block has been added to the linear chain: {}",
                 header_hash,
             ),
-            Event::ResolveValidity(ResolveValidity {
+            Event::ResolveValidity(ValidationResult {
                 era_id,
                 sender,
                 proposed_block,
-                valid,
-            }) => write!(
-                f,
-                "Proposed block received from {:?} for {} is {}: {:?}",
-                sender,
-                era_id,
-                if *valid { "valid" } else { "invalid" },
-                proposed_block,
-            ),
+                error,
+            }) => {
+                write!(
+                    f,
+                    "Proposed block received from {:?} for {} is ",
+                    sender, era_id
+                )?;
+
+                if let Some(err) = error {
+                    write!(f, "invalid ({})", err)?;
+                } else {
+                    f.write_str("valid")?;
+                };
+
+                write!(f, ": {:?}", proposed_block)?;
+
+                Ok(())
+            }
             Event::DeactivateEra {
                 era_id, faulty_num, ..
             } => write!(

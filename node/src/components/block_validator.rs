@@ -26,6 +26,7 @@ use crate::{
         fetcher::{self, EmptyValidationMetadata, FetchResult, FetchedData},
         Component,
     },
+    consensus::ValidationError,
     effect::{
         requests::{BlockValidationRequest, FetcherRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
@@ -107,7 +108,10 @@ impl BlockValidator {
                     responder,
                     response_to_send,
                 } => {
-                    debug!(%response_to_send, "proposed block validation already completed");
+                    debug!(
+                        ?response_to_send,
+                        "proposed block validation already completed"
+                    );
                     return MaybeHandled::Handled(responder.respond(response_to_send).ignore());
                 }
             }
@@ -124,7 +128,7 @@ impl BlockValidator {
                 }
                 MaybeStartFetching::Unable => {
                     debug!("no new info while validating proposed block - responding `false`");
-                    respond(false, state.take_responders())
+                    respond(Err(ValidationError::TodoUnknown), state.take_responders())
                 }
                 MaybeStartFetching::ValidationSucceeded | MaybeStartFetching::ValidationFailed => {
                     // If validation is already completed, we should have exited in the
@@ -163,17 +167,17 @@ impl BlockValidator {
             MaybeStartFetching::ValidationSucceeded => {
                 debug!("no deploys - block validation complete");
                 debug_assert!(maybe_responder.is_some());
-                respond(true, maybe_responder)
+                respond(Ok(()), maybe_responder)
             }
             MaybeStartFetching::ValidationFailed => {
                 debug_assert!(maybe_responder.is_some());
-                respond(false, maybe_responder)
+                respond(Err(ValidationError::TodoUnknown), maybe_responder)
             }
             MaybeStartFetching::Ongoing | MaybeStartFetching::Unable => {
                 // This `MaybeStartFetching` variant should never be returned here.
                 error!(%state, "invalid state while handling new block validation");
                 debug_assert!(false, "invalid state {}", state);
-                respond(false, state.take_responders())
+                respond(Err(ValidationError::TodoUnknown), state.take_responders())
             }
         };
         self.validation_states.insert(block, state);
@@ -242,7 +246,7 @@ impl BlockValidator {
                         .validation_states
                         .values_mut()
                         .flat_map(|state| state.try_mark_invalid(&dt_hash));
-                    return respond(false, responders);
+                    return respond(Err(ValidationError::TodoUnknown), responders);
                 }
                 let deploy_footprint = match item.footprint() {
                     Ok(footprint) => footprint,
@@ -258,7 +262,7 @@ impl BlockValidator {
                             .validation_states
                             .values_mut()
                             .flat_map(|state| state.try_mark_invalid(&dt_hash));
-                        return respond(false, responders);
+                        return respond(Err(ValidationError::TodoUnknown), responders);
                     }
                 };
 
@@ -266,8 +270,12 @@ impl BlockValidator {
                 for state in self.validation_states.values_mut() {
                     let responders = state.try_add_deploy_footprint(&dt_hash, &deploy_footprint);
                     if !responders.is_empty() {
-                        let is_valid = matches!(state, BlockValidationState::Valid(_));
-                        effects.extend(respond(is_valid, responders));
+                        let response = if matches!(state, BlockValidationState::Valid(_)) {
+                            Ok(())
+                        } else {
+                            Err(ValidationError::TodoUnknown)
+                        };
+                        effects.extend(respond(response, responders));
                     }
                 }
                 effects
@@ -303,7 +311,10 @@ impl BlockValidator {
                                         "exhausted peers while validating proposed block - \
                                         responding `false`"
                                     );
-                                    effects.extend(respond(false, state.take_responders()));
+                                    effects.extend(respond(
+                                        Err(ValidationError::TodoUnknown),
+                                        state.take_responders(),
+                                    ));
                                 }
                                 MaybeStartFetching::Ongoing
                                 | MaybeStartFetching::ValidationSucceeded
@@ -319,7 +330,7 @@ impl BlockValidator {
                             .validation_states
                             .values_mut()
                             .flat_map(|state| state.try_mark_invalid(&dt_hash));
-                        respond(false, responders)
+                        respond(Err(ValidationError::TodoUnknown), responders)
                     }
                 }
             }
@@ -383,11 +394,11 @@ where
 }
 
 fn respond(
-    is_valid: bool,
-    responders: impl IntoIterator<Item = Responder<bool>>,
+    response: Result<(), ValidationError>,
+    responders: impl IntoIterator<Item = Responder<Result<(), ValidationError>>>,
 ) -> Effects<Event> {
     responders
         .into_iter()
-        .flat_map(|responder| responder.respond(is_valid).ignore())
+        .flat_map(|responder| responder.respond(response).ignore())
         .collect()
 }
