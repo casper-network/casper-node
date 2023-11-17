@@ -13,6 +13,22 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 
+#[cfg(target_arch = "wasm32")]
+fn hook_impl(info: &std::panic::PanicInfo) {
+    let msg = info.to_string();
+    host::print(&msg);
+}
+
+#[cfg(target_arch = "wasm32")]
+#[inline]
+pub fn set_panic_hook() {
+    use std::sync::Once;
+    static SET_HOOK: Once = Once::new();
+    SET_HOOK.call_once(|| {
+        std::panic::set_hook(Box::new(hook_impl));
+    });
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 pub mod schema_helper {
     #[derive(Copy, Clone)]

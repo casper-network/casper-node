@@ -20,6 +20,8 @@ borsh = "0.10.3"
 blake2 = "0.10.6"
 rand = "0.8.5"
 digest = "0.10.7"
+byteorder = "1"
+
 [[bench]]
 name = "vm_call"
 harness = false

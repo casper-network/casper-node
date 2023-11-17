@@ -6556,6 +6556,7 @@ version = "0.1.0"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
+ "byteorder",
  "bytes",
  "casper-types",
  "criterion 0.5.1",

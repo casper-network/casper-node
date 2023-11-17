@@ -33,7 +33,7 @@ mod exports {
     use alloc::{string::String, vec::Vec};
     use casper_macros::casper;
     use casper_sdk::{
-        host::{self, EntryPoint, Manifest, Param},
+        host::{self, CreateResult, EntryPoint, Manifest, Param},
         reserve_vec_space,
     };
     use core::ptr::NonNull;
@@ -173,6 +173,31 @@ mod exports {
         host::print(&format!("manifest {:?}", manifest));
         let res = host::create(None, &manifest);
         host::print(&format!("create res {:?}", res));
+
+        match res {
+            Ok(CreateResult {
+                package_address,
+                contract_address,
+                version,
+            }) => {
+                host::print("success");
+
+                let input_data = Vec::new();
+                let call_result = host::call(&contract_address, 10, "entrypoint", &input_data);
+                match call_result {
+                    Ok(output_data) => {
+                        host::print(&format!("✅ Call succeeded. Output: {:?}", output_data));
+                    }
+                    Err(error) => {
+                        host::print(&format!("❌ Call failed. Error: {:?}", error));
+                    }
+                }
+            }
+            Err(error) => {
+                host::print(&format!("error {:?}", error));
+            }
+        }
+
         // let fptr_void: *const core::ffi::c_void = mangled_entry_point_wrapper as _;
 
         // let entry_point = EntryPoint {
@@ -184,6 +209,7 @@ mod exports {
         // };
         // host::print(&format!("{entry_point:?}"));
         // host::revert(123);
+        host::print("👋 Goodbye");
     }
 }
 

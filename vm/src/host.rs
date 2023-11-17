@@ -1,6 +1,7 @@
 //! Implementation of all host functions.
-use std::mem;
+use std::{io::Cursor, mem};
 
+use byteorder::{LittleEndian, ReadBytesExt};
 use bytes::Bytes;
 
 use crate::{
@@ -197,8 +198,17 @@ pub(crate) fn casper_create_contract<S: Storage>(
         .memory_read(manifest_ptr, mem::size_of::<Manifest>())
         .unwrap();
     let bytes = manifest.as_slice();
-    let (head, manifest, _tail) = unsafe { bytes.align_to::<Manifest>() }; //*unsafe { bytes.as_ptr().cast::<*const Manifest>().read() };
-    let manifest = &manifest[0];
+
+    let manifest = {
+        let mut rdr = Cursor::new(bytes);
+        let entry_points_ptr = rdr.read_u32::<LittleEndian>().unwrap(); // TODO: Error handling
+        let entry_points_size = rdr.read_u32::<LittleEndian>().unwrap(); // TODO: Error handling
+        Manifest {
+            entry_points_ptr,
+            entry_points_size,
+        }
+    };
+
     let entry_points_bytes = caller
         .memory_read(
             manifest.entry_points_ptr,
@@ -283,16 +293,21 @@ pub(crate) fn casper_call<S: Storage>(
     mut caller: impl Caller<S>,
     address_ptr: u32,
     address_len: u32,
-    value: u32,
+    value: u64,
     entry_name: u32,
     entry_len: u32,
     input_ptr: u32,
     input_len: u32,
-) -> Result<(), Outcome> {
+    cb_alloc: u32,
+    cb_ctx: u32,
+) -> Result<u32, Outcome> {
+    // 1. Look up address in the storage
+    // 1a. if it's legacy contract, wire up old EE, pretend you're 1.x. Input data would be
+    // "RuntimeArgs". Serialized output of the call has to be passed as output. Value is ignored as
+    // you can't pass value (tokens) to called contracts. 1b. if it's new contract, wire up
+    // another VM as according to the bytecode format. 2. Depends on the VM used (old or new) at
+    // this point either entry point is validated (i.e. EE returned error) or will be validated as
+    // for now. 3. If entry point is valid, call it, transfer the value, pass the input data. If
+    // it's invalid, return error. 4. Output data is captured by calling `cb_alloc`.
     todo!()
-    // todo!()
-
-    // caller.context().storage.read(key_tag, key)
-    // caller.context().system.call(address, value)
-    // transfer(address)
 }

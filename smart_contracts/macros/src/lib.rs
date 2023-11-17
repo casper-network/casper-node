@@ -274,6 +274,9 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                     #[cfg(target_arch = "wasm32")]
                     #[no_mangle]
                     pub extern "C" fn #func_name() {
+                        // Set panic hook (assumes std is enabled etc.)
+                        casper_sdk::set_panic_hook();
+
                         // TODO: If signature has no args we don't need to deserialize anything
                         use borsh::BorshDeserialize;
 

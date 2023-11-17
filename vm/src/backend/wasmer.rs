@@ -9,9 +9,9 @@ use std::{
 use bytes::Bytes;
 use wasmer::{
     wasmparser::{Export, MemoryType},
-    AsStoreMut, AsStoreRef, CompilerConfig, Engine, Exports, Function, FunctionEnv, FunctionEnvMut,
-    Imports, Instance, Memory, MemoryView, Module, RuntimeError, Store, Table, TypedFunction,
-    Value, ExportError,
+    AsStoreMut, AsStoreRef, CompilerConfig, Engine, ExportError, Exports, Function, FunctionEnv,
+    FunctionEnvMut, Imports, Instance, Memory, MemoryView, Module, RuntimeError, Store, Table,
+    TypedFunction, Value,
 };
 use wasmer_compiler_singlepass::Singlepass;
 use wasmer_middlewares::{
@@ -144,7 +144,8 @@ impl<'a, S: Storage + 'static> Caller<S> for WasmerCaller<'a, S> {
             .exported_runtime()
             .exported_table
             .as_ref()
-            .expect("should have table exported") // TODO: if theres no table then no function pointer is stored in the wasm blob - probably safe
+            .expect("should have table exported") // TODO: if theres no table then no function pointer is stored in the wasm blob -
+            // probably safe
             .get(&mut store.as_store_mut(), idx)
             .expect("has entry in the table"); // TODO: better error handling - pass 0 as nullptr?
         let funcref = value.funcref().expect("is funcref");
@@ -510,6 +511,53 @@ where
                 ),
             );
 
+            imports.define(
+                "env",
+                "casper_call",
+                Function::new_typed_with_env(
+                    &mut store,
+                    &function_env,
+                    |env: FunctionEnvMut<WasmerEnv<S>>,
+                     address_ptr: u32,
+                     address_len: u32,
+                     value: u64,
+                     entry_name: u32,
+                     entry_len: u32,
+                     input_ptr: u32,
+                     input_len: u32,
+                     cb_alloc: u32,
+                     cb_ctx: u32|
+                     -> Result<u32, RuntimeError> {
+                        let wasmer_caller = WasmerCaller { env };
+                        let ret = host::casper_call(
+                            wasmer_caller,
+                            address_ptr,
+                            address_len,
+                            value,
+                            entry_name,
+                            entry_len,
+                            input_ptr,
+                            input_len,
+                            cb_alloc,
+                            cb_ctx,
+                        );
+                        match ret {
+                            Ok(result) => Ok(result),
+                            Err(Outcome::VM(type_erased_runtime_error)) => {
+                                let boxed_runtime_error: Box<RuntimeError> =
+                                    type_erased_runtime_error
+                                        .downcast()
+                                        .expect("Valid RuntimeError instance");
+                                Err(*boxed_runtime_error)
+                            }
+                            Err(Outcome::Host(host_error)) => {
+                                Err(RuntimeError::user(Box::new(host_error)))
+                            }
+                        }
+                    },
+                ),
+            );
+
             imports
         };
 
@@ -531,13 +579,13 @@ where
         // TODO: get first export of type table as some compilers generate different names (i.e.
         // rust __indirect_function_table, assemblyscript `table` etc). There's only one table
         // allowed in a valid module.
-        let table = match instance
-            .exports
-            .get_table("__indirect_function_table") {
-                Ok(table) => Some(table.clone()),
-                Err(error @ ExportError::IncompatibleType) => return Err(BackendError::Export(error.to_string())),
-                Err(ExportError::Missing(_)) => None,
-            };
+        let table = match instance.exports.get_table("__indirect_function_table") {
+            Ok(table) => Some(table.clone()),
+            Err(error @ ExportError::IncompatibleType) => {
+                return Err(BackendError::Export(error.to_string()))
+            }
+            Err(ExportError::Missing(_)) => None,
+        };
 
         let exported_call_func = instance
             .exports
@@ -566,15 +614,6 @@ where
             config,
         })
     }
-}
-
-type wasm32_ptr = u32;
-type wasm32_usize = u32;
-
-#[repr(C)]
-struct Slice {
-    ptr: wasm32_ptr,
-    size: wasm32_usize,
 }
 
 impl<S> WasmInstance<S> for WasmerInstance<S>
