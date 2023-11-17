@@ -131,9 +131,11 @@ where
         BinaryRequest::GetInMem(req) => match req {
             InMemRequest::BlockHeight2Hash { height } => {
                 let block_hash = effect_builder.get_block_hash_for_height(height).await;
-                let payload =
-                    ToBytes::to_bytes(&block_hash).map_err(|err| Error::BytesRepr(err))?;
-                Ok(Some(Bytes::from(payload)))
+                let payload = block_hash
+                    .map(|data| data.to_bytes().map(Bytes::from))
+                    .transpose()
+                    .map_err(|err| Error::BytesRepr(err))?;
+                Ok(payload)
             }
             InMemRequest::HighestCompleteBlock => {
                 let block_hash_and_height = effect_builder
@@ -142,9 +144,11 @@ where
                     .map(|block_header| {
                         BlockHashAndHeight::new(block_header.block_hash(), block_header.height())
                     });
-                let payload = ToBytes::to_bytes(&block_hash_and_height)
+                let payload = block_hash_and_height
+                    .map(|data| data.to_bytes().map(Bytes::from))
+                    .transpose()
                     .map_err(|err| Error::BytesRepr(err))?;
-                Ok(Some(Bytes::from(payload)))
+                Ok(payload)
             }
             InMemRequest::CompletedBlockContains { block_hash } => {
                 let val = effect_builder
@@ -157,9 +161,11 @@ where
                 let block_hash_and_height = effect_builder
                     .get_block_hash_and_height_for_transaction(transaction_hash)
                     .await;
-                let payload = ToBytes::to_bytes(&block_hash_and_height)
+                let payload = block_hash_and_height
+                    .map(|data| data.to_bytes().map(Bytes::from))
+                    .transpose()
                     .map_err(|err| Error::BytesRepr(err))?;
-                Ok(Some(Bytes::from(payload)))
+                Ok(payload)
             }
         },
     }
