@@ -128,7 +128,6 @@ where
             .map(|raw_data| Bytes::from(raw_data))),
         BinaryRequest::PutTransaction { tbd: _tbd } => todo!(),
         BinaryRequest::SpeculativeExec { tbd: _tbd } => todo!(),
-        BinaryRequest::Quit => todo!(),
         BinaryRequest::GetInMem(req) => match req {
             InMemRequest::BlockHeight2Hash { height } => {
                 let block_hash = effect_builder.get_block_hash_for_height(height).await;

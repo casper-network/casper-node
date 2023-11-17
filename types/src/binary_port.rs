@@ -145,7 +145,6 @@ const GET_TAG: u8 = 0;
 const PUT_TRANSACTION_TAG: u8 = 1;
 const SPECULATIVE_EXEC_TAG: u8 = 2;
 const IN_MEM_REQUEST_TAG: u8 = 3;
-const QUIT_EXEC_TAG: u8 = 4;
 
 /// TODO
 #[derive(Debug)]
@@ -170,8 +169,6 @@ pub enum BinaryRequest {
         /// TODO
         tbd: u32,
     },
-    /// TODO
-    Quit,
 }
 
 impl ToBytes for BinaryRequest {
@@ -196,7 +193,6 @@ impl ToBytes for BinaryRequest {
                 SPECULATIVE_EXEC_TAG.write_bytes(writer)?;
                 tbd.write_bytes(writer)
             }
-            BinaryRequest::Quit => QUIT_EXEC_TAG.write_bytes(writer),
             BinaryRequest::GetInMem(req) => {
                 IN_MEM_REQUEST_TAG.write_bytes(writer)?;
                 req.write_bytes(writer)
@@ -210,7 +206,6 @@ impl ToBytes for BinaryRequest {
                 BinaryRequest::Get { db, key } => db.serialized_length() + key.serialized_length(),
                 BinaryRequest::PutTransaction { tbd } => tbd.serialized_length(),
                 BinaryRequest::SpeculativeExec { tbd } => tbd.serialized_length(),
-                BinaryRequest::Quit => 0,
                 BinaryRequest::GetInMem(req) => req.serialized_length(),
             }
     }
