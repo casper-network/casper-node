@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 abspath() {
   # generate absolute path from relative path

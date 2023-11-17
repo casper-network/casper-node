@@ -86,7 +86,7 @@ def invoke(command, quiet=False):
     try:
         start = time.time()
         result = subprocess.check_output([
-            '/bin/bash', '-c',
+            '/usr/bin/env', 'bash', '-c',
             'shopt -s expand_aliases\nsource $NCTL/activate\n{}'.format(
                 command, timeout=60)
         ]).decode("utf-8").rstrip()
