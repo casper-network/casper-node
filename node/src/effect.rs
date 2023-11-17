@@ -1406,6 +1406,24 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Checks if a block with the given hash is among the contiguous sequence of completed blocks.
+    pub(crate) async fn highest_completed_block_sequence_contains_hash(
+        self,
+        block_hash: BlockHash,
+    ) -> bool
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::HighestCompletedBlockSequenceContainsHash {
+                block_hash,
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
     /// Requests the height range of fully available blocks (not just block headers).
     pub(crate) async fn get_available_block_range_from_storage(self) -> AvailableBlockRange
     where

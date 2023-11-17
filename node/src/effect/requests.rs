@@ -533,6 +533,11 @@ pub(crate) enum StorageRequest {
         height: u64,
         responder: Responder<Option<BlockHash>>,
     },
+    /// Checks if a block with the given hash is among the contiguous sequence of completed blocks.
+    HighestCompletedBlockSequenceContainsHash {
+        block_hash: BlockHash,
+        responder: Responder<bool>,
+    },
 }
 
 impl Display for StorageRequest {
@@ -713,6 +718,16 @@ impl Display for StorageRequest {
                 responder: _responder,
             } => {
                 write!(formatter, "get block hash for height {}", height)
+            }
+            StorageRequest::HighestCompletedBlockSequenceContainsHash {
+                block_hash,
+                responder: _responder,
+            } => {
+                write!(
+                    formatter,
+                    "highest completed block sequence contains hash {}",
+                    block_hash
+                )
             }
         }
     }

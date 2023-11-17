@@ -12,6 +12,7 @@ use bytes::Bytes;
 use casper_types::{
     binary_port::{BinaryRequest, InMemRequest},
     bytesrepr::{FromBytes, ToBytes},
+    BlockHashAndHeight,
 };
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
@@ -135,9 +136,23 @@ where
                     ToBytes::to_bytes(&block_hash).map_err(|err| Error::BytesRepr(err))?;
                 Ok(Some(Bytes::from(payload)))
             }
-            InMemRequest::HighestBlock => todo!(),
+            InMemRequest::HighestCompleteBlock => {
+                let block_hash_and_height = effect_builder
+                    .get_highest_complete_block_header_from_storage()
+                    .await
+                    .map(|block_header| {
+                        BlockHashAndHeight::new(block_header.block_hash(), block_header.height())
+                    });
+                let payload = ToBytes::to_bytes(&block_hash_and_height)
+                    .map_err(|err| Error::BytesRepr(err))?;
+                Ok(Some(Bytes::from(payload)))
+            }
             InMemRequest::CompletedBlockContains { block_hash } => {
-                todo!()
+                let val = effect_builder
+                    .highest_completed_block_sequence_contains_hash(block_hash)
+                    .await;
+                let payload = ToBytes::to_bytes(&val).map_err(|err| Error::BytesRepr(err))?;
+                Ok(Some(Bytes::from(payload)))
             }
             InMemRequest::TransactionHash2BlockHashAndHeight { transaction_hash } => {
                 let block_hash_and_height = effect_builder

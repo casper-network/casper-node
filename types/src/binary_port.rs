@@ -261,7 +261,7 @@ pub enum InMemRequest {
         height: u64,
     },
     /// Returns height&hash for the currently highest block.
-    HighestBlock,
+    HighestCompleteBlock,
     /// Returns true if `self.completed_blocks.highest_sequence()` contains the given hash
     CompletedBlockContains {
         /// Block hash.
@@ -287,7 +287,7 @@ impl ToBytes for InMemRequest {
                 BLOCK_HEIGHT_2_HASH_TAG.write_bytes(writer)?;
                 height.write_bytes(writer)
             }
-            InMemRequest::HighestBlock => HIGHEST_BLOCK_TAG.write_bytes(writer),
+            InMemRequest::HighestCompleteBlock => HIGHEST_BLOCK_TAG.write_bytes(writer),
             InMemRequest::CompletedBlockContains { block_hash } => {
                 COMPLETED_BLOCK_CONTAINS_TAG.write_bytes(writer)?;
                 block_hash.write_bytes(writer)
@@ -303,7 +303,7 @@ impl ToBytes for InMemRequest {
         U8_SERIALIZED_LENGTH
             + match self {
                 InMemRequest::BlockHeight2Hash { height } => height.serialized_length(),
-                InMemRequest::HighestBlock => 0,
+                InMemRequest::HighestCompleteBlock => 0,
                 InMemRequest::CompletedBlockContains { block_hash } => {
                     block_hash.serialized_length()
                 }
@@ -322,7 +322,7 @@ impl FromBytes for InMemRequest {
                 let (height, remainder) = u64::from_bytes(remainder)?;
                 Ok((InMemRequest::BlockHeight2Hash { height }, remainder))
             }
-            HIGHEST_BLOCK_TAG => Ok((InMemRequest::HighestBlock, remainder)),
+            HIGHEST_BLOCK_TAG => Ok((InMemRequest::HighestCompleteBlock, remainder)),
             COMPLETED_BLOCK_CONTAINS_TAG => {
                 let (block_hash, remainder) = BlockHash::from_bytes(remainder)?;
                 Ok((

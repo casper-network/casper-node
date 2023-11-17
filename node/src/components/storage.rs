@@ -1227,6 +1227,24 @@ impl Storage {
                 let block_hash = self.block_height_index.get(&height).copied();
                 responder.respond(block_hash).ignore()
             }
+            StorageRequest::HighestCompletedBlockSequenceContainsHash {
+                block_hash,
+                responder,
+            } => responder
+                .respond(self.read_block_header_by_hash(&block_hash).map_or(
+                    false,
+                    |maybe_block_header| {
+                        maybe_block_header.map_or(false, |block_header| {
+                            let height = block_header.height();
+                            self.completed_blocks
+                                .highest_sequence()
+                                .map_or(false, |sequence| {
+                                    height >= sequence.low() && height <= sequence.high()
+                                })
+                        })
+                    },
+                ))
+                .ignore(),
         })
     }
 
