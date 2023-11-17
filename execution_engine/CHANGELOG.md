@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [Unreleased]
+## 7.0.0
 
 ### Added
 * Add chainspec option `core.allow_unrestricted_transfers` that, if enabled, allows token transfers between any two peers. Disabling this option makes sense only for private chains.
@@ -29,6 +29,8 @@ All notable changes to this project will be documented in this file.  The format
 * Lower the default gas costs of opcodes.
   - Set the cost for branching opcodes to 35,000 (`br`, `br_if`, `br_table`).
   - Set the cost for call opcodes to 68,000 (`call`, `call_indirect`).
+* Default value for round seigniorage rate is halved to `7/175070816` due to reduction in block times, to maintain current seigniorage rate (per unit of time).
+* Refund ratio is changed from 0% to 99%.
 
 
 
@@ -44,6 +46,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Security
 * Fix unbounded memory allocation issue while parsing Wasm.
+
 
 
 ## 5.0.0
