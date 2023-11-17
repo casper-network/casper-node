@@ -149,6 +149,7 @@ use crate::{
     contract_runtime::{
         RoundSeigniorageRateRequest, SpeculativeExecutionState, TotalSupplyRequest,
     },
+    failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
@@ -1321,17 +1322,18 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests the header of the block containing the given deploy.
-    pub(crate) async fn get_block_header_for_transaction_from_storage(
+    /// Returns the era IDs of the blocks in which the given transactions were executed.  If none
+    /// of the transactions have been executed yet, an empty set will be returned.
+    pub(crate) async fn get_transactions_era_ids(
         self,
-        transaction_hash: TransactionHash,
-    ) -> Option<BlockHeader>
+        transaction_hashes: HashSet<TransactionHash>,
+    ) -> HashSet<EraId>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetBlockHeaderForTransaction {
-                transaction_hash,
+            |responder| StorageRequest::GetTransactionsEraIds {
+                transaction_hashes,
                 responder,
             },
             QueueKind::FromStorage,
@@ -1567,6 +1569,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         block_hash: BlockHash,
         block_height: u64,
+        era_id: EraId,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     ) where
         REv: From<StorageRequest>,
@@ -1575,6 +1578,7 @@ impl<REv> EffectBuilder<REv> {
             |responder| StorageRequest::PutExecutionResults {
                 block_hash: Box::new(block_hash),
                 block_height,
+                era_id,
                 execution_results,
                 responder,
             },
@@ -2159,6 +2163,19 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Control,
         )
         .await
+    }
+
+    /// Activates/deactivates a failpoint from a given activation.
+    pub(crate) async fn activate_failpoint(self, activation: FailpointActivation)
+    where
+        REv: From<ControlAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ControlAnnouncement::ActivateFailpoint { activation },
+                QueueKind::Control,
+            )
+            .await;
     }
 
     /// Announce that the node be shut down due to a request from a user.

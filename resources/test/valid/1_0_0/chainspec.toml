@@ -45,6 +45,7 @@ block_max_approval_count = 2600
 max_block_size = 10_485_760
 block_gas_limit = 10_000_000_000_000
 native_transfer_minimum_motes = 2_500_000_000
+max_timestamp_leeway = '5 seconds'
 
 [transactions.v1]
 max_args_length = 1024

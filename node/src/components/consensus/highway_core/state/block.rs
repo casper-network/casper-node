@@ -1,24 +1,24 @@
 use datasize::DataSize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::State;
 use crate::components::consensus::traits::Context;
 
 /// A block: Chains of blocks are the consensus values in the CBC Casper sense.
-#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize)]
-pub(crate) struct Block<C>
+#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Block<C>
 where
     C: Context,
 {
     /// The total number of ancestors, i.e. the height in the blockchain.
-    pub(crate) height: u64,
+    pub height: u64,
     /// The payload, e.g. a list of transactions.
-    pub(crate) value: C::ConsensusValue,
+    pub value: C::ConsensusValue,
     /// A skip list index of the block's ancestors.
     ///
     /// For every `p = 1 << i` that divides `height`, this contains an `i`-th entry pointing to the
     /// ancestor with `height - p`.
-    pub(crate) skip_idx: Vec<C::Hash>,
+    pub skip_idx: Vec<C::Hash>,
 }
 
 impl<C: Context> Block<C> {
@@ -47,7 +47,7 @@ impl<C: Context> Block<C> {
     }
 
     /// Returns the block's parent, or `None` if it has height 0.
-    pub(crate) fn parent(&self) -> Option<&C::Hash> {
+    pub fn parent(&self) -> Option<&C::Hash> {
         self.skip_idx.first()
     }
 

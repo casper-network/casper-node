@@ -1,3 +1,4 @@
+mod config;
 mod error;
 mod event;
 mod metrics;
@@ -31,6 +32,7 @@ use crate::{
     NodeRng,
 };
 
+pub(crate) use config::Config;
 pub(crate) use error::{DeployParameterFailure, Error, ParameterFailure};
 pub(crate) use event::{Event, EventMetadata};
 
@@ -68,6 +70,7 @@ impl<REv> ReactorEventT for REv where
 /// newly-accepted `Transaction`.
 #[derive(Debug, DataSize)]
 pub struct TransactionAcceptor {
+    acceptor_config: Config,
     chain_name: String,
     protocol_version: ProtocolVersion,
     config: TransactionConfig,
@@ -79,6 +82,7 @@ pub struct TransactionAcceptor {
 
 impl TransactionAcceptor {
     pub(crate) fn new(
+        acceptor_config: Config,
         chainspec: &Chainspec,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
@@ -89,6 +93,7 @@ impl TransactionAcceptor {
             .map(|public_key| public_key.to_account_hash())
             .collect();
         Ok(TransactionAcceptor {
+            acceptor_config,
             chain_name: chainspec.network_config.name.clone(),
             protocol_version: chainspec.protocol_version(),
             config: chainspec.transaction_config,
@@ -115,6 +120,7 @@ impl TransactionAcceptor {
                     &self.chain_name,
                     &self.config,
                     self.max_associated_keys,
+                    self.acceptor_config.timestamp_leeway,
                     event_metadata.verification_start_timestamp,
                 )
                 .map_err(Error::from),
@@ -123,6 +129,7 @@ impl TransactionAcceptor {
                     &self.chain_name,
                     &self.config,
                     self.max_associated_keys,
+                    self.acceptor_config.timestamp_leeway,
                     event_metadata.verification_start_timestamp,
                 )
                 .map_err(Error::from),

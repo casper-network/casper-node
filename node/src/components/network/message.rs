@@ -618,13 +618,16 @@ pub(crate) fn within_message_size_limit_tolerance(chainspec: &Chainspec) -> bool
     // exceed the configured message size limit.
     let configured_maximum = chainspec.network_config.maximum_net_message_size as usize;
     let serialized = serialize_net_message(&generate_largest_message(chainspec));
-    let calculated_length = serialized.len();
+    let calculated_size = serialized.len();
     let within_tolerance =
-        calculated_length + NETWORK_MESSAGE_LIMIT_SAFETY_MARGIN <= configured_maximum;
-    if false == within_tolerance {
-        warn!(calculated_length, configured_maximum,
-                "config value [network][maximum_net_message_size] is too small to accommodate the maximum message size",
-            );
+        calculated_size + NETWORK_MESSAGE_LIMIT_SAFETY_MARGIN <= configured_maximum;
+    if !within_tolerance {
+        warn!(
+            calculated_size,
+            configured_maximum,
+            "config value [network][maximum_net_message_size] is too small to accommodate the \
+            maximum message size"
+        );
     }
     within_tolerance
 }

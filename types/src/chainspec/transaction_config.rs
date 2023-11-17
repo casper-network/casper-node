@@ -1,10 +1,8 @@
 mod deploy_config;
 mod transaction_v1_config;
 
-pub use deploy_config::DeployConfig;
 #[cfg(any(feature = "testing", test))]
-pub use deploy_config::DEFAULT_MAX_PAYMENT_MOTES;
-pub use transaction_v1_config::TransactionV1Config;
+use alloc::str::FromStr;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -18,6 +16,11 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     TimeDiff,
 };
+
+pub use deploy_config::DeployConfig;
+#[cfg(any(feature = "testing", test))]
+pub use deploy_config::DEFAULT_MAX_PAYMENT_MOTES;
+pub use transaction_v1_config::TransactionV1Config;
 
 /// The default minimum number of motes that can be transferred.
 #[cfg(any(feature = "testing", test))]
@@ -51,6 +54,9 @@ pub struct TransactionConfig {
     /// Minimum token amount for a native transfer deploy or transaction (a transfer deploy or
     /// transaction received with an transfer amount less than this will be rejected upon receipt).
     pub native_transfer_minimum_motes: u64,
+    /// Maximum value to which `transaction_acceptor.timestamp_leeway` can be set in the
+    /// config.toml file.
+    pub max_timestamp_leeway: TimeDiff,
     /// Configuration values specific to Deploy transactions.
     #[serde(rename = "deploy")]
     pub deploy_config: DeployConfig,
@@ -74,6 +80,7 @@ impl TransactionConfig {
         let block_gas_limit = rng.gen_range(100_000_000_000..1_000_000_000_000_000);
         let native_transfer_minimum_motes =
             rng.gen_range(DEFAULT_MIN_TRANSFER_MOTES..1_000_000_000_000_000);
+        let max_timestamp_leeway = TimeDiff::from_seconds(rng.gen_range(0..6));
         let deploy_config = DeployConfig::random(rng);
         let transaction_v1_config = TransactionV1Config::random(rng);
 
@@ -88,6 +95,7 @@ impl TransactionConfig {
             max_block_size,
             block_gas_limit,
             native_transfer_minimum_motes,
+            max_timestamp_leeway,
             deploy_config,
             transaction_v1_config,
         }
@@ -109,6 +117,7 @@ impl Default for TransactionConfig {
             max_block_size: 10_485_760,
             block_gas_limit: 10_000_000_000_000,
             native_transfer_minimum_motes: DEFAULT_MIN_TRANSFER_MOTES,
+            max_timestamp_leeway: TimeDiff::from_str("5sec").unwrap(),
             deploy_config: DeployConfig::default(),
             transaction_v1_config: TransactionV1Config::default(),
         }
@@ -127,6 +136,7 @@ impl ToBytes for TransactionConfig {
         self.max_block_size.write_bytes(writer)?;
         self.block_gas_limit.write_bytes(writer)?;
         self.native_transfer_minimum_motes.write_bytes(writer)?;
+        self.max_timestamp_leeway.write_bytes(writer)?;
         self.deploy_config.write_bytes(writer)?;
         self.transaction_v1_config.write_bytes(writer)
     }
@@ -148,6 +158,7 @@ impl ToBytes for TransactionConfig {
             + self.max_block_size.serialized_length()
             + self.block_gas_limit.serialized_length()
             + self.native_transfer_minimum_motes.serialized_length()
+            + self.max_timestamp_leeway.serialized_length()
             + self.deploy_config.serialized_length()
             + self.transaction_v1_config.serialized_length()
     }
@@ -165,6 +176,7 @@ impl FromBytes for TransactionConfig {
         let (max_block_size, remainder) = u32::from_bytes(remainder)?;
         let (block_gas_limit, remainder) = u64::from_bytes(remainder)?;
         let (native_transfer_minimum_motes, remainder) = u64::from_bytes(remainder)?;
+        let (max_timestamp_leeway, remainder) = TimeDiff::from_bytes(remainder)?;
         let (deploy_config, remainder) = DeployConfig::from_bytes(remainder)?;
         let (transaction_v1_config, remainder) = TransactionV1Config::from_bytes(remainder)?;
         let config = TransactionConfig {
@@ -178,6 +190,7 @@ impl FromBytes for TransactionConfig {
             max_block_size,
             block_gas_limit,
             native_transfer_minimum_motes,
+            max_timestamp_leeway,
             deploy_config,
             transaction_v1_config,
         };

@@ -7,15 +7,15 @@ mod config;
 mod consensus_protocol;
 mod era_supervisor;
 #[macro_use]
-mod highway_core;
+pub mod highway_core;
 pub(crate) mod error;
 mod leader_sequence;
 mod metrics;
-mod protocols;
+pub mod protocols;
 #[cfg(test)]
 pub(crate) mod tests;
 mod traits;
-pub(crate) mod utils;
+pub mod utils;
 mod validator_change;
 
 use std::{
@@ -48,6 +48,7 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects,
     },
+    failpoints::FailpointActivation,
     protocol::Message,
     reactor::ReactorEvent,
     types::{BlockPayload, NodeId},
@@ -56,7 +57,7 @@ use crate::{
 use protocols::{highway::HighwayProtocol, zug::Zug};
 use traits::Context;
 
-pub(crate) use cl_context::ClContext;
+pub use cl_context::ClContext;
 pub(crate) use config::{ChainspecConsensusExt, Config};
 pub(crate) use consensus_protocol::{BlockContext, ProposedBlock};
 pub(crate) use era_supervisor::{debug::EraDump, EraSupervisor, SerializedMessage};
@@ -123,6 +124,7 @@ pub struct TimerId(pub u8);
 #[derive(DataSize, Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct ActionId(pub u8);
 
+/// Payload for a block to be proposed.
 #[derive(DataSize, Debug, From)]
 pub struct NewBlockPayload {
     pub(crate) era_id: EraId,
@@ -130,6 +132,7 @@ pub struct NewBlockPayload {
     pub(crate) block_context: BlockContext<ClContext>,
 }
 
+/// The result of validation of a ProposedBlock.
 #[derive(DataSize, Debug, From)]
 pub struct ResolveValidity {
     era_id: EraId,
@@ -144,6 +147,9 @@ pub(crate) enum Event {
     /// An incoming network message.
     #[from]
     Incoming(ConsensusMessageIncoming),
+    /// A variant used with failpoints - when a message arrives, we fire this event with a delay,
+    /// and it also causes the message to be handled.
+    DelayedIncoming(ConsensusMessageIncoming),
     /// An incoming demand message.
     #[from]
     DemandIncoming(ConsensusDemand),
@@ -233,6 +239,9 @@ impl Display for Event {
         match self {
             Event::Incoming(ConsensusMessageIncoming { sender, message }) => {
                 write!(f, "message from {:?}: {}", sender, message)
+            }
+            Event::DelayedIncoming(ConsensusMessageIncoming { sender, message }) => {
+                write!(f, "delayed message from {:?}: {}", sender, message)
             }
             Event::DemandIncoming(demand) => {
                 write!(f, "demand from {:?}: {}", demand.sender, demand.request_msg)
@@ -425,6 +434,18 @@ where
                 self.handle_action(effect_builder, rng, era_id, action_id)
             }
             Event::Incoming(ConsensusMessageIncoming { sender, message }) => {
+                let delay_by = self.message_delay_failpoint.fire(rng).cloned();
+                if let Some(delay) = delay_by {
+                    effect_builder
+                        .set_timeout(Duration::from_millis(delay))
+                        .event(move |_| {
+                            Event::DelayedIncoming(ConsensusMessageIncoming { sender, message })
+                        })
+                } else {
+                    self.handle_message(effect_builder, rng, sender, *message)
+                }
+            }
+            Event::DelayedIncoming(ConsensusMessageIncoming { sender, message }) => {
                 self.handle_message(effect_builder, rng, sender, *message)
             }
             Event::DemandIncoming(ConsensusDemand {
@@ -489,5 +510,9 @@ where
 
     fn name(&self) -> &str {
         COMPONENT_NAME
+    }
+
+    fn activate_failpoint(&mut self, activation: &FailpointActivation) {
+        self.message_delay_failpoint.update_from(activation);
     }
 }

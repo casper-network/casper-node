@@ -10,23 +10,47 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Security:   in case of vulnerabilities)
 
 
-## [Unreleased]
+
+## [Unreleased] (node 2.0)
 
 ### Added
 * Add support for a factory pattern on the host side.
+
+
+
+## [Unreleased] (node 1.5.4)
 
 ### Added
 * Add chainspec option `core.allow_unrestricted_transfers` that, if enabled, allows token transfers between any two peers. Disabling this option makes sense only for private chains.
 * Add chainspec option `core.allow_auction_bids` that, if enabled, allows auction entrypoints `delegate` and `add_bid` to operate. Disabling this option makes sense only for private chains.
 * Add chainspec option `core.compute_rewards` that, if enabled, computes rewards for each era. Disabling this option makes sense only for private chains.
 * Add chainspec option `core.refund_handling` that specifies how payment refunds are handled.
-* Add chainspec option `core.fee_handling` that specifes how transaction fees are handled.
+* Add chainspec option `core.fee_handling` that specifies how transaction fees are handled.
 * Add chainspec option `core.administrators` that, if set, contains list of administrator accounts. This option makes sense only for private chains.
+* Add support for a new FFI function `enable_contract_version` for enabling a specific version of a contract.
+
+### Changed
+* `current stack height` is written to `stderr` in case `Trap(Unreachable)` error is encountered during Wasm execution.
+* Tweak upgrade logic transforming withdraw purses to early exit if possible.
+* Lower the default gas costs of opcodes.
+  - Set the cost for branching opcodes to 35,000 (`br`, `br_if`, `br_table`).
+  - Set the cost for call opcodes to 68,000 (`call`, `call_indirect`).
 
 
+
+## 6.0.0
 
 ### Changed
 * Default value for `max_stack_height` is increased to 500.
+* Replace usage of `parity-wasm` and `wasmi` with Casper forks `casper-wasm` and `casper-wasmi` respectively.
+
+### Fixed
+* Fix incorrect handling of unbonding purses for validators that were also evicted in that era.
+* Fix issue with one-time code used for migrating data to support redelegations.
+
+### Security
+* Fix unbounded memory allocation issue while parsing Wasm.
+
 
 
 ## 5.0.0

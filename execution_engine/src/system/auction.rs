@@ -470,7 +470,6 @@ pub trait Auction:
         let auction_delay = detail::get_auction_delay(self)?;
         let snapshot_size = auction_delay as usize + 1;
         let mut era_id: EraId = detail::get_era_id(self)?;
-        let mut validator_bids = detail::get_validator_bids(self)?;
 
         // Process unbond requests
         detail::process_unbond_requests(
@@ -478,6 +477,8 @@ pub trait Auction:
             max_delegators_per_validator,
             minimum_delegation_amount,
         )?;
+
+        let mut validator_bids = detail::get_validator_bids(self)?;
 
         // Process bids
         let mut bids_modified = false;

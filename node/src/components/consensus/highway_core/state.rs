@@ -13,7 +13,7 @@ use quanta::Clock;
 use serde::{Deserialize, Serialize};
 
 pub(crate) use index_panorama::{IndexObservation, IndexPanorama};
-pub(crate) use panorama::{Observation, Panorama};
+pub use panorama::{Observation, Panorama};
 pub(super) use unit::Unit;
 
 use std::{
@@ -111,7 +111,7 @@ pub(crate) enum UnitError {
 /// be replaced with `Direct` evidence, which has the same effect but doesn't rely on information
 /// from other consensus protocol instances.
 #[derive(Clone, DataSize, Debug, Deserialize, Eq, PartialEq, Hash, Serialize)]
-pub(crate) enum Fault<C>
+pub enum Fault<C>
 where
     C: Context,
 {
@@ -125,7 +125,8 @@ where
 }
 
 impl<C: Context> Fault<C> {
-    pub(crate) fn evidence(&self) -> Option<&Evidence<C>> {
+    /// Returns the evidence included in this `Fault`.
+    pub fn evidence(&self) -> Option<&Evidence<C>> {
         match self {
             Fault::Banned | Fault::Indirect => None,
             Fault::Direct(ev) => Some(ev),
@@ -138,8 +139,8 @@ impl<C: Context> Fault<C> {
 /// Both observers and active validators must instantiate this, pass in all incoming vertices from
 /// peers, and use a [FinalityDetector](../finality_detector/struct.FinalityDetector.html) to
 /// determine the outcome of the consensus process.
-#[derive(Debug, Clone, DataSize, Serialize)]
-pub(crate) struct State<C>
+#[derive(Debug, Clone, DataSize, Serialize, Deserialize)]
+pub struct State<C>
 where
     C: Context,
 {
@@ -198,7 +199,7 @@ impl<C: Context> State<C> {
     {
         let weights = ValidatorMap::from(weights.into_iter().map(|w| *w.borrow()).collect_vec());
         assert!(
-            weights.len() > 0,
+            !weights.is_empty(),
             "cannot initialize Highway with no validators"
         );
         let mut panorama = Panorama::new(weights.len());
@@ -238,27 +239,27 @@ impl<C: Context> State<C> {
     }
 
     /// Returns the fixed parameters.
-    pub(crate) fn params(&self) -> &Params {
+    pub fn params(&self) -> &Params {
         &self.params
     }
 
     /// Returns the number of validators.
-    pub(crate) fn validator_count(&self) -> usize {
+    pub fn validator_count(&self) -> usize {
         self.weights.len()
     }
 
     /// Returns the `idx`th validator's voting weight.
-    pub(crate) fn weight(&self, idx: ValidatorIndex) -> Weight {
+    pub fn weight(&self, idx: ValidatorIndex) -> Weight {
         self.weights[idx]
     }
 
     /// Returns the map of validator weights.
-    pub(crate) fn weights(&self) -> &ValidatorMap<Weight> {
+    pub fn weights(&self) -> &ValidatorMap<Weight> {
         &self.weights
     }
 
     /// Returns the total weight of all validators marked faulty in this panorama.
-    pub(crate) fn faulty_weight_in(&self, panorama: &Panorama<C>) -> Weight {
+    pub fn faulty_weight_in(&self, panorama: &Panorama<C>) -> Weight {
         panorama
             .iter()
             .zip(&self.weights)
@@ -268,22 +269,22 @@ impl<C: Context> State<C> {
     }
 
     /// Returns the total weight of all known-faulty validators.
-    pub(crate) fn faulty_weight(&self) -> Weight {
+    pub fn faulty_weight(&self) -> Weight {
         self.faulty_weight_in(self.panorama())
     }
 
     /// Returns the sum of all validators' voting weights.
-    pub(crate) fn total_weight(&self) -> Weight {
+    pub fn total_weight(&self) -> Weight {
         self.leader_sequence.total_weight()
     }
 
     /// Returns evidence against validator nr. `idx`, if present.
-    pub(crate) fn maybe_evidence(&self, idx: ValidatorIndex) -> Option<&Evidence<C>> {
+    pub fn maybe_evidence(&self, idx: ValidatorIndex) -> Option<&Evidence<C>> {
         self.maybe_fault(idx).and_then(Fault::evidence)
     }
 
     /// Returns endorsements for `unit`, if any.
-    pub(crate) fn maybe_endorsements(&self, unit: &C::Hash) -> Option<Endorsements<C>> {
+    pub fn maybe_endorsements(&self, unit: &C::Hash) -> Option<Endorsements<C>> {
         self.endorsements.get(unit).map(|signatures| Endorsements {
             unit: *unit,
             endorsers: signatures.iter_some().map(|(i, sig)| (i, *sig)).collect(),
@@ -291,12 +292,12 @@ impl<C: Context> State<C> {
     }
 
     /// Returns whether evidence against validator nr. `idx` is known.
-    pub(crate) fn has_evidence(&self, idx: ValidatorIndex) -> bool {
+    pub fn has_evidence(&self, idx: ValidatorIndex) -> bool {
         self.maybe_evidence(idx).is_some()
     }
 
     /// Returns whether we have all endorsements for `unit`.
-    pub(crate) fn has_all_endorsements<I: IntoIterator<Item = ValidatorIndex>>(
+    pub fn has_all_endorsements<I: IntoIterator<Item = ValidatorIndex>>(
         &self,
         unit: &C::Hash,
         v_ids: I,
@@ -312,12 +313,12 @@ impl<C: Context> State<C> {
 
     /// Returns whether we have seen enough endorsements for the unit.
     /// Unit is endorsed when it has endorsements from more than 50% of the validators (by weight).
-    pub(crate) fn is_endorsed(&self, hash: &C::Hash) -> bool {
+    pub fn is_endorsed(&self, hash: &C::Hash) -> bool {
         self.endorsements.contains_key(hash)
     }
 
     /// Returns hash of unit that needs to be endorsed.
-    pub(crate) fn needs_endorsements(&self, unit: &SignedWireUnit<C>) -> Option<C::Hash> {
+    pub fn needs_endorsements(&self, unit: &SignedWireUnit<C>) -> Option<C::Hash> {
         unit.wire_unit()
             .endorsed
             .iter()
@@ -327,63 +328,63 @@ impl<C: Context> State<C> {
 
     /// Returns the timestamp of the last ping or unit received from the validator, or the start
     /// timestamp if we haven't received anything yet.
-    pub(crate) fn last_seen(&self, idx: ValidatorIndex) -> Timestamp {
+    pub fn last_seen(&self, idx: ValidatorIndex) -> Timestamp {
         self.pings[idx]
     }
 
     /// Marks the given validator as faulty, unless it is already banned or we have direct evidence.
-    pub(crate) fn mark_faulty(&mut self, idx: ValidatorIndex) {
+    pub fn mark_faulty(&mut self, idx: ValidatorIndex) {
         self.panorama[idx] = Observation::Faulty;
         self.faults.entry(idx).or_insert(Fault::Indirect);
     }
 
     /// Returns the fault type of validator nr. `idx`, if it is known to be faulty.
-    pub(crate) fn maybe_fault(&self, idx: ValidatorIndex) -> Option<&Fault<C>> {
+    pub fn maybe_fault(&self, idx: ValidatorIndex) -> Option<&Fault<C>> {
         self.faults.get(&idx)
     }
 
     /// Returns whether validator nr. `idx` is known to be faulty.
-    pub(crate) fn is_faulty(&self, idx: ValidatorIndex) -> bool {
+    pub fn is_faulty(&self, idx: ValidatorIndex) -> bool {
         self.faults.contains_key(&idx)
     }
 
     /// Returns an iterator over all faulty validators.
-    pub(crate) fn faulty_validators(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
+    pub fn faulty_validators(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
         self.faults.keys().cloned()
     }
 
     /// Returns an iterator over latest unit hashes from honest validators.
-    pub(crate) fn iter_correct_hashes(&self) -> impl Iterator<Item = &C::Hash> {
+    pub fn iter_correct_hashes(&self) -> impl Iterator<Item = &C::Hash> {
         self.panorama.iter_correct_hashes()
     }
 
     /// Returns the unit with the given hash, if present.
-    pub(crate) fn maybe_unit(&self, hash: &C::Hash) -> Option<&Unit<C>> {
+    pub fn maybe_unit(&self, hash: &C::Hash) -> Option<&Unit<C>> {
         self.units.get(hash)
     }
 
     /// Returns whether the unit with the given hash is known.
-    pub(crate) fn has_unit(&self, hash: &C::Hash) -> bool {
+    pub fn has_unit(&self, hash: &C::Hash) -> bool {
         self.units.contains_key(hash)
     }
 
     /// Returns the unit with the given hash. Panics if not found.
-    pub(crate) fn unit(&self, hash: &C::Hash) -> &Unit<C> {
+    pub fn unit(&self, hash: &C::Hash) -> &Unit<C> {
         self.maybe_unit(hash).expect("unit hash must exist")
     }
 
     /// Returns the block contained in the unit with the given hash, if present.
-    pub(crate) fn maybe_block(&self, hash: &C::Hash) -> Option<&Block<C>> {
+    pub fn maybe_block(&self, hash: &C::Hash) -> Option<&Block<C>> {
         self.blocks.get(hash)
     }
 
     /// Returns the block contained in the unit with the given hash. Panics if not found.
-    pub(crate) fn block(&self, hash: &C::Hash) -> &Block<C> {
+    pub fn block(&self, hash: &C::Hash) -> &Block<C> {
         self.maybe_block(hash).expect("block hash must exist")
     }
 
     /// Returns the complete protocol state's latest panorama.
-    pub(crate) fn panorama(&self) -> &Panorama<C> {
+    pub fn panorama(&self) -> &Panorama<C> {
         &self.panorama
     }
 
@@ -394,7 +395,7 @@ impl<C: Context> State<C> {
     /// validators excluded. This ensures that once the validator set has been decided, correct
     /// validators' slots never get reassigned to someone else, even if after the fact someone is
     /// excluded as a leader.
-    pub(crate) fn leader(&self, timestamp: Timestamp) -> ValidatorIndex {
+    pub fn leader(&self, timestamp: Timestamp) -> ValidatorIndex {
         self.leader_sequence.leader(timestamp.millis())
     }
 
@@ -497,7 +498,7 @@ impl<C: Context> State<C> {
     }
 
     /// Returns whether this state already includes an endorsement of `uhash` by `vidx`.
-    pub(crate) fn has_endorsement(&self, uhash: &C::Hash, vidx: ValidatorIndex) -> bool {
+    pub fn has_endorsement(&self, uhash: &C::Hash, vidx: ValidatorIndex) -> bool {
         self.endorsements
             .get(uhash)
             .map(|vmap| vmap[vidx].is_some())
@@ -515,7 +516,7 @@ impl<C: Context> State<C> {
     }
 
     /// Returns `true` if the latest timestamp we have is older than the given timestamp.
-    pub(crate) fn has_ping(&self, creator: ValidatorIndex, timestamp: Timestamp) -> bool {
+    pub fn has_ping(&self, creator: ValidatorIndex, timestamp: Timestamp) -> bool {
         self.pings
             .get(creator)
             .map_or(false, |ping_time| *ping_time >= timestamp)
@@ -533,7 +534,7 @@ impl<C: Context> State<C> {
     ///
     /// Endorsements must be validated before calling this: The endorsers must exist, the
     /// signatures must be valid and the endorsed unit must be present in `self.units`.
-    pub(crate) fn find_conflicting_endorsements(
+    pub fn find_conflicting_endorsements(
         &self,
         endorsements: &Endorsements<C>,
         instance_id: &C::InstanceId,
@@ -616,7 +617,7 @@ impl<C: Context> State<C> {
     }
 
     /// Returns the `SignedWireUnit` with the given hash, if it is present in the state.
-    pub(crate) fn wire_unit(
+    pub fn wire_unit(
         &self,
         hash: &C::Hash,
         instance_id: C::InstanceId,
@@ -649,7 +650,7 @@ impl<C: Context> State<C> {
     /// all of its ancestors. At each level the block with the highest score is selected from the
     /// children of the previously selected block (or from all blocks at height 0), until a block
     /// is reached that has no children with any votes.
-    pub(crate) fn fork_choice<'a>(&'a self, pan: &Panorama<C>) -> Option<&'a C::Hash> {
+    pub fn fork_choice<'a>(&'a self, pan: &Panorama<C>) -> Option<&'a C::Hash> {
         let start = self.clock.start();
         // Collect all correct votes in a `Tallies` map, sorted by height.
         let to_entry = |(obs, w): (&Observation<C>, &Weight)| {
@@ -674,8 +675,8 @@ impl<C: Context> State<C> {
 
     /// Returns the ancestor of the block with the given `hash`, on the specified `height`, or
     /// `None` if the block's height is lower than that.
-    /// NOTE: Panics if used on non-proposal hashes. For those use [`find_ancestor_unit`].
-    pub(crate) fn find_ancestor_proposal<'a>(
+    /// NOTE: Panics if used on non-proposal hashes.
+    pub fn find_ancestor_proposal<'a>(
         &'a self,
         hash: &'a C::Hash,
         height: u64,
@@ -827,7 +828,7 @@ impl<C: Context> State<C> {
 
     /// Returns the hash of the message with the given sequence number from the creator of `hash`,
     /// or `None` if the sequence number is higher than that of the unit with `hash`.
-    pub(crate) fn find_in_swimlane<'a>(
+    pub fn find_in_swimlane<'a>(
         &'a self,
         hash: &'a C::Hash,
         seq_number: u64,
@@ -850,7 +851,7 @@ impl<C: Context> State<C> {
 
     /// Returns an iterator over units (with hashes) by the same creator, in reverse chronological
     /// order, starting with the specified unit. Panics if no unit with `uhash` exists.
-    pub(crate) fn swimlane<'a>(
+    pub fn swimlane<'a>(
         &'a self,
         uhash: &'a C::Hash,
     ) -> impl Iterator<Item = (&'a C::Hash, &'a Unit<C>)> {
@@ -865,10 +866,7 @@ impl<C: Context> State<C> {
 
     /// Returns an iterator over all hashes of ancestors of the block `bhash`, excluding `bhash`
     /// itself. Panics if `bhash` is not the hash of a known block.
-    pub(crate) fn ancestor_hashes<'a>(
-        &'a self,
-        bhash: &'a C::Hash,
-    ) -> impl Iterator<Item = &'a C::Hash> {
+    pub fn ancestor_hashes<'a>(&'a self, bhash: &'a C::Hash) -> impl Iterator<Item = &'a C::Hash> {
         let mut next = self.block(bhash).parent();
         iter::from_fn(move || {
             let current = next?;
@@ -884,7 +882,7 @@ impl<C: Context> State<C> {
     }
 
     /// Returns the set of units (by hash) that are endorsed and seen from the panorama.
-    pub(crate) fn seen_endorsed(&self, pan: &Panorama<C>) -> BTreeSet<C::Hash> {
+    pub fn seen_endorsed(&self, pan: &Panorama<C>) -> BTreeSet<C::Hash> {
         if !ENABLE_ENDORSEMENTS {
             return Default::default();
         };
@@ -1052,12 +1050,12 @@ impl<C: Context> State<C> {
 
     /// Returns whether the unit with `hash0` sees the one with `hash1` (i.e. `hash0 ≥ hash1`),
     /// and sees `hash1`'s creator as correct.
-    pub(crate) fn sees_correct(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
+    pub fn sees_correct(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
         hash0 == hash1 || self.unit(hash0).panorama.sees_correct(self, hash1)
     }
 
     /// Returns whether the unit with `hash0` sees the one with `hash1` (i.e. `hash0 ≥ hash1`).
-    pub(crate) fn sees(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
+    pub fn sees(&self, hash0: &C::Hash, hash1: &C::Hash) -> bool {
         hash0 == hash1 || self.unit(hash0).panorama.sees(self, hash1)
     }
 
@@ -1069,11 +1067,7 @@ impl<C: Context> State<C> {
     }
 
     /// Returns the panorama of the confirmation for the leader unit `uhash`.
-    pub(crate) fn confirmation_panorama(
-        &self,
-        creator: ValidatorIndex,
-        uhash: &C::Hash,
-    ) -> Panorama<C> {
+    pub fn confirmation_panorama(&self, creator: ValidatorIndex, uhash: &C::Hash) -> Panorama<C> {
         self.valid_panorama(creator, self.inclusive_panorama(uhash))
     }
 
@@ -1081,11 +1075,7 @@ impl<C: Context> State<C> {
     /// to the given one. It is only modified if necessary for validity:
     /// * Cite `creator`'s previous unit, i.e. don't equivocate.
     /// * Satisfy the LNC, i.e. don't add new naively cited forks.
-    pub(crate) fn valid_panorama(
-        &self,
-        creator: ValidatorIndex,
-        mut pan: Panorama<C>,
-    ) -> Panorama<C> {
+    pub fn valid_panorama(&self, creator: ValidatorIndex, mut pan: Panorama<C>) -> Panorama<C> {
         // Make sure the panorama sees the creator's own previous unit.
         let maybe_prev_uhash = self.panorama()[creator].correct();
         if let Some(prev_uhash) = maybe_prev_uhash {
@@ -1116,7 +1106,7 @@ impl<C: Context> State<C> {
     }
 
     /// Returns panorama of a unit where latest entry of the creator is that unit's hash.
-    pub(crate) fn inclusive_panorama(&self, uhash: &C::Hash) -> Panorama<C> {
+    pub fn inclusive_panorama(&self, uhash: &C::Hash) -> Panorama<C> {
         let unit = self.unit(uhash);
         let mut pan = unit.panorama.clone();
         pan[unit.creator] = Observation::Correct(*uhash);

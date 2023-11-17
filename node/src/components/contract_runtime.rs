@@ -1005,6 +1005,7 @@ impl ContractRuntime {
                 .put_execution_results_to_storage(
                     *block.hash(),
                     block.height(),
+                    block.era_id(),
                     execution_results_map,
                 )
                 .await;

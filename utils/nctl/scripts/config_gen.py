@@ -112,7 +112,7 @@ def mergedicts(dict1, dict2, no_skip=False):
     for k in set(dict1) | set(dict2):
         if k in dict1 and k in dict2:
             if isinstance(dict1[k], dict) and isinstance(dict2[k], dict):
-                yield k, dict(mergedicts(dict1[k], dict2[k]))
+                yield k, dict(mergedicts(dict1[k], dict2[k], no_skip))
             else:
                 # value from dict2 overrides one in dict1.
                 yield k, dict2[k]

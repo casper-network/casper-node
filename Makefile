@@ -4,7 +4,7 @@ RUSTUP = $(or $(shell which rustup), $(HOME)/.cargo/bin/rustup)
 NPM    = $(or $(shell which npm),    /usr/bin/npm)
 
 PINNED_NIGHTLY := $(shell cat smart_contracts/rust-toolchain)
-PINNED_STABLE  := $(shell sed -nr 's/channel\s+=\s+\"(.*)\"/\1/p' rust-toolchain.toml)
+PINNED_STABLE  := $(shell sed -nr 's/channel *= *\"(.*)\"/\1/p' rust-toolchain.toml)
 WASM_STRIP_VERSION := $(shell wasm-strip --version)
 
 CARGO_OPTS := --locked
@@ -16,6 +16,7 @@ DISABLE_LOGGING = RUST_LOG=MatchesNothing
 # Rust Contracts
 ALL_CONTRACTS    = $(shell find ./smart_contracts/contracts/[!.]*  -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
 CLIENT_CONTRACTS = $(shell find ./smart_contracts/contracts/client -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+RUSTC_FLAGS      = "--remap-path-prefix=$$HOME=/home --remap-path-prefix=$$PWD=/dir"
 
 # AssemblyScript Contracts
 CLIENT_CONTRACTS_AS  = $(shell find ./smart_contracts/contracts_as/client     -mindepth 1 -maxdepth 1 -type d)
@@ -30,13 +31,13 @@ CONTRACT_TARGET_DIR       = target/wasm32-unknown-unknown/release
 CONTRACT_TARGET_DIR_AS    = target_as
 
 build-contract-rs/%:
-	cd smart_contracts/contracts && $(CARGO) build --release $(filter-out --release, $(CARGO_FLAGS)) --package $*
+	cd smart_contracts/contracts && RUSTFLAGS=$(RUSTC_FLAGS) $(CARGO) build --verbose --release $(filter-out --release, $(CARGO_FLAGS)) --package $*
 	wasm-strip $(CONTRACT_TARGET_DIR)/$(subst -,_,$*).wasm 2>/dev/null | true
 
 .PHONY: build-all-contracts-rs
 build-all-contracts-rs:
 	cd smart_contracts/contracts && \
-	$(CARGO) build --release $(filter-out --release, $(CARGO_FLAGS)) $(patsubst %, -p %, $(ALL_CONTRACTS))
+	RUSTFLAGS=$(RUSTC_FLAGS) $(CARGO) build --verbose --release $(filter-out --release, $(CARGO_FLAGS)) $(patsubst %, -p %, $(ALL_CONTRACTS))
 
 .PHONY: build-client-contracts-rs
 build-client-contracts-rs:

@@ -196,15 +196,9 @@ fn should_exec_stored_code_by_hash() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     // store payment
-
-    let proposer_initial_balance = builder.get_proposer_purse_balance();
-
     let (sending_account, custom_payment_package_hash, _) = install_custom_payment(&mut builder);
 
     // verify stored contract functions as expected by checking all the maths
-
-    let proposer_balance_post_installation = builder.get_proposer_purse_balance();
-
     let sending_account_balance: U512 = builder.get_purse_balance(sending_account.main_purse());
 
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
@@ -212,18 +206,6 @@ fn should_exec_stored_code_by_hash() {
     assert!(
         sending_account_balance < initial_balance,
         "balance should be less than initial balance"
-    );
-
-    assert_eq!(
-        proposer_balance_post_installation,
-        proposer_initial_balance + default_payment,
-        "the full payment goes to the proposer, as configured"
-    );
-
-    assert_eq!(
-        sending_account_balance,
-        initial_balance - default_payment,
-        "current balance = initial balance - default_payment"
     );
 
     let transferred_amount = U512::one();

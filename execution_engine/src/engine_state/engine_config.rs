@@ -1,13 +1,14 @@
 //! Support for runtime configuration of the execution engine - as an integral property of the
 //! `EngineState` instance.
-use casper_types::{FeeHandling, RefundHandling, SystemConfig, WasmConfig};
 
 use std::collections::BTreeSet;
 
 use num_rational::Ratio;
 use num_traits::One;
 
-use casper_types::{account::AccountHash, PublicKey};
+use casper_types::{
+    account::AccountHash, FeeHandling, PublicKey, RefundHandling, SystemConfig, WasmConfig,
+};
 
 /// Default value for a maximum query depth configuration option.
 pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;
@@ -38,7 +39,7 @@ pub const DEFAULT_ALLOW_AUCTION_BIDS: bool = true;
 pub const DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS: bool = true;
 /// Default gas cost refund ratio.
 pub const DEFAULT_REFUND_HANDLING: RefundHandling = RefundHandling::Refund {
-    refund_ratio: Ratio::new_raw(0, 1),
+    refund_ratio: Ratio::new_raw(99, 100),
 };
 /// Default fee handling.
 pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::PayToProposer;

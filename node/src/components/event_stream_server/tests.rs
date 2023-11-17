@@ -1071,5 +1071,8 @@ fn json_schema_check() {
         "{}/../resources/test/sse_data_schema.json",
         env!("CARGO_MANIFEST_DIR")
     );
-    assert_schema(&schema_path, schema_for!(SseData));
+    assert_schema(
+        schema_path,
+        serde_json::to_string_pretty(&schema_for!(SseData)).unwrap(),
+    );
 }

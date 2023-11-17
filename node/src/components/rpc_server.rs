@@ -453,7 +453,6 @@ mod tests {
     use std::fs;
 
     use regex::Regex;
-    use schemars::schema_for_value;
 
     use crate::{rpcs::docs::OPEN_RPC_SCHEMA, testing::assert_schema};
 
@@ -463,7 +462,10 @@ mod tests {
             "{}/../resources/test/rpc_schema.json",
             env!("CARGO_MANIFEST_DIR")
         );
-        assert_schema(&schema_path, schema_for_value!(OPEN_RPC_SCHEMA.clone()));
+        assert_schema(
+            schema_path.clone(),
+            serde_json::to_string_pretty(&*OPEN_RPC_SCHEMA).unwrap(),
+        );
         let schema = fs::read_to_string(&schema_path).unwrap();
 
         // Check for the following pattern in the JSON as this points to a byte array or vec (e.g.
