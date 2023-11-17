@@ -150,14 +150,14 @@ const IN_MEM_REQUEST_TAG: u8 = 3;
 #[derive(Debug)]
 pub enum BinaryRequest {
     // TODO[RC] Add version tag, or rather follow the `BinaryRequestV1/V2` scheme.
-    /// TODO
+    /// Gets data stored under the given key from the given db.
     Get {
-        /// TODO
+        /// Id of the database.
         db: DbId,
-        /// TODO - bytesrepr serialized
+        /// Key.
         key: Vec<u8>,
     },
-    /// TODO
+    /// Gets a data which is not persisted, hence cannot be obtained by the raw `Get` request.
     GetInMem(InMemRequest),
     /// TODO
     PutTransaction {

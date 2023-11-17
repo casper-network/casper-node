@@ -695,7 +695,6 @@ impl Display for StorageRequest {
                     "get key block height for current activation point"
                 )
             }
-            // TODO[RC]: Possibly clean up formatting
             StorageRequest::GetRawData {
                 key,
                 responder: _responder,
