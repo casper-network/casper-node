@@ -19,9 +19,12 @@ use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
         ActionType, AddKeyFailure, EntityKind, EntityKindTag, NamedKeyAddr, NamedKeyValue,
-        NamedKeys, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
+        NamedKeys, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight, MessageTopicError,
     },
     bytesrepr::ToBytes,
+    contract_messages::{
+        Message, MessageAddr, MessageChecksum, MessageTopicSummary, Messages, TopicNameHash,
+    },
     execution::Effects,
     system::auction::EraInfo,
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
@@ -68,6 +71,7 @@ pub struct RuntimeContext<'a, R> {
     entity_key: Key,
     entity_kind: EntityKind,
     account_hash: AccountHash,
+    emit_message_cost: U512,
 }
 
 impl<'a, R> RuntimeContext<'a, R>
@@ -101,6 +105,12 @@ where
         remaining_spending_limit: U512,
         entry_point_type: EntryPointType,
     ) -> Self {
+        let emit_message_cost = engine_config
+            .wasm_config()
+            .take_host_function_costs()
+            .emit_message
+            .cost()
+            .into();
         RuntimeContext {
             tracking_copy,
             entry_point_type,
@@ -122,6 +132,7 @@ where
             transfers,
             remaining_spending_limit,
             entity_kind: package_kind,
+            emit_message_cost,
         }
     }
 
@@ -176,6 +187,7 @@ where
             transfers,
             remaining_spending_limit,
             entity_kind: package_kind,
+            emit_message_cost: self.emit_message_cost,
         }
     }
 
@@ -599,6 +611,21 @@ where
         self.tracking_copy.borrow().effects()
     }
 
+    /// Returns a copy of the current messages of a tracking copy.
+    pub fn messages(&self) -> Messages {
+        self.tracking_copy.borrow().messages()
+    }
+
+    /// Returns the cost charged for the last emitted message.
+    pub fn emit_message_cost(&self) -> U512 {
+        self.emit_message_cost
+    }
+
+    /// Sets the cost charged for the last emitted message.
+    pub fn set_emit_message_cost(&mut self, cost: U512) {
+        self.emit_message_cost = cost
+    }
+
     /// Returns list of transfers.
     pub fn transfers(&self) -> &Vec<TransferAddr> {
         &self.transfers
@@ -666,6 +693,8 @@ where
             StoredValue::Unbonding(_) => Ok(()),
             StoredValue::ContractPackage(_) => Ok(()),
             StoredValue::ContractWasm(_) => Ok(()),
+            StoredValue::MessageTopic(_) => Ok(()),
+            StoredValue::Message(_) => Ok(()),
             StoredValue::NamedKey(named_key_value) => {
                 self.validate_cl_value(named_key_value.get_key_as_cl_value())?;
                 self.validate_cl_value(named_key_value.get_name_as_cl_value())
@@ -752,6 +781,7 @@ where
             | Key::Package(_)
             | Key::AddressableEntity(..)
             | Key::ByteCode(..)
+            | Key::Message(_)
             | Key::NamedKey(_) => true,
         }
     }
@@ -787,7 +817,8 @@ where
             | Key::ChecksumRegistry
             | Key::BidAddr(_)
             | Key::Package(_)
-            | Key::ByteCode(..) => false,
+            | Key::ByteCode(..)
+            | Key::Message(_) => false,
         }
     }
 
@@ -819,7 +850,8 @@ where
             | Key::BidAddr(_)
             | Key::Package(_)
             | Key::AddressableEntity(..)
-            | Key::ByteCode(..) => false,
+            | Key::ByteCode(..)
+            | Key::Message(_) => false,
         }
     }
 
@@ -915,6 +947,32 @@ where
         self.tracking_copy
             .borrow_mut()
             .write(key.into(), stored_value);
+        Ok(())
+    }
+
+    /// Emits message and writes message summary to global state with a measurement.
+    pub(crate) fn metered_emit_message(
+        &mut self,
+        topic_key: Key,
+        topic_value: MessageTopicSummary,
+        message_key: Key,
+        message_value: MessageChecksum,
+        message: Message,
+    ) -> Result<(), Error> {
+        let topic_value = StoredValue::MessageTopic(topic_value);
+        let message_value = StoredValue::Message(message_value);
+
+        // Charge for amount as measured by serialized length
+        let bytes_count = topic_value.serialized_length() + message_value.serialized_length();
+        self.charge_gas_storage(bytes_count)?;
+
+        self.tracking_copy.borrow_mut().emit_message(
+            topic_key,
+            topic_value,
+            message_key,
+            message_value,
+            message,
+        );
         Ok(())
     }
 
@@ -1346,5 +1404,45 @@ where
     /// towards global limit for the whole deploy execution.
     pub(crate) fn set_remaining_spending_limit(&mut self, amount: U512) {
         self.remaining_spending_limit = amount;
+    }
+
+    /// Adds new message topic.
+    pub(crate) fn add_message_topic(
+        &mut self,
+        topic_name: &str,
+        topic_name_hash: TopicNameHash,
+    ) -> Result<Result<(), MessageTopicError>, Error> {
+        let entity_key: Key = self.get_entity_key();
+        let entity_addr = entity_key.into_entity_hash().ok_or(Error::InvalidContext)?;
+
+        // Take the addressable entity out of the global state
+        let entity = {
+            let mut entity: AddressableEntity = self.read_gs_typed(&entity_key)?;
+
+            let max_topics_per_contract = self
+                .engine_config
+                .wasm_config()
+                .messages_limits()
+                .max_topics_per_contract();
+
+            if entity.message_topics().len() >= max_topics_per_contract as usize {
+                return Ok(Err(MessageTopicError::MaxTopicsExceeded));
+            }
+
+            if let Err(e) = entity.add_message_topic(topic_name, topic_name_hash) {
+                return Ok(Err(e));
+            }
+            entity
+        };
+
+        let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash));
+        let summary = StoredValue::MessageTopic(MessageTopicSummary::new(0, self.get_blocktime()));
+
+        let entity_value = self.addressable_entity_to_validated_value(entity)?;
+
+        self.metered_write_gs_unsafe(entity_key, entity_value)?;
+        self.metered_write_gs_unsafe(topic_key, summary)?;
+
+        Ok(Ok(()))
     }
 }

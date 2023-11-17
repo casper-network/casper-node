@@ -2,11 +2,19 @@ use alloc::vec::Vec;
 
 use crate::bytesrepr::{Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH};
 
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
 /// The number of bytes in a serialized [`BlockTime`].
 pub const BLOCKTIME_SERIALIZED_LENGTH: usize = U64_SERIALIZED_LENGTH;
 
 /// A newtype wrapping a [`u64`] which represents the block time.
-#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
 pub struct BlockTime(u64);
 
 impl BlockTime {

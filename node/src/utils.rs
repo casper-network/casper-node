@@ -38,7 +38,7 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{error, warn};
 
-use casper_types::BlockHeader;
+use casper_types::{BlockHeader, Deploy, DeployApprovalsHash, DeployId, Digest};
 
 use crate::types::NodeId;
 pub(crate) use block_signatures::{check_sufficient_block_signatures, BlockSignatureError};
@@ -238,6 +238,11 @@ impl<T> WithDir<T> {
         &self.value
     }
 
+    /// Get a mutable reference to the inner value.
+    pub fn value_mut(&mut self) -> &mut T {
+        &mut self.value
+    }
+
     /// Adds `self.dir` as a parent if `path` is relative, otherwise returns `path` unchanged.
     pub fn with_dir(&self, path: PathBuf) -> PathBuf {
         if path.is_relative() {
@@ -413,6 +418,17 @@ impl TimeAnchor {
             self.wall_clock_now - self.now.duration_since(then)
         }
     }
+}
+
+// TODO: remove once https://github.com/casper-network/roadmap/issues/190 and
+//       https://github.com/casper-network/casper-node/issues/4340 are complete.
+pub(crate) fn fetch_id(deploy: &Deploy) -> DeployId {
+    let deploy_hash = *deploy.hash();
+    let approvals_hash = deploy.compute_approvals_hash().unwrap_or_else(|error| {
+        tracing::error!(%error, "failed to serialize approvals");
+        DeployApprovalsHash::from(Digest::default())
+    });
+    DeployId::new(deploy_hash, approvals_hash)
 }
 
 #[cfg(test)]

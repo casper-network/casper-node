@@ -6,7 +6,7 @@ use std::{
 use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{EntityKindTag, NamedKeyAddr, NamedKeys},
+    addressable_entity::{EntityKindTag, NamedKeyAddr, NamedKeys, MessageTopics},
     bytesrepr,
     package::{EntityVersions, Groups, PackageStatus},
     AccessRights, AddressableEntity, AddressableEntityHash, CLValue, EntityAddr, EntityKind,
@@ -160,6 +160,7 @@ where
                     account.main_purse(),
                     account.associated_keys().clone().into(),
                     account.action_thresholds().clone().into(),
+                    MessageTopics::default(),
                     EntityKind::Account(account_hash),
                 );
 

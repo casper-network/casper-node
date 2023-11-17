@@ -21,7 +21,7 @@ use crate::{
     protocol::Message,
     reactor::{self, EventQueueHandle, ReactorEvent, Runner},
     testing::{self, network::NetworkedReactor, ConditionCheckReactor},
-    types::{BlockPayload, DeployHashWithApprovals, FinalizedBlock, InternalEraReport},
+    types::{BlockPayload, FinalizedBlock, InternalEraReport, TransactionHashWithApprovals},
     utils::{Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
 };
@@ -229,7 +229,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
         .set_initial_state(initial_pre_state);
 
     // Create the genesis immediate switch block.
-    let block_0 = ExecutableBlock::from_finalized_block_and_deploys(
+    let block_0 = ExecutableBlock::from_finalized_block_and_transactions(
         FinalizedBlock::new(
             BlockPayload::default(),
             Some(InternalEraReport::default()),
@@ -249,7 +249,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
         .await;
 
     // Create the first block of era 1.
-    let block_1 = ExecutableBlock::from_finalized_block_and_deploys(
+    let block_1 = ExecutableBlock::from_finalized_block_and_transactions(
         FinalizedBlock::new(
             BlockPayload::default(),
             None,
@@ -300,7 +300,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
         },
     };
 
-    let deploys: Vec<Deploy> = std::iter::repeat_with(|| {
+    let txns: Vec<Transaction> = std::iter::repeat_with(|| {
         let target_public_key = PublicKey::random(rng);
         let session = ExecutableDeployItem::Transfer {
             args: runtime_args! {
@@ -309,7 +309,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
               "id" => Some(9_u64),
             },
         };
-        Deploy::new(
+        Transaction::Deploy(Deploy::new(
             timestamp,
             ttl,
             gas_price,
@@ -319,18 +319,22 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
             session,
             &node_1_secret_key,
             None,
-        )
+        ))
     })
     .take(200)
     .collect();
     let block_payload = BlockPayload::new(
+        txns.iter()
+            .map(TransactionHashWithApprovals::from)
+            .collect(),
         vec![],
-        deploys.iter().map(DeployHashWithApprovals::from).collect(),
+        vec![],
+        vec![],
         vec![],
         Default::default(),
         true,
     );
-    let block_2 = ExecutableBlock::from_finalized_block_and_deploys(
+    let block_2 = ExecutableBlock::from_finalized_block_and_transactions(
         FinalizedBlock::new(
             block_payload,
             None,
@@ -339,7 +343,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
             2,
             PublicKey::System,
         ),
-        deploys,
+        txns,
     );
     runner
         .process_injected_effects(execute_block(block_2))

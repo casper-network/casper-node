@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use casper_storage::global_state::state::StateProvider;
 use casper_types::{
     addressable_entity::{
-        ActionThresholds, EntityKind, EntityKindTag, NamedKeyAddr, NamedKeyValue, NamedKeys,
+        ActionThresholds, MessageTopics, EntityKind, EntityKindTag, NamedKeyAddr, NamedKeyValue, NamedKeys,
     },
     bytesrepr,
     execution::Effects,
@@ -67,7 +67,7 @@ pub const DEFAULT_UNBONDING_DELAY: u64 = 7;
 /// Ticks per year: 31536000000
 ///
 /// (1+0.02)^((2^14)/31536000000)-1 is expressed as a fraction below.
-pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(6414, 623437335209);
+pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(7, 175070816);
 /// Default genesis timestamp in milliseconds.
 pub const DEFAULT_GENESIS_TIMESTAMP_MILLIS: u64 = 0;
 
@@ -1159,6 +1159,7 @@ where
             main_purse,
             associated_keys,
             ActionThresholds::default(),
+            MessageTopics::default(),
             entity_kind,
         );
 

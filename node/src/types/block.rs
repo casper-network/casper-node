@@ -10,13 +10,13 @@ mod signed_block;
 
 use casper_types::{
     bytesrepr::{self, ToBytes},
-    BlockHash, DeployId, Digest, FinalitySignature, SingleBlockRewardedSignatures,
+    Digest, FinalitySignature, SingleBlockRewardedSignatures, TransactionId,
 };
 
 pub(crate) use approvals_hashes::ApprovalsHashes;
 pub use block_execution_results_or_chunk::BlockExecutionResultsOrChunk;
 pub(crate) use block_execution_results_or_chunk_id::BlockExecutionResultsOrChunkId;
-pub(crate) use block_payload::BlockPayload;
+pub use block_payload::BlockPayload;
 pub(crate) use block_with_metadata::BlockWithMetadata;
 pub use executable_block::ExecutableBlock;
 pub use finalized_block::{FinalizedBlock, InternalEraReport};
@@ -72,9 +72,9 @@ type ValidatorFinalitySignature = FinalitySignature;
 
 /// Returns the hash of the bytesrepr-encoded deploy_ids.
 pub(crate) fn compute_approvals_checksum(
-    deploy_ids: Vec<DeployId>,
+    txn_ids: Vec<TransactionId>,
 ) -> Result<Digest, bytesrepr::Error> {
-    let bytes = deploy_ids.into_bytes()?;
+    let bytes = txn_ids.into_bytes()?;
     Ok(Digest::hash(bytes))
 }
 

@@ -200,12 +200,6 @@ impl TransactionV1Kind {
         TransactionV1Kind::Userland(UserlandTransactionV1::DirectCall(txn))
     }
 
-    /// Returns a new no-op transaction body.
-    pub fn new_noop(module_bytes: Bytes, args: RuntimeArgs) -> Self {
-        let txn = UserlandTransactionV1::new_noop(module_bytes, args);
-        TransactionV1Kind::Userland(txn)
-    }
-
     /// Returns a new closed transaction body.
     pub fn new_closed(module_bytes: Bytes, args: RuntimeArgs) -> Self {
         let txn = UserlandTransactionV1::new_closed(module_bytes, args);

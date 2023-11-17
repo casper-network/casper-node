@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, convert::TryFrom};
 
-use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
+use casper_wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
@@ -8,6 +8,7 @@ use casper_types::{
     addressable_entity::{EntryPoints, NamedKeys},
     api_error,
     bytesrepr::{self, ToBytes},
+    contract_messages::MessageTopicOperation,
     crypto,
     package::PackageStatus,
     system::auction::EraInfo,
@@ -331,15 +332,15 @@ where
                 )?;
                 let account_hash: AccountHash = {
                     let bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
                 let amount: U512 = {
                     let bytes = self.bytes_from_mem(amount_ptr, amount_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
                 let id: Option<u64> = {
                     let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
 
                 let ret = match self.transfer_to_account(account_hash, amount, id)? {
@@ -393,19 +394,19 @@ where
                 )?;
                 let source_purse = {
                     let bytes = self.bytes_from_mem(source_ptr, source_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
                 let account_hash: AccountHash = {
                     let bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
                 let amount: U512 = {
                     let bytes = self.bytes_from_mem(amount_ptr, amount_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
                 let id: Option<u64> = {
                     let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
                 let ret = match self.transfer_from_purse_to_account_hash(
                     source_purse,
@@ -461,22 +462,22 @@ where
 
                 let source: URef = {
                     let bytes = self.bytes_from_mem(source_ptr, source_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
 
                 let target: URef = {
                     let bytes = self.bytes_from_mem(target_ptr, target_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
 
                 let amount: U512 = {
                     let bytes = self.bytes_from_mem(amount_ptr, amount_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
 
                 let id: Option<u64> = {
                     let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
 
                 let ret = self.transfer_from_purse_to_purse(source, target, amount, id)?;
@@ -736,13 +737,13 @@ where
                     self.t_from_mem(entry_point_name_ptr, entry_point_name_size)?;
                 let args_bytes: Vec<u8> = {
                     let args_size: u32 = args_size;
-                    self.bytes_from_mem(args_ptr, args_size as usize)?
+                    self.bytes_from_mem(args_ptr, args_size as usize)?.to_vec()
                 };
 
                 let ret = self.call_contract_host_buffer(
                     contract_hash,
                     &entry_point_name,
-                    args_bytes,
+                    &args_bytes,
                     result_size_ptr,
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
@@ -792,14 +793,14 @@ where
                     self.t_from_mem(entry_point_name_ptr, entry_point_name_size)?;
                 let args_bytes: Vec<u8> = {
                     let args_size: u32 = args_size;
-                    self.bytes_from_mem(args_ptr, args_size as usize)?
+                    self.bytes_from_mem(args_ptr, args_size as usize)?.to_vec()
                 };
 
                 let ret = self.call_versioned_contract_host_buffer(
                     contract_package_hash,
                     contract_version,
                     entry_point_name,
-                    args_bytes,
+                    &args_bytes,
                     result_size_ptr,
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
@@ -923,8 +924,10 @@ where
                     &host_function_costs.blake2b,
                     [in_ptr, in_size, out_ptr, out_size],
                 )?;
-                let input: Vec<u8> = self.bytes_from_mem(in_ptr, in_size as usize)?;
-                let digest = crypto::blake2b(input);
+                let digest =
+                    self.checked_memory_slice(in_ptr as usize, in_size as usize, |input| {
+                        crypto::blake2b(input)
+                    })?;
 
                 let result = if digest.len() != out_size as usize {
                     Err(ApiError::BufferTooSmall)
@@ -1122,6 +1125,107 @@ where
 
                 let result = self.enable_contract_version(contract_package_hash, contract_hash)?;
 
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
+            }
+            FunctionIndex::ManageMessageTopic => {
+                // args(0) = pointer to the serialized topic name string in wasm memory
+                // args(1) = size of the serialized topic name string in wasm memory
+                // args(2) = pointer to the operation to be performed for the specified topic
+                // args(3) = size of the operation
+                let (topic_name_ptr, topic_name_size, operation_ptr, operation_size) =
+                    Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.manage_message_topic,
+                    [
+                        topic_name_ptr,
+                        topic_name_size,
+                        operation_ptr,
+                        operation_size,
+                    ],
+                )?;
+
+                let limits = self.context.engine_config().wasm_config().messages_limits();
+
+                if topic_name_size > limits.max_topic_name_size() {
+                    return Ok(Some(RuntimeValue::I32(api_error::i32_from(Err(
+                        ApiError::MaxTopicNameSizeExceeded,
+                    )))));
+                }
+
+                let topic_name_bytes =
+                    self.bytes_from_mem(topic_name_ptr, topic_name_size as usize)?;
+                let topic_name = std::str::from_utf8(&topic_name_bytes)
+                    .map_err(|e| Trap::from(Error::InvalidUtf8Encoding(e)))?;
+
+                if operation_size as usize > MessageTopicOperation::max_serialized_len() {
+                    return Err(Trap::from(Error::InvalidMessageTopicOperation));
+                }
+                let topic_operation = self
+                    .t_from_mem(operation_ptr, operation_size)
+                    .map_err(|_e| Trap::from(Error::InvalidMessageTopicOperation))?;
+
+                // only allow managing messages from stored contracts
+                if !self.context.get_entity_key().is_smart_contract_key() {
+                    return Err(Trap::from(Error::InvalidContext));
+                }
+
+                let result = match topic_operation {
+                    MessageTopicOperation::Add => {
+                        self.add_message_topic(topic_name).map_err(Trap::from)?
+                    }
+                };
+
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
+            }
+            FunctionIndex::EmitMessage => {
+                // args(0) = pointer to the serialized topic name string in wasm memory
+                // args(1) = size of the serialized name string in wasm memory
+                // args(2) = pointer to the serialized message payload in wasm memory
+                // args(3) = size of the serialized message payload in wasm memory
+                let (topic_name_ptr, topic_name_size, message_ptr, message_size) =
+                    Args::parse(args)?;
+
+                // Charge for the call to emit message. This increases for every message emitted
+                // within an execution so we're not using the static value from the wasm config.
+                self.context
+                    .charge_gas(Gas::new(self.context.emit_message_cost()))?;
+                // Charge for parameter weights.
+                self.charge_host_function_call(
+                    &HostFunction::new(0, host_function_costs.emit_message.arguments()),
+                    &[topic_name_ptr, topic_name_size, message_ptr, message_size],
+                )?;
+
+                let limits = self.context.engine_config().wasm_config().messages_limits();
+
+                if topic_name_size > limits.max_topic_name_size() {
+                    return Ok(Some(RuntimeValue::I32(api_error::i32_from(Err(
+                        ApiError::MaxTopicNameSizeExceeded,
+                    )))));
+                }
+
+                if message_size > limits.max_message_size() {
+                    return Ok(Some(RuntimeValue::I32(api_error::i32_from(Err(
+                        ApiError::MessageTooLarge,
+                    )))));
+                }
+
+                let topic_name_bytes =
+                    self.bytes_from_mem(topic_name_ptr, topic_name_size as usize)?;
+                let topic_name = std::str::from_utf8(&topic_name_bytes)
+                    .map_err(|e| Trap::from(Error::InvalidUtf8Encoding(e)))?;
+
+                let message = self.t_from_mem(message_ptr, message_size)?;
+
+                let result = self.emit_message(topic_name, message)?;
+                if result.is_ok() {
+                    // Increase the cost for the next call to emit a message.
+                    let new_cost = self
+                        .context
+                        .emit_message_cost()
+                        .checked_add(host_function_costs.cost_increase_per_message.into())
+                        .ok_or(Error::GasLimit)?;
+                    self.context.set_emit_message_cost(new_cost);
+                }
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
             }
         }

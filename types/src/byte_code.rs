@@ -237,7 +237,7 @@ impl JsonSchema for ByteCodeHash {
 pub enum ByteCodeKind {
     /// Empty byte code.
     Empty = 0,
-    /// Byte code to be executed with the V1 Casper execution engine.
+    /// Byte code to be executed with the version 1 Casper execution engine.
     V1CasperWasm = 1,
 }
 

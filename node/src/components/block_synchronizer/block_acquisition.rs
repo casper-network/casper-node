@@ -9,7 +9,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
     execution::ExecutionResult, Block, BlockHash, BlockHeader, DeployHash, DeployId, Digest, EraId,
-    FinalitySignature, ProtocolVersion, PublicKey,
+    FinalitySignature, ProtocolVersion, PublicKey, TransactionHash,
 };
 
 use crate::{
@@ -584,7 +584,16 @@ impl BlockAcquisitionState {
                     "BlockAcquisition: registering block for: {}",
                     header.block_hash()
                 );
-                let deploy_hashes = block.deploy_and_transfer_hashes().copied().collect();
+                let deploy_hashes = match &block {
+                    Block::V1(v1) => v1.deploy_and_transfer_hashes().copied().collect(),
+                    Block::V2(v2) => v2
+                        .all_transactions()
+                        .filter_map(|txn_hash| match txn_hash {
+                            TransactionHash::Deploy(deploy_hash) => Some(*deploy_hash),
+                            TransactionHash::V1(_) => None,
+                        })
+                        .collect(),
+                };
                 let deploy_acquisition =
                     DeployAcquisition::new_by_hash(deploy_hashes, need_execution_state);
 
@@ -1032,7 +1041,16 @@ impl BlockAcquisitionState {
                     "BlockAcquisition: registering execution result or chunk for: {}",
                     block.hash()
                 );
-                let deploy_hashes = block.deploy_and_transfer_hashes().copied().collect();
+                let deploy_hashes = match block.as_ref() {
+                    Block::V1(v1) => v1.deploy_and_transfer_hashes().copied().collect(),
+                    Block::V2(v2) => v2
+                        .all_transactions()
+                        .filter_map(|txn_hash| match txn_hash {
+                            TransactionHash::Deploy(deploy_hash) => Some(*deploy_hash),
+                            TransactionHash::V1(_) => None,
+                        })
+                        .collect(),
+                };
                 match exec_results_acq
                     .clone()
                     .apply_block_execution_results_or_chunk(

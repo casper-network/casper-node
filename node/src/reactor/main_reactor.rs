@@ -27,7 +27,8 @@ use tracing::{debug, error, info, warn};
 
 use casper_types::{
     Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, DeployId, EraId, FinalitySignature,
-    PublicKey, TimeDiff, Timestamp, Transaction, TransactionId, U512,
+    PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId,
+    U512,
 };
 
 #[cfg(test)]
@@ -66,6 +67,7 @@ use crate::{
         requests::{AcceptTransactionRequest, ChainspecRawBytesRequest},
         EffectBuilder, EffectExt, Effects, GossipTarget,
     },
+    failpoints::FailpointActivation,
     fatal,
     protocol::Message,
     reactor::{
@@ -740,22 +742,15 @@ impl reactor::Reactor for MainReactor {
                             }),
                         ));
                         // notify event stream
-                        match &*transaction {
-                            Transaction::Deploy(deploy) => {
-                                effects.extend(self.dispatch_event(
-                                    effect_builder,
-                                    rng,
-                                    MainEvent::EventStreamServer(
-                                        event_stream_server::Event::DeployAccepted(Arc::new(
-                                            deploy.clone(),
-                                        )),
-                                    ),
-                                ));
-                            }
-                            Transaction::V1(_txn) => {
-                                todo!("avoid match on `transaction` once sse handles transactions");
-                            }
-                        }
+                        effects.extend(self.dispatch_event(
+                            effect_builder,
+                            rng,
+                            MainEvent::EventStreamServer(
+                                event_stream_server::Event::TransactionAccepted(Arc::clone(
+                                    &transaction,
+                                )),
+                            ),
+                        ));
                     }
                     Source::SpeculativeExec(_) => {
                         error!(
@@ -837,9 +832,10 @@ impl reactor::Reactor for MainReactor {
             MainEvent::DeployBufferAnnouncement(DeployBufferAnnouncement::DeploysExpired(
                 hashes,
             )) => {
-                let reactor_event = MainEvent::EventStreamServer(
-                    event_stream_server::Event::DeploysExpired(hashes),
-                );
+                let reactor_event =
+                    MainEvent::EventStreamServer(event_stream_server::Event::TransactionsExpired(
+                        hashes.into_iter().map(TransactionHash::Deploy).collect(),
+                    ));
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
 
@@ -996,8 +992,8 @@ impl reactor::Reactor for MainReactor {
             | MainEvent::LegacyDeployFetcherRequest(..)
             | MainEvent::BlockFetcher(..)
             | MainEvent::BlockFetcherRequest(..)
-            | MainEvent::DeployFetcher(..)
-            | MainEvent::DeployFetcherRequest(..)
+            | MainEvent::TransactionFetcher(..)
+            | MainEvent::TransactionFetcherRequest(..)
             | MainEvent::BlockHeaderFetcher(..)
             | MainEvent::BlockHeaderFetcherRequest(..)
             | MainEvent::TrieOrChunkFetcher(..)
@@ -1157,10 +1153,11 @@ impl reactor::Reactor for MainReactor {
             validator_matrix.clone(),
             registry,
         )?;
-        let block_validator = BlockValidator::new(Arc::clone(&chainspec));
+        let block_validator = BlockValidator::new(Arc::clone(&chainspec), config.block_validator);
         let upgrade_watcher =
             UpgradeWatcher::new(chainspec.as_ref(), config.upgrade_watcher, &root_dir)?;
-        let transaction_acceptor = TransactionAcceptor::new(chainspec.as_ref(), registry)?;
+        let transaction_acceptor =
+            TransactionAcceptor::new(config.transaction_acceptor, chainspec.as_ref(), registry)?;
         let deploy_buffer =
             DeployBuffer::new(chainspec.transaction_config, config.deploy_buffer, registry)?;
 
@@ -1220,6 +1217,15 @@ impl reactor::Reactor for MainReactor {
         self.memory_metrics.estimate(self);
         self.event_queue_metrics
             .record_event_queue_counts(&event_queue_handle)
+    }
+
+    fn activate_failpoint(&mut self, activation: &FailpointActivation) {
+        if activation.key().starts_with("consensus") {
+            <EraSupervisor as Component<MainEvent>>::activate_failpoint(
+                &mut self.consensus,
+                activation,
+            );
+        }
     }
 }
 
@@ -1457,6 +1463,7 @@ impl MainReactor {
 
         if let MetaBlock::Forward(forward_meta_block) = &meta_block {
             let block = forward_meta_block.block.clone();
+            let execution_results = forward_meta_block.execution_results.clone();
 
             if meta_block
                 .mut_state()
@@ -1470,7 +1477,7 @@ impl MainReactor {
                 );
                 let meta_block = ForwardMetaBlock {
                     block,
-                    execution_results: meta_block.execution_results().clone(),
+                    execution_results,
                     state: *meta_block.state(),
                 };
                 effects.extend(reactor::wrap_effects(
@@ -1584,19 +1591,46 @@ impl MainReactor {
             ),
         ));
 
-        for (deploy_hash, deploy_header, execution_result) in meta_block.execution_results().clone()
-        {
-            let event = event_stream_server::Event::DeployProcessed {
-                deploy_hash,
-                deploy_header: Box::new(deploy_header),
-                block_hash: meta_block.hash(),
-                execution_result: Box::new(execution_result),
-            };
-            effects.extend(reactor::wrap_effects(
-                MainEvent::EventStreamServer,
-                self.event_stream_server
-                    .handle_event(effect_builder, rng, event),
-            ));
+        match &meta_block {
+            MetaBlock::Forward(fwd_meta_block) => {
+                for exec_artifact in fwd_meta_block.execution_results.iter() {
+                    let event = event_stream_server::Event::TransactionProcessed {
+                        transaction_hash: TransactionHash::Deploy(exec_artifact.deploy_hash),
+                        transaction_header: Box::new(TransactionHeader::Deploy(
+                            exec_artifact.deploy_header.clone(),
+                        )),
+                        block_hash: *fwd_meta_block.block.hash(),
+                        execution_result: Box::new(exec_artifact.execution_result.clone()),
+                        messages: exec_artifact.messages.clone(),
+                    };
+
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::EventStreamServer,
+                        self.event_stream_server
+                            .handle_event(effect_builder, rng, event),
+                    ));
+                }
+            }
+            MetaBlock::Historical(historical_meta_block) => {
+                for (deploy_hash, deploy_header, execution_result) in
+                    historical_meta_block.execution_results.iter()
+                {
+                    let event = event_stream_server::Event::TransactionProcessed {
+                        transaction_hash: TransactionHash::Deploy(*deploy_hash),
+                        transaction_header: Box::new(TransactionHeader::Deploy(
+                            deploy_header.clone(),
+                        )),
+                        block_hash: *historical_meta_block.block.hash(),
+                        execution_result: Box::new(execution_result.clone()),
+                        messages: Vec::new(),
+                    };
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::EventStreamServer,
+                        self.event_stream_server
+                            .handle_event(effect_builder, rng, event),
+                    ));
+                }
+            }
         }
 
         debug!(

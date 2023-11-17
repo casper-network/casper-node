@@ -3149,6 +3149,8 @@ mod session {
 }
 
 mod payment {
+    use std::iter;
+
     use rand::Rng;
 
     use crate::test::contract_api::get_call_stack::{
@@ -3168,8 +3170,8 @@ mod payment {
     };
 
     // DEPTHS should not contain 1, as it will eliminate the initial element from the subcalls
-    // vector.  Going further than 5 will hit the gas limit.
-    const DEPTHS: &[usize] = &[0, 2, 5];
+    // vector.  Going further than 6 will hit the gas limit.
+    const DEPTHS: &[usize] = &[0, 6, 10];
 
     fn execute(builder: &mut LmdbWasmTestBuilder, call_depth: usize, subcalls: Vec<Call>) {
         let execute_request = {
@@ -3488,11 +3490,15 @@ mod payment {
 
         let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
-        let subcalls = vec![
-            super::stored_session(current_contract_hash.into()),
-            super::stored_contract(current_contract_hash.into()),
-        ];
-        execute(&mut builder, call_depth, subcalls)
+        let subcalls = iter::repeat_with(|| {
+            [
+                super::stored_session(current_contract_hash.into()),
+                super::stored_contract(current_contract_hash.into()),
+            ]
+        })
+        .take(call_depth)
+        .flatten();
+        execute(&mut builder, call_depth, subcalls.collect())
     }
 
     // Session + recursive subcall failure cases

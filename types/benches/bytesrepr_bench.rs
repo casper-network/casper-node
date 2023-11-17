@@ -7,7 +7,9 @@ use std::{
 
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind},
+    addressable_entity::{
+        ActionThresholds, AddressableEntity, AssociatedKeys, MessageTopics, NamedKeys, EntityKind
+    },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     package::PackageStatus,
     system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
@@ -486,6 +488,7 @@ fn sample_contract(entry_points_len: u8) -> AddressableEntity {
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
+        MessageTopics::default(),
         EntityKind::SmartContract,
     )
 }

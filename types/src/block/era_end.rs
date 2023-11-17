@@ -1,9 +1,6 @@
 mod era_end_v1;
 mod era_end_v2;
 
-pub use era_end_v1::EraEndV1;
-pub use era_end_v2::EraEndV2;
-
 use alloc::{collections::BTreeMap, vec::Vec};
 use core::fmt::{self, Display, Formatter};
 
@@ -15,6 +12,8 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     PublicKey, Rewards, U512,
 };
+pub use era_end_v1::{EraEndV1, EraReport};
+pub use era_end_v2::EraEndV2;
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 

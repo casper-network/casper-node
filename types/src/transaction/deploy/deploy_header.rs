@@ -18,7 +18,7 @@ use crate::{
     Digest, DisplayIter, PublicKey, TimeDiff, Timestamp,
 };
 #[cfg(any(feature = "std", test))]
-use crate::{DeployConfigurationFailure, TransactionConfig};
+use crate::{DeployConfigFailure, TransactionConfig};
 
 /// The header portion of a [`Deploy`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
@@ -104,14 +104,15 @@ impl DeployHeader {
     }
 
     /// Returns `Ok` if and only if the dependencies count and TTL are within limits, and the
-    /// timestamp is not later than `at`.  Does NOT check for expiry.
+    /// timestamp is not later than `at + timestamp_leeway`.  Does NOT check for expiry.
     #[cfg(any(feature = "std", test))]
     pub fn is_valid(
         &self,
         config: &TransactionConfig,
+        timestamp_leeway: TimeDiff,
         at: Timestamp,
         deploy_hash: &DeployHash,
-    ) -> Result<(), DeployConfigurationFailure> {
+    ) -> Result<(), DeployConfigFailure> {
         if self.dependencies.len() > config.deploy_config.max_dependencies as usize {
             debug!(
                 %deploy_hash,
@@ -119,7 +120,7 @@ impl DeployHeader {
                 max_dependencies = %config.deploy_config.max_dependencies,
                 "deploy dependency ceiling exceeded"
             );
-            return Err(DeployConfigurationFailure::ExcessiveDependencies {
+            return Err(DeployConfigFailure::ExcessiveDependencies {
                 max_dependencies: config.deploy_config.max_dependencies,
                 got: self.dependencies().len(),
             });
@@ -132,16 +133,17 @@ impl DeployHeader {
                 max_ttl = %config.max_ttl,
                 "deploy ttl excessive"
             );
-            return Err(DeployConfigurationFailure::ExcessiveTimeToLive {
+            return Err(DeployConfigFailure::ExcessiveTimeToLive {
                 max_ttl: config.max_ttl,
                 got: self.ttl(),
             });
         }
 
-        if self.timestamp() > at {
+        if self.timestamp() > at + timestamp_leeway {
             debug!(%deploy_hash, deploy_header = %self, %at, "deploy timestamp in the future");
-            return Err(DeployConfigurationFailure::TimestampInFuture {
+            return Err(DeployConfigFailure::TimestampInFuture {
                 validation_timestamp: at,
+                timestamp_leeway,
                 got: self.timestamp(),
             });
         }

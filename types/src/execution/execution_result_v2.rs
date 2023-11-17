@@ -93,16 +93,18 @@ impl Distribution<ExecutionResultV2> for Standard {
             transfers.push(TransferAddr::new(rng.gen()))
         }
 
+        let effects = Effects::random(rng);
+
         if rng.gen() {
             ExecutionResultV2::Failure {
-                effects: Effects::random(rng),
+                effects,
                 transfers,
                 cost: rng.gen::<u64>().into(),
                 error_message: format!("Error message {}", rng.gen::<u64>()),
             }
         } else {
             ExecutionResultV2::Success {
-                effects: Effects::random(rng),
+                effects,
                 transfers,
                 cost: rng.gen::<u64>().into(),
             }

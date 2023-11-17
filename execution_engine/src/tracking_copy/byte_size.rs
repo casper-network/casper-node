@@ -42,6 +42,10 @@ impl ByteSize for StoredValue {
                 StoredValue::Withdraw(withdraw_purses) => withdraw_purses.serialized_length(),
                 StoredValue::Unbonding(unbonding_purses) => unbonding_purses.serialized_length(),
                 StoredValue::ByteCode(byte_code) => byte_code.serialized_length(),
+                StoredValue::MessageTopic(message_topic_summary) => {
+                    message_topic_summary.serialized_length()
+                }
+                StoredValue::Message(message_summary) => message_summary.serialized_length(),
                 StoredValue::NamedKey(named_key) => named_key.serialized_length(),
             }
     }

@@ -17,7 +17,7 @@ use casper_types::{
         },
         mint::ROUND_SEIGNIORAGE_RATE_KEY,
     },
-    BrTableCost, CLValue, ControlFlowCosts, EntityAddr, EraId, HostFunctionCosts, OpcodeCosts,
+    BrTableCost, CLValue, ControlFlowCosts, EntityAddr, EraId, HostFunctionCosts, MessageLimits, OpcodeCosts,
     ProtocolVersion, StorageCosts, StoredValue, WasmConfig, DEFAULT_ADD_COST, DEFAULT_BIT_COST,
     DEFAULT_CONST_COST, DEFAULT_CONTROL_FLOW_BLOCK_OPCODE, DEFAULT_CONTROL_FLOW_BR_IF_OPCODE,
     DEFAULT_CONTROL_FLOW_BR_OPCODE, DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER,
@@ -74,12 +74,14 @@ fn get_upgraded_wasm_config() -> WasmConfig {
     };
     let storage_costs = StorageCosts::default();
     let host_function_costs = HostFunctionCosts::default();
+    let messages_limits = MessageLimits::default();
     WasmConfig::new(
         DEFAULT_WASM_MAX_MEMORY,
         DEFAULT_MAX_STACK_HEIGHT * 2,
         opcode_cost,
         storage_costs,
         host_function_costs,
+        messages_limits,
     )
 }
 

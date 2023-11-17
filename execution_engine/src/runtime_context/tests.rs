@@ -7,8 +7,8 @@ use casper_storage::global_state::state::{self, lmdb::LmdbGlobalStateView, State
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity::{
-        ActionType, AddKeyFailure, AssociatedKeys, NamedKeys, RemoveKeyFailure,
-        SetThresholdFailure, Weight,
+        ActionType, AddKeyFailure, AssociatedKeys, MessageTopics, NamedKeys,
+        RemoveKeyFailure, SetThresholdFailure, Weight,
     },
     bytesrepr::ToBytes,
     execution::TransformKind,
@@ -75,6 +75,7 @@ fn new_addressable_entity_with_purse(
         URef::new(purse, AccessRights::READ_ADD_WRITE),
         associated_keys,
         Default::default(),
+        MessageTopics::default(),
         entity_kind,
     );
     let account_key = Key::Account(account_hash);

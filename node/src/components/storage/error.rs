@@ -4,11 +4,12 @@ use thiserror::Error;
 use tracing::error;
 
 use casper_types::{
-    bytesrepr, crypto, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockValidationError,
-    DeployHash, Digest, EraId, FinalitySignature, FinalitySignatureId, TransactionHash,
+    bytesrepr, crypto, BlockBody, BlockHash, BlockHeader, BlockValidationError, DeployHash, Digest,
+    EraId, FinalitySignature, FinalitySignatureId, TransactionHash,
 };
 
 use super::lmdb_ext::LmdbExtError;
+use crate::types::VariantMismatch;
 
 /// A fatal storage component error.
 ///
@@ -39,15 +40,15 @@ pub enum FatalStorageError {
         /// Second block hash encountered at `era_id`.
         second: BlockHash,
     },
-    /// Found a duplicate switch-block-at-era-id index entry.
-    #[error("duplicate entries for blocks for deploy {deploy_hash}: {first} / {second}")]
-    DuplicateDeployIndex {
-        /// Deploy hash at which duplicate was found.
-        deploy_hash: DeployHash,
-        /// First block hash encountered at `deploy_hash`.
-        first: BlockHashAndHeight,
-        /// Second block hash encountered at `deploy_hash`.
-        second: BlockHashAndHeight,
+    /// Found a duplicate transaction index entry.
+    #[error("duplicate entries for blocks for transaction {transaction_hash}: {first} / {second}")]
+    DuplicateTransactionIndex {
+        /// Transaction hash at which duplicate was found.
+        transaction_hash: TransactionHash,
+        /// First block hash encountered at `transaction_hash`.
+        first: BlockHash,
+        /// Second block hash encountered at `transaction_hash`.
+        second: BlockHash,
     },
     /// LMDB error while operating.
     #[error("internal database error: {0}")]
@@ -213,8 +214,3 @@ pub(super) enum GetRequestError {
         finality_signature: Box<FinalitySignature>,
     },
 }
-
-/// The variants in the given types are expected to all be the same.
-#[derive(Debug, Error)]
-#[error("mismatch in variants: {0:?}")]
-pub struct VariantMismatch(pub(super) Box<dyn Debug + Send + Sync>);

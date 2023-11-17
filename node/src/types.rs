@@ -18,9 +18,12 @@ mod transaction;
 mod validator_matrix;
 mod value_or_chunk;
 
+use std::fmt::Debug;
+
 use rand::{CryptoRng, RngCore};
 #[cfg(not(test))]
 use rand_chacha::ChaCha20Rng;
+use thiserror::Error;
 
 pub use available_block_range::AvailableBlockRange;
 pub(crate) use block::{
@@ -40,10 +43,11 @@ pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;
 pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
 pub(crate) use sync_leap::{GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier};
+pub use transaction::TransactionHashWithApprovals;
 pub(crate) use transaction::{
-    DeployExecutionInfo, DeployHashWithApprovals, DeployOrTransferHash,
-    DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedDeployApprovals,
-    FinalizedTransactionV1Approvals, LegacyDeploy, TransactionWithFinalizedApprovals,
+    DeployHashWithApprovals, DeployOrTransferHash, DeployWithFinalizedApprovals, ExecutionInfo,
+    FinalizedApprovals, FinalizedDeployApprovals, FinalizedTransactionV1Approvals, LegacyDeploy,
+    TransactionWithFinalizedApprovals, TypedTransactionHash,
 };
 pub(crate) use validator_matrix::{EraValidatorWeights, SignatureWeight, ValidatorMatrix};
 pub use value_or_chunk::{
@@ -62,3 +66,8 @@ pub type NodeRng = ChaCha20Rng;
 /// The RNG used throughout the node for testing.
 #[cfg(test)]
 pub type NodeRng = casper_types::testing::TestRng;
+
+/// The variants in the given types are expected to all be the same.
+#[derive(Debug, Error)]
+#[error("mismatch in variants: {0:?}")]
+pub struct VariantMismatch(pub(super) Box<dyn Debug + Send + Sync>);

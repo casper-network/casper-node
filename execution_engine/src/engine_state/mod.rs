@@ -49,7 +49,7 @@ use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
         ActionThresholds, AssociatedKeys, EntityKind, EntityKindTag, NamedKeyAddr, NamedKeyValue,
-        NamedKeys, Weight,
+        NamedKeys, Weight, MessageTopics,
     },
     bytesrepr::ToBytes,
     execution::Effects,
@@ -90,7 +90,7 @@ pub use self::{
     prune::{PruneConfig, PruneResult},
     query::{QueryRequest, QueryResult},
     run_genesis_request::RunGenesisRequest,
-    step::{SlashItem, StepError, StepRequest, StepSuccess},
+    step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
     system_contract_registry::SystemContractRegistry,
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::UpgradeSuccess,
@@ -848,6 +848,7 @@ where
             associated_keys,
             action_thresholds,
             EntityKind::Account(account_hash),
+            MessageTopics::default(),
         );
 
         let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
@@ -2708,11 +2709,13 @@ fn log_execution_result(preamble: &'static str, result: &ExecutionResult) {
             transfers,
             cost,
             effects,
+            messages,
         } => {
             debug!(
                 %cost,
                 transfer_count = %transfers.len(),
                 transforms_count = %effects.len(),
+                messages_count = %messages.len(),
                 "{}: execution success",
                 preamble
             );
@@ -2722,12 +2725,14 @@ fn log_execution_result(preamble: &'static str, result: &ExecutionResult) {
             transfers,
             cost,
             effects,
+            messages,
         } => {
             debug!(
                 %error,
                 %cost,
                 transfer_count = %transfers.len(),
                 transforms_count = %effects.len(),
+                messages_count = %messages.len(),
                 "{}: execution failure",
                 preamble
             );
@@ -2742,6 +2747,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
             transfers: _,
             cost: _,
             effects: _,
+            messages: _,
         } => match error {
             Error::Exec(err) => match err {
                 ExecError::WasmPreprocessing(_) | ExecError::UnsupportedWasmStart => true,
@@ -2796,7 +2802,9 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::UnexpectedKeyVariant(_)
                 | ExecError::InvalidEntityKind(_)
                 | ExecError::Transform(_)
-                | ExecError::InvalidEntryPointType => false,
+                | ExecError::InvalidEntryPointType
+                | ExecError::InvalidMessageTopicOperation
+                | ExecError::InvalidUtf8Encoding(_) => false,
                 ExecError::DisabledUnrestrictedTransfers => false,
             },
             Error::WasmPreprocessing(_) => true,

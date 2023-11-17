@@ -10,7 +10,7 @@ mod named_keys;
 mod weight;
 
 use alloc::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{btree_map::Entry, BTreeMap, BTreeSet},
     format,
     string::{String, ToString},
     vec::Vec,
@@ -55,6 +55,7 @@ use crate::{
     byte_code::ByteCodeHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     checksummed_hex,
+    contract_messages::TopicNameHash,
     contracts::{Contract, ContractHash},
     key::ByteCodeAddr,
     system::SystemEntityType,
@@ -403,6 +404,12 @@ impl TryFrom<&Vec<u8>> for AddressableEntityHash {
         HashAddr::try_from(bytes as &[u8])
             .map(AddressableEntityHash::new)
             .map_err(|_| TryFromSliceForContractHashError(()))
+    }
+}
+
+impl Distribution<AddressableEntityHash> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AddressableEntityHash {
+        AddressableEntityHash(rng.gen())
     }
 }
 
@@ -1423,6 +1430,113 @@ impl FromBytes for NamedKeyValue {
     }
 }
 
+/// Collection of named message topics.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[serde(transparent, deny_unknown_fields)]
+pub struct MessageTopics(
+    #[serde(with = "BTreeMapToArray::<String, TopicNameHash, MessageTopicLabels>")]
+    BTreeMap<String, TopicNameHash>,
+);
+
+impl ToBytes for MessageTopics {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.0.write_bytes(writer)
+    }
+}
+
+impl FromBytes for MessageTopics {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (message_topics_map, remainder) = BTreeMap::<String, TopicNameHash>::from_bytes(bytes)?;
+        Ok((MessageTopics(message_topics_map), remainder))
+    }
+}
+
+impl MessageTopics {
+    /// Adds new message topic by topic name.
+    pub fn add_topic(
+        &mut self,
+        topic_name: &str,
+        topic_name_hash: TopicNameHash,
+    ) -> Result<(), MessageTopicError> {
+        if self.0.len() >= u32::MAX as usize {
+            return Err(MessageTopicError::MaxTopicsExceeded);
+        }
+
+        match self.0.entry(topic_name.to_string()) {
+            Entry::Vacant(entry) => {
+                entry.insert(topic_name_hash);
+                Ok(())
+            }
+            Entry::Occupied(_) => Err(MessageTopicError::DuplicateTopic),
+        }
+    }
+
+    /// Checks if given topic name exists.
+    pub fn has_topic(&self, topic_name: &str) -> bool {
+        self.0.contains_key(topic_name)
+    }
+
+    /// Gets the topic hash from the collection by its topic name.
+    pub fn get(&self, topic_name: &str) -> Option<&TopicNameHash> {
+        self.0.get(topic_name)
+    }
+
+    /// Returns the length of the message topics.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns true if no message topics are registered.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Returns an iterator over the topic name and its hash.
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &TopicNameHash)> {
+        self.0.iter()
+    }
+}
+
+struct MessageTopicLabels;
+
+impl KeyValueLabels for MessageTopicLabels {
+    const KEY: &'static str = "topic_name";
+    const VALUE: &'static str = "topic_name_hash";
+}
+
+#[cfg(feature = "json-schema")]
+impl KeyValueJsonSchema for MessageTopicLabels {
+    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("MessageTopic");
+}
+
+impl From<BTreeMap<String, TopicNameHash>> for MessageTopics {
+    fn from(topics: BTreeMap<String, TopicNameHash>) -> MessageTopics {
+        MessageTopics(topics)
+    }
+}
+
+/// Errors that can occur while adding a new topic.
+#[derive(PartialEq, Eq, Debug, Clone)]
+#[non_exhaustive]
+pub enum MessageTopicError {
+    /// Topic already exists.
+    DuplicateTopic,
+    /// Maximum number of topics exceeded.
+    MaxTopicsExceeded,
+    /// Topic name size exceeded.
+    TopicNameSizeExceeded,
+}
+
 /// Methods and type signatures supported by a contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -1435,6 +1549,7 @@ pub struct AddressableEntity {
     main_purse: URef,
     associated_keys: AssociatedKeys,
     action_thresholds: ActionThresholds,
+    message_topics: MessageTopics,
     entity_kind: EntityKind,
 }
 
@@ -1473,6 +1588,7 @@ impl AddressableEntity {
         main_purse: URef,
         associated_keys: AssociatedKeys,
         action_thresholds: ActionThresholds,
+        message_topics: MessageTopics,
         entity_kind: EntityKind,
     ) -> Self {
         AddressableEntity {
@@ -1483,6 +1599,7 @@ impl AddressableEntity {
             main_purse,
             action_thresholds,
             associated_keys,
+            message_topics,
             entity_kind,
         }
     }
@@ -1699,25 +1816,19 @@ impl AddressableEntity {
         &self.entry_points
     }
 
-    // /// Takes `named_keys`
-    // pub fn take_named_keys(self) -> NamedKeys {
-    //     self.named_keys
-    // }
-    //
-    // /// Returns a reference to `named_keys`
-    // pub fn named_keys(&self) -> &NamedKeys {
-    //     &self.named_keys
-    // }
-    //
-    // /// Appends `keys` to `named_keys`
-    // pub fn named_keys_append(&mut self, keys: NamedKeys) {
-    //     self.named_keys.append(keys);
-    // }
-    //
-    // /// Removes given named key.
-    // pub fn remove_named_key(&mut self, key: &str) -> Option<Key> {
-    //     self.named_keys.remove(key)
-    // }
+    /// Returns a reference to the message topics
+    pub fn message_topics(&self) -> &MessageTopics {
+        &self.message_topics
+    }
+
+    /// Adds a new message topic to the entity
+    pub fn add_message_topic(
+        &mut self,
+        topic_name: &str,
+        topic_name_hash: TopicNameHash,
+    ) -> Result<(), MessageTopicError> {
+        self.message_topics.add_topic(topic_name, topic_name_hash)
+    }
 
     /// Set protocol_version.
     pub fn set_protocol_version(&mut self, protocol_version: ProtocolVersion) {
@@ -1781,6 +1892,7 @@ impl AddressableEntity {
             main_purse: self.main_purse,
             associated_keys: self.associated_keys,
             action_thresholds: self.action_thresholds,
+            message_topics: self.message_topics,
             entity_kind: self.entity_kind,
         }
     }
@@ -1796,6 +1908,7 @@ impl ToBytes for AddressableEntity {
         self.main_purse().write_bytes(&mut result)?;
         self.associated_keys().write_bytes(&mut result)?;
         self.action_thresholds().write_bytes(&mut result)?;
+        self.message_topics().write_bytes(&mut result)?;
         self.entity_kind().write_bytes(&mut result)?;
         Ok(result)
     }
@@ -1808,6 +1921,7 @@ impl ToBytes for AddressableEntity {
             + ToBytes::serialized_length(&self.main_purse)
             + ToBytes::serialized_length(&self.associated_keys)
             + ToBytes::serialized_length(&self.action_thresholds)
+            + ToBytes::serialized_length(&self.message_topics)
             + ToBytes::serialized_length(&self.entity_kind)
     }
 
@@ -1819,6 +1933,7 @@ impl ToBytes for AddressableEntity {
         self.main_purse().write_bytes(writer)?;
         self.associated_keys().write_bytes(writer)?;
         self.action_thresholds().write_bytes(writer)?;
+        self.message_topics().write_bytes(writer)?;
         self.entity_kind().write_bytes(writer)?;
         Ok(())
     }
@@ -1833,6 +1948,7 @@ impl FromBytes for AddressableEntity {
         let (main_purse, bytes) = URef::from_bytes(bytes)?;
         let (associated_keys, bytes) = AssociatedKeys::from_bytes(bytes)?;
         let (action_thresholds, bytes) = ActionThresholds::from_bytes(bytes)?;
+        let (message_topics, bytes) = MessageTopics::from_bytes(bytes)?;
         let (entity_kind, bytes) = EntityKind::from_bytes(bytes)?;
         Ok((
             AddressableEntity {
@@ -1843,6 +1959,7 @@ impl FromBytes for AddressableEntity {
                 main_purse,
                 associated_keys,
                 action_thresholds,
+                message_topics,
                 entity_kind,
             },
             bytes,
@@ -1860,6 +1977,7 @@ impl Default for AddressableEntity {
             main_purse: URef::default(),
             action_thresholds: ActionThresholds::default(),
             associated_keys: AssociatedKeys::default(),
+            message_topics: MessageTopics::default(),
             entity_kind: EntityKind::SmartContract,
         }
     }
@@ -1875,6 +1993,7 @@ impl From<Contract> for AddressableEntity {
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
+            MessageTopics::default(),
             EntityKind::SmartContract,
         )
     }
@@ -1890,6 +2009,7 @@ impl From<Account> for AddressableEntity {
             value.main_purse(),
             value.associated_keys().clone().into(),
             value.action_thresholds().clone().into(),
+            MessageTopics::default(),
             EntityKind::Account(value.account_hash()),
         )
     }
@@ -2369,6 +2489,7 @@ mod tests {
             associated_keys,
             ActionThresholds::new(Weight::new(1), Weight::new(1), Weight::new(1))
                 .expect("should create thresholds"),
+            MessageTopics::default(),
             EntityKind::SmartContract,
         );
         let access_rights = contract.extract_access_rights(entity_hash, &named_keys);

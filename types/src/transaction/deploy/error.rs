@@ -17,7 +17,7 @@ use crate::{crypto, TimeDiff, Timestamp, U512};
 #[cfg_attr(feature = "std", derive(Serialize))]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[non_exhaustive]
-pub enum DeployConfigurationFailure {
+pub enum DeployConfigFailure {
     /// Invalid chain name.
     InvalidChainName {
         /// The expected chain name.
@@ -49,6 +49,8 @@ pub enum DeployConfigurationFailure {
     TimestampInFuture {
         /// The node's timestamp when validating the deploy.
         validation_timestamp: Timestamp,
+        /// Any configured leeway added to `validation_timestamp`.
+        timestamp_leeway: TimeDiff,
         /// The deploy's timestamp.
         got: Timestamp,
     },
@@ -123,17 +125,17 @@ pub enum DeployConfigurationFailure {
     },
 }
 
-impl Display for DeployConfigurationFailure {
+impl Display for DeployConfigFailure {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            DeployConfigurationFailure::InvalidChainName { expected, got } => {
+            DeployConfigFailure::InvalidChainName { expected, got } => {
                 write!(
                     formatter,
                     "invalid chain name: expected {}, got {}",
                     expected, got
                 )
             }
-            DeployConfigurationFailure::ExcessiveDependencies {
+            DeployConfigFailure::ExcessiveDependencies {
                 max_dependencies,
                 got,
             } => {
@@ -143,69 +145,70 @@ impl Display for DeployConfigurationFailure {
                     got, max_dependencies
                 )
             }
-            DeployConfigurationFailure::ExcessiveSize(error) => {
+            DeployConfigFailure::ExcessiveSize(error) => {
                 write!(formatter, "deploy size too large: {}", error)
             }
-            DeployConfigurationFailure::ExcessiveTimeToLive { max_ttl, got } => {
+            DeployConfigFailure::ExcessiveTimeToLive { max_ttl, got } => {
                 write!(
                     formatter,
                     "time-to-live of {} exceeds limit of {}",
                     got, max_ttl
                 )
             }
-            DeployConfigurationFailure::TimestampInFuture {
+            DeployConfigFailure::TimestampInFuture {
                 validation_timestamp,
+                timestamp_leeway,
                 got,
             } => {
                 write!(
                     formatter,
-                    "timestamp of {} is later than node's validation timestamp of {}",
-                    got, validation_timestamp
+                    "timestamp of {} is later than node's timestamp of {} plus leeway of {}",
+                    got, validation_timestamp, timestamp_leeway
                 )
             }
-            DeployConfigurationFailure::InvalidBodyHash => {
+            DeployConfigFailure::InvalidBodyHash => {
                 write!(
                     formatter,
                     "the provided body hash does not match the actual hash of the body"
                 )
             }
-            DeployConfigurationFailure::InvalidDeployHash => {
+            DeployConfigFailure::InvalidDeployHash => {
                 write!(
                     formatter,
                     "the provided hash does not match the actual hash of the deploy"
                 )
             }
-            DeployConfigurationFailure::EmptyApprovals => {
+            DeployConfigFailure::EmptyApprovals => {
                 write!(formatter, "the deploy has no approvals")
             }
-            DeployConfigurationFailure::InvalidApproval { index, error } => {
+            DeployConfigFailure::InvalidApproval { index, error } => {
                 write!(
                     formatter,
                     "the approval at index {} is invalid: {}",
                     index, error
                 )
             }
-            DeployConfigurationFailure::ExcessiveSessionArgsLength { max_length, got } => {
+            DeployConfigFailure::ExcessiveSessionArgsLength { max_length, got } => {
                 write!(
                     formatter,
                     "serialized session code runtime args of {} exceeds limit of {}",
                     got, max_length
                 )
             }
-            DeployConfigurationFailure::ExcessivePaymentArgsLength { max_length, got } => {
+            DeployConfigFailure::ExcessivePaymentArgsLength { max_length, got } => {
                 write!(
                     formatter,
                     "serialized payment code runtime args of {} exceeds limit of {}",
                     got, max_length
                 )
             }
-            DeployConfigurationFailure::MissingPaymentAmount => {
+            DeployConfigFailure::MissingPaymentAmount => {
                 write!(formatter, "missing payment 'amount' runtime argument")
             }
-            DeployConfigurationFailure::FailedToParsePaymentAmount => {
+            DeployConfigFailure::FailedToParsePaymentAmount => {
                 write!(formatter, "failed to parse payment 'amount' as U512")
             }
-            DeployConfigurationFailure::ExceededBlockGasLimit {
+            DeployConfigFailure::ExceededBlockGasLimit {
                 block_gas_limit,
                 got,
             } => {
@@ -215,20 +218,20 @@ impl Display for DeployConfigurationFailure {
                     got, block_gas_limit
                 )
             }
-            DeployConfigurationFailure::MissingTransferAmount => {
+            DeployConfigFailure::MissingTransferAmount => {
                 write!(formatter, "missing transfer 'amount' runtime argument")
             }
-            DeployConfigurationFailure::FailedToParseTransferAmount => {
+            DeployConfigFailure::FailedToParseTransferAmount => {
                 write!(formatter, "failed to parse transfer 'amount' as U512")
             }
-            DeployConfigurationFailure::InsufficientTransferAmount { minimum, attempted } => {
+            DeployConfigFailure::InsufficientTransferAmount { minimum, attempted } => {
                 write!(
                     formatter,
                     "insufficient transfer amount; minimum: {} attempted: {}",
                     minimum, attempted
                 )
             }
-            DeployConfigurationFailure::ExcessiveApprovals {
+            DeployConfigFailure::ExcessiveApprovals {
                 got,
                 max_associated_keys,
             } => {
@@ -242,34 +245,34 @@ impl Display for DeployConfigurationFailure {
     }
 }
 
-impl From<ExcessiveSizeError> for DeployConfigurationFailure {
+impl From<ExcessiveSizeError> for DeployConfigFailure {
     fn from(error: ExcessiveSizeError) -> Self {
-        DeployConfigurationFailure::ExcessiveSize(error)
+        DeployConfigFailure::ExcessiveSize(error)
     }
 }
 
 #[cfg(feature = "std")]
-impl StdError for DeployConfigurationFailure {
+impl StdError for DeployConfigFailure {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
-            DeployConfigurationFailure::InvalidApproval { error, .. } => Some(error),
-            DeployConfigurationFailure::InvalidChainName { .. }
-            | DeployConfigurationFailure::ExcessiveDependencies { .. }
-            | DeployConfigurationFailure::ExcessiveSize(_)
-            | DeployConfigurationFailure::ExcessiveTimeToLive { .. }
-            | DeployConfigurationFailure::TimestampInFuture { .. }
-            | DeployConfigurationFailure::InvalidBodyHash
-            | DeployConfigurationFailure::InvalidDeployHash
-            | DeployConfigurationFailure::EmptyApprovals
-            | DeployConfigurationFailure::ExcessiveSessionArgsLength { .. }
-            | DeployConfigurationFailure::ExcessivePaymentArgsLength { .. }
-            | DeployConfigurationFailure::MissingPaymentAmount
-            | DeployConfigurationFailure::FailedToParsePaymentAmount
-            | DeployConfigurationFailure::ExceededBlockGasLimit { .. }
-            | DeployConfigurationFailure::MissingTransferAmount
-            | DeployConfigurationFailure::FailedToParseTransferAmount
-            | DeployConfigurationFailure::InsufficientTransferAmount { .. }
-            | DeployConfigurationFailure::ExcessiveApprovals { .. } => None,
+            DeployConfigFailure::InvalidApproval { error, .. } => Some(error),
+            DeployConfigFailure::InvalidChainName { .. }
+            | DeployConfigFailure::ExcessiveDependencies { .. }
+            | DeployConfigFailure::ExcessiveSize(_)
+            | DeployConfigFailure::ExcessiveTimeToLive { .. }
+            | DeployConfigFailure::TimestampInFuture { .. }
+            | DeployConfigFailure::InvalidBodyHash
+            | DeployConfigFailure::InvalidDeployHash
+            | DeployConfigFailure::EmptyApprovals
+            | DeployConfigFailure::ExcessiveSessionArgsLength { .. }
+            | DeployConfigFailure::ExcessivePaymentArgsLength { .. }
+            | DeployConfigFailure::MissingPaymentAmount
+            | DeployConfigFailure::FailedToParsePaymentAmount
+            | DeployConfigFailure::ExceededBlockGasLimit { .. }
+            | DeployConfigFailure::MissingTransferAmount
+            | DeployConfigFailure::FailedToParseTransferAmount
+            | DeployConfigFailure::InsufficientTransferAmount { .. }
+            | DeployConfigFailure::ExcessiveApprovals { .. } => None,
         }
     }
 }
@@ -279,7 +282,7 @@ impl StdError for DeployConfigurationFailure {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ExcessiveSizeError {
     /// The maximum permitted serialized deploy size, in bytes.
-    pub max_deploy_size: u32,
+    pub max_transaction_size: u32,
     /// The serialized size of the deploy provided, in bytes.
     pub actual_deploy_size: usize,
 }
@@ -289,7 +292,7 @@ impl Display for ExcessiveSizeError {
         write!(
             formatter,
             "deploy size of {} bytes exceeds limit of {}",
-            self.actual_deploy_size, self.max_deploy_size
+            self.actual_deploy_size, self.max_transaction_size
         )
     }
 }

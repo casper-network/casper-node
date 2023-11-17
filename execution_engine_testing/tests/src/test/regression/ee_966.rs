@@ -1,6 +1,6 @@
 use assert_matches::assert_matches;
+use casper_wasm::builder;
 use once_cell::sync::Lazy;
-use parity_wasm::builder;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
@@ -13,8 +13,8 @@ use casper_execution_engine::{
 };
 use casper_types::{
     addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, ApiError, EraId, HostFunctionCosts,
-    OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts, WasmConfig, DEFAULT_MAX_STACK_HEIGHT,
-    DEFAULT_WASM_MAX_MEMORY,
+    MessageLimits, OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts, WasmConfig,
+    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY,
 };
 
 const CONTRACT_EE_966_REGRESSION: &str = "ee_966_regression.wasm";
@@ -28,6 +28,7 @@ static DOUBLED_WASM_MEMORY_LIMIT: Lazy<WasmConfig> = Lazy::new(|| {
         OpcodeCosts::default(),
         StorageCosts::default(),
         HostFunctionCosts::default(),
+        MessageLimits::default(),
     )
 });
 static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
@@ -58,7 +59,7 @@ fn make_session_code_with_memory_pages(initial_pages: u32, max_pages: Option<u32
         .with_max(max_pages)
         .build()
         .build();
-    parity_wasm::serialize(module).expect("should serialize")
+    casper_wasm::serialize(module).expect("should serialize")
 }
 
 fn make_request_with_session_bytes(session_code: Vec<u8>) -> ExecuteRequest {

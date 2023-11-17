@@ -11,7 +11,7 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{
         ActionThresholds, AddressableEntityHash, AssociatedKeys, NamedKeyAddr, NamedKeyValue,
-        NamedKeys, Weight,
+        NamedKeys, Weight, MessageTopics
     },
     execution::{Effects, Transform, TransformKind},
     gens::*,
@@ -278,6 +278,7 @@ proptest! {
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
+            MessageTopics::default(),
             EntityKind::SmartContract
         ));
         let contract_key = Key::AddressableEntity(EntityAddr::SmartContract(hash));
@@ -324,6 +325,7 @@ proptest! {
             purse,
             associated_keys,
             ActionThresholds::default(),
+            MessageTopics::default(),
             EntityKind::Account(address)
         );
 
@@ -371,6 +373,7 @@ proptest! {
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
+            MessageTopics::default(),
             EntityKind::SmartContract
         ));
         let contract_key = Key::AddressableEntity(EntityAddr::SmartContract(hash));
@@ -468,6 +471,7 @@ fn query_for_circular_references_should_fail() {
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
+        MessageTopics::default(),
         EntityKind::SmartContract,
     ));
 
@@ -531,6 +535,7 @@ fn validate_query_proof_should_work() {
         URef::default(),
         AssociatedKeys::new(AccountHash::new([3; 32]), Weight::new(1)),
         ActionThresholds::default(),
+        MessageTopics::default(),
         EntityKind::Account(AccountHash::new([3; 32])),
     ));
 
@@ -543,6 +548,7 @@ fn validate_query_proof_should_work() {
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
+        MessageTopics::default(),
         EntityKind::SmartContract,
     ));
 
@@ -802,6 +808,7 @@ fn query_with_large_depth_with_fixed_path_should_fail() {
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
+            MessageTopics::default(),
             EntityKind::SmartContract,
         ));
         pairs.push((contract_key, contract));
@@ -871,6 +878,7 @@ fn query_with_large_depth_with_urefs_should_fail() {
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
+        MessageTopics::default(),
         EntityKind::SmartContract,
     ));
     let contract_key = Key::AddressableEntity(contract_addr);

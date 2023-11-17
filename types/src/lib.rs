@@ -35,6 +35,7 @@ mod chainspec;
 pub mod checksummed_hex;
 mod cl_type;
 mod cl_value;
+pub mod contract_messages;
 mod contract_wasm;
 pub mod contracts;
 pub mod crypto;
@@ -88,8 +89,8 @@ pub use api_error::ApiError;
 #[cfg(all(feature = "std", feature = "json-schema"))]
 pub use block::JsonBlockWithSignatures;
 pub use block::{
-    Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHashAndHeight, BlockHeader,
-    BlockHeaderV1, BlockHeaderV2, BlockSignatures, BlockSignaturesMergeError, BlockV1, BlockV2,
+    Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHeader, BlockHeaderV1,
+    BlockHeaderV2, BlockSignatures, BlockSignaturesMergeError, BlockV1, BlockV2,
     BlockValidationError, EraEnd, EraEndV1, EraEndV2, EraReport, FinalitySignature,
     FinalitySignatureId, RewardedSignatures, Rewards, SignedBlockHeader,
     SignedBlockHeaderValidationError, SingleBlockRewardedSignatures,
@@ -106,9 +107,10 @@ pub use chainspec::{
     ControlFlowCosts, CoreConfig, DelegatorConfig, DeployConfig, FeeHandling, GenesisAccount,
     GenesisValidator, GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError,
     HandlePaymentCosts, HighwayConfig, HostFunction, HostFunctionCost, HostFunctionCosts,
-    LegacyRequiredFinality, MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig, RefundHandling,
-    StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig, TransactionV1Config,
-    UpgradeConfig, ValidatorConfig, WasmConfig, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
+    LegacyRequiredFinality, MessageLimits, MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig,
+    RefundHandling, StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig,
+    TransactionV1Config, UpgradeConfig, ValidatorConfig, WasmConfig,
+    DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{
@@ -166,14 +168,14 @@ pub use transaction::runtime_args::{NamedArg, RuntimeArgs};
 pub use transaction::TestTransactionV1Builder;
 pub use transaction::{
     runtime_args, AuctionTransactionV1, Deploy, DeployApproval, DeployApprovalsHash,
-    DeployConfigurationFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
+    DeployConfigFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
     DeployFootprint, DeployHash, DeployHeader, DeployId, DirectCallV1, EntityIdentifier,
     ExecutableDeployItem, ExecutableDeployItemIdentifier, NativeTransactionV1, PackageIdentifier,
-    PricingModeV1, Transaction, TransactionApprovalsHash, TransactionHash, TransactionId,
-    TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash, TransactionV1ConfigFailure,
-    TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
-    TransactionV1Hash, TransactionV1Header, TransactionV1Kind, TransferTarget,
-    UserlandTransactionV1,
+    PricingModeV1, Transaction, TransactionApprovalsHash, TransactionHash, TransactionHeader,
+    TransactionId, TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash,
+    TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError, TransactionV1Error,
+    TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header, TransactionV1Kind,
+    TransferTarget, UserlandTransactionV1,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction::{

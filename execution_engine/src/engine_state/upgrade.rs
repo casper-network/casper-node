@@ -7,7 +7,7 @@ use casper_storage::global_state::state::StateProvider;
 use casper_types::{
     addressable_entity::{
         ActionThresholds, AssociatedKeys, EntityKind, EntityKindTag, NamedKeyAddr, NamedKeyValue,
-        NamedKeys, Weight,
+        NamedKeys, Weight, MessageTopics
     },
     bytesrepr::{self, ToBytes},
     execution::Effects,
@@ -154,6 +154,7 @@ where
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
+            MessageTopics::default(),
             EntityKind::System(system_contract_type),
         );
 
@@ -326,6 +327,7 @@ where
             main_purse,
             associated_keys,
             ActionThresholds::default(),
+            MessageTopics::default(),
             EntityKind::Account(account_hash),
         );
 

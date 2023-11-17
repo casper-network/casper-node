@@ -24,8 +24,6 @@ use core::{
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(feature = "json-schema")]
-use once_cell::sync::Lazy;
 #[cfg(any(feature = "once_cell", test))]
 use once_cell::sync::OnceCell;
 #[cfg(feature = "json-schema")]
@@ -36,12 +34,8 @@ use tracing::debug;
 
 #[cfg(any(feature = "std", test))]
 use super::AccountAndSecretKey;
-#[cfg(feature = "json-schema")]
-use crate::account::{AccountHash, ACCOUNT_HASH_LENGTH};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
-#[cfg(feature = "json-schema")]
-use crate::URef;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, CLTyped, CLValueError, Digest, DisplayIter, PublicKey, RuntimeArgs, SecretKey,
@@ -67,31 +61,6 @@ pub use transaction_v1_hash::TransactionV1Hash;
 pub use transaction_v1_header::TransactionV1Header;
 pub use transaction_v1_kind::TransactionV1Kind;
 pub use userland_transaction_v1::UserlandTransactionV1;
-
-#[cfg(feature = "json-schema")]
-static TRANSACTION: Lazy<TransactionV1> = Lazy::new(|| {
-    let secret_key = SecretKey::example();
-    let source = URef::from_formatted_str(
-        "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007",
-    )
-    .unwrap();
-    let target = URef::from_formatted_str(
-        "uref-1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b-000",
-    )
-    .unwrap();
-    let to = Some(AccountHash::new([40; ACCOUNT_HASH_LENGTH]));
-    let id = Some(999);
-
-    TransactionV1::build(
-        *Timestamp::example(),
-        TimeDiff::from_seconds(3_600),
-        PricingModeV1::GasPriceMultiplier(1),
-        String::from("casper-example"),
-        None,
-        TransactionV1Kind::new_transfer(source, target, 30_000_000_000_u64, to, id).unwrap(),
-        AccountAndSecretKey::SecretKey(secret_key),
-    )
-});
 
 /// A unit of work sent by a client to the network, which when executed can cause global state to
 /// be altered.
@@ -130,7 +99,7 @@ pub struct TransactionV1 {
 impl TransactionV1 {
     /// Called by the `TransactionBuilder` to construct a new `TransactionV1`.
     #[cfg(any(feature = "std", test))]
-    fn build(
+    pub(super) fn build(
         timestamp: Timestamp,
         ttl: TimeDiff,
         pricing_mode: PricingModeV1,
@@ -325,6 +294,7 @@ impl TransactionV1 {
         chain_name: &str,
         config: &TransactionConfig,
         max_associated_keys: u32,
+        timestamp_leeway: TimeDiff,
         at: Timestamp,
     ) -> Result<(), TransactionV1ConfigFailure> {
         self.is_valid_size(config.max_transaction_size)?;
@@ -343,7 +313,7 @@ impl TransactionV1 {
             });
         }
 
-        header.is_valid(config, at, &self.hash)?;
+        header.is_valid(config, timestamp_leeway, at, &self.hash)?;
 
         if self.approvals.len() > max_associated_keys as usize {
             debug!(
@@ -411,13 +381,6 @@ impl TransactionV1 {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
         TestTransactionV1Builder::new(rng).build()
-    }
-
-    // This method is not intended to be used by third party crates.
-    #[doc(hidden)]
-    #[cfg(feature = "json-schema")]
-    pub fn example() -> &'static Self {
-        &TRANSACTION
     }
 
     /// Turns `self` into an invalid transaction by clearing the `chain_name`, invalidating the
@@ -803,6 +766,7 @@ mod tests {
                 chain_name,
                 &transaction_config,
                 MAX_ASSOCIATED_KEYS,
+                TimeDiff::default(),
                 current_timestamp,
             )
             .expect("should be acceptable");
@@ -830,6 +794,7 @@ mod tests {
                 expected_chain_name,
                 &transaction_config,
                 MAX_ASSOCIATED_KEYS,
+                TimeDiff::default(),
                 current_timestamp
             ),
             Err(expected_error)
@@ -862,6 +827,7 @@ mod tests {
                 chain_name,
                 &transaction_config,
                 MAX_ASSOCIATED_KEYS,
+                TimeDiff::default(),
                 current_timestamp
             ),
             Err(expected_error)
@@ -877,14 +843,16 @@ mod tests {
         let rng = &mut TestRng::new();
         let chain_name = "net-1";
         let transaction_config = TransactionConfig::default();
+        let leeway = TimeDiff::from_seconds(2);
+
         let transaction = TestTransactionV1Builder::new(rng)
             .with_chain_name(chain_name)
             .build();
-
-        let current_timestamp = transaction.timestamp() - TimeDiff::from_seconds(1);
+        let current_timestamp = transaction.timestamp() - leeway - TimeDiff::from_seconds(1);
 
         let expected_error = TransactionV1ConfigFailure::TimestampInFuture {
             validation_timestamp: current_timestamp,
+            timestamp_leeway: leeway,
             got: transaction.timestamp(),
         };
 
@@ -893,6 +861,7 @@ mod tests {
                 chain_name,
                 &transaction_config,
                 MAX_ASSOCIATED_KEYS,
+                leeway,
                 current_timestamp
             ),
             Err(expected_error)
@@ -928,6 +897,7 @@ mod tests {
                 chain_name,
                 &transaction_config,
                 MAX_ASSOCIATED_KEYS,
+                TimeDiff::default(),
                 current_timestamp
             ),
             Err(expected_error)

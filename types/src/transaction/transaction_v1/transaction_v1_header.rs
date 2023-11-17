@@ -100,11 +100,12 @@ impl TransactionV1Header {
     }
 
     /// Returns `Ok` if and only if the TTL is within limits, and the timestamp is not later than
-    /// `at`.  Does NOT check for expiry.
+    /// `at + timestamp_leeway`.  Does NOT check for expiry.
     #[cfg(any(feature = "std", test))]
     pub fn is_valid(
         &self,
         config: &TransactionConfig,
+        timestamp_leeway: TimeDiff,
         at: Timestamp,
         transaction_hash: &TransactionV1Hash,
     ) -> Result<(), TransactionV1ConfigFailure> {
@@ -121,13 +122,14 @@ impl TransactionV1Header {
             });
         }
 
-        if self.timestamp() > at {
+        if self.timestamp() > at + timestamp_leeway {
             debug!(
                 %transaction_hash, transaction_header = %self, %at,
                 "transaction timestamp in the future"
             );
             return Err(TransactionV1ConfigFailure::TimestampInFuture {
                 validation_timestamp: at,
+                timestamp_leeway,
                 got: self.timestamp(),
             });
         }

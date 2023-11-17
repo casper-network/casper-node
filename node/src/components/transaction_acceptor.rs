@@ -1,3 +1,4 @@
+mod config;
 mod error;
 mod event;
 mod metrics;
@@ -11,9 +12,9 @@ use tracing::{debug, error, trace};
 
 use casper_execution_engine::engine_state::{BalanceRequest, MAX_PAYMENT};
 use casper_types::{
-    account::AccountHash, addressable_entity::AddressableEntity, package::Package,
-    system::auction::ARG_AMOUNT, AddressableEntityHash, BlockHeader, Chainspec, DirectCallV1,
-    EntityIdentifier, EntityVersion, EntityVersionKey, ExecutableDeployItem,
+    account::AccountHash, addressable_entity::AddressableEntity, contracts::ContractHash,
+    package::Package, system::auction::ARG_AMOUNT, AddressableEntityHash, BlockHeader, Chainspec,
+    DirectCallV1, EntityIdentifier, EntityVersion, EntityVersionKey, ExecutableDeployItem,
     ExecutableDeployItemIdentifier, Key, PackageHash, PackageIdentifier, ProtocolVersion,
     Transaction, TransactionConfig, TransactionV1Kind, UserlandTransactionV1, U512,
 };
@@ -31,6 +32,7 @@ use crate::{
     NodeRng,
 };
 
+pub(crate) use config::Config;
 pub(crate) use error::{DeployParameterFailure, Error, ParameterFailure};
 pub(crate) use event::{Event, EventMetadata};
 
@@ -68,6 +70,7 @@ impl<REv> ReactorEventT for REv where
 /// newly-accepted `Transaction`.
 #[derive(Debug, DataSize)]
 pub struct TransactionAcceptor {
+    acceptor_config: Config,
     chain_name: String,
     protocol_version: ProtocolVersion,
     config: TransactionConfig,
@@ -79,6 +82,7 @@ pub struct TransactionAcceptor {
 
 impl TransactionAcceptor {
     pub(crate) fn new(
+        acceptor_config: Config,
         chainspec: &Chainspec,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
@@ -89,6 +93,7 @@ impl TransactionAcceptor {
             .map(|public_key| public_key.to_account_hash())
             .collect();
         Ok(TransactionAcceptor {
+            acceptor_config,
             chain_name: chainspec.network_config.name.clone(),
             protocol_version: chainspec.protocol_version(),
             config: chainspec.transaction_config,
@@ -115,6 +120,7 @@ impl TransactionAcceptor {
                     &self.chain_name,
                     &self.config,
                     self.max_associated_keys,
+                    self.acceptor_config.timestamp_leeway,
                     event_metadata.verification_start_timestamp,
                 )
                 .map_err(Error::from),
@@ -123,6 +129,7 @@ impl TransactionAcceptor {
                     &self.chain_name,
                     &self.config,
                     self.max_associated_keys,
+                    self.acceptor_config.timestamp_leeway,
                     event_metadata.verification_start_timestamp,
                 )
                 .map_err(Error::from),
@@ -313,7 +320,7 @@ impl TransactionAcceptor {
             ExecutableDeployItemIdentifier::AddressableEntity(EntityIdentifier::Hash(
                 contract_hash,
             )) => {
-                let query_key = Key::contract_entity_key(contract_hash);
+                let query_key = Key::from(ContractHash::new(contract_hash.value()));
                 effect_builder
                     .get_addressable_entity(*block_header.state_root_hash(), query_key)
                     .event(move |maybe_contract| Event::GetContractResult {
@@ -418,7 +425,7 @@ impl TransactionAcceptor {
             ExecutableDeployItemIdentifier::AddressableEntity(EntityIdentifier::Hash(
                 entity_hash,
             )) => {
-                let key = Key::contract_entity_key(entity_hash);
+                let key = Key::from(ContractHash::new(entity_hash.value()));
                 effect_builder
                     .get_addressable_entity(*block_header.state_root_hash(), key)
                     .event(move |maybe_contract| Event::GetContractResult {
@@ -489,7 +496,6 @@ impl TransactionAcceptor {
                 | TransactionV1Kind::Userland(UserlandTransactionV1::InstallerUpgrader {
                     ..
                 })
-                | TransactionV1Kind::Userland(UserlandTransactionV1::Noop { .. })
                 | TransactionV1Kind::Userland(UserlandTransactionV1::Closed { .. })
                 | TransactionV1Kind::Native(_) => NextStep::CryptoValidation,
             },
@@ -497,7 +503,7 @@ impl TransactionAcceptor {
 
         match next_step {
             NextStep::GetContract(contract_hash) => {
-                let key = Key::contract_entity_key(contract_hash);
+                let key = Key::from(ContractHash::new(contract_hash.value()));
                 effect_builder
                     .get_addressable_entity(*block_header.state_root_hash(), key)
                     .event(move |maybe_contract| Event::GetContractResult {
@@ -613,7 +619,7 @@ impl TransactionAcceptor {
             EntityVersionKey::new(self.protocol_version.value().major, contract_version);
         match package.lookup_entity_hash(contract_version_key) {
             Some(&contract_hash) => {
-                let key = Key::contract_entity_key(contract_hash);
+                let key = Key::from(ContractHash::new(contract_hash.value()));
                 effect_builder
                     .get_addressable_entity(*block_header.state_root_hash(), key)
                     .event(move |maybe_contract| Event::GetContractResult {

@@ -46,7 +46,7 @@ use casper_storage::{
 use casper_types::{
     addressable_entity::EntityKindTag, bytesrepr::Bytes, BlockHash, BlockHeaderV2, Chainspec,
     ChainspecRawBytes, ChainspecRegistry, Digest, EraId, Key, ProtocolVersion, Timestamp,
-    UpgradeConfig, U512,
+    Transaction, UpgradeConfig, U512,
 };
 
 use crate::{
@@ -75,7 +75,7 @@ pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
 use operations::execute_only;
 pub(crate) use types::{
-    BlockAndExecutionResults, EraValidatorsRequest, RoundSeigniorageRateRequest,
+    BlockAndExecutionResults, EraValidatorsRequest, ExecutionArtifact, RoundSeigniorageRateRequest,
     StepEffectsAndUpcomingEraValidators, TotalSupplyRequest,
 };
 
@@ -583,9 +583,9 @@ impl ContractRuntime {
                     // This is the next block to be executed, we do it right away:
                     Ordering::Equal => {
                         info!(
-                            "ContractRuntime: execute finalized block({}) with {} deploys",
+                            "ContractRuntime: execute finalized block({}) with {} transactions",
                             finalized_block_height,
-                            executable_block.deploys.len()
+                            executable_block.transactions.len()
                         );
                         let engine_state = Arc::clone(&self.engine_state);
                         let metrics = Arc::clone(&self.metrics);
@@ -613,9 +613,10 @@ impl ContractRuntime {
                             finalized_block_height, next_block_height
                         );
                         info!(
-                            "ContractRuntime: enqueuing finalized block({}) with {} deploys for execution",
+                            "ContractRuntime: enqueuing finalized block({}) with {} transactions \
+                            for execution",
                             finalized_block_height,
-                            executable_block.deploys.len()
+                            executable_block.transactions.len()
                         );
                         exec_queue.insert(
                             finalized_block_height,
@@ -674,19 +675,25 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::SpeculativeDeployExecution {
+            ContractRuntimeRequest::SpeculativelyExecute {
                 execution_prestate,
-                deploy,
+                transaction,
                 responder,
             } => {
+                let deploy_item = match *transaction {
+                    Transaction::Deploy(deploy) => DeployItem::from(deploy),
+                    Transaction::V1(_) => {
+                        return responder
+                            .respond(Err(engine_state::Error::InvalidDeployItemVariant(
+                                "temp error until EE handles transactions".to_string(),
+                            )))
+                            .ignore();
+                    }
+                };
                 let engine_state = Arc::clone(&self.engine_state);
                 async move {
                     let result = run_intensive_task(move || {
-                        execute_only(
-                            engine_state.as_ref(),
-                            execution_prestate,
-                            DeployItem::from((*deploy).clone()),
-                        )
+                        execute_only(engine_state.as_ref(), execution_prestate, deploy_item)
                     })
                     .await;
                     responder.respond(result).await
@@ -977,7 +984,7 @@ impl ContractRuntime {
         let execution_results_map: HashMap<_, _> = execution_results
             .iter()
             .cloned()
-            .map(|(deploy_hash, _, execution_result)| (deploy_hash, execution_result))
+            .map(|artifact| (artifact.deploy_hash, artifact.execution_result))
             .collect();
         if meta_block_state.register_as_stored().was_updated() {
             effect_builder
@@ -995,6 +1002,7 @@ impl ContractRuntime {
                 .put_execution_results_to_storage(
                     *block.hash(),
                     block.height(),
+                    block.era_id(),
                     execution_results_map,
                 )
                 .await;

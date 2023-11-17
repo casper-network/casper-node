@@ -319,6 +319,8 @@ fn new_payload(random_bit: bool) -> Arc<BlockPayload> {
         vec![],
         vec![],
         vec![],
+        vec![],
+        vec![],
         Default::default(),
         random_bit,
     ))

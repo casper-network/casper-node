@@ -27,9 +27,10 @@ use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     addressable_entity::AddressableEntity,
     bytesrepr::Bytes,
+    contract_messages::Messages,
     execution::{ExecutionResult, ExecutionResultV2},
     system::auction::EraValidators,
-    Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, Deploy, DeployHash,
+    Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash,
     DeployHeader, Digest, DisplayIter, EraId, FinalitySignature, FinalitySignatureId, Key,
     ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId,
     Transfer, URef, U512,
@@ -60,14 +61,14 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
-        DeployExecutionInfo, DeployWithFinalizedApprovals, ExecutableBlock, FinalizedApprovals,
-        LegacyDeploy, MetaBlockState, NodeId, SignedBlock, StatusFeed, TrieOrChunk, TrieOrChunkId,
+        ExecutableBlock, ExecutionInfo, FinalizedApprovals, LegacyDeploy, MetaBlockState, NodeId,
+        SignedBlock, StatusFeed, TransactionWithFinalizedApprovals, TrieOrChunk, TrieOrChunkId,
     },
     utils::Source,
 };
 
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
-const_assert!(_STORAGE_REQUEST_SIZE < 89);
+const_assert!(_STORAGE_REQUEST_SIZE < 97);
 
 /// A metrics request.
 #[derive(Debug)]
@@ -321,12 +322,10 @@ pub(crate) enum StorageRequest {
         /// Responder.
         responder: Responder<Option<BlockHeader>>,
     },
-    /// Retrieve the header of the block containing the deploy.
-    GetBlockHeaderForDeploy {
-        /// Hash of the deploy.
-        deploy_hash: DeployHash,
-        /// Responder.
-        responder: Responder<Option<BlockHeader>>,
+    /// Retrieve the era IDs of the blocks in which the given transactions were executed.
+    GetTransactionsEraIds {
+        transaction_hashes: HashSet<TransactionHash>,
+        responder: Responder<HashSet<EraId>>,
     },
     /// Retrieve block header with given hash.
     GetBlockHeader {
@@ -369,12 +368,10 @@ pub(crate) enum StorageRequest {
         /// previously stored.
         responder: Responder<bool>,
     },
-    /// Retrieve deploys with given hashes.
-    GetDeploys {
-        /// Hashes of deploys to be retrieved.
-        deploy_hashes: Vec<DeployHash>,
-        /// Responder to call with the results.
-        responder: Responder<SmallVec<[Option<DeployWithFinalizedApprovals>; 1]>>,
+    /// Retrieve transaction with given hashes.
+    GetTransactions {
+        transaction_hashes: Vec<TransactionHash>,
+        responder: Responder<SmallVec<[Option<TransactionWithFinalizedApprovals>; 1]>>,
     },
     /// Retrieve legacy deploy with given hash.
     GetLegacyDeploy {
@@ -400,6 +397,7 @@ pub(crate) enum StorageRequest {
         /// Hash of block.
         block_hash: Box<BlockHash>,
         block_height: u64,
+        era_id: EraId,
         /// Mapping of deploys to execution results of the block.
         execution_results: HashMap<DeployHash, ExecutionResult>,
         /// Responder to call when done storing.
@@ -416,12 +414,9 @@ pub(crate) enum StorageRequest {
         /// None is returned when we don't have the block in the storage.
         responder: Responder<Option<BlockExecutionResultsOrChunk>>,
     },
-    /// Retrieve deploy and its execution info.
-    GetDeployAndExecutionInfo {
-        /// Hash of deploy to be retrieved.
-        deploy_hash: DeployHash,
-        /// Responder to call with the results.
-        responder: Responder<Option<(DeployWithFinalizedApprovals, Option<DeployExecutionInfo>)>>,
+    GetTransactionAndExecutionInfo {
+        transaction_hash: TransactionHash,
+        responder: Responder<Option<(TransactionWithFinalizedApprovals, Option<ExecutionInfo>)>>,
     },
     /// Retrieve block and its signatures by its hash.
     GetSignedBlockByHash {
@@ -545,8 +540,14 @@ impl Display for StorageRequest {
             StorageRequest::GetHighestCompleteBlockHeader { .. } => {
                 write!(formatter, "get highest complete block header")
             }
-            StorageRequest::GetBlockHeaderForDeploy { deploy_hash, .. } => {
-                write!(formatter, "get block header for deploy {}", deploy_hash)
+            StorageRequest::GetTransactionsEraIds {
+                transaction_hashes, ..
+            } => {
+                write!(
+                    formatter,
+                    "get era ids for {} transactions",
+                    transaction_hashes.len()
+                )
             }
             StorageRequest::GetBlockHeader { block_hash, .. } => {
                 write!(formatter, "get {}", block_hash)
@@ -563,8 +564,14 @@ impl Display for StorageRequest {
             StorageRequest::PutTransaction { transaction, .. } => {
                 write!(formatter, "put {}", transaction)
             }
-            StorageRequest::GetDeploys { deploy_hashes, .. } => {
-                write!(formatter, "get {}", DisplayIter::new(deploy_hashes.iter()))
+            StorageRequest::GetTransactions {
+                transaction_hashes, ..
+            } => {
+                write!(
+                    formatter,
+                    "get {}",
+                    DisplayIter::new(transaction_hashes.iter())
+                )
             }
             StorageRequest::GetLegacyDeploy { deploy_hash, .. } => {
                 write!(formatter, "get legacy deploy {}", deploy_hash)
@@ -585,8 +592,14 @@ impl Display for StorageRequest {
                 write!(formatter, "get block execution results or chunk for {}", id)
             }
 
-            StorageRequest::GetDeployAndExecutionInfo { deploy_hash, .. } => {
-                write!(formatter, "get deploy and metadata for {}", deploy_hash)
+            StorageRequest::GetTransactionAndExecutionInfo {
+                transaction_hash, ..
+            } => {
+                write!(
+                    formatter,
+                    "get transaction and metadata for {}",
+                    transaction_hash
+                )
             }
             StorageRequest::GetFinalitySignature { id, .. } => {
                 write!(formatter, "get finality signature {}", id)
@@ -951,14 +964,14 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the result. Contains the hash of the stored trie.
         responder: Responder<Result<Digest, engine_state::Error>>,
     },
-    /// Execute deploys without committing results
-    SpeculativeDeployExecution {
-        /// Hash of a block on top of which to execute the deploy.
+    /// Execute transaction without committing results
+    SpeculativelyExecute {
+        /// Hash of a block on top of which to execute the transaction.
         execution_prestate: SpeculativeExecutionState,
-        /// Deploy to execute.
-        deploy: Arc<Deploy>,
+        /// Transaction to execute.
+        transaction: Box<Transaction>,
         /// Results
-        responder: Responder<Result<Option<ExecutionResultV2>, engine_state::Error>>,
+        responder: Responder<Result<Option<(ExecutionResultV2, Messages)>, engine_state::Error>>,
     },
 }
 
@@ -1029,15 +1042,15 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::PutTrie { trie_bytes, .. } => {
                 write!(formatter, "trie: {:?}", trie_bytes)
             }
-            ContractRuntimeRequest::SpeculativeDeployExecution {
+            ContractRuntimeRequest::SpeculativelyExecute {
                 execution_prestate,
-                deploy,
+                transaction,
                 ..
             } => {
                 write!(
                     formatter,
                     "Execute {} on {}",
-                    deploy.hash(),
+                    transaction.hash(),
                     execution_prestate.state_root_hash
                 )
             }

@@ -61,6 +61,8 @@ pub(crate) enum FunctionIndex {
     DictionaryReadFuncIndex,
     EnableContractVersion,
     AddSessionVersion,
+    ManageMessageTopic,
+    EmitMessage,
 }
 
 impl From<FunctionIndex> for usize {

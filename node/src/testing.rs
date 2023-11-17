@@ -26,13 +26,12 @@ use derive_more::From;
 use futures::channel::oneshot;
 use once_cell::sync::Lazy;
 use rand::Rng;
-use schemars::schema::RootSchema;
 use serde_json::Value;
 use tempfile::TempDir;
 use tokio::runtime::{self, Runtime};
 use tracing::{debug, warn};
 
-use casper_types::{testing::TestRng, Deploy, TimeDiff, Timestamp};
+use casper_types::testing::TestRng;
 
 use crate::{
     components::Component,
@@ -291,6 +290,10 @@ impl<REv: 'static> ComponentHarness<REv> {
                     ControlAnnouncement::QueueDumpRequest { .. } => {
                         panic!("queue dumps are not supported in the test harness")
                     }
+                    ControlAnnouncement::ActivateFailpoint { .. } => {
+                        panic!("currently no failpoint activations implemented in test harness")
+                        // TODO: forward to component instead
+                    },
                 }
             }
 
@@ -362,45 +365,12 @@ pub(crate) async fn advance_time(duration: time::Duration) {
     debug!("advanced time by {} secs", duration.as_secs());
 }
 
-/// Creates a test deploy created at given instant and with given ttl.
-pub(crate) fn create_test_deploy(
-    created_ago: TimeDiff,
-    ttl: TimeDiff,
-    now: Timestamp,
-    test_rng: &mut TestRng,
-) -> Deploy {
-    Deploy::random_with_timestamp_and_ttl(test_rng, now - created_ago, ttl)
-}
-
-/// Creates a random deploy that is considered expired.
-pub(crate) fn create_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> Deploy {
-    create_test_deploy(
-        TimeDiff::from_seconds(20),
-        TimeDiff::from_seconds(10),
-        now,
-        test_rng,
-    )
-}
-
-// TODO - remove `allow` once used in tests again.
-#[allow(dead_code)]
-/// Creates a random deploy that is considered not expired.
-pub(crate) fn create_not_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> Deploy {
-    create_test_deploy(
-        TimeDiff::from_seconds(20),
-        TimeDiff::from_seconds(60),
-        now,
-        test_rng,
-    )
-}
-
-/// Assert that the file at `schema_path` matches the provided `RootSchema`, which can be derived
+/// Assert that the file at `schema_path` matches the provided `actual_schema`, which can be derived
 /// from `schemars::schema_for!` or `schemars::schema_for_value!`, for example. This method will
 /// create a temporary file with the actual schema and print the location if it fails.
-pub fn assert_schema(schema_path: &str, actual_schema: RootSchema) {
-    let expected_schema = fs::read_to_string(schema_path).unwrap();
+pub fn assert_schema(schema_path: String, actual_schema: String) {
+    let expected_schema = fs::read_to_string(&schema_path).unwrap();
     let expected_schema: Value = serde_json::from_str(&expected_schema).unwrap();
-    let actual_schema = serde_json::to_string_pretty(&actual_schema).unwrap();
     let mut temp_file = tempfile::Builder::new()
         .suffix(".json")
         .tempfile_in(env!("OUT_DIR"))

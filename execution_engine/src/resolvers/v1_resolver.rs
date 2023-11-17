@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use wasmi::{
+use casper_wasmi::{
     memory_units::Pages, Error as InterpreterError, FuncInstance, FuncRef, MemoryDescriptor,
     MemoryInstance, MemoryRef, ModuleImportResolver, Signature, ValueType,
 };
@@ -248,6 +248,14 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
             "casper_add_session_logic" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 2][..], Some(ValueType::I32)),
                 FunctionIndex::AddSessionVersion.into(),
+            ),
+            "casper_manage_message_topic" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
+                FunctionIndex::ManageMessageTopic.into(),
+            ),
+            "casper_emit_message" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
+                FunctionIndex::EmitMessage.into(),
             ),
             _ => {
                 return Err(InterpreterError::Function(format!(

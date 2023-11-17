@@ -122,11 +122,12 @@ use casper_execution_engine::engine_state::{
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     bytesrepr::Bytes,
+    contract_messages::Messages,
     execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},
     package::Package,
     system::auction::EraValidators,
     AddressableEntity, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes,
-    Deploy, DeployHash, DeployHeader, Digest, EraId, FinalitySignature, FinalitySignatureId, Key,
+    DeployHash, DeployHeader, Digest, EraId, FinalitySignature, FinalitySignatureId, Key,
     PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId, Transfer, U512,
 };
 
@@ -148,13 +149,14 @@ use crate::{
     contract_runtime::{
         RoundSeigniorageRateRequest, SpeculativeExecutionState, TotalSupplyRequest,
     },
+    failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
-        DeployExecutionInfo, DeployWithFinalizedApprovals, ExecutableBlock, FinalizedApprovals,
-        FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState, NodeId, SignedBlock, TrieOrChunk,
-        TrieOrChunkId,
+        ExecutableBlock, ExecutionInfo, FinalizedApprovals, FinalizedBlock, LegacyDeploy,
+        MetaBlock, MetaBlockState, NodeId, SignedBlock, TransactionWithFinalizedApprovals,
+        TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -1320,17 +1322,18 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests the header of the block containing the given deploy.
-    pub(crate) async fn get_block_header_for_deploy_from_storage(
+    /// Returns the era IDs of the blocks in which the given transactions were executed.  If none
+    /// of the transactions have been executed yet, an empty set will be returned.
+    pub(crate) async fn get_transactions_era_ids(
         self,
-        deploy_hash: DeployHash,
-    ) -> Option<BlockHeader>
+        transaction_hashes: HashSet<TransactionHash>,
+    ) -> HashSet<EraId>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetBlockHeaderForDeploy {
-                deploy_hash,
+            |responder| StorageRequest::GetTransactionsEraIds {
+                transaction_hashes,
                 responder,
             },
             QueueKind::FromStorage,
@@ -1483,20 +1486,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested deploys from the deploy store.
+    /// Gets the requested transactions from storage.
     ///
-    /// Returns the "original" deploys, which are the first received by the node, along with a
+    /// Returns the "original" transactions, which are the first received by the node, along with a
     /// potentially different set of approvals used during execution of the recorded block.
-    pub(crate) async fn get_deploys_from_storage(
+    pub(crate) async fn get_transactions_from_storage(
         self,
-        deploy_hashes: Vec<DeployHash>,
-    ) -> SmallVec<[Option<DeployWithFinalizedApprovals>; 1]>
+        transaction_hashes: Vec<TransactionHash>,
+    ) -> SmallVec<[Option<TransactionWithFinalizedApprovals>; 1]>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetDeploys {
-                deploy_hashes,
+            |responder| StorageRequest::GetTransactions {
+                transaction_hashes,
                 responder,
             },
             QueueKind::FromStorage,
@@ -1566,6 +1569,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         block_hash: BlockHash,
         block_height: u64,
+        era_id: EraId,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     ) where
         REv: From<StorageRequest>,
@@ -1574,6 +1578,7 @@ impl<REv> EffectBuilder<REv> {
             |responder| StorageRequest::PutExecutionResults {
                 block_hash: Box::new(block_hash),
                 block_height,
+                era_id,
                 execution_results,
                 responder,
             },
@@ -1582,17 +1587,17 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested deploys from the deploy store.
-    pub(crate) async fn get_deploy_and_execution_info_from_storage(
+    /// Gets the requested transaction and associated execution info if available.
+    pub(crate) async fn get_transaction_and_execution_info_from_storage(
         self,
-        deploy_hash: DeployHash,
-    ) -> Option<(DeployWithFinalizedApprovals, Option<DeployExecutionInfo>)>
+        transaction_hash: TransactionHash,
+    ) -> Option<(TransactionWithFinalizedApprovals, Option<ExecutionInfo>)>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetDeployAndExecutionInfo {
-                deploy_hash,
+            |responder| StorageRequest::GetTransactionAndExecutionInfo {
+                transaction_hash,
                 responder,
             },
             QueueKind::FromStorage,
@@ -2160,6 +2165,19 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Activates/deactivates a failpoint from a given activation.
+    pub(crate) async fn activate_failpoint(self, activation: FailpointActivation)
+    where
+        REv: From<ControlAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ControlAnnouncement::ActivateFailpoint { activation },
+                QueueKind::Control,
+            )
+            .await;
+    }
+
     /// Announce that the node be shut down due to a request from a user.
     pub(crate) async fn announce_user_shutdown_request(self)
     where
@@ -2242,20 +2260,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests execution of a single deploy, without commiting its effects.
-    /// Inteded to be used for debugging & discovery purposes.
-    pub(crate) async fn speculative_execute_deploy(
+    /// Requests execution of a single transaction, without committing its effects.  Intended to be
+    /// used for debugging & discovery purposes.
+    pub(crate) async fn speculatively_execute(
         self,
         execution_prestate: SpeculativeExecutionState,
-        deploy: Arc<Deploy>,
-    ) -> Result<Option<ExecutionResultV2>, engine_state::Error>
+        transaction: Box<Transaction>,
+    ) -> Result<Option<(ExecutionResultV2, Messages)>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::SpeculativeDeployExecution {
+            |responder| ContractRuntimeRequest::SpeculativelyExecute {
                 execution_prestate,
-                deploy,
+                transaction,
                 responder,
             },
             QueueKind::ContractRuntime,

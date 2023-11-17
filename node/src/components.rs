@@ -47,7 +47,7 @@
 pub(crate) mod block_accumulator;
 pub(crate) mod block_synchronizer;
 pub(crate) mod block_validator;
-pub(crate) mod consensus;
+pub mod consensus;
 pub mod contract_runtime;
 pub(crate) mod deploy_buffer;
 pub(crate) mod diagnostics_port;
@@ -74,6 +74,7 @@ use tracing::info;
 
 use crate::{
     effect::{EffectBuilder, Effects},
+    failpoints::FailpointActivation,
     NodeRng,
 };
 
@@ -140,6 +141,11 @@ pub(crate) trait Component<REv> {
 
     /// Name of the component.
     fn name(&self) -> &str;
+
+    /// Activate/deactivate a failpoint.
+    fn activate_failpoint(&mut self, _activation: &FailpointActivation) {
+        // Default is to ignore failpoints.
+    }
 }
 
 pub(crate) trait InitializedComponent<REv>: Component<REv> {
