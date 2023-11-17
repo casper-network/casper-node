@@ -2114,35 +2114,21 @@ async fn run_rewards_network_scenario(
                             _ => panic!("unexpectedly absent era report"),
                         }
                     };
-                let era_length = switch_block.height() - previous_switch_block_height;
-                let last_era_length =
-                    if switch_blocks.headers[i - 1].is_genesis() {
-                        None
-                    } else {
-                        Some(switch_block.height() - switch_blocks.headers[i - 2].height())
-                    };
-                let total_expected_pot = Ratio::from(recomputed_total_supply[&(i - 1)] * chain.chainspec.core_config.minimum_era_height) * chain.chainspec.core_config.round_seigniorage_rate;
-                let total_previous_expected_pot =
-                    if switch_blocks.headers[i - 1].is_genesis() {
-                        None
-                    } else {
-                        Some(Ratio::from(recomputed_total_supply[&(i - 2)] * chain.chainspec.core_config.minimum_era_height) * chain.chainspec.core_config.round_seigniorage_rate)
-                    };
 
                 // TODO: Investigate whether the rewards pay out for the signatures _in the switch block itself_
                 let rewarded_range = previous_switch_block_height as usize + 1..switch_block.height() as usize + 1;
                 let rewarded_blocks = &blocks[rewarded_range];
-                let block_reward = (Ratio::new(1, 1)
-                    - chain.chainspec.core_config.finality_signature_proportion)
-                    * (total_expected_pot / max(chain.chainspec.core_config.minimum_era_height, era_length));
+                let block_reward =
+                 (Ratio::new(1, 1) - chain.chainspec.core_config.finality_signature_proportion)
+                    * Ratio::from(recomputed_total_supply[&(i - 1)]) * chain.chainspec.core_config.round_seigniorage_rate;
                 let signatures_reward = chain.chainspec.core_config.finality_signature_proportion
-                    * (total_expected_pot / max(chain.chainspec.core_config.minimum_era_height, era_length));
+                    * Ratio::from(recomputed_total_supply[&(i - 1)]) * chain.chainspec.core_config.round_seigniorage_rate;
                 let previous_signatures_reward =
                     if switch_blocks.headers[i - 1].is_genesis() {
                         None
                     } else {
                         Some(chain.chainspec.core_config.finality_signature_proportion
-                            * (total_previous_expected_pot.unwrap() / max(chain.chainspec.core_config.minimum_era_height, last_era_length.unwrap())))
+                            * Ratio::from(recomputed_total_supply[&(i - 2)]) * chain.chainspec.core_config.round_seigniorage_rate)
                     };
 
                 rewarded_blocks
