@@ -1929,6 +1929,7 @@ const FINALITY_SIG_PROP_ZERO: (u64, u64) = (0u64, 1u64);
 const FINALITY_SIG_PROP_HALF: (u64, u64) = (1u64, 2u64);
 const FINALITY_SIG_PROP_ONE: (u64, u64) = (1u64, 1u64);
 const FILTERED_NODES_INDICES: &'static [usize] = &[3, 4];
+const FINALITY_SIG_LOOKBACK: u64 = 3;
 
 async fn run_rewards_network_scenario(
     mut rng: NodeRng,
@@ -1942,6 +1943,7 @@ async fn run_rewards_network_scenario(
     seigniorage: (u64, u64),
     finders_fee: (u64, u64),
     finality_sig_prop: (u64, u64),
+    finality_lookback: u64,
     representative_node_index: usize,
     filtered_nodes_indices: &[usize]) {
 
@@ -1968,6 +1970,7 @@ async fn run_rewards_network_scenario(
     chain.chainspec_mut().core_config.consensus_protocol = consensus;
     chain.chainspec_mut().core_config.finders_fee = Ratio::from(finders_fee);
     chain.chainspec_mut().core_config.finality_signature_proportion = Ratio::from(finality_sig_prop);
+    chain.chainspec_mut().core_config.signature_rewards_max_delay = finality_lookback;
 
     let mut net = chain
         .create_initialized_network(&mut rng)
@@ -2221,6 +2224,7 @@ async fn run_reward_network_zug_no_finality_small_nominal_five_eras() {
         SEIGNIORAGE,
         FINDERS_FEE_ZERO,
         FINALITY_SIG_PROP_ZERO,
+        FINALITY_SIG_LOOKBACK,
         REPRESENTATIVE_NODE_INDEX,
         &[]
     ).await;
@@ -2241,6 +2245,49 @@ async fn run_reward_network_zug_half_finality_half_finders_small_nominal_five_er
         SEIGNIORAGE,
         FINDERS_FEE_HALF,
         FINALITY_SIG_PROP_HALF,
+        FINALITY_SIG_LOOKBACK,
+        REPRESENTATIVE_NODE_INDEX,
+        &[]
+    ).await;
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "failpoints"), ignore)]
+async fn run_reward_network_zug_half_finality_half_finders_small_nominal_five_eras_no_lookback() {
+    run_rewards_network_scenario(
+        crate::new_rng(),
+        CONSENSUS_ZUG,
+        &[STAKE, STAKE, STAKE, STAKE, STAKE],
+        5,
+        ERA_DURATION,
+        MIN_HEIGHT,
+        BLOCK_TIME,
+        TIME_OUT,
+        SEIGNIORAGE,
+        FINDERS_FEE_HALF,
+        FINALITY_SIG_PROP_HALF,
+        0u64,
+        REPRESENTATIVE_NODE_INDEX,
+        &[]
+    ).await;
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "failpoints"), ignore)]
+async fn run_reward_network_zug_all_finality_half_finders_small_nominal_five_eras_no_lookback() {
+    run_rewards_network_scenario(
+        crate::new_rng(),
+        CONSENSUS_ZUG,
+        &[STAKE, STAKE, STAKE, STAKE, STAKE],
+        5,
+        ERA_DURATION,
+        MIN_HEIGHT,
+        BLOCK_TIME,
+        TIME_OUT,
+        SEIGNIORAGE,
+        FINDERS_FEE_HALF,
+        FINALITY_SIG_PROP_ONE,
+        0u64,
         REPRESENTATIVE_NODE_INDEX,
         &[]
     ).await;
@@ -2261,6 +2308,7 @@ async fn run_reward_network_zug_all_finality_half_finders() {
         SEIGNIORAGE,
         FINDERS_FEE_HALF,
         FINALITY_SIG_PROP_ONE,
+        FINALITY_SIG_LOOKBACK,
         REPRESENTATIVE_NODE_INDEX,
         FILTERED_NODES_INDICES
     ).await;
@@ -2281,6 +2329,7 @@ async fn run_reward_network_zug_all_finality_zero_finders() {
         SEIGNIORAGE,
         FINDERS_FEE_ZERO,
         FINALITY_SIG_PROP_ONE,
+        FINALITY_SIG_LOOKBACK,
         REPRESENTATIVE_NODE_INDEX,
         FILTERED_NODES_INDICES
     ).await;
@@ -2301,6 +2350,7 @@ async fn run_reward_network_highway_all_finality_zero_finders() {
         SEIGNIORAGE,
         FINDERS_FEE_ZERO,
         FINALITY_SIG_PROP_ONE,
+        FINALITY_SIG_LOOKBACK,
         REPRESENTATIVE_NODE_INDEX,
         FILTERED_NODES_INDICES
     ).await;
@@ -2321,6 +2371,7 @@ async fn run_reward_network_highway_no_finality() {
         SEIGNIORAGE,
         FINDERS_FEE_ZERO,
         FINALITY_SIG_PROP_ZERO,
+        FINALITY_SIG_LOOKBACK,
         REPRESENTATIVE_NODE_INDEX,
         FILTERED_NODES_INDICES
     ).await;
