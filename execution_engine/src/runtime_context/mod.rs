@@ -18,8 +18,8 @@ use casper_storage::global_state::state::StateReader;
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
-        ActionType, AddKeyFailure, EntityKind, EntityKindTag, NamedKeyAddr, NamedKeyValue,
-        NamedKeys, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight, MessageTopicError,
+        ActionType, AddKeyFailure, EntityKind, EntityKindTag, MessageTopicError, NamedKeyAddr,
+        NamedKeyValue, NamedKeys, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
     },
     bytesrepr::ToBytes,
     contract_messages::{

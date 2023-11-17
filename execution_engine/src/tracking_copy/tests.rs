@@ -10,8 +10,8 @@ use casper_storage::global_state::{
 use casper_types::{
     account::AccountHash,
     addressable_entity::{
-        ActionThresholds, AddressableEntityHash, AssociatedKeys, NamedKeyAddr, NamedKeyValue,
-        NamedKeys, Weight, MessageTopics
+        ActionThresholds, AddressableEntityHash, AssociatedKeys, MessageTopics, NamedKeyAddr,
+        NamedKeyValue, NamedKeys, Weight,
     },
     execution::{Effects, Transform, TransformKind},
     gens::*,

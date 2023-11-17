@@ -109,16 +109,13 @@ const KEY_MESSAGE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH
     + U8_SERIALIZED_LENGTH
     + U32_SERIALIZED_LENGTH;
 
-const MAX_SERIALIZED_LENGTH: usize = KEY_DELEGATOR_BID_SERIALIZED_LENGTH + U8_SERIALIZED_LENGTH;
+const MAX_SERIALIZED_LENGTH: usize = KEY_MESSAGE_SERIALIZED_LENGTH;
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
 
 /// An alias for [`Key`]s package variant.
 pub type PackageAddr = [u8; ADDR_LENGTH];
-
-// /// An alias for [`Key`]s entity variant.
-// pub type EntityAddr = [u8; ADDR_LENGTH];
 
 /// An alias for [`Key`]s byte code variant.
 pub type ByteCodeAddr = [u8; ADDR_LENGTH];
@@ -180,7 +177,6 @@ impl Display for KeyTag {
         }
     }
 }
-
 
 /// The key under which data (e.g. [`CLValue`]s, smart contracts, user accounts) are stored in
 /// global state.

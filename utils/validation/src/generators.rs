@@ -8,8 +8,10 @@ use casper_types::{
         Account, AccountHash, ActionThresholds as AccountActionThresholds,
         AssociatedKeys as AccountAssociatedKeys, Weight as AccountWeight,
     },
-    addressable_entity::{ActionThresholds, AddressableEntity, AssociatedKeys, NamedKeys},
-    package::{EntityVersions, Groups, Package, EntityKind, PackageStatus, MessageTopics},
+    addressable_entity::{
+        ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind, MessageTopics, NamedKeys,
+    },
+    package::{EntityVersions, Groups, Package, PackageStatus},
     system::auction::{
         Bid, BidAddr, BidKind, Delegator, EraInfo, SeigniorageAllocation, UnbondingPurse,
         ValidatorBid, WithdrawPurse,

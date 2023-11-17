@@ -5,7 +5,7 @@ use rand::Rng;
 
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{ActionThresholds, MessageTopics, NamedKeys, AssociatedKeys, Weight},
+    addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, Weight},
     system::auction::{
         BidKind, BidsExt, Delegator, SeigniorageRecipient, SeigniorageRecipients,
         SeigniorageRecipientsSnapshot, UnbondingPurse, UnbondingPurses, ValidatorBid,

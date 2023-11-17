@@ -48,8 +48,8 @@ use casper_storage::{
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
-        ActionThresholds, AssociatedKeys, EntityKind, EntityKindTag, NamedKeyAddr, NamedKeyValue,
-        NamedKeys, Weight, MessageTopics,
+        ActionThresholds, AssociatedKeys, EntityKind, EntityKindTag, MessageTopics, NamedKeyAddr,
+        NamedKeyValue, NamedKeys, Weight,
     },
     bytesrepr::ToBytes,
     execution::Effects,
@@ -847,8 +847,8 @@ where
             account.main_purse(),
             associated_keys,
             action_thresholds,
-            EntityKind::Account(account_hash),
             MessageTopics::default(),
+            EntityKind::Account(account_hash),
         );
 
         let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);

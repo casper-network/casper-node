@@ -8,7 +8,7 @@ use std::{
 use casper_types::{
     account::AccountHash,
     addressable_entity::{
-        ActionThresholds, AddressableEntity, AssociatedKeys, MessageTopics, NamedKeys, EntityKind
+        ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind, MessageTopics,
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     package::PackageStatus,

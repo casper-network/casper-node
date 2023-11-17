@@ -18,7 +18,8 @@ use serde::{Deserialize, Serialize};
 use casper_storage::global_state::state::StateProvider;
 use casper_types::{
     addressable_entity::{
-        ActionThresholds, MessageTopics, EntityKind, EntityKindTag, NamedKeyAddr, NamedKeyValue, NamedKeys,
+        ActionThresholds, EntityKind, EntityKindTag, MessageTopics, NamedKeyAddr, NamedKeyValue,
+        NamedKeys,
     },
     bytesrepr,
     execution::Effects,

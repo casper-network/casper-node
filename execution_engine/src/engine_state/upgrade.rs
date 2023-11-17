@@ -6,8 +6,8 @@ use thiserror::Error;
 use casper_storage::global_state::state::StateProvider;
 use casper_types::{
     addressable_entity::{
-        ActionThresholds, AssociatedKeys, EntityKind, EntityKindTag, NamedKeyAddr, NamedKeyValue,
-        NamedKeys, Weight, MessageTopics
+        ActionThresholds, AssociatedKeys, EntityKind, EntityKindTag, MessageTopics, NamedKeyAddr,
+        NamedKeyValue, NamedKeys, Weight,
     },
     bytesrepr::{self, ToBytes},
     execution::Effects,

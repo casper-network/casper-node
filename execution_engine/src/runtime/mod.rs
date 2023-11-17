@@ -29,8 +29,8 @@ use casper_types::{
     addressable_entity::{
         self, ActionThresholds, ActionType, AddKeyFailure, AddressableEntity,
         AddressableEntityHash, AssociatedKeys, EntityKindTag, EntryPoint, EntryPointAccess,
-        EntryPointType, EntryPoints, NamedKeys, Parameter, RemoveKeyFailure, SetThresholdFailure,
-        UpdateKeyFailure, Weight, DEFAULT_ENTRY_POINT_NAME,  MessageTopics
+        EntryPointType, EntryPoints, MessageTopics, NamedKeys, Parameter, RemoveKeyFailure,
+        SetThresholdFailure, UpdateKeyFailure, Weight, DEFAULT_ENTRY_POINT_NAME,
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contract_messages::{
@@ -45,8 +45,8 @@ use casper_types::{
         handle_payment, mint, CallStackElement, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
         STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, ByteCode, ByteCodeHash, ByteCodeKind, CLTyped,
-    CLValue, ContextAccessRights, ContractWasm, DeployHash, EntityAddr, EntityKind, EntityVersion,
+    AccessRights, ApiError, ByteCode, ByteCodeHash, ByteCodeKind, CLTyped, CLValue,
+    ContextAccessRights, ContractWasm, DeployHash, EntityAddr, EntityKind, EntityVersion,
     EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups, HostFunction,
     HostFunctionCost, Key, NamedArg, Package, PackageHash, Phase, PublicKey, RuntimeArgs,
     StoredValue, Tagged, Transfer, TransferResult, TransferredTo, URef,
@@ -1797,9 +1797,9 @@ where
         mut named_keys: NamedKeys,
         output_ptr: u32,
     ) -> Result<Result<(), ApiError>, Error> {
-        // if entry_points.contains_stored_session() {
-        //     return Err(Error::InvalidEntryPointType);
-        // }
+        if entry_points.contains_stored_session() {
+            return Err(Error::InvalidEntryPointType);
+        }
 
         let mut package = self.context.get_package(package_hash)?;
 

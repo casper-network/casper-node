@@ -7,8 +7,8 @@ use casper_storage::global_state::state::{self, lmdb::LmdbGlobalStateView, State
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity::{
-        ActionType, AddKeyFailure, AssociatedKeys, MessageTopics, NamedKeys,
-        RemoveKeyFailure, SetThresholdFailure, Weight,
+        ActionType, AddKeyFailure, AssociatedKeys, MessageTopics, NamedKeys, RemoveKeyFailure,
+        SetThresholdFailure, Weight,
     },
     bytesrepr::ToBytes,
     execution::TransformKind,

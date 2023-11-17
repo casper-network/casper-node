@@ -407,6 +407,7 @@ impl TryFrom<&Vec<u8>> for AddressableEntityHash {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<AddressableEntityHash> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AddressableEntityHash {
         AddressableEntityHash(rng.gen())
