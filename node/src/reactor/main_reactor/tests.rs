@@ -2157,7 +2157,7 @@ async fn run_rewards_network_scenario(
                                                 .expect("expected current era validator").as_u64())
                                                 / total_previous_era_weights.expect("expected total previous era weight");
                                             add_to_rewards(proposer.clone(), chain.chainspec.core_config.finders_fee * contributor_proportion * previous_signatures_reward.unwrap(), &mut recomputed_era_rewards, i, &mut recomputed_total_supply);
-                                            add_to_rewards(contributor.clone(), (Ratio::new(1, 1) - chain.chainspec.core_config.finders_fee) * contributor_proportion * signatures_reward, &mut recomputed_era_rewards, i, &mut recomputed_total_supply)
+                                            add_to_rewards(contributor.clone(), (Ratio::new(1, 1) - chain.chainspec.core_config.finders_fee) * contributor_proportion * previous_signatures_reward.unwrap(), &mut recomputed_era_rewards, i, &mut recomputed_total_supply)
                                         });
                                 } else {
                                     let rewarded_contributors = signatures_packed.to_validator_set(current_era_slated_weights.keys().map(|key| key.clone()).collect::<BTreeSet<PublicKey>>());
@@ -2313,6 +2313,28 @@ async fn run_reward_network_zug_all_finality_half_finders() {
         FILTERED_NODES_INDICES
     ).await;
 }
+
+#[tokio::test]
+#[cfg_attr(not(feature = "failpoints"), ignore)]
+async fn run_reward_network_zug_all_finality_half_finders_five_eras() {
+    run_rewards_network_scenario(
+        crate::new_rng(),
+        CONSENSUS_ZUG,
+        &[STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE, STAKE],
+        5,
+        ERA_DURATION,
+        MIN_HEIGHT,
+        BLOCK_TIME,
+        TIME_OUT,
+        SEIGNIORAGE,
+        FINDERS_FEE_HALF,
+        FINALITY_SIG_PROP_ONE,
+        FINALITY_SIG_LOOKBACK,
+        REPRESENTATIVE_NODE_INDEX,
+        FILTERED_NODES_INDICES
+    ).await;
+}
+
 
 #[tokio::test]
 #[cfg_attr(not(feature = "failpoints"), ignore)]
