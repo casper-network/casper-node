@@ -375,51 +375,54 @@ pub(crate) fn rewards_for_era(
     // Rules out a special case: genesis block does not yield any reward,
     // because there is no block producer, and no previous blocks whose
     // signatures are to be rewarded:
-    if current_era_id.is_genesis() == false {
-        let collection_proportion = to_ratio_u512(core_config.collection_rewards_proportion());
-        let contribution_proportion = to_ratio_u512(core_config.contribution_rewards_proportion());
+    debug_assert!(
+        current_era_id.is_genesis() == false,
+        "the genesis block should be handled as a special case"
+    );
 
-        // Reward for producing a block from this era:
-        let production_reward = to_ratio_u512(core_config.production_rewards_proportion())
-            .checked_mul(&rewards_info.reward(current_era_id)?)
-            .ok_or(RewardsError::ArithmeticOverflow)?;
+    let collection_proportion = to_ratio_u512(core_config.collection_rewards_proportion());
+    let contribution_proportion = to_ratio_u512(core_config.contribution_rewards_proportion());
 
-        // Collect all rewards as a ratio:
-        for block in rewards_info.blocks_from_era(current_era_id) {
-            // Transfer the block production reward for this block proposer:
-            increase_value_for_key(block.proposer.clone(), production_reward)?;
+    // Reward for producing a block from this era:
+    let production_reward = to_ratio_u512(core_config.production_rewards_proportion())
+        .checked_mul(&rewards_info.reward(current_era_id)?)
+        .ok_or(RewardsError::ArithmeticOverflow)?;
 
-            // Now, let's compute the reward attached to each signed block reported by the block
-            // we examine:
-            for (signature_rewards, signed_block_height) in block
-                .rewarded_signatures
-                .iter()
-                .zip((0..block.height).rev())
-            {
-                let signed_block_era = rewards_info.era_for_block_height(signed_block_height)?;
-                let validators_providing_signature = signature_rewards
-                    .to_validator_set(rewards_info.validator_keys(signed_block_era)?);
+    // Collect all rewards as a ratio:
+    for block in rewards_info.blocks_from_era(current_era_id) {
+        // Transfer the block production reward for this block proposer:
+        increase_value_for_key(block.proposer.clone(), production_reward)?;
 
-                for signing_validator in validators_providing_signature {
-                    // Reward for contributing to the finality signature, ie signing this block:
-                    let contribution_reward = rewards_info
-                        .weight_ratio(signed_block_era, &signing_validator)?
-                        .checked_mul(&contribution_proportion)
-                        .ok_or(RewardsError::ArithmeticOverflow)?
-                        .checked_mul(&rewards_info.reward(signed_block_era)?)
-                        .ok_or(RewardsError::ArithmeticOverflow)?;
-                    // Reward for gathering this signature. It is both weighted by the block
-                    // producing/signature collecting validator, and the signing validator:
-                    let collection_reward = rewards_info
-                        .weight_ratio(signed_block_era, &signing_validator)?
-                        .checked_mul(&collection_proportion)
-                        .ok_or(RewardsError::ArithmeticOverflow)?
-                        .checked_mul(&rewards_info.reward(signed_block_era)?)
-                        .ok_or(RewardsError::ArithmeticOverflow)?;
+        // Now, let's compute the reward attached to each signed block reported by the block
+        // we examine:
+        for (signature_rewards, signed_block_height) in block
+            .rewarded_signatures
+            .iter()
+            .zip((0..block.height).rev())
+        {
+            let signed_block_era = rewards_info.era_for_block_height(signed_block_height)?;
+            let validators_providing_signature =
+                signature_rewards.to_validator_set(rewards_info.validator_keys(signed_block_era)?);
 
-                    increase_value_for_key(signing_validator, contribution_reward)?;
-                    increase_value_for_key(block.proposer.clone(), collection_reward)?;
-                }
+            for signing_validator in validators_providing_signature {
+                // Reward for contributing to the finality signature, ie signing this block:
+                let contribution_reward = rewards_info
+                    .weight_ratio(signed_block_era, &signing_validator)?
+                    .checked_mul(&contribution_proportion)
+                    .ok_or(RewardsError::ArithmeticOverflow)?
+                    .checked_mul(&rewards_info.reward(signed_block_era)?)
+                    .ok_or(RewardsError::ArithmeticOverflow)?;
+                // Reward for gathering this signature. It is both weighted by the block
+                // producing/signature collecting validator, and the signing validator:
+                let collection_reward = rewards_info
+                    .weight_ratio(signed_block_era, &signing_validator)?
+                    .checked_mul(&collection_proportion)
+                    .ok_or(RewardsError::ArithmeticOverflow)?
+                    .checked_mul(&rewards_info.reward(signed_block_era)?)
+                    .ok_or(RewardsError::ArithmeticOverflow)?;
+
+                increase_value_for_key(signing_validator, contribution_reward)?;
+                increase_value_for_key(block.proposer.clone(), collection_reward)?;
             }
         }
     }
@@ -493,8 +496,7 @@ impl From<ExecutableBlock> for CitedBlock {
             rewarded_signatures: block.rewarded_signatures,
             state_root_hash: Digest::default(),
             is_switch_block: block.era_report.is_some(),
-            // When the executable block is genesis, it's a different path:
-            is_genesis: false,
+            is_genesis: block.era_id.is_genesis(),
         }
     }
 }
