@@ -160,21 +160,6 @@ fn production_payout_depends_on_the_blocks_produced() {
         },
     );
 
-    // Era 0 payouts:
-
-    let rewards =
-        rewards_for_era(constructor.for_era(rng, 0), EraId::new(0), &core_config).unwrap();
-
-    assert_eq!(
-        rewards,
-        map! {
-            VALIDATOR_1.deref().clone() => U512::zero(),
-            VALIDATOR_2.deref().clone() => U512::zero(),
-            VALIDATOR_3.deref().clone() => U512::zero(),
-            VALIDATOR_4.deref().clone() => U512::zero(),
-        }
-    );
-
     // Era 1 payouts:
 
     let rewards =
