@@ -73,6 +73,35 @@ const TEST_PORT_RANGE: Range<u16> = 60001..60998;
 /// Random offset + stride for port generation.
 const TEST_PORT_STRIDE: u16 = 29;
 
+macro_rules! map {
+    () => { std::collections::BTreeMap::new() };
+    ( $first_key:expr => $first_value:expr $( , $key:expr => $value:expr )* $(,)? ) => {{
+        let mut map = std::collections::BTreeMap::new();
+        // There is no reason to add twice the same key.
+        // Since it's used for testing, we can panic in such a case:
+        assert!(map.insert($first_key, $first_value).is_none());
+        $(
+            assert!(map.insert($key, $value).is_none());
+        )*
+        map
+    }};
+}
+macro_rules! set {
+    () => { std::collections::BTreeSet::new() };
+    ( $first_value:expr $( , $value:expr )* $(,)? ) => {{
+        let mut set = std::collections::BTreeSet::new();
+        // There is no reason to add twice the same key.
+        // Since it's used for testing, we can panic in such a case:
+        assert!(set.insert($first_value));
+        $(
+            assert!(set.insert($value));
+        )*
+        set
+    }}
+}
+pub(crate) use map;
+pub(crate) use set;
+
 /// Create an unused port on localhost.
 ///
 /// Returns a random port on localhost, provided that no other applications are binding ports inside
