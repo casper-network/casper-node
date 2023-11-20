@@ -10,7 +10,7 @@ use casper_types::{
     bytesrepr::{self, ToBytes},
     execution::ExecutionResult,
     BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
-    Digest, FinalizedApprovals, Transaction, TransactionHash, Transfer,
+    Digest, FinalizedApprovals, Key, Transaction, TransactionHash, Transfer,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -27,10 +27,18 @@ use tokio::{
 };
 use tracing::{error, info, warn};
 
+use crate::rpcs::DummyQueryResult;
+
 #[async_trait]
 pub trait NodeClient: Send + Sync + 'static {
     async fn read_from_db(&self, db: DbId, key: &[u8]) -> Result<Option<Vec<u8>>, Error>;
     async fn read_from_mem(&self, req: NonPersistedDataRequest) -> Result<Option<Vec<u8>>, Error>;
+    async fn query_global_state(
+        &self,
+        state_root_hash: Digest,
+        base_key: Key,
+        path: Vec<String>,
+    ) -> Result<DummyQueryResult, Error>;
 
     async fn read_transaction(&self, hash: TransactionHash) -> Result<Option<Transaction>, Error> {
         let key = hash.to_bytes().expect("should always serialize a digest");
@@ -116,7 +124,7 @@ pub trait NodeClient: Send + Sync + 'static {
     }
 
     async fn read_highest_completed_block_info(&self) -> Result<Option<BlockHashAndHeight>, Error> {
-        self.read_from_mem(InMemRequest::HighestCompleteBlock {})
+        self.read_from_mem(NonPersistedDataRequest::HighestCompleteBlock {})
             .await?
             .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
             .transpose()
@@ -124,7 +132,7 @@ pub trait NodeClient: Send + Sync + 'static {
     }
 
     async fn read_block_hash_from_height(&self, height: u64) -> Result<Option<BlockHash>, Error> {
-        self.read_from_mem(InMemRequest::BlockHeight2Hash { height })
+        self.read_from_mem(NonPersistedDataRequest::BlockHeight2Hash { height })
             .await?
             .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
             .transpose()
@@ -133,7 +141,7 @@ pub trait NodeClient: Send + Sync + 'static {
 
     async fn does_exist_in_completed_blocks(&self, block_hash: BlockHash) -> Result<bool, Error> {
         let resp = self
-            .read_from_mem(InMemRequest::CompletedBlockContains { block_hash })
+            .read_from_mem(NonPersistedDataRequest::CompletedBlockContains { block_hash })
             .await?
             .ok_or(Error::NoResponseBody)?;
         bytesrepr::deserialize_from_slice(&resp)
@@ -253,5 +261,21 @@ impl NodeClient for JulietNodeClient {
     async fn read_from_mem(&self, req: NonPersistedDataRequest) -> Result<Option<Vec<u8>>, Error> {
         let get = GetRequest::NonPersistedData(req);
         self.dispatch(BinaryRequest::Get(get)).await
+    }
+
+    async fn query_global_state(
+        &self,
+        state_root_hash: Digest,
+        base_key: Key,
+        path: Vec<String>,
+    ) -> Result<DummyQueryResult, Error> {
+        let get = GetRequest::State {
+            state_root_hash,
+            base_key,
+            path: path.to_vec(),
+        };
+        let resp = self.dispatch(BinaryRequest::Get(get)).await?.ok_or(Error::NoResponseBody)?;
+        bytesrepr::deserialize_from_slice(&resp)
+            .map_err(|err| Error::Deserialization(err.to_string()))
     }
 }

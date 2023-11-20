@@ -24,6 +24,10 @@ pub enum Error {
     InconsistentTransactionVersions(TransactionHash),
     #[error("found a transaction when searching for a deploy")]
     FoundTransactionInsteadOfDeploy,
+    #[error("value was not found in the global state")]
+    NotFoundInGlobalState,
+    #[error("global state query has failed: {0}")]
+    GlobalStateQueryFailed(String),
 }
 
 impl Error {
@@ -38,6 +42,9 @@ impl Error {
             Error::NoTransactionWithHash(_) => ErrorCode::NoSuchTransaction,
             Error::InconsistentTransactionVersions(_) | Error::FoundTransactionInsteadOfDeploy => {
                 ErrorCode::VariantMismatch
+            }
+            Error::GlobalStateQueryFailed(_) | Error::NotFoundInGlobalState => {
+                ErrorCode::QueryFailed
             }
         }
     }

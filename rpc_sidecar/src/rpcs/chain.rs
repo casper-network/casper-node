@@ -10,14 +10,14 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    BlockHash, BlockHeaderV2, Digest, DigestError, JsonBlockWithSignatures, ProtocolVersion,
-    Transfer,
+    Block, BlockHash, BlockHeaderV2, Digest, DigestError, JsonBlockWithSignatures, Key,
+    ProtocolVersion, StoredValue, Transfer,
 };
 
 use crate::NodeClient;
 
 use super::{
-    common,
+    common::{self, DummyQueryResult},
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     Error as RpcError, RpcWithOptionalParams,
 };
@@ -286,11 +286,18 @@ impl RpcWithOptionalParams for GetStateRootHash {
     type ResponseResult = GetStateRootHashResult;
 
     async fn do_handle_request(
-        _node_client: Arc<dyn NodeClient>,
-        _api_version: ProtocolVersion,
-        _maybe_params: Option<Self::OptionalRequestParams>,
+        node_client: Arc<dyn NodeClient>,
+        api_version: ProtocolVersion,
+        maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
-        todo!()
+        let identifier = maybe_params.map(|params| params.block_identifier);
+        let (block, _) = common::get_signed_block(&*node_client, identifier)
+            .await?
+            .into_inner();
+        Ok(Self::ResponseResult {
+            api_version,
+            state_root_hash: Some(*block.state_root_hash()),
+        })
     }
 }
 
@@ -384,10 +391,52 @@ impl RpcWithOptionalParams for GetEraSummary {
     type ResponseResult = GetEraSummaryResult;
 
     async fn do_handle_request(
-        _node_client: Arc<dyn NodeClient>,
-        _api_version: ProtocolVersion,
-        _maybe_params: Option<Self::OptionalRequestParams>,
+        node_client: Arc<dyn NodeClient>,
+        api_version: ProtocolVersion,
+        maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
-        todo!()
+        fn create_era_summary(
+            block: &Block,
+            stored_value: StoredValue,
+            merkle_proof: String,
+        ) -> EraSummary {
+            EraSummary {
+                block_hash: *block.hash(),
+                era_id: block.era_id(),
+                stored_value,
+                state_root_hash: *block.state_root_hash(),
+                merkle_proof,
+            }
+        }
+
+        let identifier = maybe_params.map(|params| params.block_identifier);
+        let (block, _) = common::get_signed_block(&*node_client, identifier)
+            .await?
+            .into_inner();
+        let state_root_hash = *block.state_root_hash();
+        let era_summary = node_client
+            .query_global_state(state_root_hash, Key::EraSummary, vec![])
+            .await
+            .map_err(|err| Error::NodeRequest("era summary", err))?;
+
+        let era_summary = match era_summary {
+            DummyQueryResult::Success(result) => {
+                create_era_summary(&block, result.value, result.merkle_proof)
+            }
+            DummyQueryResult::NotFound => {
+                let era_info = node_client
+                    .query_global_state(state_root_hash, Key::EraInfo(block.era_id()), vec![])
+                    .await
+                    .map_err(|err| Error::NodeRequest("era info", err))?;
+                let era_info = common::handle_query_result(era_info)?;
+                create_era_summary(&block, era_info.value, era_info.merkle_proof)
+            }
+            DummyQueryResult::Error(err) => return Err(Error::GlobalStateQueryFailed(err).into()),
+        };
+
+        Ok(Self::ResponseResult {
+            api_version,
+            era_summary,
+        })
     }
 }

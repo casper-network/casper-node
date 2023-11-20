@@ -1,11 +1,12 @@
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 use crate::rpcs::error::Error;
 use casper_types::{
-    AvailableBlockRange, Block, BlockSignatures, ExecutionInfo, FinalizedApprovals, SignedBlock,
-    Transaction, TransactionHash,
+    bytesrepr::FromBytes, AvailableBlockRange, Block, BlockSignatures, ExecutionInfo,
+    FinalizedApprovals, SignedBlock, StoredValue, Transaction, TransactionHash,
 };
 
 use crate::NodeClient;
@@ -127,4 +128,34 @@ pub async fn get_transaction_execution_info(
         block_height: block_hash_and_height.block_height(),
         execution_result,
     }))
+}
+
+pub fn handle_query_result(query_result: DummyQueryResult) -> Result<SuccessfulQuery, Error> {
+    match query_result {
+        DummyQueryResult::Success(val) => Ok(val),
+        DummyQueryResult::NotFound => Err(Error::NotFoundInGlobalState),
+        DummyQueryResult::Error(error) => {
+            info!(?error, "query failed");
+            Err(Error::GlobalStateQueryFailed(error))
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum DummyQueryResult {
+    Success(SuccessfulQuery),
+    NotFound,
+    Error(String),
+}
+
+impl FromBytes for DummyQueryResult {
+    fn from_bytes(_bytes: &[u8]) -> Result<(Self, &[u8]), casper_types::bytesrepr::Error> {
+        todo!()
+    }
+}
+
+#[derive(Debug)]
+pub struct SuccessfulQuery {
+    pub value: StoredValue,
+    pub merkle_proof: String,
 }

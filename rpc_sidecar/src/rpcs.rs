@@ -30,7 +30,7 @@ use casper_json_rpc::{
 };
 use casper_types::ProtocolVersion;
 
-pub use common::ErrorData;
+pub use common::{DummyQueryResult, ErrorData};
 use docs::DocExample;
 pub use error_code::ErrorCode;
 
