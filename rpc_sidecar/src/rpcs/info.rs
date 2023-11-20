@@ -131,9 +131,7 @@ impl RpcWithParams for GetDeploy {
                 deploy.with_approvals(approvals.into_inner())
             }
             (Transaction::Deploy(deploy), Some(FinalizedApprovals::Deploy(_)) | None) => deploy,
-            (Transaction::V1(deploy), _) => {
-                return Err(Error::FoundTransactionInsteadOfDeploy.into())
-            }
+            (Transaction::V1(_), _) => return Err(Error::FoundTransactionInsteadOfDeploy.into()),
             _ => return Err(Error::InconsistentTransactionVersions(hash).into()),
         };
 
