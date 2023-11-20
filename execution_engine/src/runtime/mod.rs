@@ -2598,7 +2598,7 @@ where
                     entity.main_purse_add_only()
                 } else {
                     let contract_hash = if let Some(entity_hash) = entity_key
-                        .into_entity_addr()
+                        .into_entity_hash_addr()
                         .map(AddressableEntityHash::new)
                     {
                         entity_hash

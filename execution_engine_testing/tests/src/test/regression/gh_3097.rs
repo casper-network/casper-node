@@ -45,14 +45,14 @@ fn should_run_regression() {
         .named_keys()
         .get(DISABLED_CONTRACT_HASH_KEY)
         .unwrap()
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .unwrap();
     let enabled_contract_hash = account
         .named_keys()
         .get(ENABLED_CONTRACT_HASH_KEY)
         .unwrap()
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .unwrap();
     let contract_package_hash = account

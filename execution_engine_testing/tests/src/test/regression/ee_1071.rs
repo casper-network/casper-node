@@ -32,7 +32,7 @@ fn should_run_ee_1071_regression() {
         .named_keys()
         .get(CONTRACT_HASH_NAME)
         .expect("should have hash"))
-    .into_entity_addr()
+    .into_entity_hash_addr()
     .expect("should be hash")
     .into();
 

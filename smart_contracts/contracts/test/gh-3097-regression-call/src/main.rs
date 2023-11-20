@@ -23,7 +23,7 @@ pub extern "C" fn call() {
         let contract_hash = runtime::get_key(&contract_hash_key_name)
             .ok_or(ApiError::MissingKey)
             .unwrap_or_revert()
-            .into_entity_addr()
+            .into_entity_hash_addr()
             .ok_or(ApiError::UnexpectedKeyVariant)
             .map(AddressableEntityHash::new)
             .unwrap_or_revert();

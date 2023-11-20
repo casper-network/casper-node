@@ -315,12 +315,6 @@ where
         entity_addr: EntityAddr,
         named_keys: NamedKeys,
     ) -> Result<(), Self::Error> {
-        let base_named_key = NamedKeyAddr::new_named_key_base(entity_addr);
-        self.write(
-            Key::NamedKey(base_named_key),
-            StoredValue::CLValue(CLValue::unit()),
-        );
-
         for (name, key) in named_keys.iter() {
             let entry_key = {
                 let entry_addr = NamedKeyAddr::new_from_string(entity_addr, name.clone())?;
@@ -336,9 +330,7 @@ where
     }
 
     fn get_named_keys(&mut self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error> {
-        let base_named_key_addr = NamedKeyAddr::Base(entity_addr);
-
-        let prefix = base_named_key_addr
+        let prefix = entity_addr
             .named_keys_prefix()
             .map_err(Self::Error::BytesRepr)?;
 

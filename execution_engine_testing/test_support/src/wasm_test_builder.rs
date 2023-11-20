@@ -1429,9 +1429,8 @@ where
             .unwrap()
             .unwrap();
 
-        let named_key_addr = NamedKeyAddr::Base(entity_addr);
 
-        let prefix = named_key_addr.named_keys_prefix().expect("must get prefix");
+        let prefix = entity_addr.named_keys_prefix().expect("must get prefix");
 
         let reader = tracking_copy.reader();
 

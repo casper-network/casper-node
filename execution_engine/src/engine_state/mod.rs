@@ -701,7 +701,7 @@ where
                 }
 
                 let new_query_key = Key::Hash(
-                    key.into_entity_addr()
+                    key.into_entity_hash_addr()
                         .ok_or_else(|| Error::InvalidKeyVariant)?,
                 );
                 info!("Compensating for AddressableEntity move");
@@ -915,14 +915,6 @@ where
         named_keys: NamedKeys,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Result<(), Error> {
-        let base_named_key_addr = NamedKeyAddr::new_named_key_base(entity_addr);
-
-        let base_key = Key::NamedKey(base_named_key_addr);
-
-        tracking_copy
-            .borrow_mut()
-            .write(base_key, StoredValue::CLValue(CLValue::unit()));
-
         for (string, key) in named_keys.into_inner().into_iter() {
             let entry_addr = NamedKeyAddr::new_from_string(entity_addr, string.clone())
                 .map_err(|error| Error::Bytesrepr(error.to_string()))?;

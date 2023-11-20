@@ -1226,12 +1226,6 @@ where
     ) -> Result<(), Box<GenesisError>> {
         let entity_addr = EntityAddr::new_system_entity_addr(contract_hash.value());
 
-        let base_named_key_addr = NamedKeyAddr::new_named_key_base(entity_addr);
-        self.tracking_copy.borrow_mut().write(
-            base_named_key_addr.into(),
-            StoredValue::CLValue(CLValue::unit()),
-        );
-
         for (string, key) in named_keys.iter() {
             let named_key_entry = NamedKeyAddr::new_from_string(entity_addr, string.clone())
                 .map_err(GenesisError::Bytesrepr)?;

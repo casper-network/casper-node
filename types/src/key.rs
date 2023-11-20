@@ -744,12 +744,22 @@ impl Key {
 
     /// Returns the inner bytes of `self` if `self` is of type [`Key::AddressableEntity`], otherwise
     /// returns `None`.
-    pub fn into_entity_addr(self) -> Option<HashAddr> {
+    pub fn into_entity_hash_addr(self) -> Option<HashAddr> {
         match self {
             Key::AddressableEntity(entity_addr) => Some(entity_addr.value()),
             _ => None,
         }
     }
+
+    /// Returns [`EntityAddr`] of `self` if `self` is of type [`Key::AddressableEntity`], otherwise
+    /// returns `None`.
+    pub fn as_entity_addr(&self) -> Option<EntityAddr> {
+        match self {
+            Key::AddressableEntity(addr) => Some(*addr),
+            _ => None,
+        }
+    }
+
 
     /// Returns the inner bytes of `self` if `self` is of type [`Key::Package`], otherwise returns
     /// `None`.
@@ -763,7 +773,7 @@ impl Key {
     /// Returns [`AddressableEntityHash`] of `self` if `self` is of type [`Key::AddressableEntity`],
     /// otherwise returns `None`.
     pub fn into_entity_hash(self) -> Option<AddressableEntityHash> {
-        let entity_addr = self.into_entity_addr()?;
+        let entity_addr = self.into_entity_hash_addr()?;
         Some(AddressableEntityHash::new(entity_addr))
     }
 
@@ -779,15 +789,6 @@ impl Key {
     pub fn into_named_key_addr(self) -> Option<NamedKeyAddr> {
         match self {
             Key::NamedKey(addr) => Some(addr),
-            _ => None,
-        }
-    }
-
-    /// Returns [`EntityAddr`] of `self` if `self` is of type [`Key::AddressableEntity`], otherwise
-    /// returns `None`.
-    pub fn as_entity_addr(&self) -> Option<EntityAddr> {
-        match self {
-            Key::AddressableEntity(addr) => Some(*addr),
             _ => None,
         }
     }
@@ -980,17 +981,18 @@ impl Key {
 
     /// Returns true if the key is of type [`Key::NamedKey`] and its Entry variant.
     pub fn is_named_key_entry(&self) -> bool {
-        matches!(self, Self::NamedKey(NamedKeyAddr::NamedKeyEntry { .. }))
+        matches!(self, Self::NamedKey(_))
     }
 
     /// Returns true if the key is of type [`Key::NamedKey`] and the variants have the
     /// same [`EntityAddr`].
     pub fn is_entry_for_base(&self, entity_addr: &EntityAddr) -> bool {
-        if let Self::NamedKey(NamedKeyAddr::NamedKeyEntry { base_addr, .. }) = self {
-            base_addr == entity_addr
+        if let Self::NamedKey(named_key_addr) = self {
+            named_key_addr.entity_addr() == *entity_addr
         } else {
             false
         }
+
     }
 }
 
@@ -1576,14 +1578,7 @@ mod tests {
         AddressableEntityHash::new([42u8; 32]),
         TopicNameHash::new([2; 32]),
         15,
-    ));
-    const BASE_NAMED_KEY: Key = Key::NamedKey(NamedKeyAddr::Base(
-        EntityAddr::new_contract_entity_addr([42; 32]),
-    ));
-    const ENTRY_NAMED_KEY: Key = Key::NamedKey(NamedKeyAddr::NamedKeyEntry {
-        base_addr: EntityAddr::new_contract_entity_addr([42; 32]),
-        string_bytes: [43; 32],
-    });
+    ));const NAMED_KEY: Key = Key::NamedKey(NamedKeyAddr::new_named_key_entry(EntityAddr::new_contract_entity_addr([42; 32]),[43; 32]));
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
@@ -1611,8 +1606,7 @@ mod tests {
         BYTE_CODE_V1_WASM_KEY,
         MESSAGE_TOPIC_KEY,
         MESSAGE_KEY,
-        BASE_NAMED_KEY,
-        ENTRY_NAMED_KEY,
+        NAMED_KEY
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
     const TOPIC_NAME_HEX_STRING: &str =
@@ -1805,7 +1799,7 @@ mod tests {
         let account_hash = AccountHash::new(account);
         let key1 = Key::Account(account_hash);
         assert_eq!(key1.into_account(), Some(account_hash));
-        assert!(key1.into_entity_addr().is_none());
+        assert!(key1.into_entity_hash_addr().is_none());
         assert!(key1.as_uref().is_none());
     }
 
@@ -1823,7 +1817,7 @@ mod tests {
         let hash = [42; KEY_HASH_LENGTH];
         let key1 = Key::contract_entity_key(AddressableEntityHash::new(hash));
         assert!(key1.into_account().is_none());
-        assert_eq!(key1.into_entity_addr(), Some(hash));
+        assert_eq!(key1.into_entity_hash_addr(), Some(hash));
         assert!(key1.as_uref().is_none());
     }
 
@@ -1841,7 +1835,7 @@ mod tests {
         let uref = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
         let key1 = Key::URef(uref);
         assert!(key1.into_account().is_none());
-        assert!(key1.into_entity_addr().is_none());
+        assert!(key1.into_entity_hash_addr().is_none());
         assert_eq!(key1.as_uref(), Some(&uref));
     }
 
@@ -1953,12 +1947,6 @@ mod tests {
             let parsed_key = Key::from_formatted_str(&string).expect("{string} (key = {key:?})");
             assert_eq!(parsed_key, *key, "{string} (key = {key:?})");
         }
-    }
-
-    #[test]
-    fn print_the_key() {
-        let key = ENTRY_NAMED_KEY;
-        println!("{}", key.to_formatted_string());
     }
 
     #[test]

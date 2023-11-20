@@ -72,7 +72,7 @@ fn get_account_entity_hash(entity: &EntityWithNamedKeys) -> AddressableEntityHas
         .get(CONTRACT_HASH_NAME)
         .cloned()
         .expect("should have contract hash")
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .unwrap()
 }

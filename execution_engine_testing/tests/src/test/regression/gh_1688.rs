@@ -51,7 +51,7 @@ fn setup() -> (LmdbWasmTestBuilder, PackageHash, AddressableEntityHash) {
         .expect("should be hash");
 
     let entity_hash = entity_hash_key
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .expect("should be hash");
 

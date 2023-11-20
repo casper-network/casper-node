@@ -123,7 +123,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
         .cloned()
         .unwrap();
     let entity_hash = entity_hash_key
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .unwrap();
     let package_hash_key = account
@@ -327,7 +327,7 @@ fn gh_1470_call_contract_should_ignore_optional_args() {
         .cloned()
         .unwrap();
     let entity_hash = contract_hash_key
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .unwrap();
     let package_hash_key = account
@@ -393,7 +393,7 @@ fn gh_1470_call_contract_should_not_accept_extra_args() {
         .cloned()
         .unwrap();
     let entity_hash = contract_hash_key
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .unwrap();
     let package_hash_key = account
@@ -459,7 +459,7 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
         .cloned()
         .unwrap();
     let entity_hash = entity_hash_key
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .unwrap();
     let package_hash_key = account
@@ -565,7 +565,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
         .cloned()
         .unwrap();
     let entity_hash = entity_hash_key
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .unwrap();
     let package_hash_key = account

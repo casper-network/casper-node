@@ -189,7 +189,7 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
         .named_keys()
         .get(DO_NOTHING_HASH_KEY_NAME)
         .expect("should have key of do_nothing_hash")
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .expect("should have into hash");
 
     let stored_contract_package_hash = account_1
@@ -431,7 +431,7 @@ fn should_support_extending_functionality() {
         .named_keys()
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
         .expect("should have stored uref")
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .expect("should have hash")
         .into();
 
@@ -500,7 +500,7 @@ fn should_support_extending_functionality() {
         .named_keys()
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
         .expect("should have stored uref")
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .expect("should have hash")
         .into();
     assert_ne!(stored_hash, stored_hash_2);
@@ -567,7 +567,7 @@ fn should_maintain_named_keys_across_upgrade() {
         .named_keys()
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
         .expect("should have stored hash")
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .expect("should have hash");
 
     let stored_package_hash = account
@@ -734,7 +734,7 @@ fn should_only_upgrade_if_threshold_is_met() {
         .named_keys()
         .get(CONTRACT_HASH_NAME)
         .expect("must have named key entry for contract hash")
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .expect("must get contract hash");
 
@@ -987,7 +987,7 @@ fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
         .expect("must have entity")
         .named_keys()
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
-        .map(|key| key.into_entity_addr().map(AddressableEntityHash::new))
+        .map(|key| key.into_entity_hash_addr().map(AddressableEntityHash::new))
         .unwrap()
         .expect("must get contract hash");
 

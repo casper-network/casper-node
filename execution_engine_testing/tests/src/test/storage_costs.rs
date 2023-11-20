@@ -198,7 +198,7 @@ fn should_verify_isolated_auction_storage_is_free() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_entity_addr()
+            .into_entity_hash_addr()
             .unwrap()
             .into(),
         auction::METHOD_ADD_BID,

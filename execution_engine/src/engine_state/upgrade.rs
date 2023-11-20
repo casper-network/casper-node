@@ -175,13 +175,6 @@ where
         if let Some(named_keys) = maybe_named_keys {
             let entity_addr = EntityAddr::new_system_entity_addr(contract_hash.value());
 
-            let base_named_key_addr = NamedKeyAddr::new_named_key_base(entity_addr);
-
-            self.tracking_copy.borrow_mut().write(
-                Key::NamedKey(base_named_key_addr),
-                StoredValue::CLValue(CLValue::unit()),
-            );
-
             for (string, key) in named_keys.into_inner().into_iter() {
                 let entry_addr = NamedKeyAddr::new_from_string(entity_addr, string.clone())
                     .map_err(ProtocolUpgradeError::Bytesrepr)?;
@@ -399,12 +392,7 @@ where
         let entity_addr = EntityAddr::new_system_entity_addr(handle_payment_hash.value());
 
         if let Some(named_keys) = maybe_named_keys {
-            let base_named_key_addr = NamedKeyAddr::new_named_key_base(entity_addr);
 
-            self.tracking_copy.borrow_mut().write(
-                Key::NamedKey(base_named_key_addr),
-                StoredValue::CLValue(CLValue::unit()),
-            );
 
             for (string, key) in named_keys.into_inner().into_iter() {
                 let entry_addr = NamedKeyAddr::new_from_string(entity_addr, string.clone())

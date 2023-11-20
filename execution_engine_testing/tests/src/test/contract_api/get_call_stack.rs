@@ -116,7 +116,7 @@ impl AccountExt for EntityWithKeys {
         self.named_keys
             .get(key)
             .cloned()
-            .and_then(Key::into_entity_addr)
+            .and_then(Key::into_entity_hash_addr)
             .unwrap()
     }
 

@@ -42,7 +42,7 @@ fn should_measure_gas_cost() {
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .expect("should be hash")
         .into();
 
@@ -110,7 +110,7 @@ fn should_measure_nested_host_function_call_cost() {
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .expect("should be hash")
         .into();
 
@@ -188,7 +188,7 @@ fn should_measure_argument_size_in_host_function_call() {
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .expect("should be hash")
         .into();
 

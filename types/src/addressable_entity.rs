@@ -984,6 +984,14 @@ impl EntityAddr {
         }
     }
 
+    /// Returns the common prefix of all NamedKey entries.
+    pub fn named_keys_prefix(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut ret = Vec::with_capacity(self.serialized_length() + 1);
+        ret.push(KeyTag::NamedKey as u8);
+        self.write_bytes(&mut ret)?;
+        Ok(ret)
+    }
+
     /// Returns the formatted String representation of the [`EntityAddr`].
     pub fn to_formatted_string(&self) -> String {
         format!("{}", self)
@@ -1130,36 +1138,39 @@ impl Display for NamedKeyAddrTag {
 }
 
 /// A NamedKey address.
+// #[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
+// #[cfg_attr(feature = "datasize", derive(DataSize))]
+// #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+// pub enum NamedKeyAddr {
+//     /// A specific key for a given NamedKey.
+//     NamedKeyEntry {
+//         /// The address of the entity.
+//         base_addr: EntityAddr,
+//         /// The bytes of the name.
+//         string_bytes: [u8; KEY_HASH_LENGTH],
+//     }
+// }
+
 #[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub enum NamedKeyAddr {
-    /// The base variant used to generate the prefix.
-    Base(EntityAddr),
-    /// A specific key for a given NamedKey.
-    NamedKeyEntry {
+pub struct NamedKeyAddr {
         /// The address of the entity.
         base_addr: EntityAddr,
         /// The bytes of the name.
         string_bytes: [u8; KEY_HASH_LENGTH],
-    },
 }
 
 impl NamedKeyAddr {
     /// The length in bytes of a [`NamedKeyAddr`].
     pub const NAMED_KEY_ADDR_BASE_LENGTH: usize = 1 + EntityAddr::ENTITY_ADDR_LENGTH;
 
-    /// Constructs a new [`EntityAddr`] for the base.
-    pub fn new_named_key_base(entity_addr: EntityAddr) -> Self {
-        Self::Base(entity_addr)
-    }
-
     /// Constructs a new [`NamedKeyAddr`] based on the supplied bytes.
-    pub fn new_named_key_entry(
+    pub const fn new_named_key_entry(
         entity_addr: EntityAddr,
         string_bytes: [u8; KEY_HASH_LENGTH],
     ) -> Self {
-        Self::NamedKeyEntry {
+        Self {
             base_addr: entity_addr,
             string_bytes,
         }
@@ -1186,28 +1197,7 @@ impl NamedKeyAddr {
 
     /// Returns the encapsulated [`EntityAddr`].
     pub fn entity_addr(&self) -> EntityAddr {
-        match self {
-            Self::Base(entity_addr) => *entity_addr,
-            Self::NamedKeyEntry { base_addr, .. } => *base_addr,
-        }
-    }
-
-    /// Returns the common prefix of all NamedKey entries.
-    pub fn named_keys_prefix(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let entity_addr = self.entity_addr();
-        let mut ret = Vec::with_capacity(entity_addr.serialized_length() + 1);
-        ret.push(KeyTag::NamedKey as u8);
-        ret.insert(1usize, NamedKeyAddrTag::NamedKeyEntry as u8);
-        entity_addr.write_bytes(&mut ret)?;
-        Ok(ret)
-    }
-
-    /// Returns the tag of the [`NamedKeyAddr'].
-    pub fn tag(&self) -> NamedKeyAddrTag {
-        match self {
-            NamedKeyAddr::Base(_) => NamedKeyAddrTag::Base,
-            NamedKeyAddr::NamedKeyEntry { .. } => NamedKeyAddrTag::NamedKeyEntry,
-        }
+        self.base_addr
     }
 
     /// Returns the formatted String representation of the [`NamedKeyAddr`].
@@ -1218,38 +1208,19 @@ impl NamedKeyAddr {
     /// Constructs a [`NamedKeyAddr`] from a formatted string.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         if let Some(named_key) = input.strip_prefix(NAMED_KEY_PREFIX) {
-            let (addr_str, tag) =
-                if let Some(str) = named_key.strip_prefix(&format!("{}-", NamedKeyAddrTag::Base)) {
-                    (str, NamedKeyAddrTag::Base)
-                } else if let Some(str) =
-                    named_key.strip_prefix(&format!("{}-", NamedKeyAddrTag::NamedKeyEntry))
-                {
-                    (str, NamedKeyAddrTag::NamedKeyEntry)
-                } else {
-                    return Err(FromStrError::InvalidPrefix);
-                };
-
-            match tag {
-                NamedKeyAddrTag::Base => {
-                    let entity_addr = EntityAddr::from_formatted_str(addr_str)?;
-                    return Ok(Self::Base(entity_addr));
-                }
-                NamedKeyAddrTag::NamedKeyEntry => {
-                    let reverse_string = addr_str.chars().rev().collect::<String>();
-                    if let Some((reverse_bytes, reverse_entity_addr)) =
-                        reverse_string.split_once('-')
-                    {
-                        let entity_addr_str = reverse_entity_addr.chars().rev().collect::<String>();
-                        let entity_addr = EntityAddr::from_formatted_str(&entity_addr_str)?;
-                        let string_bytes_str = reverse_bytes.chars().rev().collect::<String>();
-                        let string_bytes =
-                            checksummed_hex::decode(string_bytes_str).map_err(FromStrError::Hex)?;
-                        let (string_bytes, _) =
-                            FromBytes::from_vec(string_bytes).map_err(FromStrError::BytesRepr)?;
-                        return Ok(Self::new_named_key_entry(entity_addr, string_bytes));
-                    };
-                }
-            }
+            let reverse_string = named_key.chars().rev().collect::<String>();
+            if let Some((reverse_bytes, reverse_entity_addr)) =
+                reverse_string.split_once('-')
+            {
+                let entity_addr_str = reverse_entity_addr.chars().rev().collect::<String>();
+                let entity_addr = EntityAddr::from_formatted_str(&entity_addr_str)?;
+                let string_bytes_str = reverse_bytes.chars().rev().collect::<String>();
+                let string_bytes =
+                    checksummed_hex::decode(string_bytes_str).map_err(FromStrError::Hex)?;
+                let (string_bytes, _) =
+                    FromBytes::from_vec(string_bytes).map_err(FromStrError::BytesRepr)?;
+                return Ok(Self::new_named_key_entry(entity_addr, string_bytes));
+            };
         }
 
         Err(FromStrError::InvalidPrefix)
@@ -1259,55 +1230,28 @@ impl NamedKeyAddr {
 impl ToBytes for NamedKeyAddr {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.push(self.tag() as u8);
-        match self {
-            NamedKeyAddr::Base(entity_addr) => {
-                buffer.append(&mut entity_addr.to_bytes()?);
-            }
-            NamedKeyAddr::NamedKeyEntry {
-                base_addr,
-                string_bytes,
-            } => {
-                buffer.append(&mut base_addr.to_bytes()?);
-                buffer.append(&mut string_bytes.to_bytes()?);
-            }
-        }
+        buffer.append(&mut self.base_addr.to_bytes()?);
+        buffer.append(&mut self.string_bytes.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        match self {
-            NamedKeyAddr::Base(entity_addr) => {
-                U8_SERIALIZED_LENGTH + entity_addr.serialized_length()
-            }
-            NamedKeyAddr::NamedKeyEntry {
-                base_addr,
-                string_bytes,
-            } => {
-                U8_SERIALIZED_LENGTH
-                    + base_addr.serialized_length()
-                    + string_bytes.serialized_length()
-            }
-        }
+        self.base_addr.serialized_length()
+        + self.string_bytes.serialized_length()
     }
 }
 
 impl FromBytes for NamedKeyAddr {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder): (u8, &[u8]) = FromBytes::from_bytes(bytes)?;
-        match tag {
-            tag if tag == NamedKeyAddrTag::Base as u8 => EntityAddr::from_bytes(remainder)
-                .map(|(addr, remainder)| (NamedKeyAddr::new_named_key_base(addr), remainder)),
-            tag if tag == NamedKeyAddrTag::NamedKeyEntry as u8 => {
-                let (base_addr, remainder) = EntityAddr::from_bytes(remainder)?;
-                let (string_bytes, remainder) = FromBytes::from_bytes(remainder)?;
-                Ok((
-                    NamedKeyAddr::new_named_key_entry(base_addr, string_bytes),
-                    remainder,
-                ))
-            }
-            _ => Err(bytesrepr::Error::Formatting),
-        }
+        let (base_addr, remainder) = EntityAddr::from_bytes(bytes)?;
+        let (string_bytes, remainder) = FromBytes::from_bytes(remainder)?;
+        Ok((
+            Self {
+                base_addr,
+                string_bytes
+            },
+            remainder
+        ))
     }
 }
 
@@ -1319,46 +1263,18 @@ impl From<NamedKeyAddr> for Key {
 
 impl Display for NamedKeyAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let tag = self.tag();
-        match self {
-            NamedKeyAddr::Base(entity_addr) => {
-                write!(f, "{}{}-{}", NAMED_KEY_PREFIX, tag, entity_addr)
-            }
-            NamedKeyAddr::NamedKeyEntry {
-                base_addr,
-                string_bytes,
-            } => {
-                write!(
-                    f,
-                    "{}{}-{}-{}",
-                    NAMED_KEY_PREFIX,
-                    tag,
-                    base_addr,
-                    base16::encode_lower(string_bytes)
-                )
-            }
-        }
+        write!(f,"{}{}-{}", NAMED_KEY_PREFIX, self.base_addr, base16::encode_lower(&self.string_bytes))
     }
 }
 
 impl Debug for NamedKeyAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            NamedKeyAddr::Base(entity_addr) => {
-                write!(f, "NamedKeyAddr::Base({:?})", entity_addr)
-            }
-            NamedKeyAddr::NamedKeyEntry {
-                base_addr,
-                string_bytes,
-            } => {
-                write!(
-                    f,
-                    "NamedKeyAddr::NamedKeyEntry({:?}-{:?})",
-                    base_addr,
-                    base16::encode_lower(string_bytes)
-                )
-            }
-        }
+        write!(
+            f,
+            "NamedKeyAddr({:?}-{:?})",
+            self.base_addr,
+            base16::encode_lower(&self.string_bytes)
+        )
     }
 }
 
@@ -1543,15 +1459,16 @@ pub enum MessageTopicError {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct AddressableEntity {
+    protocol_version: ProtocolVersion,
+    entity_kind: EntityKind,
     package_hash: PackageHash,
     byte_code_hash: ByteCodeHash,
-    entry_points: EntryPoints,
-    protocol_version: ProtocolVersion,
     main_purse: URef,
+
+    entry_points: EntryPoints,
     associated_keys: AssociatedKeys,
     action_thresholds: ActionThresholds,
     message_topics: MessageTopics,
-    entity_kind: EntityKind,
 }
 
 impl From<AddressableEntity>
@@ -2424,13 +2341,6 @@ mod tests {
 
     #[test]
     fn named_key_addr_from_str() {
-        let named_key_addr =
-            NamedKeyAddr::new_named_key_base(EntityAddr::new_contract_entity_addr([3; 32]));
-        let encoded = named_key_addr.to_formatted_string();
-        println!("{}", encoded);
-        let decoded = NamedKeyAddr::from_formatted_str(&encoded).unwrap();
-        assert_eq!(named_key_addr, decoded);
-
         let named_key_addr = NamedKeyAddr::new_named_key_entry(
             EntityAddr::new_contract_entity_addr([3; 32]),
             [4; 32],
