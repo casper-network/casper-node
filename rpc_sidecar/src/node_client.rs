@@ -25,7 +25,7 @@ use tokio::{
     },
     sync::RwLock,
 };
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 #[async_trait]
 pub trait NodeClient: Send + Sync + 'static {
@@ -87,7 +87,7 @@ pub trait NodeClient: Send + Sync + 'static {
         let key = hash.to_bytes().expect("should always serialize a digest");
         self.read_from_db(DbId::Transfer, &key)
             .await?
-            .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
+            .map(|bytes| bincode::deserialize(&bytes))
             .transpose()
             .map_err(|err| Error::Deserialization(err.to_string()))
     }
@@ -131,7 +131,7 @@ pub trait NodeClient: Send + Sync + 'static {
             .map_err(|err| Error::Deserialization(err.to_string()))
     }
 
-    async fn does_completed_block_contain(&self, block_hash: BlockHash) -> Result<bool, Error> {
+    async fn does_exist_in_completed_blocks(&self, block_hash: BlockHash) -> Result<bool, Error> {
         let resp = self
             .read_from_mem(InMemRequest::CompletedBlockContains { block_hash })
             .await?
@@ -215,7 +215,7 @@ impl JulietNodeClient {
                 Ok(server) => break server,
                 Err(err) => {
                     wait = (wait * BACKOFF_MULT).min(MAX_WAIT);
-                    error!(%err, "failed to connect to the node, waiting {wait}ms before retrying");
+                    warn!(%err, "failed to connect to the node, waiting {wait}ms before retrying");
                     tokio::time::sleep(Duration::from_millis(wait)).await;
                 }
             }

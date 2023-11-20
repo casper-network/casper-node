@@ -2,7 +2,7 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::rpcs::Error;
+use crate::rpcs::error::Error;
 use casper_types::{
     AvailableBlockRange, Block, BlockSignatures, ExecutionInfo, FinalizedApprovals, SignedBlock,
     Transaction, TransactionHash,
@@ -10,7 +10,7 @@ use casper_types::{
 
 use crate::NodeClient;
 
-use super::{chain::BlockIdentifier, ErrorCode};
+use super::chain::BlockIdentifier;
 
 pub(super) static MERKLE_PROOF: Lazy<String> = Lazy::new(|| {
     String::from(
@@ -49,48 +49,44 @@ pub async fn get_signed_block(
         Some(BlockIdentifier::Height(height)) => node_client
             .read_block_hash_from_height(height)
             .await
-            .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?
-            .ok_or_else(|| Error::new(ErrorCode::NoSuchBlock, "no block at requested height"))?,
+            .map_err(|err| Error::NodeRequest("block hash from height", err))?
+            .ok_or_else(|| Error::NoBlockAtHeight(height))?,
         None => *node_client
             .read_highest_completed_block_info()
             .await
-            .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?
-            .ok_or_else(|| Error::new(ErrorCode::NoSuchBlock, "no coompleted block available"))?
+            .map_err(|err| Error::NodeRequest("highest completed block", err))?
+            .ok_or(Error::NoHighestBlock)?
             .block_hash(),
     };
+
+    let should_return_block = node_client
+        .does_exist_in_completed_blocks(hash)
+        .await
+        .map_err(|err| Error::NodeRequest("completed block existence", err))?;
+
+    if !should_return_block {
+        return Err(Error::NoBlockWithHash(hash));
+    }
 
     let header = node_client
         .read_block_header(hash)
         .await
-        .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?
-        .ok_or_else(|| {
-            Error::new(
-                ErrorCode::NoSuchBlock,
-                format!("block header not found for {hash}"),
-            )
-        })?;
+        .map_err(|err| Error::NodeRequest("block header", err))?
+        .ok_or_else(|| Error::NoBlockWithHash(hash))?;
     let body = node_client
         .read_block_body(*header.body_hash())
         .await
-        .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?
-        .ok_or_else(|| {
-            Error::new(
-                ErrorCode::NoSuchBlock,
-                format!("block body not found for {hash}"),
-            )
-        })?;
+        .map_err(|err| Error::NodeRequest("block body", err))?
+        .ok_or_else(|| Error::NoBlockBodyWithHash(*header.body_hash()))?;
     let signatures = node_client
         .read_block_signatures(hash)
         .await
-        .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?
+        .map_err(|err| Error::NodeRequest("block signatures", err))?
         .unwrap_or_else(|| BlockSignatures::new(hash, header.era_id()));
     let block = Block::new_from_header_and_body(header, body).unwrap();
 
     if signatures.is_verified().is_err() {
-        return Err(Error::new(
-            ErrorCode::InvalidBlock,
-            format!("block {} could not be verified", hash),
-        ));
+        return Err(Error::CouldNotVerifyBlock(hash));
     };
 
     Ok(SignedBlock::new(block, signatures))
@@ -103,17 +99,12 @@ pub async fn get_transaction_with_approvals(
     let txn = node_client
         .read_transaction(hash)
         .await
-        .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?
-        .ok_or_else(|| {
-            Error::new(
-                ErrorCode::NoSuchTransaction,
-                format!("transaction not found for {hash}"),
-            )
-        })?;
+        .map_err(|err| Error::NodeRequest("transaction", err))?
+        .ok_or_else(|| Error::NoTransactionWithHash(hash))?;
     let approvals = node_client
         .read_finalized_approvals(hash)
         .await
-        .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?;
+        .map_err(|err| Error::NodeRequest("finalized approvals", err))?;
     Ok((txn, approvals))
 }
 
@@ -124,12 +115,12 @@ pub async fn get_transaction_execution_info(
     let Some(block_hash_and_height) = node_client
         .read_transaction_block_info(hash)
         .await
-        .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?
+        .map_err(|err| Error::NodeRequest("block of a transaction", err))?
         else { return Ok(None) };
     let execution_result = node_client
         .read_execution_result(hash)
         .await
-        .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?;
+        .map_err(|err| Error::NodeRequest("block execution result", err))?;
 
     Ok(Some(ExecutionInfo {
         block_hash: *block_hash_and_height.block_hash(),

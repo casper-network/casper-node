@@ -13,12 +13,13 @@ use casper_types::{
     ProtocolVersion, PublicKey, Transaction, TransactionHash, ValidatorChange,
 };
 
+use super::error::Error;
 use crate::node_client::NodeClient;
 
 use super::{
     common,
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-    Error, ErrorCode, RpcWithParams, RpcWithoutParams,
+    Error as RpcError, RpcWithParams, RpcWithoutParams,
 };
 
 static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
@@ -118,7 +119,7 @@ impl RpcWithParams for GetDeploy {
         node_client: Arc<dyn NodeClient>,
         api_version: ProtocolVersion,
         params: Self::RequestParams,
-    ) -> Result<Self::ResponseResult, Error> {
+    ) -> Result<Self::ResponseResult, RpcError> {
         let hash = TransactionHash::from(params.deploy_hash);
         let (transaction, approvals) =
             common::get_transaction_with_approvals(&*node_client, hash).await?;
@@ -130,12 +131,7 @@ impl RpcWithParams for GetDeploy {
                 deploy.with_approvals(approvals.into_inner())
             }
             (Transaction::Deploy(deploy), Some(FinalizedApprovals::Deploy(_)) | None) => deploy,
-            _ => {
-                return Err(Error::new(
-                    ErrorCode::VariantMismatch,
-                    "deploy variant does not match approvals".to_string(),
-                ))
-            }
+            _ => return Err(Error::InconsistentTransactionVersions(hash).into()),
         };
 
         let execution_info = common::get_transaction_execution_info(&*node_client, hash).await?;
@@ -200,7 +196,7 @@ impl RpcWithParams for GetTransaction {
         node_client: Arc<dyn NodeClient>,
         api_version: ProtocolVersion,
         params: Self::RequestParams,
-    ) -> Result<Self::ResponseResult, Error> {
+    ) -> Result<Self::ResponseResult, RpcError> {
         let (transaction, approvals) =
             common::get_transaction_with_approvals(&*node_client, params.transaction_hash).await?;
 
@@ -222,10 +218,7 @@ impl RpcWithParams for GetTransaction {
                 Transaction::from(deploy)
             }
             _ => {
-                return Err(Error::new(
-                    ErrorCode::VariantMismatch,
-                    "transaction variant does not match approvals".to_string(),
-                ))
+                return Err(Error::InconsistentTransactionVersions(params.transaction_hash).into())
             }
         };
 
@@ -336,7 +329,7 @@ impl RpcWithoutParams for GetValidatorChanges {
     async fn do_handle_request(
         _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
-    ) -> Result<Self::ResponseResult, Error> {
+    ) -> Result<Self::ResponseResult, RpcError> {
         todo!()
     }
 }
@@ -368,7 +361,7 @@ impl RpcWithoutParams for GetChainspec {
     async fn do_handle_request(
         _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
-    ) -> Result<Self::ResponseResult, Error> {
+    ) -> Result<Self::ResponseResult, RpcError> {
         todo!()
     }
 }

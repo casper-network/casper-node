@@ -14,14 +14,14 @@ use casper_types::{
     Transfer,
 };
 
-use crate::rpcs::ErrorCode;
 use crate::NodeClient;
 
 use super::{
     common,
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-    Error, RpcWithOptionalParams,
+    Error as RpcError, RpcWithOptionalParams,
 };
+use crate::rpcs::error::Error;
 pub use era_summary::EraSummary;
 use era_summary::ERA_SUMMARY;
 
@@ -155,7 +155,7 @@ impl RpcWithOptionalParams for GetBlock {
         node_client: Arc<dyn NodeClient>,
         api_version: ProtocolVersion,
         maybe_params: Option<Self::OptionalRequestParams>,
-    ) -> Result<Self::ResponseResult, Error> {
+    ) -> Result<Self::ResponseResult, RpcError> {
         let identifier = maybe_params.map(|params| params.block_identifier);
         let (block, signatures) = common::get_signed_block(&*node_client, identifier)
             .await?
@@ -230,13 +230,13 @@ impl RpcWithOptionalParams for GetBlockTransfers {
         node_client: Arc<dyn NodeClient>,
         api_version: ProtocolVersion,
         maybe_params: Option<Self::OptionalRequestParams>,
-    ) -> Result<Self::ResponseResult, Error> {
+    ) -> Result<Self::ResponseResult, RpcError> {
         let identifier = maybe_params.map(|params| params.block_identifier);
         let block = common::get_signed_block(&*node_client, identifier).await?;
         let transfers = node_client
             .read_block_transfers(*block.block().hash())
             .await
-            .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?;
+            .map_err(|err| Error::NodeRequest("block transfers", err))?;
         Ok(Self::ResponseResult {
             api_version,
             block_hash: Some(*block.block().hash()),
@@ -289,7 +289,7 @@ impl RpcWithOptionalParams for GetStateRootHash {
         _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
         _maybe_params: Option<Self::OptionalRequestParams>,
-    ) -> Result<Self::ResponseResult, Error> {
+    ) -> Result<Self::ResponseResult, RpcError> {
         todo!()
     }
 }
@@ -338,7 +338,7 @@ impl RpcWithOptionalParams for GetEraInfoBySwitchBlock {
         _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
         _maybe_params: Option<Self::OptionalRequestParams>,
-    ) -> Result<Self::ResponseResult, Error> {
+    ) -> Result<Self::ResponseResult, RpcError> {
         todo!()
     }
 }
@@ -387,7 +387,7 @@ impl RpcWithOptionalParams for GetEraSummary {
         _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
         _maybe_params: Option<Self::OptionalRequestParams>,
-    ) -> Result<Self::ResponseResult, Error> {
+    ) -> Result<Self::ResponseResult, RpcError> {
         todo!()
     }
 }
