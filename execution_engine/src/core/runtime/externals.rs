@@ -1110,8 +1110,14 @@ where
                     &host_function_costs.generic_hash,
                     [in_ptr, in_size, hash_algo_type, out_ptr, out_size],
                 )?;
-                let hash_algo_type =
-                    HashAlgoType::try_from(hash_algo_type as u8).map_err(|e| Error::from(e))?;
+                let hash_algo_type = match HashAlgoType::try_from(hash_algo_type as u8) {
+                    Ok(v) => v,
+                    Err(_e) => {
+                        return Ok(Some(RuntimeValue::I32(api_error::i32_from(Err(
+                            ApiError::InvalidArgument,
+                        )))))
+                    }
+                };
 
                 let digest =
                     self.checked_memory_slice(in_ptr as usize, in_size as usize, |input| {
