@@ -253,6 +253,8 @@ impl BlockValidationState {
                 if missing_deploys.is_empty() {
                     error!("should always have missing deploys while in state `InProgress`");
                     debug_assert!(false, "invalid state");
+                    // Note: This branch should never happen and is a bug in the software. We are
+                    //       "repurposing" a different error variant, avoiding `unreachable!`.
                     return MaybeStartFetching::ValidationFailed;
                 }
                 let mut unasked = None;

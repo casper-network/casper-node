@@ -12,6 +12,7 @@ use serde::Serialize;
 use crate::{
     components::{block_accumulator, fetcher::Tag},
     consensus::ValidationError,
+    utils::display_error,
 };
 
 /// Reasons why a peer was blocked.
@@ -77,7 +78,12 @@ impl Display for BlocklistJustification {
                 error
             ),
             BlocklistJustification::SentInvalidConsensusValue { era, cause } => {
-                write!(f, "sent an invalid consensus value in {}: {}", era, cause)
+                write!(
+                    f,
+                    "sent an invalid consensus value in {}: {}",
+                    era,
+                    display_error(cause)
+                )
             }
             BlocklistJustification::BadConsensusBehavior => {
                 f.write_str("sent invalid data in consensus")

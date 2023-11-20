@@ -153,6 +153,37 @@ pub enum ValidationError {
         /// The deploys still missing.
         missing_deploys: Vec<DeployOrTransferHash>,
     },
+    /// An already invalid block was submitted for validation.
+    ///
+    /// This is likely a bug in the node itself.
+    #[error("validation of failed block, likely a bug")]
+    ValidationOfFailedBlock,
+    /// The submitted block is already in process of being validated.
+    ///
+    /// This is likely a bug, since no block should be submitted for validation twice.
+    #[error("duplicate validation attempt, likely a bug")]
+    DuplicateValidationAttempt,
+    /// Found deploy in storage, but did not match the hash requested.
+    ///
+    /// This indicates a corrupted storage.
+    // Note: It seems rather mean to ban peers for our own corrupted storage.
+    #[error("local storage appears corrupted, deploy mismatch when asked for deploy {0}")]
+    InternalDataCorruption(DeployOrTransferHash),
+    /// The deploy we received
+    ///
+    /// This is likely a bug, since the deploy fetcher should ensure that this does not happen.
+    #[error("received wrong or invalid deploy from peer when asked for deploy {0}")]
+    WrongDeploySent(DeployOrTransferHash),
+    /// A contained deploy has no valid deploy footprint.
+    #[error("no valid deploy footprint for deploy {deploy_hash}: {error}")]
+    DeployHasInvalidFootprint {
+        /// Hash of deploy that failed.
+        deploy_hash: DeployOrTransferHash,
+        /// The error reported when trying to footprint it.
+        // Note: The respective error is hard to serialize and make `Sync`-able, so it is inlined
+        //       in string form here.
+        error: String,
+    },
     /// TODO: Placeholder variant, all instances of this should be removed.
     #[error("unspecified error")]
     TodoUnknown,

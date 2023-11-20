@@ -171,13 +171,21 @@ impl BlockValidator {
             }
             MaybeStartFetching::ValidationFailed => {
                 debug_assert!(maybe_responder.is_some());
-                respond(Err(ValidationError::TodoUnknown), maybe_responder)
+                respond(
+                    Err(ValidationError::ValidationOfFailedBlock),
+                    maybe_responder,
+                )
             }
             MaybeStartFetching::Ongoing | MaybeStartFetching::Unable { .. } => {
+                // Programmer error, we should only request each validation once!
+
                 // This `MaybeStartFetching` variant should never be returned here.
                 error!(%state, "invalid state while handling new block validation");
                 debug_assert!(false, "invalid state {}", state);
-                respond(Err(ValidationError::TodoUnknown), state.take_responders())
+                respond(
+                    Err(ValidationError::DuplicateValidationAttempt),
+                    state.take_responders(),
+                )
             }
         };
         self.validation_states.insert(block, state);
@@ -233,7 +241,10 @@ impl BlockValidator {
             Err(error) => warn!(%dt_hash, %error, "could not fetch deploy"),
         }
         match result {
-            Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => {
+            Ok(FetchedData::FromStorage { ref item })
+            | Ok(FetchedData::FromPeer { ref item, .. }) => {
+                // This whole branch _should_ never be taken, as it means that the fetcher returned
+                // an item that does not match the actual fetch request.
                 if item.deploy_or_transfer_hash() != dt_hash {
                     warn!(
                         deploy = %item,
@@ -246,23 +257,42 @@ impl BlockValidator {
                         .validation_states
                         .values_mut()
                         .flat_map(|state| state.try_mark_invalid(&dt_hash));
-                    return respond(Err(ValidationError::TodoUnknown), responders);
+
+                    // Not ideal, would be preferrable to refactor this entire section instead. For
+                    // now, we make do by matching on `result` again.
+                    if matches!(result, Ok(FetchedData::FromStorage { .. })) {
+                        // Data corruption, we got an invalid deploy from storage.
+                        return respond(
+                            Err(ValidationError::InternalDataCorruption(
+                                item.deploy_or_transfer_hash(),
+                            )),
+                            responders,
+                        );
+                    } else {
+                        // Malicious peer, should not have been able to sneak by the fetcher.
+                        return respond(
+                            Err(ValidationError::WrongDeploySent(
+                                item.deploy_or_transfer_hash(),
+                            )),
+                            responders,
+                        );
+                    }
                 }
                 let deploy_footprint = match item.footprint() {
                     Ok(footprint) => footprint,
                     Err(error) => {
-                        warn!(
-                            deploy = %item,
-                            %dt_hash,
-                            %error,
-                            "could not convert deploy",
-                        );
                         // Hard failure - change state to Invalid.
                         let responders = self
                             .validation_states
                             .values_mut()
                             .flat_map(|state| state.try_mark_invalid(&dt_hash));
-                        return respond(Err(ValidationError::TodoUnknown), responders);
+                        return respond(
+                            Err(ValidationError::DeployHasInvalidFootprint {
+                                deploy_hash: dt_hash,
+                                error: error.to_string(),
+                            }),
+                            responders,
+                        );
                     }
                 };
 
