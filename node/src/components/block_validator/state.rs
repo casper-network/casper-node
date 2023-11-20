@@ -55,7 +55,10 @@ pub(super) enum MaybeStartFetching {
     /// No new round of fetches should be started as one is already in progress.
     Ongoing,
     /// We still have missing deploys, but all holders have failed.
-    Unable,
+    Unable {
+        /// Hashes of all deploys that could not be retrieved.
+        missing_deploys: Vec<DeployOrTransferHash>,
+    },
     /// Validation has succeeded already.
     ValidationSucceeded,
     /// Validation has failed already.
@@ -265,7 +268,11 @@ impl BlockValidationState {
 
                 let holder = match unasked {
                     Some(peer) => peer,
-                    None => return MaybeStartFetching::Unable,
+                    None => {
+                        return MaybeStartFetching::Unable {
+                            missing_deploys: missing_deploys.keys().cloned().collect(),
+                        }
+                    }
                 };
                 // Mark the holder as `Asked`.  Safe to `expect` as we just found the entry above.
                 *holders.get_mut(&holder).expect("must be in set") = HolderState::Asked;
@@ -820,7 +827,10 @@ mod tests {
 
         // `start_fetching` should return `Unable` due to no un-failed holders.
         let maybe_start_fetching = state.start_fetching();
-        assert_eq!(maybe_start_fetching, MaybeStartFetching::Unable);
+        assert!(matches!(
+            maybe_start_fetching,
+            MaybeStartFetching::Unable { .. }
+        ));
 
         // The holders should be unchanged.
         assert_eq!(state.holders_mut().unwrap(), &holders_before);

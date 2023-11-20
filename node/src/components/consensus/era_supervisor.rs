@@ -876,12 +876,15 @@ impl EraSupervisor {
     ) -> Effects<Event> {
         self.metrics.proposed_block();
         let mut effects = Effects::new();
-        if !result.is_valid() {
+        if let Some(ref error) = result.error {
             effects.extend({
                 effect_builder
                     .announce_block_peer_with_justification(
                         result.sender,
-                        BlocklistJustification::SentInvalidConsensusValue { era: result.era_id },
+                        BlocklistJustification::SentInvalidConsensusValue {
+                            era: result.era_id,
+                            cause: error.clone(),
+                        },
                     )
                     .ignore()
             });

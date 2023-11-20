@@ -126,10 +126,10 @@ impl BlockValidator {
                     debug!("ongoing fetches while validating proposed block - noop");
                     Effects::new()
                 }
-                MaybeStartFetching::Unable => {
-                    debug!("no new info while validating proposed block - responding `false`");
-                    respond(Err(ValidationError::TodoUnknown), state.take_responders())
-                }
+                MaybeStartFetching::Unable { missing_deploys } => respond(
+                    Err(ValidationError::ExhaustedBlockHolders { missing_deploys }),
+                    state.take_responders(),
+                ),
                 MaybeStartFetching::ValidationSucceeded | MaybeStartFetching::ValidationFailed => {
                     // If validation is already completed, we should have exited in the
                     // `AddResponderResult::ValidationCompleted` branch above.
@@ -173,7 +173,7 @@ impl BlockValidator {
                 debug_assert!(maybe_responder.is_some());
                 respond(Err(ValidationError::TodoUnknown), maybe_responder)
             }
-            MaybeStartFetching::Ongoing | MaybeStartFetching::Unable => {
+            MaybeStartFetching::Ongoing | MaybeStartFetching::Unable { .. } => {
                 // This `MaybeStartFetching` variant should never be returned here.
                 error!(%state, "invalid state while handling new block validation");
                 debug_assert!(false, "invalid state {}", state);
@@ -306,7 +306,7 @@ impl BlockValidator {
                                         missing_deploys,
                                     ))
                                 }
-                                MaybeStartFetching::Unable => {
+                                MaybeStartFetching::Unable { .. } => {
                                     debug!(
                                         "exhausted peers while validating proposed block - \
                                         responding `false`"
@@ -399,6 +399,6 @@ fn respond(
 ) -> Effects<Event> {
     responders
         .into_iter()
-        .flat_map(|responder| responder.respond(response).ignore())
+        .flat_map(move |responder| responder.respond(response.clone()).ignore())
         .collect()
 }

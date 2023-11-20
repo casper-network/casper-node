@@ -51,7 +51,7 @@ use crate::{
     },
     protocol::Message,
     reactor::ReactorEvent,
-    types::{BlockHash, BlockHeader, BlockPayload, DeployHash, NodeId},
+    types::{BlockHash, BlockHeader, BlockPayload, DeployHash, DeployOrTransferHash, NodeId},
     NodeRng,
 };
 use protocols::{highway::HighwayProtocol, zug::Zug};
@@ -141,12 +141,18 @@ pub struct ValidationResult {
     error: Option<ValidationError>,
 }
 
-#[derive(Clone, Copy, DataSize, Debug, Error)]
+#[derive(Clone, DataSize, Debug, Error, Serialize)]
 /// A proposed block validation error.
 pub enum ValidationError {
     /// A deploy hash in the proposed block has been found in an ancestor block.
     #[error("deploy hash {0} has been replayed")]
     ContainsReplayedDeploy(DeployHash),
+    /// A deploy could not be fetched from any of the identified holders.
+    #[error("exhausted potential holders of proposed block, missing {} deploys", missing_deploys.len())]
+    ExhaustedBlockHolders {
+        /// The deploys still missing.
+        missing_deploys: Vec<DeployOrTransferHash>,
+    },
     /// TODO: Placeholder variant, all instances of this should be removed.
     #[error("unspecified error")]
     TodoUnknown,
