@@ -9,6 +9,7 @@ mod tests;
 use std::{net::SocketAddr, sync::Arc};
 
 use bytes::Bytes;
+use casper_execution_engine::engine_state::QueryRequest;
 use casper_types::{
     binary_port::{BinaryRequest, InMemRequest},
     bytesrepr::{FromBytes, ToBytes},
@@ -24,7 +25,10 @@ use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, info, warn};
 
 use crate::{
-    effect::{requests::StorageRequest, EffectBuilder, Effects},
+    effect::{
+        requests::{ContractRuntimeRequest, StorageRequest},
+        EffectBuilder, Effects,
+    },
     reactor::{main_reactor::MainEvent, Finalize},
     types::NodeRng,
     utils::ListeningError,
@@ -58,7 +62,7 @@ impl BinaryPort {
 
 impl<REv> Component<REv> for BinaryPort
 where
-    REv: From<Event> + From<StorageRequest> + Send,
+    REv: From<Event> + From<StorageRequest> + From<ContractRuntimeRequest> + Send,
 {
     type Event = Event;
 
@@ -97,7 +101,7 @@ where
 
 impl<REv> InitializedComponent<REv> for BinaryPort
 where
-    REv: From<Event> + From<StorageRequest> + Send,
+    REv: From<Event> + From<StorageRequest> + From<ContractRuntimeRequest> + Send,
 {
     fn state(&self) -> &ComponentState {
         &self.state
@@ -119,7 +123,7 @@ async fn handle_request<REv>(
     effect_builder: EffectBuilder<REv>,
 ) -> Result<Option<Bytes>, Error>
 where
-    REv: From<StorageRequest>,
+    REv: From<StorageRequest> + From<ContractRuntimeRequest>,
 {
     match req {
         BinaryRequest::Get { key, db } => Ok(effect_builder
@@ -168,6 +172,18 @@ where
                 Ok(payload)
             }
         },
+        BinaryRequest::GetState {
+            state_root_hash,
+            base_key,
+            path,
+        } => {
+            let query_result = effect_builder
+                .query_global_state(QueryRequest::new(state_root_hash, base_key, path))
+                .await
+                .map_err(|err| Error::EngineState(err))?;
+            let payload = ToBytes::to_bytes(&query_result).map_err(|err| Error::BytesRepr(err))?;
+            Ok(Some(payload.into()))
+        }
     }
 }
 
@@ -179,7 +195,7 @@ async fn handle_client<REv, const N: usize>(
     rpc_builder: Arc<RpcBuilder<N>>,
     effect_builder: EffectBuilder<REv>,
 ) where
-    REv: From<StorageRequest>,
+    REv: From<StorageRequest> + From<ContractRuntimeRequest>,
 {
     let (reader, writer) = client.split();
     let (client, mut server) = rpc_builder.build(reader, writer);
@@ -237,7 +253,7 @@ async fn handle_client<REv, const N: usize>(
 // TODO[RC]: Move to Self::
 async fn run_server<REv>(effect_builder: EffectBuilder<REv>, config: Config)
 where
-    REv: Send + From<StorageRequest>,
+    REv: Send + From<StorageRequest> + From<ContractRuntimeRequest>,
 {
     let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
         ChannelConfiguration::default()
@@ -272,7 +288,7 @@ where
 
 impl<REv> PortBoundComponent<REv> for BinaryPort
 where
-    REv: From<Event> + From<StorageRequest> + Send,
+    REv: From<Event> + From<StorageRequest> + From<ContractRuntimeRequest> + Send,
 {
     type Error = ListeningError;
     type ComponentEvent = Event;

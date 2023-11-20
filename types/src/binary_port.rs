@@ -4,7 +4,7 @@ use serde::Serialize;
 
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    BlockHash, TransactionHash,
+    BlockHash, Digest, Key, TransactionHash,
 };
 
 const BLOCK_HEADER_DB_TAG: u8 = 0;
@@ -145,11 +145,13 @@ const GET_TAG: u8 = 0;
 const PUT_TRANSACTION_TAG: u8 = 1;
 const SPECULATIVE_EXEC_TAG: u8 = 2;
 const IN_MEM_REQUEST_TAG: u8 = 3;
+const GET_STATE_TAG: u8 = 4;
 
 /// TODO
 #[derive(Debug)]
 pub enum BinaryRequest {
     // TODO[RC] Add version tag, or rather follow the `BinaryRequestV1/V2` scheme.
+    // TODO[RC] All `Get` operations to be unified under a single enum variant.
     /// Gets data stored under the given key from the given db.
     Get {
         /// Id of the database.
@@ -159,6 +161,15 @@ pub enum BinaryRequest {
     },
     /// Gets a data which is not persisted, hence cannot be obtained by the raw `Get` request.
     GetInMem(InMemRequest),
+    /// Gets data from the global state.
+    GetState {
+        /// State root hash
+        state_root_hash: Digest,
+        /// Key under which data is stored.
+        base_key: Key,
+        /// Path under which the value is stored.
+        path: Vec<String>,
+    },
     /// TODO
     PutTransaction {
         /// TODO
@@ -197,6 +208,16 @@ impl ToBytes for BinaryRequest {
                 IN_MEM_REQUEST_TAG.write_bytes(writer)?;
                 req.write_bytes(writer)
             }
+            BinaryRequest::GetState {
+                state_root_hash,
+                base_key,
+                path,
+            } => {
+                GET_STATE_TAG.write_bytes(writer)?;
+                state_root_hash.write_bytes(writer)?;
+                base_key.write_bytes(writer)?;
+                path.write_bytes(writer)
+            }
         }
     }
 
@@ -207,6 +228,15 @@ impl ToBytes for BinaryRequest {
                 BinaryRequest::PutTransaction { tbd } => tbd.serialized_length(),
                 BinaryRequest::SpeculativeExec { tbd } => tbd.serialized_length(),
                 BinaryRequest::GetInMem(req) => req.serialized_length(),
+                BinaryRequest::GetState {
+                    state_root_hash,
+                    base_key,
+                    path,
+                } => {
+                    state_root_hash.serialized_length()
+                        + base_key.serialized_length()
+                        + path.serialized_length()
+                }
             }
     }
 }
@@ -237,6 +267,19 @@ impl FromBytes for BinaryRequest {
             SPECULATIVE_EXEC_TAG => {
                 let (tbd, remainder) = u32::from_bytes(remainder)?;
                 Ok((BinaryRequest::SpeculativeExec { tbd }, remainder))
+            }
+            GET_STATE_TAG => {
+                let (state_root_hash, remainder) = Digest::from_bytes(remainder)?;
+                let (base_key, remainder) = Key::from_bytes(remainder)?;
+                let (path, remainder) = Vec::<String>::from_bytes(remainder)?;
+                Ok((
+                    BinaryRequest::GetState {
+                        state_root_hash,
+                        base_key,
+                        path,
+                    },
+                    remainder,
+                ))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
