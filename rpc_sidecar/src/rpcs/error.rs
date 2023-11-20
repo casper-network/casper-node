@@ -22,6 +22,8 @@ pub enum Error {
     NoTransactionWithHash(TransactionHash),
     #[error("transaction {0} and its approval versions are inconsistent")]
     InconsistentTransactionVersions(TransactionHash),
+    #[error("found a transaction when searching for a deploy")]
+    FoundTransactionInsteadOfDeploy,
 }
 
 impl Error {
@@ -34,7 +36,9 @@ impl Error {
             | Error::NoBlockBodyWithHash(_) => ErrorCode::NoSuchBlock,
             Error::CouldNotVerifyBlock(_) => ErrorCode::InvalidBlock,
             Error::NoTransactionWithHash(_) => ErrorCode::NoSuchTransaction,
-            Error::InconsistentTransactionVersions(_) => ErrorCode::VariantMismatch,
+            Error::InconsistentTransactionVersions(_) | Error::FoundTransactionInsteadOfDeploy => {
+                ErrorCode::VariantMismatch
+            }
         }
     }
 }
