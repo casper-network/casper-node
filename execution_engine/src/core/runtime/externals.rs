@@ -15,8 +15,7 @@ use casper_types::{
 
 use super::{args::Args, Error, Runtime};
 use crate::{
-    core::resolvers::v1_function_index::FunctionIndex,
-    core::runtime::crypto as core_crypto,
+    core::{resolvers::v1_function_index::FunctionIndex, runtime::crypto as core_crypto},
     shared::host_function_costs::{Cost, HostFunction, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY},
     storage::global_state::StateReader,
 };
