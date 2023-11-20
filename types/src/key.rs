@@ -760,7 +760,6 @@ impl Key {
         }
     }
 
-
     /// Returns the inner bytes of `self` if `self` is of type [`Key::Package`], otherwise returns
     /// `None`.
     pub fn into_package_addr(self) -> Option<PackageAddr> {
@@ -992,7 +991,6 @@ impl Key {
         } else {
             false
         }
-
     }
 }
 
@@ -1148,6 +1146,18 @@ impl From<ContractPackageHash> for Key {
 impl From<ContractHash> for Key {
     fn from(contract_hash: ContractHash) -> Self {
         Key::Hash(contract_hash.value())
+    }
+}
+
+impl From<EntityAddr> for Key {
+    fn from(entity_addr: EntityAddr) -> Self {
+        Key::AddressableEntity(entity_addr)
+    }
+}
+
+impl From<NamedKeyAddr> for Key {
+    fn from(value: NamedKeyAddr) -> Self {
+        Key::NamedKey(value)
     }
 }
 
@@ -1578,7 +1588,11 @@ mod tests {
         AddressableEntityHash::new([42u8; 32]),
         TopicNameHash::new([2; 32]),
         15,
-    ));const NAMED_KEY: Key = Key::NamedKey(NamedKeyAddr::new_named_key_entry(EntityAddr::new_contract_entity_addr([42; 32]),[43; 32]));
+    ));
+    const NAMED_KEY: Key = Key::NamedKey(NamedKeyAddr::new_named_key_entry(
+        EntityAddr::new_contract_entity_addr([42; 32]),
+        [43; 32],
+    ));
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
@@ -1606,7 +1620,7 @@ mod tests {
         BYTE_CODE_V1_WASM_KEY,
         MESSAGE_TOPIC_KEY,
         MESSAGE_KEY,
-        NAMED_KEY
+        NAMED_KEY,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
     const TOPIC_NAME_HEX_STRING: &str =
@@ -2032,7 +2046,6 @@ mod tests {
             Key::from_formatted_str(&format!("{}{}", ENTITY_PREFIX, ACCOUNT_ENTITY_PREFIX))
                 .unwrap_err()
                 .to_string();
-        println!("{}", error_string);
         assert!(error_string.starts_with("addressable-entity-key from string error: "));
         assert!(
             Key::from_formatted_str(&format!("{}{}", BYTE_CODE_PREFIX, EMPTY_PREFIX))

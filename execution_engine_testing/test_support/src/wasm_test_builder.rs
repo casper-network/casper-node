@@ -1429,7 +1429,6 @@ where
             .unwrap()
             .unwrap();
 
-
         let prefix = entity_addr.named_keys_prefix().expect("must get prefix");
 
         let reader = tracking_copy.reader();

@@ -392,8 +392,6 @@ where
         let entity_addr = EntityAddr::new_system_entity_addr(handle_payment_hash.value());
 
         if let Some(named_keys) = maybe_named_keys {
-
-
             for (string, key) in named_keys.into_inner().into_iter() {
                 let entry_addr = NamedKeyAddr::new_from_string(entity_addr, string.clone())
                     .map_err(ProtocolUpgradeError::Bytesrepr)?;

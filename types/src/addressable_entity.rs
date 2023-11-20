@@ -15,9 +15,13 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
+use blake2::{
+    digest::{Update, VariableOutput},
+    VarBlake2b,
+};
 use core::{
     array::TryFromSliceError,
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     fmt::{self, Debug, Display, Formatter},
     iter,
 };
@@ -61,7 +65,8 @@ use crate::{
     system::SystemEntityType,
     uref::{self, URef},
     AccessRights, ApiError, CLType, CLTyped, CLValue, CLValueError, ContextAccessRights, Group,
-    HashAddr, Key, KeyTag, PackageHash, ProtocolVersion, PublicKey, Tagged, KEY_HASH_LENGTH,
+    HashAddr, Key, KeyTag, PackageHash, ProtocolVersion, PublicKey, Tagged, BLAKE2B_DIGEST_LENGTH,
+    KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -79,10 +84,6 @@ pub const PACKAGE_KIND_ACCOUNT_TAG: u8 = 2;
 pub const PACKAGE_KIND_LEGACY_TAG: u8 = 3;
 
 const ADDRESSABLE_ENTITY_STRING_PREFIX: &str = "addressable-entity-";
-
-const BASE_TAG: u8 = 0;
-
-const ENTRY_TAG: u8 = 1;
 
 const ENTITY_PREFIX: &str = "addressable-entity-";
 const ACCOUNT_ENTITY_PREFIX: &str = "account-";
@@ -715,19 +716,8 @@ impl ToBytes for EntityKindTag {
 
 impl FromBytes for EntityKindTag {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (package_kind_tag, remainder) = u8::from_bytes(bytes)?;
-        match package_kind_tag {
-            package_kind_tag if package_kind_tag == EntityKindTag::System as u8 => {
-                Ok((EntityKindTag::System, remainder))
-            }
-            package_kind_tag if package_kind_tag == EntityKindTag::Account as u8 => {
-                Ok((EntityKindTag::Account, remainder))
-            }
-            package_kind_tag if package_kind_tag == EntityKindTag::SmartContract as u8 => {
-                Ok((EntityKindTag::SmartContract, remainder))
-            }
-            _ => Err(bytesrepr::Error::Formatting),
-        }
+        let (entity_kind_tag, remainder) = u8::from_bytes(bytes)?;
+        Ok((entity_kind_tag.try_into()?, remainder))
     }
 }
 
@@ -750,7 +740,7 @@ impl Display for EntityKindTag {
 #[cfg(any(feature = "testing", test))]
 impl Distribution<EntityKindTag> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EntityKindTag {
-        match rng.gen_range(0..=1) {
+        match rng.gen_range(0..=2) {
             0 => EntityKindTag::System,
             1 => EntityKindTag::Account,
             2 => EntityKindTag::SmartContract,
@@ -874,20 +864,17 @@ impl ToBytes for EntityKind {
 
 impl FromBytes for EntityKind {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
+        let (tag, remainder) = EntityKindTag::from_bytes(bytes)?;
         match tag {
-            tag if tag == EntityKindTag::System as u8 => {
+            EntityKindTag::System => {
                 let (entity_type, remainder) = SystemEntityType::from_bytes(remainder)?;
                 Ok((EntityKind::System(entity_type), remainder))
             }
-            tag if tag == EntityKindTag::Account as u8 => {
+            EntityKindTag::Account => {
                 let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
                 Ok((EntityKind::Account(account_hash), remainder))
             }
-            tag if tag == EntityKindTag::SmartContract as u8 => {
-                Ok((EntityKind::SmartContract, remainder))
-            }
-            _ => Err(bytesrepr::Error::Formatting),
+            EntityKindTag::SmartContract => Ok((EntityKind::SmartContract, remainder)),
         }
     }
 }
@@ -919,11 +906,6 @@ impl Distribution<EntityKind> for Standard {
         }
     }
 }
-
-// pub struct QueryAddressableEntity {
-//     addressable_entity: AddressableEntity,
-//     named_keys: NamedKeys
-// }
 
 /// The address for an AddressableEntity which contains the 32 bytes and tagging information.
 #[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
@@ -1039,30 +1021,24 @@ impl ToBytes for EntityAddr {
 
 impl FromBytes for EntityAddr {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder): (u8, &[u8]) = FromBytes::from_bytes(bytes)?;
+        let (tag, remainder): (EntityKindTag, &[u8]) = FromBytes::from_bytes(bytes)?;
         match tag {
-            tag if tag == EntityKindTag::System as u8 => {
+            EntityKindTag::System => {
                 HashAddr::from_bytes(remainder).map(|(hash_addr, remainder)| {
                     (EntityAddr::new_system_entity_addr(hash_addr), remainder)
                 })
             }
-            tag if tag == EntityKindTag::Account as u8 => {
+            EntityKindTag::Account => {
                 HashAddr::from_bytes(remainder).map(|(hash_addr, remainder)| {
                     (EntityAddr::new_account_entity_addr(hash_addr), remainder)
                 })
             }
-            tag if tag == EntityKindTag::SmartContract as u8 => HashAddr::from_bytes(remainder)
-                .map(|(hash_addr, remainder)| {
+            EntityKindTag::SmartContract => {
+                HashAddr::from_bytes(remainder).map(|(hash_addr, remainder)| {
                     (EntityAddr::new_contract_entity_addr(hash_addr), remainder)
-                }),
-            _ => Err(bytesrepr::Error::Formatting),
+                })
+            }
         }
-    }
-}
-
-impl From<EntityAddr> for Key {
-    fn from(entity_addr: EntityAddr) -> Self {
-        Key::AddressableEntity(entity_addr)
     }
 }
 
@@ -1112,53 +1088,16 @@ impl Distribution<EntityAddr> for Standard {
     }
 }
 
-#[derive(
-    Debug, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize,
-)]
-#[repr(u8)]
-#[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-/// The tag for the NamedKeyAddr.
-pub enum NamedKeyAddrTag {
-    #[default]
-    /// The tag for the base variant.
-    Base = BASE_TAG,
-    /// The tag for the entry variant.
-    NamedKeyEntry = ENTRY_TAG,
-}
-
-impl Display for NamedKeyAddrTag {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let tag = match self {
-            NamedKeyAddrTag::Base => BASE_TAG,
-            NamedKeyAddrTag::NamedKeyEntry => ENTRY_TAG,
-        };
-        write!(f, "{}", base16::encode_lower(&[tag]))
-    }
-}
-
 /// A NamedKey address.
-// #[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
-// #[cfg_attr(feature = "datasize", derive(DataSize))]
-// #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-// pub enum NamedKeyAddr {
-//     /// A specific key for a given NamedKey.
-//     NamedKeyEntry {
-//         /// The address of the entity.
-//         base_addr: EntityAddr,
-//         /// The bytes of the name.
-//         string_bytes: [u8; KEY_HASH_LENGTH],
-//     }
-// }
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct NamedKeyAddr {
-        /// The address of the entity.
-        base_addr: EntityAddr,
-        /// The bytes of the name.
-        string_bytes: [u8; KEY_HASH_LENGTH],
+    /// The address of the entity.
+    base_addr: EntityAddr,
+    /// The bytes of the name.
+    string_bytes: [u8; KEY_HASH_LENGTH],
 }
 
 impl NamedKeyAddr {
@@ -1182,16 +1121,12 @@ impl NamedKeyAddr {
         entity_addr: EntityAddr,
         entry: String,
     ) -> Result<Self, bytesrepr::Error> {
-        let mut bytes = entry.to_bytes()?;
-        let string_vec = if bytes.len() < KEY_HASH_LENGTH {
-            let mut string_byte = Vec::with_capacity(KEY_HASH_LENGTH);
-            string_byte.append(&mut bytes);
-            string_byte.resize(KEY_HASH_LENGTH, 0u8);
-            string_byte
-        } else {
-            bytes
-        };
-        let (string_bytes, _) = FromBytes::from_bytes(&string_vec)?;
+        let bytes = entry.to_bytes()?;
+        let mut hasher = VarBlake2b::new(BLAKE2B_DIGEST_LENGTH).expect("should create hasher");
+        hasher.update(bytes);
+        // NOTE: Assumed safe as size of `HashAddr` equals to the output provided by hasher.
+        let mut string_bytes = HashAddr::default();
+        hasher.finalize_variable(|hash| string_bytes.clone_from_slice(hash));
         Ok(Self::new_named_key_entry(entity_addr, string_bytes))
     }
 
@@ -1209,9 +1144,7 @@ impl NamedKeyAddr {
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         if let Some(named_key) = input.strip_prefix(NAMED_KEY_PREFIX) {
             let reverse_string = named_key.chars().rev().collect::<String>();
-            if let Some((reverse_bytes, reverse_entity_addr)) =
-                reverse_string.split_once('-')
-            {
+            if let Some((reverse_bytes, reverse_entity_addr)) = reverse_string.split_once('-') {
                 let entity_addr_str = reverse_entity_addr.chars().rev().collect::<String>();
                 let entity_addr = EntityAddr::from_formatted_str(&entity_addr_str)?;
                 let string_bytes_str = reverse_bytes.chars().rev().collect::<String>();
@@ -1236,8 +1169,7 @@ impl ToBytes for NamedKeyAddr {
     }
 
     fn serialized_length(&self) -> usize {
-        self.base_addr.serialized_length()
-        + self.string_bytes.serialized_length()
+        self.base_addr.serialized_length() + self.string_bytes.serialized_length()
     }
 }
 
@@ -1248,22 +1180,22 @@ impl FromBytes for NamedKeyAddr {
         Ok((
             Self {
                 base_addr,
-                string_bytes
+                string_bytes,
             },
-            remainder
+            remainder,
         ))
-    }
-}
-
-impl From<NamedKeyAddr> for Key {
-    fn from(value: NamedKeyAddr) -> Self {
-        Key::NamedKey(value)
     }
 }
 
 impl Display for NamedKeyAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f,"{}{}-{}", NAMED_KEY_PREFIX, self.base_addr, base16::encode_lower(&self.string_bytes))
+        write!(
+            f,
+            "{}{}-{}",
+            NAMED_KEY_PREFIX,
+            self.base_addr,
+            base16::encode_lower(&self.string_bytes)
+        )
     }
 }
 
@@ -2348,6 +2280,14 @@ mod tests {
         let encoded = named_key_addr.to_formatted_string();
         let decoded = NamedKeyAddr::from_formatted_str(&encoded).unwrap();
         assert_eq!(named_key_addr, decoded);
+    }
+
+    #[test]
+    fn formatted_string_roundtrip() {
+        let entity_addr = EntityAddr::Account([5; 32]);
+        let encoded = entity_addr.to_formatted_string();
+        let decoded = EntityAddr::from_formatted_str(&encoded).expect("must get entity addr");
+        assert_eq!(decoded, entity_addr);
     }
 
     #[test]

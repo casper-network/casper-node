@@ -393,7 +393,6 @@ where
         entity_addr: EntityAddr,
         named_keys: NamedKeys,
     ) -> Result<(), Error> {
-
         for (name, key) in named_keys.iter() {
             let named_key_value =
                 StoredValue::NamedKey(NamedKeyValue::from_concrete_values(*key, name.clone())?);
