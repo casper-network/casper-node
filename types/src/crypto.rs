@@ -13,8 +13,6 @@ use blake2::{
 use num::FromPrimitive;
 use num_derive::FromPrimitive;
 
-use crate::bytesrepr;
-
 use crate::key::BLAKE2B_DIGEST_LENGTH;
 #[cfg(any(feature = "std", test))]
 pub use asymmetric_key::generate_ed25519_keypair;
@@ -52,9 +50,9 @@ pub enum HashAlgoType {
 }
 
 impl TryFrom<u8> for HashAlgoType {
-    type Error = bytesrepr::Error;
+    type Error = ();
 
-    fn try_from(value: u8) -> Result<Self, bytesrepr::Error> {
-        FromPrimitive::from_u8(value).ok_or(bytesrepr::Error::Formatting)
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        FromPrimitive::from_u8(value).ok_or(())
     }
 }
