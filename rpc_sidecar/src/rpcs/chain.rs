@@ -156,13 +156,8 @@ impl RpcWithOptionalParams for GetBlock {
         api_version: ProtocolVersion,
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, Error> {
-        let Some(GetBlockParams { block_identifier: BlockIdentifier::Hash(block_hash) }) =
-            maybe_params
-        else {
-           todo!()
-        };
-
-        let (block, signatures) = common::get_signed_block(&*node_client, block_hash)
+        let identifier = maybe_params.map(|params| params.block_identifier);
+        let (block, signatures) = common::get_signed_block(&*node_client, identifier)
             .await?
             .into_inner();
         Ok(Self::ResponseResult {
@@ -236,20 +231,15 @@ impl RpcWithOptionalParams for GetBlockTransfers {
         api_version: ProtocolVersion,
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, Error> {
-        let Some(GetBlockTransfersParams { block_identifier: BlockIdentifier::Hash(block_hash) }) =
-            maybe_params
-        else {
-            todo!()
-        };
-
-        let block = common::get_signed_block(&*node_client, block_hash).await?;
+        let identifier = maybe_params.map(|params| params.block_identifier);
+        let block = common::get_signed_block(&*node_client, identifier).await?;
         let transfers = node_client
             .read_block_transfers(*block.block().hash())
             .await
             .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?;
         Ok(Self::ResponseResult {
             api_version,
-            block_hash: Some(block_hash),
+            block_hash: Some(*block.block().hash()),
             transfers,
         })
     }

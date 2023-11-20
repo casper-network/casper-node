@@ -114,6 +114,31 @@ pub trait NodeClient: Send + Sync + 'static {
             .transpose()
             .map_err(|err| Error::Deserialization(err.to_string()))
     }
+
+    async fn read_highest_completed_block_info(&self) -> Result<Option<BlockHashAndHeight>, Error> {
+        self.read_from_mem(InMemRequest::HighestCompleteBlock {})
+            .await?
+            .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
+            .transpose()
+            .map_err(|err| Error::Deserialization(err.to_string()))
+    }
+
+    async fn read_block_hash_from_height(&self, height: u64) -> Result<Option<BlockHash>, Error> {
+        self.read_from_mem(InMemRequest::BlockHeight2Hash { height })
+            .await?
+            .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
+            .transpose()
+            .map_err(|err| Error::Deserialization(err.to_string()))
+    }
+
+    async fn does_completed_block_contain(&self, block_hash: BlockHash) -> Result<bool, Error> {
+        let resp = self
+            .read_from_mem(InMemRequest::CompletedBlockContains { block_hash })
+            .await?
+            .ok_or(Error::NoResponseBody)?;
+        bytesrepr::deserialize_from_slice(&resp)
+            .map_err(|err| Error::Deserialization(err.to_string()))
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -124,6 +149,8 @@ pub enum Error {
     Deserialization(String),
     #[error("failed to serialize a request: {0}")]
     Serialization(String),
+    #[error("unexpectedly received no response body")]
+    NoResponseBody,
 }
 
 const CHANNEL_COUNT: usize = 1;

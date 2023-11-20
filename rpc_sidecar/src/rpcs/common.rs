@@ -4,13 +4,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::rpcs::Error;
 use casper_types::{
-    AvailableBlockRange, Block, BlockHash, BlockSignatures, ExecutionInfo, FinalizedApprovals,
-    SignedBlock, Transaction, TransactionHash,
+    AvailableBlockRange, Block, BlockSignatures, ExecutionInfo, FinalizedApprovals, SignedBlock,
+    Transaction, TransactionHash,
 };
 
 use crate::NodeClient;
 
-use super::ErrorCode;
+use super::{chain::BlockIdentifier, ErrorCode};
 
 pub(super) static MERKLE_PROOF: Lazy<String> = Lazy::new(|| {
     String::from(
@@ -42,8 +42,23 @@ pub enum ErrorData {
 
 pub async fn get_signed_block(
     node_client: &dyn NodeClient,
-    hash: BlockHash,
+    identifier: Option<BlockIdentifier>,
 ) -> Result<SignedBlock, Error> {
+    let hash = match identifier {
+        Some(BlockIdentifier::Hash(hash)) => hash,
+        Some(BlockIdentifier::Height(height)) => node_client
+            .read_block_hash_from_height(height)
+            .await
+            .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?
+            .ok_or_else(|| Error::new(ErrorCode::NoSuchBlock, "no block at requested height"))?,
+        None => *node_client
+            .read_highest_completed_block_info()
+            .await
+            .map_err(|err| Error::new(ErrorCode::QueryFailed, err.to_string()))?
+            .ok_or_else(|| Error::new(ErrorCode::NoSuchBlock, "no coompleted block available"))?
+            .block_hash(),
+    };
+
     let header = node_client
         .read_block_header(hash)
         .await
