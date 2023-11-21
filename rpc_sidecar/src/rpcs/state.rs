@@ -550,11 +550,40 @@ impl RpcWithParams for GetDictionaryItem {
     type ResponseResult = GetDictionaryItemResult;
 
     async fn do_handle_request(
-        _node_client: Arc<dyn NodeClient>,
-        _api_version: ProtocolVersion,
-        _params: Self::RequestParams,
+        node_client: Arc<dyn NodeClient>,
+        api_version: ProtocolVersion,
+        params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
-        todo!()
+        let dictionary_key = match params.dictionary_identifier {
+            DictionaryIdentifier::AccountNamedKey { ref key, .. }
+            | DictionaryIdentifier::ContractNamedKey { ref key, .. } => {
+                let base_key = Key::from_formatted_str(key)
+                    .map_err(|error| Error::InvalidDictionaryKey(error))?;
+                let result = node_client
+                    .query_global_state(params.state_root_hash, base_key, vec![])
+                    .await
+                    .map_err(|err| Error::NodeRequest("dictionary key", err))?;
+                let result = common::handle_query_result(result)?;
+                params
+                    .dictionary_identifier
+                    .get_dictionary_address(Some(result.value))?
+            }
+            DictionaryIdentifier::URef { .. } | DictionaryIdentifier::Dictionary(_) => {
+                params.dictionary_identifier.get_dictionary_address(None)?
+            }
+        };
+        let result = node_client
+            .query_global_state(params.state_root_hash, dictionary_key, vec![])
+            .await
+            .map_err(|err| Error::NodeRequest("dictionary item", err))?;
+        let result = common::handle_query_result(result)?;
+
+        Ok(Self::ResponseResult {
+            api_version,
+            dictionary_key: dictionary_key.to_formatted_string(),
+            stored_value: result.value,
+            merkle_proof: result.merkle_proof,
+        })
     }
 }
 

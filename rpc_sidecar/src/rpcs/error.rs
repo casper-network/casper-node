@@ -1,6 +1,6 @@
 use crate::node_client::Error as NodeClientError;
 use casper_json_rpc::Error as RpcError;
-use casper_types::{BlockHash, Digest, TransactionHash, URefFromStrError};
+use casper_types::{BlockHash, Digest, KeyFromStrError, TransactionHash, URefFromStrError};
 
 use super::ErrorCode;
 
@@ -36,6 +36,8 @@ pub enum Error {
     InvalidPurseBalance,
     #[error("the requested account info could not be parsed")]
     InvalidAccountInfo,
+    #[error("the provided dictionary key was invalid: {0}")]
+    InvalidDictionaryKey(KeyFromStrError),
 }
 
 impl Error {
@@ -58,6 +60,7 @@ impl Error {
             Error::InvalidPurseURef(_) => ErrorCode::FailedToParseGetBalanceURef,
             Error::InvalidPurseBalance => ErrorCode::FailedToGetBalance,
             Error::InvalidAccountInfo => ErrorCode::NoSuchAccount,
+            Error::InvalidDictionaryKey(_) => ErrorCode::FailedToParseQueryKey,
         }
     }
 }
