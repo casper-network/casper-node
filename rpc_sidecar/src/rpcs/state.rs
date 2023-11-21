@@ -359,11 +359,34 @@ impl RpcWithParams for GetAccountInfo {
     type ResponseResult = GetAccountInfoResult;
 
     async fn do_handle_request(
-        _node_client: Arc<dyn NodeClient>,
-        _api_version: ProtocolVersion,
-        _params: Self::RequestParams,
+        node_client: Arc<dyn NodeClient>,
+        api_version: ProtocolVersion,
+        params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
-        todo!()
+        let signed_block = common::get_signed_block(&*node_client, params.block_identifier).await?;
+        let state_root_hash = *signed_block.block().state_root_hash();
+        let base_key = {
+            let account_hash = match params.account_identifier {
+                AccountIdentifier::PublicKey(public_key) => public_key.to_account_hash(),
+                AccountIdentifier::AccountHash(account_hash) => account_hash,
+            };
+            Key::Account(account_hash)
+        };
+        let result = node_client
+            .query_global_state(state_root_hash, base_key, vec![])
+            .await
+            .map_err(|err| Error::NodeRequest("account info", err))?;
+        let result = common::handle_query_result(result)?;
+        let account = result
+            .value
+            .into_account()
+            .ok_or(Error::InvalidAccountInfo)?;
+
+        Ok(Self::ResponseResult {
+            api_version,
+            account,
+            merkle_proof: result.merkle_proof,
+        })
     }
 }
 

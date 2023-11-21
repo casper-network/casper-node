@@ -34,6 +34,8 @@ pub enum Error {
     InvalidPurseURef(URefFromStrError),
     #[error("the requested purse balance could not be parsed")]
     InvalidPurseBalance,
+    #[error("the requested account info could not be parsed")]
+    InvalidAccountInfo,
 }
 
 impl Error {
@@ -55,6 +57,7 @@ impl Error {
             }
             Error::InvalidPurseURef(_) => ErrorCode::FailedToParseGetBalanceURef,
             Error::InvalidPurseBalance => ErrorCode::FailedToGetBalance,
+            Error::InvalidAccountInfo => ErrorCode::NoSuchAccount,
         }
     }
 }

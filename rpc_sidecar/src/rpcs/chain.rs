@@ -233,14 +233,14 @@ impl RpcWithOptionalParams for GetBlockTransfers {
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
         let identifier = maybe_params.map(|params| params.block_identifier);
-        let block = common::get_signed_block(&*node_client, identifier).await?;
+        let signed_block = common::get_signed_block(&*node_client, identifier).await?;
         let transfers = node_client
-            .read_block_transfers(*block.block().hash())
+            .read_block_transfers(*signed_block.block().hash())
             .await
             .map_err(|err| Error::NodeRequest("block transfers", err))?;
         Ok(Self::ResponseResult {
             api_version,
-            block_hash: Some(*block.block().hash()),
+            block_hash: Some(*signed_block.block().hash()),
             transfers,
         })
     }
@@ -292,12 +292,10 @@ impl RpcWithOptionalParams for GetStateRootHash {
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
         let identifier = maybe_params.map(|params| params.block_identifier);
-        let (block, _) = common::get_signed_block(&*node_client, identifier)
-            .await?
-            .into_inner();
+        let signed_block = common::get_signed_block(&*node_client, identifier).await?;
         Ok(Self::ResponseResult {
             api_version,
-            state_root_hash: Some(*block.state_root_hash()),
+            state_root_hash: Some(*signed_block.block().state_root_hash()),
         })
     }
 }
@@ -348,11 +346,9 @@ impl RpcWithOptionalParams for GetEraInfoBySwitchBlock {
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
         let identifier = maybe_params.map(|params| params.block_identifier);
-        let (block, _) = common::get_signed_block(&*node_client, identifier)
-            .await?
-            .into_inner();
-        let era_summary = if block.is_switch_block() {
-            Some(get_era_summary_by_block(node_client, &block).await?)
+        let signed_block = common::get_signed_block(&*node_client, identifier).await?;
+        let era_summary = if signed_block.block().is_switch_block() {
+            Some(get_era_summary_by_block(node_client, signed_block.block()).await?)
         } else {
             None
         };
@@ -410,10 +406,8 @@ impl RpcWithOptionalParams for GetEraSummary {
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
         let identifier = maybe_params.map(|params| params.block_identifier);
-        let (block, _) = common::get_signed_block(&*node_client, identifier)
-            .await?
-            .into_inner();
-        let era_summary = get_era_summary_by_block(node_client, &block).await?;
+        let signed_block = common::get_signed_block(&*node_client, identifier).await?;
+        let era_summary = get_era_summary_by_block(node_client, signed_block.block()).await?;
 
         Ok(Self::ResponseResult {
             api_version,
