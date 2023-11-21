@@ -143,6 +143,7 @@ pub struct ValidationResult {
 
 #[derive(Clone, DataSize, Debug, Error, Serialize)]
 /// A proposed block validation error.
+// TODO: This error probably needs to move to a different component.
 pub enum ValidationError {
     /// A deploy hash in the proposed block has been found in an ancestor block.
     #[error("deploy hash {0} has been replayed")]
@@ -184,6 +185,19 @@ pub enum ValidationError {
         //       in string form here.
         error: String,
     },
+    /// Too many non-transfer deploys in block.
+    #[error("block exceeds limit of non-transfer deploys of {0}")]
+    ExceedsNonTransferDeployLimit(usize),
+    /// Too many non-transfer deploys in block.
+    #[error("block exceeds limit of transfers of {0}")]
+    ExceedsTransferLimit(usize),
+    /// The approvals hash could not be serialized.
+    // Note: `bytesrepr::Error` does not implement `std::error::Error`.
+    #[error("failed to serialize approvals hash: {0}")]
+    CannotSerializeApprovalsHash(String),
+    /// A duplicated deploy was found within the block.
+    #[error("duplicate deploy {0} in block")]
+    DuplicateDeploy(DeployOrTransferHash),
     /// TODO: Placeholder variant, all instances of this should be removed.
     #[error("unspecified error")]
     TodoUnknown,

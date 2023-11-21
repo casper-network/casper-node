@@ -105,7 +105,10 @@ pub(super) enum BlockValidationState {
     /// like failing to fetch from a peer, the state will remain `Unknown`, even if there are no
     /// more peers to ask, since more peers could be provided before this `BlockValidationState` is
     /// purged.
-    Invalid(Timestamp),
+    Invalid {
+        timestamp: Timestamp,
+        error: ValidationError,
+    },
 }
 
 impl BlockValidationState {
@@ -126,13 +129,17 @@ impl BlockValidationState {
         }
 
         if block.deploys().len() > chainspec.deploy_config.block_max_deploy_count as usize {
-            warn!("too many non-transfer deploys");
-            let state = BlockValidationState::Invalid(block.timestamp());
+            let state = BlockValidationState::Invalid {
+                timestamp: block.timestamp(),
+                error: ValidationError::ExceedsNonTransferDeployLimit(block.deploys().len()),
+            };
             return (state, Some(responder));
         }
         if block.transfers().len() > chainspec.deploy_config.block_max_transfer_count as usize {
-            warn!("too many transfers");
-            let state = BlockValidationState::Invalid(block.timestamp());
+            let state = BlockValidationState::Invalid {
+                timestamp: block.timestamp(),
+                error: ValidationError::ExceedsTransferLimit(block.transfers().len()),
+            };
             return (state, Some(responder));
         }
 
@@ -151,15 +158,19 @@ impl BlockValidationState {
             let approval_info = match ApprovalsHash::compute(&approvals) {
                 Ok(approvals_hash) => ApprovalInfo::new(approvals, approvals_hash),
                 Err(error) => {
-                    warn!(%dt_hash, %error, "could not compute approvals hash");
-                    let state = BlockValidationState::Invalid(block.timestamp());
+                    let state = BlockValidationState::Invalid {
+                        timestamp: block.timestamp(),
+                        error: ValidationError::CannotSerializeApprovalsHash(error.to_string()),
+                    };
                     return (state, Some(responder));
                 }
             };
 
             if missing_deploys.insert(dt_hash, approval_info).is_some() {
-                warn!(%dt_hash, "duplicated deploy in proposed block");
-                let state = BlockValidationState::Invalid(block.timestamp());
+                let state = BlockValidationState::Invalid {
+                    timestamp: block.timestamp(),
+                    error: ValidationError::DuplicateDeploy(dt_hash),
+                };
                 return (state, Some(responder));
             }
         }
@@ -192,7 +203,7 @@ impl BlockValidationState {
                 responder,
                 response_to_send: Ok(()),
             },
-            BlockValidationState::Invalid(_) => AddResponderResult::ValidationCompleted {
+            BlockValidationState::Invalid { .. } => AddResponderResult::ValidationCompleted {
                 responder,
                 response_to_send: Err(ValidationError::TodoUnknown),
             },
@@ -219,7 +230,7 @@ impl BlockValidationState {
                     entry.insert(HolderState::Unasked);
                 }
             },
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => {
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => {
                 error!(state = %self, "unexpected state when adding holder");
             }
         }
@@ -288,14 +299,14 @@ impl BlockValidationState {
                 }
             }
             BlockValidationState::Valid(_) => MaybeStartFetching::ValidationSucceeded,
-            BlockValidationState::Invalid(_) => MaybeStartFetching::ValidationFailed,
+            BlockValidationState::Invalid { .. } => MaybeStartFetching::ValidationFailed,
         }
     }
 
     pub(super) fn take_responders(&mut self) -> Vec<Responder<Result<(), ValidationError>>> {
         match self {
             BlockValidationState::InProgress { responders, .. } => mem::take(responders),
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => vec![],
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => vec![],
         }
     }
 
@@ -351,12 +362,15 @@ impl BlockValidationState {
                     }
                     Err(error) => {
                         warn!(%dt_hash, ?footprint, %error, "block invalid");
-                        let new_state = BlockValidationState::Invalid(appendable_block.timestamp());
+                        let new_state = BlockValidationState::Invalid {
+                            timestamp: appendable_block.timestamp(),
+                            error: ValidationError::TodoUnknown,
+                        };
                         (new_state, mem::take(responders))
                     }
                 }
             }
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => return vec![],
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => return vec![],
         };
         *self = new_state;
         responders
@@ -380,7 +394,7 @@ impl BlockValidationState {
                 }
                 (appendable_block.timestamp(), mem::take(responders))
             }
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => return vec![],
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => return vec![],
         };
         *self = BlockValidationState::Valid(timestamp);
         responders
@@ -389,9 +403,8 @@ impl BlockValidationState {
     pub(super) fn block_timestamp_if_completed(&self) -> Option<Timestamp> {
         match self {
             BlockValidationState::InProgress { .. } => None,
-            BlockValidationState::Valid(timestamp) | BlockValidationState::Invalid(timestamp) => {
-                Some(*timestamp)
-            }
+            BlockValidationState::Valid(timestamp)
+            | BlockValidationState::Invalid { timestamp, .. } => Some(*timestamp),
         }
     }
 
@@ -404,7 +417,7 @@ impl BlockValidationState {
                 .keys()
                 .map(|dt_hash| *dt_hash.deploy_hash())
                 .collect(),
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => vec![],
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => vec![],
         }
     }
 
@@ -412,7 +425,7 @@ impl BlockValidationState {
     pub(super) fn holders_mut(&mut self) -> Option<&mut HashMap<NodeId, HolderState>> {
         match self {
             BlockValidationState::InProgress { holders, .. } => Some(holders),
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => None,
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => None,
         }
     }
 
@@ -420,7 +433,7 @@ impl BlockValidationState {
     pub(super) fn responder_count(&self) -> usize {
         match self {
             BlockValidationState::InProgress { responders, .. } => responders.len(),
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => 0,
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => 0,
         }
     }
 
@@ -451,8 +464,11 @@ impl Display for BlockValidationState {
             BlockValidationState::Valid(timestamp) => {
                 write!(formatter, "BlockValidationState::Valid({timestamp})")
             }
-            BlockValidationState::Invalid(timestamp) => {
-                write!(formatter, "BlockValidationState::Invalid({timestamp})")
+            BlockValidationState::Invalid { timestamp, error } => {
+                write!(
+                    formatter,
+                    "BlockValidationState::Invalid{{ timestamp: {timestamp}, error: {error}}}"
+                )
             }
         }
     }
@@ -574,7 +590,7 @@ mod tests {
         let deploy_count = 5_u64;
         fixture.chainspec.deploy_config.block_max_deploy_count = deploy_count as u32 - 1;
         let (state, maybe_responder) = fixture.new_state(deploy_count, 0);
-        assert!(matches!(state, BlockValidationState::Invalid(_)));
+        assert!(matches!(state, BlockValidationState::Invalid { .. }));
         assert!(maybe_responder.is_some());
     }
 
@@ -584,7 +600,7 @@ mod tests {
         let transfer_count = 5_u64;
         fixture.chainspec.deploy_config.block_max_transfer_count = transfer_count as u32 - 1;
         let (state, maybe_responder) = fixture.new_state(0, transfer_count);
-        assert!(matches!(state, BlockValidationState::Invalid(_)));
+        assert!(matches!(state, BlockValidationState::Invalid { .. }));
         assert!(maybe_responder.is_some());
     }
 
@@ -609,7 +625,7 @@ mod tests {
             &fixture.chainspec,
         );
 
-        assert!(matches!(state, BlockValidationState::Invalid(_)));
+        assert!(matches!(state, BlockValidationState::Invalid { .. }));
         assert!(maybe_responder.is_some());
     }
 
@@ -632,7 +648,7 @@ mod tests {
                 assert_eq!(holders.values().next().unwrap(), &HolderState::Unasked);
                 assert_eq!(responders.len(), 1);
             }
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => {
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => {
                 panic!("unexpected state")
             }
         }
@@ -667,12 +683,15 @@ mod tests {
 
     #[test]
     fn should_not_add_responder_if_invalid() {
-        let mut state = BlockValidationState::Invalid(Timestamp::from(1000));
+        let mut state = BlockValidationState::Invalid {
+            timestamp: Timestamp::from(1000),
+            error: ValidationError::ExceedsTransferLimit(123),
+        };
         let add_responder_result = state.add_responder(new_responder());
         assert!(matches!(
             add_responder_result,
             AddResponderResult::ValidationCompleted {
-                response_to_send: Err(ValidationError::TodoUnknown),
+                response_to_send: Err(ValidationError::ExceedsTransferLimit(123)),
                 ..
             }
         ));
@@ -850,7 +869,10 @@ mod tests {
 
     #[test]
     fn start_fetching_should_return_validation_failed_if_invalid() {
-        let mut state = BlockValidationState::Invalid(Timestamp::from(1000));
+        let mut state = BlockValidationState::Invalid {
+            timestamp: Timestamp::from(1000),
+            error: ValidationError::ValidationOfFailedBlock,
+        };
         let maybe_start_fetching = state.start_fetching();
         assert_eq!(maybe_start_fetching, MaybeStartFetching::ValidationFailed);
     }
@@ -898,7 +920,7 @@ mod tests {
                 missing_deploys.clone(),
                 holders.clone(),
             ),
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => {
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => {
                 panic!("unexpected state")
             }
         };
@@ -922,7 +944,7 @@ mod tests {
                 assert_eq!(&missing_deploys_before, missing_deploys);
                 assert_eq!(&holders_before, holders);
             }
-            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => {
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid { .. } => {
                 panic!("unexpected state")
             }
         };
@@ -955,6 +977,6 @@ mod tests {
         let footprint = invalid_deploy.footprint().unwrap();
         let responders = state.try_add_deploy_footprint(&dt_hash, &footprint);
         assert_eq!(responders.len(), 1);
-        assert!(matches!(state, BlockValidationState::Invalid(_)));
+        assert!(matches!(state, BlockValidationState::Invalid { .. }));
     }
 }
