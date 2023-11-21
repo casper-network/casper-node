@@ -1,14 +1,19 @@
 //! Implementation of all host functions.
+pub(crate) mod abi;
+
 use std::{io::Cursor, mem};
 
-use byteorder::{LittleEndian, ReadBytesExt};
 use bytes::Bytes;
+use safe_transmute::SingleManyGuard;
 
 use crate::{
     backend::Caller,
-    storage::{self, Entry, Storage},
-    Error as VMError, HostError,
+    host::abi::{CreateResult, EntryPoint, Manifest, Param},
+    storage::{self, Storage},
+    HostError,
 };
+
+use self::abi::ReadInfo;
 
 #[derive(Debug)]
 pub(crate) enum Outcome {
@@ -58,16 +63,6 @@ pub(crate) fn casper_print<S: Storage>(
     0
 }
 
-#[repr(C)]
-struct ReadInfo {
-    /// Allocated pointer.
-    data: u32,
-    /// Size in bytes.
-    data_size: u32,
-    /// Value tag.
-    tag: u64,
-}
-
 /// Write value under a key.
 pub(crate) fn casper_read<S: Storage>(
     mut caller: impl Caller<S>,
@@ -88,7 +83,7 @@ pub(crate) fn casper_read<S: Storage>(
         Ok(Some(entry)) => {
             let out_ptr: u32 = caller
                 .alloc(cb_alloc, entry.data.len(), cb_ctx)
-                .map_err(|error| Outcome::VM(error))?;
+                .map_err(Outcome::VM)?;
 
             let read_info = ReadInfo {
                 data: out_ptr,
@@ -96,15 +91,9 @@ pub(crate) fn casper_read<S: Storage>(
                 tag: entry.tag,
             };
 
-            let read_info_bytes: [u8; mem::size_of::<ReadInfo>()] =
-                unsafe { mem::transmute_copy(&read_info) };
-            dbg!(read_info_bytes.len());
-
-            caller.memory_write(info_ptr, &read_info_bytes).unwrap();
-
+            let read_info_bytes = safe_transmute::transmute_one_to_bytes(&read_info);
+            caller.memory_write(info_ptr, read_info_bytes).unwrap();
             caller.memory_write(out_ptr, &entry.data).unwrap();
-
-            // out_ptr
             Ok(0)
         }
         Ok(None) => Ok(1),
@@ -127,7 +116,7 @@ pub(crate) fn casper_copy_input<S: Storage>(
     let out_ptr: u32 = if cb_alloc != 0 {
         caller
             .alloc(cb_alloc, input.len(), alloc_ctx)
-            .map_err(|error| Outcome::VM(error))?
+            .map_err(Outcome::VM)?
     } else {
         // treats alloc_ctx as data
         alloc_ctx
@@ -141,55 +130,18 @@ pub(crate) fn casper_copy_input<S: Storage>(
     }
 }
 
-#[repr(C)]
-#[derive(Debug)]
-pub struct EntryPoint {
-    pub name_ptr: u32,
-    pub name_len: u32,
-
-    pub params_ptr: u32, // pointer of pointers (preferred 'static lifetime)
-    pub params_size: u32,
-
-    pub fptr: u32, // extern "C" fn(A1) -> (),
-}
-
-#[repr(C)]
-#[derive(Debug)]
-pub struct Manifest {
-    entry_points_ptr: u32,
-    entry_points_size: u32,
-}
-
-#[repr(C)]
-#[derive(Debug)]
-pub struct Param {
-    pub name_ptr: u32,
-    pub name_len: u32,
-    pub ty: u32,
-}
-
-#[repr(C)]
-#[derive(Debug)]
-
-pub struct CreateResult {
-    package_address: [u8; 32],
-    contract_address: [u8; 32],
-    version: u32,
-}
-
 pub(crate) fn casper_create_contract<S: Storage>(
     mut caller: impl Caller<S>,
     code_ptr: u32,
     code_len: u32,
     manifest_ptr: u32,
     result_ptr: u32,
-) -> u32 {
+) -> Result<u32, Outcome> {
     let code = if code_ptr != 0 {
-        let code = caller
+        caller
             .memory_read(code_ptr, code_len as usize)
             .map(Bytes::from)
-            .unwrap();
-        code
+            .unwrap()
     } else {
         caller.bytecode()
     };
@@ -199,13 +151,10 @@ pub(crate) fn casper_create_contract<S: Storage>(
         .unwrap();
     let bytes = manifest.as_slice();
 
-    let manifest = {
-        let mut rdr = Cursor::new(bytes);
-        let entry_points_ptr = rdr.read_u32::<LittleEndian>().unwrap(); // TODO: Error handling
-        let entry_points_size = rdr.read_u32::<LittleEndian>().unwrap(); // TODO: Error handling
-        Manifest {
-            entry_points_ptr,
-            entry_points_size,
+    let manifest = match safe_transmute::transmute_one::<Manifest>(bytes) {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            todo!("handle error {:?}", error);
         }
     };
 
@@ -215,7 +164,12 @@ pub(crate) fn casper_create_contract<S: Storage>(
             (manifest.entry_points_size as usize) * mem::size_of::<EntryPoint>(),
         )
         .unwrap();
-    let (head, entry_points, tail) = unsafe { entry_points_bytes.align_to::<EntryPoint>() };
+
+    let entry_points =
+        match safe_transmute::transmute_many::<EntryPoint, SingleManyGuard>(&entry_points_bytes) {
+            Ok(entry_points) => entry_points,
+            Err(error) => todo!("handle error {:?}", error),
+        };
 
     let entrypoints = {
         let mut vec = Vec::new();
@@ -224,8 +178,6 @@ pub(crate) fn casper_create_contract<S: Storage>(
             let entry_point_name = caller
                 .memory_read(entry_point.name_ptr, entry_point.name_len as usize)
                 .unwrap();
-            // let entry_point_name = String::from_utf8(name).unwrap();
-            // println!()
 
             let params_bytes = caller
                 .memory_read(
@@ -235,7 +187,15 @@ pub(crate) fn casper_create_contract<S: Storage>(
                 .unwrap();
 
             let mut params_vec = Vec::new();
-            let (head, params, tail) = unsafe { params_bytes.align_to::<Param>() };
+
+            let params =
+                match safe_transmute::transmute_many::<Param, SingleManyGuard>(&params_bytes) {
+                    Ok(params) => params,
+                    Err(error) => {
+                        todo!("unable to transmute {:?}", error)
+                    }
+                };
+
             for param in params {
                 let name = caller
                     .memory_read(param.name_ptr, param.name_len as usize)
@@ -254,13 +214,10 @@ pub(crate) fn casper_create_contract<S: Storage>(
             })
         }
 
-        // vec.push
         vec
     };
 
     let manifest = storage::Manifest { entrypoints };
-
-    // caller.context().
 
     let storage::CreateResult {
         package_address,
@@ -277,18 +234,22 @@ pub(crate) fn casper_create_contract<S: Storage>(
         version: 1,
     };
 
-    dbg!(&create_result);
+    let create_result_bytes = safe_transmute::transmute_one_to_bytes(&create_result);
 
-    let create_result_bytes: [u8; mem::size_of::<CreateResult>()] =
-        unsafe { mem::transmute_copy(&create_result) };
+    debug_assert_eq!(
+        safe_transmute::transmute_one(create_result_bytes),
+        Ok(create_result),
+        "Sanity check", // NOTE: Remove these guards with sufficient test coverage
+    );
 
     caller
-        .memory_write(result_ptr, &create_result_bytes)
+        .memory_write(result_ptr, create_result_bytes)
         .unwrap();
 
-    0
+    Ok(0)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn casper_call<S: Storage>(
     mut caller: impl Caller<S>,
     address_ptr: u32,
@@ -309,5 +270,7 @@ pub(crate) fn casper_call<S: Storage>(
     // this point either entry point is validated (i.e. EE returned error) or will be validated as
     // for now. 3. If entry point is valid, call it, transfer the value, pass the input data. If
     // it's invalid, return error. 4. Output data is captured by calling `cb_alloc`.
+    // let vm = VM::new();
+    // vm.
     todo!()
 }

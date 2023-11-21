@@ -178,12 +178,6 @@ pub fn write(key_space: u64, key: &[u8], value_tag: u64, value: &[u8]) -> Result
     Ok(())
 }
 
-// pub fn create_entity() -> Address { todo!() }
-
-// struct UpgradeResult {
-
-// }
-
 pub fn create(code: Option<&[u8]>, manifest: &Manifest) -> Result<CreateResult, Error> {
     let (code_ptr, code_size): (*const u8, usize) = match code {
         Some(code) => (code.as_ptr(), code.len()),
@@ -210,7 +204,7 @@ pub fn create(code: Option<&[u8]>, manifest: &Manifest) -> Result<CreateResult, 
     }
 }
 
-pub fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
+pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     address: &Address,
     value: u64,
     entry_point: &str,

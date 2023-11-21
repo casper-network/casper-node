@@ -5335,6 +5335,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f91339c0467de62360649f8d3e185ca8de4224ff281f66000de5eb2a77a79041"
 
 [[package]]
+name = "safe-transmute"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "98a01dab6acf992653be49205bdd549f32f17cb2803e8eacf1560bf97259aae8"
+
+[[package]]
 name = "same-file"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6556,12 +6562,12 @@ version = "0.1.0"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
- "byteorder",
  "bytes",
  "casper-types",
  "criterion 0.5.1",
  "digest 0.10.7",
  "rand 0.8.5",
+ "safe-transmute",
  "thiserror",
  "wasmer",
  "wasmer-compiler-singlepass",

@@ -40,14 +40,14 @@ pub(crate) trait Caller<S: Storage> {
     /// Error is a type-erased error coming from the VM itself.
     fn alloc(&mut self, idx: u32, size: usize, ctx: u32)
         -> Result<u32, Box<dyn std::error::Error>>;
+
+    fn retrieve_manifest();
 }
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("Export error: {0}")]
-    Export(String),
-    // OutOfGas,
-    // Trap(String),
+    #[error("Missing export {0}")]
+    MissingExport(String),
     #[error("Compile error: {0}")]
     Compile(String),
     #[error("Memory instantiation error: {0}")]

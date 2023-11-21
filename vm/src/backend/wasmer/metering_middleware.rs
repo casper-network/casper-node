@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use wasmer::{wasmparser::Operator, ModuleMiddleware};
+use wasmer::ModuleMiddleware;
 use wasmer_middlewares::Metering;
 
 // use casper_types::shared::OpcodeCosts;

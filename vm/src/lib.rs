@@ -4,7 +4,7 @@ pub mod storage;
 
 use bytes::Bytes;
 
-use backend::{wasmer::WasmerInstance, Context, Error as BackendError, GasUsage, WasmInstance};
+use backend::{wasmer::WasmerInstance, Context, Error as BackendError, WasmInstance};
 use storage::Storage;
 use thiserror::Error;
 
@@ -31,6 +31,17 @@ pub enum Resolver {
     Table { index: u32 },
 }
 
+#[derive(Error, Debug)]
+pub enum ExportError {
+    /// An error than occurs when the exported type and the expected type
+    /// are incompatible.
+    #[error("Incompatible Export Type")]
+    IncompatibleType,
+    /// This error arises when an export is missing
+    #[error("Missing export {0}")]
+    Missing(String),
+}
+
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum Error {
@@ -38,6 +49,8 @@ pub enum Error {
     Host(#[source] HostError),
     #[error("Out of gas")]
     OutOfGas,
+    #[error(transparent)]
+    Export(#[from] ExportError),
     /// Error while executing Wasm: traps, memory access errors, etc.
     ///
     /// NOTE: for supporting multiple different backends we may want to abstract this a bit and
@@ -112,5 +125,11 @@ impl VM {
 
     pub fn new() -> Self {
         VM
+    }
+}
+
+impl Default for VM {
+    fn default() -> Self {
+        Self::new()
     }
 }
