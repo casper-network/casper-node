@@ -343,11 +343,24 @@ impl RpcWithOptionalParams for GetEraInfoBySwitchBlock {
     type ResponseResult = GetEraInfoResult;
 
     async fn do_handle_request(
-        _node_client: Arc<dyn NodeClient>,
-        _api_version: ProtocolVersion,
-        _maybe_params: Option<Self::OptionalRequestParams>,
+        node_client: Arc<dyn NodeClient>,
+        api_version: ProtocolVersion,
+        maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
-        todo!()
+        let identifier = maybe_params.map(|params| params.block_identifier);
+        let (block, _) = common::get_signed_block(&*node_client, identifier)
+            .await?
+            .into_inner();
+        let era_summary = if block.is_switch_block() {
+            Some(get_era_summary_by_block(node_client, &block).await?)
+        } else {
+            None
+        };
+
+        Ok(Self::ResponseResult {
+            api_version,
+            era_summary,
+        })
     }
 }
 
@@ -396,45 +409,53 @@ impl RpcWithOptionalParams for GetEraSummary {
         api_version: ProtocolVersion,
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
-        fn create_era_summary(
-            block: &Block,
-            stored_value: StoredValue,
-            merkle_proof: String,
-        ) -> EraSummary {
-            EraSummary {
-                block_hash: *block.hash(),
-                era_id: block.era_id(),
-                stored_value,
-                state_root_hash: *block.state_root_hash(),
-                merkle_proof,
-            }
-        }
-
         let identifier = maybe_params.map(|params| params.block_identifier);
         let (block, _) = common::get_signed_block(&*node_client, identifier)
             .await?
             .into_inner();
-        let state_root_hash = *block.state_root_hash();
-        let era_summary = node_client
-            .query_global_state(state_root_hash, Key::EraSummary, vec![])
-            .await
-            .map_err(|err| Error::NodeRequest("era summary", err))?;
-
-        let era_summary = if !matches!(era_summary, GlobalStateQueryResult::ValueNotFound) {
-            let era_summary = common::handle_query_result(era_summary)?;
-            create_era_summary(&block, era_summary.value, era_summary.merkle_proof)
-        } else {
-            let era_info = node_client
-                .query_global_state(state_root_hash, Key::EraInfo(block.era_id()), vec![])
-                .await
-                .map_err(|err| Error::NodeRequest("era info", err))?;
-            let era_info = common::handle_query_result(era_info)?;
-            create_era_summary(&block, era_info.value, era_info.merkle_proof)
-        };
+        let era_summary = get_era_summary_by_block(node_client, &block).await?;
 
         Ok(Self::ResponseResult {
             api_version,
             era_summary,
         })
     }
+}
+
+async fn get_era_summary_by_block(
+    node_client: Arc<dyn NodeClient>,
+    block: &Block,
+) -> Result<EraSummary, Error> {
+    fn create_era_summary(
+        block: &Block,
+        stored_value: StoredValue,
+        merkle_proof: String,
+    ) -> EraSummary {
+        EraSummary {
+            block_hash: *block.hash(),
+            era_id: block.era_id(),
+            stored_value,
+            state_root_hash: *block.state_root_hash(),
+            merkle_proof,
+        }
+    }
+
+    let state_root_hash = *block.state_root_hash();
+    let era_summary = node_client
+        .query_global_state(state_root_hash, Key::EraSummary, vec![])
+        .await
+        .map_err(|err| Error::NodeRequest("era summary", err))?;
+
+    let era_summary = if !matches!(era_summary, GlobalStateQueryResult::ValueNotFound) {
+        let era_summary = common::handle_query_result(era_summary)?;
+        create_era_summary(&block, era_summary.value, era_summary.merkle_proof)
+    } else {
+        let era_info = node_client
+            .query_global_state(state_root_hash, Key::EraInfo(block.era_id()), vec![])
+            .await
+            .map_err(|err| Error::NodeRequest("era info", err))?;
+        let era_info = common::handle_query_result(era_info)?;
+        create_era_summary(&block, era_info.value, era_info.merkle_proof)
+    };
+    Ok(era_summary)
 }
