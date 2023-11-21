@@ -11,7 +11,7 @@ use std::{net::SocketAddr, sync::Arc};
 use bytes::Bytes;
 use casper_execution_engine::engine_state::QueryRequest;
 use casper_types::{
-    binary_port::{BinaryRequest, GlobalStateQueryResult, InMemRequest, PutTransactionResult},
+    binary_port::{BinaryRequest, GlobalStateQueryResult, InMemRequest},
     bytesrepr::{FromBytes, ToBytes},
     BlockHashAndHeight, Transaction,
 };
@@ -141,13 +141,12 @@ where
         BinaryRequest::PutTransaction { transaction } => {
             let accept_transaction_result = effect_builder
                 .try_accept_transaction(Transaction::from(transaction), None)
-                .await;
-            let response = match accept_transaction_result {
-                Ok(_) => PutTransactionResult::Success,
-                Err(err) => PutTransactionResult::Error(err.to_string()),
-            };
-            let bytes = ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?;
-            Ok(Some(bytes.into()))
+                .await
+                .map_err(|err| err.to_string());
+            let bytes = ToBytes::to_bytes(&accept_transaction_result)
+                .map_err(|err| Error::BytesRepr(err))?
+                .into();
+            Ok(Some(bytes))
         }
         BinaryRequest::SpeculativeExec { tbd: _tbd } => todo!(),
         BinaryRequest::GetInMem(req) => match req {
