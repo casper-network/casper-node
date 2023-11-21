@@ -144,6 +144,7 @@ use crate::{
         network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights, Ticket},
         upgrade_watcher::NextUpgrade,
     },
+    consensus::ValidationError,
     contract_runtime::SpeculativeExecutionState,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
@@ -1796,7 +1797,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         sender: NodeId,
         block: ProposedBlock<ClContext>,
-    ) -> bool
+    ) -> Result<(), ValidationError>
     where
         REv: From<BlockValidationRequest>,
     {

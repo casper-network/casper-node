@@ -9,7 +9,11 @@ use casper_types::EraId;
 use datasize::DataSize;
 use serde::Serialize;
 
-use crate::components::{block_accumulator, fetcher::Tag};
+use crate::{
+    components::{block_accumulator, fetcher::Tag},
+    consensus::ValidationError,
+    utils::display_error,
+};
 
 /// Reasons why a peer was blocked.
 #[derive(DataSize, Debug, Serialize)]
@@ -36,6 +40,8 @@ pub(crate) enum BlocklistJustification {
     SentInvalidConsensusValue {
         /// The era for which the invalid value was destined.
         era: EraId,
+        //// Cause of value invalidity.
+        cause: ValidationError,
     },
     /// Peer misbehaved during consensus and is blocked for it.
     BadConsensusBehavior,
@@ -71,8 +77,13 @@ impl Display for BlocklistJustification {
                 "sent a finality signature that is invalid or unexpected ({})",
                 error
             ),
-            BlocklistJustification::SentInvalidConsensusValue { era } => {
-                write!(f, "sent an invalid consensus value in {}", era)
+            BlocklistJustification::SentInvalidConsensusValue { era, cause } => {
+                write!(
+                    f,
+                    "sent an invalid consensus value in {}: {}",
+                    era,
+                    display_error(cause)
+                )
             }
             BlocklistJustification::BadConsensusBehavior => {
                 f.write_str("sent invalid data in consensus")

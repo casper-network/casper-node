@@ -46,6 +46,7 @@ use crate::{
         network::NetworkInsights,
         upgrade_watcher::NextUpgrade,
     },
+    consensus::ValidationError,
     contract_runtime::{ContractRuntimeError, SpeculativeExecutionState},
     effect::{AutoClosingResponder, Responder},
     reactor::main_reactor::ReactorState,
@@ -1047,7 +1048,7 @@ pub(crate) struct BlockValidationRequest {
     /// Responder to call with the result.
     ///
     /// Indicates whether or not validation was successful.
-    pub(crate) responder: Responder<bool>,
+    pub(crate) responder: Responder<Result<(), ValidationError>>,
 }
 
 impl Display for BlockValidationRequest {

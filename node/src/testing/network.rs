@@ -75,7 +75,7 @@ where
     R::Config: Default,
     <R as Reactor>::Error: Debug,
     R::Event: Serialize,
-    R::Error: From<prometheus::Error>,
+    R::Error: From<prometheus::Error> + Send,
 {
     /// Creates a new networking node on the network using the default root node port.
     ///
@@ -105,7 +105,7 @@ impl<R> TestingNetwork<R>
 where
     R: Reactor + NetworkedReactor,
     R::Event: Serialize,
-    R::Error: From<prometheus::Error> + From<R::Error>,
+    R::Error: From<prometheus::Error> + From<R::Error> + Send,
 {
     /// Creates a new network.
     pub(crate) fn new() -> Self {
@@ -557,7 +557,7 @@ impl<R> Finalize for TestingNetwork<R>
 where
     R: Finalize + NetworkedReactor + Reactor + Send + 'static,
     R::Event: Serialize + Send + Sync,
-    R::Error: From<prometheus::Error>,
+    R::Error: From<prometheus::Error> + Send,
 {
     fn finalize(self) -> BoxFuture<'static, ()> {
         // We support finalizing networks where the reactor itself can be finalized.
