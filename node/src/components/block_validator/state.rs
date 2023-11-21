@@ -5,7 +5,7 @@ use std::{
 };
 
 use datasize::DataSize;
-use tracing::{debug, error, warn};
+use tracing::{debug, error};
 
 use casper_types::Timestamp;
 
@@ -106,7 +106,9 @@ pub(super) enum BlockValidationState {
     /// more peers to ask, since more peers could be provided before this `BlockValidationState` is
     /// purged.
     Invalid {
+        /// Timestamp the change in state occurred.
         timestamp: Timestamp,
+        /// The error that cause the state's invalidity.
         error: ValidationError,
     },
 }
@@ -203,10 +205,12 @@ impl BlockValidationState {
                 responder,
                 response_to_send: Ok(()),
             },
-            BlockValidationState::Invalid { .. } => AddResponderResult::ValidationCompleted {
-                responder,
-                response_to_send: Err(ValidationError::TodoUnknown),
-            },
+            BlockValidationState::Invalid { ref error, .. } => {
+                AddResponderResult::ValidationCompleted {
+                    responder,
+                    response_to_send: Err(error.clone()),
+                }
+            }
         }
     }
 
@@ -361,10 +365,12 @@ impl BlockValidationState {
                         (new_state, mem::take(responders))
                     }
                     Err(error) => {
-                        warn!(%dt_hash, ?footprint, %error, "block invalid");
                         let new_state = BlockValidationState::Invalid {
                             timestamp: appendable_block.timestamp(),
-                            error: ValidationError::TodoUnknown,
+                            error: ValidationError::DeployInclusionFailure {
+                                deploy_hash: *dt_hash,
+                                error,
+                            },
                         };
                         (new_state, mem::take(responders))
                     }

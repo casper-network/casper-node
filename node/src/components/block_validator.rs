@@ -246,12 +246,6 @@ impl BlockValidator {
                 // This whole branch _should_ never be taken, as it means that the fetcher returned
                 // an item that does not match the actual fetch request.
                 if item.deploy_or_transfer_hash() != dt_hash {
-                    warn!(
-                        deploy = %item,
-                        expected_deploy_or_transfer_hash = %dt_hash,
-                        actual_deploy_or_transfer_hash = %item.deploy_or_transfer_hash(),
-                        "deploy has incorrect deploy-or-transfer hash"
-                    );
                     // Hard failure - change state to Invalid.
                     let responders = self
                         .validation_states
@@ -300,11 +294,14 @@ impl BlockValidator {
                 for state in self.validation_states.values_mut() {
                     let responders = state.try_add_deploy_footprint(&dt_hash, &deploy_footprint);
                     if !responders.is_empty() {
-                        let response = if matches!(state, BlockValidationState::Valid(_)) {
-                            Ok(())
-                        } else {
-                            Err(ValidationError::TodoUnknown)
+                        let response = match state {
+                            BlockValidationState::InProgress { .. } => {
+                                Err(ValidationError::InProgressAfterCompletion)
+                            }
+                            BlockValidationState::Valid(_) => Ok(()),
+                            BlockValidationState::Invalid { error, .. } => Err(error.clone()),
                         };
+
                         effects.extend(respond(response, responders));
                     }
                 }
@@ -337,12 +334,8 @@ impl BlockValidator {
                                     ))
                                 }
                                 MaybeStartFetching::Unable { .. } => {
-                                    debug!(
-                                        "exhausted peers while validating proposed block - \
-                                        responding `false`"
-                                    );
                                     effects.extend(respond(
-                                        Err(ValidationError::TodoUnknown),
+                                        Err(ValidationError::PeersExhausted),
                                         state.take_responders(),
                                     ));
                                 }
@@ -353,14 +346,33 @@ impl BlockValidator {
                         });
                         effects
                     }
-                    fetcher::Error::CouldNotConstructGetRequest { .. }
-                    | fetcher::Error::ValidationMetadataMismatch { .. } => {
-                        // Hard failure - change state to Invalid.
+                    fetcher::Error::CouldNotConstructGetRequest { id, peer } => {
+                        // Hard failure.
                         let responders = self
                             .validation_states
                             .values_mut()
                             .flat_map(|state| state.try_mark_invalid(&dt_hash));
-                        respond(Err(ValidationError::TodoUnknown), responders)
+                        respond(
+                            Err(ValidationError::CouldNotConstructGetRequest {
+                                id: id.to_string(),
+                                peer: Box::new(peer),
+                            }),
+                            responders,
+                        )
+                    }
+                    fetcher::Error::ValidationMetadataMismatch { id, peer, .. } => {
+                        // Hard failure.
+                        let responders = self
+                            .validation_states
+                            .values_mut()
+                            .flat_map(|state| state.try_mark_invalid(&dt_hash));
+                        respond(
+                            Err(ValidationError::ValidationMetadataMismatch {
+                                id: id.to_string(),
+                                peer: Box::new(peer),
+                            }),
+                            responders,
+                        )
                     }
                 }
             }

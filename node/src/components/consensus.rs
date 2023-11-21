@@ -51,7 +51,10 @@ use crate::{
     },
     protocol::Message,
     reactor::ReactorEvent,
-    types::{BlockHash, BlockHeader, BlockPayload, DeployHash, DeployOrTransferHash, NodeId},
+    types::{
+        appendable_block::AddError, BlockHash, BlockHeader, BlockPayload, DeployHash,
+        DeployOrTransferHash, NodeId,
+    },
     NodeRng,
 };
 use protocols::{highway::HighwayProtocol, zug::Zug};
@@ -198,9 +201,37 @@ pub enum ValidationError {
     /// A duplicated deploy was found within the block.
     #[error("duplicate deploy {0} in block")]
     DuplicateDeploy(DeployOrTransferHash),
-    /// TODO: Placeholder variant, all instances of this should be removed.
-    #[error("unspecified error")]
-    TodoUnknown,
+    /// Exhausted all peers while trying to validate block.
+    #[error("peers exhausted")]
+    PeersExhausted,
+    /// Failed to construct a `GetRequest`.
+    #[error("could not construct GetRequest for {id}, peer {peer}")]
+    CouldNotConstructGetRequest {
+        /// The `GetRequest`'s ID, serialized as string
+        id: String,
+        /// The peer ID the `GetRequest` was directed at.
+        peer: Box<NodeId>,
+    },
+    /// Validation data mismatch.
+    #[error("validation data mismatch on {id}, peer {peer}")]
+    ValidationMetadataMismatch {
+        /// The item's ID for which validation data did not match.
+        id: String,
+        /// The peer ID involved.
+        peer: Box<NodeId>,
+    },
+    /// The validation state was found to be `InProgress`.
+    #[error("encountered in-progress validation state after completion, likely a bug")]
+    InProgressAfterCompletion,
+    /// A given deploy could not be included in the block by adding it to the appendable block.
+    #[error("failed to include deploy {deploy_hash} in block")]
+    DeployInclusionFailure {
+        /// Hash of the deploy that was rejected.
+        deploy_hash: DeployOrTransferHash,
+        /// The underlying error of the appendable block.
+        #[source]
+        error: AddError,
+    },
 }
 
 impl ValidationResult {
