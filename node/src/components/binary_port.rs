@@ -11,7 +11,7 @@ use std::{net::SocketAddr, sync::Arc};
 use bytes::Bytes;
 use casper_execution_engine::engine_state::QueryRequest;
 use casper_types::{
-    binary_port::{BinaryRequest, InMemRequest},
+    binary_port::{BinaryRequest, GlobalStateQueryResult, InMemRequest},
     bytesrepr::{FromBytes, ToBytes},
     BlockHashAndHeight,
 };
@@ -177,10 +177,12 @@ where
             base_key,
             path,
         } => {
-            let query_result = effect_builder
+            let query_result: GlobalStateQueryResult = effect_builder
                 .query_global_state(QueryRequest::new(state_root_hash, base_key, path))
                 .await
-                .map_err(|err| Error::EngineState(err))?;
+                .map_err(|err| Error::EngineState(err))?
+                .into();
+
             let payload = ToBytes::to_bytes(&query_result).map_err(|err| Error::BytesRepr(err))?;
             Ok(Some(payload.into()))
         }
