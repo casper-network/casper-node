@@ -11,9 +11,9 @@ use std::{net::SocketAddr, sync::Arc};
 use bytes::Bytes;
 use casper_execution_engine::engine_state::QueryRequest;
 use casper_types::{
-    binary_port::{BinaryRequest, GlobalStateQueryResult, InMemRequest},
+    binary_port::{BinaryRequest, GlobalStateQueryResult, InMemRequest, PutTransactionResult},
     bytesrepr::{FromBytes, ToBytes},
-    BlockHashAndHeight,
+    BlockHashAndHeight, Transaction,
 };
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
@@ -26,7 +26,7 @@ use tracing::{debug, info, warn};
 
 use crate::{
     effect::{
-        requests::{ContractRuntimeRequest, StorageRequest},
+        requests::{AcceptTransactionRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, Effects,
     },
     reactor::{main_reactor::MainEvent, Finalize},
@@ -62,7 +62,11 @@ impl BinaryPort {
 
 impl<REv> Component<REv> for BinaryPort
 where
-    REv: From<Event> + From<StorageRequest> + From<ContractRuntimeRequest> + Send,
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<AcceptTransactionRequest>
+        + Send,
 {
     type Event = Event;
 
@@ -101,7 +105,11 @@ where
 
 impl<REv> InitializedComponent<REv> for BinaryPort
 where
-    REv: From<Event> + From<StorageRequest> + From<ContractRuntimeRequest> + Send,
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<AcceptTransactionRequest>
+        + Send,
 {
     fn state(&self) -> &ComponentState {
         &self.state
@@ -123,14 +131,24 @@ async fn handle_request<REv>(
     effect_builder: EffectBuilder<REv>,
 ) -> Result<Option<Bytes>, Error>
 where
-    REv: From<StorageRequest> + From<ContractRuntimeRequest>,
+    REv: From<StorageRequest> + From<ContractRuntimeRequest> + From<AcceptTransactionRequest>,
 {
     match req {
         BinaryRequest::Get { key, db } => Ok(effect_builder
             .get_raw_data(db, key)
             .await
             .map(|raw_data| Bytes::from(raw_data))),
-        BinaryRequest::PutTransaction { tbd: _tbd } => todo!(),
+        BinaryRequest::PutTransaction { transaction } => {
+            let accept_transaction_result = effect_builder
+                .try_accept_transaction(Transaction::from(transaction), None)
+                .await;
+            let response = match accept_transaction_result {
+                Ok(_) => PutTransactionResult::Success,
+                Err(err) => PutTransactionResult::Error(err.to_string()),
+            };
+            let bytes = ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?;
+            Ok(Some(bytes.into()))
+        }
         BinaryRequest::SpeculativeExec { tbd: _tbd } => todo!(),
         BinaryRequest::GetInMem(req) => match req {
             InMemRequest::BlockHeight2Hash { height } => {
@@ -197,7 +215,7 @@ async fn handle_client<REv, const N: usize>(
     rpc_builder: Arc<RpcBuilder<N>>,
     effect_builder: EffectBuilder<REv>,
 ) where
-    REv: From<StorageRequest> + From<ContractRuntimeRequest>,
+    REv: From<StorageRequest> + From<ContractRuntimeRequest> + From<AcceptTransactionRequest>,
 {
     let (reader, writer) = client.split();
     let (client, mut server) = rpc_builder.build(reader, writer);
@@ -255,7 +273,8 @@ async fn handle_client<REv, const N: usize>(
 // TODO[RC]: Move to Self::
 async fn run_server<REv>(effect_builder: EffectBuilder<REv>, config: Config)
 where
-    REv: Send + From<StorageRequest> + From<ContractRuntimeRequest>,
+    REv:
+        Send + From<StorageRequest> + From<ContractRuntimeRequest> + From<AcceptTransactionRequest>,
 {
     let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
         ChannelConfiguration::default()
@@ -290,7 +309,11 @@ where
 
 impl<REv> PortBoundComponent<REv> for BinaryPort
 where
-    REv: From<Event> + From<StorageRequest> + From<ContractRuntimeRequest> + Send,
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<AcceptTransactionRequest>
+        + Send,
 {
     type Error = ListeningError;
     type ComponentEvent = Event;

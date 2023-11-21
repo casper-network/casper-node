@@ -4,7 +4,7 @@ use serde::Serialize;
 
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    BlockHash, Digest, Key, StoredValue, TransactionHash,
+    BlockHash, Digest, Key, StoredValue, Transaction, TransactionHash,
 };
 
 const BLOCK_HEADER_DB_TAG: u8 = 0;
@@ -170,10 +170,10 @@ pub enum BinaryRequest {
         /// Path under which the value is stored.
         path: Vec<String>,
     },
-    /// TODO
+    /// Request to add a transaction into a blockchain.
     PutTransaction {
-        /// TODO
-        tbd: u32,
+        /// Transaction to be handled.
+        transaction: Transaction,
     },
     /// TODO
     SpeculativeExec {
@@ -196,9 +196,9 @@ impl ToBytes for BinaryRequest {
                 db.write_bytes(writer)?;
                 key.write_bytes(writer)
             }
-            BinaryRequest::PutTransaction { tbd } => {
+            BinaryRequest::PutTransaction { transaction } => {
                 PUT_TRANSACTION_TAG.write_bytes(writer)?;
-                tbd.write_bytes(writer)
+                transaction.write_bytes(writer)
             }
             BinaryRequest::SpeculativeExec { tbd } => {
                 SPECULATIVE_EXEC_TAG.write_bytes(writer)?;
@@ -225,7 +225,7 @@ impl ToBytes for BinaryRequest {
         U8_SERIALIZED_LENGTH
             + match self {
                 BinaryRequest::Get { db, key } => db.serialized_length() + key.serialized_length(),
-                BinaryRequest::PutTransaction { tbd } => tbd.serialized_length(),
+                BinaryRequest::PutTransaction { transaction } => transaction.serialized_length(),
                 BinaryRequest::SpeculativeExec { tbd } => tbd.serialized_length(),
                 BinaryRequest::GetInMem(req) => req.serialized_length(),
                 BinaryRequest::GetState {
@@ -261,8 +261,8 @@ impl FromBytes for BinaryRequest {
                 Ok((BinaryRequest::GetInMem(in_mem_request), remainder))
             }
             PUT_TRANSACTION_TAG => {
-                let (tbd, remainder) = u32::from_bytes(remainder)?;
-                Ok((BinaryRequest::PutTransaction { tbd }, remainder))
+                let (transaction, remainder) = Transaction::from_bytes(remainder)?;
+                Ok((BinaryRequest::PutTransaction { transaction }, remainder))
             }
             SPECULATIVE_EXEC_TAG => {
                 let (tbd, remainder) = u32::from_bytes(remainder)?;
@@ -487,7 +487,7 @@ const VALUE_NOT_FOUND_TAG: u8 = 1;
 const ROOT_NOT_FOUND_TAG: u8 = 2;
 const ERROR_TAG: u8 = 3;
 
-/// Carries the result of the global state query
+/// Carries the result of the global state query.
 pub enum GlobalStateQueryResult {
     /// Successful execution.
     Success {
@@ -564,6 +564,60 @@ impl FromBytes for GlobalStateQueryResult {
             ERROR_TAG => {
                 let (error, remainder) = String::from_bytes(remainder)?;
                 Ok((GlobalStateQueryResult::Error(error), remainder))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+// TODO[RC]: Move these types to separate files to avoid TAG conflicts.
+// const SUCCESS_TAG: u8 = 0;
+// const VALUE_NOT_FOUND_TAG: u8 = 1;
+// const ROOT_NOT_FOUND_TAG: u8 = 2;
+// const ERROR_TAG: u8 = 3;
+
+/// Carries the result of the 'put transaction' query.
+pub enum PutTransactionResult {
+    /// Successful execution.
+    Success,
+    /// Error.
+    Error(String),
+}
+
+impl ToBytes for PutTransactionResult {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            PutTransactionResult::Success {} => SUCCESS_TAG.write_bytes(writer),
+            PutTransactionResult::Error(err) => {
+                ERROR_TAG.write_bytes(writer)?;
+                err.write_bytes(writer)
+            }
+        }
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+            + match self {
+                PutTransactionResult::Success => 0,
+                PutTransactionResult::Error(err) => err.serialized_length(),
+            }
+    }
+}
+
+impl FromBytes for PutTransactionResult {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            SUCCESS_TAG => Ok((PutTransactionResult::Success, remainder)),
+            ERROR_TAG => {
+                let (error, remainder) = String::from_bytes(remainder)?;
+                Ok((PutTransactionResult::Error(error), remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
