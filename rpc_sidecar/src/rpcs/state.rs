@@ -228,11 +228,29 @@ impl RpcWithParams for GetBalance {
     type ResponseResult = GetBalanceResult;
 
     async fn do_handle_request(
-        _node_client: Arc<dyn NodeClient>,
-        _api_version: ProtocolVersion,
-        _params: Self::RequestParams,
+        node_client: Arc<dyn NodeClient>,
+        api_version: ProtocolVersion,
+        params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
-        todo!()
+        let purse_uref = URef::from_formatted_str(&params.purse_uref)
+            .map_err(|err| Error::InvalidPurseURef(err))?;
+        let key = Key::Balance(purse_uref.addr());
+        let result = node_client
+            .query_global_state(params.state_root_hash, key, vec![])
+            .await
+            .map_err(|err| Error::NodeRequest("balance", err))?;
+        let result = common::handle_query_result(result)?;
+        let balance_value = result
+            .value
+            .into_cl_value()
+            .ok_or(Error::InvalidPurseBalance)?
+            .into_t()
+            .map_err(|_| Error::InvalidPurseBalance)?;
+        Ok(Self::ResponseResult {
+            api_version,
+            balance_value,
+            merkle_proof: result.merkle_proof,
+        })
     }
 }
 

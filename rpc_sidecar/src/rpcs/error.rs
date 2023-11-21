@@ -1,6 +1,6 @@
 use crate::node_client::Error as NodeClientError;
 use casper_json_rpc::Error as RpcError;
-use casper_types::{BlockHash, Digest, TransactionHash};
+use casper_types::{BlockHash, Digest, TransactionHash, URefFromStrError};
 
 use super::ErrorCode;
 
@@ -30,6 +30,10 @@ pub enum Error {
     GlobalStateRootHashNotFound,
     #[error("global state query has failed: {0}")]
     GlobalStateQueryFailed(String),
+    #[error("the requested purse URef was invalid: {0}")]
+    InvalidPurseURef(URefFromStrError),
+    #[error("the requested purse balance could not be parsed")]
+    InvalidPurseBalance,
 }
 
 impl Error {
@@ -49,6 +53,8 @@ impl Error {
             Error::GlobalStateQueryFailed(_) | Error::GlobalStateEntryNotFound => {
                 ErrorCode::QueryFailed
             }
+            Error::InvalidPurseURef(_) => ErrorCode::FailedToParseGetBalanceURef,
+            Error::InvalidPurseBalance => ErrorCode::FailedToGetBalance,
         }
     }
 }
