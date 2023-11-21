@@ -287,6 +287,13 @@ impl Graph {
 
         eprintln!("num units: {}", units_set.order.len());
 
+        let max_round_exp = (state.params().max_round_length().millis()
+            / state.params().min_round_length().millis())
+        .trailing_zeros();
+        let max_round_length = state.params().min_round_length().millis() << max_round_exp;
+        let rounded_era_start =
+            Timestamp::from((start_time.millis() / max_round_length) * max_round_length);
+
         let mut highest_block: Option<(u64, Digest)> = None;
 
         for unit_hash in &units_set.order {
@@ -327,7 +334,7 @@ impl Graph {
                     .push(unit_id);
             }
 
-            let time_since_era_start = unit.timestamp.saturating_diff(start_time).millis();
+            let time_since_era_start = unit.timestamp.saturating_diff(rounded_era_start).millis();
             let round_num = time_since_era_start / state.params().min_round_length().millis();
 
             let graph_unit = GraphUnit {
