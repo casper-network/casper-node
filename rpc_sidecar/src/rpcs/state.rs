@@ -649,11 +649,25 @@ impl RpcWithParams for QueryGlobalState {
     type ResponseResult = QueryGlobalStateResult;
 
     async fn do_handle_request(
-        _node_client: Arc<dyn NodeClient>,
-        _api_version: ProtocolVersion,
-        _params: Self::RequestParams,
+        node_client: Arc<dyn NodeClient>,
+        api_version: ProtocolVersion,
+        params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
-        todo!()
+        let (state_root_hash, block_header) =
+            common::resolve_state_root_hash(&*node_client, params.state_identifier).await?;
+
+        let result = node_client
+            .query_global_state(state_root_hash, params.key, params.path)
+            .await
+            .map_err(|err| Error::NodeRequest("global state item", err))?;
+        let result = common::handle_query_result(result)?;
+
+        Ok(Self::ResponseResult {
+            api_version,
+            block_header,
+            stored_value: result.value,
+            merkle_proof: result.merkle_proof,
+        })
     }
 }
 

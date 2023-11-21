@@ -5,14 +5,14 @@ use tracing::info;
 
 use crate::rpcs::error::Error;
 use casper_types::{
-    binary_port::global_state::GlobalStateQueryResult,
-    AvailableBlockRange, Block, BlockSignatures,
-    ExecutionInfo, FinalizedApprovals, SignedBlock, StoredValue, Transaction, TransactionHash,
+    binary_port::global_state::GlobalStateQueryResult, AvailableBlockRange, Block, BlockHeader, BlockSignatures,
+    Digest, ExecutionInfo, FinalizedApprovals, SignedBlock, StoredValue, Transaction,
+    TransactionHash,
 };
 
 use crate::NodeClient;
 
-use super::chain::BlockIdentifier;
+use super::{chain::BlockIdentifier, state::GlobalStateIdentifier};
 
 pub(super) static MERKLE_PROOF: Lazy<String> = Lazy::new(|| {
     String::from(
@@ -92,6 +92,34 @@ pub async fn get_signed_block(
     };
 
     Ok(SignedBlock::new(block, signatures))
+}
+
+pub async fn resolve_state_root_hash(
+    node_client: &dyn NodeClient,
+    identifier: Option<GlobalStateIdentifier>,
+) -> Result<(Digest, Option<BlockHeader>), Error> {
+    let hash = match identifier {
+        None => *node_client
+            .read_highest_completed_block_info()
+            .await
+            .map_err(|err| Error::NodeRequest("highest completed block", err))?
+            .ok_or(Error::NoHighestBlock)?
+            .block_hash(),
+        Some(GlobalStateIdentifier::BlockHash(hash)) => hash,
+        Some(GlobalStateIdentifier::BlockHeight(height)) => node_client
+            .read_block_hash_from_height(height)
+            .await
+            .map_err(|err| Error::NodeRequest("block hash from height", err))?
+            .ok_or_else(|| Error::NoBlockAtHeight(height))?,
+        Some(GlobalStateIdentifier::StateRootHash(hash)) => return Ok((hash, None)),
+    };
+    let header = node_client
+        .read_block_header(hash)
+        .await
+        .map_err(|err| Error::NodeRequest("block header", err))?
+        .ok_or_else(|| Error::NoBlockWithHash(hash))?;
+
+    Ok((*header.state_root_hash(), Some(header)))
 }
 
 pub async fn get_transaction_with_approvals(
