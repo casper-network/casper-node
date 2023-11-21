@@ -6,13 +6,16 @@ use tracing::info;
 use crate::rpcs::error::Error;
 use casper_types::{
     binary_port::global_state::GlobalStateQueryResult, AvailableBlockRange, Block, BlockHeader, BlockSignatures,
-    Digest, ExecutionInfo, FinalizedApprovals, SignedBlock, StoredValue, Transaction,
-    TransactionHash,
+    Digest, ExecutionInfo, FinalizedApprovals, Key, SignedBlock, StoredValue, Transaction,
+    TransactionHash, URef, U512,
 };
 
 use crate::NodeClient;
 
-use super::{chain::BlockIdentifier, state::GlobalStateIdentifier};
+use super::{
+    chain::BlockIdentifier,
+    state::{GlobalStateIdentifier, PurseIdentifier},
+};
 
 pub(super) static MERKLE_PROOF: Lazy<String> = Lazy::new(|| {
     String::from(
@@ -159,9 +162,71 @@ pub async fn get_transaction_execution_info(
     }))
 }
 
-pub(super) fn handle_query_result(
+pub async fn get_purse(
+    node_client: &dyn NodeClient,
+    identifier: PurseIdentifier,
+    state_root_hash: Digest,
+) -> Result<URef, Error> {
+    let account_hash = match identifier {
+        PurseIdentifier::MainPurseUnderPublicKey(account_public_key) => {
+            account_public_key.to_account_hash()
+        }
+        PurseIdentifier::MainPurseUnderAccountHash(account_hash) => account_hash,
+        PurseIdentifier::PurseUref(purse_uref) => return Ok(purse_uref),
+    };
+    let account_key = Key::Account(account_hash);
+    let result = node_client
+        .query_global_state(state_root_hash, account_key, vec![])
+        .await
+        .map_err(|err| Error::NodeRequest("account stored value", err))?;
+
+    match handle_query_result(result)?.value {
+        StoredValue::Account(account) => Ok(account.main_purse()),
+        StoredValue::CLValue(entity_key_as_clvalue) => {
+            let key: Key = entity_key_as_clvalue
+                .into_t()
+                .map_err(|_| Error::InvalidMainPurse)?;
+            let result = node_client
+                .query_global_state(state_root_hash, key, vec![])
+                .await
+                .map_err(|err| Error::NodeRequest("account owning a purse", err))?;
+            let uref = handle_query_result(result)?
+                .value
+                .into_addressable_entity()
+                .ok_or(Error::InvalidMainPurse)?
+                .main_purse();
+            Ok(uref)
+        }
+        _ => Err(Error::InvalidMainPurse),
+    }
+}
+
+pub async fn get_balance(
+    node_client: &dyn NodeClient,
+    uref: URef,
+    state_root_hash: Digest,
+) -> Result<SuccessfulQueryResult<U512>, Error> {
+    let key = Key::Balance(uref.addr());
+    let result = node_client
+        .query_global_state(state_root_hash, key, vec![])
+        .await
+        .map_err(|err| Error::NodeRequest("balance by uref", err))?;
+    let result = handle_query_result(result)?;
+    let value = result
+        .value
+        .into_cl_value()
+        .ok_or(Error::InvalidPurseBalance)?
+        .into_t()
+        .map_err(|_| Error::InvalidPurseBalance)?;
+    Ok(SuccessfulQueryResult {
+        value,
+        merkle_proof: result.merkle_proof,
+    })
+}
+
+pub fn handle_query_result(
     query_result: GlobalStateQueryResult,
-) -> Result<SuccessfulQueryResult, Error> {
+) -> Result<SuccessfulQueryResult<StoredValue>, Error> {
     match query_result {
         GlobalStateQueryResult::Success {
             value,
@@ -180,7 +245,7 @@ pub(super) fn handle_query_result(
 }
 
 #[derive(Debug)]
-pub(super) struct SuccessfulQueryResult {
-    pub value: StoredValue,
+pub struct SuccessfulQueryResult<A> {
+    pub value: A,
     pub merkle_proof: String,
 }

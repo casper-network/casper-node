@@ -234,21 +234,10 @@ impl RpcWithParams for GetBalance {
     ) -> Result<Self::ResponseResult, RpcError> {
         let purse_uref = URef::from_formatted_str(&params.purse_uref)
             .map_err(|err| Error::InvalidPurseURef(err))?;
-        let key = Key::Balance(purse_uref.addr());
-        let result = node_client
-            .query_global_state(params.state_root_hash, key, vec![])
-            .await
-            .map_err(|err| Error::NodeRequest("balance", err))?;
-        let result = common::handle_query_result(result)?;
-        let balance_value = result
-            .value
-            .into_cl_value()
-            .ok_or(Error::InvalidPurseBalance)?
-            .into_t()
-            .map_err(|_| Error::InvalidPurseBalance)?;
+        let result = common::get_balance(&*node_client, purse_uref, params.state_root_hash).await?;
         Ok(Self::ResponseResult {
             api_version,
-            balance_value,
+            balance_value: result.value,
             merkle_proof: result.merkle_proof,
         })
     }
@@ -725,11 +714,20 @@ impl RpcWithParams for QueryBalance {
     type ResponseResult = QueryBalanceResult;
 
     async fn do_handle_request(
-        _node_client: Arc<dyn NodeClient>,
-        _api_version: ProtocolVersion,
-        _params: Self::RequestParams,
+        node_client: Arc<dyn NodeClient>,
+        api_version: ProtocolVersion,
+        params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
-        todo!()
+        let (state_root_hash, _) =
+            common::resolve_state_root_hash(&*node_client, params.state_identifier).await?;
+        let purse =
+            common::get_purse(&*node_client, params.purse_identifier, state_root_hash).await?;
+        let balance = common::get_balance(&*node_client, purse, state_root_hash).await?;
+
+        Ok(Self::ResponseResult {
+            api_version,
+            balance: balance.value,
+        })
     }
 }
 

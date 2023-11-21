@@ -38,6 +38,8 @@ pub enum Error {
     InvalidAccountInfo,
     #[error("the provided dictionary key was invalid: {0}")]
     InvalidDictionaryKey(KeyFromStrError),
+    #[error("the requested main purse was invalid")]
+    InvalidMainPurse,
 }
 
 impl Error {
@@ -61,6 +63,7 @@ impl Error {
             Error::InvalidPurseBalance => ErrorCode::FailedToGetBalance,
             Error::InvalidAccountInfo => ErrorCode::NoSuchAccount,
             Error::InvalidDictionaryKey(_) => ErrorCode::FailedToParseQueryKey,
+            Error::InvalidMainPurse => ErrorCode::NoSuchMainPurse,
         }
     }
 }
