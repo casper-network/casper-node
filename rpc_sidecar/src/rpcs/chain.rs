@@ -10,14 +10,15 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    Block, BlockHash, BlockHeaderV2, Digest, DigestError, JsonBlockWithSignatures, Key,
-    ProtocolVersion, StoredValue, Transfer,
+    binary_port::global_state::GlobalStateQueryResult,
+    Block, BlockHash, BlockHeaderV2, Digest, DigestError,
+    JsonBlockWithSignatures, Key, ProtocolVersion, StoredValue, Transfer,
 };
 
 use crate::NodeClient;
 
 use super::{
-    common::{self, DummyQueryResult},
+    common,
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     Error as RpcError, RpcWithOptionalParams,
 };
@@ -419,19 +420,16 @@ impl RpcWithOptionalParams for GetEraSummary {
             .await
             .map_err(|err| Error::NodeRequest("era summary", err))?;
 
-        let era_summary = match era_summary {
-            DummyQueryResult::Success(result) => {
-                create_era_summary(&block, result.value, result.merkle_proof)
-            }
-            DummyQueryResult::NotFound => {
-                let era_info = node_client
-                    .query_global_state(state_root_hash, Key::EraInfo(block.era_id()), vec![])
-                    .await
-                    .map_err(|err| Error::NodeRequest("era info", err))?;
-                let era_info = common::handle_query_result(era_info)?;
-                create_era_summary(&block, era_info.value, era_info.merkle_proof)
-            }
-            DummyQueryResult::Error(err) => return Err(Error::GlobalStateQueryFailed(err).into()),
+        let era_summary = if !matches!(era_summary, GlobalStateQueryResult::ValueNotFound) {
+            let era_summary = common::handle_query_result(era_summary)?;
+            create_era_summary(&block, era_summary.value, era_summary.merkle_proof)
+        } else {
+            let era_info = node_client
+                .query_global_state(state_root_hash, Key::EraInfo(block.era_id()), vec![])
+                .await
+                .map_err(|err| Error::NodeRequest("era info", err))?;
+            let era_info = common::handle_query_result(era_info)?;
+            create_era_summary(&block, era_info.value, era_info.merkle_proof)
         };
 
         Ok(Self::ResponseResult {

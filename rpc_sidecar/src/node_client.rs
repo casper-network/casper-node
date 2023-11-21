@@ -4,6 +4,7 @@ use async_trait::async_trait;
 
 use casper_types::{
     binary_port::{
+        global_state::GlobalStateQueryResult,
         binary_request::BinaryRequest, db_id::DbId, get::GetRequest,
         non_persistent_data::NonPersistedDataRequest,
     },
@@ -27,8 +28,6 @@ use tokio::{
 };
 use tracing::{error, info, warn};
 
-use crate::rpcs::DummyQueryResult;
-
 #[async_trait]
 pub trait NodeClient: Send + Sync + 'static {
     async fn read_from_db(&self, db: DbId, key: &[u8]) -> Result<Option<Vec<u8>>, Error>;
@@ -38,7 +37,7 @@ pub trait NodeClient: Send + Sync + 'static {
         state_root_hash: Digest,
         base_key: Key,
         path: Vec<String>,
-    ) -> Result<DummyQueryResult, Error>;
+    ) -> Result<GlobalStateQueryResult, Error>;
 
     async fn read_transaction(&self, hash: TransactionHash) -> Result<Option<Transaction>, Error> {
         let key = hash.to_bytes().expect("should always serialize a digest");
@@ -268,7 +267,7 @@ impl NodeClient for JulietNodeClient {
         state_root_hash: Digest,
         base_key: Key,
         path: Vec<String>,
-    ) -> Result<DummyQueryResult, Error> {
+    ) -> Result<GlobalStateQueryResult, Error> {
         let get = GetRequest::State {
             state_root_hash,
             base_key,

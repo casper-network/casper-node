@@ -5,8 +5,9 @@ use tracing::info;
 
 use crate::rpcs::error::Error;
 use casper_types::{
-    bytesrepr::FromBytes, AvailableBlockRange, Block, BlockSignatures, ExecutionInfo,
-    FinalizedApprovals, SignedBlock, StoredValue, Transaction, TransactionHash,
+    binary_port::global_state::GlobalStateQueryResult,
+    AvailableBlockRange, Block, BlockSignatures,
+    ExecutionInfo, FinalizedApprovals, SignedBlock, StoredValue, Transaction, TransactionHash,
 };
 
 use crate::NodeClient;
@@ -130,11 +131,20 @@ pub async fn get_transaction_execution_info(
     }))
 }
 
-pub fn handle_query_result(query_result: DummyQueryResult) -> Result<SuccessfulQuery, Error> {
+pub(super) fn handle_query_result(
+    query_result: GlobalStateQueryResult,
+) -> Result<SuccessfulQueryResult, Error> {
     match query_result {
-        DummyQueryResult::Success(val) => Ok(val),
-        DummyQueryResult::NotFound => Err(Error::NotFoundInGlobalState),
-        DummyQueryResult::Error(error) => {
+        GlobalStateQueryResult::Success {
+            value,
+            merkle_proof,
+        } => Ok(SuccessfulQueryResult {
+            value,
+            merkle_proof,
+        }),
+        GlobalStateQueryResult::ValueNotFound => Err(Error::GlobalStateEntryNotFound),
+        GlobalStateQueryResult::RootNotFound => Err(Error::GlobalStateRootHashNotFound),
+        GlobalStateQueryResult::Error(error) => {
             info!(?error, "query failed");
             Err(Error::GlobalStateQueryFailed(error))
         }
@@ -142,20 +152,7 @@ pub fn handle_query_result(query_result: DummyQueryResult) -> Result<SuccessfulQ
 }
 
 #[derive(Debug)]
-pub enum DummyQueryResult {
-    Success(SuccessfulQuery),
-    NotFound,
-    Error(String),
-}
-
-impl FromBytes for DummyQueryResult {
-    fn from_bytes(_bytes: &[u8]) -> Result<(Self, &[u8]), casper_types::bytesrepr::Error> {
-        todo!()
-    }
-}
-
-#[derive(Debug)]
-pub struct SuccessfulQuery {
+pub(super) struct SuccessfulQueryResult {
     pub value: StoredValue,
     pub merkle_proof: String,
 }
