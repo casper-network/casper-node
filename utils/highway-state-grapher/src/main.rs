@@ -177,6 +177,7 @@ pub struct GraphUnit {
     pub id: UnitId,
     pub creator: ValidatorIndex,
     pub vote: BlockId,
+    pub is_proposal: bool,
     pub cited_units: Vec<UnitId>,
     pub height: usize,
     pub graph_height: usize,
@@ -194,6 +195,7 @@ impl Debug for GraphUnit {
             .field("height", &self.height)
             .field("graph_height", &self.graph_height)
             .field("vote", &self.vote)
+            .field("is_proposal", &self.is_proposal)
             .field("timestamp", &self.timestamp)
             .field("round_num", &self.round_num)
             .field("round_exp", &self.round_exp)
@@ -300,6 +302,10 @@ impl Graph {
                 blocks.insert(unit.block, b_id);
                 b_id
             };
+            let is_proposal = unit
+                .panorama
+                .iter_correct_hashes()
+                .all(|hash| state.unit(hash).block != unit.block);
             let cited_units: Vec<UnitId> = unit
                 .panorama
                 .iter_correct_hashes()
@@ -328,6 +334,7 @@ impl Graph {
                 id: unit_id,
                 creator: unit.creator,
                 vote: block_id,
+                is_proposal,
                 cited_units,
                 height: unit.seq_number as usize,
                 graph_height,

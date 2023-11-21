@@ -258,15 +258,17 @@ impl Renderer {
 
         let matrix2 = Matrix::translation(x, y) * *view;
 
-        let color = if let Some(quorum) = unit.max_quorum.as_ref() {
-            if quorum.max_rank <= 1 {
-                Self::quorum_color_spectrum(0.0)
-            } else {
-                let frac = quorum.rank as f32 / (quorum.max_rank - 1) as f32;
-                Self::quorum_color_spectrum(frac)
+        let color = match (unit.is_proposal, unit.max_quorum.as_ref()) {
+            (false, Some(quorum)) => {
+                if quorum.max_rank <= 1 {
+                    Self::quorum_color_spectrum(0.0)
+                } else {
+                    let frac = quorum.rank as f32 / (quorum.max_rank - 1) as f32;
+                    Self::quorum_color_spectrum(frac)
+                }
             }
-        } else {
-            [0.0_f32, 0.0, 0.2]
+            (true, _) => [0.0_f32, 0.5, 0.5],
+            _ => [0.0_f32, 0.0, 0.2],
         };
 
         let uniforms = uniform! {
