@@ -130,28 +130,6 @@ max_requests_for_vertex = 5
 # requests, multiply by # of validators.
 max_request_batch_size = 20
 
-[consensus.highway.round_success_meter]
-# The number of most recent rounds we will be keeping track of.
-num_rounds_to_consider = 40
-
-# The number of successful rounds that triggers us to slow down: With this many or fewer
-# successes per `num_rounds_to_consider`, we increase our round length.
-num_rounds_slowdown = 10
-
-# The number of successful rounds that triggers us to speed up: With this many or more successes
-# per `num_rounds_to_consider`, we decrease our round length.
-num_rounds_speedup = 32
-
-# We will try to accelerate (decrease our round length) every `acceleration_parameter` rounds if
-# we have few enough failures.
-acceleration_parameter = 40
-
-# The FTT, as a percentage (i.e. `acceleration_ftt = [1, 100]` means 1% of the validators' total weight), which
-# we will use for looking for a summit in order to determine a proposal's finality.
-# The required quorum in a summit we will look for to check if a round was successful is
-# determined by this FTT.
-acceleration_ftt = [1, 100]
-
 
 # ====================================
 # Configuration options for networking

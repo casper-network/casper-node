@@ -26,9 +26,9 @@ while getopts 'd' opt; do
 done
 
 if [ "$NCTL_COMPILE_TARGET" = "debug" ] || [ "$COMPILE_MODE" = "debug" ]; then
-    cargo build --package casper-node
+    cargo build --package casper-node --features failpoints
 else
-    cargo build --release --package casper-node
+    cargo build --release --package casper-node --features failpoints
 fi
 
 unset OPTIND

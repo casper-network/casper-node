@@ -124,8 +124,6 @@ impl ChunkWithProof {
 
 #[cfg(test)]
 mod tests {
-    use std::convert::TryInto;
-
     use proptest::{
         arbitrary::Arbitrary,
         strategy::{BoxedStrategy, Strategy},
@@ -140,7 +138,7 @@ mod tests {
     fn prepare_bytes(length: usize) -> Vec<u8> {
         let mut rng = rand::thread_rng();
 
-        (0..length).into_iter().map(|_| rng.gen()).collect()
+        (0..length).map(|_| rng.gen()).collect()
     }
 
     fn random_chunk_with_proof() -> ChunkWithProof {
@@ -206,7 +204,6 @@ mod tests {
                 .unwrap();
 
             assert!((0..number_of_chunks)
-                .into_iter()
                 .map(|chunk_index| { ChunkWithProof::new(data.as_slice(), chunk_index).unwrap() })
                 .all(|chunk_with_proof| chunk_with_proof.verify().is_ok()));
         }

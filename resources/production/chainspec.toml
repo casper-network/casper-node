@@ -1,6 +1,6 @@
 [protocol]
 # Protocol version.
-version = '1.5.3'
+version = '1.5.4'
 # Whether we need to clear latest blocks back to the switch block just before the activation point or not.
 hard_reset = true
 # This protocol version becomes active at this point.
@@ -29,7 +29,7 @@ era_duration = '120 minutes'
 # minimum height.
 minimum_era_height = 20
 # Minimum difference between a block's and its child's timestamp.
-minimum_block_time = '32768 ms'
+minimum_block_time = '16384 ms'
 # Number of slots available in validator auction.
 validator_slots = 100
 # A number between 0 and 1 representing the fault tolerance threshold as a fraction, used by the internal finalizer.
@@ -56,14 +56,14 @@ unbonding_delay = 7
 # Round seigniorage rate represented as a fraction of the total supply.
 #
 # Annual issuance: 8%
-# Minimum block time: 2^15 milliseconds
+# Minimum block time: 2^14 milliseconds
 # Ticks per year: 31536000000
 #
-# (1+0.08)^((2^15)/31536000000)-1 is expressed as a fractional number below
+# (1+0.08)^((2^14)/31536000000)-1 is expressed as a fractional number below
 # Python:
 # from fractions import Fraction
-# Fraction((1 + 0.08)**((2**15)/31536000000) - 1).limit_denominator(1000000000)
-round_seigniorage_rate = [7, 87535408]
+# Fraction((1 + 0.08)**((2**14)/31536000000) - 1).limit_denominator(1000000000)
+round_seigniorage_rate = [7, 175070816]
 # Maximum number of associated keys for a single account.
 max_associated_keys = 100
 # Maximum height of contract runtime call stack.
@@ -112,7 +112,7 @@ administrators = []
 
 [highway]
 # Highway dynamically chooses its round length, between minimum_block_time and maximum_round_length.
-maximum_round_length = '132 seconds'
+maximum_round_length = '66 seconds'
 # The factor by which rewards for a round are multiplied if the greatest summit has ≤50% quorum, i.e. no finality.
 # Expressed as a fraction (1/5 by default).
 reduced_reward_multiplier = [1, 5]
@@ -125,17 +125,17 @@ max_ttl = '18 hours'
 # The maximum number of other deploys a deploy can depend on (require to have been executed before it can execute).
 max_dependencies = 10
 # Maximum block size in bytes including deploys contained by the block.  0 means unlimited.
-max_block_size = 10_485_760
+max_block_size = 5_242_880
 # Maximum deploy size in bytes.  Size is of the deploy when serialized via ToBytes.
 max_deploy_size = 1_048_576
 # The maximum number of non-transfer deploys permitted in a single block.
-block_max_deploy_count = 50
+block_max_deploy_count = 25
 # The maximum number of wasm-less transfer deploys permitted in a single block.
-block_max_transfer_count = 1250
+block_max_transfer_count = 650
 # The maximum number of approvals permitted in a single block.
 block_max_approval_count = 2600
 # The upper limit of total gas of all deploys in a block.
-block_gas_limit = 10_000_000_000_000
+block_gas_limit = 4_000_000_000_000
 # The limit of length of serialized payment code arguments.
 payment_args_max_length = 1024
 # The limit of length of serialized session code arguments.
@@ -194,17 +194,17 @@ loop = 440
 if = 440
 else = 440
 end = 440
-br = 440_000
-br_if = 440_000
+br = 35_000
+br_if = 35_000
 return = 440
 select = 440
-call = 140_000
-call_indirect = 140_000
+call = 68_000
+call_indirect = 68_000
 drop = 440
 
 [wasm.opcode_costs.control_flow.br_table]
 # Fixed cost per `br_table` opcode
-cost = 440_000
+cost = 35_000
 # Size of target labels in the `br_table` opcode will be multiplied by `size_multiplier`
 size_multiplier = 100
 

@@ -346,6 +346,7 @@ impl<'a, T> IntoIterator for &'a ValidatorMap<T> {
 impl<Rhs, T: Copy + Add<Rhs, Output = T>> Add<ValidatorMap<Rhs>> for ValidatorMap<T> {
     type Output = ValidatorMap<T>;
     fn add(mut self, rhs: ValidatorMap<Rhs>) -> Self::Output {
+        #[allow(clippy::arithmetic_side_effects)]
         self.0
             .iter_mut()
             .zip(rhs)

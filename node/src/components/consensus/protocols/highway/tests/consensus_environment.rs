@@ -1,5 +1,5 @@
 // This is a test module, so we're not worried about integer arithmetic here.
-#![allow(clippy::integer_arithmetic)]
+#![allow(clippy::arithmetic_side_effects)]
 
 use std::{
     collections::{BTreeMap, BTreeSet},

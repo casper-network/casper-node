@@ -48,7 +48,7 @@ version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a76fd60b23679b7d19bd066031410fb7e458ccc5e958eb5c325888ce4baedc97"
 dependencies = [
- "gimli",
+ "gimli 0.27.2",
 ]
 
 [[package]]
@@ -438,7 +438,7 @@ dependencies = [
 
 [[package]]
 name = "casper-contract"
-version = "3.0.0"
+version = "4.0.0"
 dependencies = [
  "casper-types",
  "hex_fmt",
@@ -448,7 +448,7 @@ dependencies = [
 
 [[package]]
 name = "casper-engine-test-support"
-version = "6.0.0"
+version = "7.0.0"
 dependencies = [
  "casper-execution-engine",
  "casper-hashing",
@@ -502,7 +502,7 @@ dependencies = [
 
 [[package]]
 name = "casper-execution-engine"
-version = "6.0.0"
+version = "7.0.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -549,7 +549,7 @@ dependencies = [
 
 [[package]]
 name = "casper-hashing"
-version = "2.0.0"
+version = "3.0.0"
 dependencies = [
  "assert_matches",
  "base16",
@@ -592,7 +592,7 @@ dependencies = [
 
 [[package]]
 name = "casper-node"
-version = "1.5.3"
+version = "1.5.4"
 dependencies = [
  "ansi_term",
  "anyhow",
@@ -685,7 +685,7 @@ dependencies = [
 
 [[package]]
 name = "casper-types"
-version = "3.0.0"
+version = "4.0.1"
 dependencies = [
  "base16",
  "base64 0.13.1",
@@ -1881,6 +1881,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3006df2e7bf21592b4983931164020b02f54eefdc1e35b2f70147858cc1e20ad"
 
 [[package]]
+name = "fallible-iterator"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4443176a9f2c162692bd3d352d745ef9413eec5782a80d8fd6f8a1ac692a07f7"
+
+[[package]]
 name = "fastrand"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2246,6 +2252,17 @@ version = "0.1.0"
 dependencies = [
  "casper-contract",
  "casper-types",
+]
+
+[[package]]
+name = "gimli"
+version = "0.26.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22030e2c5a68ec659fde1e949a745124b48e6fa8b045b7ed5bd1fe4ccc5c4e5d"
+dependencies = [
+ "fallible-iterator",
+ "indexmap",
+ "stable_deref_trait",
 ]
 
 [[package]]
@@ -5136,6 +5153,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "stable_deref_trait"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
+
+[[package]]
 name = "state-initializer"
 version = "0.1.0"
 dependencies = [
@@ -6049,15 +6072,17 @@ dependencies = [
 
 [[package]]
 name = "walrus"
-version = "0.19.0"
+version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4eb08e48cde54c05f363d984bb54ce374f49e242def9468d2e1b6c2372d291f8"
+checksum = "0a7b95ecf5892b48104914fa021721699bb8149ae754cff50a22daeb7df0928f"
 dependencies = [
  "anyhow",
+ "gimli 0.26.2",
  "id-arena",
  "leb128",
  "log",
  "walrus-macro",
+ "wasm-encoder 0.29.0",
  "wasmparser",
 ]
 
@@ -6197,6 +6222,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasm-encoder"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18c41dbd92eaebf3612a39be316540b8377c871cb9bde6b064af962984912881"
+dependencies = [
+ "leb128",
+]
+
+[[package]]
 name = "wasm-streams"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6211,9 +6245,9 @@ dependencies = [
 
 [[package]]
 name = "wasmparser"
-version = "0.77.0"
+version = "0.80.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b35c86d22e720a07d954ebbed772d01180501afe7d03d464f413bb5f8914a8d6"
+checksum = "449167e2832691a1bff24cde28d2804e90e09586a448c8e76984792c44334a6b"
 
 [[package]]
 name = "wast"
@@ -6224,7 +6258,7 @@ dependencies = [
  "leb128",
  "memchr",
  "unicode-width",
- "wasm-encoder",
+ "wasm-encoder 0.26.0",
 ]
 
 [[package]]

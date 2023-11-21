@@ -23,22 +23,17 @@ pub(super) enum Error {
 }
 
 /// Output format information is sent back to the client it.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Default)]
 pub(super) enum OutputFormat {
     /// Human-readable interactive format.
     ///
     /// No string form, utilizes the `Display` implementation of types passed in.
+    #[default]
     Interactive,
     /// JSON, pretty-printed.
     Json,
     /// Binary using bincode.
     Bincode,
-}
-
-impl Default for OutputFormat {
-    fn default() -> Self {
-        OutputFormat::Interactive
-    }
 }
 
 impl Display for OutputFormat {
@@ -110,6 +105,31 @@ pub(super) enum Action {
         /// Ignore all further options to stop and clear any currently scheduled stops.
         #[structopt(short, long)]
         clear: bool,
+    },
+    /// Activate or clear a failpoint.
+    ///
+    /// Failpoint syntax is as follows: `key(,meta:meta_value)*(=value)?`, with `key` being the
+    /// identifier of the failpoint, `meta` being additional settings, and `value` JSON encoded.
+    ///
+    /// If `value` is not set, the failpoint is cleared instead of being set.
+    ///
+    /// The following `meta` values are understood:
+    ///
+    /// * `sub` sets the subkey (example: `sub:e4c2a1f`)
+    /// * `p` sets the probability, must be between `0.0` and `1.0` (example: `p:0.1`)
+    /// * `once` has no value and indicates the failpoint should only be fired once.
+    ///
+    /// No colons or commas are allowed in `key`, `meta` or `meta_value`.
+    ///
+    /// Examples:
+    ///
+    /// * `foobar` clears the failpoint with key "foobar".
+    /// * `foobar,sub:example value,p:0.123,once={"hello": "world"}` sets the failpoint "foobar",
+    ///   with a subkey of "example value", a probability of 12.3%, to be fired only once, and a
+    ///   JSON encoded value of `{"hello": "world"}`.
+    SetFailpoint {
+        /// The failpoint activation/deactivation.
+        activation: String,
     },
     /// Close connection server-side.
     Quit,

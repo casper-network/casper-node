@@ -6,7 +6,7 @@ use std::{
 };
 
 /// Representation of a single operation during execution.
-#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Default)]
 pub enum Op {
     /// Read value from a `Key`.
     Read,
@@ -15,6 +15,7 @@ pub enum Op {
     /// Add a value into a `Key`.
     Add,
     /// No operation.
+    #[default]
     NoOp,
 }
 
@@ -41,12 +42,6 @@ impl AddAssign for Op {
 impl Display for Op {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
-    }
-}
-
-impl Default for Op {
-    fn default() -> Self {
-        Op::NoOp
     }
 }
 

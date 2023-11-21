@@ -98,7 +98,7 @@ impl<C: Context> Round<C> {
     ) -> bool {
         self.echoes
             .entry(hash)
-            .or_insert_with(BTreeMap::new)
+            .or_default()
             .insert(validator_idx, signature)
             .is_none()
     }

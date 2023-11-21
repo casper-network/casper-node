@@ -49,7 +49,7 @@ impl<C: Context> PendingVertices<C> {
         }
         self.0.retain(|pvv, time_by_peer| {
             if time_by_peer.is_empty() {
-                removed.extend(pvv.inner().unit_hash().into_iter());
+                removed.extend(pvv.inner().unit_hash());
                 false
             } else {
                 true

@@ -26,6 +26,7 @@ use crate::{
         upgrade_watcher::NextUpgrade,
     },
     effect::Responder,
+    failpoints::FailpointActivation,
     types::{Block, Deploy, DeployHash, FinalitySignature, FinalizedBlock, MetaBlock, NodeId},
     utils::Source,
 };
@@ -63,6 +64,11 @@ pub(crate) enum ControlAnnouncement {
         /// Responder called when the dump has been finished.
         finished: Responder<()>,
     },
+    /// Activates/deactivates a failpoint.
+    ActivateFailpoint {
+        /// The failpoint activation to process.
+        activation: FailpointActivation,
+    },
 }
 
 impl Debug for ControlAnnouncement {
@@ -79,6 +85,10 @@ impl Debug for ControlAnnouncement {
             ControlAnnouncement::QueueDumpRequest { .. } => {
                 f.debug_struct("QueueDump").finish_non_exhaustive()
             }
+            ControlAnnouncement::ActivateFailpoint { activation } => f
+                .debug_struct("ActivateFailpoint")
+                .field("activation", activation)
+                .finish(),
         }
     }
 }
@@ -95,6 +105,9 @@ impl Display for ControlAnnouncement {
             }
             ControlAnnouncement::QueueDumpRequest { .. } => {
                 write!(f, "dump event queue")
+            }
+            ControlAnnouncement::ActivateFailpoint { activation } => {
+                write!(f, "failpoint activation: {}", activation)
             }
         }
     }

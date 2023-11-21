@@ -628,7 +628,7 @@ where
     fn handle_incoming_closed(
         &mut self,
         result: io::Result<()>,
-        peer_id: Box<NodeId>,
+        peer_id: NodeId,
         peer_addr: SocketAddr,
         span: Span,
     ) -> Effects<Event<P>> {
@@ -645,7 +645,7 @@ where
 
             // Update the connection symmetries.
             self.connection_symmetries
-                .entry(*peer_id)
+                .entry(peer_id)
                 .or_default()
                 .remove_incoming(peer_addr, Instant::now());
 
@@ -722,11 +722,11 @@ where
                 let mut requests = Vec::new();
 
                 if let Some(justification) = self.is_blockable_offense_for_outgoing(&error) {
-                    requests.extend(
-                        self.outgoing_manager
-                            .block_addr(peer_addr, now, justification)
-                            .into_iter(),
-                    );
+                    requests.extend(self.outgoing_manager.block_addr(
+                        peer_addr,
+                        now,
+                        justification,
+                    ));
                 }
 
                 // Now we can proceed with the regular updates.
@@ -736,8 +736,7 @@ where
                             addr: peer_addr,
                             error,
                             when: now,
-                        })
-                        .into_iter(),
+                        }),
                 );
 
                 self.process_dial_requests(requests)
@@ -1012,9 +1011,8 @@ where
     ) -> Vec<NodeId> {
         self.connection_symmetries
             .iter()
-            .filter_map(|(node_id, sym)| {
-                matches!(sym, ConnectionSymmetry::Symmetric { .. }).then(|| *node_id)
-            })
+            .filter(|(_, sym)| matches!(sym, ConnectionSymmetry::Symmetric { .. }))
+            .map(|(node_id, _)| *node_id)
             .choose_multiple(rng, count)
     }
 
@@ -1197,7 +1195,7 @@ where
                     peer_id,
                     peer_addr,
                     span,
-                } => self.handle_incoming_closed(result, peer_id, peer_addr, *span),
+                } => self.handle_incoming_closed(result, *peer_id, peer_addr, *span),
                 Event::OutgoingConnection { outgoing, span } => {
                     self.handle_outgoing_connection(*outgoing, span)
                 }
@@ -1207,19 +1205,17 @@ where
                 Event::NetworkRequest { req: request } => {
                     self.handle_network_request(*request, rng)
                 }
-                Event::NetworkInfoRequest { req } => {
-                    return match *req {
-                        NetworkInfoRequest::Peers { responder } => {
-                            responder.respond(self.peers()).ignore()
-                        }
-                        NetworkInfoRequest::FullyConnectedPeers { count, responder } => responder
-                            .respond(self.fully_connected_peers_random(rng, count))
-                            .ignore(),
-                        NetworkInfoRequest::Insight { responder } => responder
-                            .respond(NetworkInsights::collect_from_component(self))
-                            .ignore(),
+                Event::NetworkInfoRequest { req } => match *req {
+                    NetworkInfoRequest::Peers { responder } => {
+                        responder.respond(self.peers()).ignore()
                     }
-                }
+                    NetworkInfoRequest::FullyConnectedPeers { count, responder } => responder
+                        .respond(self.fully_connected_peers_random(rng, count))
+                        .ignore(),
+                    NetworkInfoRequest::Insight { responder } => responder
+                        .respond(NetworkInsights::collect_from_component(self))
+                        .ignore(),
+                },
                 Event::GossipOurAddress => {
                     let our_address = GossipedAddress::new(
                         self.context

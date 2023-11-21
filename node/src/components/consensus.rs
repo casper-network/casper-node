@@ -1,6 +1,6 @@
 //! The consensus component. Provides distributed consensus among the nodes in the network.
 
-#![warn(clippy::integer_arithmetic)]
+#![warn(clippy::arithmetic_side_effects)]
 
 mod cl_context;
 mod config;
@@ -48,6 +48,7 @@ use crate::{
         },
         EffectBuilder, EffectExt, Effects,
     },
+    failpoints::FailpointActivation,
     protocol::Message,
     reactor::ReactorEvent,
     types::{BlockHash, BlockHeader, BlockPayload, NodeId},
@@ -70,10 +71,10 @@ pub(crate) use validator_change::ValidatorChange;
 
 const COMPONENT_NAME: &str = "consensus";
 
-#[allow(clippy::integer_arithmetic)]
+#[allow(clippy::arithmetic_side_effects)]
 mod relaxed {
     // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
-    // module-wide `clippy::integer_arithmetic` lint.
+    // module-wide `clippy::arithmetic_side_effects` lint.
 
     use casper_types::{EraId, PublicKey};
     use datasize::DataSize;
@@ -146,6 +147,9 @@ pub(crate) enum Event {
     /// An incoming network message.
     #[from]
     Incoming(ConsensusMessageIncoming),
+    /// A variant used with failpoints - when a message arrives, we fire this event with a delay,
+    /// and it also causes the message to be handled.
+    DelayedIncoming(ConsensusMessageIncoming),
     /// An incoming demand message.
     #[from]
     DemandIncoming(ConsensusDemand),
@@ -235,6 +239,9 @@ impl Display for Event {
         match self {
             Event::Incoming(ConsensusMessageIncoming { sender, message }) => {
                 write!(f, "message from {:?}: {}", sender, message)
+            }
+            Event::DelayedIncoming(ConsensusMessageIncoming { sender, message }) => {
+                write!(f, "delayed message from {:?}: {}", sender, message)
             }
             Event::DemandIncoming(demand) => {
                 write!(f, "demand from {:?}: {}", demand.sender, demand.request_msg)
@@ -427,6 +434,18 @@ where
                 self.handle_action(effect_builder, rng, era_id, action_id)
             }
             Event::Incoming(ConsensusMessageIncoming { sender, message }) => {
+                let delay_by = self.message_delay_failpoint.fire(rng).cloned();
+                if let Some(delay) = delay_by {
+                    effect_builder
+                        .set_timeout(Duration::from_millis(delay))
+                        .event(move |_| {
+                            Event::DelayedIncoming(ConsensusMessageIncoming { sender, message })
+                        })
+                } else {
+                    self.handle_message(effect_builder, rng, sender, *message)
+                }
+            }
+            Event::DelayedIncoming(ConsensusMessageIncoming { sender, message }) => {
                 self.handle_message(effect_builder, rng, sender, *message)
             }
             Event::DemandIncoming(ConsensusDemand {
@@ -491,5 +510,9 @@ where
 
     fn name(&self) -> &str {
         COMPONENT_NAME
+    }
+
+    fn activate_failpoint(&mut self, activation: &FailpointActivation) {
+        self.message_delay_failpoint.update_from(activation);
     }
 }

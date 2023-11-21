@@ -2,7 +2,7 @@
 name = "regression-20220204-call"
 version = "0.1.0"
 authors = ["Michał Papierski <michal@casperlabs.io>"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "regression_20220204_call"

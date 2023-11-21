@@ -1,6 +1,4 @@
 //! WASM host function resolver for protocol version 1.x.x.
-use std::convert::TryFrom;
-
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 
@@ -80,7 +78,6 @@ impl TryFrom<usize> for FunctionIndex {
 #[cfg(test)]
 mod tests {
     use super::FunctionIndex;
-    use std::convert::TryFrom;
 
     #[test]
     fn primitive_to_enum() {
