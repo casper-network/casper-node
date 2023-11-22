@@ -1929,7 +1929,7 @@ async fn rewards_are_calculated() {
 
 // Fundamental network parameters that are not critical for assessing reward calculation correctness
 const STAKE: u64 = 1000000000;
-const PRIME_STAKES: &'static [u64; 5] = &[106907u64, 106921u64, 106937u64, 106949u64, 106957u64];
+const PRIME_STAKES: &[u64; 5] = &[106907u64, 106921u64, 106937u64, 106949u64, 106957u64];
 const ERA_COUNT: u64 = 3;
 const ERA_DURATION: u64 = 30000; //milliseconds
 const MIN_HEIGHT: u64 = 10;
@@ -1946,10 +1946,11 @@ const FINDERS_FEE_HALF: (u64, u64) = (1u64, 2u64);
 const FINALITY_SIG_PROP_ZERO: (u64, u64) = (0u64, 1u64);
 const FINALITY_SIG_PROP_HALF: (u64, u64) = (1u64, 2u64);
 const FINALITY_SIG_PROP_ONE: (u64, u64) = (1u64, 1u64);
-const FILTERED_NODES_INDICES: &'static [usize] = &[3, 4];
+const FILTERED_NODES_INDICES: &[usize] = &[3, 4];
 const FINALITY_SIG_LOOKBACK: u64 = 3;
 
 #[rustfmt::skip]
+#[cfg_attr(not(feature = "failpoints"), ignore)]
 async fn run_rewards_network_scenario(
     mut rng: NodeRng,
     consensus: ConsensusProtocolName,
@@ -1979,7 +1980,7 @@ async fn run_rewards_network_scenario(
         .map(|(i, secret_key)| {
             (
                 PublicKey::from(&*secret_key.clone()),
-                U512::from(*&initial_stakes[i]),
+                U512::from(initial_stakes[i]),
             )
         })
         .collect();
@@ -1987,7 +1988,7 @@ async fn run_rewards_network_scenario(
     // Instantiate the chain
     let mut chain = TestChain::new_with_keys(keys, stakes.clone());
 
-    chain.chainspec_mut().core_config.validator_slots = *&stakes.len() as u32;
+    chain.chainspec_mut().core_config.validator_slots = stakes.len() as u32;
     chain.chainspec_mut().core_config.era_duration = TimeDiff::from_millis(era_duration);
     chain.chainspec_mut().core_config.minimum_era_height = min_height;
     chain.chainspec_mut().core_config.minimum_block_time = TimeDiff::from_millis(block_time);
