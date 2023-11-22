@@ -1,4 +1,4 @@
-//! The get request
+//! The Get variant of the request to the binary port.
 
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
