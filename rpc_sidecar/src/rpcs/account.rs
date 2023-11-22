@@ -71,11 +71,22 @@ impl RpcWithParams for PutDeploy {
     type ResponseResult = PutDeployResult;
 
     async fn do_handle_request(
-        _node_client: Arc<dyn NodeClient>,
-        _api_version: ProtocolVersion,
-        _params: Self::RequestParams,
+        node_client: Arc<dyn NodeClient>,
+        api_version: ProtocolVersion,
+        params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
-        todo!()
+        let deploy_hash = *params.deploy.hash();
+        match node_client
+            .try_accept_transaction(Transaction::from(params.deploy), None)
+            .await
+        {
+            Ok(()) => Ok(Self::ResponseResult {
+                api_version,
+                deploy_hash,
+            }),
+            Err(ClientError::TransactionFailed(err)) => Err(Error::InvalidDeploy(err).into()),
+            Err(err) => Err(Error::NodeRequest("submitting deploy", err).into()),
+        }
     }
 }
 

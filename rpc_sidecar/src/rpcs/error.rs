@@ -52,6 +52,8 @@ pub enum Error {
     DictionaryKeyCouldNotBeParsed(String),
     #[error("the transaction was invalid: {0}")]
     InvalidTransaction(String),
+    #[error("the deploy was invalid: {0}")]
+    InvalidDeploy(String),
 }
 
 impl Error {
@@ -82,6 +84,7 @@ impl Error {
             | Error::DictionaryValueIsNotAUref(_)
             | Error::DictionaryKeyCouldNotBeParsed(_) => ErrorCode::FailedToGetDictionaryURef,
             Error::InvalidTransaction(_) => ErrorCode::InvalidTransaction,
+            Error::InvalidDeploy(_) => ErrorCode::InvalidDeploy,
         }
     }
 }
