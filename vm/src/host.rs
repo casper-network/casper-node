@@ -7,10 +7,10 @@ use bytes::Bytes;
 use safe_transmute::SingleManyGuard;
 
 use crate::{
-    backend::Caller,
+    backend::{Caller, Context, WasmInstance},
     host::abi::{CreateResult, EntryPoint, Manifest, Param},
-    storage::{self, Storage},
-    HostError,
+    storage::{self, Contract, Storage},
+    ConfigBuilder, HostError, VM,
 };
 
 use self::abi::ReadInfo;
@@ -250,7 +250,7 @@ pub(crate) fn casper_create_contract<S: Storage>(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn casper_call<S: Storage>(
+pub(crate) fn casper_call<S: Storage + 'static>(
     mut caller: impl Caller<S>,
     address_ptr: u32,
     address_len: u32,
@@ -272,5 +272,63 @@ pub(crate) fn casper_call<S: Storage>(
     // it's invalid, return error. 4. Output data is captured by calling `cb_alloc`.
     // let vm = VM::new();
     // vm.
-    todo!()
+    let address = caller.memory_read(address_ptr, address_len as _).unwrap();
+    let entry_point_name = {
+        let data = caller.memory_read(entry_name, entry_len as _).unwrap();
+        String::from_utf8(data).expect("should be valid utf8")
+    };
+    let input_data = caller
+        .memory_read(input_ptr, input_len as _)
+        .unwrap()
+        .into();
+
+    let contract = caller.context().storage.read_contract(&address).unwrap();
+
+    if let Some(Contract {
+        code_hash,
+        manifest,
+    }) = contract
+    {
+        let wasm_bytes = caller.context().storage.read_code(&code_hash).unwrap();
+
+        let mut vm = VM::new();
+        let storage = caller.context().storage.clone();
+
+        let new_context = Context { storage };
+
+        // let config = ConfigBuilder:
+        // caller.self.config()
+
+        let current_config = caller.config().clone();
+
+        let new_config = ConfigBuilder::new()
+            .with_gas_limit(current_config.gas_limit)
+            .with_memory_limit(current_config.memory_limit)
+            .with_input(input_data)
+            .build();
+
+        let mut new_instance = vm
+            .prepare(wasm_bytes, new_context, new_config)
+            .expect("should prepare instance");
+
+        // NOTE: We probably don't need to keep instances alive for repeated calls
+
+        let function_index = {
+            let entry_points = manifest.entrypoints;
+            let entry_point = entry_points
+                .iter()
+                .find_map(|entry_point| {
+                    if entry_point.name == entry_point_name {
+                        Some(entry_point)
+                    } else {
+                        None
+                    }
+                })
+                .expect("should find entry point");
+            entry_point.function_index
+        };
+        new_instance.call_function(function_index);
+    }
+
+    Ok(0)
 }

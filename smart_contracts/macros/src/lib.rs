@@ -285,6 +285,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         let input = host::copy_input();
                         // let args = #mod_name::Arguments::try_from_slice(&input).unwrap();
                         let ( #(#arg_names,)* ) = BorshDeserialize::try_from_slice(&input).unwrap();
+
                         #mod_name::#func_name(#(#arg_names,)*);
                     }
 

@@ -63,8 +63,21 @@ mod wasm;
 #[cfg(not(target_arch = "wasm32"))]
 mod native;
 
+use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(target_arch = "wasm32")]
 pub use wasm::{call, copy_input, create, print, read, revert, write};
 
 #[cfg(not(target_arch = "wasm32"))]
-pub use native::{call, create, print, read, revert, write};
+pub use native::{call, copy_input, create, print, read, revert, write};
+
+/// TODO: Remove once procedural macros are improved, this is just to save the boilerplate
+pub fn start<Args: BorshDeserialize, Ret: BorshSerialize>(func: impl Fn(Args) -> Ret) {
+    // Set panic hook (assumes std is enabled etc.)
+    #[cfg(target_arch = "wasm32")]
+    {
+        crate::set_panic_hook();
+    }
+    let input = copy_input();
+    let args: Args = BorshDeserialize::try_from_slice(&input).unwrap();
+    let _ret = func(args);
+}

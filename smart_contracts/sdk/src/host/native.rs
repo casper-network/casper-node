@@ -32,6 +32,10 @@ thread_local! {
     static DB: RefCell<LocalKV> = RefCell::new(LocalKV::default());
 }
 
+pub fn copy_input() -> Vec<u8> {
+    todo!()
+}
+
 pub fn print(msg: &str) {
     println!("💻 {msg}");
 }

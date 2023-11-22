@@ -1,4 +1,5 @@
 pub mod backend;
+pub mod chain;
 pub(crate) mod host;
 pub mod storage;
 
@@ -120,6 +121,7 @@ impl VM {
     ) -> Result<impl WasmInstance<S>, BackendError> {
         let wasm_bytes: Bytes = wasm_bytes.into();
         let instance = WasmerInstance::from_wasm_bytes(wasm_bytes, context, config)?;
+
         Ok(instance)
     }
 

@@ -10,7 +10,7 @@ use std::{
 use bytes::Bytes;
 use vm::{
     backend::{Context, WasmInstance},
-    storage::{self, Address, CreateResult, Entry, Manifest, Storage},
+    storage::{self, Address, Contract, CreateResult, Entry, Manifest, Package, Storage},
     ConfigBuilder, VM,
 };
 
@@ -30,17 +30,6 @@ fn make_contract_address(package_address: &Address, version: u32) -> Address {
         hasher.update(&package_address);
         hasher.update(&version.to_le_bytes());
     })
-}
-
-#[derive(Default, Debug, Clone)]
-struct Contract {
-    code_hash: Address,
-    manifest: Manifest,
-}
-
-#[derive(Default, Debug, Clone)]
-struct Package {
-    versions: Vec<Address>,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -100,15 +89,6 @@ impl Storage for MockStorage {
             })),
             None => Ok(None),
         }
-    }
-
-    fn call(
-        &self,
-        address: &[u8],
-        value: u64,
-        entry_point: u32,
-    ) -> Result<storage::CallOutcome, storage::Error> {
-        todo!()
     }
 
     fn get_balance(&self, entity_address: &[u8]) -> Result<Option<u64>, storage::Error> {
@@ -176,6 +156,22 @@ impl Storage for MockStorage {
             package_address,
             contract_address,
         })
+    }
+
+    fn read_contract(&self, address: &[u8]) -> Result<Option<storage::Contract>, storage::Error> {
+        let contract = {
+            let mut contracts = self.contracts.read().unwrap();
+            contracts.get(address).cloned()
+        };
+        Ok(contract)
+    }
+
+    fn read_code(&self, address: &[u8]) -> Result<Bytes, storage::Error> {
+        let code = {
+            let mut code = self.code.read().unwrap();
+            code.get(address).cloned()
+        };
+        Ok(code.unwrap())
     }
 }
 

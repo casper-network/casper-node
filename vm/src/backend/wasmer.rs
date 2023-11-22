@@ -9,7 +9,7 @@ use wasmer::{
 };
 use wasmer_compiler_singlepass::Singlepass;
 use wasmer_middlewares::metering::{self, MeteringPoints};
-use wasmer_types::TrapCode;
+use wasmer_types::{compilation::function, TrapCode};
 
 use crate::{
     host::{self, Outcome},
@@ -121,10 +121,6 @@ impl<'a, S: Storage + 'static> Caller<S> for WasmerCaller<'a, S> {
     fn bytecode(&self) -> Bytes {
         self.env.data().bytecode.clone()
     }
-
-    fn retrieve_manifest() {
-        todo!()
-    }
 }
 
 impl<S: Storage> WasmerEnv<S> {}
@@ -197,6 +193,62 @@ where
 
         match result {
             Ok(result) => Ok(()),
+            Err(error) => match error.downcast::<HostError>() {
+                Ok(host_error) => Err(VMError::Host(host_error)),
+                Err(vm_error) => Err(VMError::Runtime {
+                    message: vm_error.to_string(),
+                }),
+            },
+        }
+    }
+
+    fn call_function(&mut self, function_index: u32) -> Result<(), VMError> {
+        let exported_runtime = self
+            .env
+            .as_ref(&self.store)
+            .exported_runtime
+            .as_ref()
+            .expect("Valid exported runtime");
+        let table = exported_runtime
+            .exported_table
+            .as_ref()
+            .expect("should have table")
+            .clone();
+
+        // NOTE: This should be safe to unwrap as we're passing a valid function index that comes
+        // from the manifest, and it should be present in the table. The table should be validated
+        // at creation time for all cases i.e. correct signature, the pointer is actually stored in
+        // the table, etc.
+        let function = table
+            .get(&mut self.store, function_index)
+            .expect("should have valid entry in the table");
+
+        let function = match function.funcref() {
+            Some(Some(funcref)) => funcref
+                .typed::<(), ()>(&self.store)
+                .expect("should have valid signature"),
+            Some(None) => {
+                todo!("the entry exists buut there's no object stored in the table?")
+            }
+            None => {
+                todo!("not a funcref");
+            }
+        };
+
+        let result = function.call(&mut self.store.as_store_mut());
+
+        let remaining_points_1 = metering::get_remaining_points(&mut self.store, &self.instance);
+        dbg!(&remaining_points_1);
+
+        match remaining_points_1 {
+            metering::MeteringPoints::Remaining(_remaining_points) => {}
+            metering::MeteringPoints::Exhausted => {
+                return Err(VMError::OutOfGas);
+            }
+        }
+
+        match result {
+            Ok(()) => Ok(()),
             Err(error) => match error.downcast::<HostError>() {
                 Ok(host_error) => Err(VMError::Host(host_error)),
                 Err(vm_error) => Err(VMError::Runtime {
@@ -501,6 +553,27 @@ where
 {
     fn call_export(&mut self, name: &str) -> (Result<(), VMError>, GasUsage) {
         let vm_result = self.call_export(name);
+        let remaining_points = metering::get_remaining_points(&mut self.store, &self.instance);
+        match remaining_points {
+            MeteringPoints::Remaining(remaining_points) => {
+                let gas_usage = GasUsage {
+                    gas_limit: self.config.gas_limit,
+                    remaining_points,
+                };
+                (vm_result, gas_usage)
+            }
+            MeteringPoints::Exhausted => {
+                let gas_usage = GasUsage {
+                    gas_limit: self.config.gas_limit,
+                    remaining_points: 0,
+                };
+                (Err(VMError::OutOfGas), gas_usage)
+            }
+        }
+    }
+
+    fn call_function(&mut self, function_index: u32) -> (Result<(), VMError>, GasUsage) {
+        let vm_result = self.call_function(function_index);
         let remaining_points = metering::get_remaining_points(&mut self.store, &self.instance);
         match remaining_points {
             MeteringPoints::Remaining(remaining_points) => {

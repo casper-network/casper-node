@@ -41,6 +41,17 @@ pub struct Manifest {
     pub(crate) entrypoints: Vec<EntryPoint>,
 }
 
+#[derive(Default, Debug, Clone)]
+pub struct Contract {
+    pub code_hash: Address,
+    pub manifest: Manifest,
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct Package {
+    pub versions: Vec<Address>,
+}
+
 pub type Address = [u8; 32];
 
 pub struct CreateResult {
@@ -61,10 +72,8 @@ pub trait Storage: Clone + Send {
     fn update_balance(&self, entity_address: &[u8], new_balance: u64)
         -> Result<Option<u64>, Error>;
 
-    /// Calls address by transferring `value` amount of tokens, optionally calls an entry point.
-    /// NOTE: Split to other trait
-    fn call(&self, address: &[u8], value: u64, entry_point: u32) -> Result<CallOutcome, Error>;
-
     /// Create a contract.
     fn create_contract(&self, code: Bytes, manifest: Manifest) -> Result<CreateResult, Error>;
+    fn read_contract(&self, address: &[u8]) -> Result<Option<Contract>, Error>;
+    fn read_code(&self, address: &[u8]) -> Result<Bytes, Error>;
 }

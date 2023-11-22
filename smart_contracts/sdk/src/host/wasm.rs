@@ -49,10 +49,11 @@ extern "C" {
         result_ptr: *mut CreateResult,
     ) -> i32;
     pub fn casper_call(
+        // acct_or_contract,
         address_ptr: *const u8,
         address_size: usize,
         value: u64,
-        entry_point_ptr: *const u8,
+        entry_point_ptr: *const u8, // nullptr
         entry_point_size: usize,
         input_ptr: *const u8,
         input_size: usize,

@@ -13,7 +13,7 @@ pub struct GasUsage {
 }
 
 /// Container that holds all relevant modules necessary to process an execution request.
-pub struct Context<S: Storage> {
+pub struct Context<S: Storage + Clone> {
     pub storage: S,
 }
 
@@ -40,8 +40,6 @@ pub(crate) trait Caller<S: Storage> {
     /// Error is a type-erased error coming from the VM itself.
     fn alloc(&mut self, idx: u32, size: usize, ctx: u32)
         -> Result<u32, Box<dyn std::error::Error>>;
-
-    fn retrieve_manifest();
 }
 
 #[derive(Debug, Error)]
@@ -60,5 +58,6 @@ pub enum Error {
 
 pub trait WasmInstance<S: Storage> {
     fn call_export(&mut self, name: &str) -> (Result<(), VMError>, GasUsage);
+    fn call_function(&mut self, function_index: u32) -> (Result<(), VMError>, GasUsage);
     fn teardown(self) -> Context<S>;
 }

@@ -31,6 +31,7 @@ impl Flipper {
 mod exports {
 
     use alloc::{string::String, vec::Vec};
+    use borsh::BorshSerialize;
     use casper_macros::casper;
     use casper_sdk::{
         host::{self, CreateResult, EntryPoint, Manifest, Param},
@@ -50,6 +51,8 @@ mod exports {
 
     #[casper(export)]
     pub fn call(arg1: String, arg2: u32) {
+        // (String, u32) = deserialize
+
         // (arg1, arg2): (String, u32) = Deserialize(input);
         host::print(&format!("arg1: {arg1}"));
         host::print(&format!("arg2: {arg2}"));
@@ -72,6 +75,7 @@ mod exports {
         })
         .expect("should read");
         // host::print(&format!("non_existing_entry={:?}", non_existing_entry));
+
         host::write(KEY_SPACE_DEFAULT, b"hello", TAG_BYTES, b"Hello, world!").unwrap();
 
         let mut read2 = Vec::new();
@@ -104,8 +108,13 @@ mod exports {
         ];
 
         extern "C" fn mangled_entry_point_wrapper_1() {
-            // mangled_entry_point(param_1, param_2)
-            host::print("called inside a mangled entry point 1");
+            host::start(|(name, value): (String, u32)| {
+                host::print(&format!("Hello, world! Name={:?} value={:?}", name, value));
+            })
+            // let input_bytes = host::copy_input();
+            // // mangled_entry_point(param_1, param_2)
+            // host::print("called inside a mangled entry point 1");
+            // // host::print()
         }
 
         extern "C" fn mangled_entry_point_wrapper_2() {
@@ -182,8 +191,10 @@ mod exports {
             }) => {
                 host::print("success");
 
-                let input_data = Vec::new();
-                let call_result = host::call(&contract_address, 10, "entrypoint", &input_data);
+                let input_data = borsh::to_vec(&("Hello, world!", 42)).unwrap();
+
+                let call_result =
+                    host::call(&contract_address, 10, "mangled_entry_point_1", &input_data);
                 match call_result {
                     Ok(output_data) => {
                         host::print(&format!("✅ Call succeeded. Output: {:?}", output_data));
