@@ -1,6 +1,6 @@
 use crate::node_client::Error as NodeClientError;
 use casper_json_rpc::Error as RpcError;
-use casper_types::{BlockHash, Digest, KeyFromStrError, TransactionHash, URefFromStrError};
+use casper_types::{BlockHash, Digest, KeyFromStrError, KeyTag, TransactionHash, URefFromStrError};
 
 use super::ErrorCode;
 
@@ -34,12 +34,22 @@ pub enum Error {
     InvalidPurseURef(URefFromStrError),
     #[error("the requested purse balance could not be parsed")]
     InvalidPurseBalance,
+    #[error("the requested main purse was invalid")]
+    InvalidMainPurse,
     #[error("the requested account info could not be parsed")]
     InvalidAccountInfo,
     #[error("the provided dictionary key was invalid: {0}")]
     InvalidDictionaryKey(KeyFromStrError),
-    #[error("the requested main purse was invalid")]
-    InvalidMainPurse,
+    #[error("the provided dictionary key points at an unexpected type: {0}")]
+    InvalidTypeUnderDictionaryKey(String),
+    #[error("the provided dictionary key doesn't exist")]
+    DictionaryKeyNotFound,
+    #[error("the provided dictionary name doesn't exist")]
+    DictionaryNameNotFound,
+    #[error("the provided dictionary value is {0} instead of a URef")]
+    DictionaryValueIsNotAUref(KeyTag),
+    #[error("the provided dictionary key could not be parsed: {0}")]
+    DictionaryKeyCouldNotBeParsed(String),
 }
 
 impl Error {
@@ -64,6 +74,11 @@ impl Error {
             Error::InvalidAccountInfo => ErrorCode::NoSuchAccount,
             Error::InvalidDictionaryKey(_) => ErrorCode::FailedToParseQueryKey,
             Error::InvalidMainPurse => ErrorCode::NoSuchMainPurse,
+            Error::InvalidTypeUnderDictionaryKey(_)
+            | Error::DictionaryKeyNotFound
+            | Error::DictionaryNameNotFound
+            | Error::DictionaryValueIsNotAUref(_)
+            | Error::DictionaryKeyCouldNotBeParsed(_) => ErrorCode::FailedToGetDictionaryURef,
         }
     }
 }

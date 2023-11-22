@@ -5,9 +5,9 @@ use tracing::info;
 
 use crate::rpcs::error::Error;
 use casper_types::{
-    binary_port::global_state::GlobalStateQueryResult, AvailableBlockRange, Block, BlockHeader, BlockSignatures,
-    Digest, ExecutionInfo, FinalizedApprovals, Key, SignedBlock, StoredValue, Transaction,
-    TransactionHash, URef, U512,
+    account::AccountHash, binary_port::global_state::GlobalStateQueryResult, AddressableEntity,
+    AvailableBlockRange, Block, BlockHeader, BlockSignatures, Digest, ExecutionInfo,
+    FinalizedApprovals, Key, SignedBlock, StoredValue, Transaction, TransactionHash, URef, U512,
 };
 
 use crate::NodeClient;
@@ -162,7 +162,37 @@ pub async fn get_transaction_execution_info(
     }))
 }
 
-pub async fn get_purse(
+pub async fn get_account(
+    node_client: &dyn NodeClient,
+    account_hash: AccountHash,
+    state_root_hash: Digest,
+) -> Result<AddressableEntity, Error> {
+    let account_key = Key::Account(account_hash);
+    let result = node_client
+        .query_global_state(state_root_hash, account_key, vec![])
+        .await
+        .map_err(|err| Error::NodeRequest("account stored value", err))?;
+
+    match handle_query_result(result)?.value {
+        StoredValue::Account(account) => Ok(account.into()),
+        StoredValue::CLValue(entity_key_as_clvalue) => {
+            let key: Key = entity_key_as_clvalue
+                .into_t()
+                .map_err(|_| Error::InvalidAccountInfo)?;
+            let result = node_client
+                .query_global_state(state_root_hash, key, vec![])
+                .await
+                .map_err(|err| Error::NodeRequest("account owning a purse", err))?;
+            handle_query_result(result)?
+                .value
+                .into_addressable_entity()
+                .ok_or(Error::InvalidAccountInfo)
+        }
+        _ => Err(Error::InvalidAccountInfo),
+    }
+}
+
+pub async fn get_main_purse(
     node_client: &dyn NodeClient,
     identifier: PurseIdentifier,
     state_root_hash: Digest,
@@ -174,31 +204,10 @@ pub async fn get_purse(
         PurseIdentifier::MainPurseUnderAccountHash(account_hash) => account_hash,
         PurseIdentifier::PurseUref(purse_uref) => return Ok(purse_uref),
     };
-    let account_key = Key::Account(account_hash);
-    let result = node_client
-        .query_global_state(state_root_hash, account_key, vec![])
+    let account = get_account(node_client, account_hash, state_root_hash)
         .await
-        .map_err(|err| Error::NodeRequest("account stored value", err))?;
-
-    match handle_query_result(result)?.value {
-        StoredValue::Account(account) => Ok(account.main_purse()),
-        StoredValue::CLValue(entity_key_as_clvalue) => {
-            let key: Key = entity_key_as_clvalue
-                .into_t()
-                .map_err(|_| Error::InvalidMainPurse)?;
-            let result = node_client
-                .query_global_state(state_root_hash, key, vec![])
-                .await
-                .map_err(|err| Error::NodeRequest("account owning a purse", err))?;
-            let uref = handle_query_result(result)?
-                .value
-                .into_addressable_entity()
-                .ok_or(Error::InvalidMainPurse)?
-                .main_purse();
-            Ok(uref)
-        }
-        _ => Err(Error::InvalidMainPurse),
-    }
+        .map_err(|_| Error::InvalidMainPurse)?;
+    Ok(account.main_purse())
 }
 
 pub async fn get_balance(

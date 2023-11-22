@@ -12,7 +12,7 @@ use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::Bytes,
     AuctionState, BlockHash, BlockHeader, BlockHeaderV2, BlockV2, CLValue, Digest, Key,
-    ProtocolVersion, PublicKey, SecretKey, StoredValue, URef, U512,
+    ProtocolVersion, PublicKey, SecretKey, StoredValue, Tagged, URef, U512,
 };
 
 use crate::{
@@ -21,7 +21,7 @@ use crate::{
         chain::BlockIdentifier,
         common::MERKLE_PROOF,
         docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-        Error as RpcError, ErrorCode, RpcWithOptionalParams, RpcWithParams,
+        Error as RpcError, RpcWithOptionalParams, RpcWithParams,
     },
 };
 
@@ -412,12 +412,10 @@ pub enum DictionaryIdentifier {
 }
 
 impl DictionaryIdentifier {
-    // TODO: will be used
-    #[allow(unused)]
     fn get_dictionary_address(
         &self,
         maybe_stored_value: Option<StoredValue>,
-    ) -> Result<Key, RpcError> {
+    ) -> Result<Key, Error> {
         match self {
             DictionaryIdentifier::AccountNamedKey {
                 dictionary_name,
@@ -433,36 +431,17 @@ impl DictionaryIdentifier {
                     Some(StoredValue::Account(account)) => account.named_keys(),
                     Some(StoredValue::AddressableEntity(contract)) => contract.named_keys(),
                     Some(other) => {
-                        return Err(RpcError::new(
-                            ErrorCode::FailedToGetDictionaryURef,
-                            format!(
-                                "expected account or contract, but got {}",
-                                other.type_name()
-                            ),
-                        ))
+                        return Err(Error::InvalidTypeUnderDictionaryKey(other.type_name()))
                     }
-                    None => {
-                        return Err(RpcError::new(
-                            ErrorCode::FailedToGetDictionaryURef,
-                            "could not retrieve account/contract".to_string(),
-                        ))
-                    }
+                    None => return Err(Error::DictionaryKeyNotFound),
                 };
 
                 let key_bytes = dictionary_item_key.as_str().as_bytes();
                 let seed_uref = match named_keys.get(dictionary_name) {
-                    Some(key) => *key.as_uref().ok_or_else(|| {
-                        RpcError::new(
-                            ErrorCode::FailedToGetDictionaryURef,
-                            format!("expected uref, but got {}", key),
-                        )
-                    })?,
-                    None => {
-                        return Err(RpcError::new(
-                            ErrorCode::FailedToGetDictionaryURef,
-                            "seed uref not in named keys".to_string(),
-                        ))
-                    }
+                    Some(key) => *key
+                        .as_uref()
+                        .ok_or_else(|| Error::DictionaryValueIsNotAUref(key.tag()))?,
+                    None => return Err(Error::DictionaryNameNotFound),
                 };
 
                 Ok(Key::dictionary(seed_uref, key_bytes))
@@ -472,22 +451,12 @@ impl DictionaryIdentifier {
                 dictionary_item_key,
             } => {
                 let key_bytes = dictionary_item_key.as_str().as_bytes();
-                let seed_uref = URef::from_formatted_str(seed_uref).map_err(|error| {
-                    RpcError::new(
-                        ErrorCode::FailedToGetDictionaryURef,
-                        format!("failed to parse uref: {}", error),
-                    )
-                })?;
+                let seed_uref = URef::from_formatted_str(seed_uref)
+                    .map_err(|error| Error::DictionaryKeyCouldNotBeParsed(error.to_string()))?;
                 Ok(Key::dictionary(seed_uref, key_bytes))
             }
-            DictionaryIdentifier::Dictionary(address) => {
-                Key::from_formatted_str(address).map_err(|error| {
-                    RpcError::new(
-                        ErrorCode::FailedToGetDictionaryURef,
-                        format!("failed to parse dictionary key: {}", error),
-                    )
-                })
-            }
+            DictionaryIdentifier::Dictionary(address) => Key::from_formatted_str(address)
+                .map_err(|error| Error::DictionaryKeyCouldNotBeParsed(error.to_string())),
         }
     }
 }
@@ -721,7 +690,7 @@ impl RpcWithParams for QueryBalance {
         let (state_root_hash, _) =
             common::resolve_state_root_hash(&*node_client, params.state_identifier).await?;
         let purse =
-            common::get_purse(&*node_client, params.purse_identifier, state_root_hash).await?;
+            common::get_main_purse(&*node_client, params.purse_identifier, state_root_hash).await?;
         let balance = common::get_balance(&*node_client, purse, state_root_hash).await?;
 
         Ok(Self::ResponseResult {
