@@ -261,12 +261,6 @@ impl ValidationResult {
             error: Some(error),
         }
     }
-
-    /// Returns whether or not the validation was free of errors.
-    #[inline(always)]
-    fn is_valid(&self) -> bool {
-        self.error.is_some()
-    }
 }
 
 /// Consensus component event.

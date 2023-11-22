@@ -43,7 +43,9 @@ use crate::{
         utils::ValidatorIndex,
         ActionId, TimerId,
     },
+    consensus::ValidationError,
     types::{Chainspec, NodeId},
+    utils::display_error,
     NodeRng,
 };
 
@@ -1010,25 +1012,19 @@ where
     fn resolve_validity(
         &mut self,
         proposed_block: ProposedBlock<C>,
-        valid: bool,
+        validation_error: Option<ValidationError>,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
-        if valid {
-            let mut outcomes = self
-                .pending_values
-                .remove(&proposed_block)
-                .into_iter()
-                .flatten()
-                .flat_map(|(vv, _)| self.add_valid_vertex(vv, now))
-                .collect_vec();
-            outcomes.extend(self.synchronizer.remove_satisfied_deps(&self.highway));
-            outcomes.extend(self.detect_finality());
-            outcomes
-        } else {
+        if let Some(error) = validation_error {
             // TODO: Report proposer as faulty?
             // Drop vertices dependent on the invalid value.
             let dropped_vertices = self.pending_values.remove(&proposed_block);
-            warn!(?proposed_block, ?dropped_vertices, "proposal is invalid");
+            warn!(
+                error = display_error(&error),
+                ?proposed_block,
+                ?dropped_vertices,
+                "proposal is invalid"
+            );
             let dropped_vertex_ids = dropped_vertices
                 .into_iter()
                 .flatten()
@@ -1043,6 +1039,17 @@ where
             // value "invalid" even if it just couldn't download the deploys, which could just be
             // because the original sender went offline.
             vec![]
+        } else {
+            let mut outcomes = self
+                .pending_values
+                .remove(&proposed_block)
+                .into_iter()
+                .flatten()
+                .flat_map(|(vv, _)| self.add_valid_vertex(vv, now))
+                .collect_vec();
+            outcomes.extend(self.synchronizer.remove_satisfied_deps(&self.highway));
+            outcomes.extend(self.detect_finality());
+            outcomes
         }
     }
 

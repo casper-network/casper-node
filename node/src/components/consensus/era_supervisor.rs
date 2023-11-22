@@ -890,7 +890,7 @@ impl EraSupervisor {
             });
         }
         if self.open_eras.get_mut(&result.era_id).map_or(false, |era| {
-            era.resolve_validity(&result.proposed_block, result.is_valid())
+            era.resolve_validity(&result.proposed_block, result.error.as_ref())
         }) {
             effects.extend(self.delegate_to_era(
                 effect_builder,
@@ -899,7 +899,7 @@ impl EraSupervisor {
                 |consensus, _| {
                     consensus.resolve_validity(
                         result.proposed_block.clone(),
-                        result.is_valid(),
+                        result.error,
                         Timestamp::now(),
                     )
                 },
@@ -1193,7 +1193,7 @@ impl EraSupervisor {
                             rng,
                             e_id,
                             |consensus, _| {
-                                consensus.resolve_validity(proposed_block, true, Timestamp::now())
+                                consensus.resolve_validity(proposed_block, None, Timestamp::now())
                             },
                         ));
                     }
