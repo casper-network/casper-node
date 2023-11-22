@@ -4,8 +4,9 @@ use thiserror::Error;
 use tracing::error;
 
 use casper_types::{
-    bytesrepr, crypto, BlockBody, BlockHash, BlockHeader, BlockValidationError, DbId, DeployHash,
-    Digest, EraId, FinalitySignature, FinalitySignatureId, TransactionHash,
+    binary_port::db_id::DbId, bytesrepr, crypto, BlockBody, BlockHash, BlockHeader,
+    BlockValidationError, DeployHash, Digest, EraId, FinalitySignature, FinalitySignatureId,
+    TransactionHash,
 };
 
 use super::lmdb_ext::LmdbExtError;

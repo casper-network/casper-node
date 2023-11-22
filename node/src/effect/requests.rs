@@ -27,12 +27,13 @@ use casper_execution_engine::engine_state::{
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     addressable_entity::AddressableEntity,
+    binary_port::db_id::DbId,
     bytesrepr::Bytes,
     contract_messages::Messages,
     execution::{ExecutionResult, ExecutionResultV2},
     system::auction::EraValidators,
     AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
-    BlockV2, ChainspecRawBytes, DbId, DeployHash, DeployHeader, Digest, DisplayIter, EraId,
+    BlockV2, ChainspecRawBytes, DeployHash, DeployHeader, Digest, DisplayIter, EraId,
     FinalitySignature, FinalitySignatureId, Key, ProtocolVersion, PublicKey, SignedBlock, TimeDiff,
     Timestamp, Transaction, TransactionHash, TransactionId, Transfer, URef, U512,
 };
