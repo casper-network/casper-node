@@ -11,64 +11,6 @@ use crate::{
 
 use self::db_id::DbId;
 
-const HASH_TAG: u8 = 0;
-const HEIGHT_TAG: u8 = 1;
-
-/// Identifier of a chain block.
-#[derive(Debug)]
-pub enum BlockIdentifier {
-    /// Block hash.
-    Hash(BlockHash),
-    /// Block height.
-    Height(u64),
-}
-
-impl ToBytes for BlockIdentifier {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        match self {
-            BlockIdentifier::Hash(hash) => {
-                HASH_TAG.write_bytes(writer)?;
-                hash.write_bytes(writer)
-            }
-            BlockIdentifier::Height(height) => {
-                HEIGHT_TAG.write_bytes(writer)?;
-                height.write_bytes(writer)
-            }
-        }
-    }
-
-    fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH
-            + match self {
-                BlockIdentifier::Hash(hash) => hash.serialized_length(),
-                BlockIdentifier::Height(height) => height.serialized_length(),
-            }
-    }
-}
-
-impl FromBytes for BlockIdentifier {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
-        match tag {
-            HASH_TAG => {
-                let (hash, remainder) = BlockHash::from_bytes(remainder)?;
-                Ok((BlockIdentifier::Hash(hash), remainder))
-            }
-            HEIGHT_TAG => {
-                let (hash, remainder) = u64::from_bytes(remainder)?;
-                Ok((BlockIdentifier::Height(hash), remainder))
-            }
-            _ => Err(bytesrepr::Error::Formatting),
-        }
-    }
-}
-
 const DB_TAG: u8 = 0;
 const NON_PERSISTED_DATA_TAG: u8 = 1;
 const STATE_TAG: u8 = 2;
