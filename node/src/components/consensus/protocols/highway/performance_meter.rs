@@ -21,10 +21,10 @@ use crate::{
 };
 
 /// The average max quorum that triggers us to slow down: with this big or smaller average max
-/// quorum per `BLOCKS_TO_CONSIDER`, we increase our round length.
+/// quorum among some number of past blocks, we increase our round length.
 const SLOW_DOWN_THRESHOLD: f64 = 0.8;
 /// The average max quorum that triggers us to speed up: with this big or larger average max quorum
-/// per `BLOCKS_TO_CONSIDER`, we decrease our round length.
+/// among some number of past blocks, we decrease our round length.
 const ACCELERATION_THRESHOLD: f64 = 0.9;
 /// We will try to accelerate (decrease our round length) at least every
 /// `MAX_ACCELERATION_PARAMETER` rounds if we have a big enough average max quorum.
@@ -101,8 +101,8 @@ impl PerformanceMeter {
     /// Whenever a block is proposed in a round and nodes cast their confirmation and witness
     /// units, a "max quorum" can be calculated for each node - the maximum quorum for which there
     /// exists a level-1 summit within the round, containing the particular node.
-    /// This function calculates the average max quorum for this node out of `BLOCKS_TO_CONSIDER`
-    /// most recent ancestor proposals of the current fork choice.
+    /// This function calculates the average max quorum for this node out of
+    /// `config.blocks_to_consider` most recent ancestor proposals of the current fork choice.
     /// If this average max quorum is below a certain threshold, a higher round length will be
     /// returned.
     /// If it is above a certain threshold, and the current round ID is divisible by a certain
