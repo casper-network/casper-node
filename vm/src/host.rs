@@ -327,7 +327,9 @@ pub(crate) fn casper_call<S: Storage + 'static>(
                 .expect("should find entry point");
             entry_point.function_index
         };
-        new_instance.call_function(function_index);
+
+        let (call_result, gas_usage) = new_instance.call_function(function_index);
+        dbg!(&call_result, &gas_usage);
     }
 
     Ok(0)
