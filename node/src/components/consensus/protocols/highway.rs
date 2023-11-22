@@ -79,7 +79,7 @@ where
     finality_detector: FinalityDetector<C>,
     highway: Highway<C>,
     /// A tracker for whether we are keeping up with the current round length or not.
-    performance_meter: Option<PerformanceMeter>,
+    performance_meter: PerformanceMeter,
     synchronizer: Synchronizer<C>,
     pvv_cache: HashMap<Dependency<C>, PreValidatedVertex<C>>,
     evidence_only: bool,
@@ -129,14 +129,13 @@ impl<C: Context + 'static> HighwayProtocol<C> {
 
         let performance_meter = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<C>>())
-            .and_then(|highway_proto| highway_proto.next_era_perf_meter());
+            .map(|highway_proto| highway_proto.next_era_perf_meter())
+            .unwrap_or_else(|| PerformanceMeter::new_inactive(highway_config.performance_meter));
         // This will return the minimum round length if we just initialized the meter, i.e. if
         // there was no previous consensus instance or it had no round success meter.
         let init_round_len = performance_meter
-            .as_ref()
-            .map_or(minimum_round_length, |perf_meter| {
-                perf_meter.current_round_len()
-            });
+            .current_round_len()
+            .unwrap_or(minimum_round_length);
 
         info!(
             %init_round_len,
@@ -371,11 +370,11 @@ impl<C: Context + 'static> HighwayProtocol<C> {
     }
 
     fn calculate_round_length(&mut self) {
-        let Some(performance_meter) = self.performance_meter.as_mut() else {
-            return;
-        };
-
-        let new_round_len = performance_meter.calculate_new_length(self.highway.state());
+        let Some(new_round_len) =
+            self.performance_meter.calculate_new_length(self.highway.state())
+            else {
+                return;
+            };
         self.highway.set_round_len(new_round_len);
     }
 
@@ -418,7 +417,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
 
     /// Returns an instance of `RoundSuccessMeter` for the new era: resetting the counters where
     /// appropriate.
-    fn next_era_perf_meter(&self) -> Option<PerformanceMeter> {
+    fn next_era_perf_meter(&self) -> PerformanceMeter {
         self.performance_meter.clone()
     }
 
@@ -1066,14 +1065,14 @@ where
                 return ProtocolOutcomes::new();
             }
         };
-        self.performance_meter = Some(PerformanceMeter::new(
+        self.performance_meter.activate(
             our_idx,
             self.highway.state().params().init_round_len(),
             min_round_len,
             max_round_len,
             minimum_era_height,
             now,
-        ));
+        );
 
         let av_effects = self
             .highway
@@ -1082,7 +1081,7 @@ where
     }
 
     fn deactivate_validator(&mut self) {
-        self.performance_meter = None;
+        self.performance_meter.deactivate();
         self.highway.deactivate_validator()
     }
 

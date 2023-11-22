@@ -12,6 +12,16 @@ use casper_types::{
     TimeDiff,
 };
 
+/// Configuration values relevant to the `PerformanceMeter`, a component of Highway deciding when
+/// to change the round exponent.
+#[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
+// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
+#[serde(deny_unknown_fields)]
+pub struct PerformanceMeterConfig {
+    /// The number of recent blocks to take into account when measuring performance.
+    pub blocks_to_consider: u64,
+}
+
 /// Configuration values relevant to Highway consensus.
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -23,6 +33,8 @@ pub struct HighwayConfig {
     /// quorum, i.e. no finality.
     #[data_size(skip)]
     pub reduced_reward_multiplier: Ratio<u64>,
+    /// The configuration for the `PerformanceMeter`, controlling round exponent switching.
+    pub performance_meter: PerformanceMeterConfig,
 }
 
 impl HighwayConfig {
@@ -46,10 +58,12 @@ impl HighwayConfig {
     pub fn random(rng: &mut TestRng) -> Self {
         let maximum_round_length = TimeDiff::from_seconds(rng.gen_range(60..600));
         let reduced_reward_multiplier = Ratio::new(rng.gen_range(0..10), 10);
+        let blocks_to_consider = rng.gen_range(5..=10);
 
         HighwayConfig {
             maximum_round_length,
             reduced_reward_multiplier,
+            performance_meter: PerformanceMeterConfig { blocks_to_consider },
         }
     }
 }
@@ -59,12 +73,17 @@ impl ToBytes for HighwayConfig {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.maximum_round_length.to_bytes()?);
         buffer.extend(self.reduced_reward_multiplier.to_bytes()?);
+        buffer.extend(self.performance_meter.blocks_to_consider.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
         self.maximum_round_length.serialized_length()
             + self.reduced_reward_multiplier.serialized_length()
+            + self
+                .performance_meter
+                .blocks_to_consider
+                .serialized_length()
     }
 }
 
@@ -72,9 +91,11 @@ impl FromBytes for HighwayConfig {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (maximum_round_length, remainder) = TimeDiff::from_bytes(bytes)?;
         let (reduced_reward_multiplier, remainder) = Ratio::<u64>::from_bytes(remainder)?;
+        let (blocks_to_consider, remainder) = u64::from_bytes(remainder)?;
         let config = HighwayConfig {
             maximum_round_length,
             reduced_reward_multiplier,
+            performance_meter: PerformanceMeterConfig { blocks_to_consider },
         };
         Ok((config, remainder))
     }
