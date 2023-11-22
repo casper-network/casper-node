@@ -4,7 +4,10 @@ use serde::Serialize;
 
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    BlockHash, Digest, Key, StoredValue, Transaction, TransactionHash,
+    contract_messages::Messages,
+    execution::ExecutionResultV2,
+    BlockHash, BlockHeader, Digest, Key, ProtocolVersion, StoredValue, Timestamp, Transaction,
+    TransactionHash,
 };
 
 const BLOCK_HEADER_DB_TAG: u8 = 0;
@@ -141,6 +144,64 @@ impl FromBytes for DbId {
     }
 }
 
+const HASH_TAG: u8 = 0;
+const HEIGHT_TAG: u8 = 1;
+
+/// Identifier of a chain block.
+#[derive(Debug)]
+pub enum BlockIdentifier {
+    /// Block hash.
+    Hash(BlockHash),
+    /// Block height.
+    Height(u64),
+}
+
+impl ToBytes for BlockIdentifier {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            BlockIdentifier::Hash(hash) => {
+                HASH_TAG.write_bytes(writer)?;
+                hash.write_bytes(writer)
+            }
+            BlockIdentifier::Height(height) => {
+                HEIGHT_TAG.write_bytes(writer)?;
+                height.write_bytes(writer)
+            }
+        }
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+            + match self {
+                BlockIdentifier::Hash(hash) => hash.serialized_length(),
+                BlockIdentifier::Height(height) => height.serialized_length(),
+            }
+    }
+}
+
+impl FromBytes for BlockIdentifier {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            HASH_TAG => {
+                let (hash, remainder) = BlockHash::from_bytes(remainder)?;
+                Ok((BlockIdentifier::Hash(hash), remainder))
+            }
+            HEIGHT_TAG => {
+                let (hash, remainder) = u64::from_bytes(remainder)?;
+                Ok((BlockIdentifier::Height(hash), remainder))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
 const GET_TAG: u8 = 0;
 const PUT_TRANSACTION_TAG: u8 = 1;
 const SPECULATIVE_EXEC_TAG: u8 = 2;
@@ -171,14 +232,22 @@ pub enum BinaryRequest {
         path: Vec<String>,
     },
     /// Request to add a transaction into a blockchain.
-    PutTransaction {
+    TryAcceptTransaction {
         /// Transaction to be handled.
         transaction: Transaction,
+        /// Optional block header required if the request should perform speculative execution.
+        speculative_exec_at_block: Option<BlockHeader>,
     },
-    /// TODO
+    /// Request to execute a transaction speculatively.
     SpeculativeExec {
-        /// TODO
-        tbd: u32,
+        /// State root on top of which to execute deploy.
+        state_root_hash: Digest,
+        /// Block time.
+        block_time: Timestamp,
+        /// Protocol version used when creating the original block.
+        protocol_version: ProtocolVersion,
+        /// Transaction to execute.
+        transaction: Transaction,
     },
 }
 
@@ -196,13 +265,25 @@ impl ToBytes for BinaryRequest {
                 db.write_bytes(writer)?;
                 key.write_bytes(writer)
             }
-            BinaryRequest::PutTransaction { transaction } => {
+            BinaryRequest::TryAcceptTransaction {
+                transaction,
+                speculative_exec_at_block,
+            } => {
                 PUT_TRANSACTION_TAG.write_bytes(writer)?;
-                transaction.write_bytes(writer)
+                transaction.write_bytes(writer)?;
+                speculative_exec_at_block.write_bytes(writer)
             }
-            BinaryRequest::SpeculativeExec { tbd } => {
+            BinaryRequest::SpeculativeExec {
+                transaction,
+                state_root_hash,
+                block_time,
+                protocol_version,
+            } => {
                 SPECULATIVE_EXEC_TAG.write_bytes(writer)?;
-                tbd.write_bytes(writer)
+                transaction.write_bytes(writer)?;
+                state_root_hash.write_bytes(writer)?;
+                block_time.write_bytes(writer)?;
+                protocol_version.write_bytes(writer)
             }
             BinaryRequest::GetInMem(req) => {
                 IN_MEM_REQUEST_TAG.write_bytes(writer)?;
@@ -225,8 +306,23 @@ impl ToBytes for BinaryRequest {
         U8_SERIALIZED_LENGTH
             + match self {
                 BinaryRequest::Get { db, key } => db.serialized_length() + key.serialized_length(),
-                BinaryRequest::PutTransaction { transaction } => transaction.serialized_length(),
-                BinaryRequest::SpeculativeExec { tbd } => tbd.serialized_length(),
+                BinaryRequest::TryAcceptTransaction {
+                    transaction,
+                    speculative_exec_at_block,
+                } => {
+                    transaction.serialized_length() + speculative_exec_at_block.serialized_length()
+                }
+                BinaryRequest::SpeculativeExec {
+                    transaction,
+                    state_root_hash,
+                    block_time,
+                    protocol_version,
+                } => {
+                    transaction.serialized_length()
+                        + state_root_hash.serialized_length()
+                        + block_time.serialized_length()
+                        + protocol_version.serialized_length()
+                }
                 BinaryRequest::GetInMem(req) => req.serialized_length(),
                 BinaryRequest::GetState {
                     state_root_hash,
@@ -262,11 +358,30 @@ impl FromBytes for BinaryRequest {
             }
             PUT_TRANSACTION_TAG => {
                 let (transaction, remainder) = Transaction::from_bytes(remainder)?;
-                Ok((BinaryRequest::PutTransaction { transaction }, remainder))
+                let (speculative_exec_at_block, remainder) =
+                    Option::<BlockHeader>::from_bytes(remainder)?;
+                Ok((
+                    BinaryRequest::TryAcceptTransaction {
+                        transaction,
+                        speculative_exec_at_block,
+                    },
+                    remainder,
+                ))
             }
             SPECULATIVE_EXEC_TAG => {
-                let (tbd, remainder) = u32::from_bytes(remainder)?;
-                Ok((BinaryRequest::SpeculativeExec { tbd }, remainder))
+                let (transaction, remainder) = Transaction::from_bytes(remainder)?;
+                let (state_root_hash, remainder) = Digest::from_bytes(remainder)?;
+                let (block_time, remainder) = Timestamp::from_bytes(remainder)?;
+                let (protocol_version, remainder) = ProtocolVersion::from_bytes(remainder)?;
+                Ok((
+                    BinaryRequest::SpeculativeExec {
+                        transaction,
+                        state_root_hash,
+                        block_time,
+                        protocol_version,
+                    },
+                    remainder,
+                ))
             }
             GET_STATE_TAG => {
                 let (state_root_hash, remainder) = Digest::from_bytes(remainder)?;
@@ -567,6 +682,45 @@ impl FromBytes for GlobalStateQueryResult {
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
+    }
+}
+
+/// TODO
+pub struct SpeculativeExecutionResult {
+    /// Result of the execution.
+    pub execution_result: ExecutionResultV2,
+    /// Messages emitted during execution.
+    pub messages: Messages,
+}
+
+impl ToBytes for SpeculativeExecutionResult {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.execution_result.write_bytes(writer)?;
+        self.messages.write_bytes(writer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.execution_result.serialized_length() + self.messages.serialized_length()
+    }
+}
+
+impl FromBytes for SpeculativeExecutionResult {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (execution_result, remainder) = ExecutionResultV2::from_bytes(bytes)?;
+        let (messages, remainder) = Messages::from_bytes(remainder)?;
+        Ok((
+            SpeculativeExecutionResult {
+                execution_result,
+                messages,
+            },
+            remainder,
+        ))
     }
 }
 

@@ -9,7 +9,7 @@ mod tests;
 use std::{net::SocketAddr, sync::Arc};
 
 use bytes::Bytes;
-use casper_execution_engine::engine_state::QueryRequest;
+use casper_execution_engine::engine_state::{Error as EngineStateError, QueryRequest};
 use casper_types::{
     binary_port::{BinaryRequest, GlobalStateQueryResult, InMemRequest},
     bytesrepr::{FromBytes, ToBytes},
@@ -25,6 +25,8 @@ use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, info, warn};
 
 use crate::{
+    components::binary_port::error::SpeculativeExecutionError,
+    contract_runtime::SpeculativeExecutionState,
     effect::{
         requests::{AcceptTransactionRequest, ContractRuntimeRequest, StorageRequest},
         EffectBuilder, Effects,
@@ -131,24 +133,103 @@ async fn handle_request<REv>(
     effect_builder: EffectBuilder<REv>,
 ) -> Result<Option<Bytes>, Error>
 where
-    REv: From<StorageRequest> + From<ContractRuntimeRequest> + From<AcceptTransactionRequest>,
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<AcceptTransactionRequest>,
 {
     match req {
         BinaryRequest::Get { key, db } => Ok(effect_builder
             .get_raw_data(db, key)
             .await
             .map(|raw_data| Bytes::from(raw_data))),
-        BinaryRequest::PutTransaction { transaction } => {
+        BinaryRequest::TryAcceptTransaction {
+            transaction,
+            speculative_exec_at_block,
+        } => {
             let accept_transaction_result = effect_builder
-                .try_accept_transaction(Transaction::from(transaction), None)
+                .try_accept_transaction(
+                    Transaction::from(transaction),
+                    speculative_exec_at_block
+                        .map(|speculative_exec_at_block| Box::new(speculative_exec_at_block)),
+                )
                 .await
-                .map_err(|err| err.to_string());
+                .map_err(|err| Error::TransactionAcceptor(err).to_string()); // TODO[RC]: No string, but transaction acceptor error
             let bytes = ToBytes::to_bytes(&accept_transaction_result)
                 .map_err(|err| Error::BytesRepr(err))?
                 .into();
             Ok(Some(bytes))
         }
-        BinaryRequest::SpeculativeExec { tbd: _tbd } => todo!(),
+        BinaryRequest::SpeculativeExec {
+            transaction,
+            state_root_hash,
+            block_time,
+            protocol_version,
+        } => {
+            let execution_prestate = SpeculativeExecutionState {
+                state_root_hash,
+                block_time,
+                protocol_version,
+            };
+            let speculative_execution_result = effect_builder
+                .speculatively_execute(execution_prestate, Box::new(transaction))
+                .await
+                .map_err(|error| {
+                    match error {
+                        EngineStateError::RootNotFound(_) => {
+                            Error::SpeculativeExecution(SpeculativeExecutionError::NoSuchStateRoot)
+                        }
+                        EngineStateError::InvalidDeployItemVariant(error) => {
+                            Error::SpeculativeExecution(SpeculativeExecutionError::InvalidDeploy(
+                                error.to_string(),
+                            ))
+                        }
+                        EngineStateError::WasmPreprocessing(error) => Error::SpeculativeExecution(
+                            SpeculativeExecutionError::InvalidDeploy(error.to_string()),
+                        ),
+                        EngineStateError::InvalidProtocolVersion(_) => {
+                            Error::SpeculativeExecution(SpeculativeExecutionError::InvalidDeploy(
+                                format!("deploy used invalid protocol version {}", error),
+                            ))
+                        }
+                        EngineStateError::Deploy => Error::SpeculativeExecution(
+                            SpeculativeExecutionError::InvalidDeploy("".into()),
+                        ),
+                        EngineStateError::Genesis(_)
+                        | EngineStateError::WasmSerialization(_)
+                        | EngineStateError::Exec(_)
+                        | EngineStateError::Storage(_)
+                        | EngineStateError::Authorization
+                        | EngineStateError::InsufficientPayment
+                        | EngineStateError::GasConversionOverflow
+                        | EngineStateError::Finalization
+                        | EngineStateError::Bytesrepr(_)
+                        | EngineStateError::Mint(_)
+                        | EngineStateError::InvalidKeyVariant
+                        | EngineStateError::ProtocolUpgrade(_)
+                        | EngineStateError::CommitError(_)
+                        | EngineStateError::MissingSystemContractRegistry
+                        | EngineStateError::MissingSystemContractHash(_)
+                        | EngineStateError::RuntimeStackOverflow
+                        | EngineStateError::FailedToGetKeys(_)
+                        | EngineStateError::FailedToGetStoredWithdraws
+                        | EngineStateError::FailedToGetWithdrawPurses
+                        | EngineStateError::FailedToRetrieveUnbondingDelay
+                        | EngineStateError::FailedToRetrieveEraId => Error::SpeculativeExecution(
+                            SpeculativeExecutionError::InternalError(error.to_string()),
+                        ),
+                        _ => Error::SpeculativeExecution(SpeculativeExecutionError::InternalError(
+                            format!("Unhandled engine state error: {}", error),
+                        )),
+                    }
+                    .to_string()
+                });
+
+            let bytes = ToBytes::to_bytes(&speculative_execution_result)
+                .map_err(|err| Error::BytesRepr(err))?
+                .into();
+            Ok(Some(bytes))
+        }
         BinaryRequest::GetInMem(req) => match req {
             InMemRequest::BlockHeight2Hash { height } => {
                 let block_hash = effect_builder.get_block_hash_for_height(height).await;
@@ -214,7 +295,10 @@ async fn handle_client<REv, const N: usize>(
     rpc_builder: Arc<RpcBuilder<N>>,
     effect_builder: EffectBuilder<REv>,
 ) where
-    REv: From<StorageRequest> + From<ContractRuntimeRequest> + From<AcceptTransactionRequest>,
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<AcceptTransactionRequest>,
 {
     let (reader, writer) = client.split();
     let (client, mut server) = rpc_builder.build(reader, writer);
@@ -272,8 +356,11 @@ async fn handle_client<REv, const N: usize>(
 // TODO[RC]: Move to Self::
 async fn run_server<REv>(effect_builder: EffectBuilder<REv>, config: Config)
 where
-    REv:
-        Send + From<StorageRequest> + From<ContractRuntimeRequest> + From<AcceptTransactionRequest>,
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<AcceptTransactionRequest>
+        + Send,
 {
     let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
         ChannelConfiguration::default()
