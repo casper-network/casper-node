@@ -1,8 +1,12 @@
 mod builder;
 
-use std::{collections::BTreeMap, convert::TryFrom, iter, sync::Arc, time::Duration};
-use std::cmp::max;
-use std::collections::BTreeSet;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    convert::TryFrom,
+    iter,
+    sync::Arc,
+    time::Duration,
+};
 
 use either::Either;
 use num::Zero;
@@ -13,13 +17,30 @@ use tokio::time;
 use tracing::{error, info};
 
 use builder::TestChainBuilder;
-use casper_execution_engine::engine_state::{Error, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult, SystemContractRegistry};
-use casper_execution_engine::engine_state::QueryResult::{CircularReference, DepthLimit, Success, ValueNotFound};
+
+use casper_execution_engine::engine_state::{
+    Error, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
+    QueryResult::{CircularReference, DepthLimit, Success, ValueNotFound},
+    SystemContractRegistry,
+};
+
 use casper_storage::global_state::state::{StateProvider, StateReader};
-use casper_types::{execution::{Effects, ExecutionResult, ExecutionResultV2, TransformKind}, system::auction::{BidAddr, BidKind, BidsExt, DelegationRate}, testing::TestRng, AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Deploy, DeployHash, EraId, Key, Motes, ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, Timestamp, Transaction, TransactionHash, ValidatorConfig, U512, ConsensusProtocolName, Rewards};
-use casper_types::Key::AddressableEntity;
-use casper_types::package::PackageKindTag;
-use casper_types::system::mint;
+
+use casper_types::{
+    execution::{Effects, ExecutionResult, ExecutionResultV2, TransformKind},
+    package::PackageKindTag,
+    system::{
+        auction::{BidAddr, BidKind, BidsExt, DelegationRate},
+        mint,
+    },
+    testing::TestRng,
+    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, Block, BlockHash,
+    BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes, ConsensusProtocolName, Deploy,
+    DeployHash, EraId, Key,
+    Key::AddressableEntity,
+    Motes, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue, TimeDiff, Timestamp,
+    Transaction, TransactionHash, ValidatorConfig, U512,
+};
 
 use crate::{
     components::{
@@ -34,10 +55,11 @@ use crate::{
         requests::{ContractRuntimeRequest, NetworkRequest},
         EffectExt,
     },
+    failpoints::FailpointActivation,
     protocol::Message,
     reactor::{
         main_reactor::{Config, MainEvent, MainReactor, ReactorState},
-        Runner,
+        Reactor, Runner,
     },
     testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
@@ -49,8 +71,6 @@ use crate::{
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };
-use crate::failpoints::FailpointActivation;
-use crate::reactor::Reactor;
 
 struct TestChain {
     // Keys that validator instances will use, can include duplicates
@@ -102,10 +122,7 @@ impl TestChain {
     /// Instantiates a new test chain configuration.
     ///
     /// Takes a vector of bonded keys with specified bond amounts.
-    fn new_with_keys(
-        keys: Vec<Arc<SecretKey>>,
-        stakes: BTreeMap<PublicKey, U512>,
-    ) -> Self {
+    fn new_with_keys(keys: Vec<Arc<SecretKey>>, stakes: BTreeMap<PublicKey, U512>) -> Self {
         // Load the `local` chainspec.
         let (mut chainspec, chainspec_raw_bytes) =
             <(Chainspec, ChainspecRawBytes)>::from_resources("local");
@@ -1908,16 +1925,16 @@ async fn rewards_are_calculated() {
     }
 }
 
+// Reactor pattern tests for simplified rewards
+
 // Fundamental network parameters that are not critical for assessing reward calculation correctness
-const VALIDATOR_SLOTS: u32 = 10;
-const NETWORK_SIZE: u64 = 10;
 const STAKE: u64 = 1000000000;
 const PRIME_STAKES: &'static [u64; 5] = &[106907u64, 106921u64, 106937u64, 106949u64, 106957u64];
 const ERA_COUNT: u64 = 3;
 const ERA_DURATION: u64 = 30000; //milliseconds
 const MIN_HEIGHT: u64 = 10;
 const BLOCK_TIME: u64 = 3000; //milliseconds
-const TIME_OUT: u64 = 3000; //seconds
+const TIME_OUT: u64 = 600; //seconds
 const SEIGNIORAGE: (u64, u64) = (1u64, 100u64);
 const REPRESENTATIVE_NODE_INDEX: usize = 0;
 // Parameters we generally want to vary
@@ -1925,13 +1942,14 @@ const CONSENSUS_ZUG: ConsensusProtocolName = ConsensusProtocolName::Zug;
 const CONSENSUS_HIGHWAY: ConsensusProtocolName = ConsensusProtocolName::Highway;
 const FINDERS_FEE_ZERO: (u64, u64) = (0u64, 1u64);
 const FINDERS_FEE_HALF: (u64, u64) = (1u64, 2u64);
-const FINDERS_FEE_ONE: (u64, u64) = (1u64, 1u64);
+//const FINDERS_FEE_ONE: (u64, u64) = (1u64, 1u64);
 const FINALITY_SIG_PROP_ZERO: (u64, u64) = (0u64, 1u64);
 const FINALITY_SIG_PROP_HALF: (u64, u64) = (1u64, 2u64);
 const FINALITY_SIG_PROP_ONE: (u64, u64) = (1u64, 1u64);
 const FILTERED_NODES_INDICES: &'static [usize] = &[3, 4];
 const FINALITY_SIG_LOOKBACK: u64 = 3;
 
+#[rustfmt::skip]
 async fn run_rewards_network_scenario(
     mut rng: NodeRng,
     consensus: ConsensusProtocolName,
@@ -1939,14 +1957,15 @@ async fn run_rewards_network_scenario(
     era_count: u64,
     era_duration: u64, //milliseconds
     min_height: u64,
-    block_time: u64, //milliseconds
-    time_out: u64, //seconds
+    block_time: u64,   //milliseconds
+    time_out: u64,     //seconds
     seigniorage: (u64, u64),
     finders_fee: (u64, u64),
     finality_sig_prop: (u64, u64),
     finality_lookback: u64,
     representative_node_index: usize,
-    filtered_nodes_indices: &[usize]) {
+    filtered_nodes_indices: &[usize]
+) {
 
     testing::init_logging();
 
@@ -1957,7 +1976,12 @@ async fn run_rewards_network_scenario(
     let stakes: BTreeMap<PublicKey, U512> = keys
         .iter()
         .enumerate()
-        .map(|(i, secret_key)| (PublicKey::from(&*secret_key.clone()), U512::from(*&initial_stakes[i])))
+        .map(|(i, secret_key)| {
+            (
+                PublicKey::from(&*secret_key.clone()),
+                U512::from(*&initial_stakes[i]),
+            )
+        })
         .collect();
 
     // Instantiate the chain
@@ -2061,19 +2085,12 @@ async fn run_rewards_network_scenario(
 
     // Tiny helper function
     #[inline]
-    fn add_to_rewards(recipient: PublicKey, reward: Ratio<u64>, rewards: &mut BTreeMap<PublicKey, Ratio<u64>>, era: usize, total_supply: &mut BTreeMap<usize, Ratio<u64>>) {
-        match (rewards.get_mut(&recipient.clone()), total_supply.get_mut(&era)) {
-            (Some(value), Some(supply)) => {
+    fn add_to_rewards(recipient: PublicKey, reward: Ratio<u64>, rewards: &mut BTreeMap<PublicKey, Ratio<u64>>) {
+        match rewards.get_mut(&recipient.clone()) {
+            Some(value) => {
                 *value += reward;
-                *supply += reward;
             }
-            (None, Some(supply)) => {
-                rewards.insert(recipient.clone(), reward);
-                *supply += reward;
-            }
-            (Some(_), None) => panic!("rewards present without corresponding supply increase"),
-            (None, None) => {
-                total_supply.insert(era, reward);
+            None => {
                 rewards.insert(recipient.clone(), reward);
             }
         }
@@ -2140,7 +2157,7 @@ async fn run_rewards_network_scenario(
                     .for_each(|block: &Block| {
                         // Block production rewards
                         let proposer = block.proposer().clone();
-                        add_to_rewards(proposer.clone(), block_reward.trunc(), &mut recomputed_era_rewards, i, &mut recomputed_total_supply);
+                        add_to_rewards(proposer.clone(), block_reward, &mut recomputed_era_rewards);
 
                         // Recover relevant finality signatures
                         // TODO: Deal with the implicit assumption that lookback only look backs one previous era
@@ -2157,8 +2174,8 @@ async fn run_rewards_network_scenario(
                                                 .get(contributor)
                                                 .expect("expected current era validator").as_u64(),
                                                 total_previous_era_weights.expect("expected total previous era weight"));
-                                            add_to_rewards(proposer.clone(), (chain.chainspec.core_config.finders_fee * contributor_proportion * previous_signatures_reward.unwrap()).trunc(), &mut recomputed_era_rewards, i, &mut recomputed_total_supply);
-                                            add_to_rewards(contributor.clone(), ((Ratio::new(1, 1) - chain.chainspec.core_config.finders_fee) * contributor_proportion * previous_signatures_reward.unwrap()).trunc(), &mut recomputed_era_rewards, i, &mut recomputed_total_supply)
+                                            add_to_rewards(proposer.clone(), chain.chainspec.core_config.finders_fee * contributor_proportion * previous_signatures_reward.unwrap(), &mut recomputed_era_rewards);
+                                            add_to_rewards(contributor.clone(), (Ratio::new(1, 1) - chain.chainspec.core_config.finders_fee) * contributor_proportion * previous_signatures_reward.unwrap(), &mut recomputed_era_rewards)
                                         });
                                 } else {
                                     let rewarded_contributors = signatures_packed.to_validator_set(current_era_slated_weights.keys().map(|key| key.clone()).collect::<BTreeSet<PublicKey>>());
@@ -2169,12 +2186,24 @@ async fn run_rewards_network_scenario(
                                                 .get(contributor)
                                                 .expect("expected current era validator").as_u64(),
                                                 total_current_era_weights);
-                                            add_to_rewards(proposer.clone(), (chain.chainspec.core_config.finders_fee * contributor_proportion * signatures_reward).trunc(), &mut recomputed_era_rewards, i, &mut recomputed_total_supply);
-                                            add_to_rewards(contributor.clone(), ((Ratio::new(1, 1) - chain.chainspec.core_config.finders_fee) * contributor_proportion * signatures_reward).trunc(), &mut recomputed_era_rewards, i, &mut recomputed_total_supply);
+                                            add_to_rewards(proposer.clone(), chain.chainspec.core_config.finders_fee * contributor_proportion * signatures_reward, &mut recomputed_era_rewards);
+                                            add_to_rewards(contributor.clone(), (Ratio::new(1, 1) - chain.chainspec.core_config.finders_fee) * contributor_proportion * signatures_reward, &mut recomputed_era_rewards);
                                         });
                                 }
                             });
                     });
+
+                // Make sure we round just as we do in the real code, at the end of an era's calculation, right before minting and transferring
+                recomputed_era_rewards
+                    .iter_mut()
+                    .for_each(|(_, reward)| {
+                        let truncated_reward = reward.trunc();
+                        *reward = truncated_reward;
+                        let era_end_supply = recomputed_total_supply.get_mut(&i).expect("expected supply at end of era");
+                        *era_end_supply += truncated_reward;
+                        }
+                    );
+
                 return (i, recomputed_era_rewards) }
         )
         .collect::<BTreeMap<usize,BTreeMap<PublicKey, Ratio<u64>>>>();
@@ -2213,6 +2242,7 @@ async fn run_rewards_network_scenario(
 #[tokio::test]
 #[cfg_attr(not(feature = "failpoints"), ignore)]
 async fn run_reward_network_zug_all_finality_small_prime_five_eras() {
+    #[rustfmt::skip]
     run_rewards_network_scenario(
         crate::new_rng(),
         CONSENSUS_ZUG,
@@ -2227,13 +2257,15 @@ async fn run_reward_network_zug_all_finality_small_prime_five_eras() {
         FINALITY_SIG_PROP_ONE,
         FINALITY_SIG_LOOKBACK,
         REPRESENTATIVE_NODE_INDEX,
-        &[]
-    ).await;
+        &[],
+    )
+    .await;
 }
 
 #[tokio::test]
 #[cfg_attr(not(feature = "failpoints"), ignore)]
 async fn run_reward_network_zug_all_finality_small_prime_five_eras_no_lookback() {
+    #[rustfmt::skip]
     run_rewards_network_scenario(
         crate::new_rng(),
         CONSENSUS_ZUG,
@@ -2248,13 +2280,15 @@ async fn run_reward_network_zug_all_finality_small_prime_five_eras_no_lookback()
         FINALITY_SIG_PROP_ONE,
         0u64,
         REPRESENTATIVE_NODE_INDEX,
-        &[]
-    ).await;
+        &[],
+    )
+    .await;
 }
 
 #[tokio::test]
 #[cfg_attr(not(feature = "failpoints"), ignore)]
 async fn run_reward_network_zug_no_finality_small_nominal_five_eras() {
+    #[rustfmt::skip]
     run_rewards_network_scenario(
         crate::new_rng(),
         CONSENSUS_ZUG,
@@ -2269,13 +2303,15 @@ async fn run_reward_network_zug_no_finality_small_nominal_five_eras() {
         FINALITY_SIG_PROP_ZERO,
         FINALITY_SIG_LOOKBACK,
         REPRESENTATIVE_NODE_INDEX,
-        &[]
-    ).await;
+        &[],
+    )
+    .await;
 }
 
 #[tokio::test]
 #[cfg_attr(not(feature = "failpoints"), ignore)]
 async fn run_reward_network_zug_half_finality_half_finders_small_nominal_five_eras() {
+    #[rustfmt::skip]
     run_rewards_network_scenario(
         crate::new_rng(),
         CONSENSUS_ZUG,
@@ -2290,13 +2326,15 @@ async fn run_reward_network_zug_half_finality_half_finders_small_nominal_five_er
         FINALITY_SIG_PROP_HALF,
         FINALITY_SIG_LOOKBACK,
         REPRESENTATIVE_NODE_INDEX,
-        &[]
-    ).await;
+        &[],
+    )
+    .await;
 }
 
 #[tokio::test]
 #[cfg_attr(not(feature = "failpoints"), ignore)]
 async fn run_reward_network_zug_half_finality_half_finders_small_nominal_five_eras_no_lookback() {
+    #[rustfmt::skip]
     run_rewards_network_scenario(
         crate::new_rng(),
         CONSENSUS_ZUG,
@@ -2311,13 +2349,15 @@ async fn run_reward_network_zug_half_finality_half_finders_small_nominal_five_er
         FINALITY_SIG_PROP_HALF,
         0u64,
         REPRESENTATIVE_NODE_INDEX,
-        &[]
-    ).await;
+        &[],
+    )
+    .await;
 }
 
 #[tokio::test]
 #[cfg_attr(not(feature = "failpoints"), ignore)]
 async fn run_reward_network_zug_all_finality_half_finders_small_nominal_five_eras_no_lookback() {
+    #[rustfmt::skip]
     run_rewards_network_scenario(
         crate::new_rng(),
         CONSENSUS_ZUG,
@@ -2332,13 +2372,15 @@ async fn run_reward_network_zug_all_finality_half_finders_small_nominal_five_era
         FINALITY_SIG_PROP_ONE,
         0u64,
         REPRESENTATIVE_NODE_INDEX,
-        &[]
-    ).await;
+        &[],
+    )
+    .await;
 }
 
 #[tokio::test]
 #[cfg_attr(not(feature = "failpoints"), ignore)]
 async fn run_reward_network_zug_all_finality_half_finders() {
+    #[rustfmt::skip]
     run_rewards_network_scenario(
         crate::new_rng(),
         CONSENSUS_ZUG,
@@ -2354,12 +2396,14 @@ async fn run_reward_network_zug_all_finality_half_finders() {
         FINALITY_SIG_LOOKBACK,
         REPRESENTATIVE_NODE_INDEX,
         FILTERED_NODES_INDICES
-    ).await;
+    )
+    .await;
 }
 
 #[tokio::test]
 #[cfg_attr(not(feature = "failpoints"), ignore)]
 async fn run_reward_network_zug_all_finality_half_finders_five_eras() {
+    #[rustfmt::skip]
     run_rewards_network_scenario(
         crate::new_rng(),
         CONSENSUS_ZUG,
@@ -2375,13 +2419,14 @@ async fn run_reward_network_zug_all_finality_half_finders_five_eras() {
         FINALITY_SIG_LOOKBACK,
         REPRESENTATIVE_NODE_INDEX,
         FILTERED_NODES_INDICES
-    ).await;
+    )
+    .await;
 }
-
 
 #[tokio::test]
 #[cfg_attr(not(feature = "failpoints"), ignore)]
 async fn run_reward_network_zug_all_finality_zero_finders() {
+    #[rustfmt::skip]
     run_rewards_network_scenario(
         crate::new_rng(),
         CONSENSUS_ZUG,
@@ -2397,12 +2442,14 @@ async fn run_reward_network_zug_all_finality_zero_finders() {
         FINALITY_SIG_LOOKBACK,
         REPRESENTATIVE_NODE_INDEX,
         FILTERED_NODES_INDICES
-    ).await;
+    )
+    .await;
 }
 
 #[tokio::test]
 #[cfg_attr(not(feature = "failpoints"), ignore)]
 async fn run_reward_network_highway_all_finality_zero_finders() {
+    #[rustfmt::skip]
     run_rewards_network_scenario(
         crate::new_rng(),
         CONSENSUS_HIGHWAY,
@@ -2418,12 +2465,14 @@ async fn run_reward_network_highway_all_finality_zero_finders() {
         FINALITY_SIG_LOOKBACK,
         REPRESENTATIVE_NODE_INDEX,
         FILTERED_NODES_INDICES
-    ).await;
+    )
+    .await;
 }
 
 #[tokio::test]
 #[cfg_attr(not(feature = "failpoints"), ignore)]
 async fn run_reward_network_highway_no_finality() {
+    #[rustfmt::skip]
     run_rewards_network_scenario(
         crate::new_rng(),
         CONSENSUS_HIGHWAY,
@@ -2439,5 +2488,6 @@ async fn run_reward_network_highway_no_finality() {
         FINALITY_SIG_LOOKBACK,
         REPRESENTATIVE_NODE_INDEX,
         FILTERED_NODES_INDICES
-    ).await;
+    )
+    .await;
 }

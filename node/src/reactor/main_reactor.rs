@@ -244,9 +244,13 @@ impl reactor::Reactor for MainReactor {
             MainEvent::MainReactorRequest(req) => {
                 req.0.respond((self.state, self.last_progress)).ignore()
             }
-            MainEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(meta_block)) => {
-                self.handle_meta_block(effect_builder, rng, self.finality_signature_creation, meta_block)
-            }
+            MainEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(meta_block)) => self
+                .handle_meta_block(
+                    effect_builder,
+                    rng,
+                    self.finality_signature_creation,
+                    meta_block,
+                ),
             MainEvent::UnexecutedBlockAnnouncement(UnexecutedBlockAnnouncement(block_height)) => {
                 let only_from_available_block_range = true;
                 if let Ok(Some(block_header)) = self
@@ -1379,7 +1383,8 @@ impl MainReactor {
             if meta_block
                 .mut_state()
                 .register_we_have_tried_to_sign()
-                .was_updated() && create_finality_signatures
+                .was_updated()
+                && create_finality_signatures
             {
                 // When this node is a validator in this era, sign and announce.
                 if let Some(finality_signature) = self

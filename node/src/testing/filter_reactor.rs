@@ -13,10 +13,10 @@ use super::network::NetworkedReactor;
 use crate::{
     components::network::Identity as NetworkIdentity,
     effect::{EffectBuilder, Effects},
+    failpoints::FailpointActivation,
     reactor::{EventQueueHandle, Finalize, Reactor},
     types::NodeId,
     NodeRng,
-    failpoints::FailpointActivation,
 };
 
 pub(crate) trait EventFilter<Ev>:
