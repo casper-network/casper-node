@@ -47,7 +47,7 @@ pub trait NodeClient: Send + Sync + 'static {
         let key = hash.to_bytes().expect("should always serialize a digest");
         self.read_from_db(DbId::Transactions, &key)
             .await?
-            .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
+            .map(bytesrepr::deserialize_from_slice)
             .transpose()
             .map_err(|err| Error::Deserialization(err.to_string()))
     }
@@ -59,7 +59,7 @@ pub trait NodeClient: Send + Sync + 'static {
         let key = hash.to_bytes().expect("should always serialize a digest");
         self.read_from_db(DbId::VersionedFinalizedApprovals, &key)
             .await?
-            .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
+            .map(bytesrepr::deserialize_from_slice)
             .transpose()
             .map_err(|err| Error::Deserialization(err.to_string()))
     }
@@ -68,7 +68,7 @@ pub trait NodeClient: Send + Sync + 'static {
         let key = hash.to_bytes().expect("should always serialize a digest");
         self.read_from_db(DbId::BlockHeaderV2, &key)
             .await?
-            .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
+            .map(bytesrepr::deserialize_from_slice)
             .transpose()
             .map_err(|err| Error::Deserialization(err.to_string()))
     }
@@ -77,7 +77,7 @@ pub trait NodeClient: Send + Sync + 'static {
         let key = hash.to_bytes().expect("should always serialize a digest");
         self.read_from_db(DbId::BlockBodyV2, &key)
             .await?
-            .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
+            .map(bytesrepr::deserialize_from_slice)
             .transpose()
             .map_err(|err| Error::Deserialization(err.to_string()))
     }
@@ -110,7 +110,7 @@ pub trait NodeClient: Send + Sync + 'static {
         let key = hash.to_bytes().expect("should always serialize a digest");
         self.read_from_db(DbId::ExecutionResults, &key)
             .await?
-            .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
+            .map(bytesrepr::deserialize_from_slice)
             .transpose()
             .map_err(|err| Error::Deserialization(err.to_string()))
     }
@@ -123,7 +123,7 @@ pub trait NodeClient: Send + Sync + 'static {
             NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { transaction_hash },
         )
         .await?
-        .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
+        .map(bytesrepr::deserialize_from_slice)
         .transpose()
         .map_err(|err| Error::Deserialization(err.to_string()))
     }
@@ -131,7 +131,7 @@ pub trait NodeClient: Send + Sync + 'static {
     async fn read_highest_completed_block_info(&self) -> Result<Option<BlockHashAndHeight>, Error> {
         self.read_from_mem(NonPersistedDataRequest::HighestCompleteBlock {})
             .await?
-            .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
+            .map(bytesrepr::deserialize_from_slice)
             .transpose()
             .map_err(|err| Error::Deserialization(err.to_string()))
     }
@@ -139,7 +139,7 @@ pub trait NodeClient: Send + Sync + 'static {
     async fn read_block_hash_from_height(&self, height: u64) -> Result<Option<BlockHash>, Error> {
         self.read_from_mem(NonPersistedDataRequest::BlockHeight2Hash { height })
             .await?
-            .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
+            .map(bytesrepr::deserialize_from_slice)
             .transpose()
             .map_err(|err| Error::Deserialization(err.to_string()))
     }
@@ -149,7 +149,7 @@ pub trait NodeClient: Send + Sync + 'static {
             .read_from_mem(NonPersistedDataRequest::CompletedBlockContains { block_hash })
             .await?
             .ok_or(Error::NoResponseBody)?;
-        bytesrepr::deserialize_from_slice(&resp)
+        bytesrepr::deserialize_from_slice(resp)
             .map_err(|err| Error::Deserialization(err.to_string()))
     }
 }
@@ -285,7 +285,7 @@ impl NodeClient for JulietNodeClient {
             .dispatch(BinaryRequest::Get(get))
             .await?
             .ok_or(Error::NoResponseBody)?;
-        bytesrepr::deserialize_from_slice(&resp)
+        bytesrepr::deserialize_from_slice(resp)
             .map_err(|err| Error::Deserialization(err.to_string()))
     }
 
@@ -299,7 +299,7 @@ impl NodeClient for JulietNodeClient {
             speculative_exec_at_block: speculative_exec_block,
         };
         let resp = self.dispatch(request).await?.ok_or(Error::NoResponseBody)?;
-        let result: Result<(), String> = bytesrepr::deserialize_from_slice(&resp)
+        let result: Result<(), String> = bytesrepr::deserialize_from_slice(resp)
             .map_err(|err| Error::Deserialization(err.to_string()))?;
         result.map_err(Error::TransactionFailed)
     }

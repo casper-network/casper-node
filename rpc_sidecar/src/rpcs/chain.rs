@@ -440,14 +440,14 @@ async fn get_era_summary_by_block(
 
     let era_summary = if !matches!(result, GlobalStateQueryResult::ValueNotFound) {
         let result = common::handle_query_result(result)?;
-        create_era_summary(&block, result.value, result.merkle_proof)
+        create_era_summary(block, result.value, result.merkle_proof)
     } else {
         let result = node_client
             .query_global_state(state_root_hash, Key::EraInfo(block.era_id()), vec![])
             .await
             .map_err(|err| Error::NodeRequest("era info", err))?;
         let result = common::handle_query_result(result)?;
-        create_era_summary(&block, result.value, result.merkle_proof)
+        create_era_summary(block, result.value, result.merkle_proof)
     };
     Ok(era_summary)
 }

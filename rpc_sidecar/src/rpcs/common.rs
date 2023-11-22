@@ -56,7 +56,7 @@ pub async fn get_signed_block(
             .read_block_hash_from_height(height)
             .await
             .map_err(|err| Error::NodeRequest("block hash from height", err))?
-            .ok_or_else(|| Error::NoBlockAtHeight(height))?,
+            .ok_or(Error::NoBlockAtHeight(height))?,
         None => *node_client
             .read_highest_completed_block_info()
             .await
@@ -78,7 +78,7 @@ pub async fn get_signed_block(
         .read_block_header(hash)
         .await
         .map_err(|err| Error::NodeRequest("block header", err))?
-        .ok_or_else(|| Error::NoBlockWithHash(hash))?;
+        .ok_or(Error::NoBlockWithHash(hash))?;
     let body = node_client
         .read_block_body(*header.body_hash())
         .await
@@ -114,14 +114,14 @@ pub async fn resolve_state_root_hash(
             .read_block_hash_from_height(height)
             .await
             .map_err(|err| Error::NodeRequest("block hash from height", err))?
-            .ok_or_else(|| Error::NoBlockAtHeight(height))?,
+            .ok_or(Error::NoBlockAtHeight(height))?,
         Some(GlobalStateIdentifier::StateRootHash(hash)) => return Ok((hash, None)),
     };
     let header = node_client
         .read_block_header(hash)
         .await
         .map_err(|err| Error::NodeRequest("block header", err))?
-        .ok_or_else(|| Error::NoBlockWithHash(hash))?;
+        .ok_or(Error::NoBlockWithHash(hash))?;
 
     Ok((*header.state_root_hash(), Some(header)))
 }
@@ -134,7 +134,7 @@ pub async fn get_transaction_with_approvals(
         .read_transaction(hash)
         .await
         .map_err(|err| Error::NodeRequest("transaction", err))?
-        .ok_or_else(|| Error::NoTransactionWithHash(hash))?;
+        .ok_or(Error::NoTransactionWithHash(hash))?;
     let approvals = node_client
         .read_finalized_approvals(hash)
         .await
