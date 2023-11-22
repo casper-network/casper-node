@@ -12,8 +12,8 @@ use bytes::Bytes;
 use casper_execution_engine::engine_state::{Error as EngineStateError, QueryRequest};
 use casper_types::{
     binary_port::{
-        binary_request::BinaryRequest, get_request::GetRequest, GlobalStateQueryResult,
-        NonPersistedDataRequest,
+        binary_request::BinaryRequest, get_request::GetRequest,
+        non_persistent_data_request::NonPersistedDataRequest, GlobalStateQueryResult,
     },
     bytesrepr::{FromBytes, ToBytes},
     BlockHashAndHeight, Transaction,
