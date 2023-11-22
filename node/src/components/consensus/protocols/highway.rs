@@ -43,6 +43,7 @@ use crate::{
         utils::ValidatorIndex,
         ActionId, TimerId,
     },
+    consensus::ValidationError,
     types::{Chainspec, NodeId},
     NodeRng,
 };
@@ -1010,10 +1011,10 @@ where
     fn resolve_validity(
         &mut self,
         proposed_block: ProposedBlock<C>,
-        valid: bool,
+        validation_error: Option<ValidationError>,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
-        if valid {
+        if validation_error.is_none() {
             let mut outcomes = self
                 .pending_values
                 .remove(&proposed_block)

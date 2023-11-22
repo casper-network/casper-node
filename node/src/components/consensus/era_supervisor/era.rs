@@ -10,10 +10,13 @@ use tracing::{debug, warn};
 
 use casper_types::{PublicKey, Timestamp, U512};
 
-use crate::components::consensus::{
-    cl_context::ClContext,
-    consensus_protocol::{ConsensusProtocol, ProposedBlock},
-    protocols::{highway::HighwayProtocol, zug::Zug},
+use crate::{
+    components::consensus::{
+        cl_context::ClContext,
+        consensus_protocol::{ConsensusProtocol, ProposedBlock},
+        protocols::{highway::HighwayProtocol, zug::Zug},
+    },
+    consensus::ValidationError,
 };
 
 const CASPER_ENABLE_DETAILED_CONSENSUS_METRICS_ENV_VAR: &str =
@@ -118,9 +121,9 @@ impl Era {
     pub(crate) fn resolve_validity(
         &mut self,
         proposed_block: &ProposedBlock<ClContext>,
-        valid: bool,
+        validation_error: Option<&ValidationError>,
     ) -> bool {
-        if valid {
+        if validation_error.is_none() {
             if let Some(vs) = self.validation_states.get_mut(proposed_block) {
                 if !vs.missing_evidence.is_empty() {
                     vs.validated = true;

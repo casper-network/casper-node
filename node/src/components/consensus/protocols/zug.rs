@@ -97,6 +97,7 @@ use crate::{
         utils::{ValidatorIndex, ValidatorMap, Validators, Weight},
         ActionId, LeaderSequence, TimerId,
     },
+    consensus::ValidationError,
     types::{Chainspec, NodeId},
     utils, NodeRng,
 };
@@ -2253,7 +2254,7 @@ where
     fn resolve_validity(
         &mut self,
         proposed_block: ProposedBlock<C>,
-        valid: bool,
+        validation_error: Option<ValidationError>,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
         let rounds_and_node_ids = self
@@ -2262,7 +2263,7 @@ where
             .into_iter()
             .flatten();
         let mut outcomes = vec![];
-        if valid {
+        if validation_error.is_none() {
             for (round_id, proposal, _sender) in rounds_and_node_ids {
                 info!(our_idx = self.our_idx(), %round_id, %proposal, "handling valid proposal");
                 if self.round_mut(round_id).insert_proposal(proposal.clone()) {
