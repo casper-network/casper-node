@@ -10,9 +10,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    binary_port::global_state::GlobalStateQueryResult,
-    Block, BlockHash, BlockHeaderV2, Digest, DigestError,
-    JsonBlockWithSignatures, Key, ProtocolVersion, StoredValue, Transfer,
+    binary_port::global_state::GlobalStateQueryResult, Block, BlockHash, BlockHeaderV2, Digest,
+    DigestError, JsonBlockWithSignatures, Key, ProtocolVersion, StoredValue, Transfer,
 };
 
 use super::{
@@ -30,10 +29,11 @@ static GET_BLOCK_RESULT: Lazy<GetBlockResult> = Lazy::new(|| GetBlockResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     block_with_signatures: Some(JsonBlockWithSignatures::example().clone()),
 });
-static GET_BLOCK_TRANSFERS_PARAMS: Lazy<GetBlockTransfersParams> =
-    Lazy::new(|| GetBlockTransfersParams {
+static GET_BLOCK_TRANSFERS_PARAMS: Lazy<GetBlockTransfersParams> = Lazy::new(|| {
+    GetBlockTransfersParams {
         block_identifier: BlockIdentifier::Hash(*BlockHash::example()),
-    });
+    }
+});
 static GET_BLOCK_TRANSFERS_RESULT: Lazy<GetBlockTransfersResult> =
     Lazy::new(|| GetBlockTransfersResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
@@ -44,11 +44,12 @@ static GET_STATE_ROOT_HASH_PARAMS: Lazy<GetStateRootHashParams> =
     Lazy::new(|| GetStateRootHashParams {
         block_identifier: BlockIdentifier::Height(BlockHeaderV2::example().height()),
     });
-static GET_STATE_ROOT_HASH_RESULT: Lazy<GetStateRootHashResult> =
-    Lazy::new(|| GetStateRootHashResult {
+static GET_STATE_ROOT_HASH_RESULT: Lazy<GetStateRootHashResult> = Lazy::new(|| {
+    GetStateRootHashResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
         state_root_hash: Some(*BlockHeaderV2::example().state_root_hash()),
-    });
+    }
+});
 static GET_ERA_INFO_PARAMS: Lazy<GetEraInfoParams> = Lazy::new(|| GetEraInfoParams {
     block_identifier: BlockIdentifier::Hash(ERA_SUMMARY.block_hash),
 });

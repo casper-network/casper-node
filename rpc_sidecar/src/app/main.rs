@@ -35,12 +35,13 @@ pub const MAX_THREAD_COUNT: usize = 512;
 /// Main function.
 fn main() -> anyhow::Result<()> {
     let num_cpus = num_cpus::get();
-    let runtime = Builder::new_multi_thread()
-        .enable_all()
-        .worker_threads(num_cpus)
-        .max_blocking_threads(MAX_THREAD_COUNT - num_cpus)
-        .build()
-        .unwrap();
+    let runtime =
+        Builder::new_multi_thread()
+            .enable_all()
+            .worker_threads(num_cpus)
+            .max_blocking_threads(MAX_THREAD_COUNT - num_cpus)
+            .build()
+            .unwrap();
 
     panic::set_hook(Box::new(panic_hook));
 

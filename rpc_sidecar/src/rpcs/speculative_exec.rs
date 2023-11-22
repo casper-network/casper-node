@@ -18,18 +18,20 @@ use super::{
     NodeClient, RpcError, RpcWithParams,
 };
 
-static SPECULATIVE_EXEC_TXN_PARAMS: Lazy<SpeculativeExecTxnParams> =
-    Lazy::new(|| SpeculativeExecTxnParams {
+static SPECULATIVE_EXEC_TXN_PARAMS: Lazy<SpeculativeExecTxnParams> = Lazy::new(|| {
+    SpeculativeExecTxnParams {
         block_identifier: Some(BlockIdentifier::Hash(*BlockHash::example())),
         transaction: Transaction::doc_example().clone(),
-    });
-static SPECULATIVE_EXEC_TXN_RESULT: Lazy<SpeculativeExecTxnResult> =
-    Lazy::new(|| SpeculativeExecTxnResult {
+    }
+});
+static SPECULATIVE_EXEC_TXN_RESULT: Lazy<SpeculativeExecTxnResult> = Lazy::new(|| {
+    SpeculativeExecTxnResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
         block_hash: *BlockHash::example(),
         execution_result: ExecutionResultV2::example().clone(),
         messages: Vec::new(),
-    });
+    }
+});
 static SPECULATIVE_EXEC_PARAMS: Lazy<SpeculativeExecParams> = Lazy::new(|| SpeculativeExecParams {
     block_identifier: Some(BlockIdentifier::Hash(*BlockHash::example())),
     deploy: Deploy::doc_example().clone(),

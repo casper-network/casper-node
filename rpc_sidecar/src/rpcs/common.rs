@@ -17,8 +17,9 @@ use super::{
     state::{GlobalStateIdentifier, PurseIdentifier},
 };
 
-pub(super) static MERKLE_PROOF: Lazy<String> = Lazy::new(|| {
-    String::from(
+pub(super) static MERKLE_PROOF: Lazy<String> =
+    Lazy::new(|| {
+        String::from(
         "01000000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a72536147614625016ef2e0949ac76e\
         55812421f755abe129b6244fe7168b77f47a72536147614625000000003529cde5c621f857f75f3810611eb4af3\
         f998caaa9d4a3413cf799f99c67db0307010000006ef2e0949ac76e55812421f755abe129b6244fe7168b77f47a\
@@ -30,7 +31,7 @@ pub(super) static MERKLE_PROOF: Lazy<String> = Lazy::new(|| {
         00000010186ff500f287e9b53f823ae1582b1fa429dfede28015125fd233a31ca04d5012002015cc42669a55467\
         a1fdf49750772bfc1aed59b9b085558eb81510e9b015a7c83b0301e3cf4a34b1db6bfa58808b686cb8fe21ebe0c\
         1bcbcee522649d2b135fe510fe3")
-});
+    });
 
 /// An enum to be used as the `data` field of a JSON-RPC error response.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
@@ -149,7 +150,9 @@ pub async fn get_transaction_execution_info(
         .read_transaction_block_info(hash)
         .await
         .map_err(|err| Error::NodeRequest("block of a transaction", err))?
-        else { return Ok(None) };
+    else {
+        return Ok(None);
+    };
     let execution_result = node_client
         .read_execution_result(hash)
         .await

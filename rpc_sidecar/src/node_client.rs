@@ -4,14 +4,13 @@ use async_trait::async_trait;
 
 use casper_types::{
     binary_port::{
-        global_state::GlobalStateQueryResult,
         binary_request::BinaryRequest, db_id::DbId, get::GetRequest,
-        non_persistent_data::NonPersistedDataRequest,
+        global_state::GlobalStateQueryResult, non_persistent_data::NonPersistedDataRequest,
     },
     bytesrepr::{self, ToBytes},
     execution::ExecutionResult,
-    BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
-    Digest, FinalizedApprovals, Key, Transaction, TransactionHash, Transfer,
+    BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures, Digest,
+    FinalizedApprovals, Key, Transaction, TransactionHash, Transfer,
 };
 use juliet::{
     io::IoCoreBuilder,
