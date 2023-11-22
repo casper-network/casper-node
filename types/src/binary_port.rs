@@ -202,28 +202,24 @@ impl FromBytes for BlockIdentifier {
     }
 }
 
-const GET_TAG: u8 = 0;
-const PUT_TRANSACTION_TAG: u8 = 1;
-const SPECULATIVE_EXEC_TAG: u8 = 2;
-const IN_MEM_REQUEST_TAG: u8 = 3;
-const GET_STATE_TAG: u8 = 4;
+const DB_TAG: u8 = 0;
+const NON_PERSISTED_DATA_TAG: u8 = 1;
+const STATE_TAG: u8 = 2;
 
-/// TODO
+/// The kind of the `Get` operation.
 #[derive(Debug)]
-pub enum BinaryRequest {
-    // TODO[RC] Add version tag, or rather follow the `BinaryRequestV1/V2` scheme.
-    // TODO[RC] All `Get` operations to be unified under a single enum variant.
+pub enum GetRequest {
     /// Gets data stored under the given key from the given db.
-    Get {
+    Db {
         /// Id of the database.
         db: DbId,
         /// Key.
         key: Vec<u8>,
     },
-    /// Gets a data which is not persisted, hence cannot be obtained by the raw `Get` request.
-    GetInMem(InMemRequest),
+    /// Gets a data which is not persisted, and build on demand by the `casper-node`.
+    NonPersistedData(NonPersistedDataRequest),
     /// Gets data from the global state.
-    GetState {
+    State {
         /// State root hash
         state_root_hash: Digest,
         /// Key under which data is stored.
@@ -231,6 +227,106 @@ pub enum BinaryRequest {
         /// Path under which the value is stored.
         path: Vec<String>,
     },
+}
+
+impl ToBytes for GetRequest {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            GetRequest::Db { db, key } => {
+                DB_TAG.write_bytes(writer)?;
+                db.write_bytes(writer)?;
+                key.write_bytes(writer)
+            }
+            GetRequest::NonPersistedData(inner) => {
+                NON_PERSISTED_DATA_TAG.write_bytes(writer)?;
+                inner.write_bytes(writer)
+            }
+            GetRequest::State {
+                state_root_hash,
+                base_key,
+                path,
+            } => {
+                STATE_TAG.write_bytes(writer)?;
+                state_root_hash.write_bytes(writer)?;
+                base_key.write_bytes(writer)?;
+                path.write_bytes(writer)
+            }
+        }
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+            + match self {
+                GetRequest::Db { db, key } => db.serialized_length() + key.serialized_length(),
+                GetRequest::NonPersistedData(inner) => inner.serialized_length(),
+                GetRequest::State {
+                    state_root_hash,
+                    base_key,
+                    path,
+                } => {
+                    state_root_hash.serialized_length()
+                        + base_key.serialized_length()
+                        + path.serialized_length()
+                }
+            }
+    }
+}
+
+impl FromBytes for GetRequest {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            DB_TAG => {
+                let (db, remainder) = DbId::from_bytes(remainder)?;
+                let (key, remainder) = Bytes::from_bytes(remainder)?;
+                Ok((
+                    GetRequest::Db {
+                        db,
+                        key: key.into(),
+                    },
+                    remainder,
+                ))
+            }
+            NON_PERSISTED_DATA_TAG => {
+                let (non_persisted_data, remainder) =
+                    NonPersistedDataRequest::from_bytes(remainder)?;
+                Ok((GetRequest::NonPersistedData(non_persisted_data), remainder))
+            }
+            STATE_TAG => {
+                let (state_root_hash, remainder) = Digest::from_bytes(remainder)?;
+                let (base_key, remainder) = Key::from_bytes(remainder)?;
+                let (path, remainder) = Vec::<String>::from_bytes(remainder)?;
+                Ok((
+                    GetRequest::State {
+                        state_root_hash,
+                        base_key,
+                        path,
+                    },
+                    remainder,
+                ))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+const GET_TAG: u8 = 0;
+const TRY_ACCEPT_TRANSACTION_TAG: u8 = 1;
+const SPECULATIVE_EXEC_TAG: u8 = 2;
+
+/// A request to the binary access interface.
+// TODO[RC] Add version tag, or rather follow the `BinaryRequestV1/V2` scheme.
+// TODO[RC] All `Get` operations to be unified under a single enum variant.
+#[derive(Debug)]
+pub enum BinaryRequest {
+    /// Request to get data from the node
+    Get(GetRequest),
     /// Request to add a transaction into a blockchain.
     TryAcceptTransaction {
         /// Transaction to be handled.
@@ -260,16 +356,15 @@ impl ToBytes for BinaryRequest {
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            BinaryRequest::Get { db, key } => {
+            BinaryRequest::Get(inner) => {
                 GET_TAG.write_bytes(writer)?;
-                db.write_bytes(writer)?;
-                key.write_bytes(writer)
+                inner.write_bytes(writer)
             }
             BinaryRequest::TryAcceptTransaction {
                 transaction,
                 speculative_exec_at_block,
             } => {
-                PUT_TRANSACTION_TAG.write_bytes(writer)?;
+                TRY_ACCEPT_TRANSACTION_TAG.write_bytes(writer)?;
                 transaction.write_bytes(writer)?;
                 speculative_exec_at_block.write_bytes(writer)
             }
@@ -285,27 +380,13 @@ impl ToBytes for BinaryRequest {
                 block_time.write_bytes(writer)?;
                 protocol_version.write_bytes(writer)
             }
-            BinaryRequest::GetInMem(req) => {
-                IN_MEM_REQUEST_TAG.write_bytes(writer)?;
-                req.write_bytes(writer)
-            }
-            BinaryRequest::GetState {
-                state_root_hash,
-                base_key,
-                path,
-            } => {
-                GET_STATE_TAG.write_bytes(writer)?;
-                state_root_hash.write_bytes(writer)?;
-                base_key.write_bytes(writer)?;
-                path.write_bytes(writer)
-            }
         }
     }
 
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                BinaryRequest::Get { db, key } => db.serialized_length() + key.serialized_length(),
+                BinaryRequest::Get(inner) => inner.serialized_length(),
                 BinaryRequest::TryAcceptTransaction {
                     transaction,
                     speculative_exec_at_block,
@@ -323,16 +404,6 @@ impl ToBytes for BinaryRequest {
                         + block_time.serialized_length()
                         + protocol_version.serialized_length()
                 }
-                BinaryRequest::GetInMem(req) => req.serialized_length(),
-                BinaryRequest::GetState {
-                    state_root_hash,
-                    base_key,
-                    path,
-                } => {
-                    state_root_hash.serialized_length()
-                        + base_key.serialized_length()
-                        + path.serialized_length()
-                }
             }
     }
 }
@@ -342,21 +413,10 @@ impl FromBytes for BinaryRequest {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
             GET_TAG => {
-                let (db, remainder) = DbId::from_bytes(remainder)?;
-                let (key, remainder) = Bytes::from_bytes(remainder)?;
-                Ok((
-                    BinaryRequest::Get {
-                        db,
-                        key: key.into(),
-                    },
-                    remainder,
-                ))
+                let (get_request, remainder) = GetRequest::from_bytes(remainder)?;
+                Ok((BinaryRequest::Get(get_request), remainder))
             }
-            IN_MEM_REQUEST_TAG => {
-                let (in_mem_request, remainder) = InMemRequest::from_bytes(remainder)?;
-                Ok((BinaryRequest::GetInMem(in_mem_request), remainder))
-            }
-            PUT_TRANSACTION_TAG => {
+            TRY_ACCEPT_TRANSACTION_TAG => {
                 let (transaction, remainder) = Transaction::from_bytes(remainder)?;
                 let (speculative_exec_at_block, remainder) =
                     Option::<BlockHeader>::from_bytes(remainder)?;
@@ -383,19 +443,6 @@ impl FromBytes for BinaryRequest {
                     remainder,
                 ))
             }
-            GET_STATE_TAG => {
-                let (state_root_hash, remainder) = Digest::from_bytes(remainder)?;
-                let (base_key, remainder) = Key::from_bytes(remainder)?;
-                let (path, remainder) = Vec::<String>::from_bytes(remainder)?;
-                Ok((
-                    BinaryRequest::GetState {
-                        state_root_hash,
-                        base_key,
-                        path,
-                    },
-                    remainder,
-                ))
-            }
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
@@ -406,9 +453,9 @@ const HIGHEST_BLOCK_TAG: u8 = 1;
 const COMPLETED_BLOCK_CONTAINS_TAG: u8 = 2;
 const TRANSACTION_HASH_2_BLOCK_HASH_AND_HEIGHT_TAG: u8 = 3;
 
-/// Request for in-memory data.
+/// Request for data
 #[derive(Debug)]
-pub enum InMemRequest {
+pub enum NonPersistedDataRequest {
     /// Returns hash for a given height.
     BlockHeight2Hash {
         /// Block height.
@@ -428,7 +475,7 @@ pub enum InMemRequest {
     },
 }
 
-impl ToBytes for InMemRequest {
+impl ToBytes for NonPersistedDataRequest {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         self.write_bytes(&mut buffer)?;
@@ -437,16 +484,16 @@ impl ToBytes for InMemRequest {
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            InMemRequest::BlockHeight2Hash { height } => {
+            NonPersistedDataRequest::BlockHeight2Hash { height } => {
                 BLOCK_HEIGHT_2_HASH_TAG.write_bytes(writer)?;
                 height.write_bytes(writer)
             }
-            InMemRequest::HighestCompleteBlock => HIGHEST_BLOCK_TAG.write_bytes(writer),
-            InMemRequest::CompletedBlockContains { block_hash } => {
+            NonPersistedDataRequest::HighestCompleteBlock => HIGHEST_BLOCK_TAG.write_bytes(writer),
+            NonPersistedDataRequest::CompletedBlockContains { block_hash } => {
                 COMPLETED_BLOCK_CONTAINS_TAG.write_bytes(writer)?;
                 block_hash.write_bytes(writer)
             }
-            InMemRequest::TransactionHash2BlockHashAndHeight { transaction_hash } => {
+            NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { transaction_hash } => {
                 TRANSACTION_HASH_2_BLOCK_HASH_AND_HEIGHT_TAG.write_bytes(writer)?;
                 transaction_hash.write_bytes(writer)
             }
@@ -456,38 +503,43 @@ impl ToBytes for InMemRequest {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                InMemRequest::BlockHeight2Hash { height } => height.serialized_length(),
-                InMemRequest::HighestCompleteBlock => 0,
-                InMemRequest::CompletedBlockContains { block_hash } => {
+                NonPersistedDataRequest::BlockHeight2Hash { height } => height.serialized_length(),
+                NonPersistedDataRequest::HighestCompleteBlock => 0,
+                NonPersistedDataRequest::CompletedBlockContains { block_hash } => {
                     block_hash.serialized_length()
                 }
-                InMemRequest::TransactionHash2BlockHashAndHeight { transaction_hash } => {
-                    transaction_hash.serialized_length()
-                }
+                NonPersistedDataRequest::TransactionHash2BlockHashAndHeight {
+                    transaction_hash,
+                } => transaction_hash.serialized_length(),
             }
     }
 }
 
-impl FromBytes for InMemRequest {
+impl FromBytes for NonPersistedDataRequest {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
             BLOCK_HEIGHT_2_HASH_TAG => {
                 let (height, remainder) = u64::from_bytes(remainder)?;
-                Ok((InMemRequest::BlockHeight2Hash { height }, remainder))
+                Ok((
+                    NonPersistedDataRequest::BlockHeight2Hash { height },
+                    remainder,
+                ))
             }
-            HIGHEST_BLOCK_TAG => Ok((InMemRequest::HighestCompleteBlock, remainder)),
+            HIGHEST_BLOCK_TAG => Ok((NonPersistedDataRequest::HighestCompleteBlock, remainder)),
             COMPLETED_BLOCK_CONTAINS_TAG => {
                 let (block_hash, remainder) = BlockHash::from_bytes(remainder)?;
                 Ok((
-                    InMemRequest::CompletedBlockContains { block_hash },
+                    NonPersistedDataRequest::CompletedBlockContains { block_hash },
                     remainder,
                 ))
             }
             TRANSACTION_HASH_2_BLOCK_HASH_AND_HEIGHT_TAG => {
                 let (transaction_hash, remainder) = TransactionHash::from_bytes(remainder)?;
                 Ok((
-                    InMemRequest::TransactionHash2BlockHashAndHeight { transaction_hash },
+                    NonPersistedDataRequest::TransactionHash2BlockHashAndHeight {
+                        transaction_hash,
+                    },
                     remainder,
                 ))
             }

@@ -11,7 +11,7 @@ use std::{net::SocketAddr, sync::Arc};
 use bytes::Bytes;
 use casper_execution_engine::engine_state::{Error as EngineStateError, QueryRequest};
 use casper_types::{
-    binary_port::{BinaryRequest, GlobalStateQueryResult, InMemRequest},
+    binary_port::{BinaryRequest, GetRequest, GlobalStateQueryResult, NonPersistedDataRequest},
     bytesrepr::{FromBytes, ToBytes},
     BlockHashAndHeight, Transaction,
 };
@@ -139,10 +139,6 @@ where
         + From<AcceptTransactionRequest>,
 {
     match req {
-        BinaryRequest::Get { key, db } => Ok(effect_builder
-            .get_raw_data(db, key)
-            .await
-            .map(|raw_data| Bytes::from(raw_data))),
         BinaryRequest::TryAcceptTransaction {
             transaction,
             speculative_exec_at_block,
@@ -230,60 +226,72 @@ where
                 .into();
             Ok(Some(bytes))
         }
-        BinaryRequest::GetInMem(req) => match req {
-            InMemRequest::BlockHeight2Hash { height } => {
-                let block_hash = effect_builder.get_block_hash_for_height(height).await;
-                let payload = block_hash
-                    .map(|data| data.to_bytes().map(Bytes::from))
-                    .transpose()
-                    .map_err(|err| Error::BytesRepr(err))?;
-                Ok(payload)
-            }
-            InMemRequest::HighestCompleteBlock => {
-                let block_hash_and_height = effect_builder
-                    .get_highest_complete_block_header_from_storage()
+        BinaryRequest::Get(req) => match req {
+            GetRequest::Db { db, key } => Ok(effect_builder
+                .get_raw_data(db, key)
+                .await
+                .map(|raw_data| Bytes::from(raw_data))),
+            GetRequest::NonPersistedData(req) => match req {
+                NonPersistedDataRequest::BlockHeight2Hash { height } => {
+                    let block_hash = effect_builder.get_block_hash_for_height(height).await;
+                    let payload = block_hash
+                        .map(|data| data.to_bytes().map(Bytes::from))
+                        .transpose()
+                        .map_err(|err| Error::BytesRepr(err))?;
+                    Ok(payload)
+                }
+                NonPersistedDataRequest::HighestCompleteBlock => {
+                    let block_hash_and_height = effect_builder
+                        .get_highest_complete_block_header_from_storage()
+                        .await
+                        .map(|block_header| {
+                            BlockHashAndHeight::new(
+                                block_header.block_hash(),
+                                block_header.height(),
+                            )
+                        });
+                    let payload = block_hash_and_height
+                        .map(|data| data.to_bytes().map(Bytes::from))
+                        .transpose()
+                        .map_err(|err| Error::BytesRepr(err))?;
+                    Ok(payload)
+                }
+                NonPersistedDataRequest::CompletedBlockContains { block_hash } => {
+                    let val = effect_builder
+                        .highest_completed_block_sequence_contains_hash(block_hash)
+                        .await;
+                    let payload = ToBytes::to_bytes(&val).map_err(|err| Error::BytesRepr(err))?;
+                    Ok(Some(Bytes::from(payload)))
+                }
+                NonPersistedDataRequest::TransactionHash2BlockHashAndHeight {
+                    transaction_hash,
+                } => {
+                    let block_hash_and_height = effect_builder
+                        .get_block_hash_and_height_for_transaction(transaction_hash)
+                        .await;
+                    let payload = block_hash_and_height
+                        .map(|data| data.to_bytes().map(Bytes::from))
+                        .transpose()
+                        .map_err(|err| Error::BytesRepr(err))?;
+                    Ok(payload)
+                }
+            },
+            GetRequest::State {
+                state_root_hash,
+                base_key,
+                path,
+            } => {
+                let query_result: GlobalStateQueryResult = effect_builder
+                    .query_global_state(QueryRequest::new(state_root_hash, base_key, path))
                     .await
-                    .map(|block_header| {
-                        BlockHashAndHeight::new(block_header.block_hash(), block_header.height())
-                    });
-                let payload = block_hash_and_height
-                    .map(|data| data.to_bytes().map(Bytes::from))
-                    .transpose()
-                    .map_err(|err| Error::BytesRepr(err))?;
-                Ok(payload)
-            }
-            InMemRequest::CompletedBlockContains { block_hash } => {
-                let val = effect_builder
-                    .highest_completed_block_sequence_contains_hash(block_hash)
-                    .await;
-                let payload = ToBytes::to_bytes(&val).map_err(|err| Error::BytesRepr(err))?;
-                Ok(Some(Bytes::from(payload)))
-            }
-            InMemRequest::TransactionHash2BlockHashAndHeight { transaction_hash } => {
-                let block_hash_and_height = effect_builder
-                    .get_block_hash_and_height_for_transaction(transaction_hash)
-                    .await;
-                let payload = block_hash_and_height
-                    .map(|data| data.to_bytes().map(Bytes::from))
-                    .transpose()
-                    .map_err(|err| Error::BytesRepr(err))?;
-                Ok(payload)
+                    .map_err(|err| Error::EngineState(err))?
+                    .into();
+
+                let payload =
+                    ToBytes::to_bytes(&query_result).map_err(|err| Error::BytesRepr(err))?;
+                Ok(Some(payload.into()))
             }
         },
-        BinaryRequest::GetState {
-            state_root_hash,
-            base_key,
-            path,
-        } => {
-            let query_result: GlobalStateQueryResult = effect_builder
-                .query_global_state(QueryRequest::new(state_root_hash, base_key, path))
-                .await
-                .map_err(|err| Error::EngineState(err))?
-                .into();
-
-            let payload = ToBytes::to_bytes(&query_result).map_err(|err| Error::BytesRepr(err))?;
-            Ok(Some(payload.into()))
-        }
     }
 }
 

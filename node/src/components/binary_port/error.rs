@@ -6,18 +6,10 @@ use crate::components::transaction_acceptor;
 
 #[derive(Debug, Error)]
 pub(crate) enum SpeculativeExecutionError {
-    // EngineStateError::RootNotFound(_) => Error::new(ErrorCode::NoSuchStateRoot, ""),
     #[error("No such state root")]
     NoSuchStateRoot,
-
-    // EngineStateError::InvalidDeployItemVariant(error)
-    // EngineStateError::WasmPreprocessing(error) => { Error::new(ErrorCode::InvalidDeploy, error.to_string())}
-    // EngineStateError::InvalidProtocolVersion(_) => Error::new(ErrorCode::InvalidDeploy, format!("deploy used invalid protocol version {}", error),),
-    // EngineStateError::Deploy
     #[error("Invalid deploy: {}", _0)]
     InvalidDeploy(String),
-
-    // Error::new(ReservedErrorCode::InternalError, error.to_string())
     #[error("Internal error: {}", _0)]
     InternalError(String),
 }
