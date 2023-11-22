@@ -1912,6 +1912,7 @@ async fn rewards_are_calculated() {
 const VALIDATOR_SLOTS: u32 = 10;
 const NETWORK_SIZE: u64 = 10;
 const STAKE: u64 = 1000000000;
+const PRIME_STAKES: &'static [u64; 5] = &[106907u64, 106921u64, 106937u64, 106949u64, 106957u64];
 const ERA_COUNT: u64 = 3;
 const ERA_DURATION: u64 = 30000; //milliseconds
 const MIN_HEIGHT: u64 = 10;
@@ -2139,7 +2140,7 @@ async fn run_rewards_network_scenario(
                     .for_each(|block: &Block| {
                         // Block production rewards
                         let proposer = block.proposer().clone();
-                        add_to_rewards(proposer.clone(), block_reward, &mut recomputed_era_rewards, i, &mut recomputed_total_supply);
+                        add_to_rewards(proposer.clone(), block_reward.trunc(), &mut recomputed_era_rewards, i, &mut recomputed_total_supply);
 
                         // Recover relevant finality signatures
                         // TODO: Deal with the implicit assumption that lookback only look backs one previous era
@@ -2152,24 +2153,24 @@ async fn run_rewards_network_scenario(
                                     rewarded_contributors
                                         .iter()
                                         .for_each(|contributor| {
-                                            let contributor_proportion = Ratio::from(previous_era_slated_weights.as_ref().expect("expected previous era weights")
+                                            let contributor_proportion = Ratio::new(previous_era_slated_weights.as_ref().expect("expected previous era weights")
                                                 .get(contributor)
-                                                .expect("expected current era validator").as_u64())
-                                                / total_previous_era_weights.expect("expected total previous era weight");
-                                            add_to_rewards(proposer.clone(), chain.chainspec.core_config.finders_fee * contributor_proportion * previous_signatures_reward.unwrap(), &mut recomputed_era_rewards, i, &mut recomputed_total_supply);
-                                            add_to_rewards(contributor.clone(), (Ratio::new(1, 1) - chain.chainspec.core_config.finders_fee) * contributor_proportion * previous_signatures_reward.unwrap(), &mut recomputed_era_rewards, i, &mut recomputed_total_supply)
+                                                .expect("expected current era validator").as_u64(),
+                                                total_previous_era_weights.expect("expected total previous era weight"));
+                                            add_to_rewards(proposer.clone(), (chain.chainspec.core_config.finders_fee * contributor_proportion * previous_signatures_reward.unwrap()).trunc(), &mut recomputed_era_rewards, i, &mut recomputed_total_supply);
+                                            add_to_rewards(contributor.clone(), ((Ratio::new(1, 1) - chain.chainspec.core_config.finders_fee) * contributor_proportion * previous_signatures_reward.unwrap()).trunc(), &mut recomputed_era_rewards, i, &mut recomputed_total_supply)
                                         });
                                 } else {
                                     let rewarded_contributors = signatures_packed.to_validator_set(current_era_slated_weights.keys().map(|key| key.clone()).collect::<BTreeSet<PublicKey>>());
                                     rewarded_contributors
                                         .iter()
                                         .for_each(|contributor| {
-                                            let contributor_proportion = Ratio::from(current_era_slated_weights
+                                            let contributor_proportion = Ratio::new(current_era_slated_weights
                                                 .get(contributor)
-                                                .expect("expected current era validator").as_u64())
-                                                / total_current_era_weights;
-                                            add_to_rewards(proposer.clone(), chain.chainspec.core_config.finders_fee * contributor_proportion * signatures_reward, &mut recomputed_era_rewards, i, &mut recomputed_total_supply);
-                                            add_to_rewards(contributor.clone(), (Ratio::new(1, 1) - chain.chainspec.core_config.finders_fee) * contributor_proportion * signatures_reward, &mut recomputed_era_rewards, i, &mut recomputed_total_supply);
+                                                .expect("expected current era validator").as_u64(),
+                                                total_current_era_weights);
+                                            add_to_rewards(proposer.clone(), (chain.chainspec.core_config.finders_fee * contributor_proportion * signatures_reward).trunc(), &mut recomputed_era_rewards, i, &mut recomputed_total_supply);
+                                            add_to_rewards(contributor.clone(), ((Ratio::new(1, 1) - chain.chainspec.core_config.finders_fee) * contributor_proportion * signatures_reward).trunc(), &mut recomputed_era_rewards, i, &mut recomputed_total_supply);
                                         });
                                 }
                             });
@@ -2183,7 +2184,7 @@ async fn run_rewards_network_scenario(
         .iter()
         .for_each(|header|
             if header.height() <= highest_completed_height {
-                assert_eq!(Ratio::<u64>::from(total_supply[header.height() as usize].as_u64()), *(recomputed_total_supply.get(&(header.era_id().value() as usize)).expect("expected recalculated supply")))
+                assert_eq!(Ratio::<u64>::from(total_supply[header.height() as usize].as_u64()), *(recomputed_total_supply.get(&(header.era_id().value() as usize)).expect("expected recalculated supply")), "total supply does not match at height {}", header.height())
             } else {}
         );
 
@@ -2201,12 +2202,54 @@ async fn run_rewards_network_scenario(
                         .fold(Ratio::from(0u64), |acc, reward| Ratio::<u64>::from(reward.1.as_u64()) + acc),
                 };
                 let recomputed_total_rewards = rewards.iter().fold(Ratio::from(0u64), |acc, x| x.1 + acc);
-                assert_eq!(Ratio::<u64>::from(recomputed_total_rewards), Ratio::<u64>::from(observed_total_rewards));
-                assert_eq!(Ratio::<u64>::from(recomputed_total_rewards), recomputed_total_supply.get(era).expect("expected recalculated supply") - recomputed_total_supply.get(&(era - &1)).expect("expected recalculated supply"))
+                assert_eq!(Ratio::<u64>::from(recomputed_total_rewards), Ratio::<u64>::from(observed_total_rewards), "total rewards do not match at era {}", era);
+                assert_eq!(Ratio::<u64>::from(recomputed_total_rewards), recomputed_total_supply.get(era).expect("expected recalculated supply") - recomputed_total_supply.get(&(era - &1)).expect("expected recalculated supply"), "supply growth does not match rewards at era {}", era)
             }
         }
         )
 
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "failpoints"), ignore)]
+async fn run_reward_network_zug_all_finality_small_prime_five_eras() {
+    run_rewards_network_scenario(
+        crate::new_rng(),
+        CONSENSUS_ZUG,
+        PRIME_STAKES,
+        5,
+        ERA_DURATION,
+        MIN_HEIGHT,
+        BLOCK_TIME,
+        TIME_OUT,
+        SEIGNIORAGE,
+        FINDERS_FEE_ZERO,
+        FINALITY_SIG_PROP_ONE,
+        FINALITY_SIG_LOOKBACK,
+        REPRESENTATIVE_NODE_INDEX,
+        &[]
+    ).await;
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "failpoints"), ignore)]
+async fn run_reward_network_zug_all_finality_small_prime_five_eras_no_lookback() {
+    run_rewards_network_scenario(
+        crate::new_rng(),
+        CONSENSUS_ZUG,
+        PRIME_STAKES,
+        5,
+        ERA_DURATION,
+        MIN_HEIGHT,
+        BLOCK_TIME,
+        TIME_OUT,
+        SEIGNIORAGE,
+        FINDERS_FEE_ZERO,
+        FINALITY_SIG_PROP_ONE,
+        0u64,
+        REPRESENTATIVE_NODE_INDEX,
+        &[]
+    ).await;
 }
 
 #[tokio::test]
