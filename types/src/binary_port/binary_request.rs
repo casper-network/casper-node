@@ -5,7 +5,7 @@ use crate::{
     BlockHeader, Digest, ProtocolVersion, Timestamp, Transaction,
 };
 
-use super::get_request::GetRequest;
+use super::get::GetRequest;
 
 const GET_TAG: u8 = 0;
 const TRY_ACCEPT_TRANSACTION_TAG: u8 = 1;

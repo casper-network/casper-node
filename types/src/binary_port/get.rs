@@ -5,7 +5,7 @@ use crate::{
     Digest, Key,
 };
 
-use super::{db_id::DbId, non_persistent_data_request::NonPersistedDataRequest};
+use super::{db_id::DbId, non_persistent_data::NonPersistedDataRequest};
 
 const DB_TAG: u8 = 0;
 const NON_PERSISTED_DATA_TAG: u8 = 1;

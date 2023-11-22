@@ -1,7 +1,7 @@
 //! Support for global state queries.
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
-    binary_port::global_state_query_result::GlobalStateQueryResult, bytesrepr::ToBytes, Digest,
+    binary_port::global_state::GlobalStateQueryResult, bytesrepr::ToBytes, Digest,
     Key, StoredValue,
 };
 
