@@ -19,7 +19,7 @@ pub const SPECULATIVE_EXEC_API_PATH: &str = "rpc";
 pub const SPECULATIVE_EXEC_SERVER_NAME: &str = "speculative execution";
 
 /// Run the speculative execution server.
-pub(super) async fn run(
+pub async fn run(
     node: Arc<dyn NodeClient>,
     builder: Builder<AddrIncoming>,
     api_version: ProtocolVersion,

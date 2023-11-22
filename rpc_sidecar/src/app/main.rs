@@ -6,7 +6,10 @@ use std::{
 };
 
 use anyhow::Context;
-use casper_rpc_sidecar::{run_server, Config, JulietNodeClient};
+use casper_rpc_sidecar::{
+    run_rpc_server, run_speculative_exec_server, Config, JulietNodeClient, NodeClient,
+    SpeculativeExecConfig,
+};
 use casper_types::ProtocolVersion;
 
 use hyper::{
@@ -45,25 +48,58 @@ fn main() -> anyhow::Result<()> {
 
     panic::set_hook(Box::new(panic_hook));
 
+    init_logging()?;
+
     // Parse CLI args and run selected subcommand.
     let opts = Cli::from_args();
-    let config = load_config(&opts.config)?;
-    init_logging()?;
-    runtime.block_on(run(config, opts.protocol_version))
+    runtime.block_on(run_all(&opts))
 }
 
-async fn run(config: Config, version: ProtocolVersion) -> anyhow::Result<()> {
-    let builder = start_listening(&config.address)?;
+async fn run_all(opts: &Cli) -> anyhow::Result<()> {
+    let (config, speculative_exec_config) = load_config(&opts.config)?;
+    // TODO: determine the node port properly
     let (node_client, client_loop) = JulietNodeClient::new(([127, 0, 0, 1], 28104)).await;
-    let server_loop = run_server(
-        Arc::new(node_client),
-        builder,
+    let node_client: Arc<dyn NodeClient> = Arc::new(node_client);
+
+    let (rpc_result, spec_exec_result, ()) = tokio::join!(
+        run_rpc(config, opts.protocol_version, Arc::clone(&node_client)),
+        run_speculative_exec(speculative_exec_config, opts.protocol_version, node_client),
+        client_loop
+    );
+    rpc_result.and(spec_exec_result)
+}
+
+async fn run_rpc(
+    config: Config,
+    version: ProtocolVersion,
+    node_client: Arc<dyn NodeClient>,
+) -> anyhow::Result<()> {
+    run_rpc_server(
+        node_client,
+        start_listening(&config.address)?,
         version,
         config.qps_limit,
         config.max_body_bytes,
         config.cors_origin.clone(),
-    );
-    tokio::join!(client_loop, server_loop);
+    )
+    .await;
+    Ok(())
+}
+
+async fn run_speculative_exec(
+    config: SpeculativeExecConfig,
+    version: ProtocolVersion,
+    node_client: Arc<dyn NodeClient>,
+) -> anyhow::Result<()> {
+    run_speculative_exec_server(
+        node_client,
+        start_listening(&config.address)?,
+        version,
+        config.qps_limit,
+        config.max_body_bytes,
+        config.cors_origin.clone(),
+    )
+    .await;
     Ok(())
 }
 
@@ -87,7 +123,7 @@ fn resolve_address(address: &str) -> anyhow::Result<SocketAddr> {
         .ok_or_else(|| anyhow::anyhow!("failed to resolve address"))
 }
 
-fn load_config(config: &Path) -> anyhow::Result<Config> {
+fn load_config(config: &Path) -> anyhow::Result<(Config, SpeculativeExecConfig)> {
     // The app supports running without a config file, using default values.
     let encoded_config = fs::read_to_string(config)
         .context("could not read configuration file")
@@ -96,11 +132,16 @@ fn load_config(config: &Path) -> anyhow::Result<Config> {
     // Get the TOML table version of the config indicated from CLI args, or from a new
     // defaulted config instance if one is not provided.
     let mut config_table: toml::value::Table = toml::from_str(&encoded_config)?;
+
+    // TODO: currently just reading the config from the node file, probably should be custom
     let config = config_table
         .remove("rpc_server")
         .ok_or_else(|| anyhow::anyhow!("sidecar config not found"))?;
+    let speculative_exec_config = config_table
+        .remove("speculative_exec_server")
+        .ok_or_else(|| anyhow::anyhow!("sidecar speculative exec config not found"))?;
 
-    Ok(config.try_into()?)
+    Ok((config.try_into()?, speculative_exec_config.try_into()?))
 }
 
 /// Aborting panic hook.
@@ -177,6 +218,7 @@ fn init_logging() -> anyhow::Result<()> {
 pub struct Cli {
     /// Path to configuration file.
     config: PathBuf,
+    // TODO: this is here temporarily, it should be requested from the node
     /// Version of the protocol.
     protocol_version: ProtocolVersion,
 }

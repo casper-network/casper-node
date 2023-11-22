@@ -232,8 +232,8 @@ impl RpcWithParams for GetBalance {
         api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
-        let purse_uref = URef::from_formatted_str(&params.purse_uref)
-            .map_err(Error::InvalidPurseURef)?;
+        let purse_uref =
+            URef::from_formatted_str(&params.purse_uref).map_err(Error::InvalidPurseURef)?;
         let result = common::get_balance(&*node_client, purse_uref, params.state_root_hash).await?;
         Ok(Self::ResponseResult {
             api_version,
@@ -515,8 +515,7 @@ impl RpcWithParams for GetDictionaryItem {
         let dictionary_key = match params.dictionary_identifier {
             DictionaryIdentifier::AccountNamedKey { ref key, .. }
             | DictionaryIdentifier::ContractNamedKey { ref key, .. } => {
-                let base_key = Key::from_formatted_str(key)
-                    .map_err(Error::InvalidDictionaryKey)?;
+                let base_key = Key::from_formatted_str(key).map_err(Error::InvalidDictionaryKey)?;
                 let result = node_client
                     .query_global_state(params.state_root_hash, base_key, vec![])
                     .await
