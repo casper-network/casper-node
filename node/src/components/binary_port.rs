@@ -11,7 +11,9 @@ use std::{net::SocketAddr, sync::Arc};
 use bytes::Bytes;
 use casper_execution_engine::engine_state::{Error as EngineStateError, QueryRequest};
 use casper_types::{
-    binary_port::{BinaryRequest, GetRequest, GlobalStateQueryResult, NonPersistedDataRequest},
+    binary_port::{
+        get_request::GetRequest, BinaryRequest, GlobalStateQueryResult, NonPersistedDataRequest,
+    },
     bytesrepr::{FromBytes, ToBytes},
     BlockHashAndHeight, Transaction,
 };
