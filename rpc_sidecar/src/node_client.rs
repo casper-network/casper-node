@@ -115,11 +115,13 @@ pub trait NodeClient: Send + Sync + 'static {
         &self,
         transaction_hash: TransactionHash,
     ) -> Result<Option<BlockHashAndHeight>, Error> {
-        self.read_from_mem(NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { transaction_hash })
-            .await?
-            .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
-            .transpose()
-            .map_err(|err| Error::Deserialization(err.to_string()))
+        self.read_from_mem(
+            NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { transaction_hash },
+        )
+        .await?
+        .map(|bytes| bytesrepr::deserialize_from_slice(&bytes))
+        .transpose()
+        .map_err(|err| Error::Deserialization(err.to_string()))
     }
 
     async fn read_highest_completed_block_info(&self) -> Result<Option<BlockHashAndHeight>, Error> {
@@ -271,9 +273,12 @@ impl NodeClient for JulietNodeClient {
         let get = GetRequest::State {
             state_root_hash,
             base_key,
-            path: path.to_vec(),
+            path,
         };
-        let resp = self.dispatch(BinaryRequest::Get(get)).await?.ok_or(Error::NoResponseBody)?;
+        let resp = self
+            .dispatch(BinaryRequest::Get(get))
+            .await?
+            .ok_or(Error::NoResponseBody)?;
         bytesrepr::deserialize_from_slice(&resp)
             .map_err(|err| Error::Deserialization(err.to_string()))
     }
