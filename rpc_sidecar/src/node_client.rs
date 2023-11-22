@@ -8,9 +8,10 @@ use casper_types::{
         global_state::GlobalStateQueryResult, non_persistent_data::NonPersistedDataRequest,
     },
     bytesrepr::{self, ToBytes},
-    execution::ExecutionResult,
+    contract_messages::Message,
+    execution::{ExecutionResult, ExecutionResultV2},
     BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures, Digest,
-    FinalizedApprovals, Key, Transaction, TransactionHash, Transfer,
+    FinalizedApprovals, Key, ProtocolVersion, Timestamp, Transaction, TransactionHash, Transfer,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -42,6 +43,13 @@ pub trait NodeClient: Send + Sync + 'static {
         transaction: Transaction,
         speculative_exec_block: Option<BlockHeader>,
     ) -> Result<(), Error>;
+    async fn exec_speculatively(
+        &self,
+        state_root_hash: Digest,
+        block_time: Timestamp,
+        protocol_version: ProtocolVersion,
+        transaction: Transaction,
+    ) -> Result<Option<(ExecutionResultV2, Vec<Message>)>, Error>;
 
     async fn read_transaction(&self, hash: TransactionHash) -> Result<Option<Transaction>, Error> {
         let key = hash.to_bytes().expect("should always serialize a digest");
@@ -166,6 +174,8 @@ pub enum Error {
     NoResponseBody,
     #[error("transaction failed: {0}")]
     TransactionFailed(String),
+    #[error("speculative execution failed: {0}")]
+    SpeculativeExecFailed(String),
 }
 
 const CHANNEL_COUNT: usize = 1;
@@ -302,5 +312,25 @@ impl NodeClient for JulietNodeClient {
         let result: Result<(), String> = bytesrepr::deserialize_from_slice(resp)
             .map_err(|err| Error::Deserialization(err.to_string()))?;
         result.map_err(Error::TransactionFailed)
+    }
+
+    async fn exec_speculatively(
+        &self,
+        state_root_hash: Digest,
+        block_time: Timestamp,
+        protocol_version: ProtocolVersion,
+        transaction: Transaction,
+    ) -> Result<Option<(ExecutionResultV2, Vec<Message>)>, Error> {
+        let request = BinaryRequest::SpeculativeExec {
+            transaction,
+            state_root_hash,
+            block_time,
+            protocol_version,
+        };
+        let resp = self.dispatch(request).await?.ok_or(Error::NoResponseBody)?;
+        let result: Result<Option<(ExecutionResultV2, Vec<Message>)>, String> =
+            bytesrepr::deserialize_from_slice(resp)
+                .map_err(|err| Error::Deserialization(err.to_string()))?;
+        result.map_err(Error::SpeculativeExecFailed)
     }
 }

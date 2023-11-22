@@ -14,8 +14,9 @@ use casper_types::{
 
 use super::{
     chain::BlockIdentifier,
+    common,
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-    NodeClient, RpcError, RpcWithParams,
+    Error, NodeClient, RpcError, RpcWithParams,
 };
 
 static SPECULATIVE_EXEC_TXN_PARAMS: Lazy<SpeculativeExecTxnParams> = Lazy::new(|| {
@@ -139,10 +140,34 @@ impl RpcWithParams for SpeculativeExec {
 }
 
 async fn handle_request(
-    _node_client: Arc<dyn NodeClient>,
-    _api_version: ProtocolVersion,
-    _maybe_block_id: Option<BlockIdentifier>,
-    _transaction: Transaction,
+    node_client: Arc<dyn NodeClient>,
+    api_version: ProtocolVersion,
+    identifier: Option<BlockIdentifier>,
+    transaction: Transaction,
 ) -> Result<SpeculativeExecTxnResult, RpcError> {
-    todo!()
+    let (block, _) = common::get_signed_block(&*node_client, identifier)
+        .await?
+        .into_inner();
+    let block_hash = *block.hash();
+    let state_root_hash = *block.state_root_hash();
+    let block_time = block.timestamp();
+    let protocol_version = block.protocol_version();
+
+    node_client
+        .try_accept_transaction(transaction.clone(), Some(block.take_header()))
+        .await
+        .map_err(|err| Error::NodeRequest("submitting a transaction", err))?;
+
+    let (execution_result, messages) = node_client
+        .exec_speculatively(state_root_hash, block_time, protocol_version, transaction)
+        .await
+        .map_err(|err| Error::NodeRequest("speculatively executing a transaction", err))?
+        .ok_or(Error::NoBlockWithHash(block_hash))?;
+
+    Ok(SpeculativeExecTxnResult {
+        api_version,
+        block_hash,
+        execution_result,
+        messages,
+    })
 }
