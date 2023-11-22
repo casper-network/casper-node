@@ -11,6 +11,13 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 1.5.5
+
+### Added
+* New chainspec setting `highway.performance_meter.blocks_to_consider` with a value of 10, meaning that nodes will take 10 most recent blocks into account when determining their performance in Highway for the purpose of choosing their round lengths.
+
+
+
 ## 1.5.4
 
 ### Added
