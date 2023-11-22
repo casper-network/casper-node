@@ -38,6 +38,11 @@ pub trait NodeClient: Send + Sync + 'static {
         base_key: Key,
         path: Vec<String>,
     ) -> Result<GlobalStateQueryResult, Error>;
+    async fn try_accept_transaction(
+        &self,
+        transaction: Transaction,
+        speculative_exec_block: Option<BlockHeader>,
+    ) -> Result<(), Error>;
 
     async fn read_transaction(&self, hash: TransactionHash) -> Result<Option<Transaction>, Error> {
         let key = hash.to_bytes().expect("should always serialize a digest");
@@ -160,6 +165,8 @@ pub enum Error {
     Serialization(String),
     #[error("unexpectedly received no response body")]
     NoResponseBody,
+    #[error("transaction failed: {0}")]
+    TransactionFailed(String),
 }
 
 const CHANNEL_COUNT: usize = 1;
@@ -281,5 +288,20 @@ impl NodeClient for JulietNodeClient {
             .ok_or(Error::NoResponseBody)?;
         bytesrepr::deserialize_from_slice(&resp)
             .map_err(|err| Error::Deserialization(err.to_string()))
+    }
+
+    async fn try_accept_transaction(
+        &self,
+        transaction: Transaction,
+        speculative_exec_block: Option<BlockHeader>,
+    ) -> Result<(), Error> {
+        let request = BinaryRequest::TryAcceptTransaction {
+            transaction,
+            speculative_exec_at_block: speculative_exec_block,
+        };
+        let resp = self.dispatch(request).await?.ok_or(Error::NoResponseBody)?;
+        let result: Result<(), String> = bytesrepr::deserialize_from_slice(&resp)
+            .map_err(|err| Error::Deserialization(err.to_string()))?;
+        result.map_err(Error::TransactionFailed)
     }
 }

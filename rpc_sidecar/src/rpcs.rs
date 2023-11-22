@@ -26,15 +26,17 @@ use tracing::info;
 use warp::Filter;
 
 use casper_json_rpc::{
-    CorsOrigin, Error, Params, RequestHandlers, RequestHandlersBuilder, ReservedErrorCode,
+    CorsOrigin, Error as RpcError, Params, RequestHandlers, RequestHandlersBuilder,
+    ReservedErrorCode,
 };
 use casper_types::ProtocolVersion;
 
 pub use common::ErrorData;
 use docs::DocExample;
+pub use error::Error;
 pub use error_code::ErrorCode;
 
-use crate::node_client::NodeClient;
+use crate::{ClientError, NodeClient};
 
 /// This setting causes the server to ignore extra fields in JSON-RPC requests other than the
 /// standard 'id', 'jsonrpc', 'method', and 'params' fields.
@@ -66,18 +68,18 @@ pub(super) trait RpcWithParams {
         + 'static;
 
     /// Tries to parse the incoming JSON-RPC request's "params" field as `RequestParams`.
-    fn try_parse_params(maybe_params: Option<Params>) -> Result<Self::RequestParams, Error> {
+    fn try_parse_params(maybe_params: Option<Params>) -> Result<Self::RequestParams, RpcError> {
         let params = match maybe_params {
             Some(params) => Value::from(params),
             None => {
-                return Err(Error::new(
+                return Err(RpcError::new(
                     ReservedErrorCode::InvalidParams,
                     "Missing 'params' field",
                 ))
             }
         };
         serde_json::from_value::<Self::RequestParams>(params).map_err(|error| {
-            Error::new(
+            RpcError::new(
                 ReservedErrorCode::InvalidParams,
                 format!("Failed to parse 'params' field: {}", error),
             )
@@ -116,7 +118,7 @@ pub(super) trait RpcWithParams {
         node_client: Arc<dyn NodeClient>,
         api_version: ProtocolVersion,
         params: Self::RequestParams,
-    ) -> Result<Self::ResponseResult, Error>;
+    ) -> Result<Self::ResponseResult, RpcError>;
 }
 
 /// A JSON-RPC requiring the "params" field to be absent.
@@ -136,9 +138,9 @@ pub(super) trait RpcWithoutParams {
 
     /// Returns an error if the incoming JSON-RPC request's "params" field is not `None` or an empty
     /// Array or Object.
-    fn check_no_params(maybe_params: Option<Params>) -> Result<(), Error> {
+    fn check_no_params(maybe_params: Option<Params>) -> Result<(), RpcError> {
         if !maybe_params.unwrap_or_default().is_empty() {
-            return Err(Error::new(
+            return Err(RpcError::new(
                 ReservedErrorCode::InvalidParams,
                 "'params' field should be an empty Array '[]', an empty Object '{}' or absent",
             ));
@@ -176,7 +178,7 @@ pub(super) trait RpcWithoutParams {
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
         api_version: ProtocolVersion,
-    ) -> Result<Self::ResponseResult, Error>;
+    ) -> Result<Self::ResponseResult, RpcError>;
 }
 
 /// A JSON-RPC where the "params" field is optional.
@@ -210,7 +212,7 @@ pub(super) trait RpcWithOptionalParams {
     /// `Option<OptionalRequestParams>`.
     fn try_parse_params(
         maybe_params: Option<Params>,
-    ) -> Result<Option<Self::OptionalRequestParams>, Error> {
+    ) -> Result<Option<Self::OptionalRequestParams>, RpcError> {
         let params = match maybe_params {
             Some(params) => {
                 if params.is_empty() {
@@ -222,7 +224,7 @@ pub(super) trait RpcWithOptionalParams {
             None => Value::Null,
         };
         serde_json::from_value::<Option<Self::OptionalRequestParams>>(params).map_err(|error| {
-            Error::new(
+            RpcError::new(
                 ReservedErrorCode::InvalidParams,
                 format!("Failed to parse 'params' field: {}", error),
             )
@@ -261,7 +263,7 @@ pub(super) trait RpcWithOptionalParams {
         node_client: Arc<dyn NodeClient>,
         api_version: ProtocolVersion,
         params: Option<Self::OptionalRequestParams>,
-    ) -> Result<Self::ResponseResult, Error>;
+    ) -> Result<Self::ResponseResult, RpcError>;
 }
 
 /// Start JSON RPC server with CORS enabled in a background.
@@ -430,13 +432,13 @@ mod tests {
             let rpc_response = send_request(GetDeploy::METHOD, None, &filter).await;
             assert_eq!(
                 rpc_response.error().unwrap(),
-                &Error::new(ReservedErrorCode::InvalidParams, "Missing 'params' field")
+                &RpcError::new(ReservedErrorCode::InvalidParams, "Missing 'params' field")
             );
 
             let rpc_response = send_request(GetDeploy::METHOD, Some("[]"), &filter).await;
             assert_eq!(
                 rpc_response.error().unwrap(),
-                &Error::new(
+                &RpcError::new(
                     ReservedErrorCode::InvalidParams,
                     "Failed to parse 'params' field: invalid length 0, expected struct \
                     GetDeployParams with 2 elements"
@@ -451,7 +453,7 @@ mod tests {
             let rpc_response = send_request(GetDeploy::METHOD, Some("[3]"), &filter).await;
             assert_eq!(
                 rpc_response.error().unwrap(),
-                &Error::new(
+                &RpcError::new(
                     ReservedErrorCode::InvalidParams,
                     "Failed to parse 'params' field: invalid type: integer `3`, expected a string"
                 )
@@ -504,7 +506,7 @@ mod tests {
     //         let rpc_response = send_request(GetPeers::METHOD, Some("[3]"), &filter).await;
     //         assert_eq!(
     //             rpc_response.error().unwrap(),
-    //             &Error::new(
+    //             &RpcError::new(
     //                 ReservedErrorCode::InvalidParams,
     //                 "'params' field should be an empty Array '[]', an empty Object '{}' or
     // absent"             )
@@ -574,7 +576,7 @@ mod tests {
             let rpc_response = send_request(GetBlock::METHOD, Some(r#"["a"]"#), &filter).await;
             assert_eq!(
                 rpc_response.error().unwrap(),
-                &Error::new(
+                &RpcError::new(
                     ReservedErrorCode::InvalidParams,
                     "Failed to parse 'params' field: unknown variant `a`, expected `Hash` or \
                     `Height`"

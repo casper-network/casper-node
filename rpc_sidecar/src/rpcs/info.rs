@@ -13,13 +13,10 @@ use casper_types::{
     ProtocolVersion, PublicKey, Transaction, TransactionHash, ValidatorChange,
 };
 
-use super::error::Error;
-use crate::node_client::NodeClient;
-
 use super::{
     common,
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-    Error as RpcError, RpcWithParams, RpcWithoutParams,
+    Error, NodeClient, RpcError, RpcWithParams, RpcWithoutParams,
 };
 
 static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {

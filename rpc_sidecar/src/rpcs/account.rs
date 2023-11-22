@@ -9,11 +9,9 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{Deploy, DeployHash, ProtocolVersion, Transaction, TransactionHash};
 
-use crate::node_client::NodeClient;
-
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-    Error, RpcWithParams,
+    ClientError, Error, NodeClient, RpcError, RpcWithParams,
 };
 
 static PUT_DEPLOY_PARAMS: Lazy<PutDeployParams> = Lazy::new(|| PutDeployParams {
@@ -76,7 +74,7 @@ impl RpcWithParams for PutDeploy {
         _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
         _params: Self::RequestParams,
-    ) -> Result<Self::ResponseResult, Error> {
+    ) -> Result<Self::ResponseResult, RpcError> {
         todo!()
     }
 }
@@ -122,10 +120,21 @@ impl RpcWithParams for PutTransaction {
     type ResponseResult = PutTransactionResult;
 
     async fn do_handle_request(
-        _node_client: Arc<dyn NodeClient>,
-        _api_version: ProtocolVersion,
-        _params: Self::RequestParams,
-    ) -> Result<Self::ResponseResult, Error> {
-        todo!()
+        node_client: Arc<dyn NodeClient>,
+        api_version: ProtocolVersion,
+        params: Self::RequestParams,
+    ) -> Result<Self::ResponseResult, RpcError> {
+        let transaction_hash = params.transaction.hash();
+        match node_client
+            .try_accept_transaction(params.transaction, None)
+            .await
+        {
+            Ok(()) => Ok(Self::ResponseResult {
+                api_version,
+                transaction_hash,
+            }),
+            Err(ClientError::TransactionFailed(err)) => Err(Error::InvalidTransaction(err).into()),
+            Err(err) => Err(Error::NodeRequest("submitting transaction", err).into()),
+        }
     }
 }

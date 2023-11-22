@@ -50,6 +50,8 @@ pub enum Error {
     DictionaryValueIsNotAUref(KeyTag),
     #[error("the provided dictionary key could not be parsed: {0}")]
     DictionaryKeyCouldNotBeParsed(String),
+    #[error("the transaction was invalid: {0}")]
+    InvalidTransaction(String),
 }
 
 impl Error {
@@ -79,6 +81,7 @@ impl Error {
             | Error::DictionaryNameNotFound
             | Error::DictionaryValueIsNotAUref(_)
             | Error::DictionaryKeyCouldNotBeParsed(_) => ErrorCode::FailedToGetDictionaryURef,
+            Error::InvalidTransaction(_) => ErrorCode::InvalidTransaction,
         }
     }
 }

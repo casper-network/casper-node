@@ -7,22 +7,18 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{common, error::Error};
+use super::{
+    chain::BlockIdentifier,
+    common,
+    common::MERKLE_PROOF,
+    docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
+    Error, NodeClient, RpcError, RpcWithOptionalParams, RpcWithParams,
+};
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::Bytes,
     AuctionState, BlockHash, BlockHeader, BlockHeaderV2, BlockV2, CLValue, Digest, Key,
     ProtocolVersion, PublicKey, SecretKey, StoredValue, Tagged, URef, U512,
-};
-
-use crate::{
-    node_client::NodeClient,
-    rpcs::{
-        chain::BlockIdentifier,
-        common::MERKLE_PROOF,
-        docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-        Error as RpcError, RpcWithOptionalParams, RpcWithParams,
-    },
 };
 
 static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {

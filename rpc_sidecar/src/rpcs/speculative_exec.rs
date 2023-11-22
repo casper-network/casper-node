@@ -12,12 +12,10 @@ use casper_types::{
     Transaction,
 };
 
-use crate::node_client::NodeClient;
-
 use super::{
     chain::BlockIdentifier,
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-    Error, RpcWithParams,
+    NodeClient, RpcError, RpcWithParams,
 };
 
 static SPECULATIVE_EXEC_TXN_PARAMS: Lazy<SpeculativeExecTxnParams> =
@@ -87,7 +85,7 @@ impl RpcWithParams for SpeculativeExecTxn {
         node_client: Arc<dyn NodeClient>,
         api_version: ProtocolVersion,
         params: Self::RequestParams,
-    ) -> Result<Self::ResponseResult, Error> {
+    ) -> Result<Self::ResponseResult, RpcError> {
         handle_request(
             node_client,
             api_version,
@@ -127,7 +125,7 @@ impl RpcWithParams for SpeculativeExec {
         node_client: Arc<dyn NodeClient>,
         api_version: ProtocolVersion,
         params: Self::RequestParams,
-    ) -> Result<Self::ResponseResult, Error> {
+    ) -> Result<Self::ResponseResult, RpcError> {
         handle_request(
             node_client,
             api_version,
@@ -143,6 +141,6 @@ async fn handle_request(
     _api_version: ProtocolVersion,
     _maybe_block_id: Option<BlockIdentifier>,
     _transaction: Transaction,
-) -> Result<SpeculativeExecTxnResult, Error> {
+) -> Result<SpeculativeExecTxnResult, RpcError> {
     todo!()
 }

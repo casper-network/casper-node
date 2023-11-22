@@ -9,4 +9,4 @@ mod speculative_exec_server;
 
 pub use config::Config;
 pub use http_server::run as run_server;
-pub use node_client::{JulietNodeClient, NodeClient};
+pub use node_client::{Error as ClientError, JulietNodeClient, NodeClient};

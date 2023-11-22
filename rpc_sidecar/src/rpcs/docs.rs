@@ -14,8 +14,6 @@ use serde_json::{json, Value};
 
 use casper_types::ProtocolVersion;
 
-use crate::node_client::NodeClient;
-
 use super::{
     account::{PutDeploy, PutTransaction},
     chain::{
@@ -26,7 +24,7 @@ use super::{
         GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, GetItem, QueryBalance,
         QueryGlobalState,
     },
-    Error, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
+    NodeClient, RpcError, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
 };
 
 pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
@@ -462,7 +460,7 @@ impl RpcWithoutParams for ListRpcs {
     async fn do_handle_request(
         _node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
-    ) -> Result<Self::ResponseResult, Error> {
+    ) -> Result<Self::ResponseResult, RpcError> {
         Ok(ListRpcsResult::doc_example().clone())
     }
 }

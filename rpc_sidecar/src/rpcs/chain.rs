@@ -15,14 +15,11 @@ use casper_types::{
     JsonBlockWithSignatures, Key, ProtocolVersion, StoredValue, Transfer,
 };
 
-use crate::NodeClient;
-
 use super::{
     common,
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-    Error as RpcError, RpcWithOptionalParams,
+    Error, NodeClient, RpcError, RpcWithOptionalParams,
 };
-use crate::rpcs::error::Error;
 pub use era_summary::EraSummary;
 use era_summary::ERA_SUMMARY;
 
