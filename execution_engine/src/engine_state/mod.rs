@@ -2236,6 +2236,7 @@ where
 
         let values: Vec<_> = keys
             .iter()
+            // TODO[RC]: Do not ignore errors here?
             .filter_map(|key| tracking_copy.get(key).ok())
             .collect();
         Ok(match values.to_bytes() {
