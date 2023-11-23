@@ -98,9 +98,20 @@ where
                     effects
                 }
             },
-            // TODO[RC]: Handle this
-            ComponentState::Initialized => todo!(),
-            ComponentState::Fatal(_) => todo!(),
+            ComponentState::Initialized => {
+                // Currently this component does not handle any events. Requests are handled
+                // directly via the spawned `juliet` server.
+                Effects::new()
+            }
+            ComponentState::Fatal(msg) => {
+                error!(
+                    msg,
+                    ?event,
+                    name = <Self as Component<MainEvent>>::name(self),
+                    "should not handle this event when this component has fatal error"
+                );
+                Effects::new()
+            }
         }
     }
 
