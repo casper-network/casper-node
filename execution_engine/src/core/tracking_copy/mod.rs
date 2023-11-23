@@ -3,7 +3,7 @@
 //! were applied on it.
 mod byte_size;
 mod ext;
-pub(self) mod meter;
+mod meter;
 #[cfg(test)]
 mod tests;
 
@@ -193,10 +193,7 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
     pub fn insert_write(&mut self, key: Key, value: StoredValue) {
         self.muts_cached.insert(key, value);
 
-        let key_set = self
-            .key_tag_muts_cached
-            .entry(key.tag())
-            .or_insert_with(BTreeSet::new);
+        let key_set = self.key_tag_muts_cached.entry(key.tag()).or_default();
 
         key_set.insert(key);
     }

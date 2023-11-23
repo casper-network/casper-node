@@ -50,7 +50,6 @@ pub enum External {
     Path(PathBuf),
     /// The value has not been specified, but a default has been requested.
     #[default]
-    #[serde(skip)]
     Missing,
 }
 

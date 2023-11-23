@@ -42,7 +42,7 @@ where
     I: IntoIterator<Item = T>,
     T: Into<Weight>,
 {
-    #[allow(clippy::integer_arithmetic)] // Left shift with small enough constants.
+    #[allow(clippy::arithmetic_side_effects)] // Left shift with small enough constants.
     let params = state::Params::new(
         seed,
         highway_testing::TEST_BLOCK_REWARD,
@@ -291,7 +291,6 @@ fn no_slow_down_when_all_nodes_fast() {
     assert_eq!(env.our_round_exp(), 0);
 }
 
-#[ignore = "TODO: unignore when exponent switching is improved"]
 #[test]
 fn slow_node_should_switch_own_round_exponent() {
     let mut validators = BTreeMap::new();
@@ -322,14 +321,13 @@ fn slow_node_should_switch_own_round_exponent() {
     slow_nodes.insert(ALICE_PUBLIC_KEY.clone());
 
     let mut env = ConsensusEnvironment::new(validators, slow_nodes);
-    for _ in 0..10 {
+    for _ in 0..15 {
         env.crank_round();
     }
 
     assert!(env.our_round_exp() > 0);
 }
 
-#[ignore = "TODO: unignore when exponent switching is improved"]
 #[test]
 fn slow_down_when_majority_slow() {
     let mut validators = BTreeMap::new();
@@ -362,7 +360,7 @@ fn slow_down_when_majority_slow() {
     slow_nodes.insert(ELLEN_PUBLIC_KEY.clone());
 
     let mut env = ConsensusEnvironment::new(validators, slow_nodes);
-    for _ in 0..10 {
+    for _ in 0..15 {
         env.crank_round();
     }
 

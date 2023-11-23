@@ -2,7 +2,7 @@
 
 pub(crate) mod config;
 mod participation;
-mod round_success_meter;
+mod performance_meter;
 #[cfg(test)]
 mod tests;
 
@@ -16,6 +16,8 @@ use std::{
 
 use datasize::DataSize;
 use itertools::Itertools;
+use num_rational::Ratio;
+use num_traits::CheckedMul;
 use rand::RngCore;
 use tracing::{debug, error, info, trace, warn};
 
@@ -49,7 +51,7 @@ use crate::{
     NodeRng,
 };
 
-use self::round_success_meter::RoundSuccessMeter;
+use self::performance_meter::PerformanceMeter;
 
 /// Never allow more than this many units in a piece of evidence for conflicting endorsements,
 /// even if eras are longer than this.
@@ -81,7 +83,7 @@ where
     finality_detector: FinalityDetector<C>,
     highway: Highway<C>,
     /// A tracker for whether we are keeping up with the current round length or not.
-    round_success_meter: RoundSuccessMeter<C>,
+    performance_meter: PerformanceMeter,
     synchronizer: Synchronizer<C>,
     pvv_cache: HashMap<Dependency<C>, PreValidatedVertex<C>>,
     evidence_only: bool,
@@ -118,31 +120,26 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         // The maximum round exponent x is such that 2^x * m is at most M, where m and M are min
         // and max round length. So x is the floor of log_2(M / m). Thus the ceiling of
         // log_2(M / m + 1) is always x + 1.
+        #[allow(clippy::arithmetic_side_effects)] // minimum_round_length is guaranteed to be > 0.
         let maximum_round_exponent = (highway_config.maximum_round_length / minimum_round_length)
             .saturating_add(1)
             .next_power_of_two()
             .trailing_zeros()
             .saturating_sub(1) as u8;
         // Doesn't overflow since it's at most highway_config.maximum_round_length.
-        #[allow(clippy::integer_arithmetic)]
+        #[allow(clippy::arithmetic_side_effects)]
         let maximum_round_length =
             TimeDiff::from_millis(minimum_round_length.millis() << maximum_round_exponent);
 
-        let round_success_meter = prev_cp
+        let performance_meter = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<C>>())
-            .map(|highway_proto| highway_proto.next_era_round_succ_meter(era_start_time.max(now)))
-            .unwrap_or_else(|| {
-                RoundSuccessMeter::new(
-                    minimum_round_length,
-                    minimum_round_length,
-                    maximum_round_length,
-                    era_start_time.max(now),
-                    config.into(),
-                )
-            });
+            .map(|highway_proto| highway_proto.next_era_perf_meter())
+            .unwrap_or_else(|| PerformanceMeter::new_inactive(highway_config.performance_meter));
         // This will return the minimum round length if we just initialized the meter, i.e. if
         // there was no previous consensus instance or it had no round success meter.
-        let init_round_len = round_success_meter.new_length();
+        let init_round_len = performance_meter
+            .current_round_len()
+            .unwrap_or(minimum_round_length);
 
         info!(
             %init_round_len,
@@ -168,16 +165,23 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             0
         };
 
+        let reduced_block_reward = match highway_config
+            .reduced_reward_multiplier
+            .checked_mul(&Ratio::from(block_reward))
+        {
+            None => u64::MAX,
+            Some(ratio) => ratio.to_integer(),
+        };
         let params = Params::new(
             seed,
             block_reward,
-            (highway_config.reduced_reward_multiplier * block_reward).to_integer(),
+            reduced_block_reward,
             minimum_round_length,
             maximum_round_length,
             init_round_len,
             chainspec.core_config.minimum_era_height,
             era_start_time,
-            era_start_time + chainspec.core_config.era_duration,
+            era_start_time.saturating_add(chainspec.core_config.era_duration),
             endorsement_evidence_limit,
         );
 
@@ -188,7 +192,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             pending_values: HashMap::new(),
             finality_detector: FinalityDetector::new(ftt),
             highway,
-            round_success_meter,
+            performance_meter,
             synchronizer: Synchronizer::new(validators_count, instance_id),
             pvv_cache: Default::default(),
             evidence_only: false,
@@ -204,40 +208,41 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         config: &config::Config,
     ) -> ProtocolOutcomes<C> {
         let mut outcomes = vec![ProtocolOutcome::ScheduleTimer(
-            now + config.pending_vertex_timeout,
+            now.saturating_add(config.pending_vertex_timeout),
             TIMER_ID_PURGE_VERTICES,
         )];
         if let Some(interval) = config.log_participation_interval {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
-                now.max(era_start_time) + interval,
+                now.max(era_start_time).saturating_add(interval),
                 TIMER_ID_LOG_PARTICIPATION,
             ));
         }
         if let Some(interval) = config.log_synchronizer_interval {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
-                now + interval,
+                now.saturating_add(interval),
                 TIMER_ID_SYNCHRONIZER_LOG,
             ));
         }
         outcomes
     }
 
-    fn process_av_effects<E>(&mut self, av_effects: E, now: Timestamp) -> ProtocolOutcomes<C>
+    fn process_av_effects<E>(&mut self, av_effects: E) -> ProtocolOutcomes<C>
     where
         E: IntoIterator<Item = AvEffect<C>>,
     {
         av_effects
             .into_iter()
-            .flat_map(|effect| self.process_av_effect(effect, now))
+            .flat_map(|effect| self.process_av_effect(effect))
             .collect()
     }
 
-    fn process_av_effect(&mut self, effect: AvEffect<C>, now: Timestamp) -> ProtocolOutcomes<C> {
+    fn process_av_effect(&mut self, effect: AvEffect<C>) -> ProtocolOutcomes<C> {
         match effect {
             AvEffect::NewVertex(vv) => {
                 self.log_unit_size(vv.inner(), "sending new unit");
-                self.calculate_round_length(&vv, now);
-                self.process_new_vertex(vv)
+                let outcomes = self.process_new_vertex(vv);
+                self.calculate_round_length();
+                outcomes
             }
             AvEffect::ScheduleTimer(timestamp) => {
                 vec![ProtocolOutcome::ScheduleTimer(
@@ -368,23 +373,12 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         outcomes
     }
 
-    fn calculate_round_length(&mut self, vv: &ValidVertex<C>, now: Timestamp) {
-        let new_round_len = self
-            .round_success_meter
-            .calculate_new_length(self.highway.state(), now);
-        // If the vertex contains a proposal, register it in the success meter.
-        // It's important to do this _after_ the calculation above - otherwise we might try to
-        // register the proposal before the meter is aware that a new round has started, and it
-        // will reject the proposal.
-        if vv.is_proposal() {
-            let vertex = vv.inner();
-            if let (Some(hash), Some(timestamp)) = (vertex.unit_hash(), vertex.timestamp()) {
-                trace!(%now, timestamp = timestamp.millis(), "adding proposal to protocol state");
-                self.round_success_meter.new_proposal(hash, timestamp);
-            } else {
-                error!(?vertex, "proposal without unit hash and timestamp");
-            }
-        }
+    fn calculate_round_length(&mut self) {
+        let Some(new_round_len) =
+            self.performance_meter.calculate_new_length(self.highway.state())
+            else {
+                return;
+            };
         self.highway.set_round_len(new_round_len);
     }
 
@@ -414,22 +408,21 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         self.log_unit_size(vv.inner(), "adding new unit to the protocol state");
         self.log_proposal(vv.inner(), "adding valid proposal to the protocol state");
         let vertex_id = vv.inner().id();
-        // Check whether we should change the round length.
-        // It's important to do it before the vertex is added to the state - this way if the last
-        // round has finished, we now have all the vertices from that round in the state, and no
-        // newer ones.
-        self.calculate_round_length(&vv, now);
         let av_effects = self.highway.add_valid_vertex(vv, now);
         // Once vertex is added to the state, we can remove it from the cache.
         self.pvv_cache.remove(&vertex_id);
-        outcomes.extend(self.process_av_effects(av_effects, now));
+
+        // Check whether we should change the round length.
+        self.calculate_round_length();
+
+        outcomes.extend(self.process_av_effects(av_effects));
         outcomes
     }
 
     /// Returns an instance of `RoundSuccessMeter` for the new era: resetting the counters where
     /// appropriate.
-    fn next_era_round_succ_meter(&self, timestamp: Timestamp) -> RoundSuccessMeter<C> {
-        self.round_success_meter.next_era(timestamp)
+    fn next_era_perf_meter(&self) -> PerformanceMeter {
+        self.performance_meter.clone()
     }
 
     /// Returns an iterator over all the values that are in parents of the given block.
@@ -486,7 +479,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         let mut outcomes = self.latest_state_request();
         if let Some(interval) = self.config.request_state_interval {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
-                now + interval,
+                now.saturating_add(interval),
                 TIMER_ID_REQUEST_STATE,
             ));
         }
@@ -665,10 +658,10 @@ impl<C: Context + 'static> HighwayProtocol<C> {
     }
 }
 
-#[allow(clippy::integer_arithmetic)]
+#[allow(clippy::arithmetic_side_effects)]
 mod relaxed {
     // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
-    // module-wide `clippy::integer_arithmetic` lint.
+    // module-wide `clippy::arithmetic_side_effects` lint.
 
     use datasize::DataSize;
     use serde::{Deserialize, Serialize};
@@ -805,7 +798,9 @@ where
                 }
 
                 match pvv.timestamp() {
-                    Some(timestamp) if timestamp > now + self.config.pending_vertex_timeout => {
+                    Some(timestamp)
+                        if timestamp > now.saturating_add(self.config.pending_vertex_timeout) =>
+                    {
                         trace!("received a vertex with a timestamp far in the future; dropping");
                         vec![]
                     }
@@ -944,7 +939,7 @@ where
         match timer_id {
             TIMER_ID_ACTIVE_VALIDATOR => {
                 let effects = self.highway.handle_timer(timestamp);
-                self.process_av_effects(effects, timestamp)
+                self.process_av_effects(effects)
             }
             TIMER_ID_VERTEX_WITH_FUTURE_TIMESTAMP => {
                 self.synchronizer.add_past_due_stored_vertices(timestamp)
@@ -953,14 +948,14 @@ where
                 let oldest = timestamp.saturating_sub(self.config.pending_vertex_timeout);
                 self.synchronizer.purge_vertices(oldest);
                 self.pvv_cache.clear();
-                let next_time = timestamp + self.config.pending_vertex_timeout;
+                let next_time = timestamp.saturating_add(self.config.pending_vertex_timeout);
                 vec![ProtocolOutcome::ScheduleTimer(next_time, timer_id)]
             }
             TIMER_ID_LOG_PARTICIPATION => match self.config.log_participation_interval {
                 Some(interval) if !self.evidence_only && !self.finalized_switch_block() => {
                     self.log_participation();
                     vec![ProtocolOutcome::ScheduleTimer(
-                        timestamp + interval,
+                        timestamp.saturating_add(interval),
                         timer_id,
                     )]
                 }
@@ -972,7 +967,7 @@ where
                 match self.config.log_synchronizer_interval {
                     Some(interval) if !self.finalized_switch_block() => {
                         vec![ProtocolOutcome::ScheduleTimer(
-                            timestamp + interval,
+                            timestamp.saturating_add(interval),
                             timer_id,
                         )]
                     }
@@ -989,7 +984,7 @@ where
         // If configured, schedule periodic latest state requests.
         if let Some(interval) = self.config.request_state_interval {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
-                now + interval,
+                now.saturating_add(interval),
                 TIMER_ID_REQUEST_STATE,
             ));
         }
@@ -1003,10 +998,14 @@ where
         }
     }
 
-    fn propose(&mut self, proposed_block: ProposedBlock<C>, now: Timestamp) -> ProtocolOutcomes<C> {
+    fn propose(
+        &mut self,
+        proposed_block: ProposedBlock<C>,
+        _now: Timestamp,
+    ) -> ProtocolOutcomes<C> {
         let (value, block_context) = proposed_block.destructure();
         let effects = self.highway.propose(value, block_context);
-        self.process_av_effects(effects, now)
+        self.process_av_effects(effects)
     }
 
     fn resolve_validity(
@@ -1061,13 +1060,37 @@ where
         unit_hash_file: Option<PathBuf>,
     ) -> ProtocolOutcomes<C> {
         let ftt = self.finality_detector.fault_tolerance_threshold();
+
+        let min_round_len = self.highway.state().params().min_round_length();
+        let max_round_len = self.highway.state().params().max_round_length();
+        let minimum_era_height = self.highway.state().params().end_height();
+        let our_idx = match self.highway.validators().get_index(&our_id) {
+            Some(idx) => idx,
+            None => {
+                warn!(
+                    ?our_id,
+                    "tried to activate validator when not on validators list"
+                );
+                return ProtocolOutcomes::new();
+            }
+        };
+        self.performance_meter.activate(
+            our_idx,
+            self.highway.state().params().init_round_len(),
+            min_round_len,
+            max_round_len,
+            minimum_era_height,
+            now,
+        );
+
         let av_effects = self
             .highway
             .activate_validator(our_id, secret, now, unit_hash_file, ftt);
-        self.process_av_effects(av_effects, now)
+        self.process_av_effects(av_effects)
     }
 
     fn deactivate_validator(&mut self) {
+        self.performance_meter.deactivate();
         self.highway.deactivate_validator()
     }
 
@@ -1147,5 +1170,6 @@ pub fn max_rounds_per_era(
     era_duration: TimeDiff,
     minimum_round_length: TimeDiff,
 ) -> u64 {
-    minimum_era_height.max((TimeDiff::from_millis(1) + era_duration) / minimum_round_length)
+    #[allow(clippy::arithmetic_side_effects)] // minimum_round_length is guaranteed to be > 0.
+    minimum_era_height.max((era_duration.saturating_add(1)) / minimum_round_length)
 }

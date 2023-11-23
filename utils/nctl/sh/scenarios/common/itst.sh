@@ -613,3 +613,22 @@ function assert_chain_stalled() {
         log "Stall successfully detected, continuing..."
     fi
 }
+
+function slow_down_node_network() {
+    local NODE=${1}
+    local DELAY=${2:-3000}
+    local PV=$(get_node_protocol_version $NODE | sed -e 's/\./_/g')
+
+    echo "set-failpoint consensus.message_delay=$DELAY" \
+        | socat - unix-client:"$(get_path_to_node $NODE)"/config/$PV/debug.socket
+}
+
+function dump_consensus() {
+    local NODE=${1}
+    local ERA=${2}
+    local PV=$(get_node_protocol_version $NODE | sed -e 's/\./_/g')
+
+    echo -e "set -o bincode -q true\ndump-consensus $ERA" \
+        | socat - unix-client:"$(get_path_to_node $NODE)"/config/$PV/debug.socket \
+        > /tmp/consensus-dump-n$NODE-e$ERA.bincode
+}

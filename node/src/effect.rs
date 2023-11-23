@@ -146,6 +146,7 @@ use crate::{
     },
     consensus::ValidationError,
     contract_runtime::SpeculativeExecutionState,
+    failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
@@ -527,9 +528,7 @@ pub(crate) struct EffectBuilder<REv: 'static> {
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `REv` otherwise.
 impl<REv> Clone for EffectBuilder<REv> {
     fn clone(&self) -> Self {
-        EffectBuilder {
-            event_queue: self.event_queue,
-        }
+        *self
     }
 }
 
@@ -2134,6 +2133,19 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::Control,
         )
         .await
+    }
+
+    /// Activates/deactivates a failpoint from a given activation.
+    pub(crate) async fn activate_failpoint(self, activation: FailpointActivation)
+    where
+        REv: From<ControlAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ControlAnnouncement::ActivateFailpoint { activation },
+                QueueKind::Control,
+            )
+            .await;
     }
 
     /// Announce that the node be shut down due to a request from a user.

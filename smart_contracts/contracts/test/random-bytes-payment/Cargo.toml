@@ -2,7 +2,7 @@
 name = "random-bytes-payment"
 version = "0.1.0"
 authors = ["Rafał Chabowski <rafal@casperlabs.io>"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "random_bytes_payment"

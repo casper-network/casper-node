@@ -2537,7 +2537,7 @@ fn should_not_undelegate_vfta_holder_stake() {
             .vesting_schedule()
             .expect("should have vesting schedule");
         assert!(
-            matches!(vesting_schedule.locked_amounts(), Some(_)),
+            vesting_schedule.locked_amounts().is_some(),
             "{:?}",
             vesting_schedule
         );

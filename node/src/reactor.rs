@@ -79,6 +79,7 @@ use crate::{
         incoming::NetResponse,
         Effect, EffectBuilder, EffectExt, Effects,
     },
+    failpoints::FailpointActivation,
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, Chainspec,
         ChainspecRawBytes, Deploy, ExitCode, FinalitySignature, LegacyDeploy, NodeId, SyncLeap,
@@ -192,10 +193,7 @@ where
 // Implement `Clone` and `Copy` manually, as `derive` will make it depend on `R` and `Ev` otherwise.
 impl<REv> Clone for EventQueueHandle<REv> {
     fn clone(&self) -> Self {
-        EventQueueHandle {
-            scheduler: self.scheduler,
-            is_shutting_down: self.is_shutting_down,
-        }
+        *self
     }
 }
 impl<REv> Copy for EventQueueHandle<REv> {}
@@ -308,6 +306,12 @@ pub(crate) trait Reactor: Sized {
     #[cfg(test)]
     fn get_component_state(&self, _name: &str) -> Option<&ComponentState> {
         None
+    }
+
+    /// Activate/deactivate a failpoint.
+    fn activate_failpoint(&mut self, _activation: &FailpointActivation) {
+        // Default is to ignore the failpoint. If failpoint support is enabled for a reactor, route
+        // the activation to the respective components here.
     }
 }
 
@@ -641,6 +645,12 @@ where
 
                     // Do nothing on queue dump otherwise.
                     (Default::default(), None, QueueKind::Control)
+                }
+                Some(ControlAnnouncement::ActivateFailpoint { activation }) => {
+                    self.reactor.activate_failpoint(&activation);
+
+                    // No other effects, calling the method is all we had to do.
+                    (Effects::new(), None, QueueKind::Control)
                 }
             }
         } else {

@@ -480,7 +480,10 @@ where
         Self: Sized + Send,
     {
         match payload {
-            Message::GetRequest { tag, serialized_id } if tag == Tag::TrieOrChunk => {
+            Message::GetRequest {
+                tag: Tag::TrieOrChunk,
+                serialized_id,
+            } => {
                 let (ev, fut) = effect_builder.create_request_parts(move |responder| TrieDemand {
                     sender,
                     request_msg: Box::new(TrieRequest(serialized_id)),

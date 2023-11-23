@@ -8,7 +8,7 @@
 //! While the [`main`](fn.main.html) function is the central entrypoint for the node application,
 //! its core event loop is found inside the [reactor](reactor/index.html).
 
-#![doc(html_root_url = "https://docs.rs/casper-node/1.5.3")]
+#![doc(html_root_url = "https://docs.rs/casper-node/1.5.4")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon_48.png",
     html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png",
@@ -28,6 +28,9 @@ mod config_migration;
 mod data_migration;
 mod dead_metrics;
 pub(crate) mod effect;
+#[cfg_attr(not(feature = "failpoints"), path = "failpoints_disabled.rs")]
+pub(crate) mod failpoints;
+
 pub mod logging;
 pub(crate) mod protocol;
 pub(crate) mod reactor;

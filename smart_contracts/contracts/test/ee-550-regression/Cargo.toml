@@ -2,7 +2,7 @@
 name = "ee-550-regression"
 version = "0.1.0"
 authors = ["Michał Papierski <michal@papierski.net>"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "ee_550_regression"

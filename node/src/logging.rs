@@ -72,7 +72,7 @@ impl LoggingConfig {
 /// Logging output format.
 ///
 /// Defaults to "text"".
-#[derive(Clone, Copy, DataSize, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Copy, DataSize, Debug, Deserialize, Serialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum LoggingFormat {
     /// Text format.

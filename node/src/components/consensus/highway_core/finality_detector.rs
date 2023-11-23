@@ -61,7 +61,9 @@ impl<C: Context> FinalityDetector<C> {
     ) -> Result<impl Iterator<Item = FinalizedBlock<C>> + 'a, FttExceeded> {
         let state = highway.state();
         let fault_w = state.faulty_weight();
-        if fault_w >= self.ftt || fault_w > (state.total_weight() - Weight(1)) / 2 {
+        // TODO - remove `allow` once false positive ceases.
+        #[allow(clippy::arithmetic_side_effects)] // False positive on `/ 2`.
+        if fault_w >= self.ftt || fault_w > (state.total_weight().saturating_sub(Weight(1))) / 2 {
             warn!(panorama = ?state.panorama(), "fault tolerance threshold exceeded");
             return Err(FttExceeded(fault_w));
         }
@@ -131,7 +133,7 @@ impl<C: Context> FinalityDetector<C> {
     }
 
     /// Returns the quorum required by a summit with the specified level and the required FTT.
-    #[allow(clippy::integer_arithmetic)] // See comments.
+    #[allow(clippy::arithmetic_side_effects)] // See comments.
     fn quorum_for_lvl(&self, lvl: usize, total_w: Weight) -> Weight {
         // A level-lvl summit with quorum  total_w/2 + t  has relative FTT  2t(1 − 1/2^lvl). So:
         // quorum = total_w / 2 + ftt / 2 / (1 - 1/2^lvl)
@@ -159,7 +161,7 @@ impl<C: Context> FinalityDetector<C> {
     /// Returns the height of the next block that will be finalized.
     fn next_height(&self, state: &State<C>) -> u64 {
         // In a trillion years, we need to make block height u128.
-        #[allow(clippy::integer_arithmetic)]
+        #[allow(clippy::arithmetic_side_effects)]
         let height_plus_1 = |bhash| state.block(bhash).height + 1;
         self.last_finalized.as_ref().map_or(0, height_plus_1)
     }
@@ -194,8 +196,11 @@ impl<C: Context> FinalityDetector<C> {
         // if at least one maximum-length round passed between the first and last block.
         // Safe to unwrap: Ancestor at height 0 always exists.
         let first_bhash = state.find_ancestor_proposal(bhash, 0).unwrap();
-        let sufficient_time_for_activity =
-            unit.timestamp >= state.unit(first_bhash).timestamp + state.params().max_round_length();
+        let sufficient_time_for_activity = unit.timestamp
+            >= state
+                .unit(first_bhash)
+                .timestamp
+                .saturating_add(state.params().max_round_length());
         let inactive_validators = if sufficient_time_for_activity {
             unit.panorama.iter_none().map(to_id).collect()
         } else {
@@ -209,7 +214,7 @@ impl<C: Context> FinalityDetector<C> {
     }
 }
 
-#[allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
+#[allow(unused_qualifications, clippy::arithmetic_side_effects)] // This is to suppress warnings originating in the test macros.
 #[cfg(test)]
 mod tests {
     use super::{

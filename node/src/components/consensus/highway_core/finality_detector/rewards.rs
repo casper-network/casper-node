@@ -55,7 +55,7 @@ pub fn assigned_weight_and_latest_unit<'a, 'b: 'a, 'c: 'a, C: Context>(
             RoundParticipation::No => (),
             RoundParticipation::Yes(latest_vh) => latest[idx] = Some(latest_vh),
         }
-        assigned_weight += state.weight(idx);
+        assigned_weight = assigned_weight.saturating_add(state.weight(idx));
     }
     (assigned_weight, latest)
 }
@@ -72,7 +72,11 @@ pub fn find_max_quora<C: Context>(
     let mut max_quorum = ValidatorMap::from(vec![Weight(0); latest.len()]);
     while let Some(quorum) = horizon.committee_quorum(&committee) {
         // The current committee is a level-1 summit with `quorum`. Try to go higher:
-        let (new_committee, pruned) = horizon.prune_committee(quorum + Weight(1), committee);
+        let new_quorum = match quorum.checked_add(Weight(1)) {
+            Some(weight) => weight,
+            None => break, // we reached the maximum, it's valid, so just return it.
+        };
+        let (new_committee, pruned) = horizon.prune_committee(new_quorum, committee);
         committee = new_committee;
         // Pruned validators are not part of any summit with a higher quorum than this.
         for vidx in pruned {
@@ -103,7 +107,7 @@ pub fn compute_rewards_for<C: Context>(
     let faulty_w: Weight = panorama.iter_faulty().map(|vidx| state.weight(vidx)).sum();
 
     // Collect the block rewards for each validator who is a member of at least one summit.
-    #[allow(clippy::integer_arithmetic)] // See inline comments.
+    #[allow(clippy::arithmetic_side_effects)] // See inline comments.
     max_quorum
         .enumerate()
         .zip(state.weights())
@@ -161,7 +165,7 @@ pub fn round_participation<'a, C: Context>(
     maybe_unit.map_or(RoundParticipation::No, |(vh, unit)| {
         // Round length is not 0:
         // It is computed as 2^round_exp * min_round_length from a valid WireUnit.
-        #[allow(clippy::integer_arithmetic)]
+        #[allow(clippy::arithmetic_side_effects)]
         if r_id.millis() % unit.round_len.millis() != 0 {
             // Round length doesn't divide `r_id`, so the validator was not assigned to that round.
             RoundParticipation::Unassigned
@@ -175,7 +179,7 @@ pub fn round_participation<'a, C: Context>(
 }
 
 #[allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
-#[allow(clippy::integer_arithmetic)] // Overflows in tests would panic anyway.
+#[allow(clippy::arithmetic_side_effects)] // Overflows in tests would panic anyway.
 #[cfg(test)]
 mod tests {
     use casper_types::TimeDiff;
