@@ -21,14 +21,14 @@ use casper_execution_engine::engine_state::{
     self,
     balance::{BalanceRequest, BalanceResult},
     era_validators::GetEraValidatorsError,
-    get_all_values::{GetAllValuesRequest, GetAllValuesResult},
+    get_all_values::GetAllValuesRequest,
     get_bids::{GetBidsRequest, GetBidsResult},
     query::{QueryRequest, QueryResult},
 };
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     addressable_entity::AddressableEntity,
-    binary_port::db_id::DbId,
+    binary_port::{db_id::DbId, get_all_values::GetAllValuesResult},
     bytesrepr::Bytes,
     contract_messages::Messages,
     execution::{ExecutionResult, ExecutionResultV2},

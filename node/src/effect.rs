@@ -116,14 +116,12 @@ use tokio::{sync::Semaphore, time};
 use tracing::{debug, error, warn};
 
 use casper_execution_engine::engine_state::{
-    self,
-    era_validators::GetEraValidatorsError,
-    get_all_values::{GetAllValuesRequest, GetAllValuesResult},
+    self, era_validators::GetEraValidatorsError, get_all_values::GetAllValuesRequest,
     BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
 };
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
-    binary_port::db_id::DbId,
+    binary_port::{db_id::DbId, get_all_values::GetAllValuesResult},
     bytesrepr::Bytes,
     contract_messages::Messages,
     execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},

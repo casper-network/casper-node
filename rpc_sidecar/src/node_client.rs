@@ -5,13 +5,15 @@ use async_trait::async_trait;
 use casper_types::{
     binary_port::{
         binary_request::BinaryRequest, db_id::DbId, get::GetRequest,
-        global_state::GlobalStateQueryResult, non_persistent_data::NonPersistedDataRequest,
+        get_all_values::GetAllValuesResult, global_state::GlobalStateQueryResult,
+        non_persistent_data::NonPersistedDataRequest,
     },
     bytesrepr::{self, ToBytes},
     contract_messages::Message,
     execution::{ExecutionResult, ExecutionResultV2},
     BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures, Digest,
-    FinalizedApprovals, Key, ProtocolVersion, Timestamp, Transaction, TransactionHash, Transfer,
+    FinalizedApprovals, Key, KeyTag, ProtocolVersion, Timestamp, Transaction, TransactionHash,
+    Transfer,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -31,18 +33,28 @@ use tracing::{error, info, warn};
 #[async_trait]
 pub trait NodeClient: Send + Sync + 'static {
     async fn read_from_db(&self, db: DbId, key: &[u8]) -> Result<Option<Vec<u8>>, Error>;
+
     async fn read_from_mem(&self, req: NonPersistedDataRequest) -> Result<Option<Vec<u8>>, Error>;
+
     async fn query_global_state(
         &self,
         state_root_hash: Digest,
         base_key: Key,
         path: Vec<String>,
     ) -> Result<GlobalStateQueryResult, Error>;
+
+    async fn query_global_state_by_tag(
+        &self,
+        state_root_hash: Digest,
+        tag: KeyTag,
+    ) -> Result<GetAllValuesResult, Error>;
+
     async fn try_accept_transaction(
         &self,
         transaction: Transaction,
         speculative_exec_block: Option<BlockHeader>,
     ) -> Result<(), Error>;
+
     async fn exec_speculatively(
         &self,
         state_root_hash: Digest,
@@ -290,6 +302,23 @@ impl NodeClient for JulietNodeClient {
             state_root_hash,
             base_key,
             path,
+        };
+        let resp = self
+            .dispatch(BinaryRequest::Get(get))
+            .await?
+            .ok_or(Error::NoResponseBody)?;
+        bytesrepr::deserialize_from_slice(resp)
+            .map_err(|err| Error::Deserialization(err.to_string()))
+    }
+
+    async fn query_global_state_by_tag(
+        &self,
+        state_root_hash: Digest,
+        key_tag: KeyTag,
+    ) -> Result<GetAllValuesResult, Error> {
+        let get = GetRequest::AllValues {
+            state_root_hash,
+            key_tag,
         };
         let resp = self
             .dispatch(BinaryRequest::Get(get))

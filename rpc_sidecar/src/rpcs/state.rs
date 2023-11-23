@@ -16,8 +16,9 @@ use super::{
 };
 use casper_types::{
     account::{Account, AccountHash},
+    binary_port::get_all_values::GetAllValuesResult,
     bytesrepr::Bytes,
-    AuctionState, BlockHash, BlockHeader, BlockHeaderV2, BlockV2, CLValue, Digest, Key,
+    AuctionState, BlockHash, BlockHeader, BlockHeaderV2, BlockV2, CLValue, Digest, Key, KeyTag,
     ProtocolVersion, PublicKey, SecretKey, StoredValue, Tagged, URef, U512,
 };
 
@@ -73,34 +74,31 @@ static GET_DICTIONARY_ITEM_PARAMS: Lazy<GetDictionaryItemParams> =
             dictionary_item_key: "a_unique_entry_identifier".to_string(),
         },
     });
-static GET_DICTIONARY_ITEM_RESULT: Lazy<GetDictionaryItemResult> = Lazy::new(|| {
-    GetDictionaryItemResult {
+static GET_DICTIONARY_ITEM_RESULT: Lazy<GetDictionaryItemResult> =
+    Lazy::new(|| GetDictionaryItemResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
         dictionary_key:
             "dictionary-67518854aa916c97d4e53df8570c8217ccc259da2721b692102d76acd0ee8d1f"
                 .to_string(),
         stored_value: StoredValue::CLValue(CLValue::from_t(1u64).unwrap()),
         merkle_proof: MERKLE_PROOF.clone(),
-    }
-});
-static QUERY_GLOBAL_STATE_PARAMS: Lazy<QueryGlobalStateParams> = Lazy::new(|| {
-    QueryGlobalStateParams {
+    });
+static QUERY_GLOBAL_STATE_PARAMS: Lazy<QueryGlobalStateParams> =
+    Lazy::new(|| QueryGlobalStateParams {
         state_identifier: Some(GlobalStateIdentifier::BlockHash(*BlockV2::example().hash())),
         key: Key::from_formatted_str(
             "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
         )
         .unwrap(),
         path: vec![],
-    }
-});
-static QUERY_GLOBAL_STATE_RESULT: Lazy<QueryGlobalStateResult> = Lazy::new(|| {
-    QueryGlobalStateResult {
+    });
+static QUERY_GLOBAL_STATE_RESULT: Lazy<QueryGlobalStateResult> =
+    Lazy::new(|| QueryGlobalStateResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
         block_header: Some(BlockHeaderV2::example().clone().into()),
         stored_value: StoredValue::Account(Account::doc_example().clone()),
         merkle_proof: MERKLE_PROOF.clone(),
-    }
-});
+    });
 static GET_TRIE_PARAMS: Lazy<GetTrieParams> = Lazy::new(|| GetTrieParams {
     trie_key: *BlockHeaderV2::example().state_root_hash(),
 });
@@ -112,11 +110,10 @@ static QUERY_BALANCE_PARAMS: Lazy<QueryBalanceParams> = Lazy::new(|| QueryBalanc
     state_identifier: Some(GlobalStateIdentifier::BlockHash(*BlockHash::example())),
     purse_identifier: PurseIdentifier::MainPurseUnderAccountHash(AccountHash::new([9u8; 32])),
 });
-static QUERY_BALANCE_RESULT: Lazy<QueryBalanceResult> =
-    Lazy::new(|| QueryBalanceResult {
-        api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-        balance: U512::from(123_456),
-    });
+static QUERY_BALANCE_RESULT: Lazy<QueryBalanceResult> = Lazy::new(|| QueryBalanceResult {
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    balance: U512::from(123_456),
+});
 
 /// Params for "state_get_item" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
@@ -284,10 +281,23 @@ impl RpcWithOptionalParams for GetAuctionInfo {
     type ResponseResult = GetAuctionInfoResult;
 
     async fn do_handle_request(
-        _node_client: Arc<dyn NodeClient>,
+        node_client: Arc<dyn NodeClient>,
         _api_version: ProtocolVersion,
-        _maybe_params: Option<Self::OptionalRequestParams>,
+        maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
+        let maybe_block_id = maybe_params.map(|params| params.block_identifier);
+        let block = common::get_signed_block(&*node_client, maybe_block_id).await?;
+        let _bids = match node_client
+            .query_global_state_by_tag(*block.block().state_root_hash(), KeyTag::Bid)
+            .await
+            .map_err(|err| Error::NodeRequest("auction bids", err))?
+        {
+            GetAllValuesResult::Success { values } => values,
+            GetAllValuesResult::RootNotFound => {
+                return Err(Error::GlobalStateRootHashNotFound.into())
+            }
+        };
+
         todo!()
     }
 }

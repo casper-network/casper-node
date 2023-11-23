@@ -49,6 +49,7 @@ use casper_storage::{
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{AssociatedKeys, MessageTopics, NamedKeys},
+    binary_port::get_all_values::GetAllValuesResult,
     bytesrepr::ToBytes,
     execution::Effects,
     package::{EntityVersions, Groups, PackageKind, PackageKindTag, PackageStatus},
@@ -92,10 +93,7 @@ pub use self::{
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::UpgradeSuccess,
 };
-use self::{
-    get_all_values::{GetAllValuesRequest, GetAllValuesResult},
-    transfer::NewTransferTargetMode,
-};
+use self::{get_all_values::GetAllValuesRequest, transfer::NewTransferTargetMode};
 use crate::{
     engine_state::{
         execution_kind::ExecutionKind,
@@ -2237,12 +2235,9 @@ where
         let values: Vec<_> = keys
             .iter()
             // TODO[RC]: Do not ignore errors here?
-            .filter_map(|key| tracking_copy.get(key).ok())
+            .filter_map(|key| tracking_copy.get(key).ok().flatten())
             .collect();
-        Ok(match values.to_bytes() {
-            Ok(values) => GetAllValuesResult::Success { values },
-            Err(_) => GetAllValuesResult::SerializationError,
-        })
+        Ok(GetAllValuesResult::Success { values })
     }
 
     /// Gets current bids from the auction system.
