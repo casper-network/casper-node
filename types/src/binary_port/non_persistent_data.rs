@@ -30,6 +30,12 @@ pub enum NonPersistedDataRequest {
         /// Transaction hash.
         transaction_hash: TransactionHash,
     },
+    // Status requests (effect builders on slack)
+    // Peers (together with status)
+    // Uptime
+    // Network name
+    // GetValidatorChanges
+    // GetTrie
 }
 
 impl ToBytes for NonPersistedDataRequest {
