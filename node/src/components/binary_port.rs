@@ -323,7 +323,7 @@ where
                 let get_all_values_result = effect_builder
                     .get_all_values(get_all_values_request)
                     .await
-                    .map_err(|error| Error::EngineState(error).to_string());
+                    .map_err(|error| Error::EngineState(error))?;
                 let bytes = ToBytes::to_bytes(&get_all_values_result)
                     .map_err(|err| Error::BytesRepr(err))?
                     .into();
