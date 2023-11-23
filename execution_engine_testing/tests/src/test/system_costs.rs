@@ -979,6 +979,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         blake2b: HostFunction::fixed(0),
         random_bytes: HostFunction::fixed(0),
         enable_contract_version: HostFunction::fixed(0),
+        generic_hash: HostFunction::fixed(0),
     };
 
     let new_wasm_config = WasmConfig::new(

@@ -139,6 +139,7 @@ static NEW_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> = Lazy::new(|| HostFunct
     blake2b: HostFunction::fixed(0),
     random_bytes: HostFunction::fixed(0),
     enable_contract_version: HostFunction::fixed(0),
+    generic_hash: HostFunction::fixed(0),
 });
 static STORAGE_COSTS_ONLY: Lazy<WasmConfig> = Lazy::new(|| {
     WasmConfig::new(

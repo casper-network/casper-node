@@ -9,13 +9,13 @@ use casper_types::{
     contracts::{ContractPackageStatus, EntryPoints, NamedKeys},
     crypto,
     system::auction::EraInfo,
-    ApiError, ContractHash, ContractPackageHash, ContractVersion, EraId, Gas, Group, Key,
-    StoredValue, URef, U512, UREF_SERIALIZED_LENGTH,
+    ApiError, ContractHash, ContractPackageHash, ContractVersion, EraId, Gas, Group, HashAlgoType,
+    Key, StoredValue, URef, U512, UREF_SERIALIZED_LENGTH,
 };
 
 use super::{args::Args, Error, Runtime};
 use crate::{
-    core::resolvers::v1_function_index::FunctionIndex,
+    core::{resolvers::v1_function_index::FunctionIndex, runtime::crypto as core_crypto},
     shared::host_function_costs::{Cost, HostFunction, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY},
     storage::global_state::StateReader,
 };
@@ -1096,6 +1096,49 @@ where
                 let result = self.enable_contract_version(contract_package_hash, contract_hash)?;
 
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
+            }
+
+            FunctionIndex::GenericHash => {
+                // args(0) = pointer to input in Wasm memory
+                // args(1) = size of input in Wasm memory
+                // args(2) = integer representation of HashAlgoType enum variant
+                // args(3) = pointer to output pointer in Wasm memory
+                // args(4) = size of output
+                let (in_ptr, in_size, hash_algo_type, out_ptr, out_size) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.generic_hash,
+                    [in_ptr, in_size, hash_algo_type, out_ptr, out_size],
+                )?;
+                let hash_algo_type = match HashAlgoType::try_from(hash_algo_type as u8) {
+                    Ok(v) => v,
+                    Err(_e) => {
+                        return Ok(Some(RuntimeValue::I32(api_error::i32_from(Err(
+                            ApiError::InvalidArgument,
+                        )))))
+                    }
+                };
+
+                let digest =
+                    self.checked_memory_slice(in_ptr as usize, in_size as usize, |input| {
+                        match hash_algo_type {
+                            HashAlgoType::Blake2b => crypto::blake2b(input),
+                            HashAlgoType::Blake3 => core_crypto::blake3(input),
+                        }
+                    })?;
+
+                let result = if digest.len() > out_size as usize {
+                    Err(ApiError::BufferTooSmall)
+                } else {
+                    Ok(())
+                };
+                if result.is_err() {
+                    return Ok(Some(RuntimeValue::I32(api_error::i32_from(result))));
+                }
+
+                self.try_get_memory()?
+                    .set(out_ptr, &digest)
+                    .map_err(|error| Error::Interpreter(error.into()))?;
+                Ok(Some(RuntimeValue::I32(0)))
             }
         }
     }

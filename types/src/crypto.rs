@@ -3,10 +3,15 @@
 mod asymmetric_key;
 mod error;
 
+use core::convert::TryFrom;
+
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
+
+use num::FromPrimitive;
+use num_derive::FromPrimitive;
 
 use crate::key::BLAKE2B_DIGEST_LENGTH;
 #[cfg(any(feature = "std", test))]
@@ -32,4 +37,22 @@ pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
         result.copy_from_slice(slice);
     });
     result
+}
+
+/// A type of hashing algorithm.
+#[repr(u8)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive)]
+pub enum HashAlgoType {
+    /// Blake2b
+    Blake2b = 0,
+    /// Blake3
+    Blake3 = 1,
+}
+
+impl TryFrom<u8> for HashAlgoType {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        FromPrimitive::from_u8(value).ok_or(())
+    }
 }
