@@ -9,6 +9,7 @@ const BLOCK_HEIGHT_2_HASH_TAG: u8 = 0;
 const HIGHEST_BLOCK_TAG: u8 = 1;
 const COMPLETED_BLOCK_CONTAINS_TAG: u8 = 2;
 const TRANSACTION_HASH_2_BLOCK_HASH_AND_HEIGHT_TAG: u8 = 3;
+const PEERS_TAG: u8 = 4;
 
 /// Request for non persistent data
 #[derive(Debug)]
@@ -30,8 +31,10 @@ pub enum NonPersistedDataRequest {
         /// Transaction hash.
         transaction_hash: TransactionHash,
     },
+    /// Returns connected peers.
+    Peers,
+    // TODO:
     // Status requests (effect builders on slack)
-    // Peers (together with status)
     // Uptime
     // Network name
     // GetValidatorChanges
@@ -60,6 +63,7 @@ impl ToBytes for NonPersistedDataRequest {
                 TRANSACTION_HASH_2_BLOCK_HASH_AND_HEIGHT_TAG.write_bytes(writer)?;
                 transaction_hash.write_bytes(writer)
             }
+            NonPersistedDataRequest::Peers => PEERS_TAG.write_bytes(writer),
         }
     }
 
@@ -74,6 +78,7 @@ impl ToBytes for NonPersistedDataRequest {
                 NonPersistedDataRequest::TransactionHash2BlockHashAndHeight {
                     transaction_hash,
                 } => transaction_hash.serialized_length(),
+                NonPersistedDataRequest::Peers => 0,
             }
     }
 }
@@ -106,6 +111,7 @@ impl FromBytes for NonPersistedDataRequest {
                     remainder,
                 ))
             }
+            PEERS_TAG => Ok((NonPersistedDataRequest::Peers, remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }

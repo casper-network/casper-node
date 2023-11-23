@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -13,6 +14,31 @@ pub struct PeerEntry {
     pub node_id: String,
     /// Node address.
     pub address: String,
+}
+
+impl ToBytes for PeerEntry {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.node_id.write_bytes(writer)?;
+        self.address.write_bytes(writer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.node_id.serialized_length() + self.address.serialized_length()
+    }
+}
+
+impl FromBytes for PeerEntry {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (node_id, remainder) = String::from_bytes(bytes)?;
+        let (address, remainder) = String::from_bytes(remainder)?;
+        Ok((PeerEntry { node_id, address }, remainder))
+    }
 }
 
 /// Map of peer IDs to network addresses.
@@ -37,5 +63,28 @@ impl From<BTreeMap<NodeId, String>> for PeersMap {
             })
             .collect();
         PeersMap(ret)
+    }
+}
+
+impl ToBytes for PeersMap {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.0.write_bytes(writer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for PeersMap {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (inner, remainder) = Vec::<PeerEntry>::from_bytes(bytes)?;
+        Ok((PeersMap(inner), remainder))
     }
 }
