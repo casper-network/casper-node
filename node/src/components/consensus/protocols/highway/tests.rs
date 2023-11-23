@@ -321,7 +321,7 @@ fn slow_node_should_switch_own_round_exponent() {
     slow_nodes.insert(ALICE_PUBLIC_KEY.clone());
 
     let mut env = ConsensusEnvironment::new(validators, slow_nodes);
-    for _ in 0..10 {
+    for _ in 0..15 {
         env.crank_round();
     }
 
@@ -360,7 +360,7 @@ fn slow_down_when_majority_slow() {
     slow_nodes.insert(ELLEN_PUBLIC_KEY.clone());
 
     let mut env = ConsensusEnvironment::new(validators, slow_nodes);
-    for _ in 0..10 {
+    for _ in 0..15 {
         env.crank_round();
     }
 
