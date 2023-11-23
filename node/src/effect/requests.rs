@@ -21,6 +21,7 @@ use casper_execution_engine::engine_state::{
     self,
     balance::{BalanceRequest, BalanceResult},
     era_validators::GetEraValidatorsError,
+    get_all_values::{GetAllValuesRequest, GetAllValuesResult},
     get_bids::{GetBidsRequest, GetBidsResult},
     query::{QueryRequest, QueryResult},
 };
@@ -990,6 +991,15 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<GetBidsResult, engine_state::Error>>,
     },
+    /// Return all values at a given state root hash and given key tag.
+    // TODO[RC]: Reconsider this - could be attackable.
+    GetAllValues {
+        /// Get all values request.
+        #[serde(skip_serializing)]
+        get_all_values_request: GetAllValuesRequest,
+        /// Responder to call with the result.
+        responder: Responder<Result<GetAllValuesResult, engine_state::Error>>,
+    },
     /// Returns the value of the execution results checksum stored in the ChecksumRegistry for the
     /// given state root hash.
     GetExecutionResultsChecksum {
@@ -1067,6 +1077,16 @@ impl Display for ContractRuntimeRequest {
             }
             ContractRuntimeRequest::GetEraValidators { request, .. } => {
                 write!(formatter, "get era validators: {:?}", request)
+            }
+            ContractRuntimeRequest::GetAllValues {
+                get_all_values_request,
+                ..
+            } => {
+                write!(
+                    formatter,
+                    "get all values request: {:?}",
+                    get_all_values_request
+                )
             }
             ContractRuntimeRequest::GetBids {
                 get_bids_request, ..

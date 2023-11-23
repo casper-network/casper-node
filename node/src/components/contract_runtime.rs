@@ -648,6 +648,24 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
+            ContractRuntimeRequest::GetAllValues {
+                get_all_values_request,
+                responder,
+            } => {
+                trace!(?get_all_values_request, "get all values request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                async move {
+                    let start = Instant::now();
+                    let result = engine_state.get_all_values(get_all_values_request);
+                    metrics
+                        .get_all_values
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "get all values result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
             ContractRuntimeRequest::GetExecutionResultsChecksum {
                 state_root_hash,
                 responder,

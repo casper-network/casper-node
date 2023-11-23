@@ -9,7 +9,9 @@ mod tests;
 use std::{net::SocketAddr, sync::Arc};
 
 use bytes::Bytes;
-use casper_execution_engine::engine_state::{Error as EngineStateError, QueryRequest};
+use casper_execution_engine::engine_state::{
+    get_all_values::GetAllValuesRequest, Error as EngineStateError, QueryRequest,
+};
 use casper_types::{
     binary_port::{
         binary_request::BinaryRequest, get::GetRequest, global_state::GlobalStateQueryResult,
@@ -185,6 +187,7 @@ where
                 .speculatively_execute(execution_prestate, Box::new(transaction))
                 .await
                 .map_err(|error| match error {
+                    // TODO[RC]: Proper error conversion.
                     EngineStateError::RootNotFound(_) => SpeculativeExecutionError::NoSuchStateRoot,
                     EngineStateError::InvalidDeployItemVariant(error) => {
                         SpeculativeExecutionError::InvalidDeploy(error.to_string())
@@ -299,6 +302,20 @@ where
                 let payload =
                     ToBytes::to_bytes(&query_result).map_err(|err| Error::BytesRepr(err))?;
                 Ok(Some(payload.into()))
+            }
+            GetRequest::AllValues {
+                state_root_hash,
+                key_tag,
+            } => {
+                let get_all_values_request = GetAllValuesRequest::new(state_root_hash, key_tag);
+                let get_all_values_result = effect_builder
+                    .get_all_values(get_all_values_request)
+                    .await
+                    .map_err(|error| Error::EngineState(error).to_string());
+                let bytes = ToBytes::to_bytes(&get_all_values_result)
+                    .map_err(|err| Error::BytesRepr(err))?
+                    .into();
+                Ok(Some(bytes))
             }
         },
     }

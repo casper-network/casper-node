@@ -9,6 +9,7 @@ pub mod execute_request;
 pub(crate) mod execution_kind;
 pub mod execution_result;
 pub mod genesis;
+pub mod get_all_values;
 pub mod get_bids;
 mod prune;
 pub mod query;
@@ -68,7 +69,6 @@ use casper_types::{
     RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
 };
 
-use self::transfer::NewTransferTargetMode;
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
     checksum_registry::ChecksumRegistry,
@@ -91,6 +91,10 @@ pub use self::{
     system_contract_registry::SystemContractRegistry,
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::UpgradeSuccess,
+};
+use self::{
+    get_all_values::{GetAllValuesRequest, GetAllValuesResult},
+    transfer::NewTransferTargetMode,
 };
 use crate::{
     engine_state::{
@@ -2211,6 +2215,33 @@ where
 
         let era_validators_result = auction::detail::era_validators_from_snapshot(snapshot);
         Ok(era_validators_result)
+    }
+
+    /// Gets all values under the given key.
+    pub fn get_all_values(
+        &self,
+        get_all_values_request: GetAllValuesRequest,
+    ) -> Result<GetAllValuesResult, Error> {
+        let state_root_hash = get_all_values_request.state_hash();
+        let tracking_copy = match self.tracking_copy(state_root_hash)? {
+            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
+            None => return Ok(GetAllValuesResult::RootNotFound),
+        };
+
+        let mut tracking_copy = tracking_copy.borrow_mut();
+
+        let keys = tracking_copy
+            .get_keys(&get_all_values_request.key_tag())
+            .map_err(|err| Error::Exec(err.into()))?;
+
+        let values: Vec<_> = keys
+            .iter()
+            .filter_map(|key| tracking_copy.get(key).ok())
+            .collect();
+        Ok(match values.to_bytes() {
+            Ok(values) => GetAllValuesResult::Success { values },
+            Err(_) => GetAllValuesResult::SerializationError,
+        })
     }
 
     /// Gets current bids from the auction system.

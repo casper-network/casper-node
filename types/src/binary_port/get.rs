@@ -2,7 +2,7 @@
 
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, Key,
+    Digest, Key, KeyTag,
 };
 
 use super::{db_id::DbId, non_persistent_data::NonPersistedDataRequest};
@@ -10,6 +10,7 @@ use super::{db_id::DbId, non_persistent_data::NonPersistedDataRequest};
 const DB_TAG: u8 = 0;
 const NON_PERSISTED_DATA_TAG: u8 = 1;
 const STATE_TAG: u8 = 2;
+const ALL_VALUES_TAG: u8 = 3;
 
 /// The kind of the `Get` operation.
 #[derive(Debug)]
@@ -31,6 +32,13 @@ pub enum GetRequest {
         base_key: Key,
         /// Path under which the value is stored.
         path: Vec<String>,
+    },
+    /// Get all values under the given key tag.
+    AllValues {
+        /// State root hash
+        state_root_hash: Digest,
+        /// Key tag
+        key_tag: KeyTag,
     },
 }
 
@@ -62,6 +70,14 @@ impl ToBytes for GetRequest {
                 base_key.write_bytes(writer)?;
                 path.write_bytes(writer)
             }
+            GetRequest::AllValues {
+                state_root_hash,
+                key_tag,
+            } => {
+                ALL_VALUES_TAG.write_bytes(writer)?;
+                state_root_hash.write_bytes(writer)?;
+                (*key_tag as u8).write_bytes(writer)
+            }
         }
     }
 
@@ -79,6 +95,10 @@ impl ToBytes for GetRequest {
                         + base_key.serialized_length()
                         + path.serialized_length()
                 }
+                GetRequest::AllValues {
+                    state_root_hash,
+                    key_tag,
+                } => state_root_hash.serialized_length() + (*key_tag as u8).serialized_length(),
             }
     }
 }
@@ -112,6 +132,40 @@ impl FromBytes for GetRequest {
                         state_root_hash,
                         base_key,
                         path,
+                    },
+                    remainder,
+                ))
+            }
+            ALL_VALUES_TAG => {
+                let (state_root_hash, remainder) = Digest::from_bytes(remainder)?;
+                let (key_tag, remainder) = u8::from_bytes(remainder)?;
+                let key_tag = match key_tag {
+                    0 => KeyTag::Account,
+                    1 => KeyTag::Hash,
+                    2 => KeyTag::URef,
+                    3 => KeyTag::Transfer,
+                    4 => KeyTag::DeployInfo,
+                    5 => KeyTag::EraInfo,
+                    6 => KeyTag::Balance,
+                    7 => KeyTag::Bid,
+                    8 => KeyTag::Withdraw,
+                    9 => KeyTag::Dictionary,
+                    10 => KeyTag::SystemContractRegistry,
+                    11 => KeyTag::EraSummary,
+                    12 => KeyTag::Unbond,
+                    13 => KeyTag::ChainspecRegistry,
+                    14 => KeyTag::ChecksumRegistry,
+                    15 => KeyTag::BidAddr,
+                    16 => KeyTag::Package,
+                    17 => KeyTag::AddressableEntity,
+                    18 => KeyTag::ByteCode,
+                    19 => KeyTag::Message,
+                    _ => return Err(bytesrepr::Error::Formatting),
+                };
+                Ok((
+                    GetRequest::AllValues {
+                        state_root_hash,
+                        key_tag,
                     },
                     remainder,
                 ))

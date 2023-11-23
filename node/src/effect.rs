@@ -116,8 +116,10 @@ use tokio::{sync::Semaphore, time};
 use tracing::{debug, error, warn};
 
 use casper_execution_engine::engine_state::{
-    self, era_validators::GetEraValidatorsError, BalanceRequest, BalanceResult, GetBidsRequest,
-    GetBidsResult, QueryRequest, QueryResult,
+    self,
+    era_validators::GetEraValidatorsError,
+    get_all_values::{GetAllValuesRequest, GetAllValuesResult},
+    BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
 };
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
@@ -2143,6 +2145,24 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| ContractRuntimeRequest::GetBids {
                 get_bids_request,
+                responder,
+            },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
+    /// Requests a query be executed on the Contract Runtime component.
+    pub(crate) async fn get_all_values(
+        self,
+        get_all_values_request: GetAllValuesRequest,
+    ) -> Result<GetAllValuesResult, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetAllValues {
+                get_all_values_request,
                 responder,
             },
             QueueKind::ContractRuntime,
