@@ -1,8 +1,7 @@
 //! Support for global state queries.
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
-    binary_port::global_state::GlobalStateQueryResult, bytesrepr::ToBytes, Digest,
-    Key, StoredValue,
+    binary_port::global_state::GlobalStateQueryResult, bytesrepr::ToBytes, Digest, Key, StoredValue,
 };
 
 use crate::tracking_copy::TrackingCopyQueryResult;

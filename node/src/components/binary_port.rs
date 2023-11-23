@@ -12,9 +12,9 @@ use bytes::Bytes;
 use casper_execution_engine::engine_state::{Error as EngineStateError, QueryRequest};
 use casper_types::{
     binary_port::{
-        binary_request::BinaryRequest, get::GetRequest,
-        global_state::GlobalStateQueryResult,
+        binary_request::BinaryRequest, get::GetRequest, global_state::GlobalStateQueryResult,
         non_persistent_data::NonPersistedDataRequest,
+        speculative_execution::SpeculativeExecutionError,
     },
     bytesrepr::{FromBytes, ToBytes},
     BlockHashAndHeight, Transaction,
@@ -26,10 +26,9 @@ use juliet::{
 };
 use prometheus::Registry;
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{
-    components::binary_port::error::SpeculativeExecutionError,
     contract_runtime::SpeculativeExecutionState,
     effect::{
         requests::{AcceptTransactionRequest, ContractRuntimeRequest, StorageRequest},
@@ -185,55 +184,50 @@ where
             let speculative_execution_result = effect_builder
                 .speculatively_execute(execution_prestate, Box::new(transaction))
                 .await
-                .map_err(|error| {
-                    match error {
-                        EngineStateError::RootNotFound(_) => {
-                            Error::SpeculativeExecution(SpeculativeExecutionError::NoSuchStateRoot)
-                        }
-                        EngineStateError::InvalidDeployItemVariant(error) => {
-                            Error::SpeculativeExecution(SpeculativeExecutionError::InvalidDeploy(
-                                error.to_string(),
-                            ))
-                        }
-                        EngineStateError::WasmPreprocessing(error) => Error::SpeculativeExecution(
-                            SpeculativeExecutionError::InvalidDeploy(error.to_string()),
-                        ),
-                        EngineStateError::InvalidProtocolVersion(_) => {
-                            Error::SpeculativeExecution(SpeculativeExecutionError::InvalidDeploy(
-                                format!("deploy used invalid protocol version {}", error),
-                            ))
-                        }
-                        EngineStateError::Deploy => Error::SpeculativeExecution(
-                            SpeculativeExecutionError::InvalidDeploy("".into()),
-                        ),
-                        EngineStateError::Genesis(_)
-                        | EngineStateError::WasmSerialization(_)
-                        | EngineStateError::Exec(_)
-                        | EngineStateError::Storage(_)
-                        | EngineStateError::Authorization
-                        | EngineStateError::InsufficientPayment
-                        | EngineStateError::GasConversionOverflow
-                        | EngineStateError::Finalization
-                        | EngineStateError::Bytesrepr(_)
-                        | EngineStateError::Mint(_)
-                        | EngineStateError::InvalidKeyVariant
-                        | EngineStateError::ProtocolUpgrade(_)
-                        | EngineStateError::CommitError(_)
-                        | EngineStateError::MissingSystemContractRegistry
-                        | EngineStateError::MissingSystemContractHash(_)
-                        | EngineStateError::RuntimeStackOverflow
-                        | EngineStateError::FailedToGetKeys(_)
-                        | EngineStateError::FailedToGetStoredWithdraws
-                        | EngineStateError::FailedToGetWithdrawPurses
-                        | EngineStateError::FailedToRetrieveUnbondingDelay
-                        | EngineStateError::FailedToRetrieveEraId => Error::SpeculativeExecution(
-                            SpeculativeExecutionError::InternalError(error.to_string()),
-                        ),
-                        _ => Error::SpeculativeExecution(SpeculativeExecutionError::InternalError(
-                            format!("Unhandled engine state error: {}", error),
-                        )),
+                .map_err(|error| match error {
+                    EngineStateError::RootNotFound(_) => SpeculativeExecutionError::NoSuchStateRoot,
+                    EngineStateError::InvalidDeployItemVariant(error) => {
+                        SpeculativeExecutionError::InvalidDeploy(error.to_string())
                     }
-                    .to_string()
+                    EngineStateError::WasmPreprocessing(error) => {
+                        SpeculativeExecutionError::InvalidDeploy(error.to_string())
+                    }
+
+                    EngineStateError::InvalidProtocolVersion(_) => {
+                        SpeculativeExecutionError::InvalidDeploy(format!(
+                            "deploy used invalid protocol version {}",
+                            error
+                        ))
+                    }
+                    EngineStateError::Deploy => SpeculativeExecutionError::InvalidDeploy("".into()),
+                    EngineStateError::Genesis(_)
+                    | EngineStateError::WasmSerialization(_)
+                    | EngineStateError::Exec(_)
+                    | EngineStateError::Storage(_)
+                    | EngineStateError::Authorization
+                    | EngineStateError::InsufficientPayment
+                    | EngineStateError::GasConversionOverflow
+                    | EngineStateError::Finalization
+                    | EngineStateError::Bytesrepr(_)
+                    | EngineStateError::Mint(_)
+                    | EngineStateError::InvalidKeyVariant
+                    | EngineStateError::ProtocolUpgrade(_)
+                    | EngineStateError::CommitError(_)
+                    | EngineStateError::MissingSystemContractRegistry
+                    | EngineStateError::MissingSystemContractHash(_)
+                    | EngineStateError::RuntimeStackOverflow
+                    | EngineStateError::FailedToGetKeys(_)
+                    | EngineStateError::FailedToGetStoredWithdraws
+                    | EngineStateError::FailedToGetWithdrawPurses
+                    | EngineStateError::FailedToRetrieveUnbondingDelay
+                    | EngineStateError::FailedToRetrieveEraId => {
+                        SpeculativeExecutionError::InternalError(error.to_string())
+                    }
+
+                    _ => SpeculativeExecutionError::InternalError(format!(
+                        "Unhandled engine state error: {}",
+                        error
+                    )),
                 });
 
             let bytes = ToBytes::to_bytes(&speculative_execution_result)
