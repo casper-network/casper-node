@@ -34,7 +34,7 @@ use crate::{
     contract_runtime::SpeculativeExecutionState,
     effect::{
         requests::{
-            AcceptTransactionRequest, ContractRuntimeRequest, NetworkInfoRequest,
+            AcceptTransactionRequest, ConsensusRequest, ContractRuntimeRequest, NetworkInfoRequest,
             ReactorInfoRequest, StorageRequest,
         },
         EffectBuilder, Effects,
@@ -78,6 +78,7 @@ where
         + From<AcceptTransactionRequest>
         + From<NetworkInfoRequest>
         + From<ReactorInfoRequest>
+        + From<ConsensusRequest>
         + Send,
 {
     type Event = Event;
@@ -134,6 +135,7 @@ where
         + From<AcceptTransactionRequest>
         + From<NetworkInfoRequest>
         + From<ReactorInfoRequest>
+        + From<ConsensusRequest>
         + Send,
 {
     fn state(&self) -> &ComponentState {
@@ -161,7 +163,8 @@ where
         + From<ContractRuntimeRequest>
         + From<AcceptTransactionRequest>
         + From<NetworkInfoRequest>
-        + From<ReactorInfoRequest>,
+        + From<ReactorInfoRequest>
+        + From<ConsensusRequest>,
 {
     match req {
         BinaryRequest::TryAcceptTransaction {
@@ -327,6 +330,13 @@ where
                         ToBytes::to_bytes(&network_name).map_err(|err| Error::BytesRepr(err))?;
                     Ok(Some(Bytes::from(payload)))
                 }
+                NonPersistedDataRequest::ConsensusValidatorChanges => {
+                    let consensus_validator_changes =
+                        effect_builder.get_consensus_validator_changes().await;
+                    let payload = ToBytes::to_bytes(&consensus_validator_changes)
+                        .map_err(|err| Error::BytesRepr(err))?;
+                    Ok(Some(Bytes::from(payload)))
+                }
             },
             GetRequest::State {
                 state_root_hash,
@@ -374,7 +384,8 @@ async fn handle_client<REv, const N: usize>(
         + From<ContractRuntimeRequest>
         + From<AcceptTransactionRequest>
         + From<NetworkInfoRequest>
-        + From<ReactorInfoRequest>,
+        + From<ReactorInfoRequest>
+        + From<ConsensusRequest>,
 {
     let (reader, writer) = client.split();
     let (client, mut server) = rpc_builder.build(reader, writer);
@@ -438,6 +449,7 @@ where
         + From<AcceptTransactionRequest>
         + From<NetworkInfoRequest>
         + From<ReactorInfoRequest>
+        + From<ConsensusRequest>
         + Send,
 {
     let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
@@ -479,6 +491,7 @@ where
         + From<AcceptTransactionRequest>
         + From<NetworkInfoRequest>
         + From<ReactorInfoRequest>
+        + From<ConsensusRequest>
         + Send,
 {
     type Error = ListeningError;

@@ -3,7 +3,10 @@ use std::collections::HashSet;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types::PublicKey;
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    PublicKey,
+};
 
 use super::era_supervisor::Era;
 
@@ -112,6 +115,50 @@ impl<'a> From<&'a Era> for EraMetadata<'a> {
             faulty,
             cannot_propose,
         }
+    }
+}
+
+const ADDED_TAG: u8 = 0;
+const REMOVED_TAG: u8 = 1;
+const BANNED_TAG: u8 = 2;
+const CANNOT_PROPOSE_TAG: u8 = 3;
+const SEEN_AS_FAULTY_TAG: u8 = 4;
+
+impl ToBytes for ValidatorChange {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            ValidatorChange::Added => ADDED_TAG,
+            ValidatorChange::Removed => REMOVED_TAG,
+            ValidatorChange::Banned => BANNED_TAG,
+            ValidatorChange::CannotPropose => CANNOT_PROPOSE_TAG,
+            ValidatorChange::SeenAsFaulty => SEEN_AS_FAULTY_TAG,
+        }
+        .write_bytes(writer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+    }
+}
+
+impl FromBytes for ValidatorChange {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        let id = match tag {
+            ADDED_TAG => ValidatorChange::Added,
+            REMOVED_TAG => ValidatorChange::Removed,
+            BANNED_TAG => ValidatorChange::Banned,
+            CANNOT_PROPOSE_TAG => ValidatorChange::CannotPropose,
+            SEEN_AS_FAULTY_TAG => ValidatorChange::SeenAsFaulty,
+            _ => return Err(bytesrepr::Error::NotRepresentable),
+        };
+        Ok((id, remainder))
     }
 }
 

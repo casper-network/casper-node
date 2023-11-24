@@ -14,6 +14,7 @@ const UPTIME_TAG: u8 = 5;
 const LAST_PROGRESS_TAG: u8 = 6;
 const REACTOR_STATE_TAG: u8 = 7;
 const NETWORK_NAME_TAG: u8 = 8;
+const CONSENSUS_VALIDATOR_CHANGES_TAG: u8 = 9;
 
 /// Request for non persistent data
 #[derive(Debug)]
@@ -46,10 +47,10 @@ pub enum NonPersistedDataRequest {
     /// Returns current network name.
     // TODO[RC]: Consider "generic" get chainspec param? Or just "get_chainspec"?
     NetworkName,
+    /// Returns consensus validator changes.
+    ConsensusValidatorChanges,
     // TODO:
     // Status requests (effect builders on slack)
-    // Network name
-    // GetValidatorChanges
     // GetTrie
 }
 
@@ -80,6 +81,9 @@ impl ToBytes for NonPersistedDataRequest {
             NonPersistedDataRequest::LastProgress => LAST_PROGRESS_TAG.write_bytes(writer),
             NonPersistedDataRequest::ReactorState => REACTOR_STATE_TAG.write_bytes(writer),
             NonPersistedDataRequest::NetworkName => NETWORK_NAME_TAG.write_bytes(writer),
+            NonPersistedDataRequest::ConsensusValidatorChanges => {
+                CONSENSUS_VALIDATOR_CHANGES_TAG.write_bytes(writer)
+            }
         }
     }
 
@@ -99,6 +103,7 @@ impl ToBytes for NonPersistedDataRequest {
                 NonPersistedDataRequest::LastProgress => 0,
                 NonPersistedDataRequest::ReactorState => 0,
                 NonPersistedDataRequest::NetworkName => 0,
+                NonPersistedDataRequest::ConsensusValidatorChanges => 0,
             }
     }
 }
@@ -136,6 +141,10 @@ impl FromBytes for NonPersistedDataRequest {
             LAST_PROGRESS_TAG => Ok((NonPersistedDataRequest::LastProgress, remainder)),
             REACTOR_STATE_TAG => Ok((NonPersistedDataRequest::ReactorState, remainder)),
             NETWORK_NAME_TAG => Ok((NonPersistedDataRequest::NetworkName, remainder)),
+            CONSENSUS_VALIDATOR_CHANGES_TAG => Ok((
+                NonPersistedDataRequest::ConsensusValidatorChanges,
+                remainder,
+            )),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
