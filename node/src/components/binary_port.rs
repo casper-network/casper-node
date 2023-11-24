@@ -36,6 +36,7 @@ use crate::{
         requests::{
             AcceptTransactionRequest, BlockSynchronizerRequest, ConsensusRequest,
             ContractRuntimeRequest, NetworkInfoRequest, ReactorInfoRequest, StorageRequest,
+            UpgradeWatcherRequest,
         },
         EffectBuilder, Effects,
     },
@@ -80,6 +81,7 @@ where
         + From<ReactorInfoRequest>
         + From<ConsensusRequest>
         + From<BlockSynchronizerRequest>
+        + From<UpgradeWatcherRequest>
         + Send,
 {
     type Event = Event;
@@ -138,6 +140,7 @@ where
         + From<ReactorInfoRequest>
         + From<ConsensusRequest>
         + From<BlockSynchronizerRequest>
+        + From<UpgradeWatcherRequest>
         + Send,
 {
     fn state(&self) -> &ComponentState {
@@ -167,7 +170,9 @@ where
         + From<NetworkInfoRequest>
         + From<ReactorInfoRequest>
         + From<ConsensusRequest>
-        + From<BlockSynchronizerRequest>,
+        + From<BlockSynchronizerRequest>
+        + From<UpgradeWatcherRequest>
+        + Send,
 {
     // TODO[RC]: clean this up, delegate to specialized functions
     match req {
@@ -356,6 +361,14 @@ where
                         .map_err(|err| Error::BytesRepr(err))?;
                     Ok(Some(Bytes::from(payload)))
                 }
+                NonPersistedDataRequest::NextUpgrade => {
+                    let next_upgrade = effect_builder.get_next_upgrade().await;
+                    let payload = next_upgrade
+                        .map(|data| data.to_bytes().map(Bytes::from))
+                        .transpose()
+                        .map_err(|err| Error::BytesRepr(err))?;
+                    Ok(payload)
+                }
             },
             GetRequest::State {
                 state_root_hash,
@@ -413,7 +426,9 @@ async fn handle_client<REv, const N: usize>(
         + From<NetworkInfoRequest>
         + From<ReactorInfoRequest>
         + From<ConsensusRequest>
-        + From<BlockSynchronizerRequest>,
+        + From<BlockSynchronizerRequest>
+        + From<UpgradeWatcherRequest>
+        + Send,
 {
     let (reader, writer) = client.split();
     let (client, mut server) = rpc_builder.build(reader, writer);
@@ -479,6 +494,7 @@ where
         + From<ReactorInfoRequest>
         + From<ConsensusRequest>
         + From<BlockSynchronizerRequest>
+        + From<UpgradeWatcherRequest>
         + Send,
 {
     let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
@@ -522,6 +538,7 @@ where
         + From<ReactorInfoRequest>
         + From<ConsensusRequest>
         + From<BlockSynchronizerRequest>
+        + From<UpgradeWatcherRequest>
         + Send,
 {
     type Error = ListeningError;

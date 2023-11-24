@@ -23,6 +23,7 @@ use tokio::task;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
     file_utils::{self, ReadFileError},
     ActivationPoint, Chainspec, EraId, ProtocolConfig, ProtocolVersion, TimeDiff,
 };
@@ -160,6 +161,37 @@ impl Display for NextUpgrade {
             self.protocol_version,
             self.activation_point.era_id()
         )
+    }
+}
+
+impl ToBytes for NextUpgrade {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.activation_point.write_bytes(writer)?;
+        self.protocol_version.write_bytes(writer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.activation_point.serialized_length() + self.protocol_version.serialized_length()
+    }
+}
+
+impl FromBytes for NextUpgrade {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (activation_point, remainder) = ActivationPoint::from_bytes(bytes)?;
+        let (protocol_version, remainder) = ProtocolVersion::from_bytes(remainder)?;
+        Ok((
+            NextUpgrade {
+                activation_point,
+                protocol_version,
+            },
+            remainder,
+        ))
     }
 }
 
