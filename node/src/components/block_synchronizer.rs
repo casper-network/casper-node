@@ -30,6 +30,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state;
 use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
     Block, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy, Digest, FinalitySignature,
     FinalitySignatureId, Timestamp, Transaction, TransactionId,
 };
@@ -171,6 +172,42 @@ pub(crate) struct BlockSyncStatus {
     acquisition_state: String,
 }
 
+impl ToBytes for BlockSyncStatus {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.block_hash.write_bytes(writer)?;
+        self.block_height.write_bytes(writer)?;
+        self.acquisition_state.write_bytes(writer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.block_hash.serialized_length()
+            + self.block_height.serialized_length()
+            + self.acquisition_state.serialized_length()
+    }
+}
+
+impl FromBytes for BlockSyncStatus {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (block_hash, remainder) = BlockHash::from_bytes(bytes)?;
+        let (block_height, remainder) = Option::<u64>::from_bytes(remainder)?;
+        let (acquisition_state, remainder) = String::from_bytes(remainder)?;
+        Ok((
+            BlockSyncStatus {
+                block_hash,
+                block_height,
+                acquisition_state,
+            },
+            remainder,
+        ))
+    }
+}
+
 /// The status of the block synchronizer.
 #[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -196,6 +233,37 @@ impl BlockSynchronizerStatus {
 impl DocExample for BlockSynchronizerStatus {
     fn doc_example() -> &'static Self {
         &BLOCK_SYNCHRONIZER_STATUS
+    }
+}
+
+impl ToBytes for BlockSynchronizerStatus {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.historical.write_bytes(writer)?;
+        self.forward.write_bytes(writer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.historical.serialized_length() + self.forward.serialized_length()
+    }
+}
+
+impl FromBytes for BlockSynchronizerStatus {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (historical, remainder) = Option::<BlockSyncStatus>::from_bytes(bytes)?;
+        let (forward, remainder) = Option::<BlockSyncStatus>::from_bytes(remainder)?;
+        Ok((
+            BlockSynchronizerStatus {
+                historical,
+                forward,
+            },
+            remainder,
+        ))
     }
 }
 

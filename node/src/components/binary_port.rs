@@ -34,8 +34,8 @@ use crate::{
     contract_runtime::SpeculativeExecutionState,
     effect::{
         requests::{
-            AcceptTransactionRequest, ConsensusRequest, ContractRuntimeRequest, NetworkInfoRequest,
-            ReactorInfoRequest, StorageRequest,
+            AcceptTransactionRequest, BlockSynchronizerRequest, ConsensusRequest,
+            ContractRuntimeRequest, NetworkInfoRequest, ReactorInfoRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -79,6 +79,7 @@ where
         + From<NetworkInfoRequest>
         + From<ReactorInfoRequest>
         + From<ConsensusRequest>
+        + From<BlockSynchronizerRequest>
         + Send,
 {
     type Event = Event;
@@ -136,6 +137,7 @@ where
         + From<NetworkInfoRequest>
         + From<ReactorInfoRequest>
         + From<ConsensusRequest>
+        + From<BlockSynchronizerRequest>
         + Send,
 {
     fn state(&self) -> &ComponentState {
@@ -164,8 +166,10 @@ where
         + From<AcceptTransactionRequest>
         + From<NetworkInfoRequest>
         + From<ReactorInfoRequest>
-        + From<ConsensusRequest>,
+        + From<ConsensusRequest>
+        + From<BlockSynchronizerRequest>,
 {
+    // TODO[RC]: clean this up, delegate to specialized functions
     match req {
         BinaryRequest::TryAcceptTransaction {
             transaction,
@@ -337,6 +341,13 @@ where
                         .map_err(|err| Error::BytesRepr(err))?;
                     Ok(Some(Bytes::from(payload)))
                 }
+                NonPersistedDataRequest::BlockSynchronizerStatus => {
+                    let block_synchronizer_status =
+                        effect_builder.get_block_synchronizer_status().await;
+                    let payload = ToBytes::to_bytes(&block_synchronizer_status)
+                        .map_err(|err| Error::BytesRepr(err))?;
+                    Ok(Some(Bytes::from(payload)))
+                }
             },
             GetRequest::State {
                 state_root_hash,
@@ -393,7 +404,8 @@ async fn handle_client<REv, const N: usize>(
         + From<AcceptTransactionRequest>
         + From<NetworkInfoRequest>
         + From<ReactorInfoRequest>
-        + From<ConsensusRequest>,
+        + From<ConsensusRequest>
+        + From<BlockSynchronizerRequest>,
 {
     let (reader, writer) = client.split();
     let (client, mut server) = rpc_builder.build(reader, writer);
@@ -458,6 +470,7 @@ where
         + From<NetworkInfoRequest>
         + From<ReactorInfoRequest>
         + From<ConsensusRequest>
+        + From<BlockSynchronizerRequest>
         + Send,
 {
     let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
@@ -487,7 +500,7 @@ where
                 }
             }
         },
-        Err(_) => (), // TODO[RC] Silently ignore for now, other node started listening before us,
+        Err(_) => (), // TODO[RC]: Handle this
     };
 }
 
@@ -500,6 +513,7 @@ where
         + From<NetworkInfoRequest>
         + From<ReactorInfoRequest>
         + From<ConsensusRequest>
+        + From<BlockSynchronizerRequest>
         + Send,
 {
     type Error = ListeningError;
