@@ -369,6 +369,14 @@ where
                         .map_err(|err| Error::BytesRepr(err))?;
                     Ok(payload)
                 }
+                NonPersistedDataRequest::ConsensusStatus => {
+                    let consensus_status = effect_builder.consensus_status().await;
+                    let payload = consensus_status
+                        .map(|data| data.to_bytes().map(Bytes::from))
+                        .transpose()
+                        .map_err(|err| Error::BytesRepr(err))?;
+                    Ok(payload)
+                }
             },
             GetRequest::State {
                 state_root_hash,

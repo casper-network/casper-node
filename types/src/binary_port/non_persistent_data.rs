@@ -18,6 +18,7 @@ const CONSENSUS_VALIDATOR_CHANGES_TAG: u8 = 9;
 const BLOCK_SYNCHRONIZER_STATUS_TAG: u8 = 10;
 const AVAILABLE_BLOCK_RANGE_TAG: u8 = 11;
 const NEXT_UPGRADE_TAG: u8 = 12;
+const CONSENSUS_STATUS_TAG: u8 = 13;
 
 /// Request for non persistent data
 #[derive(Debug)]
@@ -58,6 +59,8 @@ pub enum NonPersistedDataRequest {
     AvailableBlockRange,
     /// Returns info about next upgrade.
     NextUpgrade,
+    /// Returns consensus status.
+    ConsensusStatus,
 }
 
 impl ToBytes for NonPersistedDataRequest {
@@ -97,6 +100,7 @@ impl ToBytes for NonPersistedDataRequest {
                 AVAILABLE_BLOCK_RANGE_TAG.write_bytes(writer)
             }
             NonPersistedDataRequest::NextUpgrade => NEXT_UPGRADE_TAG.write_bytes(writer),
+            NonPersistedDataRequest::ConsensusStatus => CONSENSUS_STATUS_TAG.write_bytes(writer),
         }
     }
 
@@ -120,6 +124,7 @@ impl ToBytes for NonPersistedDataRequest {
                 NonPersistedDataRequest::BlockSynchronizerStatus => 0,
                 NonPersistedDataRequest::AvailableBlockRange => 0,
                 NonPersistedDataRequest::NextUpgrade => 0,
+                NonPersistedDataRequest::ConsensusStatus => 0,
             }
     }
 }
@@ -168,6 +173,7 @@ impl FromBytes for NonPersistedDataRequest {
                 Ok((NonPersistedDataRequest::AvailableBlockRange, remainder))
             }
             NEXT_UPGRADE_TAG => Ok((NonPersistedDataRequest::NextUpgrade, remainder)),
+            CONSENSUS_STATUS_TAG => Ok((NonPersistedDataRequest::ConsensusStatus, remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
