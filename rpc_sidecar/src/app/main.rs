@@ -1,16 +1,20 @@
 use std::{
-    env, fmt, fs, io,
+    env, fmt, fs,
+    future::{self, Future},
+    io,
     net::{SocketAddr, ToSocketAddrs},
     path::{Path, PathBuf},
+    pin::Pin,
     sync::Arc,
 };
 
 use anyhow::Context;
 use casper_rpc_sidecar::{
-    run_rpc_server, run_speculative_exec_server, Config, JulietNodeClient, NodeClient,
+    run_rpc_server, run_speculative_exec_server, JulietNodeClient, NodeClient, RpcConfig,
     SpeculativeExecConfig,
 };
 use casper_types::ProtocolVersion;
+use config::Config;
 
 use hyper::{
     server::{conn::AddrIncoming, Builder as ServerBuilder},
@@ -32,19 +36,20 @@ use backtrace::Backtrace;
 use tracing::field::Field;
 use tracing_subscriber::{fmt::format::Writer, EnvFilter};
 
+mod config;
+
 /// The maximum thread count which should be spawned by the tokio runtime.
 pub const MAX_THREAD_COUNT: usize = 512;
 
 /// Main function.
 fn main() -> anyhow::Result<()> {
     let num_cpus = num_cpus::get();
-    let runtime =
-        Builder::new_multi_thread()
-            .enable_all()
-            .worker_threads(num_cpus)
-            .max_blocking_threads(MAX_THREAD_COUNT - num_cpus)
-            .build()
-            .unwrap();
+    let runtime = Builder::new_multi_thread()
+        .enable_all()
+        .worker_threads(num_cpus)
+        .max_blocking_threads(MAX_THREAD_COUNT - num_cpus)
+        .build()
+        .unwrap();
 
     panic::set_hook(Box::new(panic_hook));
 
@@ -56,21 +61,35 @@ fn main() -> anyhow::Result<()> {
 }
 
 async fn run_all(opts: &Cli) -> anyhow::Result<()> {
-    let (config, speculative_exec_config) = load_config(&opts.config)?;
+    let config = load_config(&opts.config)?;
+
     // TODO: determine the node port properly
     let (node_client, client_loop) = JulietNodeClient::new(([127, 0, 0, 1], 28104)).await;
     let node_client: Arc<dyn NodeClient> = Arc::new(node_client);
 
-    let (rpc_result, spec_exec_result, ()) = tokio::join!(
-        run_rpc(config, opts.protocol_version, Arc::clone(&node_client)),
-        run_speculative_exec(speculative_exec_config, opts.protocol_version, node_client),
-        client_loop
+    let rpc_server = run_rpc(
+        &config.rpc_server,
+        opts.protocol_version,
+        Arc::clone(&node_client),
     );
+
+    let spec_exec_server = if let Some(spec_exec_config) = config.speculative_exec_server.as_ref() {
+        Box::pin(run_speculative_exec(
+            spec_exec_config,
+            opts.protocol_version,
+            Arc::clone(&node_client),
+        )) as Pin<Box<dyn Future<Output = anyhow::Result<()>>>>
+    } else {
+        Box::pin(future::ready(Ok(())))
+    };
+
+    let (rpc_result, spec_exec_result, ()) =
+        tokio::join!(rpc_server, spec_exec_server, client_loop);
     rpc_result.and(spec_exec_result)
 }
 
 async fn run_rpc(
-    config: Config,
+    config: &RpcConfig,
     version: ProtocolVersion,
     node_client: Arc<dyn NodeClient>,
 ) -> anyhow::Result<()> {
@@ -87,7 +106,7 @@ async fn run_rpc(
 }
 
 async fn run_speculative_exec(
-    config: SpeculativeExecConfig,
+    config: &SpeculativeExecConfig,
     version: ProtocolVersion,
     node_client: Arc<dyn NodeClient>,
 ) -> anyhow::Result<()> {
@@ -123,7 +142,7 @@ fn resolve_address(address: &str) -> anyhow::Result<SocketAddr> {
         .ok_or_else(|| anyhow::anyhow!("failed to resolve address"))
 }
 
-fn load_config(config: &Path) -> anyhow::Result<(Config, SpeculativeExecConfig)> {
+fn load_config(config: &Path) -> anyhow::Result<Config> {
     // The app supports running without a config file, using default values.
     let encoded_config = fs::read_to_string(config)
         .context("could not read configuration file")
@@ -131,17 +150,9 @@ fn load_config(config: &Path) -> anyhow::Result<(Config, SpeculativeExecConfig)>
 
     // Get the TOML table version of the config indicated from CLI args, or from a new
     // defaulted config instance if one is not provided.
-    let mut config_table: toml::value::Table = toml::from_str(&encoded_config)?;
+    let config = toml::from_str(&encoded_config)?;
 
-    // TODO: currently just reading the config from the node file, probably should be custom
-    let config = config_table
-        .remove("rpc_server")
-        .ok_or_else(|| anyhow::anyhow!("sidecar config not found"))?;
-    let speculative_exec_config = config_table
-        .remove("speculative_exec_server")
-        .ok_or_else(|| anyhow::anyhow!("sidecar speculative exec config not found"))?;
-
-    Ok((config.try_into()?, speculative_exec_config.try_into()?))
+    Ok(config)
 }
 
 /// Aborting panic hook.
