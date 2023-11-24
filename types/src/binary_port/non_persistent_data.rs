@@ -49,9 +49,6 @@ pub enum NonPersistedDataRequest {
     NetworkName,
     /// Returns consensus validator changes.
     ConsensusValidatorChanges,
-    // TODO:
-    // Status requests (effect builders on slack)
-    // GetTrie
 }
 
 impl ToBytes for NonPersistedDataRequest {

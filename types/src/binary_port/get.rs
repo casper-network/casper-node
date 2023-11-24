@@ -11,6 +11,7 @@ const DB_TAG: u8 = 0;
 const NON_PERSISTED_DATA_TAG: u8 = 1;
 const STATE_TAG: u8 = 2;
 const ALL_VALUES_TAG: u8 = 3;
+const TRIE_TAG: u8 = 4;
 
 /// The kind of the `Get` operation.
 #[derive(Debug)]
@@ -39,6 +40,11 @@ pub enum GetRequest {
         state_root_hash: Digest,
         /// Key tag
         key_tag: KeyTag,
+    },
+    /// Gets value from the trie.
+    Trie {
+        /// A trie key.
+        trie_key: Digest,
     },
 }
 
@@ -78,6 +84,10 @@ impl ToBytes for GetRequest {
                 state_root_hash.write_bytes(writer)?;
                 (*key_tag as u8).write_bytes(writer)
             }
+            GetRequest::Trie { trie_key } => {
+                TRIE_TAG.write_bytes(writer)?;
+                trie_key.write_bytes(writer)
+            }
         }
     }
 
@@ -99,6 +109,7 @@ impl ToBytes for GetRequest {
                     state_root_hash,
                     key_tag,
                 } => state_root_hash.serialized_length() + (*key_tag as u8).serialized_length(),
+                GetRequest::Trie { trie_key } => trie_key.serialized_length(),
             }
     }
 }
@@ -169,6 +180,10 @@ impl FromBytes for GetRequest {
                     },
                     remainder,
                 ))
+            }
+            TRIE_TAG => {
+                let (trie_key, remainder) = Digest::from_bytes(remainder)?;
+                Ok((GetRequest::Trie { trie_key }, remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }

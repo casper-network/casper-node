@@ -367,6 +367,14 @@ where
                     .into();
                 Ok(Some(bytes))
             }
+            GetRequest::Trie { trie_key } => {
+                let maybe_trie_bytes = effect_builder
+                    .get_trie_full(trie_key)
+                    .await
+                    .map_err(|error| Error::EngineState(error))?;
+                let payload = maybe_trie_bytes.map(|bytes| Bytes::from(bytes.take_inner()));
+                Ok(payload)
+            }
         },
     }
 }
