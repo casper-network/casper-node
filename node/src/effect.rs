@@ -1475,12 +1475,37 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn get_reactor_status(self) -> (ReactorState, Timestamp)
+    pub(crate) async fn get_reactor_state(self) -> ReactorState
     where
         REv: From<ReactorStatusRequest>,
     {
-        self.make_request(ReactorStatusRequest, QueueKind::Regular)
-            .await
+        self.make_request(
+            |responder| ReactorStatusRequest::ReactorState { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_last_progress(self) -> Timestamp
+    where
+        REv: From<ReactorStatusRequest>,
+    {
+        self.make_request(
+            |responder| ReactorStatusRequest::LastProgress { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_uptime(self) -> Duration
+    where
+        REv: From<ReactorStatusRequest>,
+    {
+        self.make_request(
+            |responder| ReactorStatusRequest::Uptime { responder },
+            QueueKind::Regular,
+        )
+        .await
     }
 
     pub(crate) async fn get_block_synchronizer_status(self) -> BlockSynchronizerStatus

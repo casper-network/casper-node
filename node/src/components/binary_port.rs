@@ -34,7 +34,8 @@ use crate::{
     contract_runtime::SpeculativeExecutionState,
     effect::{
         requests::{
-            AcceptTransactionRequest, ContractRuntimeRequest, NetworkInfoRequest, StorageRequest,
+            AcceptTransactionRequest, ContractRuntimeRequest, NetworkInfoRequest,
+            ReactorStatusRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -76,6 +77,7 @@ where
         + From<ContractRuntimeRequest>
         + From<AcceptTransactionRequest>
         + From<NetworkInfoRequest>
+        + From<ReactorStatusRequest>
         + Send,
 {
     type Event = Event;
@@ -131,6 +133,7 @@ where
         + From<ContractRuntimeRequest>
         + From<AcceptTransactionRequest>
         + From<NetworkInfoRequest>
+        + From<ReactorStatusRequest>
         + Send,
 {
     fn state(&self) -> &ComponentState {
@@ -157,7 +160,8 @@ where
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
         + From<AcceptTransactionRequest>
-        + From<NetworkInfoRequest>,
+        + From<NetworkInfoRequest>
+        + From<ReactorStatusRequest>,
 {
     match req {
         BinaryRequest::TryAcceptTransaction {
@@ -299,6 +303,24 @@ where
                         ToBytes::to_bytes(&peers_map).map_err(|err| Error::BytesRepr(err))?;
                     Ok(Some(Bytes::from(payload)))
                 }
+                NonPersistedDataRequest::Uptime => {
+                    let uptime = effect_builder.get_uptime().await.as_secs();
+                    let payload =
+                        ToBytes::to_bytes(&uptime).map_err(|err| Error::BytesRepr(err))?;
+                    Ok(Some(Bytes::from(payload)))
+                }
+                NonPersistedDataRequest::LastProgress => {
+                    let last_progress = effect_builder.get_last_progress().await;
+                    let payload =
+                        ToBytes::to_bytes(&last_progress).map_err(|err| Error::BytesRepr(err))?;
+                    Ok(Some(Bytes::from(payload)))
+                }
+                NonPersistedDataRequest::ReactorState => {
+                    let reactor_state = effect_builder.get_reactor_state().await;
+                    let payload =
+                        ToBytes::to_bytes(&reactor_state).map_err(|err| Error::BytesRepr(err))?;
+                    Ok(Some(Bytes::from(payload)))
+                }
             },
             GetRequest::State {
                 state_root_hash,
@@ -345,7 +367,8 @@ async fn handle_client<REv, const N: usize>(
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
         + From<AcceptTransactionRequest>
-        + From<NetworkInfoRequest>,
+        + From<NetworkInfoRequest>
+        + From<ReactorStatusRequest>,
 {
     let (reader, writer) = client.split();
     let (client, mut server) = rpc_builder.build(reader, writer);
@@ -408,6 +431,7 @@ where
         + From<ContractRuntimeRequest>
         + From<AcceptTransactionRequest>
         + From<NetworkInfoRequest>
+        + From<ReactorStatusRequest>
         + Send,
 {
     let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
@@ -448,6 +472,7 @@ where
         + From<ContractRuntimeRequest>
         + From<AcceptTransactionRequest>
         + From<NetworkInfoRequest>
+        + From<ReactorStatusRequest>
         + Send,
 {
     type Error = ListeningError;

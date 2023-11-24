@@ -18,10 +18,11 @@ pub mod rpcs;
 mod speculative_exec_config;
 mod speculative_exec_server;
 
-use std::{fmt::Debug, time::Instant};
+use std::fmt::Debug;
 
 use datasize::DataSize;
 use futures::join;
+
 use tracing::{error, info, warn};
 
 use casper_execution_engine::engine_state::{
@@ -103,8 +104,6 @@ pub(crate) struct RpcServer {
     api_version: ProtocolVersion,
     /// The network name.
     network_name: String,
-    /// The uptime start.
-    node_startup_instant: Instant,
     /// Inner speculative execution JSON-RPC server is present only when enabled
     /// in the speculative execution JSON-RPC server config.
     /// The inner speculative execution JSON-RPC server as a struct would have
@@ -119,7 +118,6 @@ impl RpcServer {
         speculative_exec_config: SpeculativeExecConfig,
         api_version: ProtocolVersion,
         network_name: String,
-        node_startup_instant: Instant,
     ) -> Self {
         RpcServer {
             state: ComponentState::Uninitialized,
@@ -127,7 +125,6 @@ impl RpcServer {
             speculative_exec_config,
             api_version,
             network_name,
-            node_startup_instant,
             speculative_exec: None,
         }
     }
@@ -296,7 +293,7 @@ where
                         main_responder: responder,
                     }),
                 Event::RpcRequest(RpcRequest::GetStatus { responder }) => {
-                    let node_uptime = self.node_startup_instant.elapsed();
+                    let node_uptime = std::time::Duration::from_secs(10);
                     let network_name = self.network_name.clone();
                     async move {
                         let (
@@ -304,7 +301,9 @@ where
                             peers,
                             next_upgrade,
                             consensus_status,
-                            (reactor_state, last_progress),
+                            reactor_state,
+                            last_progress,
+                            _duration,
                             available_block_range,
                             block_sync,
                         ) = join!(
@@ -312,7 +311,9 @@ where
                             effect_builder.network_peers(),
                             effect_builder.get_next_upgrade(),
                             effect_builder.consensus_status(),
-                            effect_builder.get_reactor_status(),
+                            effect_builder.get_reactor_state(),
+                            effect_builder.get_last_progress(),
+                            effect_builder.get_uptime(),
                             effect_builder.get_available_block_range_from_storage(),
                             effect_builder.get_block_synchronizer_status(),
                         );

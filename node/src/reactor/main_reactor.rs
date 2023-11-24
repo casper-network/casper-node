@@ -65,7 +65,7 @@ use crate::{
             UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
-        requests::{AcceptTransactionRequest, ChainspecRawBytesRequest},
+        requests::{AcceptTransactionRequest, ChainspecRawBytesRequest, ReactorStatusRequest},
         EffectBuilder, EffectExt, Effects, GossipTarget,
     },
     failpoints::FailpointActivation,
@@ -196,6 +196,8 @@ pub(crate) struct MainReactor {
     upgrade_timeout: TimeDiff,
     sync_handling: SyncHandling,
     signature_gossip_tracker: SignatureGossipTracker,
+    /// The instant at which the node has started.
+    node_startup_instant: Instant,
 }
 
 impl reactor::Reactor for MainReactor {
@@ -241,9 +243,17 @@ impl reactor::Reactor for MainReactor {
             // PRIMARY REACTOR STATE CONTROL LOGIC
             MainEvent::ReactorCrank => self.crank(effect_builder, rng),
 
-            MainEvent::MainReactorRequest(req) => {
-                req.0.respond((self.state, self.last_progress)).ignore()
-            }
+            MainEvent::MainReactorRequest(req) => match req {
+                ReactorStatusRequest::ReactorState { responder } => {
+                    responder.respond(self.state).ignore()
+                }
+                ReactorStatusRequest::LastProgress { responder } => {
+                    responder.respond(self.last_progress).ignore()
+                }
+                ReactorStatusRequest::Uptime { responder } => responder
+                    .respond(self.node_startup_instant.elapsed())
+                    .ignore(),
+            },
             MainEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(meta_block)) => {
                 self.handle_meta_block(effect_builder, rng, meta_block)
             }
@@ -1095,13 +1105,11 @@ impl reactor::Reactor for MainReactor {
             config.speculative_exec_server.clone(),
             protocol_version,
             chainspec.network_config.name.clone(),
-            node_startup_instant,
         );
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             protocol_version,
             chainspec.network_config.name.clone(),
-            node_startup_instant,
         );
         let binary_port = BinaryPort::new(config.binary_port_server.clone(), registry)?;
         let event_stream_server = EventStreamServer::new(
@@ -1214,6 +1222,7 @@ impl reactor::Reactor for MainReactor {
             shutdown_for_upgrade_timeout: config.node.shutdown_for_upgrade_timeout,
             switched_to_shutdown_for_upgrade: Timestamp::from(0),
             upgrade_timeout: config.node.upgrade_timeout,
+            node_startup_instant,
         };
         info!("MainReactor: instantiated");
         let effects = effect_builder

@@ -1,3 +1,4 @@
+use casper_types::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 use datasize::DataSize;
 use derive_more::Display;
 use schemars::JsonSchema;
@@ -70,4 +71,51 @@ pub enum ReactorState {
     Validate,
     /// Node should be shut down for upgrade.
     ShutdownForUpgrade,
+}
+
+const INITIALIZE_TAG: u8 = 0;
+const CATCHUP_TAG: u8 = 1;
+const UPGRADING_TAG: u8 = 2;
+const KEEPUP_TAG: u8 = 3;
+const VALIDATE_TAG: u8 = 4;
+const SHUTDOWN_FOR_UPGRADE_TAG: u8 = 5;
+
+impl ToBytes for ReactorState {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            ReactorState::Initialize => INITIALIZE_TAG,
+            ReactorState::CatchUp => CATCHUP_TAG,
+            ReactorState::Upgrading => UPGRADING_TAG,
+            ReactorState::KeepUp => KEEPUP_TAG,
+            ReactorState::Validate => VALIDATE_TAG,
+            ReactorState::ShutdownForUpgrade => SHUTDOWN_FOR_UPGRADE_TAG,
+        }
+        .write_bytes(writer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+    }
+}
+
+impl FromBytes for ReactorState {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        let reactor_state = match tag {
+            INITIALIZE_TAG => ReactorState::Initialize,
+            CATCHUP_TAG => ReactorState::CatchUp,
+            UPGRADING_TAG => ReactorState::Upgrading,
+            KEEPUP_TAG => ReactorState::KeepUp,
+            VALIDATE_TAG => ReactorState::Validate,
+            SHUTDOWN_FOR_UPGRADE_TAG => ReactorState::ShutdownForUpgrade,
+            _ => return Err(bytesrepr::Error::NotRepresentable),
+        };
+        Ok((reactor_state, remainder))
+    }
 }

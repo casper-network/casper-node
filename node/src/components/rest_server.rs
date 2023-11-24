@@ -23,7 +23,7 @@ mod event;
 mod filters;
 mod http_server;
 
-use std::{fmt::Debug, time::Instant};
+use std::time::Duration;
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, join, FutureExt};
@@ -97,8 +97,6 @@ pub(crate) struct InnerRestServer {
     /// The task handle which will only join once the server loop has exited.
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
-    /// The instant at which the node has started.
-    node_startup_instant: Instant,
     /// The network name, as specified in the chainspec
     network_name: String,
 }
@@ -110,24 +108,17 @@ pub(crate) struct RestServer {
     config: Config,
     api_version: ProtocolVersion,
     network_name: String,
-    node_startup_instant: Instant,
     /// Inner server is present only when enabled in the config.
     inner_rest: Option<InnerRestServer>,
 }
 
 impl RestServer {
-    pub(crate) fn new(
-        config: Config,
-        api_version: ProtocolVersion,
-        network_name: String,
-        node_startup_instant: Instant,
-    ) -> Self {
+    pub(crate) fn new(config: Config, api_version: ProtocolVersion, network_name: String) -> Self {
         RestServer {
             state: ComponentState::Uninitialized,
             config,
             api_version,
             network_name,
-            node_startup_instant,
             inner_rest: None,
         }
     }
@@ -188,7 +179,7 @@ where
                     Effects::new()
                 }
                 Event::RestRequest(RestRequest::Status { responder }) => {
-                    let node_uptime = self.node_startup_instant.elapsed();
+                    let node_uptime = Duration::from_secs(10);
                     let network_name = self.network_name.clone();
                     async move {
                         let (
@@ -196,7 +187,9 @@ where
                             peers,
                             next_upgrade,
                             consensus_status,
-                            (reactor_state, last_progress),
+                            reactor_state,
+                            last_progress,
+                            _duration,
                             available_block_range,
                             block_sync,
                         ) = join!(
@@ -204,7 +197,9 @@ where
                             effect_builder.network_peers(),
                             effect_builder.get_next_upgrade(),
                             effect_builder.consensus_status(),
-                            effect_builder.get_reactor_status(),
+                            effect_builder.get_reactor_state(),
+                            effect_builder.get_last_progress(),
+                            effect_builder.get_uptime(),
                             effect_builder.get_available_block_range_from_storage(),
                             effect_builder.get_block_synchronizer_status(),
                         );
@@ -316,12 +311,10 @@ where
             ))),
         };
 
-        let node_startup_instant = self.node_startup_instant;
         let network_name = self.network_name.clone();
         self.inner_rest = Some(InnerRestServer {
             shutdown_sender,
             server_join_handle,
-            node_startup_instant,
             network_name,
         });
 

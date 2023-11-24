@@ -8,6 +8,7 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     mem,
     sync::Arc,
+    time::Duration,
 };
 
 use datasize::DataSize;
@@ -1258,11 +1259,23 @@ impl Display for UpgradeWatcherRequest {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct ReactorStatusRequest(pub(crate) Responder<(ReactorState, Timestamp)>);
+pub(crate) enum ReactorStatusRequest {
+    ReactorState { responder: Responder<ReactorState> },
+    LastProgress { responder: Responder<Timestamp> },
+    Uptime { responder: Responder<Duration> },
+}
 
 impl Display for ReactorStatusRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "get reactor status")
+        write!(
+            f,
+            "get reactor status: {}",
+            match self {
+                ReactorStatusRequest::ReactorState { .. } => "ReactorState",
+                ReactorStatusRequest::LastProgress { .. } => "LastProgress",
+                ReactorStatusRequest::Uptime { .. } => "Uptime",
+            }
+        )
     }
 }
 
