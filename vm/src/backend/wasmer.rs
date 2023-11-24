@@ -409,6 +409,26 @@ where
 
             imports.define(
                 "env",
+                "casper_copy_output",
+                Function::new_typed_with_env(
+                    &mut store,
+                    &function_env,
+                    |env: FunctionEnvMut<WasmerEnv<S>>,
+                     cb_alloc: u32,
+                     cb_ctx: u32|
+                     -> Result<u32, RuntimeError> {
+                        todo!("can I call parent's (callee) alloc cb")
+                        // callback.
+
+                        // let wasmer_caller = WasmerCaller { env };
+                        // let ret = host::casper_copy_input(wasmer_caller, cb_alloc, cb_ctx);
+                        // handle_host_function_result(ret)
+                    },
+                ),
+            );
+
+            imports.define(
+                "env",
                 "casper_create_contract",
                 Function::new_typed_with_env(
                     &mut store,

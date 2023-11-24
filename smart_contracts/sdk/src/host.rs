@@ -1,4 +1,5 @@
 use core::slice;
+use std::ptr::NonNull;
 
 #[derive(Debug)]
 pub enum Error {
@@ -31,13 +32,13 @@ pub struct Param {
 
 pub type Address = [u8; 32];
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct EntryPoint {
     pub name_ptr: *const u8,
     pub name_len: usize,
 
-    pub params_ptr: *mut Param, // pointer of pointers (preferred 'static lifetime)
+    pub params_ptr: *const Param, // pointer of pointers (preferred 'static lifetime)
     pub params_size: usize,
 
     pub fptr: extern "C" fn() -> (), // extern "C" fn(A1) -> (),
@@ -46,7 +47,7 @@ pub struct EntryPoint {
 #[repr(C)]
 #[derive(Debug)]
 pub struct Manifest {
-    pub entry_points: *mut [EntryPoint],
+    pub entry_points: *const EntryPoint,
     pub entry_points_size: usize,
 }
 #[repr(C)]
@@ -64,6 +65,7 @@ mod wasm;
 mod native;
 
 use borsh::{BorshDeserialize, BorshSerialize};
+
 #[cfg(target_arch = "wasm32")]
 pub use wasm::{call, copy_input, create, print, read, revert, write};
 

@@ -1,8 +1,8 @@
 extern crate proc_macro;
 
-use proc_macro::TokenStream;
+use proc_macro::{Literal, TokenStream};
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, Data, DeriveInput, ItemFn, ItemImpl, Type};
+use syn::{parse_macro_input, token::Struct, Data, DeriveInput, ItemFn, ItemImpl, Type};
 
 #[proc_macro_derive(Contract)]
 pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
@@ -48,11 +48,13 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
         })
     }
 
-    return quote! {
-        // #vis struct #name {
-        //     #(#fields,)*
-        // }
+    let static_metadata = format_ident!("{name}EntryPoint");
+
+    let f = quote! {
+
         impl casper_sdk::Contract for #name {
+            type EntryPoint = ();
+
             fn new() -> Self {
                 Self {
                     #(#fields_for_new,)*
@@ -63,14 +65,12 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
             }
 
             fn schema() -> casper_sdk::Schema {
-                // todo!()
                 Self::__casper_schema()
-                // casper_sdk::Schema {
-
-                // }
             }
 
-
+            fn create() -> Result<casper_sdk::host::CreateResult, casper_sdk::host::Error> {
+                Self::__casper_create()
+            }
         }
 
         impl #name {
@@ -81,8 +81,8 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
                 ]
             }
         }
-    }
-    .into();
+    };
+    f.into()
 }
 
 #[proc_macro_attribute]
@@ -98,7 +98,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
             proc_macro::TokenTree::Ident(ident) if ident.to_string() == "entry_points" => {
                 let entry_points = parse_macro_input!(item as ItemImpl);
 
-                let name = match entry_points.self_ty.as_ref() {
+                let struct_name = match entry_points.self_ty.as_ref() {
                     Type::Path(ref path) => &path.path,
 
                     other => todo!("{other:?}"),
@@ -111,12 +111,100 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                 let mut defs = Vec::new();
 
                 let mut names = Vec::new();
+
+                let mut manifest_entry_points_data = Vec::new();
+                let mut manifest_entry_points = Vec::new();
+                let mut manifest_entry_point_enum_variants = Vec::new();
+                let mut manifest_entry_point_enum_match_name = Vec::new();
+                let mut manifest_entry_point_input_data = Vec::new();
+
                 for entry_point in &entry_points.items {
                     let func = match entry_point {
                         syn::ImplItem::Const(_) => todo!(),
                         syn::ImplItem::Fn(func) => {
                             let name = &func.sig.ident;
                             names.push(name);
+
+                            let arg_names_and_types = func
+                                .sig
+                                .inputs
+                                .iter()
+                                .filter_map(|arg| match arg {
+                                    syn::FnArg::Receiver(_) => None,
+                                    syn::FnArg::Typed(typed) => match typed.pat.as_ref() {
+                                        syn::Pat::Ident(ident) => Some((&ident.ident, &typed.ty)),
+                                        _ => todo!(),
+                                    },
+                                })
+                                .collect::<Vec<_>>();
+
+                            let arg_names: Vec<_> =
+                                arg_names_and_types.iter().map(|(name, _ty)| name).collect();
+                            let arg_types: Vec<_> =
+                                arg_names_and_types.iter().map(|(_name, ty)| ty).collect();
+
+                            let arg_count = arg_names.len();
+                            assert_eq!(arg_names.len(), arg_types.len());
+
+                            let mut entrypoint_params = Vec::new();
+
+                            for (name, ty) in &arg_names_and_types {
+                                entrypoint_params.push(quote! {
+                                    {
+                                        casper_sdk::host::Param {
+                                            name_ptr: stringify!(#name).as_ptr(),
+                                            name_len: stringify!(#name).len(),
+                                            ty: <#ty as casper_sdk::CLTyped>::TYPE_ID,
+                                        }
+                                    }
+                                });
+                            }
+
+                            // let wrapper_function_name = format_ident!("")
+
+                            manifest_entry_points_data.push(quote! {
+
+                                const #name: (&'static str, [casper_sdk::host::Param; #arg_count], extern "C" fn() -> ()) = {
+                                    extern "C" fn #name() {
+                                        casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
+                                            let mut contract_instance = <#struct_name as casper_sdk::Contract>::new();
+                                            let _result = contract_instance.#name(#(#arg_names,)*);
+                                        })
+                                    }
+                                    (stringify!(#name), [#(#entrypoint_params,)*], #name)
+                                };
+
+                            });
+
+                            manifest_entry_points.push(quote! {
+                                {
+                                    casper_sdk::host::EntryPoint {
+                                        name_ptr: #name.0.as_ptr(),
+                                        name_len: #name.0.len(),
+                                        params_ptr: #name.1.as_ptr(),
+                                        params_size: #name.1.len(),
+                                        fptr: #name.2,
+                                    }
+                                }
+                            });
+
+                            manifest_entry_point_enum_variants.push(quote! {
+                                #name {
+                                    #(#arg_names: #arg_types,)*
+                                }
+                            });
+
+                            manifest_entry_point_enum_match_name.push(quote! {
+                                #name
+                            });
+
+                            manifest_entry_point_input_data.push(quote! {
+                                Self::#name { #(#arg_names,)* } => {
+                                    let into_tuple = (#(#arg_names,)*);
+                                    into_tuple.serialize(writer)
+                                }
+                            });
+
                             func
                         }
                         syn::ImplItem::Type(_) => todo!(),
@@ -178,10 +266,47 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                     });
                 }
 
+                // Create a expansion token from the length of `manifest_entry_points_data`
+                let manifest_entry_points_data_len = manifest_entry_points_data.len();
+
+                // let static_schema_ident = format_ident!("__casper_schema_{struct_name}");
+
+                let st_name = struct_name.get_ident().unwrap();
+                let static_metadata = format_ident!("{st_name}EntryPoint");
+
                 let res = quote! {
                     #entry_points
 
-                    impl #name {
+                    #[doc(hidden)]
+                    #[derive(Debug)]
+                    pub enum #static_metadata {
+                        #(#manifest_entry_point_enum_variants,)*
+                    }
+
+                    impl #static_metadata {
+                        #[doc(hidden)]
+                        pub const fn entry_point(&self) -> &'static str {
+                            match self {
+                                #(Self::#manifest_entry_point_enum_match_name { .. } => stringify!(#manifest_entry_point_enum_match_name),)*
+                            }
+                        }
+                        #[doc(hidden)]
+                        pub fn input_data(&self) -> borsh::io::Result<Vec<u8>> {
+                            borsh::to_vec(self)
+                        }
+                    }
+
+                    impl borsh::BorshSerialize for #static_metadata {
+                        fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
+                            match self {
+                                #(#manifest_entry_point_input_data)*
+                            }
+                            // Ok(())
+                        }
+                    }
+
+                    impl #struct_name {
+
                         #[doc(hidden)]
                         fn __casper_schema() -> casper_sdk::Schema {
                             let entry_points = vec![
@@ -190,10 +315,24 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                             ];
                             let data = Self::__casper_data();
                             casper_sdk::Schema {
-                                name: stringify!(#name),
+                                name: stringify!(#struct_name),
                                 data,
                                 entry_points,
                             }
+                        }
+
+                        #[inline(always)]
+                        #[doc(hidden)]
+                        fn __casper_create() -> Result<casper_sdk::host::CreateResult, casper_sdk::host::Error> {
+                            #(#manifest_entry_points_data)*;
+                            const ENTRY_POINTS: [casper_sdk::host::EntryPoint; #manifest_entry_points_data_len] = [#(#manifest_entry_points,)*];
+
+                            const MANIFEST: casper_sdk::host::Manifest = casper_sdk::host::Manifest {
+                                entry_points: ENTRY_POINTS.as_ptr(),
+                                entry_points_size: ENTRY_POINTS.len(),
+                            };
+
+                            casper_sdk::host::create(None, &MANIFEST)
                         }
                     }
                 };
@@ -282,7 +421,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                         // ("foo", 1234) -> input
 
-                        let input = host::copy_input();
+                        let input = casper_sdk::host::copy_input();
                         // let args = #mod_name::Arguments::try_from_slice(&input).unwrap();
                         let ( #(#arg_names,)* ) = BorshDeserialize::try_from_slice(&input).unwrap();
 

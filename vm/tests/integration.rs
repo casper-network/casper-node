@@ -1,4 +1,5 @@
 use blake2::{Blake2b, Digest};
+use borsh::BorshSerialize;
 use digest::consts::U32;
 use rand::prelude::*;
 use std::{
@@ -15,7 +16,8 @@ use vm::{
 };
 
 // use super::*;
-const TEST_CONTRACT_WASM: &[u8] = include_bytes!("../vm2-test-contract.wasm");
+const VM2_TEST_CONTRACT: &[u8] = include_bytes!("../vm2-test-contract.wasm");
+const VM2_GREETER: &[u8] = include_bytes!("../vm2-greeter.wasm");
 
 type Blake2b256 = Blake2b<U32>;
 
@@ -191,8 +193,20 @@ const BOB: [u8; 32] = [101; 32];
 const CSPR: u64 = 10u64.pow(9);
 
 #[test]
-fn smoke() {
-    let bytecode = Bytes::from_static(TEST_CONTRACT_WASM);
+fn test_contract() {
+    run_wasm(
+        VM2_TEST_CONTRACT,
+        ("Hello, world!".to_string(), 123456789u32),
+    );
+}
+
+#[test]
+fn greeter() {
+    run_wasm(VM2_GREETER, ());
+}
+
+fn run_wasm<T: BorshSerialize>(contract_name: &'static [u8], input_data: T) {
+    let bytecode = Bytes::from_static(contract_name);
 
     // for gas_limit in 1000..2000 {
     // dbg!(&gas_limit);
@@ -207,14 +221,12 @@ fn smoke() {
 
     let mut vm = VM::new();
 
-    let mut contract_runtime = ContractRuntime {
+    let _contract_runtime = ContractRuntime {
         vm: VM::new(),
         storage: storage.clone(),
     };
 
-    let input = borsh::to_vec(&("Hello, world!".to_string(), 123456789u32))
-        .map(Bytes::from)
-        .unwrap();
+    let input = borsh::to_vec(&input_data).map(Bytes::from).unwrap();
 
     const GAS_LIMIT: u64 = 1_000_000;
     const MEMORY_LIMIT: u32 = 17;

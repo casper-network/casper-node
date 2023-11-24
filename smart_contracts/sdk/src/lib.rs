@@ -43,10 +43,10 @@ pub mod schema_helper {
         }
     }
 
-    pub static mut LAZY: [Option<Export>; 1024] = [None; 1024];
+    pub static mut LAZY_EXPORTS: [Option<Export>; 1024] = [None; 1024];
 
     pub fn register_export(export: Export) {
-        for l in unsafe { LAZY.iter_mut() } {
+        for l in unsafe { LAZY_EXPORTS.iter_mut() } {
             if l.is_none() {
                 *l = Some(export);
                 return;
@@ -57,7 +57,7 @@ pub mod schema_helper {
 
     pub fn list_exports() -> Vec<&'static Export> {
         let mut v = Vec::new();
-        for export_name in unsafe { LAZY.iter() } {
+        for export_name in unsafe { LAZY_EXPORTS.iter() } {
             if let Some(export_name) = export_name {
                 v.push(export_name);
             }
@@ -76,6 +76,13 @@ pub mod schema_helper {
     }
 }
 
+const BOOL_TYPE_ID: u32 = 0;
+const STRING_TYPE_ID: u32 = 1;
+const UNIT_TYPE_ID: u32 = 2;
+const ANY_TYPE_ID: u32 = 3;
+const U32_TYPE_ID: u32 = 4;
+
+#[repr(u32)]
 #[derive(Debug)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Serialize, Deserialize))]
 pub enum CLType {
@@ -83,29 +90,42 @@ pub enum CLType {
     String,
     Unit,
     Any,
+    U32,
 }
 
 pub trait CLTyped {
+    const TYPE_ID: u32;
     fn cl_type() -> CLType;
 }
 
 impl CLTyped for String {
+    const TYPE_ID: u32 = STRING_TYPE_ID;
     fn cl_type() -> CLType {
         CLType::String
     }
 }
 impl CLTyped for bool {
+    const TYPE_ID: u32 = BOOL_TYPE_ID;
     fn cl_type() -> CLType {
         CLType::Bool
     }
 }
 
 impl CLTyped for () {
+    const TYPE_ID: u32 = UNIT_TYPE_ID;
     fn cl_type() -> CLType {
         CLType::Unit
     }
 }
 
+impl CLTyped for u32 {
+    const TYPE_ID: u32 = U32_TYPE_ID;
+    fn cl_type() -> CLType {
+        CLType::U32
+    }
+}
+
+use host::{CreateResult, Error};
 #[cfg(not(target_arch = "wasm32"))]
 use serde::{Deserialize, Serialize};
 #[derive(Debug)]
@@ -148,6 +168,7 @@ pub struct Value<T> {
 }
 
 impl<T: CLTyped> CLTyped for Value<T> {
+    const TYPE_ID: u32 = T::TYPE_ID;
     fn cl_type() -> CLType {
         T::cl_type()
     }
@@ -172,7 +193,7 @@ impl<T> Value<T> {
 }
 
 impl<T: BorshSerialize> Value<T> {
-    pub fn set(&mut self, value: T) -> io::Result<()> {
+    pub fn write(&mut self, value: T) -> io::Result<()> {
         let v = borsh::to_vec(&value)?;
         host::write(self.key_space, self.name.as_bytes(), 0, &v)
             .map_err(|_error| io::Error::new(io::ErrorKind::Other, "todo"))?;
@@ -180,8 +201,8 @@ impl<T: BorshSerialize> Value<T> {
     }
 }
 impl<T: BorshDeserialize> Value<T> {
-    pub fn get(&self) -> io::Result<Option<T>> {
-        let mut read = None; //Vec::new();
+    pub fn read(&self) -> io::Result<Option<T>> {
+        let mut read = None;
         host::read(self.key_space, self.name.as_bytes(), |size| {
             *(&mut read) = Some(Vec::new());
             reserve_vec_space(read.as_mut().unwrap(), size)
@@ -198,9 +219,12 @@ impl<T: BorshDeserialize> Value<T> {
 }
 
 pub trait Contract {
+    type EntryPoint;
+
     fn new() -> Self;
     fn name() -> &'static str;
     fn schema() -> Schema;
+    fn create() -> Result<CreateResult, Error>;
 }
 
 #[derive(Debug)]
@@ -242,4 +266,12 @@ pub fn register_entrypoint<'a, F: fmt::Debug + Fn()>(entrypoint: EntryPoint<'a, 
     // unsafe {
     //     register_func(entrypoint.name, entrypoint.fptr);
     // }
+}
+
+// A println! like macro that calls `host::print` function.
+#[macro_export]
+macro_rules! log {
+    ($($arg:tt)*) => ({
+        $crate::host::print(&format!($($arg)*));
+    })
 }

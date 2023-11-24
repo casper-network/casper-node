@@ -4,29 +4,28 @@
 #[macro_use]
 extern crate alloc;
 
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 use casper_macros::{casper, Contract};
-use casper_sdk::Value;
+use casper_sdk::{log, Value};
 
 #[derive(Contract)]
-struct Flipper {
-    flag: Value<bool>,
+struct Greeter {
+    greeting: Value<String>,
 }
 
 #[casper(entry_points)]
-impl Flipper {
-    fn flip(&mut self) {
-        let mut value = self.flag.get().unwrap().unwrap_or_default();
-        value = !value;
-        self.flag.set(value).unwrap();
+impl Greeter {
+    pub fn get_greeting(&self) -> String {
+        self.greeting
+            .read()
+            .expect("should read value")
+            .unwrap_or_default()
     }
-
-    fn flag_value(&self) -> bool {
-        self.flag.get().unwrap().unwrap_or_default()
+    pub fn set_greeting(&mut self, greeting: String) {
+        log!("Saving greeting {}", greeting);
+        self.greeting.write(greeting).unwrap();
     }
 }
-
-// extern "C" fn flip(arg1: *const Slice, arg2: *const Slice);
 
 mod exports {
 
@@ -45,26 +44,12 @@ mod exports {
     const TAG_BYTES: u64 = 0;
 
     #[casper(export)]
-    pub fn call2() {
-        unreachable!();
-    }
-
-    #[casper(export)]
     pub fn call(arg1: String, arg2: u32) {
         // (String, u32) = deserialize
 
         // (arg1, arg2): (String, u32) = Deserialize(input);
         host::print(&format!("arg1: {arg1}"));
         host::print(&format!("arg2: {arg2}"));
-
-        // create_contract()
-
-        // host::print(&format!(
-        //     "arg1={:?} arg2={:?} arg3={:?}",
-        //     core::str::from_utf8(arg1),
-        //     core::str::from_utf8(arg2),
-        //     core::str::from_utf8(arg3)
-        // ));
 
         let mut read1 = Vec::new();
 
@@ -176,7 +161,7 @@ mod exports {
         ));
 
         let manifest = Manifest {
-            entry_points: NonNull::from(entry_points.as_slice()).as_ptr(),
+            entry_points: entry_points.as_ptr(),
             entry_points_size: entry_points.len(),
         };
         host::print(&format!("manifest {:?}", manifest));
@@ -209,17 +194,6 @@ mod exports {
             }
         }
 
-        // let fptr_void: *const core::ffi::c_void = mangled_entry_point_wrapper as _;
-
-        // let entry_point = EntryPoint {
-        //     name_ptr: NAME.as_ptr(),
-        //     name_len: NAME.len(),
-        //     params_ptr: params.as_ptr(),
-        //     params_size: params.len(),
-        //     fptr: fptr_void,
-        // };
-        // host::print(&format!("{entry_point:?}"));
-        // host::revert(123);
         host::print("👋 Goodbye");
     }
 }
@@ -228,6 +202,9 @@ mod exports {
 fn main() {
     todo!()
 }
+
+#[casper(export)]
+pub fn foobar() {}
 
 #[cfg(test)]
 mod tests {
@@ -245,25 +222,26 @@ mod tests {
     #[test]
     fn exports() {
         dbg!(schema_helper::list_exports());
+        // dbg!(schema_helpe)
     }
 
     #[test]
     fn compile_time_schema() {
-        let schema = Flipper::schema();
-        assert_eq!(schema.name, "Flipper");
-        assert_eq!(schema.entry_points[0].name, "flip");
-        // assert_eq!(schema.entry_points[0].name, "flip");
-        assert_eq!(schema.entry_points[1].name, "flag_value");
+        let schema = Greeter::schema();
+        // dbg!(&schema);
+        assert_eq!(schema.name, "Greeter");
+        assert_eq!(schema.entry_points[0].name, "get_greeting");
+        assert_eq!(schema.entry_points[1].name, "set_greeting");
         // let s = serde_json::to_string_pretty(&schema).expect("foo");
         // println!("{s}");
     }
 
     #[test]
-    fn should_flip() {
-        assert_eq!(Flipper::name(), "Flipper");
-        let mut flipper = Flipper::new();
-        assert_eq!(flipper.flag_value(), false);
-        flipper.flip();
-        assert_eq!(flipper.flag_value(), true);
+    fn should_greet() {
+        assert_eq!(Greeter::name(), "Greeter");
+        let mut flipper = Greeter::new();
+        assert_eq!(flipper.get_greeting(), ""); // TODO: Initializer
+        flipper.set_greeting("Hi".into());
+        assert_eq!(flipper.get_greeting(), "Hi");
     }
 }

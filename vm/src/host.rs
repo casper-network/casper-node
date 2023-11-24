@@ -171,6 +171,8 @@ pub(crate) fn casper_create_contract<S: Storage>(
             Err(error) => todo!("handle error {:?}", error),
         };
 
+    dbg!(&entry_points);
+
     let entrypoints = {
         let mut vec = Vec::new();
 
@@ -191,15 +193,26 @@ pub(crate) fn casper_create_contract<S: Storage>(
             let params =
                 match safe_transmute::transmute_many::<Param, SingleManyGuard>(&params_bytes) {
                     Ok(params) => params,
+                    Err(safe_transmute::Error::Unaligned(unaligned_error))
+                        if unaligned_error.source.is_empty() =>
+                    {
+                        &[]
+                    }
                     Err(error) => {
-                        todo!("unable to transmute {:?}", error)
+                        todo!(
+                            "unable to transmute {:?} params_bytes={:?}",
+                            error,
+                            params_bytes
+                        )
                     }
                 };
-
+            dbg!(&params_bytes);
             for param in params {
+                // dbg!(&param);
                 let name = caller
                     .memory_read(param.name_ptr, param.name_len as usize)
                     .unwrap();
+                dbg!(&name);
 
                 params_vec.push(storage::Param {
                     name: name.into(),
@@ -218,6 +231,8 @@ pub(crate) fn casper_create_contract<S: Storage>(
     };
 
     let manifest = storage::Manifest { entrypoints };
+
+    dbg!(&manifest);
 
     let storage::CreateResult {
         package_address,

@@ -15,7 +15,7 @@ wasmer-types = "4.1.0"
 
 thiserror = "1.0.44"
 criterion = "0.5.1"
-borsh = "0.10.3"
+borsh = "1.2.0"
 
 blake2 = "0.10.6"
 rand = "0.8.5"

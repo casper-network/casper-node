@@ -40,6 +40,8 @@ pub fn print(msg: &str) {
     println!("💻 {msg}");
 }
 pub fn write(key_space: u64, key: &[u8], value_tag: u64, value: &[u8]) -> Result<(), Error> {
+    // NEW_VM.storage.
+
     DB.with(|db| {
         db.borrow_mut().db.entry(key_space).or_default().insert(
             Bytes::copy_from_slice(key),

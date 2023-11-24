@@ -19,6 +19,8 @@ pub struct ReadInfo {
 }
 
 extern "C" {
+    // pub fn legacy_interface();
+    // pub fn casper_new_uref();
     pub fn casper_read(
         key_space: u64,
         key_ptr: *const u8,
@@ -48,6 +50,7 @@ extern "C" {
         manifest_ptr: *mut Manifest,
         result_ptr: *mut CreateResult,
     ) -> i32;
+
     pub fn casper_call(
         // acct_or_contract,
         address_ptr: *const u8,
