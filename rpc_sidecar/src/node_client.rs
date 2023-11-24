@@ -277,7 +277,7 @@ impl JulietNodeClient {
             .wait_for_response()
             .await
             .map_err(|err| Error::RequestFailed(err.to_string()))?;
-        Ok(response.map(|bytes| bytes.to_vec()))
+        Ok(response.map(Into::into))
     }
 }
 

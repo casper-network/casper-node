@@ -270,7 +270,7 @@ impl RpcWithoutParams for GetPeers {
             .read_from_mem(NonPersistedDataRequest::Peers)
             .await
             .map_err(|err| Error::NodeRequest("peers", err))?
-            .ok_or_else(|| Error::NodeRequest("peers", ClientError::NoResponseBody))?;
+            .ok_or(Error::NodeRequest("peers", ClientError::NoResponseBody))?;
         let peers = bytesrepr::deserialize(body)
             .map_err(|err| Error::InvalidPeersResponse(err.to_string()))?;
         Ok(Self::ResponseResult { api_version, peers })
