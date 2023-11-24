@@ -55,6 +55,7 @@ mod json_pretty_printer;
 mod key;
 mod motes;
 pub mod package;
+mod peers_map;
 mod phase;
 mod protocol_version;
 mod semver;
@@ -159,6 +160,7 @@ pub use motes::Motes;
 pub use package::{
     EntityVersion, EntityVersionKey, EntityVersions, Group, Groups, Package, PackageHash,
 };
+pub use peers_map::{PeerEntry, PeersMap};
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
 pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};

@@ -8,15 +8,17 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
+    binary_port::non_persistent_data::NonPersistedDataRequest,
+    bytesrepr,
     execution::{ExecutionResult, ExecutionResultV2},
     Block, ChainspecRawBytes, Deploy, DeployHash, EraId, ExecutionInfo, FinalizedApprovals,
-    ProtocolVersion, PublicKey, Transaction, TransactionHash, ValidatorChange,
+    PeersMap, ProtocolVersion, PublicKey, Transaction, TransactionHash, ValidatorChange,
 };
 
 use super::{
     common,
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-    Error, NodeClient, RpcError, RpcWithParams, RpcWithoutParams,
+    ClientError, Error, NodeClient, RpcError, RpcWithParams, RpcWithoutParams,
 };
 
 static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
@@ -44,6 +46,10 @@ static GET_TRANSACTION_RESULT: Lazy<GetTransactionResult> = Lazy::new(|| GetTran
         block_height: Block::example().height(),
         execution_result: Some(ExecutionResult::from(ExecutionResultV2::example().clone())),
     }),
+});
+static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    peers: GetPeersResult::doc_example().peers.clone(),
 });
 static GET_VALIDATOR_CHANGES_RESULT: Lazy<GetValidatorChangesResult> = Lazy::new(|| {
     let change = JsonValidatorStatusChange::new(EraId::new(1), ValidatorChange::Added);
@@ -228,6 +234,46 @@ impl RpcWithParams for GetTransaction {
             api_version,
             execution_info,
         })
+    }
+}
+
+/// Result for "info_get_peers" RPC response.
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetPeersResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ProtocolVersion,
+    /// The node ID and network address of each connected peer.
+    pub peers: PeersMap,
+}
+
+impl DocExample for GetPeersResult {
+    fn doc_example() -> &'static Self {
+        &GET_PEERS_RESULT
+    }
+}
+
+/// "info_get_peers" RPC.
+pub struct GetPeers {}
+
+#[async_trait]
+impl RpcWithoutParams for GetPeers {
+    const METHOD: &'static str = "info_get_peers";
+    type ResponseResult = GetPeersResult;
+
+    async fn do_handle_request(
+        node_client: Arc<dyn NodeClient>,
+        api_version: ProtocolVersion,
+    ) -> Result<Self::ResponseResult, RpcError> {
+        let body = node_client
+            .read_from_mem(NonPersistedDataRequest::Peers)
+            .await
+            .map_err(|err| Error::NodeRequest("peers", err))?
+            .ok_or_else(|| Error::NodeRequest("peers", ClientError::NoResponseBody))?;
+        let peers = bytesrepr::deserialize(body)
+            .map_err(|err| Error::InvalidPeersResponse(err.to_string()))?;
+        Ok(Self::ResponseResult { api_version, peers })
     }
 }
 

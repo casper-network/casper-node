@@ -54,12 +54,16 @@ pub enum Error {
     InvalidTransaction(String),
     #[error("the deploy was invalid: {0}")]
     InvalidDeploy(String),
+    #[error("the peers response was invalid: {0}")]
+    InvalidPeersResponse(String),
 }
 
 impl Error {
     fn code(&self) -> ErrorCode {
         match self {
-            Error::NodeRequest(_, _) => ErrorCode::NodeRequestFailed,
+            Error::NodeRequest(_, _) | Error::InvalidPeersResponse(_) => {
+                ErrorCode::NodeRequestFailed
+            }
             Error::NoBlockWithHash(_)
             | Error::NoBlockAtHeight(_)
             | Error::NoHighestBlock

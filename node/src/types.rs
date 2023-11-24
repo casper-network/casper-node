@@ -8,7 +8,6 @@ mod max_ttl;
 mod node_config;
 mod node_id;
 /// Peers map.
-pub mod peers_map;
 mod status_feed;
 mod sync_leap;
 pub(crate) mod sync_leap_validation_metadata;
@@ -35,7 +34,6 @@ pub use exit_code::ExitCode;
 pub(crate) use max_ttl::MaxTtl;
 pub use node_config::{NodeConfig, SyncHandling};
 pub(crate) use node_id::NodeId;
-pub use peers_map::PeersMap;
 pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
 pub(crate) use sync_leap::{GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier};
 pub(crate) use transaction::{

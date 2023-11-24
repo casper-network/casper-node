@@ -10,8 +10,8 @@ use tracing::{debug, error};
 
 use casper_types::{
     execution::{ExecutionResult, ExecutionResultV2},
-    Block, ChainspecRawBytes, Deploy, DeployHash, EraId, ExecutionInfo, ProtocolVersion, PublicKey,
-    Transaction, TransactionHash,
+    Block, ChainspecRawBytes, Deploy, DeployHash, EraId, ExecutionInfo, PeersMap, ProtocolVersion,
+    PublicKey, Transaction, TransactionHash,
 };
 
 use super::{
@@ -23,7 +23,7 @@ use crate::{
     effect::EffectBuilder,
     reactor::QueueKind,
     types::{
-        DeployWithFinalizedApprovals, GetStatusResult, PeersMap, TransactionWithFinalizedApprovals,
+        DeployWithFinalizedApprovals, GetStatusResult, TransactionWithFinalizedApprovals,
         VariantMismatch,
     },
 };

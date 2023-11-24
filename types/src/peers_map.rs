@@ -1,10 +1,8 @@
 use std::collections::BTreeMap;
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use crate::bytesrepr::{self, FromBytes, ToBytes};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-use crate::types::NodeId;
 
 /// Node peer entry.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
@@ -53,8 +51,8 @@ impl PeersMap {
     }
 }
 
-impl From<BTreeMap<NodeId, String>> for PeersMap {
-    fn from(input: BTreeMap<NodeId, String>) -> Self {
+impl<Id: ToString> From<BTreeMap<Id, String>> for PeersMap {
+    fn from(input: BTreeMap<Id, String>) -> Self {
         let ret = input
             .into_iter()
             .map(|(node_id, address)| PeerEntry {

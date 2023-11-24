@@ -19,7 +19,7 @@ use casper_types::{
         speculative_execution::SpeculativeExecutionError,
     },
     bytesrepr::{FromBytes, ToBytes},
-    BlockHashAndHeight, Transaction,
+    BlockHashAndHeight, PeersMap, Transaction,
 };
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
@@ -41,7 +41,7 @@ use crate::{
         EffectBuilder, Effects,
     },
     reactor::{main_reactor::MainEvent, Finalize},
-    types::{NodeRng, PeersMap},
+    types::NodeRng,
     utils::ListeningError,
 };
 
