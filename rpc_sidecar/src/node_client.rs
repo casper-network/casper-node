@@ -191,6 +191,9 @@ pub enum Error {
 }
 
 const CHANNEL_COUNT: usize = 1;
+const REQUEST_LIMIT: u16 = 3;
+const MAX_PAYLOAD: u32 = 4 * 1024 * 1024;
+const WAIT_QUEUE_SIZE: usize = 16;
 
 pub struct JulietNodeClient {
     client: Arc<RwLock<JulietRpcClient<CHANNEL_COUNT>>>,
@@ -201,11 +204,12 @@ impl JulietNodeClient {
         let addr = addr.into();
         let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
             ChannelConfiguration::default()
-                .with_request_limit(3)
-                .with_max_request_payload_size(4 * 1024 * 1024)
-                .with_max_response_payload_size(4 * 1024 * 1024),
+                .with_request_limit(REQUEST_LIMIT)
+                .with_max_request_payload_size(MAX_PAYLOAD)
+                .with_max_response_payload_size(MAX_PAYLOAD),
         );
-        let io_builder = IoCoreBuilder::new(protocol_builder).buffer_size(ChannelId::new(0), 16);
+        let io_builder =
+            IoCoreBuilder::new(protocol_builder).buffer_size(ChannelId::new(0), WAIT_QUEUE_SIZE);
         let rpc_builder = RpcBuilder::new(io_builder);
 
         let stream = Self::connect_with_retries(addr).await;
@@ -242,16 +246,16 @@ impl JulietNodeClient {
     }
 
     async fn connect_with_retries(addr: SocketAddr) -> TcpStream {
-        const BACKOFF_MULT: u64 = 2;
-        const MIN_WAIT: u64 = 1000;
-        const MAX_WAIT: u64 = 64_000;
+        const BACKOFF_MULTIPLIER: u64 = 2;
+        const MIN_DELAY: u64 = 1000;
+        const MAX_DELAY: u64 = 64_000;
 
-        let mut wait = MIN_WAIT;
+        let mut wait = MIN_DELAY;
         loop {
             match TcpStream::connect(addr).await {
                 Ok(server) => break server,
                 Err(err) => {
-                    wait = (wait * BACKOFF_MULT).min(MAX_WAIT);
+                    wait = (wait * BACKOFF_MULTIPLIER).min(MAX_DELAY);
                     warn!(%err, "failed to connect to the node, waiting {wait}ms before retrying");
                     tokio::time::sleep(Duration::from_millis(wait)).await;
                 }
