@@ -6,7 +6,7 @@ use crate::{
 };
 
 const BLOCK_HEIGHT_2_HASH_TAG: u8 = 0;
-const HIGHEST_BLOCK_TAG: u8 = 1;
+const HIGHEST_COMPLETE_BLOCK_TAG: u8 = 1;
 const COMPLETED_BLOCK_CONTAINS_TAG: u8 = 2;
 const TRANSACTION_HASH_2_BLOCK_HASH_AND_HEIGHT_TAG: u8 = 3;
 const PEERS_TAG: u8 = 4;
@@ -76,7 +76,9 @@ impl ToBytes for NonPersistedDataRequest {
                 BLOCK_HEIGHT_2_HASH_TAG.write_bytes(writer)?;
                 height.write_bytes(writer)
             }
-            NonPersistedDataRequest::HighestCompleteBlock => HIGHEST_BLOCK_TAG.write_bytes(writer),
+            NonPersistedDataRequest::HighestCompleteBlock => {
+                HIGHEST_COMPLETE_BLOCK_TAG.write_bytes(writer)
+            }
             NonPersistedDataRequest::CompletedBlockContains { block_hash } => {
                 COMPLETED_BLOCK_CONTAINS_TAG.write_bytes(writer)?;
                 block_hash.write_bytes(writer)
@@ -140,7 +142,9 @@ impl FromBytes for NonPersistedDataRequest {
                     remainder,
                 ))
             }
-            HIGHEST_BLOCK_TAG => Ok((NonPersistedDataRequest::HighestCompleteBlock, remainder)),
+            HIGHEST_COMPLETE_BLOCK_TAG => {
+                Ok((NonPersistedDataRequest::HighestCompleteBlock, remainder))
+            }
             COMPLETED_BLOCK_CONTAINS_TAG => {
                 let (block_hash, remainder) = BlockHash::from_bytes(remainder)?;
                 Ok((
@@ -219,7 +223,7 @@ impl ToBytes for NonPersistedDataResponse {
                 hash.write_bytes(writer)
             }
             NonPersistedDataResponse::HighestBlock { hash, height } => {
-                HIGHEST_BLOCK_TAG.write_bytes(writer)?;
+                HIGHEST_COMPLETE_BLOCK_TAG.write_bytes(writer)?;
                 hash.write_bytes(writer)?;
                 height.write_bytes(writer)
             }
@@ -261,7 +265,7 @@ impl FromBytes for NonPersistedDataResponse {
                     remainder,
                 ))
             }
-            HIGHEST_BLOCK_TAG => {
+            HIGHEST_COMPLETE_BLOCK_TAG => {
                 let (hash, remainder) = BlockHash::from_bytes(remainder)?;
                 let (height, remainder) = u64::from_bytes(remainder)?;
                 Ok((
