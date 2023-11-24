@@ -3,6 +3,8 @@ use std::fmt::{self, Display, Formatter};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::bytesrepr::{self, FromBytes, ToBytes};
+
 /// An unbroken, inclusive range of blocks.
 #[derive(
     Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, JsonSchema,
@@ -51,5 +53,30 @@ impl Display for AvailableBlockRange {
             "available block range [{}, {}]",
             self.low, self.high
         )
+    }
+}
+
+impl ToBytes for AvailableBlockRange {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.low.write_bytes(writer)?;
+        self.high.write_bytes(writer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.low.serialized_length() + self.high.serialized_length()
+    }
+}
+
+impl FromBytes for AvailableBlockRange {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (low, remainder) = u64::from_bytes(bytes)?;
+        let (high, remainder) = u64::from_bytes(remainder)?;
+        Ok((AvailableBlockRange { low, high }, remainder))
     }
 }

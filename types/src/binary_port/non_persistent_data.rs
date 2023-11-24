@@ -16,6 +16,7 @@ const REACTOR_STATE_TAG: u8 = 7;
 const NETWORK_NAME_TAG: u8 = 8;
 const CONSENSUS_VALIDATOR_CHANGES_TAG: u8 = 9;
 const BLOCK_SYNCHRONIZER_STATUS_TAG: u8 = 10;
+const AVAILABLE_BLOCK_RANGE_TAG: u8 = 11;
 
 /// Request for non persistent data
 #[derive(Debug)]
@@ -52,6 +53,8 @@ pub enum NonPersistedDataRequest {
     ConsensusValidatorChanges,
     /// Returns status of the BlockSynchronizer.
     BlockSynchronizerStatus,
+    /// Returns the available block range.
+    AvailableBlockRange,
 }
 
 impl ToBytes for NonPersistedDataRequest {
@@ -87,6 +90,9 @@ impl ToBytes for NonPersistedDataRequest {
             NonPersistedDataRequest::BlockSynchronizerStatus => {
                 BLOCK_SYNCHRONIZER_STATUS_TAG.write_bytes(writer)
             }
+            NonPersistedDataRequest::AvailableBlockRange => {
+                AVAILABLE_BLOCK_RANGE_TAG.write_bytes(writer)
+            }
         }
     }
 
@@ -108,6 +114,7 @@ impl ToBytes for NonPersistedDataRequest {
                 NonPersistedDataRequest::NetworkName => 0,
                 NonPersistedDataRequest::ConsensusValidatorChanges => 0,
                 NonPersistedDataRequest::BlockSynchronizerStatus => 0,
+                NonPersistedDataRequest::AvailableBlockRange => 0,
             }
     }
 }
@@ -151,6 +158,9 @@ impl FromBytes for NonPersistedDataRequest {
             )),
             BLOCK_SYNCHRONIZER_STATUS_TAG => {
                 Ok((NonPersistedDataRequest::BlockSynchronizerStatus, remainder))
+            }
+            AVAILABLE_BLOCK_RANGE_TAG => {
+                Ok((NonPersistedDataRequest::AvailableBlockRange, remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }

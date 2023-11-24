@@ -348,6 +348,14 @@ where
                         .map_err(|err| Error::BytesRepr(err))?;
                     Ok(Some(Bytes::from(payload)))
                 }
+                NonPersistedDataRequest::AvailableBlockRange => {
+                    let available_block_range = effect_builder
+                        .get_available_block_range_from_storage()
+                        .await;
+                    let payload = ToBytes::to_bytes(&available_block_range)
+                        .map_err(|err| Error::BytesRepr(err))?;
+                    Ok(Some(Bytes::from(payload)))
+                }
             },
             GetRequest::State {
                 state_root_hash,
