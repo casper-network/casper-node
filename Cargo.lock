@@ -3286,16 +3286,15 @@ dependencies = [
 
 [[package]]
 name = "juliet"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2456a8e177108d4737613b008c7bcf37b623ef25e3bd48cd411b59fa06e80351"
+checksum = "8f4800e6c04db91d3a80a9b84da77f73ce21bdd60f064b2e1a3a55680aacd88c"
 dependencies = [
  "array-init",
  "bimap",
  "bytemuck",
  "bytes",
  "futures",
- "hex_fmt",
  "once_cell",
  "strum 0.25.0",
  "thiserror",
