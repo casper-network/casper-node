@@ -461,58 +461,59 @@ mod tests {
         }
     }
 
-    // TODO: fix tests
-    // mod rpc_without_params {
+    mod rpc_without_params {
 
-    //     use super::*;
+        use crate::rpcs::info::{GetPeers, GetPeersResult};
 
-    //     fn main_filter_with_recovery() -> BoxedFilter<(impl Reply,)> {
-    //         let mut handlers = RequestHandlersBuilder::new();
-    //         GetPeers::register_as_test_handler(&mut handlers);
-    //         let handlers = handlers.build();
+        use super::*;
 
-    //         filters::main_filter(handlers, ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST)
-    //             .recover(filters::handle_rejection)
-    //             .boxed()
-    //     }
+        fn main_filter_with_recovery() -> BoxedFilter<(impl Reply,)> {
+            let mut handlers = RequestHandlersBuilder::new();
+            GetPeers::register_as_test_handler(&mut handlers);
+            let handlers = handlers.build();
 
-    //     #[tokio::test]
-    //     async fn should_check_no_params() {
-    //         let filter = main_filter_with_recovery();
+            filters::main_filter(handlers, ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST)
+                .recover(filters::handle_rejection)
+                .boxed()
+        }
 
-    //         let rpc_response = send_request(GetPeers::METHOD, None, &filter).await;
-    //         assert_eq!(
-    //             rpc_response.result().as_ref(),
-    //             Some(GetPeersResult::doc_example())
-    //         );
+        #[tokio::test]
+        async fn should_check_no_params() {
+            let filter = main_filter_with_recovery();
 
-    //         let rpc_response = send_request(GetPeers::METHOD, Some("[]"), &filter).await;
-    //         assert_eq!(
-    //             rpc_response.result().as_ref(),
-    //             Some(GetPeersResult::doc_example())
-    //         );
+            let rpc_response = send_request(GetPeers::METHOD, None, &filter).await;
+            assert_eq!(
+                rpc_response.result().as_ref(),
+                Some(GetPeersResult::doc_example())
+            );
 
-    //         let rpc_response = send_request(GetPeers::METHOD, Some("{}"), &filter).await;
-    //         assert_eq!(
-    //             rpc_response.result().as_ref(),
-    //             Some(GetPeersResult::doc_example())
-    //         );
-    //     }
+            let rpc_response = send_request(GetPeers::METHOD, Some("[]"), &filter).await;
+            assert_eq!(
+                rpc_response.result().as_ref(),
+                Some(GetPeersResult::doc_example())
+            );
 
-    //     #[tokio::test]
-    //     async fn should_return_error_if_params_not_empty() {
-    //         let filter = main_filter_with_recovery();
+            let rpc_response = send_request(GetPeers::METHOD, Some("{}"), &filter).await;
+            assert_eq!(
+                rpc_response.result().as_ref(),
+                Some(GetPeersResult::doc_example())
+            );
+        }
 
-    //         let rpc_response = send_request(GetPeers::METHOD, Some("[3]"), &filter).await;
-    //         assert_eq!(
-    //             rpc_response.error().unwrap(),
-    //             &RpcError::new(
-    //                 ReservedErrorCode::InvalidParams,
-    //                 "'params' field should be an empty Array '[]', an empty Object '{}' or
-    // absent"             )
-    //         );
-    //     }
-    // }
+        #[tokio::test]
+        async fn should_return_error_if_params_not_empty() {
+            let filter = main_filter_with_recovery();
+
+            let rpc_response = send_request(GetPeers::METHOD, Some("[3]"), &filter).await;
+            assert_eq!(
+                rpc_response.error().unwrap(),
+                &RpcError::new(
+                    ReservedErrorCode::InvalidParams,
+                    "'params' field should be an empty Array '[]', an empty Object '{}' or absent"
+                )
+            );
+        }
+    }
 
     mod rpc_with_optional_params {
         use crate::rpcs::chain::{BlockIdentifier, GetBlock, GetBlockParams, GetBlockResult};

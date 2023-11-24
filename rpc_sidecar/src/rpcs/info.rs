@@ -1,6 +1,11 @@
 //! RPCs returning ancillary information.
 
-use std::{collections::BTreeMap, str, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    str,
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
@@ -49,7 +54,13 @@ static GET_TRANSACTION_RESULT: Lazy<GetTransactionResult> = Lazy::new(|| GetTran
 });
 static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-    peers: GetPeersResult::doc_example().peers.clone(),
+    peers: Some((
+        "01".repeat(64),
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 54321).to_string(),
+    ))
+    .into_iter()
+    .collect::<BTreeMap<_, _>>()
+    .into(),
 });
 static GET_VALIDATOR_CHANGES_RESULT: Lazy<GetValidatorChangesResult> = Lazy::new(|| {
     let change = JsonValidatorStatusChange::new(EraId::new(1), ValidatorChange::Added);

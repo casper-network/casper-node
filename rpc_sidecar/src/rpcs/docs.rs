@@ -33,95 +33,92 @@ pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
 // As per https://spec.open-rpc.org/#service-discovery-method.
-pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> =
-    Lazy::new(|| {
-        let contact = OpenRpcContactField {
-            name: "Casper Labs".to_string(),
-            url: "https://casperlabs.io".to_string(),
-        };
-        let license = OpenRpcLicenseField {
-            name: "APACHE LICENSE, VERSION 2.0".to_string(),
-            url: "https://www.apache.org/licenses/LICENSE-2.0".to_string(),
-        };
-        let info = OpenRpcInfoField {
-            version: DOCS_EXAMPLE_PROTOCOL_VERSION.to_string(),
-            title: "Client API of Casper Node".to_string(),
-            description: "This describes the JSON-RPC 2.0 API of a node on the Casper network."
-                .to_string(),
-            contact,
-            license,
-        };
+pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
+    let contact = OpenRpcContactField {
+        name: "Casper Labs".to_string(),
+        url: "https://casperlabs.io".to_string(),
+    };
+    let license = OpenRpcLicenseField {
+        name: "APACHE LICENSE, VERSION 2.0".to_string(),
+        url: "https://www.apache.org/licenses/LICENSE-2.0".to_string(),
+    };
+    let info = OpenRpcInfoField {
+        version: DOCS_EXAMPLE_PROTOCOL_VERSION.to_string(),
+        title: "Client API of Casper Node".to_string(),
+        description: "This describes the JSON-RPC 2.0 API of a node on the Casper network."
+            .to_string(),
+        contact,
+        license,
+    };
 
-        let server = OpenRpcServerEntry {
-            name: "any Casper Network node".to_string(),
-            url: "http://IP:PORT/rpc/".to_string(),
-        };
+    let server = OpenRpcServerEntry {
+        name: "any Casper Network node".to_string(),
+        url: "http://IP:PORT/rpc/".to_string(),
+    };
 
-        let mut schema = OpenRpcSchema {
-            openrpc: "1.0.0-rc1".to_string(),
-            info,
-            servers: vec![server],
-            methods: vec![],
-            components: Components {
-                schemas: Map::new(),
-            },
-        };
+    let mut schema = OpenRpcSchema {
+        openrpc: "1.0.0-rc1".to_string(),
+        info,
+        servers: vec![server],
+        methods: vec![],
+        components: Components {
+            schemas: Map::new(),
+        },
+    };
 
-        schema.push_with_params::<PutDeploy>(
-            "receives a Deploy to be executed by the network (DEPRECATED: use \
+    schema.push_with_params::<PutDeploy>(
+        "receives a Deploy to be executed by the network (DEPRECATED: use \
         `account_put_transaction` instead)",
-        );
-        schema.push_with_params::<PutTransaction>(
-            "receives a Transaction to be executed by the network",
-        );
-        schema.push_with_params::<GetDeploy>(
-            "returns a Deploy from the network (DEPRECATED: use `info_get_transaction` instead)",
-        );
-        schema.push_with_params::<GetTransaction>("returns a Transaction from the network");
-        schema.push_with_params::<GetAccountInfo>("returns an Account from the network");
-        schema.push_with_params::<GetDictionaryItem>("returns an item from a Dictionary");
-        schema.push_with_params::<QueryGlobalState>(
-            "a query to global state using either a Block hash or state root hash",
-        );
-        schema.push_with_params::<QueryBalance>(
-            "query for a balance using a purse identifier and a state identifier",
-        );
-        // TODO: handle peers and status
-        // schema.push_without_params::<GetPeers>("returns a list of peers connected to the node");
-        // schema.push_without_params::<GetStatus>("returns the current status of the node");
-        schema.push_without_params::<GetValidatorChanges>(
-            "returns status changes of active validators",
-        );
-        schema.push_without_params::<GetChainspec>(
-            "returns the raw bytes of the chainspec.toml, genesis accounts.toml, and \
+    );
+    schema
+        .push_with_params::<PutTransaction>("receives a Transaction to be executed by the network");
+    schema.push_with_params::<GetDeploy>(
+        "returns a Deploy from the network (DEPRECATED: use `info_get_transaction` instead)",
+    );
+    schema.push_with_params::<GetTransaction>("returns a Transaction from the network");
+    schema.push_with_params::<GetAccountInfo>("returns an Account from the network");
+    schema.push_with_params::<GetDictionaryItem>("returns an item from a Dictionary");
+    schema.push_with_params::<QueryGlobalState>(
+        "a query to global state using either a Block hash or state root hash",
+    );
+    schema.push_with_params::<QueryBalance>(
+        "query for a balance using a purse identifier and a state identifier",
+    );
+    // TODO: handle peers and status
+    // schema.push_without_params::<GetPeers>("returns a list of peers connected to the node");
+    // schema.push_without_params::<GetStatus>("returns the current status of the node");
+    schema
+        .push_without_params::<GetValidatorChanges>("returns status changes of active validators");
+    schema.push_without_params::<GetChainspec>(
+        "returns the raw bytes of the chainspec.toml, genesis accounts.toml, and \
         global_state.toml files",
-        );
-        schema.push_with_optional_params::<GetBlock>("returns a Block from the network");
-        schema.push_with_optional_params::<GetBlockTransfers>(
-            "returns all transfers for a Block from the network",
-        );
-        schema.push_with_optional_params::<GetStateRootHash>(
-            "returns a state root hash at a given Block",
-        );
-        schema.push_with_params::<GetItem>(
-            "returns a stored value from the network. This RPC is deprecated, use \
+    );
+    schema.push_with_optional_params::<GetBlock>("returns a Block from the network");
+    schema.push_with_optional_params::<GetBlockTransfers>(
+        "returns all transfers for a Block from the network",
+    );
+    schema.push_with_optional_params::<GetStateRootHash>(
+        "returns a state root hash at a given Block",
+    );
+    schema.push_with_params::<GetItem>(
+        "returns a stored value from the network. This RPC is deprecated, use \
         `query_global_state` instead.",
-        );
-        schema.push_with_params::<GetBalance>("returns a purse's balance from the network");
-        schema.push_with_optional_params::<GetEraInfoBySwitchBlock>(
-            "returns an EraInfo from the network",
-        );
-        schema.push_with_optional_params::<GetAuctionInfo>(
+    );
+    schema.push_with_params::<GetBalance>("returns a purse's balance from the network");
+    schema.push_with_optional_params::<GetEraInfoBySwitchBlock>(
+        "returns an EraInfo from the network",
+    );
+    schema.push_with_optional_params::<GetAuctionInfo>(
         "returns the bids and validators as of either a specific block (by height or hash), or \
         the most recently added block",
     );
-        schema.push_with_optional_params::<GetEraSummary>(
-            "returns the era summary at either a specific block (by height or hash), or the most \
+    schema.push_with_optional_params::<GetEraSummary>(
+        "returns the era summary at either a specific block (by height or hash), or the most \
         recently added block",
-        );
+    );
 
-        schema
-    });
+    schema
+});
 static LIST_RPCS_RESULT: Lazy<ListRpcsResult> = Lazy::new(|| ListRpcsResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     name: "OpenRPC Schema".to_string(),
@@ -191,14 +188,13 @@ impl OpenRpcSchema {
 
         let examples = vec![Example::from_rpc_without_params::<T>()];
 
-        let method =
-            Method {
-                name: T::METHOD.to_string(),
-                summary: summary.to_string(),
-                params: vec![],
-                result,
-                examples,
-            };
+        let method = Method {
+            name: T::METHOD.to_string(),
+            summary: summary.to_string(),
+            params: vec![],
+            result,
+            examples,
+        };
 
         self.methods.push(method);
         self.update_schemas::<T::ResponseResult>();
