@@ -42,7 +42,7 @@ use crate::{
     effect::{
         requests::{
             BlockSynchronizerRequest, ChainspecRawBytesRequest, ConsensusRequest, MetricsRequest,
-            NetworkInfoRequest, ReactorStatusRequest, RestRequest, StorageRequest,
+            NetworkInfoRequest, ReactorInfoRequest, RestRequest, StorageRequest,
             UpgradeWatcherRequest,
         },
         EffectBuilder, EffectExt, Effects,
@@ -67,7 +67,7 @@ pub(crate) trait ReactorEventT:
     + From<UpgradeWatcherRequest>
     + From<ConsensusRequest>
     + From<MetricsRequest>
-    + From<ReactorStatusRequest>
+    + From<ReactorInfoRequest>
     + From<BlockSynchronizerRequest>
     + Send
 {
@@ -82,7 +82,7 @@ impl<REv> ReactorEventT for REv where
         + From<UpgradeWatcherRequest>
         + From<ConsensusRequest>
         + From<MetricsRequest>
-        + From<ReactorStatusRequest>
+        + From<ReactorInfoRequest>
         + From<BlockSynchronizerRequest>
         + Send
         + 'static

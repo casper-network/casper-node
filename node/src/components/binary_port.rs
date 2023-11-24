@@ -35,7 +35,7 @@ use crate::{
     effect::{
         requests::{
             AcceptTransactionRequest, ContractRuntimeRequest, NetworkInfoRequest,
-            ReactorStatusRequest, StorageRequest,
+            ReactorInfoRequest, StorageRequest,
         },
         EffectBuilder, Effects,
     },
@@ -77,7 +77,7 @@ where
         + From<ContractRuntimeRequest>
         + From<AcceptTransactionRequest>
         + From<NetworkInfoRequest>
-        + From<ReactorStatusRequest>
+        + From<ReactorInfoRequest>
         + Send,
 {
     type Event = Event;
@@ -133,7 +133,7 @@ where
         + From<ContractRuntimeRequest>
         + From<AcceptTransactionRequest>
         + From<NetworkInfoRequest>
-        + From<ReactorStatusRequest>
+        + From<ReactorInfoRequest>
         + Send,
 {
     fn state(&self) -> &ComponentState {
@@ -161,7 +161,7 @@ where
         + From<ContractRuntimeRequest>
         + From<AcceptTransactionRequest>
         + From<NetworkInfoRequest>
-        + From<ReactorStatusRequest>,
+        + From<ReactorInfoRequest>,
 {
     match req {
         BinaryRequest::TryAcceptTransaction {
@@ -321,6 +321,12 @@ where
                         ToBytes::to_bytes(&reactor_state).map_err(|err| Error::BytesRepr(err))?;
                     Ok(Some(Bytes::from(payload)))
                 }
+                NonPersistedDataRequest::NetworkName => {
+                    let network_name = effect_builder.get_network_name().await;
+                    let payload =
+                        ToBytes::to_bytes(&network_name).map_err(|err| Error::BytesRepr(err))?;
+                    Ok(Some(Bytes::from(payload)))
+                }
             },
             GetRequest::State {
                 state_root_hash,
@@ -368,7 +374,7 @@ async fn handle_client<REv, const N: usize>(
         + From<ContractRuntimeRequest>
         + From<AcceptTransactionRequest>
         + From<NetworkInfoRequest>
-        + From<ReactorStatusRequest>,
+        + From<ReactorInfoRequest>,
 {
     let (reader, writer) = client.split();
     let (client, mut server) = rpc_builder.build(reader, writer);
@@ -431,7 +437,7 @@ where
         + From<ContractRuntimeRequest>
         + From<AcceptTransactionRequest>
         + From<NetworkInfoRequest>
-        + From<ReactorStatusRequest>
+        + From<ReactorInfoRequest>
         + Send,
 {
     let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
@@ -472,7 +478,7 @@ where
         + From<ContractRuntimeRequest>
         + From<AcceptTransactionRequest>
         + From<NetworkInfoRequest>
-        + From<ReactorStatusRequest>
+        + From<ReactorInfoRequest>
         + Send,
 {
     type Error = ListeningError;

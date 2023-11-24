@@ -13,6 +13,7 @@ const PEERS_TAG: u8 = 4;
 const UPTIME_TAG: u8 = 5;
 const LAST_PROGRESS_TAG: u8 = 6;
 const REACTOR_STATE_TAG: u8 = 7;
+const NETWORK_NAME_TAG: u8 = 8;
 
 /// Request for non persistent data
 #[derive(Debug)]
@@ -42,9 +43,11 @@ pub enum NonPersistedDataRequest {
     LastProgress,
     /// Returns current state of the main reactor.
     ReactorState,
+    /// Returns current network name.
+    // TODO[RC]: Consider "generic" get chainspec param? Or just "get_chainspec"?
+    NetworkName,
     // TODO:
     // Status requests (effect builders on slack)
-    // Uptime
     // Network name
     // GetValidatorChanges
     // GetTrie
@@ -76,6 +79,7 @@ impl ToBytes for NonPersistedDataRequest {
             NonPersistedDataRequest::Uptime => UPTIME_TAG.write_bytes(writer),
             NonPersistedDataRequest::LastProgress => LAST_PROGRESS_TAG.write_bytes(writer),
             NonPersistedDataRequest::ReactorState => REACTOR_STATE_TAG.write_bytes(writer),
+            NonPersistedDataRequest::NetworkName => NETWORK_NAME_TAG.write_bytes(writer),
         }
     }
 
@@ -94,6 +98,7 @@ impl ToBytes for NonPersistedDataRequest {
                 NonPersistedDataRequest::Uptime => 0,
                 NonPersistedDataRequest::LastProgress => 0,
                 NonPersistedDataRequest::ReactorState => 0,
+                NonPersistedDataRequest::NetworkName => 0,
             }
     }
 }
@@ -127,6 +132,10 @@ impl FromBytes for NonPersistedDataRequest {
                 ))
             }
             PEERS_TAG => Ok((NonPersistedDataRequest::Peers, remainder)),
+            UPTIME_TAG => Ok((NonPersistedDataRequest::Uptime, remainder)),
+            LAST_PROGRESS_TAG => Ok((NonPersistedDataRequest::LastProgress, remainder)),
+            REACTOR_STATE_TAG => Ok((NonPersistedDataRequest::ReactorState, remainder)),
+            NETWORK_NAME_TAG => Ok((NonPersistedDataRequest::NetworkName, remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }

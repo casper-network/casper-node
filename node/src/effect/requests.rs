@@ -1259,21 +1259,23 @@ impl Display for UpgradeWatcherRequest {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) enum ReactorStatusRequest {
+pub(crate) enum ReactorInfoRequest {
     ReactorState { responder: Responder<ReactorState> },
     LastProgress { responder: Responder<Timestamp> },
     Uptime { responder: Responder<Duration> },
+    NetworkName { responder: Responder<String> },
 }
 
-impl Display for ReactorStatusRequest {
+impl Display for ReactorInfoRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "get reactor status: {}",
             match self {
-                ReactorStatusRequest::ReactorState { .. } => "ReactorState",
-                ReactorStatusRequest::LastProgress { .. } => "LastProgress",
-                ReactorStatusRequest::Uptime { .. } => "Uptime",
+                ReactorInfoRequest::ReactorState { .. } => "ReactorState",
+                ReactorInfoRequest::LastProgress { .. } => "LastProgress",
+                ReactorInfoRequest::Uptime { .. } => "Uptime",
+                ReactorInfoRequest::NetworkName { .. } => "NetworkName",
             }
         )
     }

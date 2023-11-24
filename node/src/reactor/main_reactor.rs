@@ -65,7 +65,7 @@ use crate::{
             UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
-        requests::{AcceptTransactionRequest, ChainspecRawBytesRequest, ReactorStatusRequest},
+        requests::{AcceptTransactionRequest, ChainspecRawBytesRequest, ReactorInfoRequest},
         EffectBuilder, EffectExt, Effects, GossipTarget,
     },
     failpoints::FailpointActivation,
@@ -244,14 +244,17 @@ impl reactor::Reactor for MainReactor {
             MainEvent::ReactorCrank => self.crank(effect_builder, rng),
 
             MainEvent::MainReactorRequest(req) => match req {
-                ReactorStatusRequest::ReactorState { responder } => {
+                ReactorInfoRequest::ReactorState { responder } => {
                     responder.respond(self.state).ignore()
                 }
-                ReactorStatusRequest::LastProgress { responder } => {
+                ReactorInfoRequest::LastProgress { responder } => {
                     responder.respond(self.last_progress).ignore()
                 }
-                ReactorStatusRequest::Uptime { responder } => responder
+                ReactorInfoRequest::Uptime { responder } => responder
                     .respond(self.node_startup_instant.elapsed())
+                    .ignore(),
+                ReactorInfoRequest::NetworkName { responder } => responder
+                    .respond(self.chainspec.network_config.name.clone())
                     .ignore(),
             },
             MainEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(meta_block)) => {

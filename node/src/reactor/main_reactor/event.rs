@@ -41,7 +41,7 @@ use crate::{
             BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest,
             ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
             MakeBlockExecutableRequest, MarkBlockCompletedRequest, MetricsRequest,
-            NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, RestRequest, RpcRequest,
+            NetworkInfoRequest, NetworkRequest, ReactorInfoRequest, RestRequest, RpcRequest,
             SetNodeStopRequest, StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
             UpgradeWatcherRequest,
         },
@@ -242,7 +242,7 @@ pub(crate) enum MainEvent {
     #[from]
     SetNodeStopRequest(SetNodeStopRequest),
     #[from]
-    MainReactorRequest(ReactorStatusRequest),
+    MainReactorRequest(ReactorInfoRequest),
     #[from]
     MetaBlockAnnouncement(MetaBlockAnnouncement),
     #[from]

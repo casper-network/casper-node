@@ -174,7 +174,7 @@ use requests::{
     BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
     ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MakeBlockExecutableRequest,
     MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-    ReactorStatusRequest, SetNodeStopRequest, StorageRequest, SyncGlobalStateRequest,
+    ReactorInfoRequest, SetNodeStopRequest, StorageRequest, SyncGlobalStateRequest,
     TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
 
@@ -1477,10 +1477,10 @@ impl<REv> EffectBuilder<REv> {
 
     pub(crate) async fn get_reactor_state(self) -> ReactorState
     where
-        REv: From<ReactorStatusRequest>,
+        REv: From<ReactorInfoRequest>,
     {
         self.make_request(
-            |responder| ReactorStatusRequest::ReactorState { responder },
+            |responder| ReactorInfoRequest::ReactorState { responder },
             QueueKind::Regular,
         )
         .await
@@ -1488,10 +1488,10 @@ impl<REv> EffectBuilder<REv> {
 
     pub(crate) async fn get_last_progress(self) -> Timestamp
     where
-        REv: From<ReactorStatusRequest>,
+        REv: From<ReactorInfoRequest>,
     {
         self.make_request(
-            |responder| ReactorStatusRequest::LastProgress { responder },
+            |responder| ReactorInfoRequest::LastProgress { responder },
             QueueKind::Regular,
         )
         .await
@@ -1499,10 +1499,21 @@ impl<REv> EffectBuilder<REv> {
 
     pub(crate) async fn get_uptime(self) -> Duration
     where
-        REv: From<ReactorStatusRequest>,
+        REv: From<ReactorInfoRequest>,
     {
         self.make_request(
-            |responder| ReactorStatusRequest::Uptime { responder },
+            |responder| ReactorInfoRequest::Uptime { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_network_name(self) -> String
+    where
+        REv: From<ReactorInfoRequest>,
+    {
+        self.make_request(
+            |responder| ReactorInfoRequest::NetworkName { responder },
             QueueKind::Regular,
         )
         .await
