@@ -28,11 +28,6 @@ impl Greeter {
         log!("Saving greeting {}", greeting);
         self.greeting.write(greeting).unwrap();
     }
-    pub fn this_has_many_arguments(&self, bar: u32, foo: String, baz: u32) {
-        log!("foo: {}", foo);
-        log!("bar: {}", bar);
-        log!("baz: {}", baz);
-    }
 }
 
 use casper_sdk::Contract;
@@ -51,39 +46,21 @@ pub fn call() {
             log!("contract_address: {:?}", contract_address);
             log!("version: {:?}", version);
 
-            let call1 = GreeterEntryPoint::set_greeting {
-                greeting: "Foo".into(),
-            };
+            let call1 = "set_greeting";
+            let input_data1: (String,) = ("Foo".into(),);
             let res1 = host::call(
                 &contract_address,
                 0,
-                call1.entry_point(),
-                &call1.input_data().unwrap(),
+                call1,
+                &borsh::to_vec(&input_data1).unwrap(),
             );
 
             log!("{call1:?} result={res1:?}");
 
-            let call3 = GreeterEntryPoint::this_has_many_arguments {
-                foo: "foo".into(),
-                bar: 42,
-                baz: u32::MAX,
-            };
-            let res3 = host::call(
-                &contract_address,
-                0,
-                call3.entry_point(),
-                &call3.input_data().unwrap(),
-            );
+            let call2 = "get_greeting";
+            let res2 = host::call(&contract_address, 0, call2, &[]);
 
-            let call2 = GreeterEntryPoint::get_greeting {};
-            let _res2 = host::call(
-                &contract_address,
-                0,
-                call2.entry_point(),
-                &call2.input_data().unwrap(),
-            );
-
-            log!("{call3:?} result={res3:?}")
+            log!("{call2:?} result={res2:?}")
         }
         Err(error) => {
             log!("error {:?}", error);

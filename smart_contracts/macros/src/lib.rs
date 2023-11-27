@@ -272,41 +272,11 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                 // let static_schema_ident = format_ident!("__casper_schema_{struct_name}");
 
                 let st_name = struct_name.get_ident().unwrap();
-                let static_metadata = format_ident!("{st_name}EntryPoint");
 
                 let res = quote! {
                     #entry_points
 
-                    #[doc(hidden)]
-                    #[derive(Debug)]
-                    pub enum #static_metadata {
-                        #(#manifest_entry_point_enum_variants,)*
-                    }
-
-                    impl #static_metadata {
-                        #[doc(hidden)]
-                        pub const fn entry_point(&self) -> &'static str {
-                            match self {
-                                #(Self::#manifest_entry_point_enum_match_name { .. } => stringify!(#manifest_entry_point_enum_match_name),)*
-                            }
-                        }
-                        #[doc(hidden)]
-                        pub fn input_data(&self) -> borsh::io::Result<Vec<u8>> {
-                            borsh::to_vec(self)
-                        }
-                    }
-
-                    impl borsh::BorshSerialize for #static_metadata {
-                        fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
-                            match self {
-                                #(#manifest_entry_point_input_data)*
-                            }
-                            // Ok(())
-                        }
-                    }
-
                     impl #struct_name {
-
                         #[doc(hidden)]
                         fn __casper_schema() -> casper_sdk::Schema {
                             let entry_points = vec![
