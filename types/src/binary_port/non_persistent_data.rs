@@ -195,6 +195,7 @@ impl FromBytes for NonPersistedDataRequest {
             }
             NEXT_UPGRADE_TAG => Ok((NonPersistedDataRequest::NextUpgrade, remainder)),
             CONSENSUS_STATUS_TAG => Ok((NonPersistedDataRequest::ConsensusStatus, remainder)),
+            CHAINSPEC_RAW_BYTES => Ok((NonPersistedDataRequest::ChainspecRawBytes, remainder)),
             GENESIS_ACCOUNTS_BYTES_TAG => {
                 Ok((NonPersistedDataRequest::GenesisAccountsBytes, remainder))
             }
