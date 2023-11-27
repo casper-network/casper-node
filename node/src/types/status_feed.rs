@@ -14,7 +14,7 @@ use casper_types::{
 };
 
 use crate::{
-    components::rpc_server::rpcs::docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
+    components::rest_server::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     types::NodeId,
 };
 

@@ -19,9 +19,11 @@
 //!     example: curl -X GET 'http://IP:8888/metrics'
 
 mod config;
+mod docs;
 mod event;
 mod filters;
 mod http_server;
+mod info;
 
 use std::time::Duration;
 
@@ -33,12 +35,9 @@ use tracing::{debug, error, info, warn};
 use casper_json_rpc::CorsOrigin;
 use casper_types::ProtocolVersion;
 
-use super::Component;
+use super::{Component, ComponentState, InitializedComponent};
 use crate::{
-    components::{
-        rpc_server::rpcs::docs::OPEN_RPC_SCHEMA, ComponentState, InitializedComponent,
-        PortBoundComponent,
-    },
+    components::PortBoundComponent,
     effect::{
         requests::{
             BlockSynchronizerRequest, ChainspecRawBytesRequest, ConsensusRequest, MetricsRequest,
@@ -53,7 +52,10 @@ use crate::{
     NodeRng,
 };
 pub use config::Config;
+pub use docs::DocExample;
+pub(crate) use docs::DOCS_EXAMPLE_PROTOCOL_VERSION;
 pub(crate) use event::Event;
+pub(crate) use info::{GetValidatorChangesResult, GetChainspecResult};
 
 const COMPONENT_NAME: &str = "rest_server";
 
@@ -233,10 +235,6 @@ where
                         text,
                         main_responder: responder,
                     }),
-                Event::RestRequest(RestRequest::RpcSchema { responder }) => {
-                    let schema = OPEN_RPC_SCHEMA.clone();
-                    responder.respond(schema).ignore()
-                }
                 Event::GetMetricsResult {
                     text,
                     main_responder,

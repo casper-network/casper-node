@@ -37,8 +37,8 @@ pub(crate) use node_id::NodeId;
 pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
 pub(crate) use sync_leap::{GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier};
 pub(crate) use transaction::{
-    DeployHashWithApprovals, DeployOrTransferHash, DeployWithFinalizedApprovals, LegacyDeploy,
-    TransactionHashWithApprovals, TransactionWithFinalizedApprovals, TypedTransactionHash,
+    DeployHashWithApprovals, DeployOrTransferHash, LegacyDeploy, TransactionHashWithApprovals,
+    TransactionWithFinalizedApprovals, TypedTransactionHash,
 };
 pub(crate) use validator_matrix::{EraValidatorWeights, SignatureWeight, ValidatorMatrix};
 pub use value_or_chunk::{

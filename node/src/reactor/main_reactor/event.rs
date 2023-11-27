@@ -18,8 +18,7 @@ use crate::{
         block_validator, consensus, contract_runtime, deploy_buffer, diagnostics_port,
         event_stream_server, fetcher, gossiper,
         network::{self, GossipedAddress},
-        rest_server, rpc_server, shutdown_trigger, storage, sync_leaper, transaction_acceptor,
-        upgrade_watcher,
+        rest_server, shutdown_trigger, storage, sync_leaper, transaction_acceptor, upgrade_watcher,
     },
     effect::{
         announcements::{
@@ -41,7 +40,7 @@ use crate::{
             BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest,
             ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
             MakeBlockExecutableRequest, MarkBlockCompletedRequest, MetricsRequest,
-            NetworkInfoRequest, NetworkRequest, ReactorInfoRequest, RestRequest, RpcRequest,
+            NetworkInfoRequest, NetworkRequest, ReactorInfoRequest, RestRequest,
             SetNodeStopRequest, StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
             UpgradeWatcherRequest,
         },
@@ -75,8 +74,6 @@ pub(crate) enum MainEvent {
     UpgradeWatcherRequest(#[serde(skip_serializing)] UpgradeWatcherRequest),
     #[from]
     UpgradeWatcherAnnouncement(#[serde(skip_serializing)] UpgradeWatcherAnnouncement),
-    #[from]
-    RpcServer(#[serde(skip_serializing)] rpc_server::Event),
     #[from]
     BinaryPort(#[serde(skip_serializing)] binary_port::Event),
     #[from]
@@ -273,7 +270,6 @@ impl ReactorEvent for MainEvent {
             MainEvent::SyncLeaper(_) => "SyncLeaper",
             MainEvent::DeployBuffer(_) => "DeployBuffer",
             MainEvent::Storage(_) => "Storage",
-            MainEvent::RpcServer(_) => "RpcServer",
             MainEvent::RestServer(_) => "RestServer",
             MainEvent::EventStreamServer(_) => "EventStreamServer",
             MainEvent::UpgradeWatcher(_) => "UpgradeWatcher",
@@ -378,7 +374,6 @@ impl Display for MainEvent {
             MainEvent::Network(event) => write!(f, "network: {}", event),
             MainEvent::SyncLeaper(event) => write!(f, "sync leaper: {}", event),
             MainEvent::DeployBuffer(event) => write!(f, "deploy buffer: {}", event),
-            MainEvent::RpcServer(event) => write!(f, "rpc server: {}", event),
             MainEvent::RestServer(event) => write!(f, "rest server: {}", event),
             MainEvent::EventStreamServer(event) => {
                 write!(f, "event stream server: {}", event)
@@ -582,12 +577,6 @@ impl From<TrieAccumulatorEvent> for MainEvent {
         MainEvent::BlockSynchronizer(block_synchronizer::Event::GlobalStateSynchronizer(
             event.into(),
         ))
-    }
-}
-
-impl From<RpcRequest> for MainEvent {
-    fn from(request: RpcRequest) -> Self {
-        MainEvent::RpcServer(rpc_server::Event::RpcRequest(request))
     }
 }
 

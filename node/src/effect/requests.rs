@@ -37,8 +37,8 @@ use casper_types::{
     AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, DeployHeader, Digest,
     DisplayIter, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalizedApprovals,
-    Key, NextUpgrade, ProtocolVersion, PublicKey, ReactorState, SignedBlock, TimeDiff, Timestamp,
-    Transaction, TransactionHash, TransactionId, Transfer, URef, ValidatorChange, U512,
+    Key, NextUpgrade, PublicKey, ReactorState, SignedBlock, TimeDiff, Timestamp, Transaction,
+    TransactionHash, TransactionId, Transfer, ValidatorChange, U512,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -60,7 +60,6 @@ use crate::{
         ContractRuntimeError, RoundSeigniorageRateRequest, SpeculativeExecutionState,
         TotalSupplyRequest,
     },
-    rpcs::docs::OpenRpcSchema,
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, BlockExecutionResultsOrChunk,
         BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, LegacyDeploy,
@@ -790,117 +789,6 @@ impl Display for DeployBufferRequest {
     }
 }
 
-/// Abstract RPC request.
-///
-/// An RPC request is an abstract request that does not concern itself with serialization or
-/// transport.
-#[derive(Debug)]
-#[must_use]
-pub(crate) enum RpcRequest {
-    /// Return transfers for block by hash (if any).
-    GetBlockTransfers {
-        /// The hash of the block to retrieve transfers for.
-        block_hash: BlockHash,
-        /// Responder to call with the result.
-        responder: Responder<Option<Vec<Transfer>>>,
-    },
-    /// Query the global state at the given root hash.
-    QueryGlobalState {
-        /// The state root hash.
-        state_root_hash: Digest,
-        /// Hex-encoded `casper_types::Key`.
-        base_key: Key,
-        /// The path components starting from the key as base.
-        path: Vec<String>,
-        /// Responder to call with the result.
-        responder: Responder<Result<QueryResult, engine_state::Error>>,
-    },
-    /// Query the global state at the given root hash.
-    QueryEraValidators {
-        /// The global state hash.
-        state_root_hash: Digest,
-        /// The protocol version.
-        protocol_version: ProtocolVersion,
-        /// Responder to call with the result.
-        responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
-    },
-    /// Get the bids at the given root hash.
-    GetBids {
-        /// The global state hash.
-        state_root_hash: Digest,
-        /// Responder to call with the result.
-        responder: Responder<Result<GetBidsResult, engine_state::Error>>,
-    },
-
-    /// Query the global state at the given root hash.
-    GetBalance {
-        /// The state root hash.
-        state_root_hash: Digest,
-        /// The purse URef.
-        purse_uref: URef,
-        /// Responder to call with the result.
-        responder: Responder<Result<BalanceResult, engine_state::Error>>,
-    },
-    /// Return the connected peers.
-    GetPeers {
-        /// Responder to call with the result.
-        responder: Responder<BTreeMap<NodeId, String>>,
-    },
-    /// Return string formatted status or `None` if an error occurred.
-    GetStatus {
-        /// Responder to call with the result.
-        responder: Responder<StatusFeed>,
-    },
-    /// Return the height range of fully available blocks.
-    GetAvailableBlockRange {
-        /// Responder to call with the result.
-        responder: Responder<AvailableBlockRange>,
-    },
-}
-
-impl Display for RpcRequest {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            RpcRequest::GetBlockTransfers { block_hash, .. } => {
-                write!(formatter, "get transfers {}", block_hash)
-            }
-
-            RpcRequest::QueryGlobalState {
-                state_root_hash,
-                base_key,
-                path,
-                ..
-            } => write!(
-                formatter,
-                "query {}, base_key: {}, path: {:?}",
-                state_root_hash, base_key, path
-            ),
-            RpcRequest::QueryEraValidators {
-                state_root_hash, ..
-            } => write!(formatter, "auction {}", state_root_hash),
-            RpcRequest::GetBids {
-                state_root_hash, ..
-            } => {
-                write!(formatter, "bids {}", state_root_hash)
-            }
-            RpcRequest::GetBalance {
-                state_root_hash,
-                purse_uref,
-                ..
-            } => write!(
-                formatter,
-                "balance {}, purse_uref: {}",
-                state_root_hash, purse_uref
-            ),
-            RpcRequest::GetPeers { .. } => write!(formatter, "get peers"),
-            RpcRequest::GetStatus { .. } => write!(formatter, "get status"),
-            RpcRequest::GetAvailableBlockRange { .. } => {
-                write!(formatter, "get available block range")
-            }
-        }
-    }
-}
-
 /// Abstract REST request.
 ///
 /// An REST request is an abstract request that does not concern itself with serialization or
@@ -918,11 +806,6 @@ pub(crate) enum RestRequest {
         /// Responder to call with the result.
         responder: Responder<Option<String>>,
     },
-    /// Returns schema of client-facing JSON-RPCs in OpenRPC format.
-    RpcSchema {
-        /// Responder to call with the result
-        responder: Responder<OpenRpcSchema>,
-    },
 }
 
 impl Display for RestRequest {
@@ -930,7 +813,6 @@ impl Display for RestRequest {
         match self {
             RestRequest::Status { .. } => write!(formatter, "get status"),
             RestRequest::Metrics { .. } => write!(formatter, "get metrics"),
-            RestRequest::RpcSchema { .. } => write!(formatter, "get openrpc"),
         }
     }
 }

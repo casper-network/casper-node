@@ -167,7 +167,6 @@ impl MemoryMetrics {
         let address_gossiper = reactor.address_gossiper.estimate_heap_size() as i64;
         let storage = reactor.storage.estimate_heap_size() as i64;
         let contract_runtime = reactor.contract_runtime.estimate_heap_size() as i64;
-        let rpc_server = reactor.rpc_server.estimate_heap_size() as i64;
         let rest_server = reactor.rest_server.estimate_heap_size() as i64;
         let event_stream_server = reactor.event_stream_server.estimate_heap_size() as i64;
         let consensus = reactor.consensus.estimate_heap_size() as i64;
@@ -190,7 +189,6 @@ impl MemoryMetrics {
             + address_gossiper
             + storage
             + contract_runtime
-            + rpc_server
             + rest_server
             + event_stream_server
             + consensus
@@ -211,7 +209,6 @@ impl MemoryMetrics {
         self.mem_address_gossiper.set(address_gossiper);
         self.mem_storage.set(storage);
         self.mem_contract_runtime.set(contract_runtime);
-        self.mem_rpc_server.set(rpc_server);
         self.mem_rest_server.set(rest_server);
         self.mem_event_stream_server.set(event_stream_server);
         self.mem_consensus.set(consensus);
@@ -242,7 +239,6 @@ impl MemoryMetrics {
                %address_gossiper,
                %storage,
                %contract_runtime,
-               %rpc_server,
                %rest_server,
                %event_stream_server,
                %consensus,

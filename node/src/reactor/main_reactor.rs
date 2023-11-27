@@ -47,7 +47,6 @@ use crate::{
         metrics::Metrics,
         network::{self, GossipedAddress, Identity as NetworkIdentity, Network},
         rest_server::RestServer,
-        rpc_server::RpcServer,
         shutdown_trigger::{self, CompletedBlockInfo, ShutdownTrigger},
         storage::Storage,
         sync_leaper::SyncLeaper,
@@ -138,7 +137,6 @@ pub(crate) struct MainReactor {
     storage: Storage,
     contract_runtime: ContractRuntime,
     upgrade_watcher: UpgradeWatcher,
-    rpc_server: RpcServer,
     rest_server: RestServer,
     binary_port: BinaryPort,
     event_stream_server: EventStreamServer,
@@ -321,10 +319,6 @@ impl reactor::Reactor for MainReactor {
                     ),
                 )
             }
-            MainEvent::RpcServer(event) => reactor::wrap_effects(
-                MainEvent::RpcServer,
-                self.rpc_server.handle_event(effect_builder, rng, event),
-            ),
             MainEvent::RestServer(event) => reactor::wrap_effects(
                 MainEvent::RestServer,
                 self.rest_server.handle_event(effect_builder, rng, event),
@@ -1101,12 +1095,6 @@ impl reactor::Reactor for MainReactor {
             registry,
         )?;
 
-        let rpc_server = RpcServer::new(
-            config.rpc_server.clone(),
-            config.speculative_exec_server.clone(),
-            protocol_version,
-            chainspec.network_config.name.clone(),
-        );
         let rest_server = RestServer::new(
             config.rest_server.clone(),
             protocol_version,
@@ -1187,7 +1175,6 @@ impl reactor::Reactor for MainReactor {
             net: network,
             address_gossiper,
 
-            rpc_server,
             rest_server,
             binary_port,
             event_stream_server,

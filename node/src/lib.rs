@@ -52,26 +52,19 @@ use signal_hook::{consts::TERM_SIGNALS, flag};
 use tracing::warn;
 
 pub(crate) use components::{
-    binary_port::Config as BinaryPortConfig,
-    block_accumulator::Config as BlockAccumulatorConfig,
+    binary_port::Config as BinaryPortConfig, block_accumulator::Config as BlockAccumulatorConfig,
     block_synchronizer::Config as BlockSynchronizerConfig,
-    block_validator::Config as BlockValidatorConfig,
-    consensus::Config as ConsensusConfig,
-    contract_runtime::Config as ContractRuntimeConfig,
-    deploy_buffer::Config as DeployBufferConfig,
+    block_validator::Config as BlockValidatorConfig, consensus::Config as ConsensusConfig,
+    contract_runtime::Config as ContractRuntimeConfig, deploy_buffer::Config as DeployBufferConfig,
     diagnostics_port::Config as DiagnosticsPortConfig,
-    event_stream_server::Config as EventStreamServerConfig,
-    fetcher::Config as FetcherConfig,
-    gossiper::Config as GossipConfig,
-    network::Config as NetworkConfig,
+    event_stream_server::Config as EventStreamServerConfig, fetcher::Config as FetcherConfig,
+    gossiper::Config as GossipConfig, network::Config as NetworkConfig,
     rest_server::Config as RestServerConfig,
-    rpc_server::{Config as RpcServerConfig, SpeculativeExecConfig},
     transaction_acceptor::Config as TransactionAcceptorConfig,
     upgrade_watcher::Config as UpgradeWatcherConfig,
 };
 pub use components::{
     consensus, contract_runtime,
-    rpc_server::rpcs,
     storage::{self, Config as StorageConfig},
 };
 pub use reactor::main_reactor::Config as MainReactorConfig;

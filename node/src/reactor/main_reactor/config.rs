@@ -8,8 +8,8 @@ use crate::{
     logging::LoggingConfig, types::NodeConfig, BinaryPortConfig, BlockAccumulatorConfig,
     BlockSynchronizerConfig, BlockValidatorConfig, ConsensusConfig, ContractRuntimeConfig,
     DeployBufferConfig, DiagnosticsPortConfig, EventStreamServerConfig, FetcherConfig,
-    GossipConfig, NetworkConfig, RestServerConfig, RpcServerConfig, SpeculativeExecConfig,
-    StorageConfig, TransactionAcceptorConfig, UpgradeWatcherConfig,
+    GossipConfig, NetworkConfig, RestServerConfig, StorageConfig, TransactionAcceptorConfig,
+    UpgradeWatcherConfig,
 };
 
 /// Root configuration.
@@ -29,10 +29,6 @@ pub struct Config {
     pub event_stream_server: EventStreamServerConfig,
     /// Config values for the REST server.
     pub rest_server: RestServerConfig,
-    /// Config values for the Json-RPC server.
-    pub rpc_server: RpcServerConfig,
-    /// Config values for speculative execution.
-    pub speculative_exec_server: SpeculativeExecConfig,
     /// Config values for storage.
     pub storage: StorageConfig,
     /// Config values for gossip.

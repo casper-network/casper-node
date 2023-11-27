@@ -19,7 +19,7 @@ use casper_types::{
 use {casper_types::testing::TestRng, rand::Rng};
 
 use super::BlockPayload;
-use crate::{rpcs::docs::DocExample, types::TransactionHashWithApprovals};
+use crate::{components::rest_server::DocExample, types::TransactionHashWithApprovals};
 
 static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
     let validator_set = {
@@ -66,21 +66,6 @@ static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
         height,
         public_key,
     )
-});
-
-static INTERNAL_ERA_REPORT: Lazy<InternalEraReport> = Lazy::new(|| {
-    let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
-    let public_key_1 = PublicKey::from(&secret_key_1);
-    let equivocators = vec![public_key_1];
-
-    let secret_key_3 = SecretKey::ed25519_from_bytes([2; 32]).unwrap();
-    let public_key_3 = PublicKey::from(&secret_key_3);
-    let inactive_validators = vec![public_key_3];
-
-    InternalEraReport {
-        equivocators,
-        inactive_validators,
-    }
 });
 
 /// The piece of information that will become the content of a future block after it was finalized
@@ -229,18 +214,6 @@ impl FinalizedBlock {
             height,
             public_key,
         )
-    }
-}
-
-impl DocExample for FinalizedBlock {
-    fn doc_example() -> &'static Self {
-        &FINALIZED_BLOCK
-    }
-}
-
-impl DocExample for InternalEraReport {
-    fn doc_example() -> &'static Self {
-        &INTERNAL_ERA_REPORT
     }
 }
 

@@ -7,7 +7,7 @@ use crate::{
     components::{
         binary_port, block_synchronizer, block_synchronizer::BlockSynchronizerProgress,
         contract_runtime::ExecutionPreState, diagnostics_port, event_stream_server, network,
-        rest_server, rpc_server, upgrade_watcher,
+        rest_server, upgrade_watcher,
     },
     effect::{EffectBuilder, EffectExt, Effects},
     fatal,
@@ -289,16 +289,6 @@ impl MainReactor {
             return Some(effects);
         }
 
-        // bring up rpc and rest server last to defer complications (such as put_deploy) and
-        // for it to be able to answer to /status, which requires various other components to be
-        // initialized
-        if let Some(effects) = utils::initialize_component(
-            effect_builder,
-            &mut self.rpc_server,
-            MainEvent::RpcServer(rpc_server::Event::Initialize),
-        ) {
-            return Some(effects);
-        }
         if let Some(effects) = utils::initialize_component(
             effect_builder,
             &mut self.rest_server,

@@ -26,7 +26,6 @@ pub(super) async fn run<REv: ReactorEventT>(
     // REST filters.
     let rest_status = filters::create_status_filter(effect_builder, api_version);
     let rest_metrics = filters::create_metrics_filter(effect_builder);
-    let rest_open_rpc = filters::create_rpc_schema_filter(effect_builder);
     let rest_validator_changes =
         filters::create_validator_changes_filter(effect_builder, api_version);
     let rest_chainspec_filter = filters::create_chainspec_filter(effect_builder, api_version);
@@ -34,7 +33,6 @@ pub(super) async fn run<REv: ReactorEventT>(
     let service = warp::service(
         rest_status
             .or(rest_metrics)
-            .or(rest_open_rpc)
             .or(rest_validator_changes)
             .or(rest_chainspec_filter),
     );
@@ -75,7 +73,6 @@ pub(super) async fn run_with_cors<REv: ReactorEventT>(
     // REST filters.
     let rest_status = filters::create_status_filter(effect_builder, api_version);
     let rest_metrics = filters::create_metrics_filter(effect_builder);
-    let rest_open_rpc = filters::create_rpc_schema_filter(effect_builder);
     let rest_validator_changes =
         filters::create_validator_changes_filter(effect_builder, api_version);
     let rest_chainspec_filter = filters::create_chainspec_filter(effect_builder, api_version);
@@ -83,7 +80,6 @@ pub(super) async fn run_with_cors<REv: ReactorEventT>(
     let service = warp::service(
         rest_status
             .or(rest_metrics)
-            .or(rest_open_rpc)
             .or(rest_validator_changes)
             .or(rest_chainspec_filter)
             .with(match cors_origin {
