@@ -84,16 +84,9 @@ function _set_nodes()
             "cfg['network']['known_addresses']=[$(get_network_known_addresses "$IDX")];"
             "cfg['storage']['path']='../../storage';"
             "cfg['rest_server']['address']='0.0.0.0:$(get_node_port_rest "$IDX")';"
-            "cfg['rpc_server']['address']='0.0.0.0:$(get_node_port_rpc "$IDX")';"
             "cfg['binary_port_server']['address']='0.0.0.0:$(get_node_port_binary "$IDX")';"
             "cfg['event_stream_server']['address']='0.0.0.0:$(get_node_port_sse "$IDX")';"
         )
-
-        if [ ! -z "$SPECULATIVE_EXEC_ADDR" ]; then
-            SCRIPT+=(
-                "cfg['speculative_exec_server']['address']='0.0.0.0:$(get_node_port_speculative_exec "$IDX")';"
-            )
-        fi
 
         SCRIPT+=(
             "toml.dump(cfg, open('$PATH_TO_FILE', 'w'));"
