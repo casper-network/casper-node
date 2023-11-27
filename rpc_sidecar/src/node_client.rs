@@ -32,7 +32,7 @@ use tokio::{
 use tracing::{error, info, warn};
 
 #[async_trait]
-pub trait NodeClient: Send + Sync + 'static {
+pub trait NodeClient: Send + Sync {
     async fn read_from_db(&self, db: DbId, key: &[u8]) -> Result<Option<Vec<u8>>, Error>;
 
     async fn read_from_mem(&self, req: NonPersistedDataRequest) -> Result<Option<Vec<u8>>, Error>;
