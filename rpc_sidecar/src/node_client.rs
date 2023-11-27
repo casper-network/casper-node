@@ -254,6 +254,22 @@ pub trait NodeClient: Send + Sync {
             .transpose()
             .map_err(|err| Error::Deserialization(err.to_string()))
     }
+
+    async fn read_chainspec_bytes(&self) -> Result<Vec<u8>, Error> {
+        self.read_from_mem(NonPersistedDataRequest::ChainspecRawBytes)
+            .await?
+            .ok_or(Error::NoResponseBody)
+    }
+
+    async fn read_genesis_account_bytes(&self) -> Result<Option<Vec<u8>>, Error> {
+        self.read_from_mem(NonPersistedDataRequest::GenesisAccountsBytes)
+            .await
+    }
+
+    async fn read_global_state_bytes(&self) -> Result<Option<Vec<u8>>, Error> {
+        self.read_from_mem(NonPersistedDataRequest::GlobalStateBytes)
+            .await
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

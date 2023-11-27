@@ -430,10 +430,30 @@ impl RpcWithoutParams for GetChainspec {
     type ResponseResult = GetChainspecResult;
 
     async fn do_handle_request(
-        _node_client: Arc<dyn NodeClient>,
-        _api_version: ProtocolVersion,
+        node_client: Arc<dyn NodeClient>,
+        api_version: ProtocolVersion,
     ) -> Result<Self::ResponseResult, RpcError> {
-        todo!()
+        let chainspec_bytes = node_client
+            .read_chainspec_bytes()
+            .await
+            .map_err(|err| Error::NodeRequest("chainspec bytes", err))?;
+        let maybe_genesis_account_bytes = node_client
+            .read_genesis_account_bytes()
+            .await
+            .map_err(|err| Error::NodeRequest("genesis account bytes", err))?;
+        let maybe_global_state_bytes = node_client
+            .read_global_state_bytes()
+            .await
+            .map_err(|err| Error::NodeRequest("global state bytes", err))?;
+
+        Ok(Self::ResponseResult {
+            api_version,
+            chainspec_bytes: ChainspecRawBytes::new(
+                chainspec_bytes.into(),
+                maybe_genesis_account_bytes.map(Into::into),
+                maybe_global_state_bytes.map(Into::into),
+            ),
+        })
     }
 }
 
