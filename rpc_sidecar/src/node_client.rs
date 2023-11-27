@@ -357,9 +357,9 @@ impl JulietNodeClient {
             match TcpStream::connect(addr).await {
                 Ok(server) => break server,
                 Err(err) => {
-                    wait = (wait * config.coefficient).min(config.max_delay_ms);
                     warn!(%err, "failed to connect to the node, waiting {wait}ms before retrying");
                     tokio::time::sleep(Duration::from_millis(wait)).await;
+                    wait = (wait * config.coefficient).min(config.max_delay_ms);
                 }
             }
         }
