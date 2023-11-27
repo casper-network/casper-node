@@ -61,6 +61,9 @@ max_body_bytes = 2_621_440
 # Otherwise, only a specified origin is allowed. The given string must conform to the [origin scheme](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin).
 cors_origin = ''
 
+# =========================================
+# Configuration options for the node client
+# =========================================
 [node_client]
 # The address of the node to connect to.
 address = '127.0.0.1:28104'
