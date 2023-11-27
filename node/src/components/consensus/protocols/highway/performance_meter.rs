@@ -90,6 +90,18 @@ impl PerformanceMeter {
         }
     }
 
+    /// Returns an instance of the `PerformanceMeter` for the next era.
+    pub fn next_era_perf_meter(&self) -> Self {
+        let config = match self {
+            Self::Inactive { config } => config.clone(),
+            Self::Active(apm) => apm.config.clone(),
+        };
+        // Deliberately start the next era with an inactive meter: even if we were a validator in
+        // the current era, we may cease to be one in the next one, or our validator index might
+        // change - if we are still a validator in the next era, `activate` will be called, anyway.
+        Self::Inactive { config }
+    }
+
     /// Returns the current round length, if active, and `None` otherwise.
     pub fn current_round_len(&self) -> Option<TimeDiff> {
         match self {

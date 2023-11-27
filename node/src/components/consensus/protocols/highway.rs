@@ -370,11 +370,12 @@ impl<C: Context + 'static> HighwayProtocol<C> {
     }
 
     fn calculate_round_length(&mut self) {
-        let Some(new_round_len) =
-            self.performance_meter.calculate_new_length(self.highway.state())
-            else {
-                return;
-            };
+        let Some(new_round_len) = self
+            .performance_meter
+            .calculate_new_length(self.highway.state())
+        else {
+            return;
+        };
         self.highway.set_round_len(new_round_len);
     }
 
@@ -418,7 +419,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
     /// Returns an instance of `RoundSuccessMeter` for the new era: resetting the counters where
     /// appropriate.
     fn next_era_perf_meter(&self) -> PerformanceMeter {
-        self.performance_meter.clone()
+        self.performance_meter.next_era_perf_meter()
     }
 
     /// Returns an iterator over all the values that are in parents of the given block.
