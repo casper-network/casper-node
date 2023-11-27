@@ -1,25 +1,21 @@
-use std::{future::Future, net::SocketAddr, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, future::Future, net::SocketAddr, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 
 use crate::{config::ExponentialBackoffConfig, NodeClientConfig};
 use casper_types::{
     binary_port::{
-        binary_request::BinaryRequest,
-        binary_response::{self, BinaryResponse},
-        db_id::DbId,
-        get::GetRequest,
-        get_all_values::GetAllValuesResult,
-        global_state::GlobalStateQueryResult,
+        binary_request::BinaryRequest, binary_response::BinaryResponse, db_id::DbId,
+        get::GetRequest, get_all_values::GetAllValuesResult, global_state::GlobalStateQueryResult,
         non_persistent_data::NonPersistedDataRequest,
     },
     bytesrepr::{self, FromBytes, ToBytes},
     contract_messages::Message,
     execution::{ExecutionResult, ExecutionResultV2},
     AvailableBlockRange, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderV1,
-    BlockSignatures, BlockSynchronizerStatus, Digest, FinalizedApprovals, Key, KeyTag, NextUpgrade,
-    PayloadType, Peers, ProtocolVersion, PublicKey, ReactorState, TimeDiff, Timestamp,
-    Transaction, TransactionHash, Transfer,
+    BlockSignatures, BlockSynchronizerStatus, Digest, EraId, FinalizedApprovals, Key, KeyTag,
+    NextUpgrade, PayloadType, Peers, ProtocolVersion, PublicKey, ReactorState, TimeDiff, Timestamp,
+    Transaction, TransactionHash, Transfer, ValidatorChange,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -283,6 +279,17 @@ pub trait NodeClient: Send + Sync {
         self.read_from_mem(NonPersistedDataRequest::ChainspecRawBytes)
             .await?
             .ok_or(Error::NoResponseBody)
+    }
+
+    async fn read_validator_changes(
+        &self,
+    ) -> Result<BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>, Error> {
+        let resp = self
+            .read_from_mem(NonPersistedDataRequest::ConsensusValidatorChanges)
+            .await?
+            .ok_or(Error::NoResponseBody)?;
+        bytesrepr::deserialize_from_slice(resp)
+            .map_err(|err| Error::Deserialization(err.to_string()))
     }
 }
 

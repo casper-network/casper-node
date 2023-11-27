@@ -357,8 +357,6 @@ pub struct GetValidatorChangesResult {
 }
 
 impl GetValidatorChangesResult {
-    // TODO: will be used
-    #[allow(unused)]
     pub(crate) fn new(
         api_version: ProtocolVersion,
         changes: BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>,
@@ -398,10 +396,14 @@ impl RpcWithoutParams for GetValidatorChanges {
     type ResponseResult = GetValidatorChangesResult;
 
     async fn do_handle_request(
-        _node_client: Arc<dyn NodeClient>,
-        _api_version: ProtocolVersion,
+        node_client: Arc<dyn NodeClient>,
+        api_version: ProtocolVersion,
     ) -> Result<Self::ResponseResult, RpcError> {
-        todo!()
+        let changes = node_client
+            .read_validator_changes()
+            .await
+            .map_err(|err| Error::NodeRequest("validator changes", err))?;
+        Ok(Self::ResponseResult::new(api_version, changes))
     }
 }
 
