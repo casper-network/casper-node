@@ -194,6 +194,8 @@ pub(crate) struct MainReactor {
     upgrade_timeout: TimeDiff,
     sync_handling: SyncHandling,
     signature_gossip_tracker: SignatureGossipTracker,
+
+    finality_signature_creation: bool,
 }
 
 impl reactor::Reactor for MainReactor {
@@ -242,9 +244,13 @@ impl reactor::Reactor for MainReactor {
             MainEvent::MainReactorRequest(req) => {
                 req.0.respond((self.state, self.last_progress)).ignore()
             }
-            MainEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(meta_block)) => {
-                self.handle_meta_block(effect_builder, rng, meta_block)
-            }
+            MainEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(meta_block)) => self
+                .handle_meta_block(
+                    effect_builder,
+                    rng,
+                    self.finality_signature_creation,
+                    meta_block,
+                ),
             MainEvent::UnexecutedBlockAnnouncement(UnexecutedBlockAnnouncement(block_height)) => {
                 let only_from_available_block_range = true;
                 if let Ok(Some(block_header)) = self
@@ -1205,6 +1211,7 @@ impl reactor::Reactor for MainReactor {
             shutdown_for_upgrade_timeout: config.node.shutdown_for_upgrade_timeout,
             switched_to_shutdown_for_upgrade: Timestamp::from(0),
             upgrade_timeout: config.node.upgrade_timeout,
+            finality_signature_creation: true,
         };
         info!("MainReactor: instantiated");
         let effects = effect_builder
@@ -1225,6 +1232,9 @@ impl reactor::Reactor for MainReactor {
                 &mut self.consensus,
                 activation,
             );
+        }
+        if activation.key().starts_with("finality_signature_creation") {
+            self.finality_signature_creation = false;
         }
     }
 }
@@ -1258,6 +1268,7 @@ impl MainReactor {
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
+        create_finality_signatures: bool,
         mut meta_block: MetaBlock,
     ) -> Effects<MainEvent> {
         debug!(
@@ -1374,6 +1385,7 @@ impl MainReactor {
                 .mut_state()
                 .register_we_have_tried_to_sign()
                 .was_updated()
+                && create_finality_signatures
             {
                 // When this node is a validator in this era, sign and announce.
                 if let Some(finality_signature) = self
