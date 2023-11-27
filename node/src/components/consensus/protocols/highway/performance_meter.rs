@@ -93,8 +93,8 @@ impl PerformanceMeter {
     /// Returns an instance of the `PerformanceMeter` for the next era.
     pub fn next_era_perf_meter(&self) -> Self {
         let config = match self {
-            Self::Inactive { config } => config.clone(),
-            Self::Active(apm) => apm.config.clone(),
+            Self::Inactive { config } => *config,
+            Self::Active(apm) => apm.config,
         };
         // Deliberately start the next era with an inactive meter: even if we were a validator in
         // the current era, we may cease to be one in the next one, or our validator index might
