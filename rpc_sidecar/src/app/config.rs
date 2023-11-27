@@ -1,4 +1,4 @@
-use casper_rpc_sidecar::{RpcConfig, SpeculativeExecConfig};
+use casper_rpc_sidecar::{NodeClientConfig, RpcConfig, SpeculativeExecConfig};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -7,4 +7,5 @@ use serde::{Deserialize, Serialize};
 pub struct Config {
     pub rpc_server: RpcConfig,
     pub speculative_exec_server: Option<SpeculativeExecConfig>,
+    pub node_client: NodeClientConfig,
 }

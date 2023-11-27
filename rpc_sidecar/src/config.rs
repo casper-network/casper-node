@@ -1,3 +1,5 @@
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
@@ -47,4 +49,76 @@ impl Default for Config {
     fn default() -> Self {
         Config::new()
     }
+}
+
+/// Default address to connect to the node.
+const DEFAULT_NODE_CONNECT_ADDRESS: SocketAddr =
+    SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 28104);
+/// Default request limit.
+const DEFAULT_NODE_REQUEST_LIMIT: u16 = 3;
+/// Default maximum payload size.
+const DEFAULT_MAX_NODE_PAYLOAD_SIZE: u32 = 4 * 1024 * 1024;
+/// Default queue buffer size.
+const DEFAULT_CHANNEL_BUFFER_SIZE: usize = 16;
+/// Default exponential backoff base delay.
+const DEFAULT_EXPONENTIAL_BACKOFF_BASE_MS: u64 = 1000;
+/// Default exponential backoff maximum delay.
+const DEFAULT_EXPONENTIAL_BACKOFF_MAX_MS: u64 = 64_000;
+/// Default exponential backoff coefficient.
+const DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT: u64 = 2;
+
+/// Node client configuration.
+#[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
+// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
+#[serde(deny_unknown_fields)]
+pub struct NodeClientConfig {
+    /// Address of the node.
+    pub address: SocketAddr,
+    /// Maximum number of requests to queue.
+    pub request_limit: u16,
+    /// Maximum size of a request in bytes.
+    pub max_request_size_bytes: u32,
+    /// Maximum size of a response in bytes.
+    pub max_response_size_bytes: u32,
+    /// Queue buffer size for the Juliet channel.
+    pub queue_buffer_size: usize,
+    /// Configuration for exponential backoff to be used for re-connects.
+    pub exponential_backoff: ExponentialBackoffConfig,
+}
+
+impl NodeClientConfig {
+    /// Creates a default instance for `NodeClientConfig`.
+    pub fn new() -> Self {
+        NodeClientConfig {
+            address: DEFAULT_NODE_CONNECT_ADDRESS,
+            request_limit: DEFAULT_NODE_REQUEST_LIMIT,
+            max_request_size_bytes: DEFAULT_MAX_NODE_PAYLOAD_SIZE,
+            max_response_size_bytes: DEFAULT_MAX_NODE_PAYLOAD_SIZE,
+            queue_buffer_size: DEFAULT_CHANNEL_BUFFER_SIZE,
+            exponential_backoff: ExponentialBackoffConfig {
+                initial_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_BASE_MS,
+                max_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_MAX_MS,
+                coefficient: DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT,
+            },
+        }
+    }
+}
+
+impl Default for NodeClientConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Exponential backoff configuration for re-connects.
+#[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
+// Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
+#[serde(deny_unknown_fields)]
+pub struct ExponentialBackoffConfig {
+    /// Initial wait time before the first re-connect attempt.
+    pub initial_delay_ms: u64,
+    /// Maximum wait time between re-connect attempts.
+    pub max_delay_ms: u64,
+    /// The multiplier to apply to the previous delay to get the next delay.
+    pub coefficient: u64,
 }

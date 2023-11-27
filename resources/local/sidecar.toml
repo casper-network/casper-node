@@ -60,3 +60,23 @@ max_body_bytes = 2_621_440
 # If set to '*', any origin is allowed.
 # Otherwise, only a specified origin is allowed. The given string must conform to the [origin scheme](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin).
 cors_origin = ''
+
+[node_client]
+# The address of the node to connect to.
+address = '127.0.0.1:28104'
+# The maximum number of requests that can be queued to the node.
+request_limit = 3
+# That maximum size of a node request in bytes.
+max_request_size_bytes = 4194304
+# That maximum size of a node response in bytes.
+max_response_size_bytes = 4194304
+# Size of the channel queue buffer.
+queue_buffer_size = 16
+
+[node_client.exponential_backoff]
+# The initial delay in milliseconds before the first retry.
+initial_delay_ms = 1000
+# The maximum delay in milliseconds before a retry.
+max_delay_ms = 32000
+# The multiplier to apply to the previous delay to get the next delay.
+coefficient = 2

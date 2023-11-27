@@ -2,6 +2,7 @@ use std::{future::Future, net::SocketAddr, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 
+use crate::{config::ExponentialBackoffConfig, NodeClientConfig};
 use casper_types::{
     binary_port::{
         binary_request::BinaryRequest, db_id::DbId, get::GetRequest,
@@ -272,38 +273,42 @@ pub enum Error {
 }
 
 const CHANNEL_COUNT: usize = 1;
-const REQUEST_LIMIT: u16 = 3;
-const MAX_PAYLOAD: u32 = 4 * 1024 * 1024;
-const WAIT_QUEUE_SIZE: usize = 16;
 
+#[derive(Debug)]
 pub struct JulietNodeClient {
     client: Arc<RwLock<JulietRpcClient<CHANNEL_COUNT>>>,
 }
 
 impl JulietNodeClient {
-    pub async fn new(addr: impl Into<SocketAddr>) -> (Self, impl Future<Output = ()>) {
-        let addr = addr.into();
+    pub async fn new(config: &NodeClientConfig) -> (Self, impl Future<Output = ()> + '_) {
         let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
             ChannelConfiguration::default()
-                .with_request_limit(REQUEST_LIMIT)
-                .with_max_request_payload_size(MAX_PAYLOAD)
-                .with_max_response_payload_size(MAX_PAYLOAD),
+                .with_request_limit(config.request_limit)
+                .with_max_request_payload_size(config.max_request_size_bytes)
+                .with_max_response_payload_size(config.max_response_size_bytes),
         );
-        let io_builder =
-            IoCoreBuilder::new(protocol_builder).buffer_size(ChannelId::new(0), WAIT_QUEUE_SIZE);
+        let io_builder = IoCoreBuilder::new(protocol_builder)
+            .buffer_size(ChannelId::new(0), config.queue_buffer_size);
         let rpc_builder = RpcBuilder::new(io_builder);
 
-        let stream = Self::connect_with_retries(addr).await;
+        let stream = Self::connect_with_retries(config.address, &config.exponential_backoff).await;
         let (reader, writer) = stream.into_split();
         let (client, server) = rpc_builder.build(reader, writer);
         let client = Arc::new(RwLock::new(client));
-        let server_loop = Self::server_loop(addr, rpc_builder, Arc::clone(&client), server);
+        let server_loop = Self::server_loop(
+            config.address,
+            &config.exponential_backoff,
+            rpc_builder,
+            Arc::clone(&client),
+            server,
+        );
 
         (Self { client }, server_loop)
     }
 
     async fn server_loop(
         addr: SocketAddr,
+        config: &ExponentialBackoffConfig,
         rpc_builder: RpcBuilder<CHANNEL_COUNT>,
         client: Arc<RwLock<JulietRpcClient<CHANNEL_COUNT>>>,
         mut server: JulietRpcServer<CHANNEL_COUNT, OwnedReadHalf, OwnedWriteHalf>,
@@ -312,7 +317,8 @@ impl JulietNodeClient {
             match server.next_request().await {
                 Ok(None) | Err(_) => {
                     error!("node connection closed, will attempt to reconnect");
-                    let (reader, writer) = Self::connect_with_retries(addr).await.into_split();
+                    let (reader, writer) =
+                        Self::connect_with_retries(addr, config).await.into_split();
                     let (new_client, new_server) = rpc_builder.build(reader, writer);
 
                     info!("connection with the node has been re-established");
@@ -326,17 +332,16 @@ impl JulietNodeClient {
         }
     }
 
-    async fn connect_with_retries(addr: SocketAddr) -> TcpStream {
-        const BACKOFF_MULTIPLIER: u64 = 2;
-        const MIN_DELAY: u64 = 1000;
-        const MAX_DELAY: u64 = 64_000;
-
-        let mut wait = MIN_DELAY;
+    async fn connect_with_retries(
+        addr: SocketAddr,
+        config: &ExponentialBackoffConfig,
+    ) -> TcpStream {
+        let mut wait = config.initial_delay_ms;
         loop {
             match TcpStream::connect(addr).await {
                 Ok(server) => break server,
                 Err(err) => {
-                    wait = (wait * BACKOFF_MULTIPLIER).min(MAX_DELAY);
+                    wait = (wait * config.coefficient).min(config.max_delay_ms);
                     warn!(%err, "failed to connect to the node, waiting {wait}ms before retrying");
                     tokio::time::sleep(Duration::from_millis(wait)).await;
                 }
