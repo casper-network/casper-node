@@ -753,10 +753,18 @@ impl RpcWithParams for GetTrie {
     type ResponseResult = GetTrieResult;
 
     async fn do_handle_request(
-        _node_client: Arc<dyn NodeClient>,
-        _api_version: ProtocolVersion,
-        _params: Self::RequestParams,
+        node_client: Arc<dyn NodeClient>,
+        api_version: ProtocolVersion,
+        params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
-        todo!()
+        let maybe_trie = node_client
+            .read_trie_bytes(params.trie_key)
+            .await
+            .map_err(|err| Error::NodeRequest("trie", err))?;
+
+        Ok(Self::ResponseResult {
+            api_version,
+            maybe_trie_bytes: maybe_trie.map(Into::into),
+        })
     }
 }

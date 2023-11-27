@@ -38,6 +38,8 @@ pub trait NodeClient: Send + Sync {
 
     async fn read_from_mem(&self, req: NonPersistedDataRequest) -> Result<Option<Vec<u8>>, Error>;
 
+    async fn read_trie_bytes(&self, trie_key: Digest) -> Result<Option<Vec<u8>>, Error>;
+
     async fn query_global_state(
         &self,
         state_root_hash: Digest,
@@ -416,6 +418,11 @@ impl NodeClient for JulietNodeClient {
 
     async fn read_from_mem(&self, req: NonPersistedDataRequest) -> Result<Option<Vec<u8>>, Error> {
         let get = GetRequest::NonPersistedData(req);
+        self.dispatch(BinaryRequest::Get(get)).await
+    }
+
+    async fn read_trie_bytes(&self, trie_key: Digest) -> Result<Option<Vec<u8>>, Error> {
+        let get = GetRequest::Trie { trie_key };
         self.dispatch(BinaryRequest::Get(get)).await
     }
 
