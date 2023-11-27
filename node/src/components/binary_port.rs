@@ -34,9 +34,9 @@ use crate::{
     contract_runtime::SpeculativeExecutionState,
     effect::{
         requests::{
-            AcceptTransactionRequest, BlockSynchronizerRequest, ConsensusRequest,
-            ContractRuntimeRequest, NetworkInfoRequest, ReactorInfoRequest, StorageRequest,
-            UpgradeWatcherRequest,
+            AcceptTransactionRequest, BlockSynchronizerRequest, ChainspecRawBytesRequest,
+            ConsensusRequest, ContractRuntimeRequest, NetworkInfoRequest, ReactorInfoRequest,
+            StorageRequest, UpgradeWatcherRequest,
         },
         EffectBuilder, Effects,
     },
@@ -82,6 +82,7 @@ where
         + From<ConsensusRequest>
         + From<BlockSynchronizerRequest>
         + From<UpgradeWatcherRequest>
+        + From<ChainspecRawBytesRequest>
         + Send,
 {
     type Event = Event;
@@ -141,6 +142,7 @@ where
         + From<ConsensusRequest>
         + From<BlockSynchronizerRequest>
         + From<UpgradeWatcherRequest>
+        + From<ChainspecRawBytesRequest>
         + Send,
 {
     fn state(&self) -> &ComponentState {
@@ -172,6 +174,7 @@ where
         + From<ConsensusRequest>
         + From<BlockSynchronizerRequest>
         + From<UpgradeWatcherRequest>
+        + From<ChainspecRawBytesRequest>
         + Send,
 {
     // TODO[RC]: clean this up, delegate to specialized functions
@@ -377,6 +380,25 @@ where
                         .map_err(|err| Error::BytesRepr(err))?;
                     Ok(payload)
                 }
+                NonPersistedDataRequest::ChainspecRawBytes => {
+                    let chainspec_raw_bytes = effect_builder.get_chainspec_raw_bytes().await;
+                    let payload = chainspec_raw_bytes.chainspec_bytes().to_vec();
+                    Ok(Some(payload.into()))
+                }
+                NonPersistedDataRequest::GenesisAccountsBytes => {
+                    let chainspec_raw_bytes = effect_builder.get_chainspec_raw_bytes().await;
+                    let payload = chainspec_raw_bytes
+                        .maybe_genesis_accounts_bytes()
+                        .map(|bytes| bytes.to_vec().into());
+                    Ok(payload)
+                }
+                NonPersistedDataRequest::GlobalStateBytes => {
+                    let chainspec_raw_bytes = effect_builder.get_chainspec_raw_bytes().await;
+                    let payload = chainspec_raw_bytes
+                        .maybe_global_state_bytes()
+                        .map(|bytes| bytes.to_vec().into());
+                    Ok(payload)
+                }
             },
             GetRequest::State {
                 state_root_hash,
@@ -436,6 +458,7 @@ async fn handle_client<REv, const N: usize>(
         + From<ConsensusRequest>
         + From<BlockSynchronizerRequest>
         + From<UpgradeWatcherRequest>
+        + From<ChainspecRawBytesRequest>
         + Send,
 {
     let (reader, writer) = client.split();
@@ -503,6 +526,7 @@ where
         + From<ConsensusRequest>
         + From<BlockSynchronizerRequest>
         + From<UpgradeWatcherRequest>
+        + From<ChainspecRawBytesRequest>
         + Send,
 {
     let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
@@ -547,6 +571,7 @@ where
         + From<ConsensusRequest>
         + From<BlockSynchronizerRequest>
         + From<UpgradeWatcherRequest>
+        + From<ChainspecRawBytesRequest>
         + Send,
 {
     type Error = ListeningError;
