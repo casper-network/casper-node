@@ -11,7 +11,7 @@ use tracing::{debug, error};
 use casper_types::{
     execution::{ExecutionResult, ExecutionResultV2},
     Block, ChainspecRawBytes, Deploy, DeployHash, EraId, ExecutionInfo, PeersMap, ProtocolVersion,
-    PublicKey, Transaction, TransactionHash,
+    PublicKey, Transaction, TransactionHash, ValidatorChange,
 };
 
 use super::{
@@ -19,7 +19,6 @@ use super::{
     Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithParams, RpcWithoutParams,
 };
 use crate::{
-    components::consensus::ValidatorChange,
     effect::EffectBuilder,
     reactor::QueueKind,
     types::{

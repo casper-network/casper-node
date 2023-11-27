@@ -15,8 +15,8 @@ use itertools::Itertools;
 use serde::Serialize;
 
 use casper_types::{
-    execution::Effects, Block, DeployHash, EraId, FinalitySignature, PublicKey, Timestamp,
-    Transaction, U512,
+    execution::Effects, Block, DeployHash, EraId, FinalitySignature, NextUpgrade, PublicKey,
+    Timestamp, Transaction, U512,
 };
 
 use crate::{
@@ -26,7 +26,6 @@ use crate::{
         fetcher::FetchItem,
         gossiper::GossipItem,
         network::blocklist::BlocklistJustification,
-        upgrade_watcher::NextUpgrade,
     },
     effect::Responder,
     failpoints::FailpointActivation,

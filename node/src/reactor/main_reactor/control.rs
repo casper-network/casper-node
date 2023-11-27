@@ -1,7 +1,7 @@
 use std::time::Duration;
 use tracing::{debug, error, info, trace};
 
-use casper_types::{BlockHash, BlockHeader, Digest, EraId, PublicKey, Timestamp};
+use casper_types::{BlockHash, BlockHeader, Digest, EraId, PublicKey, ReactorState, Timestamp};
 
 use crate::{
     components::{
@@ -15,7 +15,7 @@ use crate::{
         catch_up::CatchUpInstruction, genesis_instruction::GenesisInstruction,
         keep_up::KeepUpInstruction, upgrade_shutdown::UpgradeShutdownInstruction,
         upgrading_instruction::UpgradingInstruction, utils, validate::ValidateInstruction,
-        MainEvent, MainReactor, ReactorState,
+        MainEvent, MainReactor,
     },
     types::{BlockPayload, ExecutableBlock, FinalizedBlock, InternalEraReport, MetaBlockState},
     NodeRng,

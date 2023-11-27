@@ -128,31 +128,31 @@ use casper_types::{
     package::Package,
     system::auction::EraValidators,
     AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader,
-    BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash, DeployHeader, Digest, EraId,
-    ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key, PublicKey,
-    SignedBlock, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId, Transfer, U512,
+    BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, DeployHeader,
+    Digest, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key,
+    NextUpgrade, PublicKey, ReactorState, SignedBlock, TimeDiff, Timestamp, Transaction,
+    TransactionHash, TransactionId, Transfer, ValidatorChange, U512,
 };
 
 use crate::{
     components::{
         block_synchronizer::{
-            BlockSynchronizerStatus, GlobalStateSynchronizerError, GlobalStateSynchronizerResponse,
-            TrieAccumulatorError, TrieAccumulatorResponse,
+            GlobalStateSynchronizerError, GlobalStateSynchronizerResponse, TrieAccumulatorError,
+            TrieAccumulatorResponse,
         },
-        consensus::{ClContext, EraDump, ProposedBlock, ValidatorChange},
+        consensus::{ClContext, EraDump, ProposedBlock},
         contract_runtime::{ContractRuntimeError, EraValidatorsRequest},
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
         network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
         transaction_acceptor,
-        upgrade_watcher::NextUpgrade,
     },
     contract_runtime::{
         RoundSeigniorageRateRequest, SpeculativeExecutionState, TotalSupplyRequest,
     },
     failpoints::FailpointActivation,
-    reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
+    reactor::{EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, BlockExecutionResultsOrChunk,
         BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, FinalizedBlock,

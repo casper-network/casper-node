@@ -35,33 +35,31 @@ use casper_types::{
     execution::{ExecutionResult, ExecutionResultV2},
     system::auction::EraValidators,
     AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
-    BlockV2, ChainspecRawBytes, DeployHash, DeployHeader, Digest, DisplayIter, EraId,
-    ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key,
-    ProtocolVersion, PublicKey, SignedBlock, TimeDiff, Timestamp, Transaction, TransactionHash,
-    TransactionId, Transfer, URef, U512,
+    BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, DeployHeader, Digest,
+    DisplayIter, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalizedApprovals,
+    Key, NextUpgrade, ProtocolVersion, PublicKey, ReactorState, SignedBlock, TimeDiff, Timestamp,
+    Transaction, TransactionHash, TransactionId, Transfer, URef, ValidatorChange, U512,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
 use crate::{
     components::{
         block_synchronizer::{
-            BlockSynchronizerStatus, GlobalStateSynchronizerError, GlobalStateSynchronizerResponse,
-            TrieAccumulatorError, TrieAccumulatorResponse,
+            GlobalStateSynchronizerError, GlobalStateSynchronizerResponse, TrieAccumulatorError,
+            TrieAccumulatorResponse,
         },
-        consensus::{ClContext, ProposedBlock, ValidatorChange},
+        consensus::{ClContext, ProposedBlock},
         contract_runtime::EraValidatorsRequest,
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
         network::NetworkInsights,
         transaction_acceptor,
-        upgrade_watcher::NextUpgrade,
     },
     contract_runtime::{
         ContractRuntimeError, RoundSeigniorageRateRequest, SpeculativeExecutionState,
         TotalSupplyRequest,
     },
-    reactor::main_reactor::ReactorState,
     rpcs::docs::OpenRpcSchema,
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, BlockExecutionResultsOrChunk,

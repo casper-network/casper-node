@@ -9,17 +9,12 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    ActivationPoint, AvailableBlockRange, Block, BlockHash, Digest, EraId, PeersMap,
-    ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+    ActivationPoint, AvailableBlockRange, Block, BlockHash, BlockSynchronizerStatus, Digest, EraId,
+    NextUpgrade, PeersMap, ProtocolVersion, PublicKey, ReactorState, TimeDiff, Timestamp,
 };
 
 use crate::{
-    components::{
-        block_synchronizer::BlockSynchronizerStatus,
-        rpc_server::rpcs::docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-        upgrade_watcher::NextUpgrade,
-    },
-    reactor::main_reactor::ReactorState,
+    components::rpc_server::rpcs::docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     types::NodeId,
 };
 
@@ -50,7 +45,7 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
         reactor_state: ReactorState::Initialize,
         last_progress: Timestamp::from(0),
         available_block_range: AvailableBlockRange::RANGE_0_0,
-        block_sync: BlockSynchronizerStatus::doc_example().clone(),
+        block_sync: BlockSynchronizerStatus::example().clone(),
         starting_state_root_hash: Digest::default(),
     };
     GetStatusResult::new(status_feed, DOCS_EXAMPLE_PROTOCOL_VERSION)

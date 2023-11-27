@@ -1,6 +1,6 @@
 //! RPCs returning ancillary information.
 
-use std::{collections::BTreeMap, str, sync::Arc};
+use std::{collections::BTreeMap, env, str, sync::Arc};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
@@ -8,17 +8,19 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    binary_port::non_persistent_data::NonPersistedDataRequest,
-    bytesrepr,
     execution::{ExecutionResult, ExecutionResultV2},
-    Block, ChainspecRawBytes, Deploy, DeployHash, EraId, ExecutionInfo, FinalizedApprovals,
-    PeersMap, ProtocolVersion, PublicKey, Transaction, TransactionHash, ValidatorChange,
+    ActivationPoint, AvailableBlockRange, Block, BlockHash, BlockSynchronizerStatus,
+    ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, ExecutionInfo, FinalizedApprovals,
+    NextUpgrade, PeersMap, ProtocolVersion, PublicKey, ReactorState, TimeDiff, Timestamp,
+    Transaction, TransactionHash, ValidatorChange,
 };
+use tracing::warn;
 
 use super::{
+    chain::BlockIdentifier,
     common,
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-    ClientError, Error, NodeClient, RpcError, RpcWithParams, RpcWithoutParams,
+    Error, NodeClient, RpcError, RpcWithParams, RpcWithoutParams,
 };
 
 static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
@@ -66,6 +68,31 @@ static GET_VALIDATOR_CHANGES_RESULT: Lazy<GetValidatorChangesResult> = Lazy::new
 static GET_CHAINSPEC_RESULT: Lazy<GetChainspecResult> = Lazy::new(|| GetChainspecResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     chainspec_bytes: ChainspecRawBytes::new(vec![42, 42].into(), None, None),
+});
+
+static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| GetStatusResult {
+    peers: GET_PEERS_RESULT.peers.clone(),
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    chainspec_name: String::from("casper-example"),
+    starting_state_root_hash: Digest::default(),
+    last_added_block_info: Some(MinimalBlockInfo::from(Block::example().clone())),
+    our_public_signing_key: Some(PublicKey::example().clone()),
+    round_length: Some(TimeDiff::from_millis(1 << 16)),
+    next_upgrade: Some(NextUpgrade::new(
+        ActivationPoint::EraId(EraId::from(42)),
+        ProtocolVersion::from_parts(2, 0, 1),
+    )),
+    uptime: TimeDiff::from_seconds(13),
+    reactor_state: ReactorState::Initialize,
+    last_progress: Timestamp::from(0),
+    available_block_range: AvailableBlockRange::RANGE_0_0,
+    block_sync: BlockSynchronizerStatus::example().clone(),
+    #[cfg(not(test))]
+    build_version: version_string(),
+
+    //  Prevent these values from changing between test sessions
+    #[cfg(test)]
+    build_version: String::from("1.0.0-xxxxxxxxx@DEBUG"),
 });
 
 /// Params for "info_get_deploy" RPC request.
@@ -269,13 +296,10 @@ impl RpcWithoutParams for GetPeers {
         node_client: Arc<dyn NodeClient>,
         api_version: ProtocolVersion,
     ) -> Result<Self::ResponseResult, RpcError> {
-        let body = node_client
-            .read_from_mem(NonPersistedDataRequest::Peers)
+        let peers = node_client
+            .read_peers()
             .await
-            .map_err(|err| Error::NodeRequest("peers", err))?
-            .ok_or(Error::NodeRequest("peers", ClientError::NoResponseBody))?;
-        let peers = bytesrepr::deserialize(body)
-            .map_err(|err| Error::InvalidPeersResponse(err.to_string()))?;
+            .map_err(|err| Error::NodeRequest("peers", err))?;
         Ok(Self::ResponseResult { api_version, peers })
     }
 }
@@ -411,4 +435,187 @@ impl RpcWithoutParams for GetChainspec {
     ) -> Result<Self::ResponseResult, RpcError> {
         todo!()
     }
+}
+
+/// Result for "info_get_status" RPC response.
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetStatusResult {
+    /// The node ID and network address of each connected peer.
+    pub peers: PeersMap,
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ProtocolVersion,
+    /// The compiled node version.
+    pub build_version: String,
+    /// The chainspec name.
+    pub chainspec_name: String,
+    /// The state root hash of the lowest block in the available block range.
+    pub starting_state_root_hash: Digest,
+    /// The minimal info of the last block from the linear chain.
+    pub last_added_block_info: Option<MinimalBlockInfo>,
+    /// Our public signing key.
+    pub our_public_signing_key: Option<PublicKey>,
+    /// The next round length if this node is a validator.
+    pub round_length: Option<TimeDiff>,
+    /// Information about the next scheduled upgrade.
+    pub next_upgrade: Option<NextUpgrade>,
+    /// Time that passed since the node has started.
+    pub uptime: TimeDiff,
+    /// The current state of node reactor.
+    pub reactor_state: ReactorState,
+    /// Timestamp of the last recorded progress in the reactor.
+    pub last_progress: Timestamp,
+    /// The available block range in storage.
+    pub available_block_range: AvailableBlockRange,
+    /// The status of the block synchronizer builders.
+    pub block_sync: BlockSynchronizerStatus,
+}
+
+impl DocExample for GetStatusResult {
+    fn doc_example() -> &'static Self {
+        &GET_STATUS_RESULT
+    }
+}
+
+/// Minimal info of a `Block`.
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MinimalBlockInfo {
+    hash: BlockHash,
+    timestamp: Timestamp,
+    era_id: EraId,
+    height: u64,
+    state_root_hash: Digest,
+    creator: PublicKey,
+}
+
+impl From<Block> for MinimalBlockInfo {
+    fn from(block: Block) -> Self {
+        let proposer = match &block {
+            Block::V1(v1) => v1.proposer().clone(),
+            Block::V2(v2) => v2.proposer().clone(),
+        };
+
+        MinimalBlockInfo {
+            hash: *block.hash(),
+            timestamp: block.timestamp(),
+            era_id: block.era_id(),
+            height: block.height(),
+            state_root_hash: *block.state_root_hash(),
+            creator: proposer,
+        }
+    }
+}
+
+/// "info_get_status" RPC.
+pub struct GetStatus {}
+
+#[async_trait]
+impl RpcWithoutParams for GetStatus {
+    const METHOD: &'static str = "info_get_status";
+    type ResponseResult = GetStatusResult;
+
+    async fn do_handle_request(
+        node_client: Arc<dyn NodeClient>,
+        api_version: ProtocolVersion,
+    ) -> Result<Self::ResponseResult, RpcError> {
+        let uptime = node_client
+            .read_uptime()
+            .await
+            .map_err(|err| Error::NodeRequest("uptime", err))?;
+        let network_name = node_client
+            .read_network_name()
+            .await
+            .map_err(|err| Error::NodeRequest("network_name", err))?;
+        let last_added_block_hash = node_client
+            .read_highest_completed_block_info()
+            .await
+            .map_err(|err| Error::NodeRequest("last added block", err))?;
+        let last_added_block = if let Some(hash) = &last_added_block_hash {
+            let ident = BlockIdentifier::Hash(*hash.block_hash());
+            let (block, _) = common::get_signed_block(&*node_client, Some(ident))
+                .await?
+                .into_inner();
+            Some(block)
+        } else {
+            None
+        };
+        let peers = node_client
+            .read_peers()
+            .await
+            .map_err(|err| Error::NodeRequest("peers", err))?;
+        let next_upgrade = node_client
+            .read_next_upgrade()
+            .await
+            .map_err(|err| Error::NodeRequest("next upgrade", err))?;
+        let (our_public_signing_key, round_length) = node_client
+            .read_consensus_status()
+            .await
+            .map_err(|err| Error::NodeRequest("consensus status", err))?
+            .map_or_else(Default::default, |(pk, rl)| (Some(pk), rl));
+        let reactor_state = node_client
+            .read_reactor_state()
+            .await
+            .map_err(|err| Error::NodeRequest("reactor state", err))?;
+        let last_progress = node_client
+            .read_last_progress()
+            .await
+            .map_err(|err| Error::NodeRequest("last progress", err))?;
+        let available_block_range = node_client
+            .read_available_block_range()
+            .await
+            .map_err(|err| Error::NodeRequest("available block range", err))?;
+        let block_sync = node_client
+            .read_block_sync_status()
+            .await
+            .map_err(|err| Error::NodeRequest("block sync status", err))?;
+        let lowest_block_hash = node_client
+            .read_block_hash_from_height(available_block_range.low())
+            .await
+            .map_err(|err| Error::NodeRequest("lowest block hash", err))?
+            .ok_or_else(|| Error::NoBlockAtHeight(available_block_range.low()))?;
+        let lowest_block_header = node_client
+            .read_block_header(lowest_block_hash)
+            .await
+            .map_err(|err| Error::NodeRequest("lowest block header", err))?
+            .ok_or(Error::NoBlockWithHash(lowest_block_hash))?;
+
+        Ok(Self::ResponseResult {
+            peers,
+            api_version,
+            chainspec_name: network_name,
+            starting_state_root_hash: *lowest_block_header.state_root_hash(),
+            last_added_block_info: last_added_block.map(Into::into),
+            our_public_signing_key,
+            round_length,
+            next_upgrade,
+            uptime: uptime.into(),
+            reactor_state,
+            last_progress,
+            available_block_range,
+            block_sync,
+            build_version: version_string(),
+        })
+    }
+}
+
+fn version_string() -> String {
+    let mut version = env!("CARGO_PKG_VERSION").to_string();
+    if let Ok(git_sha) = env::var("VERGEN_GIT_SHA") {
+        version = format!("{}-{}", version, git_sha);
+    } else {
+        warn!(
+            "vergen env var unavailable, casper-node build version will not include git short hash"
+        );
+    }
+
+    // Add a `@DEBUG` (or similar) tag to release string on non-release builds.
+    if env!("SIDECAR_BUILD_PROFILE") != "release" {
+        version += "@";
+        let profile = env!("SIDECAR_BUILD_PROFILE").to_uppercase();
+        version.push_str(&profile);
+    }
+
+    version
 }

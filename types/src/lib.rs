@@ -58,6 +58,7 @@ pub mod package;
 mod peers_map;
 mod phase;
 mod protocol_version;
+mod reactor_state;
 mod semver;
 pub(crate) mod serde_helpers;
 mod stored_value;
@@ -91,13 +92,13 @@ pub use addressable_entity::{
 pub use api_error::ApiError;
 pub use auction_state::{AuctionState, JsonEraValidators, JsonValidatorWeights};
 #[cfg(all(feature = "std", feature = "json-schema"))]
-pub use block::JsonBlockWithSignatures;
 pub use block::{
     AvailableBlockRange, Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHashAndHeight,
-    BlockHeader, BlockHeaderV1, BlockHeaderV2, BlockSignatures, BlockSignaturesMergeError, BlockV1,
-    BlockV2, BlockValidationError, EraEnd, EraEndV1, EraEndV2, EraReport, FinalitySignature,
-    FinalitySignatureId, RewardedSignatures, Rewards, SignedBlock, SignedBlockHeader,
-    SignedBlockHeaderValidationError, SingleBlockRewardedSignatures,
+    BlockHeader, BlockHeaderV1, BlockHeaderV2, BlockSignatures, BlockSignaturesMergeError,
+    BlockSyncStatus, BlockSynchronizerStatus, BlockV1, BlockV2, BlockValidationError, EraEnd,
+    EraEndV1, EraEndV2, EraReport, FinalitySignature, FinalitySignatureId, JsonBlockWithSignatures,
+    RewardedSignatures, Rewards, SignedBlock, SignedBlockHeader, SignedBlockHeaderValidationError,
+    SingleBlockRewardedSignatures,
 };
 #[cfg(any(feature = "testing", test))]
 pub use block::{TestBlockBuilder, TestBlockV1Builder};
@@ -112,9 +113,9 @@ pub use chainspec::{
     ControlFlowCosts, CoreConfig, DelegatorConfig, DeployConfig, FeeHandling, GenesisAccount,
     GenesisValidator, GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError,
     HandlePaymentCosts, HighwayConfig, HostFunction, HostFunctionCost, HostFunctionCosts,
-    LegacyRequiredFinality, MessageLimits, MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig,
-    RefundHandling, StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig,
-    TransactionV1Config, UpgradeConfig, ValidatorConfig, WasmConfig,
+    LegacyRequiredFinality, MessageLimits, MintCosts, NetworkConfig, NextUpgrade, OpcodeCosts,
+    ProtocolConfig, RefundHandling, StandardPaymentCosts, StorageCosts, SystemConfig,
+    TransactionConfig, TransactionV1Config, UpgradeConfig, ValidatorConfig, WasmConfig,
     DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
@@ -163,6 +164,7 @@ pub use package::{
 pub use peers_map::{PeerEntry, PeersMap};
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
+pub use reactor_state::ReactorState;
 pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use stored_value::{StoredValue, TypeMismatch as StoredValueTypeMismatch};
 pub use tagged::Tagged;

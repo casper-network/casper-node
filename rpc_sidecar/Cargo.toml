@@ -40,6 +40,12 @@ juliet = "0.1"
 casper-types = { path = "../types", features = ["datasize", "json-schema", "std", "testing"] }
 tokio = { version = "1", features = ["test-util"] }
 
+[build-dependencies]
+vergen = { version = "8.2.1", default-features = false, features = [
+    "git",
+    "gitoxide",
+] }
+
 [features]
 testing = ["casper-types/testing"]
 

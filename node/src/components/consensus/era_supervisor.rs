@@ -33,7 +33,7 @@ use tracing::{debug, error, info, trace, warn};
 use casper_types::{
     AsymmetricType, BlockHash, BlockHeader, Chainspec, ConsensusProtocolName, Digest, DisplayIter,
     EraId, FinalizedApprovals, PublicKey, RewardedSignatures, TimeDiff, Timestamp, Transaction,
-    TransactionHash,
+    TransactionHash, ValidatorChange,
 };
 
 use crate::{
@@ -45,7 +45,7 @@ use crate::{
                 ProtocolOutcome,
             },
             metrics::Metrics,
-            validator_change::{ValidatorChange, ValidatorChanges},
+            validator_change::ValidatorChanges,
             ActionId, ChainspecConsensusExt, Config, ConsensusMessage, ConsensusRequestMessage,
             Event, HighwayProtocol, NewBlockPayload, ReactorEventT, ResolveValidity, TimerId, Zug,
         },

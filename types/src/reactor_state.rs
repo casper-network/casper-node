@@ -1,4 +1,4 @@
-use casper_types::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 use datasize::DataSize;
 use derive_more::Display;
 use schemars::JsonSchema;

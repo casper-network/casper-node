@@ -22,17 +22,14 @@ use std::sync::Arc;
 use datasize::DataSize;
 use either::Either;
 use futures::FutureExt;
-use once_cell::sync::Lazy;
 use prometheus::Registry;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state;
 use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    Block, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy, Digest, FinalitySignature,
-    FinalitySignatureId, Timestamp, Transaction, TransactionId,
+    Block, BlockHash, BlockHeader, BlockSignatures, BlockSyncStatus, BlockSynchronizerStatus,
+    Chainspec, Deploy, Digest, FinalitySignature, FinalitySignatureId, Timestamp, Transaction,
+    TransactionId,
 };
 
 use super::network::blocklist::BlocklistJustification;
@@ -53,7 +50,6 @@ use crate::{
         EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     reactor::{self, main_reactor::MainEvent},
-    rpcs::docs::DocExample,
     types::{
         sync_leap_validation_metadata::SyncLeapValidationMetaData, ApprovalsHashes,
         BlockExecutionResultsOrChunk, ExecutableBlock, LegacyDeploy, MetaBlock, MetaBlockState,
@@ -82,31 +78,6 @@ pub(crate) use trie_accumulator::{
     Error as TrieAccumulatorError, Event as TrieAccumulatorEvent,
     Response as TrieAccumulatorResponse,
 };
-
-static BLOCK_SYNCHRONIZER_STATUS: Lazy<BlockSynchronizerStatus> = Lazy::new(|| {
-    BlockSynchronizerStatus::new(
-        Some(BlockSyncStatus {
-            block_hash: BlockHash::new(
-                Digest::from_hex(
-                    "16ddf28e2b3d2e17f4cef36f8b58827eca917af225d139b0c77df3b4a67dc55e",
-                )
-                .unwrap(),
-            ),
-            block_height: Some(40),
-            acquisition_state: "have strict finality(40) for: block hash 16dd..c55e".to_string(),
-        }),
-        Some(BlockSyncStatus {
-            block_hash: BlockHash::new(
-                Digest::from_hex(
-                    "59907b1e32a9158169c4d89d9ce5ac9164fc31240bfcfb0969227ece06d74983",
-                )
-                .unwrap(),
-            ),
-            block_height: Some(6701),
-            acquisition_state: "have block body(6701) for: block hash 5990..4983".to_string(),
-        }),
-    )
-});
 
 const COMPONENT_NAME: &str = "block_synchronizer";
 
@@ -158,113 +129,6 @@ impl<REv> ReactorEvent for REv where
         + Send
         + 'static
 {
-}
-
-/// The status of syncing an individual block.
-#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct BlockSyncStatus {
-    /// The block hash.
-    block_hash: BlockHash,
-    /// The height of the block, if known.
-    block_height: Option<u64>,
-    /// The state of acquisition of the data associated with the block.
-    acquisition_state: String,
-}
-
-impl ToBytes for BlockSyncStatus {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.block_hash.write_bytes(writer)?;
-        self.block_height.write_bytes(writer)?;
-        self.acquisition_state.write_bytes(writer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.block_hash.serialized_length()
-            + self.block_height.serialized_length()
-            + self.acquisition_state.serialized_length()
-    }
-}
-
-impl FromBytes for BlockSyncStatus {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (block_hash, remainder) = BlockHash::from_bytes(bytes)?;
-        let (block_height, remainder) = Option::<u64>::from_bytes(remainder)?;
-        let (acquisition_state, remainder) = String::from_bytes(remainder)?;
-        Ok((
-            BlockSyncStatus {
-                block_hash,
-                block_height,
-                acquisition_state,
-            },
-            remainder,
-        ))
-    }
-}
-
-/// The status of the block synchronizer.
-#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct BlockSynchronizerStatus {
-    /// The status of syncing a historical block, if any.
-    historical: Option<BlockSyncStatus>,
-    /// The status of syncing a forward block, if any.
-    forward: Option<BlockSyncStatus>,
-}
-
-impl BlockSynchronizerStatus {
-    pub(crate) fn new(
-        historical: Option<BlockSyncStatus>,
-        forward: Option<BlockSyncStatus>,
-    ) -> Self {
-        Self {
-            historical,
-            forward,
-        }
-    }
-}
-
-impl DocExample for BlockSynchronizerStatus {
-    fn doc_example() -> &'static Self {
-        &BLOCK_SYNCHRONIZER_STATUS
-    }
-}
-
-impl ToBytes for BlockSynchronizerStatus {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.historical.write_bytes(writer)?;
-        self.forward.write_bytes(writer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.historical.serialized_length() + self.forward.serialized_length()
-    }
-}
-
-impl FromBytes for BlockSynchronizerStatus {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (historical, remainder) = Option::<BlockSyncStatus>::from_bytes(bytes)?;
-        let (forward, remainder) = Option::<BlockSyncStatus>::from_bytes(remainder)?;
-        Ok((
-            BlockSynchronizerStatus {
-                historical,
-                forward,
-            },
-            remainder,
-        ))
-    }
 }
 
 #[derive(DataSize, Debug)]
@@ -1369,15 +1233,19 @@ impl BlockSynchronizer {
 
     fn status(&self) -> BlockSynchronizerStatus {
         BlockSynchronizerStatus::new(
-            self.historical.as_ref().map(|builder| BlockSyncStatus {
-                block_hash: builder.block_hash(),
-                block_height: builder.block_height(),
-                acquisition_state: builder.block_acquisition_state().to_string(),
+            self.historical.as_ref().map(|builder| {
+                BlockSyncStatus::new(
+                    builder.block_hash(),
+                    builder.block_height(),
+                    builder.block_acquisition_state().to_string(),
+                )
             }),
-            self.forward.as_ref().map(|builder| BlockSyncStatus {
-                block_hash: builder.block_hash(),
-                block_height: builder.block_height(),
-                acquisition_state: builder.block_acquisition_state().to_string(),
+            self.forward.as_ref().map(|builder| {
+                BlockSyncStatus::new(
+                    builder.block_hash(),
+                    builder.block_height(),
+                    builder.block_acquisition_state().to_string(),
+                )
             }),
         )
     }

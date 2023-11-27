@@ -11,7 +11,6 @@ mod utils;
 mod catch_up;
 mod genesis_instruction;
 mod keep_up;
-mod reactor_state;
 #[cfg(test)]
 mod tests;
 mod upgrade_shutdown;
@@ -27,8 +26,8 @@ use tracing::{debug, error, info, warn};
 
 use casper_types::{
     Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, DeployId, EraId, FinalitySignature,
-    PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId,
-    U512,
+    PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader,
+    TransactionId, U512,
 };
 
 #[cfg(test)]
@@ -86,7 +85,6 @@ use crate::{
 pub use config::Config;
 pub(crate) use error::Error;
 pub(crate) use event::MainEvent;
-pub(crate) use reactor_state::ReactorState;
 
 /// Main node reactor.
 ///

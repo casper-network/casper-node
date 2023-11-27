@@ -11,8 +11,9 @@ use casper_types::{
     bytesrepr::{self, ToBytes},
     contract_messages::Message,
     execution::{ExecutionResult, ExecutionResultV2},
-    BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures, Digest,
-    FinalizedApprovals, Key, KeyTag, ProtocolVersion, Timestamp, Transaction, TransactionHash,
+    AvailableBlockRange, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
+    BlockSynchronizerStatus, Digest, FinalizedApprovals, Key, KeyTag, NextUpgrade, PeersMap,
+    ProtocolVersion, PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash,
     Transfer,
 };
 use juliet::{
@@ -170,6 +171,86 @@ pub trait NodeClient: Send + Sync + 'static {
             .await?
             .ok_or(Error::NoResponseBody)?;
         bytesrepr::deserialize_from_slice(resp)
+            .map_err(|err| Error::Deserialization(err.to_string()))
+    }
+
+    async fn read_peers(&self) -> Result<PeersMap, Error> {
+        let resp = self
+            .read_from_mem(NonPersistedDataRequest::Peers)
+            .await?
+            .ok_or(Error::NoResponseBody)?;
+        bytesrepr::deserialize_from_slice(resp)
+            .map_err(|err| Error::Deserialization(err.to_string()))
+    }
+
+    async fn read_uptime(&self) -> Result<Duration, Error> {
+        let resp = self
+            .read_from_mem(NonPersistedDataRequest::Uptime)
+            .await?
+            .ok_or(Error::NoResponseBody)?;
+        let secs: u64 = bytesrepr::deserialize_from_slice(resp)
+            .map_err(|err| Error::Deserialization(err.to_string()))?;
+        Ok(Duration::from_secs(secs))
+    }
+
+    async fn read_last_progress(&self) -> Result<Timestamp, Error> {
+        let resp = self
+            .read_from_mem(NonPersistedDataRequest::LastProgress)
+            .await?
+            .ok_or(Error::NoResponseBody)?;
+        bytesrepr::deserialize_from_slice(resp)
+            .map_err(|err| Error::Deserialization(err.to_string()))
+    }
+
+    async fn read_reactor_state(&self) -> Result<ReactorState, Error> {
+        let resp = self
+            .read_from_mem(NonPersistedDataRequest::ReactorState)
+            .await?
+            .ok_or(Error::NoResponseBody)?;
+        bytesrepr::deserialize_from_slice(resp)
+            .map_err(|err| Error::Deserialization(err.to_string()))
+    }
+
+    async fn read_network_name(&self) -> Result<String, Error> {
+        let resp = self
+            .read_from_mem(NonPersistedDataRequest::NetworkName)
+            .await?
+            .ok_or(Error::NoResponseBody)?;
+        bytesrepr::deserialize_from_slice(resp)
+            .map_err(|err| Error::Deserialization(err.to_string()))
+    }
+
+    async fn read_block_sync_status(&self) -> Result<BlockSynchronizerStatus, Error> {
+        let resp = self
+            .read_from_mem(NonPersistedDataRequest::BlockSynchronizerStatus)
+            .await?
+            .ok_or(Error::NoResponseBody)?;
+        bytesrepr::deserialize_from_slice(resp)
+            .map_err(|err| Error::Deserialization(err.to_string()))
+    }
+
+    async fn read_available_block_range(&self) -> Result<AvailableBlockRange, Error> {
+        let resp = self
+            .read_from_mem(NonPersistedDataRequest::AvailableBlockRange)
+            .await?
+            .ok_or(Error::NoResponseBody)?;
+        bytesrepr::deserialize_from_slice(resp)
+            .map_err(|err| Error::Deserialization(err.to_string()))
+    }
+
+    async fn read_next_upgrade(&self) -> Result<Option<NextUpgrade>, Error> {
+        self.read_from_mem(NonPersistedDataRequest::NextUpgrade)
+            .await?
+            .map(bytesrepr::deserialize_from_slice)
+            .transpose()
+            .map_err(|err| Error::Deserialization(err.to_string()))
+    }
+
+    async fn read_consensus_status(&self) -> Result<Option<(PublicKey, Option<TimeDiff>)>, Error> {
+        self.read_from_mem(NonPersistedDataRequest::ConsensusStatus)
+            .await?
+            .map(bytesrepr::deserialize_from_slice)
+            .transpose()
             .map_err(|err| Error::Deserialization(err.to_string()))
     }
 }
