@@ -11,6 +11,10 @@ All notable changes to this project will be documented in this file. The format 
 
 ## Unreleased
 
+### Changed
+
+- Add "std-fs-io" feature and config checks to compile to wasm
+
 ### Added
 
 - Add a new `SyncHandling` enum, which allows a node to opt out of historical sync.
