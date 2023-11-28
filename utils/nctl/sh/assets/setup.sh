@@ -42,6 +42,7 @@ do
         chainspec_path) PATH_TO_CHAINSPEC=${VALUE} ;;
         accounts_path) PATH_TO_ACCOUNTS=${VALUE} ;;
         config_path) PATH_TO_CONFIG_TOML=${VALUE} ;;
+        sidecar_config_path) PATH_TO_SIDECAR_CONFIG_TOML=${VALUE} ;;
         *)
     esac
 done
@@ -52,49 +53,7 @@ NODE_COUNT=${NODE_COUNT:-5}
 PATH_TO_CHAINSPEC=${PATH_TO_CHAINSPEC:-"${NCTL_CASPER_HOME}/resources/local/chainspec.toml.in"}
 PATH_TO_ACCOUNTS=${PATH_TO_ACCOUNTS:-""}
 PATH_TO_CONFIG_TOML=${PATH_TO_CONFIG_TOML:-"${NCTL_CASPER_HOME}/resources/local/config.toml"}
-
-
-#######################################
-# Sets network nodes.
-#######################################
-function _set_nodes()
-{
-    log "... setting node config"
-
-    local IDX
-    local PATH_TO_FILE
-    local SPECULATIVE_EXEC_ADDR
-
-    for IDX in $(seq 1 "$(get_count_of_nodes)")
-    do
-        PATH_TO_CFG=$(get_path_to_node "$IDX")/config/1_0_0
-        PATH_TO_FILE="$PATH_TO_CFG"/config.toml
-
-        cp "$PATH_TO_CONFIG_TOML" "$PATH_TO_CFG"
-        cp "$(get_path_to_net)"/chainspec/* "$PATH_TO_CFG"
-
-        SPECULATIVE_EXEC_ADDR=$(grep 'speculative_exec_server' $PATH_TO_FILE || true)
-
-        local SCRIPT=(
-            "import toml;"
-            "cfg=toml.load('$PATH_TO_FILE');"
-            "cfg['consensus']['secret_key_path']='../../keys/secret_key.pem';"
-            "cfg['logging']['format']='$NCTL_NODE_LOG_FORMAT';"
-            "cfg['network']['bind_address']='$(get_network_bind_address "$IDX")';"
-            "cfg['network']['known_addresses']=[$(get_network_known_addresses "$IDX")];"
-            "cfg['storage']['path']='../../storage';"
-            "cfg['rest_server']['address']='0.0.0.0:$(get_node_port_rest "$IDX")';"
-            "cfg['binary_port_server']['address']='0.0.0.0:$(get_node_port_binary "$IDX")';"
-            "cfg['event_stream_server']['address']='0.0.0.0:$(get_node_port_sse "$IDX")';"
-        )
-
-        SCRIPT+=(
-            "toml.dump(cfg, open('$PATH_TO_FILE', 'w'));"
-        )
-
-        python3 -c "${SCRIPT[*]}"
-    done
-}
+PATH_TO_SIDECAR_CONFIG_TOML=${PATH_TO_SIDECAR_CONFIG_TOML:-"${NCTL_CASPER_HOME}/resources/local/sidecar.toml"}
 
 #######################################
 # Main
@@ -135,6 +94,7 @@ function _main()
                              "$NCTL_CASPER_CLIENT_HOME/target/debug/casper-client" \
                              "$NCTL_CASPER_HOME/target/debug/casper-node" \
                              "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/debug/casper-node-launcher" \
+                             "$NCTL_CASPER_HOME/target/debug/casper-rpc-sidecar" \
                              "$NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release"
     else
         setup_asset_binaries "1_0_0" \
@@ -142,6 +102,7 @@ function _main()
                              "$NCTL_CASPER_CLIENT_HOME/target/release/casper-client" \
                              "$NCTL_CASPER_HOME/target/release/casper-node" \
                              "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/release/casper-node-launcher" \
+                             "$NCTL_CASPER_HOME/target/release/casper-rpc-sidecar" \
                              "$NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release"
     fi
 
@@ -164,6 +125,7 @@ function _main()
     setup_asset_node_configs "$COUNT_NODES" \
                              "1_0_0" \
                              "$PATH_TO_CONFIG_TOML" \
+                             "$PATH_TO_SIDECAR_CONFIG_TOML" \
                              true
 
     log "asset setup complete"

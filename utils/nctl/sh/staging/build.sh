@@ -101,12 +101,16 @@ function set_stage_files_from_repo()
            "$PATH_TO_STAGE"
         cp "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/debug/casper-node-launcher" \
            "$PATH_TO_STAGE"
+        cp "$PATH_TO_NODE_SOURCE/target/debug/casper-rpc-sidecar" \
+           "$PATH_TO_STAGE"
     else
         cp "$PATH_TO_CLIENT_SOURCE/target/release/casper-client" \
            "$PATH_TO_STAGE"
         cp "$PATH_TO_NODE_SOURCE/target/release/casper-node" \
            "$PATH_TO_STAGE"
         cp "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/release/casper-node-launcher" \
+           "$PATH_TO_STAGE"
+        cp "$PATH_TO_NODE_SOURCE/target/release/casper-rpc-sidecar" \
            "$PATH_TO_STAGE"
     fi
 
@@ -133,6 +137,10 @@ function set_stage_files_from_repo()
 
     # Stage node config.
     cp "$PATH_TO_NODE_SOURCE/resources/local/config.toml" \
+       "$PATH_TO_STAGE"
+
+    # Stage sidecar config.
+    cp "$PATH_TO_NODE_SOURCE/resources/local/sidecar.toml" \
        "$PATH_TO_STAGE"
 }
 

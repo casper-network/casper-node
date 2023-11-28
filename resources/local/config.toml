@@ -302,7 +302,6 @@ allow_request_get_all_values = false
 # Flag that enables the `Trie` gewt request. Disabled by default, because it can potentially be abused to retrieve huge amounts of data and clog the node.
 allow_request_get_trie = false
 
-
 # ==============================================
 # Configuration options for the REST HTTP server
 # ==============================================

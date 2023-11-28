@@ -30,6 +30,9 @@ function do_node_start()
 
     PROCESS_NAME=$(get_process_name_of_node_in_group "$NODE_ID")
     supervisorctl -c "$(get_path_net_supervisord_cfg)" start "$PROCESS_NAME"  > /dev/null 2>&1
+
+    PROCESS_NAME=$(get_process_name_of_sidecar_in_group "$NODE_ID")
+    supervisorctl -c "$(get_path_net_supervisord_cfg)" start "$PROCESS_NAME"  > /dev/null 2>&1
 }
 
 #######################################
@@ -96,6 +99,9 @@ function do_node_stop()
     local NODE_PROCESS_NAME
     
     if [ -e "$(get_path_net_supervisord_sock)" ]; then
+        NODE_PROCESS_NAME=$(get_process_name_of_sidecar_in_group "$NODE_ID")
+        supervisorctl -c "$(get_path_net_supervisord_cfg)" stop "$NODE_PROCESS_NAME" > /dev/null 2>&1
+
         NODE_PROCESS_NAME=$(get_process_name_of_node_in_group "$NODE_ID")
         supervisorctl -c "$(get_path_net_supervisord_cfg)" stop "$NODE_PROCESS_NAME" > /dev/null 2>&1
     fi

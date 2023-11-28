@@ -27,8 +27,10 @@ done
 
 if [ "$NCTL_COMPILE_TARGET" = "debug" ] || [ "$COMPILE_MODE" = "debug" ]; then
     cargo build --package casper-node
+    cargo build --package casper-rpc-sidecar
 else
     cargo build --release --package casper-node
+    cargo build --release --package casper-rpc-sidecar
 fi
 
 unset OPTIND

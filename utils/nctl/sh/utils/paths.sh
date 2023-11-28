@@ -151,6 +151,22 @@ function get_path_to_node_config_file()
 }
 
 #######################################
+# Returns path to a RPC sidecar's active config file.
+# Arguments:
+#   Node ordinal identifier.
+#######################################
+function get_path_to_sidecar_config_file()
+{
+    local NODE_ID=${1:-1}
+    local NODE_PROTOCOL_VERSION
+    local PATH_TO_NODE
+
+    NODE_PROTOCOL_VERSION=$(get_node_protocol_version_from_fs "$NODE_ID" "_")
+
+    echo "$(get_path_to_node "$NODE_ID")/config/$NODE_PROTOCOL_VERSION/sidecar.toml"
+}
+
+#######################################
 # Returns path to a node's keys directory.
 # Arguments:
 #   Node ordinal identifier.

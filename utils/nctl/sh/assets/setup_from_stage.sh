@@ -60,6 +60,7 @@ function _main()
                          "$NCTL_CASPER_CLIENT_HOME/target/$NCTL_COMPILE_TARGET/casper-client" \
                          "$PATH_TO_STAGED_ASSETS/casper-node" \
                          "$PATH_TO_STAGED_ASSETS/casper-node-launcher" \
+                         "$PATH_TO_STAGED_ASSETS/casper-rpc-sidecar" \
                          "$PATH_TO_STAGED_ASSETS"
     setup_asset_keys "$COUNT_NODES" "$COUNT_USERS"
     setup_asset_daemon
@@ -88,6 +89,7 @@ function _main()
     setup_asset_node_configs "$COUNT_NODES" \
                              "$PROTOCOL_VERSION_FS" \
                              "$PATH_TO_STAGED_ASSETS/config.toml" \
+                             "$PATH_TO_STAGED_ASSETS/sidecar.toml" \
                              true
 
     log "setup of assets from stage ${1}: COMPLETE"

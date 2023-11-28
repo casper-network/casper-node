@@ -42,6 +42,10 @@ do
     PATH_NODE_CONFIG=$(get_path_to_node_config "$NODE_ID")
     PATH_NODE_LOGS=$(get_path_to_node_logs "$NODE_ID")
 
+    local NODE_PROTOCOL_VERSION
+
+    NODE_PROTOCOL_VERSION=$(get_node_protocol_version_from_fs "$NODE_ID" "_")
+
     cat >> "$PATH_SUPERVISOR_CONFIG" <<- EOM
 
 [program:casper-net-$NET_ID-node-$NODE_ID]
@@ -59,6 +63,24 @@ stderr_logfile=$PATH_NODE_LOGS/stderr.log ;
 stderr_logfile_backups=5 ;
 stderr_logfile_maxbytes=500MB ;
 stdout_logfile=$PATH_NODE_LOGS/stdout.log ;
+stdout_logfile_backups=5 ;
+stdout_logfile_maxbytes=500MB ;
+
+[program:casper-net-$NET_ID-sidecar-$NODE_ID]
+autostart=false
+autorestart=false
+command=$PATH_NODE_BIN/$NODE_PROTOCOL_VERSION/casper-rpc-sidecar $PATH_NODE_CONFIG/$NODE_PROTOCOL_VERSION/sidecar.toml 1.2.3
+environment=CASPER_BIN_DIR="$PATH_NODE_BIN",CASPER_CONFIG_DIR="$PATH_NODE_CONFIG"
+numprocs=1
+numprocs_start=0
+startsecs=0
+stopsignal=TERM
+stopwaitsecs=5
+stopasgroup=true
+stderr_logfile=$PATH_NODE_LOGS/sidecar-stderr.log ;
+stderr_logfile_backups=5 ;
+stderr_logfile_maxbytes=500MB ;
+stdout_logfile=$PATH_NODE_LOGS/sidecar-stdout.log ;
 stdout_logfile_backups=5 ;
 stdout_logfile_maxbytes=500MB ;
 EOM
