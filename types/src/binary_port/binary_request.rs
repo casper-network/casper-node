@@ -13,7 +13,6 @@ const SPECULATIVE_EXEC_TAG: u8 = 2;
 
 /// A request to the binary access interface.
 // TODO[RC] Add version tag, or rather follow the `BinaryRequestV1/V2` scheme.
-// TODO[RC] All `Get` operations to be unified under a single enum variant.
 #[derive(Debug)]
 pub enum BinaryRequest {
     /// Request to get data from the node
@@ -26,7 +25,7 @@ pub enum BinaryRequest {
         speculative_exec_at_block: Option<BlockHeader>,
     },
     /// Request to execute a transaction speculatively.
-    SpeculativeExec {
+    TrySpeculativeExec {
         /// State root on top of which to execute deploy.
         state_root_hash: Digest,
         /// Block time.
@@ -59,7 +58,7 @@ impl ToBytes for BinaryRequest {
                 transaction.write_bytes(writer)?;
                 speculative_exec_at_block.write_bytes(writer)
             }
-            BinaryRequest::SpeculativeExec {
+            BinaryRequest::TrySpeculativeExec {
                 transaction,
                 state_root_hash,
                 block_time,
@@ -84,7 +83,7 @@ impl ToBytes for BinaryRequest {
                 } => {
                     transaction.serialized_length() + speculative_exec_at_block.serialized_length()
                 }
-                BinaryRequest::SpeculativeExec {
+                BinaryRequest::TrySpeculativeExec {
                     transaction,
                     state_root_hash,
                     block_time,
@@ -125,7 +124,7 @@ impl FromBytes for BinaryRequest {
                 let (block_time, remainder) = Timestamp::from_bytes(remainder)?;
                 let (protocol_version, remainder) = ProtocolVersion::from_bytes(remainder)?;
                 Ok((
-                    BinaryRequest::SpeculativeExec {
+                    BinaryRequest::TrySpeculativeExec {
                         transaction,
                         state_root_hash,
                         block_time,

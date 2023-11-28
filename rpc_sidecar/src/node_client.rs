@@ -456,7 +456,7 @@ impl NodeClient for JulietNodeClient {
         protocol_version: ProtocolVersion,
         transaction: Transaction,
     ) -> Result<Option<(ExecutionResultV2, Vec<Message>)>, Error> {
-        let request = BinaryRequest::SpeculativeExec {
+        let request = BinaryRequest::TrySpeculativeExec {
             transaction,
             state_root_hash,
             block_time,

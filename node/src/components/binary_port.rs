@@ -196,7 +196,7 @@ where
                 .into();
             Ok(Some(bytes))
         }
-        BinaryRequest::SpeculativeExec {
+        BinaryRequest::TrySpeculativeExec {
             transaction,
             state_root_hash,
             block_time,
