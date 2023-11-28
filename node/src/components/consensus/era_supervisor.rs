@@ -1042,19 +1042,17 @@ impl EraSupervisor {
                     .cloned()
                     .collect();
                 let random_bit = rng.gen();
-                let delay_by = self.proposal_delay_failpoint.fire(rng).cloned();
                 let timestamp = block_context.timestamp();
+                let delay_by = self.proposal_delay_failpoint.fire(rng).cloned();
                 async move {
                     if let Some(delay) = delay_by {
                         effect_builder
                             .set_timeout(Duration::from_millis(delay))
                             .await;
                     }
-                    effect_builder.request_appendable_block(timestamp).await
-                }
-                .map(move |appendable_block| {
+                    let appendable_block = effect_builder.request_appendable_block(timestamp).await;
                     Arc::new(appendable_block.into_block_payload(accusations, random_bit))
-                })
+                }
                 .event(move |block_payload| {
                     Event::NewBlockPayload(NewBlockPayload {
                         era_id,
