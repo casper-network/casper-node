@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 /// Uses a fixed port per node, but binds on any interface.
 const DEFAULT_ADDRESS: &str = "0.0.0.0:0";
 
-/// JSON-RPC HTTP server configuration.
+/// Binary port server configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
@@ -13,6 +13,10 @@ pub struct Config {
     pub enable_server: bool,
     /// Address to bind BinaryPort server to.
     pub address: String,
+    /// Flag used to enable/disable the [`AllValues`] request
+    pub allow_request_get_all_values: bool,
+    /// Flag used to enable/disable the [`Trie`] request
+    pub allow_request_get_trie: bool,
 }
 
 impl Config {
@@ -21,6 +25,8 @@ impl Config {
         Config {
             enable_server: true,
             address: DEFAULT_ADDRESS.to_string(),
+            allow_request_get_all_values: false,
+            allow_request_get_trie: false,
         }
     }
 }

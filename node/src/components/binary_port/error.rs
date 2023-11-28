@@ -12,4 +12,6 @@ pub(crate) enum Error {
     EngineState(engine_state::Error),
     #[error("Transaction acceptor: {}", _0)]
     TransactionAcceptor(transaction_acceptor::Error),
+    #[error("This function is disabled: {}", _0)]
+    FunctionDisabled(String),
 }

@@ -162,6 +162,7 @@ where
 
 async fn handle_request<REv>(
     req: BinaryRequest,
+    config: &Config,
     effect_builder: EffectBuilder<REv>,
 ) -> Result<Option<Bytes>, Error>
 where
@@ -419,6 +420,9 @@ where
                 state_root_hash,
                 key_tag,
             } => {
+                if !config.allow_request_get_all_values {
+                    return Err(Error::FunctionDisabled("GetRequest::AllValues".to_string()));
+                }
                 let get_all_values_request = GetAllValuesRequest::new(state_root_hash, key_tag);
                 let get_all_values_result = effect_builder
                     .get_all_values(get_all_values_request)
@@ -430,6 +434,10 @@ where
                 Ok(Some(bytes))
             }
             GetRequest::Trie { trie_key } => {
+                if !config.allow_request_get_trie {
+                    return Err(Error::FunctionDisabled("GetRequest::Trie".to_string()));
+                }
+
                 let maybe_trie_bytes = effect_builder
                     .get_trie_full(trie_key)
                     .await
@@ -447,6 +455,7 @@ async fn handle_client<REv, const N: usize>(
     addr: SocketAddr,
     mut client: TcpStream,
     rpc_builder: Arc<RpcBuilder<N>>,
+    config: Arc<Config>,
     effect_builder: EffectBuilder<REv>,
 ) where
     REv: From<Event>
@@ -473,7 +482,7 @@ async fn handle_client<REv, const N: usize>(
                         break;
                     }
                     Ok((req, _)) => {
-                        let response = handle_request(req, effect_builder).await;
+                        let response = handle_request(req, &*config, effect_builder).await;
                         match response {
                             Ok(response) => incoming_request.respond(response),
                             Err(err) => {
@@ -537,17 +546,20 @@ where
     );
     let io_builder = IoCoreBuilder::new(protocol_builder).buffer_size(ChannelId::new(0), 16);
     let rpc_builder = Arc::new(RpcBuilder::new(io_builder));
+    let config = Arc::new(config);
 
-    let listener = TcpListener::bind(config.address).await;
+    let listener = TcpListener::bind(&config.address).await;
     match listener {
         Ok(listener) => loop {
             match listener.accept().await {
                 Ok((client, addr)) => {
                     let rpc_builder_clone = Arc::clone(&rpc_builder);
+                    let config_clone = Arc::clone(&config);
                     tokio::spawn(handle_client(
                         addr,
                         client,
                         rpc_builder_clone,
+                        config_clone,
                         effect_builder,
                     ));
                 }
