@@ -17,13 +17,6 @@ struct Arguments {
 pub struct VM;
 
 #[derive(Debug, Error)]
-#[non_exhaustive]
-pub enum HostError {
-    #[error("revert {code}")]
-    Revert { code: u32 },
-}
-
-#[derive(Debug, Error)]
 pub enum Resolver {
     #[error("export {name} not found.")]
     Export { name: String },
@@ -43,11 +36,52 @@ pub enum ExportError {
     Missing(String),
 }
 
+#[derive(Error, Debug)]
+#[non_exhaustive]
+pub enum MemoryError {
+    /// Memory access is outside heap bounds.
+    #[error("memory access out of bounds")]
+    HeapOutOfBounds,
+    /// Address calculation overflow.
+    #[error("address calculation overflow")]
+    Overflow,
+    /// String is not valid UTF-8.
+    #[error("string is not valid utf-8")]
+    NonUtf8String,
+}
+
+#[derive(Debug, Error)]
+pub enum TrapCode {
+    #[error("call stack exhausted")]
+    StackOverflow,
+    #[error("out of bounds memory access")]
+    HeapAccessOutOfBounds,
+    #[error("misaligned heap")]
+    HeapMisaligned,
+    #[error("undefined element: out of bounds table access")]
+    TableAccessOutOfBounds,
+    #[error("uninitialized element")]
+    IndirectCallToNull,
+    #[error("indirect call type mismatch")]
+    BadSignature,
+    #[error("integer overflow")]
+    IntegerOverflow,
+    #[error("integer divide by zero")]
+    IntegerDivisionByZero,
+    #[error("invalid conversion to integer")]
+    BadConversionToInteger,
+    #[error("unreachable")]
+    UnreachableCodeReached,
+}
+
+/// The outcome of a call.
+/// We can fold all errors into this type and return it from the host functions and remove Outcome
+/// type.
 #[derive(Debug, Error)]
 #[non_exhaustive]
-pub enum Error {
-    #[error("Host error: {0}")]
-    Host(#[source] HostError),
+pub enum VMError {
+    #[error("Revert: {code}")]
+    Revert { code: u32 },
     #[error("Out of gas")]
     OutOfGas,
     #[error(transparent)]
@@ -56,11 +90,15 @@ pub enum Error {
     ///
     /// NOTE: for supporting multiple different backends we may want to abstract this a bit and
     /// extract memory access errors, trap codes, and unify error reporting.
-    #[error("Error executing Wasm: {message}")]
-    Runtime { message: String },
+    #[error("Trap: {0}")]
+    Trap(TrapCode),
     #[error("Error resolving a function: {0}")]
     Resolver(Resolver),
+    #[error("Memory error: {0}")]
+    Memory(#[from] MemoryError),
 }
+
+pub type VMResult<T> = Result<T, VMError>;
 
 #[derive(Clone, Debug)]
 pub struct Config {

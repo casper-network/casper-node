@@ -1,30 +1,57 @@
 mod metering_middleware;
 
-use std::sync::{Arc, Weak};
+use std::{
+    fmt::Debug,
+    sync::{Arc, Weak},
+};
 
 use bytes::Bytes;
 use wasmer::{
     AsStoreMut, AsStoreRef, CompilerConfig, Engine, Exports, Function, FunctionEnv, FunctionEnvMut,
-    Imports, Instance, Memory, MemoryView, Module, RuntimeError, Store, Table, TypedFunction,
+    Imports, Instance, Memory, MemoryView, Module, RuntimeError, Store, StoreMut, Table,
+    TypedFunction,
 };
 use wasmer_compiler_singlepass::Singlepass;
-use wasmer_middlewares::metering::{self, MeteringPoints};
-use wasmer_types::{compilation::function, TrapCode};
+use wasmer_middlewares::{metering, Metering};
+use wasmer_types::compilation::function;
 
-use crate::{
-    host::{self, Outcome},
-    storage::Storage,
-    Config, ExportError, HostError,
-};
+use crate::{host, storage::Storage, Config, ExportError, MemoryError, TrapCode, VMResult};
 
 use self::metering_middleware::make_wasmer_metering_middleware;
 
-use super::{Caller, Context, Error as BackendError, GasUsage, WasmInstance};
-use crate::Error as VMError;
+use super::{Caller, Context, Error as BackendError, GasUsage, MeteringPoints, WasmInstance};
+use crate::VMError;
 
-// pub(crate) struct WasmerModule {
-//     module: Module,
-// }
+impl From<wasmer::MemoryAccessError> for MemoryError {
+    fn from(error: wasmer::MemoryAccessError) -> Self {
+        match error {
+            wasmer::MemoryAccessError::HeapOutOfBounds => MemoryError::HeapOutOfBounds,
+            wasmer::MemoryAccessError::Overflow => MemoryError::Overflow,
+            wasmer::MemoryAccessError::NonUtf8String => MemoryError::NonUtf8String,
+            _ => todo!(),
+        }
+    }
+}
+
+impl From<wasmer_types::TrapCode> for TrapCode {
+    fn from(value: wasmer_types::TrapCode) -> Self {
+        match value {
+            wasmer_types::TrapCode::StackOverflow => TrapCode::StackOverflow,
+            wasmer_types::TrapCode::HeapAccessOutOfBounds => TrapCode::HeapAccessOutOfBounds,
+            wasmer_types::TrapCode::HeapMisaligned => TrapCode::HeapMisaligned,
+            wasmer_types::TrapCode::TableAccessOutOfBounds => TrapCode::TableAccessOutOfBounds,
+            wasmer_types::TrapCode::IndirectCallToNull => TrapCode::IndirectCallToNull,
+            wasmer_types::TrapCode::BadSignature => TrapCode::BadSignature,
+            wasmer_types::TrapCode::IntegerOverflow => TrapCode::IntegerOverflow,
+            wasmer_types::TrapCode::IntegerDivisionByZero => TrapCode::IntegerDivisionByZero,
+            wasmer_types::TrapCode::BadConversionToInteger => TrapCode::BadConversionToInteger,
+            wasmer_types::TrapCode::UnreachableCodeReached => TrapCode::UnreachableCodeReached,
+            wasmer_types::TrapCode::UnalignedAtomic => {
+                todo!("Atomic memory extension is not supported")
+            }
+        }
+    }
+}
 
 pub(crate) struct WasmerEngine {}
 
@@ -47,38 +74,38 @@ impl<'a, S: Storage + 'static> WasmerCaller<'a, S> {
         let view = mem.view(&binding);
         f(view)
     }
-}
+    fn with_store_and_instance<Ret>(
+        &mut self,
+        f: impl FnOnce(StoreMut, Arc<Instance>) -> Ret,
+    ) -> Ret {
+        let (data, mut store) = self.env.data_and_store_mut();
+        let instance = data.instance.upgrade().expect("Valid instance");
+        f(store, instance)
+    }
 
-/// Handles translation of [`RuntimeError`] into [`VMError`].
-///
-/// This does not handle gas metering points.
-fn handle_runtime_error(
-    error: RuntimeError,
-    mut store: impl AsStoreMut,
-    instance: &Instance,
-) -> VMError {
-    match error.downcast::<HostError>() {
-        Ok(host_error) => VMError::Host(host_error),
-        Err(runtime_error) => {
-            if runtime_error.clone().to_trap() == Some(TrapCode::UnreachableCodeReached) {
-                match dbg!(metering::get_remaining_points(&mut store, instance)) {
-                    MeteringPoints::Remaining(_) => {}
-                    MeteringPoints::Exhausted => return VMError::OutOfGas,
-                }
+    /// Returns the amount of gas used.
+    fn get_remaining_points(&mut self) -> MeteringPoints {
+        self.with_store_and_instance(|mut store, instance| {
+            let mut metering_points = metering::get_remaining_points(&mut store, &instance);
+            match metering_points {
+                metering::MeteringPoints::Remaining(points) => MeteringPoints::Remaining(points),
+                metering::MeteringPoints::Exhausted => MeteringPoints::Exhausted,
             }
-            VMError::Runtime {
-                message: runtime_error.message(),
-            }
-        }
+        })
+    }
+    /// Set the amount of gas used.
+    fn set_remaining_points(&mut self, new_value: u64) {
+        self.with_store_and_instance(|mut store, instance| {
+            metering::set_remaining_points(&mut store, &instance, new_value)
+        })
     }
 }
 
 impl<'a, S: Storage + 'static> Caller<S> for WasmerCaller<'a, S> {
     fn memory_write(&self, offset: u32, data: &[u8]) -> Result<(), VMError> {
-        self.with_memory(|mem| mem.write(offset.into(), data))
-            .map_err(|memory_access_error| VMError::Runtime {
-                message: memory_access_error.to_string(),
-            })
+        Ok(self
+            .with_memory(|mem| mem.write(offset.into(), data))
+            .map_err(|memory_error| VMError::Memory(memory_error.into()))?)
     }
 
     fn context(&self) -> &Context<S> {
@@ -86,18 +113,12 @@ impl<'a, S: Storage + 'static> Caller<S> for WasmerCaller<'a, S> {
     }
 
     fn memory_read_into(&self, offset: u32, output: &mut [u8]) -> Result<(), VMError> {
-        self.with_memory(|mem| mem.read(offset.into(), output))
-            .map_err(|memory_access_error| VMError::Runtime {
-                message: memory_access_error.to_string(),
-            })
+        Ok(self
+            .with_memory(|mem| mem.read(offset.into(), output))
+            .map_err(|memory_error| VMError::Memory(memory_error.into()))?)
     }
 
-    fn alloc(
-        &mut self,
-        idx: u32,
-        size: usize,
-        ctx: u32,
-    ) -> Result<u32, Box<dyn std::error::Error>> {
+    fn alloc(&mut self, idx: u32, size: usize, ctx: u32) -> VMResult<u32> {
         let (data, mut store) = self.env.data_and_store_mut();
         let value = data
             .exported_runtime()
@@ -109,8 +130,14 @@ impl<'a, S: Storage + 'static> Caller<S> for WasmerCaller<'a, S> {
             .expect("has entry in the table"); // TODO: better error handling - pass 0 as nullptr?
         let funcref = value.funcref().expect("is funcref");
         let valid_funcref = funcref.as_ref().expect("valid funcref");
-        let alloc_callback: TypedFunction<(u32, u32), u32> = valid_funcref.typed(&store)?;
-        let ptr = alloc_callback.call(&mut store.as_store_mut(), size.try_into().unwrap(), ctx)?;
+        let alloc_callback: TypedFunction<(u32, u32), u32> = valid_funcref
+            .typed(&store)
+            .unwrap_or_else(|error| panic!("{error:?}"));
+        let ptr =
+            match alloc_callback.call(&mut store.as_store_mut(), size.try_into().unwrap(), ctx) {
+                Ok(ptr) => ptr,
+                Err(runtime_error) => todo!("{:?}", runtime_error),
+            };
         Ok(ptr)
     }
 
@@ -120,6 +147,25 @@ impl<'a, S: Storage + 'static> Caller<S> for WasmerCaller<'a, S> {
 
     fn bytecode(&self) -> Bytes {
         self.env.data().bytecode.clone()
+    }
+
+    /// Returns the amount of gas used.
+    fn gas_consumed(&mut self) -> MeteringPoints {
+        self.get_remaining_points()
+    }
+
+    /// Set the amount of gas used.
+    fn consume_gas(&mut self, new_value: u64) -> MeteringPoints {
+        let gas_consumed = self.gas_consumed();
+        match gas_consumed {
+            MeteringPoints::Remaining(remaining_points) if remaining_points >= new_value => {
+                let remaining_points = remaining_points - new_value;
+                self.set_remaining_points(remaining_points);
+                MeteringPoints::Remaining(remaining_points)
+            }
+            MeteringPoints::Remaining(_remaining_points) => MeteringPoints::Exhausted,
+            MeteringPoints::Exhausted => MeteringPoints::Exhausted,
+        }
     }
 }
 
@@ -160,6 +206,21 @@ pub(crate) struct WasmerInstance<S: Storage> {
     config: Config,
 }
 
+fn handle_wasmer_result<T: Debug>(wasmer_result: Result<T, RuntimeError>) -> VMResult<T> {
+    match dbg!(wasmer_result) {
+        Ok(result) => Ok(result),
+        Err(error) => match error.downcast::<VMError>() {
+            Ok(vm_error) => Err(vm_error),
+            Err(wasmer_runtime_error) => {
+                // NOTE: Can this be other variant than VMError and trap? This may indicate a bug in
+                // our code.
+                let wasmer_trap_code = wasmer_runtime_error.to_trap().expect("Trap code");
+                Err(VMError::Trap(wasmer_trap_code.into()))
+            }
+        },
+    }
+}
+
 impl<S> WasmerInstance<S>
 where
     S: Storage + 'static,
@@ -177,29 +238,8 @@ where
                 wasmer::ExportError::IncompatibleType => ExportError::IncompatibleType,
                 wasmer::ExportError::Missing(name) => ExportError::Missing(name),
             })?;
-        // .map_err(|error| BackendError::Export(error.to_string()))?;
-
         let result = exported_call_func.call(&mut self.store.as_store_mut());
-
-        let remaining_points_1 = metering::get_remaining_points(&mut self.store, &self.instance);
-        dbg!(&remaining_points_1);
-
-        match remaining_points_1 {
-            metering::MeteringPoints::Remaining(_remaining_points) => {}
-            metering::MeteringPoints::Exhausted => {
-                return Err(VMError::OutOfGas);
-            }
-        }
-
-        match result {
-            Ok(result) => Ok(()),
-            Err(error) => match error.downcast::<HostError>() {
-                Ok(host_error) => Err(VMError::Host(host_error)),
-                Err(vm_error) => Err(VMError::Runtime {
-                    message: vm_error.to_string(),
-                }),
-            },
-        }
+        handle_wasmer_result(result)
     }
 
     fn call_function(&mut self, function_index: u32) -> Result<(), VMError> {
@@ -235,27 +275,8 @@ where
             }
         };
 
-        let result = function.call(&mut self.store.as_store_mut());
-
-        let remaining_points_1 = metering::get_remaining_points(&mut self.store, &self.instance);
-        dbg!(&remaining_points_1);
-
-        match remaining_points_1 {
-            metering::MeteringPoints::Remaining(_remaining_points) => {}
-            metering::MeteringPoints::Exhausted => {
-                return Err(VMError::OutOfGas);
-            }
-        }
-
-        match result {
-            Ok(()) => Ok(()),
-            Err(error) => match error.downcast::<HostError>() {
-                Ok(host_error) => Err(VMError::Host(host_error)),
-                Err(vm_error) => Err(VMError::Runtime {
-                    message: vm_error.to_string(),
-                }),
-            },
-        }
+        let wasmer_result = function.call(&mut self.store.as_store_mut());
+        handle_wasmer_result(wasmer_result)
     }
 
     pub(crate) fn from_wasm_bytes<C: Into<Bytes>>(
@@ -338,10 +359,9 @@ where
                      key_size: u32,
                      info_ptr: u32,
                      cb_alloc: u32,
-                     cb_ctx: u32|
-                     -> Result<i32, RuntimeError> {
+                     cb_ctx: u32| {
                         let wasmer_caller = WasmerCaller { env };
-                        match host::casper_read(
+                        host::casper_read(
                             wasmer_caller,
                             key_space,
                             key_ptr,
@@ -349,20 +369,7 @@ where
                             info_ptr,
                             cb_alloc,
                             cb_ctx,
-                        ) {
-                            Ok(result) => Ok(result),
-                            Err(Outcome::VM(type_erased_runtime_error)) => {
-                                dbg!(&type_erased_runtime_error);
-                                let boxed_runtime_error: Box<RuntimeError> =
-                                    type_erased_runtime_error
-                                        .downcast()
-                                        .expect("Valid RuntimeError instance");
-                                Err(*boxed_runtime_error)
-                            }
-                            Err(Outcome::Host(host_error)) => {
-                                Err(RuntimeError::user(Box::new(host_error)))
-                            }
-                        }
+                        )
                     },
                 ),
             );
@@ -385,9 +392,7 @@ where
             imports.define(
                 "env",
                 "casper_revert",
-                Function::new_typed(&mut store, |code| -> Result<(), RuntimeError> {
-                    Err(RuntimeError::user(Box::new(HostError::Revert { code })))
-                }),
+                Function::new_typed(&mut store, |code| host::casper_revert(code)),
             );
 
             imports.define(
@@ -399,13 +404,13 @@ where
                     |env: FunctionEnvMut<WasmerEnv<S>>,
                      cb_alloc: u32,
                      cb_ctx: u32|
-                     -> Result<u32, RuntimeError> {
+                     -> VMResult<u32> {
                         let wasmer_caller = WasmerCaller { env };
-                        let ret = host::casper_copy_input(wasmer_caller, cb_alloc, cb_ctx);
-                        handle_host_function_result(ret)
+                        host::casper_copy_input(wasmer_caller, cb_alloc, cb_ctx)
                     },
                 ),
             );
+
 
             imports.define(
                 "env",
@@ -422,7 +427,7 @@ where
 
                         // let wasmer_caller = WasmerCaller { env };
                         // let ret = host::casper_copy_input(wasmer_caller, cb_alloc, cb_ctx);
-                        // handle_host_function_result(ret)
+                        // (ret)
                     },
                 ),
             );
@@ -441,14 +446,13 @@ where
                      manifest_ptr: u32,
                      result_ptr: u32| {
                         let wasmer_caller = WasmerCaller { env };
-                        let ret = host::casper_create_contract(
+                        host::casper_create_contract(
                             wasmer_caller,
                             code_ptr,
                             code_size,
                             manifest_ptr,
                             result_ptr,
-                        );
-                        handle_host_function_result(ret)
+                        )
                     },
                 ),
             );
@@ -468,10 +472,9 @@ where
                      input_ptr: u32,
                      input_len: u32,
                      cb_alloc: u32,
-                     cb_ctx: u32|
-                     -> Result<u32, RuntimeError> {
+                     cb_ctx: u32| {
                         let wasmer_caller = WasmerCaller { env };
-                        let ret = host::casper_call(
+                        host::casper_call(
                             wasmer_caller,
                             address_ptr,
                             address_len,
@@ -482,20 +485,7 @@ where
                             input_len,
                             cb_alloc,
                             cb_ctx,
-                        );
-                        match ret {
-                            Ok(result) => Ok(result),
-                            Err(Outcome::VM(type_erased_runtime_error)) => {
-                                let boxed_runtime_error: Box<RuntimeError> =
-                                    type_erased_runtime_error
-                                        .downcast()
-                                        .expect("Valid RuntimeError instance");
-                                Err(*boxed_runtime_error)
-                            }
-                            Err(Outcome::Host(host_error)) => {
-                                Err(RuntimeError::user(Box::new(host_error)))
-                            }
-                        }
+                        )
                     },
                 ),
             );
@@ -554,19 +544,6 @@ where
     }
 }
 
-fn handle_host_function_result<T>(ret: Result<T, Outcome>) -> Result<T, RuntimeError> {
-    match ret {
-        Ok(result) => Ok(result),
-        Err(Outcome::VM(type_erased_runtime_error)) => {
-            let boxed_runtime_error: Box<RuntimeError> = type_erased_runtime_error
-                .downcast()
-                .expect("Valid RuntimeError instance");
-            Err(*boxed_runtime_error)
-        }
-        Err(Outcome::Host(host_error)) => Err(RuntimeError::user(Box::new(host_error))),
-    }
-}
-
 impl<S> WasmInstance<S> for WasmerInstance<S>
 where
     S: Storage + 'static,
@@ -575,14 +552,14 @@ where
         let vm_result = self.call_export(name);
         let remaining_points = metering::get_remaining_points(&mut self.store, &self.instance);
         match remaining_points {
-            MeteringPoints::Remaining(remaining_points) => {
+            metering::MeteringPoints::Remaining(remaining_points) => {
                 let gas_usage = GasUsage {
                     gas_limit: self.config.gas_limit,
                     remaining_points,
                 };
                 (vm_result, gas_usage)
             }
-            MeteringPoints::Exhausted => {
+            metering::MeteringPoints::Exhausted => {
                 let gas_usage = GasUsage {
                     gas_limit: self.config.gas_limit,
                     remaining_points: 0,
@@ -596,14 +573,14 @@ where
         let vm_result = self.call_function(function_index);
         let remaining_points = metering::get_remaining_points(&mut self.store, &self.instance);
         match remaining_points {
-            MeteringPoints::Remaining(remaining_points) => {
+            metering::MeteringPoints::Remaining(remaining_points) => {
                 let gas_usage = GasUsage {
                     gas_limit: self.config.gas_limit,
                     remaining_points,
                 };
                 (vm_result, gas_usage)
             }
-            MeteringPoints::Exhausted => {
+            metering::MeteringPoints::Exhausted => {
                 let gas_usage = GasUsage {
                     gas_limit: self.config.gas_limit,
                     remaining_points: 0,

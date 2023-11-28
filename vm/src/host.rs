@@ -7,21 +7,13 @@ use bytes::Bytes;
 use safe_transmute::SingleManyGuard;
 
 use crate::{
-    backend::{Caller, Context, WasmInstance},
+    backend::{Caller, Context, MeteringPoints, WasmInstance},
     host::abi::{CreateResult, EntryPoint, Manifest, Param},
     storage::{self, Contract, Storage},
-    ConfigBuilder, HostError, VM,
+    ConfigBuilder, Error, VMError, VMResult, VM,
 };
 
 use self::abi::ReadInfo;
-
-#[derive(Debug)]
-pub(crate) enum Outcome {
-    /// Propagate VM error (i.e. after recursively calling into exports inside wasm).
-    VM(Box<dyn std::error::Error>),
-    /// A host error, i.e. a revert.
-    Host(HostError),
-}
 
 /// Write value under a key.
 pub(crate) fn casper_write<S: Storage>(
@@ -36,6 +28,7 @@ pub(crate) fn casper_write<S: Storage>(
     let key = caller
         .memory_read(key_ptr, key_size.try_into().unwrap())
         .expect("should read key bytes");
+
     let value = caller
         .memory_read(value_ptr, value_size.try_into().unwrap())
         .expect("should read value bytes");
@@ -72,9 +65,7 @@ pub(crate) fn casper_read<S: Storage>(
     info_ptr: u32,
     cb_alloc: u32,
     cb_ctx: u32,
-) -> Result<i32, Outcome> {
-    // caller.
-
+) -> Result<i32, VMError> {
     let key = caller
         .memory_read(key_ptr, key_size.try_into().unwrap())
         .expect("should read key bytes");
@@ -83,7 +74,7 @@ pub(crate) fn casper_read<S: Storage>(
         Ok(Some(entry)) => {
             let out_ptr: u32 = caller
                 .alloc(cb_alloc, entry.data.len(), cb_ctx)
-                .map_err(Outcome::VM)?;
+                .unwrap_or_else(|error| panic!("{error:?}"));
 
             let read_info = ReadInfo {
                 data: out_ptr,
@@ -101,22 +92,20 @@ pub(crate) fn casper_read<S: Storage>(
     }
 }
 
-/// Write value under a key.
-pub(crate) fn casper_revert(code: u32) -> i32 {
-    todo!()
+/// Reverts the execution of a smart contract.
+pub(crate) fn casper_revert(code: u32) -> VMResult<()> {
+    Err(VMError::Revert { code })
 }
 
 pub(crate) fn casper_copy_input<S: Storage>(
     mut caller: impl Caller<S>,
     cb_alloc: u32,
     alloc_ctx: u32,
-) -> Result<u32, Outcome> {
+) -> VMResult<u32> {
     let input = caller.config().input.clone();
 
     let out_ptr: u32 = if cb_alloc != 0 {
-        caller
-            .alloc(cb_alloc, input.len(), alloc_ctx)
-            .map_err(Outcome::VM)?
+        caller.alloc(cb_alloc, input.len(), alloc_ctx)?
     } else {
         // treats alloc_ctx as data
         alloc_ctx
@@ -130,13 +119,20 @@ pub(crate) fn casper_copy_input<S: Storage>(
     }
 }
 
+pub(crate) fn casper_copy_output<S: Storage>(mut caller: impl Caller<S>, data_ptr: u32, data_size: u32) -> Vec<u8> {
+    let data = caller.memory_read(data_ptr, data_size.try_into().unwrap()).unwrap();
+    // caller.config().output.write_all(&data).unwrap();
+    // Ok(0)
+    todo!()
+}
+
 pub(crate) fn casper_create_contract<S: Storage>(
     mut caller: impl Caller<S>,
     code_ptr: u32,
     code_len: u32,
     manifest_ptr: u32,
     result_ptr: u32,
-) -> Result<u32, Outcome> {
+) -> VMResult<u32> {
     let code = if code_ptr != 0 {
         caller
             .memory_read(code_ptr, code_len as usize)
@@ -276,7 +272,7 @@ pub(crate) fn casper_call<S: Storage + 'static>(
     input_len: u32,
     cb_alloc: u32,
     cb_ctx: u32,
-) -> Result<u32, Outcome> {
+) -> VMResult<u32> {
     // 1. Look up address in the storage
     // 1a. if it's legacy contract, wire up old EE, pretend you're 1.x. Input data would be
     // "RuntimeArgs". Serialized output of the call has to be passed as output. Value is ignored as
@@ -316,8 +312,14 @@ pub(crate) fn casper_call<S: Storage + 'static>(
 
         let current_config = caller.config().clone();
 
+        // Take the gas spent so far and use it as a limit for the new VM.
+        let gas_limit = caller
+            .gas_consumed()
+            .try_into_remaining()
+            .expect("should be remaining");
+
         let new_config = ConfigBuilder::new()
-            .with_gas_limit(current_config.gas_limit)
+            .with_gas_limit(gas_limit)
             .with_memory_limit(current_config.memory_limit)
             .with_input(input_data)
             .build();
@@ -344,7 +346,21 @@ pub(crate) fn casper_call<S: Storage + 'static>(
         };
 
         let (call_result, gas_usage) = new_instance.call_function(function_index);
-        dbg!(&call_result, &gas_usage);
+        dbg!(&call_result);
+        let _ = call_result; // TODO: Allow contract to intercept errors happening inside chain of calls.
+
+        let gas_spent = gas_usage
+            .gas_limit
+            .checked_sub(gas_usage.remaining_points)
+            .expect("remaining points always below or equal to the limit");
+
+        match caller.consume_gas(gas_spent) {
+            MeteringPoints::Remaining(_) => {}
+            MeteringPoints::Exhausted => {
+                // return Err(Outcome::OutOfGas);
+                todo!("exhausted")
+            }
+        }
     }
 
     Ok(0)
