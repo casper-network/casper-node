@@ -1,11 +1,16 @@
-use std::collections::BTreeMap;
+use alloc::collections::BTreeMap;
 
 use crate::bytesrepr::{self, FromBytes, ToBytes};
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Node peer entry.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct PeerEntry {
     /// Node id.
@@ -40,7 +45,8 @@ impl FromBytes for PeerEntry {
 }
 
 /// Map of peer IDs to network addresses.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Peers(Vec<PeerEntry>);
 

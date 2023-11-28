@@ -1,5 +1,6 @@
 use core::fmt::{self, Display, Formatter};
 
+use alloc::vec::Vec;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]

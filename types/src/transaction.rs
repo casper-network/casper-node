@@ -48,10 +48,10 @@ pub use addressable_entity_identifier::AddressableEntityIdentifier;
 pub use deploy::{
     Deploy, DeployApproval, DeployApprovalsHash, DeployConfigFailure, DeployDecodeFromJsonError,
     DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash, DeployHeader, DeployId,
-    ExecutableDeployItem, ExecutableDeployItemIdentifier, TransferTarget,
+    ExecutableDeployItem, ExecutableDeployItemIdentifier, FinalizedDeployApprovals, TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
-pub use deploy::{DeployBuilder, DeployBuilderError, FinalizedDeployApprovals};
+pub use deploy::{DeployBuilder, DeployBuilderError};
 pub use execution_info::ExecutionInfo;
 pub use finalized_approvals::FinalizedApprovals;
 pub use initiator_addr::InitiatorAddr;

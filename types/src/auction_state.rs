@@ -1,19 +1,24 @@
-use std::collections::{btree_map::Entry, BTreeMap};
+use alloc::collections::{btree_map::Entry, BTreeMap};
 
-use num_traits::Zero;
+use alloc::vec::Vec;
+#[cfg(feature = "json-schema")]
 use once_cell::sync::Lazy;
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_map_to_array::{BTreeMapToArray, KeyValueJsonSchema, KeyValueLabels};
+#[cfg(feature = "json-schema")]
+use serde_map_to_array::KeyValueJsonSchema;
+use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
 use crate::{
-    system::auction::{
-        Bid, BidKind, DelegationRate, Delegator, EraValidators, Staking, ValidatorBid,
-    },
-    AccessRights, Digest, EraId, PublicKey, SecretKey, URef, U512,
+    system::auction::{Bid, BidKind, EraValidators, Staking, ValidatorBid},
+    Digest, EraId, PublicKey, U512,
 };
 
+#[cfg(feature = "json-schema")]
 static ERA_VALIDATORS: Lazy<EraValidators> = Lazy::new(|| {
+    use crate::SecretKey;
+
     let secret_key_1 = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
     let public_key_1 = PublicKey::from(&secret_key_1);
 
@@ -25,7 +30,12 @@ static ERA_VALIDATORS: Lazy<EraValidators> = Lazy::new(|| {
 
     era_validators
 });
+#[cfg(feature = "json-schema")]
 static AUCTION_INFO: Lazy<AuctionState> = Lazy::new(|| {
+    use crate::system::auction::{DelegationRate, Delegator};
+    use crate::{AccessRights, SecretKey, URef};
+    use num_traits::Zero;
+
     let state_root_hash = Digest::from([11; Digest::LENGTH]);
     let validator_secret_key =
         SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
@@ -57,7 +67,8 @@ static AUCTION_INFO: Lazy<AuctionState> = Lazy::new(|| {
 });
 
 /// A validator's weight.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct JsonValidatorWeights {
     public_key: PublicKey,
@@ -65,7 +76,8 @@ pub struct JsonValidatorWeights {
 }
 
 /// The validators for the given era.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct JsonEraValidators {
     era_id: EraId,
@@ -73,7 +85,8 @@ pub struct JsonEraValidators {
 }
 
 /// Data structure summarizing auction contract data.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct AuctionState {
     /// Global state hash.
@@ -178,6 +191,7 @@ impl KeyValueLabels for BidLabels {
     const VALUE: &'static str = "bid";
 }
 
+#[cfg(feature = "json-schema")]
 impl KeyValueJsonSchema for BidLabels {
     const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("PublicKeyAndBid");
     const JSON_SCHEMA_KV_DESCRIPTION: Option<&'static str> =

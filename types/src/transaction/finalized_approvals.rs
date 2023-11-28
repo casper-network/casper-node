@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +15,8 @@ const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;
 
 /// A set of approvals that has been agreed upon by consensus to approve of a specific transaction.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, DataSize, Debug)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum FinalizedApprovals {
     /// Approvals for a Deploy.
     Deploy(FinalizedDeployApprovals),

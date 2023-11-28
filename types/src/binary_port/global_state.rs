@@ -4,6 +4,8 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     StoredValue,
 };
+use alloc::string::String;
+use alloc::vec::Vec;
 
 const SUCCESS_TAG: u8 = 0;
 const VALUE_NOT_FOUND_TAG: u8 = 1;

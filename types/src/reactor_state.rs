@@ -1,13 +1,16 @@
 use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use alloc::vec::Vec;
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use derive_more::Display;
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// The state of the reactor.
-#[derive(
-    Copy, Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Display, JsonSchema,
-)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, Display)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum ReactorState {
     /// Get all components and reactor state set up on start.
     Initialize,

@@ -4,6 +4,7 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     BlockHash, TransactionHash,
 };
+use alloc::vec::Vec;
 
 const BLOCK_HEIGHT_2_HASH_TAG: u8 = 0;
 const HIGHEST_COMPLETE_BLOCK_TAG: u8 = 1;

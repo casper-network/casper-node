@@ -1,14 +1,15 @@
-use std::fmt::{self, Display, Formatter};
+use core::fmt::{self, Display, Formatter};
 
+use alloc::vec::Vec;
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 /// An unbroken, inclusive range of blocks.
-#[derive(
-    Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Debug, JsonSchema,
-)]
+#[derive(Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct AvailableBlockRange {
     /// The inclusive lower bound of the range.

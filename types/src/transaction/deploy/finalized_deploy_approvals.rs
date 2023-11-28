@@ -1,5 +1,6 @@
-use std::collections::BTreeSet;
-
+use alloc::collections::BTreeSet;
+use alloc::vec::Vec;
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(test)]
 use rand::Rng;
@@ -13,7 +14,8 @@ use crate::{
 };
 
 /// A set of approvals that has been agreed upon by consensus to approve of a specific deploy.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, DataSize, Debug)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct FinalizedDeployApprovals(BTreeSet<DeployApproval>);
 
 impl FinalizedDeployApprovals {

@@ -92,7 +92,6 @@ pub use addressable_entity::{
 #[doc(inline)]
 pub use api_error::ApiError;
 pub use auction_state::{AuctionState, JsonEraValidators, JsonValidatorWeights};
-#[cfg(all(feature = "std", feature = "json-schema"))]
 pub use block::{
     AvailableBlockRange, Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHashAndHeight,
     BlockHeader, BlockHeaderV1, BlockHeaderV2, BlockSignatures, BlockSignaturesMergeError,
@@ -103,8 +102,6 @@ pub use block::{
 };
 #[cfg(any(feature = "testing", test))]
 pub use block::{TestBlockBuilder, TestBlockV1Builder};
-
-pub use binary_port::binary_request::BinaryRequest;
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
 pub use byte_code::{ByteCode, ByteCodeHash, ByteCodeKind};
 #[cfg(any(feature = "std", test))]
@@ -175,7 +172,8 @@ pub use timestamp::{TimeDiff, Timestamp};
 pub use transaction::{
     AddressableEntityIdentifier, Deploy, DeployApproval, DeployApprovalsHash, DeployConfigFailure,
     DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash,
-    DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, InitiatorAddr,
+    DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, ExecutionInfo,
+    FinalizedApprovals, FinalizedDeployApprovals, FinalizedTransactionV1Approvals, InitiatorAddr,
     NamedArg, PackageIdentifier, PricingMode, RuntimeArgs, Transaction, TransactionApprovalsHash,
     TransactionEntryPoint, TransactionHash, TransactionHeader, TransactionId,
     TransactionInvocationTarget, TransactionRuntime, TransactionScheduling, TransactionSessionKind,
@@ -186,8 +184,7 @@ pub use transaction::{
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction::{
-    DeployBuilder, DeployBuilderError, ExecutionInfo, FinalizedApprovals, FinalizedDeployApprovals,
-    FinalizedTransactionV1Approvals, TransactionV1Builder, TransactionV1BuilderError,
+    DeployBuilder, DeployBuilderError, TransactionV1Builder, TransactionV1BuilderError,
 };
 pub use transfer::{
     FromStrError as TransferFromStrError, Transfer, TransferAddr, TRANSFER_ADDR_LENGTH,

@@ -4,6 +4,7 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     BlockHeader, Digest, ProtocolVersion, Timestamp, Transaction,
 };
+use alloc::vec::Vec;
 
 use super::get::GetRequest;
 

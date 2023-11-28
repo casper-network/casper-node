@@ -1,5 +1,8 @@
 //! The result of the speculative execution request.
 
+use alloc::string::String;
+use alloc::vec::Vec;
+#[cfg(any(feature = "std", test))]
 use thiserror::Error;
 
 use crate::{
@@ -13,16 +16,17 @@ const INVALID_DEPLOY_TAG: u8 = 1;
 const INTERNAL_ERROR_TAG: u8 = 2;
 
 /// Error for the speculative deploy execution.
-#[derive(Debug, Error)]
+#[derive(Debug)]
+#[cfg_attr(any(feature = "std", test), derive(Error))]
 pub enum SpeculativeExecutionError {
     /// Specified state root not found.
-    #[error("No such state root")]
+    #[cfg_attr(any(feature = "std", test), error("No such state root"))]
     NoSuchStateRoot,
     /// The deploy is invalid.
-    #[error("Invalid deploy: {}", _0)]
+    #[cfg_attr(any(feature = "std", test), error("Invalid deploy: {}", _0))]
     InvalidDeploy(String),
     /// Internal error.
-    #[error("Internal error: {}", _0)]
+    #[cfg_attr(any(feature = "std", test), error("Internal error: {}", _0))]
     InternalError(String),
 }
 

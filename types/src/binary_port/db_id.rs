@@ -3,6 +3,7 @@
 use serde::Serialize;
 
 use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use alloc::vec::Vec;
 
 const BLOCK_HEADER_DB_TAG: u8 = 0;
 const BLOCK_METADATA_DB_TAG: u8 = 1;
@@ -38,7 +39,7 @@ pub enum DbId {
     FinalizedTransactionApprovals = 8,
 }
 
-impl std::fmt::Display for DbId {
+impl core::fmt::Display for DbId {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             DbId::BlockHeader => write!(f, "BlockHeader"),

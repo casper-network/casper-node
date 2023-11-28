@@ -1,13 +1,20 @@
+use alloc::string::String;
+use alloc::vec::Vec;
+#[cfg(feature = "json-schema")]
 use once_cell::sync::Lazy;
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockHash, Digest,
+    BlockHash,
 };
 
+#[cfg(feature = "json-schema")]
 static BLOCK_SYNCHRONIZER_STATUS: Lazy<BlockSynchronizerStatus> = Lazy::new(|| {
+    use crate::Digest;
+
     BlockSynchronizerStatus::new(
         Some(BlockSyncStatus {
             block_hash: BlockHash::new(
@@ -33,7 +40,8 @@ static BLOCK_SYNCHRONIZER_STATUS: Lazy<BlockSynchronizerStatus> = Lazy::new(|| {
 });
 
 /// The status of syncing an individual block.
-#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct BlockSyncStatus {
     /// The block hash.
@@ -96,7 +104,8 @@ impl FromBytes for BlockSyncStatus {
 }
 
 /// The status of the block synchronizer.
-#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct BlockSynchronizerStatus {
     /// The status of syncing a historical block, if any.
@@ -115,6 +124,7 @@ impl BlockSynchronizerStatus {
     }
 
     /// Returns an example `BlockSynchronizerStatus`.
+    #[cfg(feature = "json-schema")]
     pub fn example() -> &'static Self {
         &BLOCK_SYNCHRONIZER_STATUS
     }
