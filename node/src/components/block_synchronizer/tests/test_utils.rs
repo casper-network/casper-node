@@ -7,7 +7,6 @@ use rand::Rng;
 
 pub(crate) fn chunks_with_proof_from_data(data: &[u8]) -> BTreeMap<u64, ChunkWithProof> {
     (0..data.chunks(ChunkWithProof::CHUNK_SIZE_BYTES).count())
-        .into_iter()
         .map(|index| {
             (
                 index as u64,
@@ -22,7 +21,6 @@ pub(crate) fn test_chunks_with_proof(
 ) -> (Vec<ChunkWithProof>, Vec<TrieOrChunkId>, Vec<u8>) {
     let mut rng = rand::thread_rng();
     let data: Vec<u8> = (0..ChunkWithProof::CHUNK_SIZE_BYTES * num_chunks as usize)
-        .into_iter()
         .map(|_| rng.gen())
         .collect();
 

@@ -12,7 +12,9 @@ use serde::Serialize;
 /// Scheduling priority.
 ///
 /// Priorities are ordered from lowest to highest.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, IntoEnumIterator, PartialOrd, Ord, Serialize)]
+#[derive(
+    Copy, Clone, Debug, Eq, PartialEq, Hash, IntoEnumIterator, PartialOrd, Ord, Serialize, Default,
+)]
 pub enum QueueKind {
     /// Control messages for the runtime itself.
     Control,
@@ -37,6 +39,7 @@ pub enum QueueKind {
     /// Events of unspecified priority.
     ///
     /// This is the default queue.
+    #[default]
     Regular,
     /// Gossiper events.
     Gossip,
@@ -79,12 +82,6 @@ impl Display for QueueKind {
             QueueKind::Api => "Api",
         };
         write!(f, "{}", str_value)
-    }
-}
-
-impl Default for QueueKind {
-    fn default() -> Self {
-        QueueKind::Regular
     }
 }
 

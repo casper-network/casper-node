@@ -14,6 +14,8 @@ use std::{
 
 use datasize::DataSize;
 use itertools::Itertools;
+use num_rational::Ratio;
+use num_traits::CheckedMul;
 use rand::RngCore;
 use tracing::{debug, error, info, trace, warn};
 
@@ -77,7 +79,7 @@ where
     finality_detector: FinalityDetector<C>,
     highway: Highway<C>,
     /// A tracker for whether we are keeping up with the current round length or not.
-    performance_meter: Option<PerformanceMeter>,
+    performance_meter: PerformanceMeter,
     synchronizer: Synchronizer<C>,
     pvv_cache: HashMap<Dependency<C>, PreValidatedVertex<C>>,
     evidence_only: bool,
@@ -114,26 +116,26 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         // The maximum round exponent x is such that 2^x * m is at most M, where m and M are min
         // and max round length. So x is the floor of log_2(M / m). Thus the ceiling of
         // log_2(M / m + 1) is always x + 1.
+        #[allow(clippy::arithmetic_side_effects)] // minimum_round_length is guaranteed to be > 0.
         let maximum_round_exponent = (highway_config.maximum_round_length / minimum_round_length)
             .saturating_add(1)
             .next_power_of_two()
             .trailing_zeros()
             .saturating_sub(1) as u8;
         // Doesn't overflow since it's at most highway_config.maximum_round_length.
-        #[allow(clippy::integer_arithmetic)]
+        #[allow(clippy::arithmetic_side_effects)]
         let maximum_round_length =
             TimeDiff::from_millis(minimum_round_length.millis() << maximum_round_exponent);
 
         let performance_meter = prev_cp
             .and_then(|cp| cp.as_any().downcast_ref::<HighwayProtocol<C>>())
-            .and_then(|highway_proto| highway_proto.next_era_perf_meter());
+            .map(|highway_proto| highway_proto.next_era_perf_meter())
+            .unwrap_or_else(|| PerformanceMeter::new_inactive(highway_config.performance_meter));
         // This will return the minimum round length if we just initialized the meter, i.e. if
         // there was no previous consensus instance or it had no round success meter.
         let init_round_len = performance_meter
-            .as_ref()
-            .map_or(minimum_round_length, |perf_meter| {
-                perf_meter.current_round_len()
-            });
+            .current_round_len()
+            .unwrap_or(minimum_round_length);
 
         info!(
             %init_round_len,
@@ -159,16 +161,23 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             0
         };
 
+        let reduced_block_reward = match highway_config
+            .reduced_reward_multiplier
+            .checked_mul(&Ratio::from(block_reward))
+        {
+            None => u64::MAX,
+            Some(ratio) => ratio.to_integer(),
+        };
         let params = Params::new(
             seed,
             block_reward,
-            (highway_config.reduced_reward_multiplier * block_reward).to_integer(),
+            reduced_block_reward,
             minimum_round_length,
             maximum_round_length,
             init_round_len,
             chainspec.core_config.minimum_era_height,
             era_start_time,
-            era_start_time + chainspec.core_config.era_duration,
+            era_start_time.saturating_add(chainspec.core_config.era_duration),
             endorsement_evidence_limit,
         );
 
@@ -195,18 +204,18 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         config: &config::Config,
     ) -> ProtocolOutcomes<C> {
         let mut outcomes = vec![ProtocolOutcome::ScheduleTimer(
-            now + config.pending_vertex_timeout,
+            now.saturating_add(config.pending_vertex_timeout),
             TIMER_ID_PURGE_VERTICES,
         )];
         if let Some(interval) = config.log_participation_interval {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
-                now.max(era_start_time) + interval,
+                now.max(era_start_time).saturating_add(interval),
                 TIMER_ID_LOG_PARTICIPATION,
             ));
         }
         if let Some(interval) = config.log_synchronizer_interval {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
-                now + interval,
+                now.saturating_add(interval),
                 TIMER_ID_SYNCHRONIZER_LOG,
             ));
         }
@@ -361,9 +370,12 @@ impl<C: Context + 'static> HighwayProtocol<C> {
     }
 
     fn calculate_round_length(&mut self) {
-        let Some(performance_meter) = self.performance_meter.as_mut() else { return; };
-
-        let new_round_len = performance_meter.calculate_new_length(self.highway.state());
+        let Some(new_round_len) = self
+            .performance_meter
+            .calculate_new_length(self.highway.state())
+        else {
+            return;
+        };
         self.highway.set_round_len(new_round_len);
     }
 
@@ -406,8 +418,8 @@ impl<C: Context + 'static> HighwayProtocol<C> {
 
     /// Returns an instance of `RoundSuccessMeter` for the new era: resetting the counters where
     /// appropriate.
-    fn next_era_perf_meter(&self) -> Option<PerformanceMeter> {
-        self.performance_meter.clone()
+    fn next_era_perf_meter(&self) -> PerformanceMeter {
+        self.performance_meter.next_era_perf_meter()
     }
 
     /// Returns an iterator over all the values that are in parents of the given block.
@@ -464,7 +476,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         let mut outcomes = self.latest_state_request();
         if let Some(interval) = self.config.request_state_interval {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
-                now + interval,
+                now.saturating_add(interval),
                 TIMER_ID_REQUEST_STATE,
             ));
         }
@@ -591,7 +603,6 @@ impl<C: Context + 'static> HighwayProtocol<C> {
                         unit_seq_number,
                     }
                 })
-                .into_iter()
                 .collect()
         } else {
             // We're ahead.
@@ -631,7 +642,6 @@ impl<C: Context + 'static> HighwayProtocol<C> {
                                 .wire_unit(unit, *self.highway.instance_id())
                                 .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu)))
                         })
-                        .into_iter()
                         .collect(),
                 },
             }
@@ -645,10 +655,10 @@ impl<C: Context + 'static> HighwayProtocol<C> {
     }
 }
 
-#[allow(clippy::integer_arithmetic)]
+#[allow(clippy::arithmetic_side_effects)]
 mod relaxed {
     // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
-    // module-wide `clippy::integer_arithmetic` lint.
+    // module-wide `clippy::arithmetic_side_effects` lint.
 
     use datasize::DataSize;
     use serde::{Deserialize, Serialize};
@@ -785,7 +795,9 @@ where
                 }
 
                 match pvv.timestamp() {
-                    Some(timestamp) if timestamp > now + self.config.pending_vertex_timeout => {
+                    Some(timestamp)
+                        if timestamp > now.saturating_add(self.config.pending_vertex_timeout) =>
+                    {
                         trace!("received a vertex with a timestamp far in the future; dropping");
                         vec![]
                     }
@@ -933,14 +945,14 @@ where
                 let oldest = timestamp.saturating_sub(self.config.pending_vertex_timeout);
                 self.synchronizer.purge_vertices(oldest);
                 self.pvv_cache.clear();
-                let next_time = timestamp + self.config.pending_vertex_timeout;
+                let next_time = timestamp.saturating_add(self.config.pending_vertex_timeout);
                 vec![ProtocolOutcome::ScheduleTimer(next_time, timer_id)]
             }
             TIMER_ID_LOG_PARTICIPATION => match self.config.log_participation_interval {
                 Some(interval) if !self.evidence_only && !self.finalized_switch_block() => {
                     self.log_participation();
                     vec![ProtocolOutcome::ScheduleTimer(
-                        timestamp + interval,
+                        timestamp.saturating_add(interval),
                         timer_id,
                     )]
                 }
@@ -952,7 +964,7 @@ where
                 match self.config.log_synchronizer_interval {
                     Some(interval) if !self.finalized_switch_block() => {
                         vec![ProtocolOutcome::ScheduleTimer(
-                            timestamp + interval,
+                            timestamp.saturating_add(interval),
                             timer_id,
                         )]
                     }
@@ -969,7 +981,7 @@ where
         // If configured, schedule periodic latest state requests.
         if let Some(interval) = self.config.request_state_interval {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
-                now + interval,
+                now.saturating_add(interval),
                 TIMER_ID_REQUEST_STATE,
             ));
         }
@@ -1054,14 +1066,14 @@ where
                 return ProtocolOutcomes::new();
             }
         };
-        self.performance_meter = Some(PerformanceMeter::new(
+        self.performance_meter.activate(
             our_idx,
             self.highway.state().params().init_round_len(),
             min_round_len,
             max_round_len,
             minimum_era_height,
             now,
-        ));
+        );
 
         let av_effects = self
             .highway
@@ -1070,7 +1082,7 @@ where
     }
 
     fn deactivate_validator(&mut self) {
-        self.performance_meter = None;
+        self.performance_meter.deactivate();
         self.highway.deactivate_validator()
     }
 
@@ -1150,5 +1162,6 @@ pub fn max_rounds_per_era(
     era_duration: TimeDiff,
     minimum_round_length: TimeDiff,
 ) -> u64 {
-    minimum_era_height.max((TimeDiff::from_millis(1) + era_duration) / minimum_round_length)
+    #[allow(clippy::arithmetic_side_effects)] // minimum_round_length is guaranteed to be > 0.
+    minimum_era_height.max((era_duration.saturating_add(1)) / minimum_round_length)
 }

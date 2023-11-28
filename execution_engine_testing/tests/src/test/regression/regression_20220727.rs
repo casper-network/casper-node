@@ -147,14 +147,12 @@ fn should_pass_elem_section() {
     );
 
     // wasmi assumes table size and function pointers are equal
-    assert!(matches!(
-        test_element_section(
-            DEFAULT_MAX_TABLE_SIZE,
-            Some(DEFAULT_MAX_TABLE_SIZE),
-            DEFAULT_MAX_TABLE_SIZE
-        ),
-        None
-    ));
+    assert!(test_element_section(
+        DEFAULT_MAX_TABLE_SIZE,
+        Some(DEFAULT_MAX_TABLE_SIZE),
+        DEFAULT_MAX_TABLE_SIZE
+    )
+    .is_none());
 }
 
 fn test_element_section(

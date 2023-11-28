@@ -1,5 +1,5 @@
 // This is a test module, so we're not worried about integer arithmetic here.
-#![allow(clippy::integer_arithmetic)]
+#![allow(clippy::arithmetic_side_effects)]
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -64,7 +64,7 @@ impl ConsensusEnvironment {
                 .iter()
                 .map(|(pub_key, value)| (pub_key.clone(), value.1)),
             vec![],
-            Some(10),
+            Some(15),
         );
         // our active validator will be the first in the map
         let (pub_key, (keypair, _)) = validators.iter().next().unwrap();
