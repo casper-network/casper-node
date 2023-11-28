@@ -168,7 +168,7 @@ pub trait NodeClient: Send + Sync {
 
     async fn does_exist_in_completed_blocks(&self, block_hash: BlockHash) -> Result<bool, Error> {
         let resp = self
-            .read_from_mem(NonPersistedDataRequest::CompletedBlockContains { block_hash })
+            .read_from_mem(NonPersistedDataRequest::CompletedBlocksContain { block_hash })
             .await?
             .ok_or(Error::NoResponseBody)?;
         bytesrepr::deserialize_from_slice(resp)

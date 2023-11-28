@@ -292,7 +292,7 @@ where
                         .map_err(|err| Error::BytesRepr(err))?;
                     Ok(payload)
                 }
-                NonPersistedDataRequest::CompletedBlockContains { block_hash } => {
+                NonPersistedDataRequest::CompletedBlocksContain { block_hash } => {
                     let val = effect_builder
                         .highest_completed_block_sequence_contains_hash(block_hash)
                         .await;

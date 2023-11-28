@@ -34,7 +34,7 @@ pub enum NonPersistedDataRequest {
     /// Returns height&hash for the currently highest block.
     HighestCompleteBlock,
     /// Returns true if `self.completed_blocks.highest_sequence()` contains the given hash
-    CompletedBlockContains {
+    CompletedBlocksContain {
         /// Block hash.
         block_hash: BlockHash,
     },
@@ -88,7 +88,7 @@ impl ToBytes for NonPersistedDataRequest {
             NonPersistedDataRequest::HighestCompleteBlock => {
                 HIGHEST_COMPLETE_BLOCK_TAG.write_bytes(writer)
             }
-            NonPersistedDataRequest::CompletedBlockContains { block_hash } => {
+            NonPersistedDataRequest::CompletedBlocksContain { block_hash } => {
                 COMPLETED_BLOCK_CONTAINS_TAG.write_bytes(writer)?;
                 block_hash.write_bytes(writer)
             }
@@ -125,7 +125,7 @@ impl ToBytes for NonPersistedDataRequest {
             + match self {
                 NonPersistedDataRequest::BlockHeight2Hash { height } => height.serialized_length(),
                 NonPersistedDataRequest::HighestCompleteBlock => 0,
-                NonPersistedDataRequest::CompletedBlockContains { block_hash } => {
+                NonPersistedDataRequest::CompletedBlocksContain { block_hash } => {
                     block_hash.serialized_length()
                 }
                 NonPersistedDataRequest::TransactionHash2BlockHashAndHeight {
@@ -165,7 +165,7 @@ impl FromBytes for NonPersistedDataRequest {
             COMPLETED_BLOCK_CONTAINS_TAG => {
                 let (block_hash, remainder) = BlockHash::from_bytes(remainder)?;
                 Ok((
-                    NonPersistedDataRequest::CompletedBlockContains { block_hash },
+                    NonPersistedDataRequest::CompletedBlocksContain { block_hash },
                     remainder,
                 ))
             }
