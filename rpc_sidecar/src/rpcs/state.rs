@@ -1,6 +1,6 @@
 //! RPCs related to the state.
 
-use std::{str, sync::Arc};
+use std::{collections::BTreeMap, str, sync::Arc};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
@@ -18,8 +18,16 @@ use casper_types::{
     account::{Account, AccountHash},
     binary_port::get_all_values::GetAllValuesResult,
     bytesrepr::Bytes,
-    AuctionState, BlockHash, BlockHeader, BlockHeaderV2, BlockV2, CLValue, Digest, Key, KeyTag,
-    ProtocolVersion, PublicKey, SecretKey, StoredValue, Tagged, URef, U512,
+    package::PackageKindTag,
+    system::{
+        auction::{
+            EraValidators, SeigniorageRecipientsSnapshot, ValidatorWeights,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        },
+        AUCTION,
+    },
+    AddressableEntityHash, AuctionState, BlockHash, BlockHeader, BlockHeaderV2, BlockV2, CLValue,
+    Digest, Key, KeyTag, ProtocolVersion, PublicKey, SecretKey, StoredValue, Tagged, URef, U512,
 };
 
 static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
@@ -282,13 +290,15 @@ impl RpcWithOptionalParams for GetAuctionInfo {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        _api_version: ProtocolVersion,
+        api_version: ProtocolVersion,
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
         let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-        let block = common::get_signed_block(&*node_client, maybe_block_id).await?;
-        let _bids = match node_client
-            .query_global_state_by_tag(*block.block().state_root_hash(), KeyTag::Bid)
+        let signed_block = common::get_signed_block(&*node_client, maybe_block_id).await?;
+        let state_root_hash = *signed_block.block().state_root_hash();
+
+        let bid_stored_values = match node_client
+            .query_global_state_by_tag(state_root_hash, KeyTag::Bid)
             .await
             .map_err(|err| Error::NodeRequest("auction bids", err))?
         {
@@ -297,8 +307,48 @@ impl RpcWithOptionalParams for GetAuctionInfo {
                 return Err(Error::GlobalStateRootHashNotFound.into())
             }
         };
+        let bids = bid_stored_values
+            .into_iter()
+            .map(|bid| bid.into_bid_kind().ok_or(Error::InvalidAuctionBids))
+            .collect::<Result<Vec<_>, Error>>()?;
 
-        todo!()
+        let registry_result = node_client
+            .query_global_state(state_root_hash, Key::SystemContractRegistry, vec![])
+            .await
+            .map_err(|err| Error::NodeRequest("system contract registry", err))?;
+        let registry: BTreeMap<String, AddressableEntityHash> =
+            common::handle_query_result(registry_result)?
+                .value
+                .into_cl_value()
+                .ok_or(Error::InvalidAuctionContract)?
+                .into_t()
+                .map_err(|_| Error::InvalidAuctionContract)?;
+
+        let &auction_hash = registry.get(AUCTION).ok_or(Error::InvalidAuctionContract)?;
+        let auction_key = Key::addressable_entity_key(PackageKindTag::System, auction_hash);
+        let snapshot_result = node_client
+            .query_global_state(
+                state_root_hash,
+                auction_key,
+                vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_owned()],
+            )
+            .await
+            .map_err(|err| Error::NodeRequest("auction snapshot", err))?;
+        let snapshot = common::handle_query_result(snapshot_result)?
+            .value
+            .into_cl_value()
+            .ok_or(Error::InvalidAuctionValidators)?
+            .into_t()
+            .map_err(|_| Error::InvalidAuctionValidators)?;
+
+        let validators = era_validators_from_snapshot(snapshot);
+        let height = signed_block.block().height();
+        let auction_state = AuctionState::new(state_root_hash, height, validators, bids);
+
+        Ok(Self::ResponseResult {
+            api_version,
+            auction_state,
+        })
     }
 }
 
@@ -767,4 +817,17 @@ impl RpcWithParams for GetTrie {
             maybe_trie_bytes: maybe_trie.map(Into::into),
         })
     }
+}
+
+fn era_validators_from_snapshot(snapshot: SeigniorageRecipientsSnapshot) -> EraValidators {
+    snapshot
+        .into_iter()
+        .map(|(era_id, recipients)| {
+            let validator_weights = recipients
+                .into_iter()
+                .filter_map(|(public_key, bid)| bid.total_stake().map(|stake| (public_key, stake)))
+                .collect::<ValidatorWeights>();
+            (era_id, validator_weights)
+        })
+        .collect()
 }

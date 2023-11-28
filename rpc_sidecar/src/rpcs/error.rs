@@ -56,6 +56,12 @@ pub enum Error {
     InvalidDeploy(String),
     #[error("the peers response was invalid: {0}")]
     InvalidPeersResponse(String),
+    #[error("the auction bids were invalid")]
+    InvalidAuctionBids,
+    #[error("the auction contract was invalid")]
+    InvalidAuctionContract,
+    #[error("the auction validators were invalid")]
+    InvalidAuctionValidators,
 }
 
 impl Error {
@@ -89,6 +95,9 @@ impl Error {
             | Error::DictionaryKeyCouldNotBeParsed(_) => ErrorCode::FailedToGetDictionaryURef,
             Error::InvalidTransaction(_) => ErrorCode::InvalidTransaction,
             Error::InvalidDeploy(_) => ErrorCode::InvalidDeploy,
+            Error::InvalidAuctionBids
+            | Error::InvalidAuctionContract
+            | Error::InvalidAuctionValidators => ErrorCode::InvalidAuctionState,
         }
     }
 }
