@@ -15,3 +15,23 @@ pub(crate) enum Error {
     #[error("This function is disabled: {}", _0)]
     FunctionDisabled(String),
 }
+
+#[repr(u8)]
+pub enum ErrorCode {
+    NoError = 0,
+    Serialization = 1,
+    InvalidTransaction = 2,
+    FunctionDisabled = 3,
+    InternalError = 4,
+}
+
+impl Error {
+    fn as_error_code(&self) -> u8 {
+        match self {
+            Error::BytesRepr(_) => ErrorCode::Serialization as u8,
+            Error::EngineState(_) => ErrorCode::InternalError as u8,
+            Error::TransactionAcceptor(_) => ErrorCode::InvalidTransaction as u8,
+            Error::FunctionDisabled(_) => ErrorCode::FunctionDisabled as u8,
+        }
+    }
+}

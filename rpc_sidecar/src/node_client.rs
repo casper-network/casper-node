@@ -66,42 +66,46 @@ pub trait NodeClient: Send + Sync {
     ) -> Result<Option<(ExecutionResultV2, Vec<Message>)>, Error>;
 
     async fn read_transaction(&self, hash: TransactionHash) -> Result<Option<Transaction>, Error> {
-        let key = hash.to_bytes().expect("should always serialize a digest");
-        self.read_from_db(DbId::Transactions, &key)
-            .await?
-            .map(bytesrepr::deserialize_from_slice)
-            .transpose()
-            .map_err(|err| Error::Deserialization(err.to_string()))
+        todo!()
+        // let key = hash.to_bytes().expect("should always serialize a digest");
+        // self.read_from_db(DbId::Transactions, &key)
+        //     .await?
+        //     .map(bytesrepr::deserialize_from_slice)
+        //     .transpose()
+        //     .map_err(|err| Error::Deserialization(err.to_string()))
     }
 
     async fn read_finalized_approvals(
         &self,
         hash: TransactionHash,
     ) -> Result<Option<FinalizedApprovals>, Error> {
-        let key = hash.to_bytes().expect("should always serialize a digest");
-        self.read_from_db(DbId::VersionedFinalizedApprovals, &key)
-            .await?
-            .map(bytesrepr::deserialize_from_slice)
-            .transpose()
-            .map_err(|err| Error::Deserialization(err.to_string()))
+        todo!()
+        // let key = hash.to_bytes().expect("should always serialize a digest");
+        // self.read_from_db(DbId::VersionedFinalizedApprovals, &key)
+        //     .await?
+        //     .map(bytesrepr::deserialize_from_slice)
+        //     .transpose()
+        //     .map_err(|err| Error::Deserialization(err.to_string()))
     }
 
     async fn read_block_header(&self, hash: BlockHash) -> Result<Option<BlockHeader>, Error> {
-        let key = hash.to_bytes().expect("should always serialize a digest");
-        self.read_from_db(DbId::BlockHeaderV2, &key)
-            .await?
-            .map(bytesrepr::deserialize_from_slice)
-            .transpose()
-            .map_err(|err| Error::Deserialization(err.to_string()))
+        todo!()
+        // let key = hash.to_bytes().expect("should always serialize a digest");
+        // self.read_from_db(DbId::BlockHeaderV2, &key)
+        //     .await?
+        //     .map(bytesrepr::deserialize_from_slice)
+        //     .transpose()
+        //     .map_err(|err| Error::Deserialization(err.to_string()))
     }
 
     async fn read_block_body(&self, hash: Digest) -> Result<Option<BlockBody>, Error> {
-        let key = hash.to_bytes().expect("should always serialize a digest");
-        self.read_from_db(DbId::BlockBodyV2, &key)
-            .await?
-            .map(bytesrepr::deserialize_from_slice)
-            .transpose()
-            .map_err(|err| Error::Deserialization(err.to_string()))
+        todo!()
+        // let key = hash.to_bytes().expect("should always serialize a digest");
+        // self.read_from_db(DbId::BlockBodyV2, &key)
+        //     .await?
+        //     .map(bytesrepr::deserialize_from_slice)
+        //     .transpose()
+        //     .map_err(|err| Error::Deserialization(err.to_string()))
     }
 
     async fn read_block_signatures(
@@ -129,12 +133,13 @@ pub trait NodeClient: Send + Sync {
         &self,
         hash: TransactionHash,
     ) -> Result<Option<ExecutionResult>, Error> {
-        let key = hash.to_bytes().expect("should always serialize a digest");
-        self.read_from_db(DbId::ExecutionResults, &key)
-            .await?
-            .map(bytesrepr::deserialize_from_slice)
-            .transpose()
-            .map_err(|err| Error::Deserialization(err.to_string()))
+        todo!()
+        // let key = hash.to_bytes().expect("should always serialize a digest");
+        // self.read_from_db(DbId::ExecutionResults, &key)
+        //     .await?
+        //     .map(bytesrepr::deserialize_from_slice)
+        //     .transpose()
+        //     .map_err(|err| Error::Deserialization(err.to_string()))
     }
 
     async fn read_transaction_block_info(

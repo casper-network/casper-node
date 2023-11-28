@@ -3,7 +3,7 @@ use std::{cmp::Ord, collections::BTreeSet};
 
 use datasize::DataSize;
 use lmdb::{
-    Cursor, Database, DatabaseFlags, Environment, RwCursor, RwTransaction,
+    Cursor, Database, DatabaseFlags, Environment, RoTransaction, RwCursor, RwTransaction,
     Transaction as LmdbTransaction,
 };
 use serde::de::DeserializeOwned;
@@ -22,7 +22,7 @@ use casper_types::{
 
 use super::{
     lmdb_ext::{self, LmdbExtError, TransactionExt, WriteTransactionExt},
-    DeployMetadataV1, FatalStorageError, LegacyApprovalsHashes,
+    DeployMetadataV1, FatalStorageError, LegacyApprovalsHashes, RawDataAccess,
 };
 use crate::types::ApprovalsHashes;
 
@@ -85,6 +85,20 @@ impl VersionedValue for ExecutionResult {
 
 impl VersionedValue for FinalizedApprovals {
     type Legacy = FinalizedDeployApprovals;
+}
+
+impl<K, V> RawDataAccess for VersionedDatabases<K, V>
+where
+    K: VersionedKey,
+    V: VersionedValue,
+{
+    fn get_raw_bytes(
+        &self,
+        txn: &RoTransaction,
+        key: &[u8],
+    ) -> Result<Option<(bool, Vec<u8>)>, LmdbExtError> {
+        self.get_raw(txn, key)
+    }
 }
 
 /// A pair of databases, one holding the original legacy form of the data, and the other holding the
@@ -162,6 +176,27 @@ where
         Ok(txn
             .get_value::<_, V::Legacy>(self.legacy, legacy_key)?
             .map(Into::into))
+    }
+
+    // TODO[RC]: Replace returned tuple with proper struct (bool = is_legacy)
+    pub(super) fn get_raw(
+        &self,
+        txn: &RoTransaction,
+        key: &[u8],
+    ) -> Result<Option<(bool, Vec<u8>)>, LmdbExtError> {
+        let value = txn.get(self.current, &key);
+        match value {
+            Ok(raw_bytes) => return Ok(Some((false, raw_bytes.to_vec()))),
+            Err(lmdb::Error::NotFound) => {
+                let value = txn.get(self.legacy, &key);
+                match value {
+                    Ok(raw_bytes) => return Ok(Some((true, raw_bytes.to_vec()))),
+                    Err(lmdb::Error::NotFound) => return Ok(None),
+                    Err(err) => return Err(err.into()),
+                }
+            }
+            Err(err) => return Err(err.into()),
+        }
     }
 
     pub(super) fn exists<Tx: LmdbTransaction>(

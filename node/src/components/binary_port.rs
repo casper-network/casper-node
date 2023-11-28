@@ -184,18 +184,19 @@ where
             transaction,
             speculative_exec_at_block,
         } => {
-            let accept_transaction_result = effect_builder
-                .try_accept_transaction(
-                    Transaction::from(transaction),
-                    speculative_exec_at_block
-                        .map(|speculative_exec_at_block| Box::new(speculative_exec_at_block)),
-                )
-                .await
-                .map_err(|err| Error::TransactionAcceptor(err).to_string()); // TODO[RC]: No string, but transaction acceptor error
-            let bytes = ToBytes::to_bytes(&accept_transaction_result)
-                .map_err(|err| Error::BytesRepr(err))?
-                .into();
-            Ok(Some(bytes))
+            todo!()
+            // let accept_transaction_result = effect_builder
+            //     .try_accept_transaction(
+            //         Transaction::from(transaction),
+            //         speculative_exec_at_block
+            //             .map(|speculative_exec_at_block| Box::new(speculative_exec_at_block)),
+            //     )
+            //     .await
+            //     .map_err(|err| Error::TransactionAcceptor(err).to_string()); // TODO[RC]: No string, but transaction acceptor error
+            // let bytes = ToBytes::to_bytes(&accept_transaction_result)
+            //     .map_err(|err| Error::BytesRepr(err))?
+            //     .into();
+            // Ok(Some(bytes))
         }
         BinaryRequest::TrySpeculativeExec {
             transaction,
@@ -203,65 +204,66 @@ where
             block_time,
             protocol_version,
         } => {
-            let execution_prestate = SpeculativeExecutionState {
-                state_root_hash,
-                block_time,
-                protocol_version,
-            };
-            let speculative_execution_result = effect_builder
-                .speculatively_execute(execution_prestate, Box::new(transaction))
-                .await
-                .map_err(|error| match error {
-                    // TODO[RC]: Proper error conversion.
-                    EngineStateError::RootNotFound(_) => SpeculativeExecutionError::NoSuchStateRoot,
-                    EngineStateError::InvalidDeployItemVariant(error) => {
-                        SpeculativeExecutionError::InvalidDeploy(error.to_string())
-                    }
-                    EngineStateError::WasmPreprocessing(error) => {
-                        SpeculativeExecutionError::InvalidDeploy(error.to_string())
-                    }
+            todo!();
+            // let execution_prestate = SpeculativeExecutionState {
+            //     state_root_hash,
+            //     block_time,
+            //     protocol_version,
+            // };
+            // let speculative_execution_result = effect_builder
+            //     .speculatively_execute(execution_prestate, Box::new(transaction))
+            //     .await
+            //     .map_err(|error| match error {
+            //         // TODO[RC]: Proper error conversion.
+            //         EngineStateError::RootNotFound(_) => SpeculativeExecutionError::NoSuchStateRoot,
+            //         EngineStateError::InvalidDeployItemVariant(error) => {
+            //             SpeculativeExecutionError::InvalidDeploy(error.to_string())
+            //         }
+            //         EngineStateError::WasmPreprocessing(error) => {
+            //             SpeculativeExecutionError::InvalidDeploy(error.to_string())
+            //         }
 
-                    EngineStateError::InvalidProtocolVersion(_) => {
-                        SpeculativeExecutionError::InvalidDeploy(format!(
-                            "deploy used invalid protocol version {}",
-                            error
-                        ))
-                    }
-                    EngineStateError::Deploy => SpeculativeExecutionError::InvalidDeploy("".into()),
-                    EngineStateError::Genesis(_)
-                    | EngineStateError::WasmSerialization(_)
-                    | EngineStateError::Exec(_)
-                    | EngineStateError::Storage(_)
-                    | EngineStateError::Authorization
-                    | EngineStateError::InsufficientPayment
-                    | EngineStateError::GasConversionOverflow
-                    | EngineStateError::Finalization
-                    | EngineStateError::Bytesrepr(_)
-                    | EngineStateError::Mint(_)
-                    | EngineStateError::InvalidKeyVariant
-                    | EngineStateError::ProtocolUpgrade(_)
-                    | EngineStateError::CommitError(_)
-                    | EngineStateError::MissingSystemContractRegistry
-                    | EngineStateError::MissingSystemContractHash(_)
-                    | EngineStateError::RuntimeStackOverflow
-                    | EngineStateError::FailedToGetKeys(_)
-                    | EngineStateError::FailedToGetStoredWithdraws
-                    | EngineStateError::FailedToGetWithdrawPurses
-                    | EngineStateError::FailedToRetrieveUnbondingDelay
-                    | EngineStateError::FailedToRetrieveEraId => {
-                        SpeculativeExecutionError::InternalError(error.to_string())
-                    }
+            //         EngineStateError::InvalidProtocolVersion(_) => {
+            //             SpeculativeExecutionError::InvalidDeploy(format!(
+            //                 "deploy used invalid protocol version {}",
+            //                 error
+            //             ))
+            //         }
+            //         EngineStateError::Deploy => SpeculativeExecutionError::InvalidDeploy("".into()),
+            //         EngineStateError::Genesis(_)
+            //         | EngineStateError::WasmSerialization(_)
+            //         | EngineStateError::Exec(_)
+            //         | EngineStateError::Storage(_)
+            //         | EngineStateError::Authorization
+            //         | EngineStateError::InsufficientPayment
+            //         | EngineStateError::GasConversionOverflow
+            //         | EngineStateError::Finalization
+            //         | EngineStateError::Bytesrepr(_)
+            //         | EngineStateError::Mint(_)
+            //         | EngineStateError::InvalidKeyVariant
+            //         | EngineStateError::ProtocolUpgrade(_)
+            //         | EngineStateError::CommitError(_)
+            //         | EngineStateError::MissingSystemContractRegistry
+            //         | EngineStateError::MissingSystemContractHash(_)
+            //         | EngineStateError::RuntimeStackOverflow
+            //         | EngineStateError::FailedToGetKeys(_)
+            //         | EngineStateError::FailedToGetStoredWithdraws
+            //         | EngineStateError::FailedToGetWithdrawPurses
+            //         | EngineStateError::FailedToRetrieveUnbondingDelay
+            //         | EngineStateError::FailedToRetrieveEraId => {
+            //             SpeculativeExecutionError::InternalError(error.to_string())
+            //         }
 
-                    _ => SpeculativeExecutionError::InternalError(format!(
-                        "Unhandled engine state error: {}",
-                        error
-                    )),
-                });
+            //         _ => SpeculativeExecutionError::InternalError(format!(
+            //             "Unhandled engine state error: {}",
+            //             error
+            //         )),
+            //     });
 
-            let bytes = ToBytes::to_bytes(&speculative_execution_result)
-                .map_err(|err| Error::BytesRepr(err))?
-                .into();
-            Ok(Some(bytes))
+            // let bytes = ToBytes::to_bytes(&speculative_execution_result)
+            //     .map_err(|err| Error::BytesRepr(err))?
+            //     .into();
+            // Ok(Some(bytes))
         }
         BinaryRequest::Get(req) => match req {
             GetRequest::Db { db, key } => Ok(effect_builder
@@ -270,135 +272,152 @@ where
                 .map(|raw_data| Bytes::from(raw_data))),
             GetRequest::NonPersistedData(req) => match req {
                 NonPersistedDataRequest::BlockHeight2Hash { height } => {
-                    let block_hash = effect_builder.get_block_hash_for_height(height).await;
-                    let payload = block_hash
-                        .map(|data| data.to_bytes().map(Bytes::from))
-                        .transpose()
-                        .map_err(|err| Error::BytesRepr(err))?;
-                    Ok(payload)
+                    todo!()
+                    // let block_hash = effect_builder.get_block_hash_for_height(height).await;
+                    // let payload = block_hash
+                    //     .map(|data| data.to_bytes().map(Bytes::from))
+                    //     .transpose()
+                    //     .map_err(|err| Error::BytesRepr(err))?;
+                    // Ok(payload)
                 }
                 NonPersistedDataRequest::HighestCompleteBlock => {
-                    let block_hash_and_height = effect_builder
-                        .get_highest_complete_block_header_from_storage()
-                        .await
-                        .map(|block_header| {
-                            BlockHashAndHeight::new(
-                                block_header.block_hash(),
-                                block_header.height(),
-                            )
-                        });
-                    let payload = block_hash_and_height
-                        .map(|data| data.to_bytes().map(Bytes::from))
-                        .transpose()
-                        .map_err(|err| Error::BytesRepr(err))?;
-                    Ok(payload)
+                    todo!()
+                    // let block_hash_and_height = effect_builder
+                    //     .get_highest_complete_block_header_from_storage()
+                    //     .await
+                    //     .map(|block_header| {
+                    //         BlockHashAndHeight::new(
+                    //             block_header.block_hash(),
+                    //             block_header.height(),
+                    //         )
+                    //     });
+                    // let payload = block_hash_and_height
+                    //     .map(|data| data.to_bytes().map(Bytes::from))
+                    //     .transpose()
+                    //     .map_err(|err| Error::BytesRepr(err))?;
+                    // Ok(payload)
                 }
                 NonPersistedDataRequest::CompletedBlocksContain { block_hash } => {
-                    let val = effect_builder
-                        .highest_completed_block_sequence_contains_hash(block_hash)
-                        .await;
-                    let payload = ToBytes::to_bytes(&val).map_err(|err| Error::BytesRepr(err))?;
-                    Ok(Some(Bytes::from(payload)))
+                    todo!()
+                    // let val = effect_builder
+                    //     .highest_completed_block_sequence_contains_hash(block_hash)
+                    //     .await;
+                    // let payload = ToBytes::to_bytes(&val).map_err(|err| Error::BytesRepr(err))?;
+                    // Ok(Some(Bytes::from(payload)))
                 }
                 NonPersistedDataRequest::TransactionHash2BlockHashAndHeight {
                     transaction_hash,
                 } => {
-                    let block_hash_and_height = effect_builder
-                        .get_block_hash_and_height_for_transaction(transaction_hash)
-                        .await;
-                    let payload = block_hash_and_height
-                        .map(|data| data.to_bytes().map(Bytes::from))
-                        .transpose()
-                        .map_err(|err| Error::BytesRepr(err))?;
-                    Ok(payload)
+                    todo!()
+                    // let block_hash_and_height = effect_builder
+                    //     .get_block_hash_and_height_for_transaction(transaction_hash)
+                    //     .await;
+                    // let payload = block_hash_and_height
+                    //     .map(|data| data.to_bytes().map(Bytes::from))
+                    //     .transpose()
+                    //     .map_err(|err| Error::BytesRepr(err))?;
+                    // Ok(payload)
                 }
                 NonPersistedDataRequest::Peers => {
-                    let peers = effect_builder.network_peers().await;
-                    let peers_map = PeersMap::from(peers);
-                    let payload =
-                        ToBytes::to_bytes(&peers_map).map_err(|err| Error::BytesRepr(err))?;
-                    Ok(Some(Bytes::from(payload)))
+                    todo!()
+                    // let peers = effect_builder.network_peers().await;
+                    // let peers_map = PeersMap::from(peers);
+                    // let payload =
+                    //     ToBytes::to_bytes(&peers_map).map_err(|err| Error::BytesRepr(err))?;
+                    // Ok(Some(Bytes::from(payload)))
                 }
                 NonPersistedDataRequest::Uptime => {
-                    let uptime = effect_builder.get_uptime().await.as_secs();
-                    let payload =
-                        ToBytes::to_bytes(&uptime).map_err(|err| Error::BytesRepr(err))?;
-                    Ok(Some(Bytes::from(payload)))
+                    todo!()
+                    // let uptime = effect_builder.get_uptime().await.as_secs();
+                    // let payload =
+                    //     ToBytes::to_bytes(&uptime).map_err(|err| Error::BytesRepr(err))?;
+                    // Ok(Some(Bytes::from(payload)))
                 }
                 NonPersistedDataRequest::LastProgress => {
-                    let last_progress = effect_builder.get_last_progress().await;
-                    let payload =
-                        ToBytes::to_bytes(&last_progress).map_err(|err| Error::BytesRepr(err))?;
-                    Ok(Some(Bytes::from(payload)))
+                    todo!()
+                    // let last_progress = effect_builder.get_last_progress().await;
+                    // let payload =
+                    //     ToBytes::to_bytes(&last_progress).map_err(|err| Error::BytesRepr(err))?;
+                    // Ok(Some(Bytes::from(payload)))
                 }
                 NonPersistedDataRequest::ReactorState => {
-                    let reactor_state = effect_builder.get_reactor_state().await;
-                    let payload =
-                        ToBytes::to_bytes(&reactor_state).map_err(|err| Error::BytesRepr(err))?;
-                    Ok(Some(Bytes::from(payload)))
+                    todo!()
+                    // let reactor_state = effect_builder.get_reactor_state().await;
+                    // let payload =
+                    //     ToBytes::to_bytes(&reactor_state).map_err(|err| Error::BytesRepr(err))?;
+                    // Ok(Some(Bytes::from(payload)))
                 }
                 NonPersistedDataRequest::NetworkName => {
-                    let network_name = effect_builder.get_network_name().await;
-                    let payload =
-                        ToBytes::to_bytes(&network_name).map_err(|err| Error::BytesRepr(err))?;
-                    Ok(Some(Bytes::from(payload)))
+                    todo!()
+                    // let network_name = effect_builder.get_network_name().await;
+                    // let payload =
+                    //     ToBytes::to_bytes(&network_name).map_err(|err| Error::BytesRepr(err))?;
+                    // Ok(Some(Bytes::from(payload)))
                 }
                 NonPersistedDataRequest::ConsensusValidatorChanges => {
-                    let consensus_validator_changes =
-                        effect_builder.get_consensus_validator_changes().await;
-                    let payload = ToBytes::to_bytes(&consensus_validator_changes)
-                        .map_err(|err| Error::BytesRepr(err))?;
-                    Ok(Some(Bytes::from(payload)))
+                    todo!()
+                    // let consensus_validator_changes =
+                    //     effect_builder.get_consensus_validator_changes().await;
+                    // let payload = ToBytes::to_bytes(&consensus_validator_changes)
+                    //     .map_err(|err| Error::BytesRepr(err))?;
+                    // Ok(Some(Bytes::from(payload)))
                 }
                 NonPersistedDataRequest::BlockSynchronizerStatus => {
-                    let block_synchronizer_status =
-                        effect_builder.get_block_synchronizer_status().await;
-                    let payload = ToBytes::to_bytes(&block_synchronizer_status)
-                        .map_err(|err| Error::BytesRepr(err))?;
-                    Ok(Some(Bytes::from(payload)))
+                    todo!()
+                    // let block_synchronizer_status =
+                    //     effect_builder.get_block_synchronizer_status().await;
+                    // let payload = ToBytes::to_bytes(&block_synchronizer_status)
+                    //     .map_err(|err| Error::BytesRepr(err))?;
+                    // Ok(Some(Bytes::from(payload)))
                 }
                 NonPersistedDataRequest::AvailableBlockRange => {
-                    let available_block_range = effect_builder
-                        .get_available_block_range_from_storage()
-                        .await;
-                    let payload = ToBytes::to_bytes(&available_block_range)
-                        .map_err(|err| Error::BytesRepr(err))?;
-                    Ok(Some(Bytes::from(payload)))
+                    todo!()
+                    // let available_block_range = effect_builder
+                    //     .get_available_block_range_from_storage()
+                    //     .await;
+                    // let payload = ToBytes::to_bytes(&available_block_range)
+                    //     .map_err(|err| Error::BytesRepr(err))?;
+                    // Ok(Some(Bytes::from(payload)))
                 }
                 NonPersistedDataRequest::NextUpgrade => {
-                    let next_upgrade = effect_builder.get_next_upgrade().await;
-                    let payload = next_upgrade
-                        .map(|data| data.to_bytes().map(Bytes::from))
-                        .transpose()
-                        .map_err(|err| Error::BytesRepr(err))?;
-                    Ok(payload)
+                    todo!()
+                    // let next_upgrade = effect_builder.get_next_upgrade().await;
+                    // let payload = next_upgrade
+                    //     .map(|data| data.to_bytes().map(Bytes::from))
+                    //     .transpose()
+                    //     .map_err(|err| Error::BytesRepr(err))?;
+                    // Ok(payload)
                 }
                 NonPersistedDataRequest::ConsensusStatus => {
-                    let consensus_status = effect_builder.consensus_status().await;
-                    let payload = consensus_status
-                        .map(|data| data.to_bytes().map(Bytes::from))
-                        .transpose()
-                        .map_err(|err| Error::BytesRepr(err))?;
-                    Ok(payload)
+                    todo!()
+                    // let consensus_status = effect_builder.consensus_status().await;
+                    // let payload = consensus_status
+                    //     .map(|data| data.to_bytes().map(Bytes::from))
+                    //     .transpose()
+                    //     .map_err(|err| Error::BytesRepr(err))?;
+                    // Ok(payload)
                 }
                 NonPersistedDataRequest::ChainspecRawBytes => {
-                    let chainspec_raw_bytes = effect_builder.get_chainspec_raw_bytes().await;
-                    let payload = chainspec_raw_bytes.chainspec_bytes().to_vec();
-                    Ok(Some(payload.into()))
+                    todo!()
+                    // let chainspec_raw_bytes = effect_builder.get_chainspec_raw_bytes().await;
+                    // let payload = chainspec_raw_bytes.chainspec_bytes().to_vec();
+                    // Ok(Some(payload.into()))
                 }
                 NonPersistedDataRequest::GenesisAccountsBytes => {
-                    let chainspec_raw_bytes = effect_builder.get_chainspec_raw_bytes().await;
-                    let payload = chainspec_raw_bytes
-                        .maybe_genesis_accounts_bytes()
-                        .map(|bytes| bytes.to_vec().into());
-                    Ok(payload)
+                    todo!()
+                    // let chainspec_raw_bytes = effect_builder.get_chainspec_raw_bytes().await;
+                    // let payload = chainspec_raw_bytes
+                    //     .maybe_genesis_accounts_bytes()
+                    //     .map(|bytes| bytes.to_vec().into());
+                    // Ok(payload)
                 }
                 NonPersistedDataRequest::GlobalStateBytes => {
-                    let chainspec_raw_bytes = effect_builder.get_chainspec_raw_bytes().await;
-                    let payload = chainspec_raw_bytes
-                        .maybe_global_state_bytes()
-                        .map(|bytes| bytes.to_vec().into());
-                    Ok(payload)
+                    todo!()
+                    // let chainspec_raw_bytes = effect_builder.get_chainspec_raw_bytes().await;
+                    // let payload = chainspec_raw_bytes
+                    //     .maybe_global_state_bytes()
+                    //     .map(|bytes| bytes.to_vec().into());
+                    // Ok(payload)
                 }
             },
             GetRequest::State {
@@ -406,44 +425,47 @@ where
                 base_key,
                 path,
             } => {
-                let query_result: GlobalStateQueryResult = effect_builder
-                    .query_global_state(QueryRequest::new(state_root_hash, base_key, path))
-                    .await
-                    .map_err(|err| Error::EngineState(err))?
-                    .into();
+                todo!()
+                // let query_result: GlobalStateQueryResult = effect_builder
+                //     .query_global_state(QueryRequest::new(state_root_hash, base_key, path))
+                //     .await
+                //     .map_err(|err| Error::EngineState(err))?
+                //     .into();
 
-                let payload =
-                    ToBytes::to_bytes(&query_result).map_err(|err| Error::BytesRepr(err))?;
-                Ok(Some(payload.into()))
+                // let payload =
+                //     ToBytes::to_bytes(&query_result).map_err(|err| Error::BytesRepr(err))?;
+                // Ok(Some(payload.into()))
             }
             GetRequest::AllValues {
                 state_root_hash,
                 key_tag,
             } => {
-                if !config.allow_request_get_all_values {
-                    return Err(Error::FunctionDisabled("GetRequest::AllValues".to_string()));
-                }
-                let get_all_values_request = GetAllValuesRequest::new(state_root_hash, key_tag);
-                let get_all_values_result = effect_builder
-                    .get_all_values(get_all_values_request)
-                    .await
-                    .map_err(|error| Error::EngineState(error))?;
-                let bytes = ToBytes::to_bytes(&get_all_values_result)
-                    .map_err(|err| Error::BytesRepr(err))?
-                    .into();
-                Ok(Some(bytes))
+                todo!()
+                // if !config.allow_request_get_all_values {
+                //     return Err(Error::FunctionDisabled("GetRequest::AllValues".to_string()));
+                // }
+                // let get_all_values_request = GetAllValuesRequest::new(state_root_hash, key_tag);
+                // let get_all_values_result = effect_builder
+                //     .get_all_values(get_all_values_request)
+                //     .await
+                //     .map_err(|error| Error::EngineState(error))?;
+                // let bytes = ToBytes::to_bytes(&get_all_values_result)
+                //     .map_err(|err| Error::BytesRepr(err))?
+                //     .into();
+                // Ok(Some(bytes))
             }
             GetRequest::Trie { trie_key } => {
-                if !config.allow_request_get_trie {
-                    return Err(Error::FunctionDisabled("GetRequest::Trie".to_string()));
-                }
+                todo!()
+                // if !config.allow_request_get_trie {
+                //     return Err(Error::FunctionDisabled("GetRequest::Trie".to_string()));
+                // }
 
-                let maybe_trie_bytes = effect_builder
-                    .get_trie_full(trie_key)
-                    .await
-                    .map_err(|error| Error::EngineState(error))?;
-                let payload = maybe_trie_bytes.map(|bytes| Bytes::from(bytes.take_inner()));
-                Ok(payload)
+                // let maybe_trie_bytes = effect_builder
+                //     .get_trie_full(trie_key)
+                //     .await
+                //     .map_err(|error| Error::EngineState(error))?;
+                // let payload = maybe_trie_bytes.map(|bytes| Bytes::from(bytes.take_inner()));
+                // Ok(payload)
             }
         },
     }

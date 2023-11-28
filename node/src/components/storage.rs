@@ -62,7 +62,7 @@ use std::{
 
 use datasize::DataSize;
 use lmdb::{
-    Database, DatabaseFlags, Environment, EnvironmentFlags, RwCursor, RwTransaction,
+    Database, DatabaseFlags, Environment, EnvironmentFlags, RoTransaction, RwCursor, RwTransaction,
     Transaction as LmdbTransaction, WriteFlags,
 };
 use prometheus::Registry;
@@ -117,6 +117,8 @@ use metrics::Metrics;
 use object_pool::ObjectPool;
 use versioned_databases::VersionedDatabases;
 
+use self::versioned_databases::VersionedValue;
+
 const COMPONENT_NAME: &str = "storage";
 
 /// Filename for the LMDB database created by the Storage component.
@@ -151,8 +153,31 @@ const STORAGE_FILES: [&str; 5] = [
     "sse_index",
 ];
 
+trait RawDataAccess {
+    fn get_raw_bytes(
+        &self,
+        txn: &RoTransaction,
+        key: &[u8],
+    ) -> Result<Option<(bool, Vec<u8>)>, LmdbExtError>;
+}
+
+impl RawDataAccess for Database {
+    fn get_raw_bytes(
+        &self,
+        txn: &RoTransaction,
+        key: &[u8],
+    ) -> Result<Option<(bool, Vec<u8>)>, LmdbExtError> {
+        let value = txn.get(*self, &key);
+        match value {
+            Ok(raw_bytes) => return Ok(Some((false, raw_bytes.to_vec()))),
+            Err(lmdb::Error::NotFound) => return Ok(None),
+            Err(err) => return Err(err.into()),
+        }
+    }
+}
+
 /// The storage component.
-#[derive(DataSize, Debug)]
+#[derive(DataSize)]
 pub struct Storage {
     /// Storage location.
     root: PathBuf,
@@ -206,9 +231,8 @@ pub struct Storage {
     metrics: Option<Metrics>,
     /// The maximum TTL of a deploy.
     max_ttl: MaxTtl,
-    /// Maps the db identifier used by binary port to a specific database.
     #[data_size(skip)]
-    db_mapper: HashMap<DbId, Database>,
+    db_mapper: HashMap<DbId, Box<dyn RawDataAccess>>,
 }
 
 pub(crate) enum HighestOrphanedBlockResult {
@@ -336,43 +360,41 @@ impl Storage {
         // Create the environment and databases.
         let env = new_environment(total_size, root.as_path())?;
 
-        let block_header_dbs = VersionedDatabases::new(&env, "block_header", "block_header_v2")?;
-        let block_metadata_db = env.create_db(Some("block_metadata"), DatabaseFlags::empty())?;
+        let block_header_dbs: VersionedDatabases<BlockHash, BlockHeader> =
+            VersionedDatabases::new(&env, "block_header", "block_header_v2")?;
+        let block_metadata_db: Database =
+            env.create_db(Some("block_metadata"), DatabaseFlags::empty())?;
         let transaction_dbs = VersionedDatabases::new(&env, "deploys", "transactions")?;
         let execution_result_dbs =
             VersionedDatabases::new(&env, "deploy_metadata", "execution_results")?;
         let transfer_db = env.create_db(Some("transfer"), DatabaseFlags::empty())?;
         let state_store_db = env.create_db(Some("state_store"), DatabaseFlags::empty())?;
-        let block_body_dbs =
+        let block_body_dbs: VersionedDatabases<Digest, BlockBody> =
             VersionedDatabases::<_, BlockBody>::new(&env, "block_body", "block_body_v2")?;
         let finalized_transaction_approvals_dbs =
             VersionedDatabases::new(&env, "finalized_approvals", "versioned_finalized_approvals")?;
         let approvals_hashes_dbs =
             VersionedDatabases::new(&env, "approvals_hashes", "versioned_approvals_hashes")?;
 
-        let db_mapper = HashMap::<_, _>::from_iter([
-            (DbId::BlockHeader, block_header_dbs.legacy),
-            (DbId::BlockHeaderV2, block_header_dbs.current),
-            (DbId::BlockMetadata, block_metadata_db),
-            (DbId::Deploys, transaction_dbs.legacy),
-            (DbId::Transactions, transaction_dbs.current),
-            (DbId::DeployMetadata, execution_result_dbs.legacy),
-            (DbId::ExecutionResults, execution_result_dbs.current),
-            (DbId::Transfer, transfer_db),
-            (DbId::StateStore, state_store_db),
-            (DbId::BlockBody, block_body_dbs.legacy),
-            (DbId::BlockBodyV2, block_body_dbs.current),
-            (
-                DbId::FinalizedApprovals,
-                finalized_transaction_approvals_dbs.legacy,
-            ),
-            (
-                DbId::VersionedFinalizedApprovals,
-                finalized_transaction_approvals_dbs.current,
-            ),
-            (DbId::ApprovalsHashes, approvals_hashes_dbs.legacy),
-            (DbId::VersionedApprovalsHashes, approvals_hashes_dbs.current),
-        ]);
+        let mut x: Vec<Box<dyn RawDataAccess>> = vec![];
+        x.push(Box::new(block_header_dbs));
+        x.push(Box::new(block_body_dbs));
+        x.push(Box::new(block_metadata_db));
+        // x.push(block_body_dbs);
+
+        let mut db_mapper: HashMap<DbId, Box<dyn RawDataAccess>> = HashMap::new();
+        db_mapper.insert(DbId::Transaction, Box::new(transaction_dbs));
+        db_mapper.insert(DbId::ExecutionResult, Box::new(execution_result_dbs));
+        db_mapper.insert(
+            DbId::FinalizedTransactionApprovals,
+            Box::new(finalized_transaction_approvals_dbs),
+        );
+        db_mapper.insert(DbId::BlockHeader, Box::new(block_header_dbs));
+        db_mapper.insert(DbId::BlockMetadata, Box::new(block_metadata_db));
+        db_mapper.insert(DbId::Transfer, Box::new(transfer_db));
+        db_mapper.insert(DbId::StateStore, Box::new(state_store_db));
+        db_mapper.insert(DbId::BlockBody, Box::new(block_body_dbs));
+        db_mapper.insert(DbId::ApprovalsHashes, Box::new(approvals_hashes_dbs));
 
         // We now need to restore the block-height index. Log messages allow timing here.
         info!("indexing block store");
@@ -1204,6 +1226,13 @@ impl Storage {
                     .ignore()
             }
             StorageRequest::GetRawData { key, responder, db } => {
+                let mut txn = self.env.begin_ro_txn()?;
+                let x = self
+                    .db_mapper
+                    .get(&db)
+                    .unwrap()
+                    .get_raw_bytes(&mut txn, key.as_slice());
+                /*
                 let maybe_raw_data = self.read_raw_data(
                     self.db_mapper
                         .get(&db)
@@ -1211,6 +1240,8 @@ impl Storage {
                     &key,
                 )?;
                 responder.respond(maybe_raw_data).ignore()
+                */
+                todo!()
             }
             StorageRequest::GetBlockHashAndHeightForTransaction {
                 transaction_hash,
@@ -2323,6 +2354,7 @@ impl Storage {
         match result {
             Ok(maybe_raw_data) => return Ok(Some(maybe_raw_data.to_vec())),
             Err(err) => {
+                // TODO[RC]: Clean-up these.
                 error!("XXXXX - error {}", err);
                 Ok(None)
             }

@@ -179,7 +179,7 @@ pub(crate) use event::MainEvent;
 ///     Leap --> F[initiate SyncLeap<br/>and retry later]
 ///     BlockSync --> G[initiate BlockSync<br/>and retry later]
 /// ```
-#[derive(DataSize, Debug)]
+#[derive(DataSize)]
 pub(crate) struct MainReactor {
     // components
     //   i/o bound components
