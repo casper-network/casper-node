@@ -117,6 +117,7 @@ pub struct EraSupervisor {
 
     /// Failpoints
     pub(super) message_delay_failpoint: Failpoint<u64>,
+    pub(super) proposal_delay_failpoint: Failpoint<u64>,
 }
 
 impl Debug for EraSupervisor {
@@ -154,6 +155,7 @@ impl EraSupervisor {
             next_executed_height: 0,
             last_progress: Timestamp::now(),
             message_delay_failpoint: Failpoint::new("consensus.message_delay"),
+            proposal_delay_failpoint: Failpoint::new("consensus.proposal_delay"),
         };
 
         Ok(era_supervisor)
@@ -1040,18 +1042,26 @@ impl EraSupervisor {
                     .cloned()
                     .collect();
                 let random_bit = rng.gen();
-                effect_builder
-                    .request_appendable_block(block_context.timestamp())
-                    .map(move |appendable_block| {
-                        Arc::new(appendable_block.into_block_payload(accusations, random_bit))
+                let delay_by = self.proposal_delay_failpoint.fire(rng).cloned();
+                let timestamp = block_context.timestamp();
+                async move {
+                    if let Some(delay) = delay_by {
+                        effect_builder
+                            .set_timeout(Duration::from_millis(delay))
+                            .await;
+                    }
+                    effect_builder.request_appendable_block(timestamp).await
+                }
+                .map(move |appendable_block| {
+                    Arc::new(appendable_block.into_block_payload(accusations, random_bit))
+                })
+                .event(move |block_payload| {
+                    Event::NewBlockPayload(NewBlockPayload {
+                        era_id,
+                        block_payload,
+                        block_context,
                     })
-                    .event(move |block_payload| {
-                        Event::NewBlockPayload(NewBlockPayload {
-                            era_id,
-                            block_payload,
-                            block_context,
-                        })
-                    })
+                })
             }
             ProtocolOutcome::FinalizedBlock(CpFinalizedBlock {
                 value,
