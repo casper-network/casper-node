@@ -25,6 +25,7 @@ pipeline:
                     image: casperlabs/node-build-u1804
                     shell: Bash
                     command: |-
+                      git config --global init.defaultBranch dev
                       make setup
                       cargo install elfx86exts --version 0.5.0
                   timeout: ""
@@ -50,3 +51,4 @@ pipeline:
               nodeSelector: {}
               os: Linux
         type: CI
+        description: ""
