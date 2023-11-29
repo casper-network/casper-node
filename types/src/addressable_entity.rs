@@ -61,7 +61,6 @@ use crate::{
     checksummed_hex,
     contract_messages::TopicNameHash,
     contracts::{Contract, ContractHash},
-    key::ByteCodeAddr,
     system::SystemEntityType,
     uref::{self, URef},
     AccessRights, ApiError, CLType, CLTyped, CLValue, CLValueError, ContextAccessRights, Group,
@@ -1143,11 +1142,8 @@ impl NamedKeyAddr {
     /// Constructs a [`NamedKeyAddr`] from a formatted string.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         if let Some(named_key) = input.strip_prefix(NAMED_KEY_PREFIX) {
-            let reverse_string = named_key.chars().rev().collect::<String>();
-            if let Some((reverse_bytes, reverse_entity_addr)) = reverse_string.split_once('-') {
-                let entity_addr_str = reverse_entity_addr.chars().rev().collect::<String>();
-                let entity_addr = EntityAddr::from_formatted_str(&entity_addr_str)?;
-                let string_bytes_str = reverse_bytes.chars().rev().collect::<String>();
+            if let Some((entity_addr_str, string_bytes_str)) = named_key.rsplit_once('-') {
+                let entity_addr = EntityAddr::from_formatted_str(entity_addr_str)?;
                 let string_bytes =
                     checksummed_hex::decode(string_bytes_str).map_err(FromStrError::Hex)?;
                 let (string_bytes, _) =
@@ -1657,7 +1653,7 @@ impl AddressableEntity {
     }
 
     /// Addr for accessing wasm bytes
-    pub fn byte_code_addr(&self) -> ByteCodeAddr {
+    pub fn byte_code_addr(&self) -> HashAddr {
         self.byte_code_hash.value()
     }
 

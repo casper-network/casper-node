@@ -56,7 +56,7 @@ use casper_types::{
         mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, ByteCodeHash, ByteCodeKind,
+    AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, ByteCodeAddr, ByteCodeHash,
     CLTyped, CLValue, Contract, DeployHash, DeployInfo, Digest, EntityAddr, EraId, Gas,
     HandlePaymentCosts, Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolVersion,
     PublicKey, RefundHandling, StoredValue, Transfer, TransferAddr, URef, UpgradeConfig,
@@ -1269,7 +1269,7 @@ where
 
     /// Queries for byte code by `ByteCodeAddr` and returns an `Option<ByteCode>`.
     pub fn get_byte_code(&self, byte_code_hash: ByteCodeHash) -> Option<ByteCode> {
-        let byte_code_key = Key::byte_code_key(ByteCodeKind::V1CasperWasm, byte_code_hash.value());
+        let byte_code_key = Key::byte_code_key(ByteCodeAddr::new_wasm_addr(byte_code_hash.value()));
 
         let byte_code_value: StoredValue = self
             .query(None, byte_code_key, &[])

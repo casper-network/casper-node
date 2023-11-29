@@ -8,7 +8,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
     addressable_entity::{EntityKindTag, DEFAULT_ENTRY_POINT_NAME},
-    runtime_args, AddressableEntityHash, ByteCodeKind, Key, RuntimeArgs, U512,
+    runtime_args, AddressableEntityHash, ByteCodeAddr, Key, RuntimeArgs, U512,
 };
 
 const CONTRACT_COUNTER_FACTORY: &str = "counter_factory.wasm";
@@ -98,10 +98,9 @@ fn contract_factory_wasm_should_have_expected_exports() {
         .cloned()
         .expect("should be contract");
 
-    let factory_contract_byte_code_key = Key::byte_code_key(
-        ByteCodeKind::V1CasperWasm,
+    let factory_contract_byte_code_key = Key::byte_code_key(ByteCodeAddr::new_wasm_addr(
         factory_contract.byte_code_addr(),
-    );
+    ));
 
     let factory_contract_wasm = builder
         .query(None, factory_contract_byte_code_key, &[])
@@ -181,10 +180,9 @@ fn should_install_and_use_factory_pattern() {
     let counter_1_wasm = builder
         .query(
             None,
-            Key::byte_code_key(
-                ByteCodeKind::V1CasperWasm,
+            Key::byte_code_key(ByteCodeAddr::new_wasm_addr(
                 new_counter_1_contract.byte_code_addr(),
-            ),
+            )),
             &[],
         )
         .expect("should have contract wasm")

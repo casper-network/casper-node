@@ -45,7 +45,7 @@ use casper_types::{
         handle_payment, mint, CallStackElement, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
         STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, ByteCode, ByteCodeHash, ByteCodeKind, CLTyped, CLValue,
+    AccessRights, ApiError, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLTyped, CLValue,
     ContextAccessRights, ContractWasm, DeployHash, EntityAddr, EntityKind, EntityVersion,
     EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups, HostFunction,
     HostFunctionCost, Key, NamedArg, Package, PackageHash, Phase, PublicKey, RuntimeArgs,
@@ -1428,10 +1428,10 @@ where
 
             let byte_code_key = match entity.entity_kind() {
                 EntityKind::System(_) | EntityKind::Account(_) => {
-                    Key::ByteCode(ByteCodeKind::Empty, byte_code_addr)
+                    Key::ByteCode(ByteCodeAddr::Empty)
                 }
                 EntityKind::SmartContract => {
-                    Key::ByteCode(ByteCodeKind::V1CasperWasm, byte_code_addr)
+                    Key::ByteCode(ByteCodeAddr::new_wasm_addr(byte_code_addr))
                 }
             };
 
@@ -1767,7 +1767,7 @@ where
             entity.update_session_entity(ByteCodeHash::new(byte_code_hash), entry_points);
 
         self.context.metered_write_gs_unsafe(
-            Key::ByteCode(ByteCodeKind::V1CasperWasm, byte_code_hash),
+            Key::ByteCode(ByteCodeAddr::new_wasm_addr(byte_code_hash)),
             byte_code,
         )?;
 
@@ -1829,7 +1829,7 @@ where
         };
 
         self.context.metered_write_gs_unsafe(
-            Key::ByteCode(ByteCodeKind::V1CasperWasm, byte_code_hash),
+            Key::ByteCode(ByteCodeAddr::new_wasm_addr(byte_code_hash)),
             byte_code,
         )?;
 
@@ -3387,8 +3387,9 @@ where
                     contract.contract_wasm_hash().value(),
                 ))?;
 
-                let byte_code_key =
-                    Key::byte_code_key(ByteCodeKind::V1CasperWasm, updated_entity.byte_code_addr());
+                let byte_code_key = Key::byte_code_key(ByteCodeAddr::new_wasm_addr(
+                    updated_entity.byte_code_addr(),
+                ));
 
                 let byte_code: ByteCode = previous_wasm.into();
 

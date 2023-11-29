@@ -33,7 +33,7 @@ use crate::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity,
     addressable_entity::{AddressableEntityHash, EntityAddr, EntityKindTag, NamedKeyAddr},
-    byte_code::ByteCodeKind,
+    byte_code,
     bytesrepr::{
         self, Error, FromBytes, ToBytes, U32_SERIALIZED_LENGTH, U64_SERIALIZED_LENGTH,
         U8_SERIALIZED_LENGTH,
@@ -45,8 +45,8 @@ use crate::{
     package::PackageHash,
     system::auction::{BidAddr, BidAddrTag},
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
-    DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError, TRANSFER_ADDR_LENGTH,
-    UREF_ADDR_LENGTH,
+    ByteCodeAddr, DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError,
+    TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
 };
 
 const HASH_PREFIX: &str = "hash-";
@@ -63,10 +63,6 @@ const CHAINSPEC_REGISTRY_PREFIX: &str = "chainspec-registry-";
 const CHECKSUM_REGISTRY_PREFIX: &str = "checksum-registry-";
 const BID_ADDR_PREFIX: &str = "bid-addr-";
 const PACKAGE_PREFIX: &str = "package-";
-
-const BYTE_CODE_PREFIX: &str = "byte-code-";
-const V1_WASM_PREFIX: &str = "v1-wasm-";
-const EMPTY_PREFIX: &str = "empty-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -116,9 +112,6 @@ pub type HashAddr = [u8; KEY_HASH_LENGTH];
 
 /// An alias for [`Key`]s package variant.
 pub type PackageAddr = [u8; ADDR_LENGTH];
-
-/// An alias for [`Key`]s byte code variant.
-pub type ByteCodeAddr = [u8; ADDR_LENGTH];
 
 /// An alias for [`Key`]s dictionary variant.
 pub type DictionaryAddr = [u8; KEY_DICTIONARY_LENGTH];
@@ -223,7 +216,7 @@ pub enum Key {
     /// A `Key` under which an addressable entity is stored.
     AddressableEntity(EntityAddr),
     /// A `Key` under which a byte code record is stored.
-    ByteCode(ByteCodeKind, ByteCodeAddr),
+    ByteCode(ByteCodeAddr),
     /// A `Key` under which a message is stored.
     Message(MessageAddr),
     /// A `Key` under which a single named key entry is stored.
@@ -496,24 +489,9 @@ impl Key {
             Key::AddressableEntity(entity_addr) => {
                 format!("{}", entity_addr)
             }
-            Key::ByteCode(byte_code_kind, byte_code_addr) => match byte_code_kind {
-                ByteCodeKind::Empty => {
-                    format!(
-                        "{}{}{}",
-                        BYTE_CODE_PREFIX,
-                        EMPTY_PREFIX,
-                        base16::encode_lower(&byte_code_addr)
-                    )
-                }
-                ByteCodeKind::V1CasperWasm => {
-                    format!(
-                        "{}{}{}",
-                        BYTE_CODE_PREFIX,
-                        V1_WASM_PREFIX,
-                        base16::encode_lower(&byte_code_addr)
-                    )
-                }
-            },
+            Key::ByteCode(byte_code_addr) => {
+                format!("{}", byte_code_addr)
+            }
             Key::NamedKey(named_key) => {
                 format!("{}", named_key)
             }
@@ -694,19 +672,10 @@ impl Key {
             Err(error) => return Err(FromStrError::AddressableEntity(error.to_string())),
         }
 
-        if let Some(byte_code) = input.strip_prefix(BYTE_CODE_PREFIX) {
-            let (addr_str, tag) = if let Some(str) = byte_code.strip_prefix(EMPTY_PREFIX) {
-                (str, ByteCodeKind::Empty)
-            } else if let Some(str) = byte_code.strip_prefix(V1_WASM_PREFIX) {
-                (str, ByteCodeKind::V1CasperWasm)
-            } else {
-                return Err(FromStrError::UnknownPrefix);
-            };
-            let addr = checksummed_hex::decode(addr_str)
-                .map_err(|error| FromStrError::ByteCode(error.to_string()))?;
-            let byte_code_addr = ByteCodeAddr::try_from(addr.as_ref())
-                .map_err(|error| FromStrError::ByteCode(error.to_string()))?;
-            return Ok(Key::ByteCode(tag, byte_code_addr));
+        match ByteCodeAddr::from_formatted_string(input) {
+            Ok(byte_code_addr) => return Ok(Key::ByteCode(byte_code_addr)),
+            Err(byte_code::FromStrError::InvalidPrefix) => {}
+            Err(error) => return Err(FromStrError::ByteCode(error.to_string())),
         }
 
         match MessageAddr::from_formatted_str(input) {
@@ -888,8 +857,8 @@ impl Key {
     }
 
     /// Creates a new [`Key::ByteCode`] variant from a byte code kind and an byte code addr.
-    pub fn byte_code_key(byte_code_kind: ByteCodeKind, byte_code_addr: ByteCodeAddr) -> Self {
-        Key::ByteCode(byte_code_kind, byte_code_addr)
+    pub fn byte_code_key(byte_code_addr: ByteCodeAddr) -> Self {
+        Key::ByteCode(byte_code_addr)
     }
 
     /// Creates a new [`Key::Message`] variant that identifies an indexed message based on an
@@ -1051,13 +1020,8 @@ impl Display for Key {
                 entity_addr.tag(),
                 base16::encode_lower(&entity_addr.value())
             ),
-            Key::ByteCode(kind, byte_code_addr) => {
-                write!(
-                    f,
-                    "Key::ByteCode({}-{})",
-                    kind,
-                    base16::encode_lower(byte_code_addr)
-                )
+            Key::ByteCode(byte_code_addr) => {
+                write!(f, "Key::ByteCode({})", byte_code_addr)
             }
             Key::NamedKey(named_key_addr) => {
                 write!(f, "Key::NamedKey({})", named_key_addr)
@@ -1161,6 +1125,12 @@ impl From<NamedKeyAddr> for Key {
     }
 }
 
+impl From<ByteCodeAddr> for Key {
+    fn from(value: ByteCodeAddr) -> Self {
+        Key::ByteCode(value)
+    }
+}
+
 impl ToBytes for Key {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut result = bytesrepr::unchecked_allocate_buffer(self);
@@ -1197,7 +1167,7 @@ impl ToBytes for Key {
             Key::AddressableEntity(..) => {
                 U8_SERIALIZED_LENGTH + KEY_ID_SERIALIZED_LENGTH + ADDR_LENGTH
             }
-            Key::ByteCode(..) => U8_SERIALIZED_LENGTH + KEY_ID_SERIALIZED_LENGTH + ADDR_LENGTH,
+            Key::ByteCode(byte_code_addr) => byte_code_addr.serialized_length(),
             Key::Message(message_addr) => {
                 KEY_ID_SERIALIZED_LENGTH + message_addr.serialized_length()
             }
@@ -1233,10 +1203,7 @@ impl ToBytes for Key {
             },
             Key::Package(package_addr) => package_addr.write_bytes(writer),
             Key::AddressableEntity(entity_addr) => entity_addr.write_bytes(writer),
-            Key::ByteCode(byte_code_kind, byte_code_addr) => {
-                byte_code_kind.write_bytes(writer)?;
-                byte_code_addr.write_bytes(writer)
-            }
+            Key::ByteCode(byte_code_addr) => byte_code_addr.write_bytes(writer),
             Key::Message(message_addr) => message_addr.write_bytes(writer),
             Key::NamedKey(named_key_addr) => named_key_addr.write_bytes(writer),
         }
@@ -1320,9 +1287,8 @@ impl FromBytes for Key {
                 Ok((Key::AddressableEntity(entity_addr), rem))
             }
             tag if tag == KeyTag::ByteCode as u8 => {
-                let (byte_code_kind, rem) = ByteCodeKind::from_bytes(remainder)?;
-                let (byte_code_addr, rem) = ByteCodeAddr::from_bytes(rem)?;
-                Ok((Key::ByteCode(byte_code_kind, byte_code_addr), rem))
+                let (byte_code_addr, rem) = ByteCodeAddr::from_bytes(remainder)?;
+                Ok((Key::ByteCode(byte_code_addr), rem))
             }
             tag if tag == KeyTag::Message as u8 => {
                 let (message_addr, rem) = MessageAddr::from_bytes(remainder)?;
@@ -1388,7 +1354,7 @@ impl Distribution<Key> for Standard {
             15 => Key::BidAddr(rng.gen()),
             16 => Key::Package(rng.gen()),
             17 => Key::AddressableEntity(rng.gen()),
-            18 => Key::ByteCode(rng.gen(), rng.gen()),
+            18 => Key::ByteCode(rng.gen()),
             19 => Key::Message(rng.gen()),
             _ => unreachable!(),
         }
@@ -1419,7 +1385,7 @@ mod serde_helpers {
         BidAddr(&'a BidAddr),
         Package(&'a PackageAddr),
         AddressableEntity(&'a EntityAddr),
-        ByteCode(&'a ByteCodeKind, &'a ByteCodeAddr),
+        ByteCode(&'a ByteCodeAddr),
         Message(&'a MessageAddr),
         NamedKey(&'a NamedKeyAddr),
     }
@@ -1445,7 +1411,7 @@ mod serde_helpers {
         BidAddr(BidAddr),
         Package(PackageAddr),
         AddressableEntity(EntityAddr),
-        ByteCode(ByteCodeKind, ByteCodeAddr),
+        ByteCode(ByteCodeAddr),
         Message(MessageAddr),
         NamedKey(NamedKeyAddr),
     }
@@ -1474,9 +1440,7 @@ mod serde_helpers {
                 Key::AddressableEntity(entity_addr) => {
                     BinarySerHelper::AddressableEntity(entity_addr)
                 }
-                Key::ByteCode(byte_code_kind, byte_code_addr) => {
-                    BinarySerHelper::ByteCode(byte_code_kind, byte_code_addr)
-                }
+                Key::ByteCode(byte_code_addr) => BinarySerHelper::ByteCode(byte_code_addr),
                 Key::NamedKey(named_key) => BinarySerHelper::NamedKey(named_key),
             }
         }
@@ -1506,9 +1470,7 @@ mod serde_helpers {
                 BinaryDeserHelper::AddressableEntity(entity_addr) => {
                     Key::AddressableEntity(entity_addr)
                 }
-                BinaryDeserHelper::ByteCode(byte_kind, byte_code_addr) => {
-                    Key::ByteCode(byte_kind, byte_code_addr)
-                }
+                BinaryDeserHelper::ByteCode(byte_code_addr) => Key::ByteCode(byte_code_addr),
                 BinaryDeserHelper::NamedKey(named_key_addr) => Key::NamedKey(named_key_addr),
             }
         }
@@ -1553,6 +1515,9 @@ mod tests {
     const ENTITY_PREFIX: &str = "addressable-entity-";
     const ACCOUNT_ENTITY_PREFIX: &str = "account-";
 
+    const BYTE_CODE_PREFIX: &str = "byte-code-";
+    const EMPTY_PREFIX: &str = "empty-";
+
     const ACCOUNT_KEY: Key = Key::Account(AccountHash::new([42; 32]));
     const HASH_KEY: Key = Key::Hash([42; 32]);
     const UREF_KEY: Key = Key::URef(URef::new([42; 32], AccessRights::READ));
@@ -1578,8 +1543,8 @@ mod tests {
         Key::AddressableEntity(EntityAddr::new_account_entity_addr([42; 32]));
     const ADDRESSABLE_ENTITY_SMART_CONTRACT_KEY: Key =
         Key::AddressableEntity(EntityAddr::new_contract_entity_addr([42; 32]));
-    const BYTE_CODE_EMPTY_KEY: Key = Key::ByteCode(ByteCodeKind::Empty, [42; 32]);
-    const BYTE_CODE_V1_WASM_KEY: Key = Key::ByteCode(ByteCodeKind::V1CasperWasm, [42; 32]);
+    const BYTE_CODE_EMPTY_KEY: Key = Key::ByteCode(ByteCodeAddr::Empty);
+    const BYTE_CODE_V1_WASM_KEY: Key = Key::ByteCode(ByteCodeAddr::V1CasperWasm([42; 32]));
     const MESSAGE_TOPIC_KEY: Key = Key::Message(MessageAddr::new_topic_addr(
         AddressableEntityHash::new([42u8; 32]),
         TopicNameHash::new([42; 32]),
@@ -1776,11 +1741,14 @@ mod tests {
         );
         assert_eq!(
             format!("{}", BYTE_CODE_EMPTY_KEY),
-            format!("Key::ByteCode(empty-{})", HEX_STRING)
+            format!(
+                "Key::ByteCode(byte-code-empty-{})",
+                base16::encode_lower(&[0u8; 32])
+            )
         );
         assert_eq!(
             format!("{}", BYTE_CODE_V1_WASM_KEY),
-            format!("Key::ByteCode(v1-casper-wasm-{})", HEX_STRING)
+            format!("Key::ByteCode(byte-code-v1-wasm-{})", HEX_STRING)
         );
         assert_eq!(
             format!("{}", MESSAGE_TOPIC_KEY),
@@ -2136,8 +2104,8 @@ mod tests {
         round_trip(&Key::AddressableEntity(
             EntityAddr::new_contract_entity_addr(zeros),
         ));
-        round_trip(&Key::ByteCode(ByteCodeKind::Empty, zeros));
-        round_trip(&Key::ByteCode(ByteCodeKind::V1CasperWasm, zeros));
+        round_trip(&Key::ByteCode(ByteCodeAddr::Empty));
+        round_trip(&Key::ByteCode(ByteCodeAddr::V1CasperWasm(zeros)));
         round_trip(&Key::Message(MessageAddr::new_topic_addr(
             zeros.into(),
             nines.into(),

@@ -37,9 +37,9 @@ use casper_types::{
         SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, ByteCode,
-    ByteCodeHash, ByteCodeKind, CLValue, Chainspec, ChainspecRegistry, Digest, EntityAddr,
-    EntryPoints, EraId, FeeHandling, GenesisAccount, Key, Motes, Package, PackageHash, Phase,
-    ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemConfig, Tagged, URef,
+    ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, Chainspec, ChainspecRegistry, Digest,
+    EntityAddr, EntryPoints, EraId, FeeHandling, GenesisAccount, Key, Motes, Package, PackageHash,
+    Phase, ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemConfig, Tagged, URef,
     WasmConfig, U512,
 };
 
@@ -1182,7 +1182,7 @@ where
             package
         };
 
-        let byte_code_key = Key::ByteCode(ByteCodeKind::Empty, byte_code_hash.value());
+        let byte_code_key = Key::ByteCode(ByteCodeAddr::Empty);
 
         self.tracking_copy
             .borrow_mut()

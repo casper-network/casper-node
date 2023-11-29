@@ -13,9 +13,9 @@ use casper_types::{
     execution::Effects,
     package::{EntityVersions, Groups, PackageStatus},
     system::{handle_payment::ACCUMULATION_PURSE_KEY, SystemEntityType},
-    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeKind, CLValue,
-    CLValueError, Digest, EntityAddr, EntryPoints, FeeHandling, Key, Package, PackageHash, Phase,
-    ProtocolVersion, PublicKey, StoredValue, URef, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeKind,
+    CLValue, CLValueError, Digest, EntityAddr, EntryPoints, FeeHandling, Key, Package, PackageHash,
+    Phase, ProtocolVersion, PublicKey, StoredValue, URef, U512,
 };
 
 use crate::{
@@ -158,8 +158,7 @@ where
             EntityKind::System(system_contract_type),
         );
 
-        let byte_code_key =
-            Key::byte_code_key(ByteCodeKind::Empty, contract.byte_code_hash().value());
+        let byte_code_key = Key::byte_code_key(ByteCodeAddr::Empty);
         let byte_code = ByteCode::new(ByteCodeKind::Empty, vec![]);
 
         self.tracking_copy
@@ -338,7 +337,7 @@ where
             package
         };
 
-        let byte_code_key = Key::ByteCode(ByteCodeKind::Empty, byte_code_hash.value());
+        let byte_code_key = Key::ByteCode(ByteCodeAddr::Empty);
         self.tracking_copy
             .borrow_mut()
             .write(byte_code_key, StoredValue::ByteCode(byte_code));
