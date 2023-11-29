@@ -19,15 +19,34 @@ pipeline:
             steps:
               - step:
                   identifier: echo
-                  name: echo
+                  name: setup
                   spec:
-                    command: echo hello world
+                    connectorRef: dockerhub
+                    image: casperlabs/node-build-u1804
+                    shell: Bash
+                    command: |-
+                      make setup
+                      cargo install elfx86exts --version 0.5.0
                   timeout: ""
                   type: Run
-          platform:
-            arch: Amd64
-            os: Linux
-          runtime:
-            spec: {}
-            type: Cloud
+                  description: copy of drone setup step
+              - step:
+                  type: Run
+                  name: cargo-test-push
+                  identifier: cargotestpush
+                  spec:
+                    connectorRef: dockerhub
+                    image: casperlabs/node-build-u1804
+                    shell: Bash
+                    command: |-
+                      make test CARGO_FLAGS=--release
+                      make test-contracts CARGO_FLAGS=--release
+          infrastructure:
+            type: KubernetesDirect
+            spec:
+              connectorRef: org.casperkube
+              namespace: default
+              automountServiceAccountToken: true
+              nodeSelector: {}
+              os: Linux
         type: CI
