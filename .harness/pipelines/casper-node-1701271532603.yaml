@@ -41,6 +41,10 @@ pipeline:
                     command: |-
                       make test CARGO_FLAGS=--release
                       make test-contracts CARGO_FLAGS=--release
+                    resources:
+                      limits:
+                        memory: 4Gi
+                        cpu: "8"
           infrastructure:
             type: KubernetesDirect
             spec:
