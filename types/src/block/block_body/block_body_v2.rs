@@ -26,7 +26,7 @@ pub struct BlockBodyV2 {
     pub(super) transfer: Vec<TransactionHash>,
     /// The hashes of the non-transfer, native transactions within the block.
     pub(super) staking: Vec<TransactionHash>,
-    /// The hashes of the installer/upgrader userland transactions within the block.
+    /// The hashes of the installer/upgrader transactions within the block.
     pub(super) install_upgrade: Vec<TransactionHash>,
     /// The hashes of all other transactions within the block.
     pub(super) standard: Vec<TransactionHash>,
@@ -78,7 +78,7 @@ impl BlockBodyV2 {
         self.staking.iter()
     }
 
-    /// Returns the hashes of the installer/upgrader userland transactions within the block.
+    /// Returns the hashes of the installer/upgrader transactions within the block.
     pub fn install_upgrade(&self) -> impl Iterator<Item = &TransactionHash> {
         self.install_upgrade.iter()
     }

@@ -242,7 +242,7 @@ impl BlockV2 {
         self.body.staking()
     }
 
-    /// Returns the hashes of the installer/upgrader userland transactions within the block.
+    /// Returns the hashes of the installer/upgrader transactions within the block.
     pub fn install_upgrade(&self) -> impl Iterator<Item = &TransactionHash> {
         self.body.install_upgrade()
     }

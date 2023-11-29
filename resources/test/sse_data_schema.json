@@ -77,9 +77,9 @@
         "TransactionProcessed": {
           "type": "object",
           "required": [
-            "account",
             "block_hash",
             "execution_result",
+            "initiator_addr",
             "messages",
             "timestamp",
             "transaction_hash",
@@ -89,8 +89,8 @@
             "transaction_hash": {
               "$ref": "#/definitions/TransactionHash"
             },
-            "account": {
-              "$ref": "#/definitions/PublicKey"
+            "initiator_addr": {
+              "$ref": "#/definitions/InitiatorAddr"
             },
             "timestamp": {
               "$ref": "#/definitions/Timestamp"
@@ -784,7 +784,7 @@
           }
         },
         "install_upgrade": {
-          "description": "The hashes of the installer/upgrader userland transactions within the block.",
+          "description": "The hashes of the installer/upgrader transactions within the block.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/TransactionHash"
@@ -1537,16 +1537,8 @@
         "header": {
           "$ref": "#/definitions/TransactionV1Header"
         },
-        "payment": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint64",
-          "minimum": 0.0
-        },
         "body": {
-          "$ref": "#/definitions/TransactionV1Kind"
+          "$ref": "#/definitions/TransactionV1Body"
         },
         "approvals": {
           "type": "array",
@@ -1562,16 +1554,16 @@
       "description": "The header portion of a TransactionV1.",
       "type": "object",
       "required": [
-        "account",
         "body_hash",
         "chain_name",
+        "initiator_addr",
         "pricing_mode",
         "timestamp",
         "ttl"
       ],
       "properties": {
-        "account": {
-          "$ref": "#/definitions/PublicKey"
+        "chain_name": {
+          "type": "string"
         },
         "timestamp": {
           "$ref": "#/definitions/Timestamp"
@@ -1579,20 +1571,28 @@
         "ttl": {
           "$ref": "#/definitions/TimeDiff"
         },
-        "pricing_mode": {
-          "$ref": "#/definitions/PricingModeV1"
-        },
         "body_hash": {
           "$ref": "#/definitions/Digest"
         },
-        "chain_name": {
-          "type": "string"
+        "pricing_mode": {
+          "$ref": "#/definitions/PricingMode"
+        },
+        "payment_amount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "initiator_addr": {
+          "$ref": "#/definitions/InitiatorAddr"
         }
       },
       "additionalProperties": false
     },
-    "PricingModeV1": {
-      "description": "Pricing mode of a TransactionV1.",
+    "PricingMode": {
+      "description": "Pricing mode of a Transaction.",
       "oneOf": [
         {
           "description": "Multiplies the gas used by the given amount.\n\nThis is the same behaviour as for the `Deploy::gas_price`.",
@@ -1625,311 +1625,309 @@
         }
       ]
     },
-    "TransactionV1Kind": {
-      "description": "The high-level kind of a given TransactionV1.",
+    "InitiatorAddr": {
+      "description": "The address of the initiator of a TransactionV1.",
       "oneOf": [
         {
-          "description": "A transaction targeting native functionality.",
+          "description": "The public key of the initiator.",
           "type": "object",
           "required": [
+            "PublicKey"
+          ],
+          "properties": {
+            "PublicKey": {
+              "$ref": "#/definitions/PublicKey"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The account hash derived from the public key of the initiator.",
+          "type": "object",
+          "required": [
+            "AccountHash"
+          ],
+          "properties": {
+            "AccountHash": {
+              "$ref": "#/definitions/AccountHash"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Hex-encoded entity address of the initiator.",
+          "type": "object",
+          "required": [
+            "EntityAddr"
+          ],
+          "properties": {
+            "EntityAddr": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "AccountHash": {
+      "description": "Account hash as a formatted string.",
+      "type": "string"
+    },
+    "TransactionV1Body": {
+      "description": "Body of a `TransactionV1`.",
+      "type": "object",
+      "required": [
+        "args",
+        "entry_point",
+        "scheduling",
+        "target"
+      ],
+      "properties": {
+        "args": {
+          "$ref": "#/definitions/RuntimeArgs"
+        },
+        "target": {
+          "$ref": "#/definitions/TransactionTarget"
+        },
+        "entry_point": {
+          "$ref": "#/definitions/TransactionEntryPoint"
+        },
+        "scheduling": {
+          "$ref": "#/definitions/TransactionScheduling"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TransactionTarget": {
+      "description": "Execution target of a Transaction.",
+      "oneOf": [
+        {
+          "description": "The execution target is a native operation (e.g. a transfer).",
+          "type": "string",
+          "enum": [
             "Native"
+          ]
+        },
+        {
+          "description": "The execution target is a stored entity or package.",
+          "type": "object",
+          "required": [
+            "Stored"
           ],
           "properties": {
-            "Native": {
-              "$ref": "#/definitions/NativeTransactionV1"
+            "Stored": {
+              "type": "object",
+              "required": [
+                "id",
+                "runtime"
+              ],
+              "properties": {
+                "id": {
+                  "description": "The identifier of the stored execution target.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/TransactionInvocationTarget"
+                    }
+                  ]
+                },
+                "runtime": {
+                  "description": "The execution runtime to use.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/TransactionRuntime"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
             }
           },
           "additionalProperties": false
         },
         {
-          "description": "A transaction with userland (i.e. not native) functionality.",
+          "description": "The execution target is the included module bytes, i.e. compiled Wasm.",
           "type": "object",
           "required": [
-            "Userland"
+            "Session"
           ],
           "properties": {
-            "Userland": {
-              "$ref": "#/definitions/UserlandTransactionV1"
+            "Session": {
+              "type": "object",
+              "required": [
+                "kind",
+                "module_bytes",
+                "runtime"
+              ],
+              "properties": {
+                "kind": {
+                  "description": "The kind of session.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/TransactionSessionKind"
+                    }
+                  ]
+                },
+                "module_bytes": {
+                  "description": "The compiled Wasm.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/Bytes"
+                    }
+                  ]
+                },
+                "runtime": {
+                  "description": "The execution runtime to use.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/TransactionRuntime"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
             }
           },
           "additionalProperties": false
         }
       ]
     },
-    "NativeTransactionV1": {
-      "description": "A TransactionV1 targeting native functionality.",
+    "TransactionInvocationTarget": {
+      "description": "Identifier of a `Stored` transaction target.",
       "oneOf": [
         {
-          "description": "Calls the `transfer` entry point of the mint to transfer `Motes` from a source purse to a target purse.",
+          "description": "Hex-encoded entity address identifying the invocable entity.",
           "type": "object",
           "required": [
-            "MintTransfer"
+            "InvocableEntity"
           ],
           "properties": {
-            "MintTransfer": {
-              "$ref": "#/definitions/RuntimeArgs"
+            "InvocableEntity": {
+              "type": "string"
             }
           },
           "additionalProperties": false
         },
         {
-          "description": "A transaction targeting the auction.",
+          "description": "The alias identifying the invocable entity.",
           "type": "object",
           "required": [
-            "Auction"
+            "InvocableEntityAlias"
           ],
           "properties": {
-            "Auction": {
-              "$ref": "#/definitions/AuctionTransactionV1"
+            "InvocableEntityAlias": {
+              "type": "string"
             }
           },
           "additionalProperties": false
         },
         {
-          "description": "A transaction reserving a future execution.",
+          "description": "The address and optional version identifying the package.",
           "type": "object",
           "required": [
-            "Reservation"
+            "Package"
           ],
           "properties": {
-            "Reservation": {
-              "$ref": "#/definitions/RuntimeArgs"
+            "Package": {
+              "type": "object",
+              "required": [
+                "addr"
+              ],
+              "properties": {
+                "addr": {
+                  "description": "Hex-encoded address of the package.",
+                  "type": "string"
+                },
+                "version": {
+                  "description": "The package version.\n\nIf `None`, the latest enabled version is implied.",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint32",
+                  "minimum": 0.0
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The alias and optional version identifying the package.",
+          "type": "object",
+          "required": [
+            "PackageAlias"
+          ],
+          "properties": {
+            "PackageAlias": {
+              "type": "object",
+              "required": [
+                "alias"
+              ],
+              "properties": {
+                "alias": {
+                  "description": "The package alias.",
+                  "type": "string"
+                },
+                "version": {
+                  "description": "The package version.\n\nIf `None`, the latest enabled version is implied.",
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "uint32",
+                  "minimum": 0.0
+                }
+              },
+              "additionalProperties": false
             }
           },
           "additionalProperties": false
         }
       ]
     },
-    "AuctionTransactionV1": {
-      "description": "A TransactionV1 targeting the auction.",
+    "TransactionRuntime": {
+      "description": "Runtime used to execute a Transaction.",
       "oneOf": [
         {
-          "description": "Calls the `add_bid` entry point to create or top off a bid purse.",
-          "type": "object",
-          "required": [
-            "AddBid"
-          ],
-          "properties": {
-            "AddBid": {
-              "$ref": "#/definitions/RuntimeArgs"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Calls the `withdraw_bid` entry point to decrease a stake.",
-          "type": "object",
-          "required": [
-            "WithdrawBid"
-          ],
-          "properties": {
-            "WithdrawBid": {
-              "$ref": "#/definitions/RuntimeArgs"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Calls the `delegate` entry point to add a new delegator or increase an existing delegator's stake.",
-          "type": "object",
-          "required": [
-            "Delegate"
-          ],
-          "properties": {
-            "Delegate": {
-              "$ref": "#/definitions/RuntimeArgs"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Calls the `undelegate` entry point to reduce a delegator's stake or remove the delegator if the remaining stake is 0.",
-          "type": "object",
-          "required": [
-            "Undelegate"
-          ],
-          "properties": {
-            "Undelegate": {
-              "$ref": "#/definitions/RuntimeArgs"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Calls the `redelegate` entry point to reduce a delegator's stake or remove the delegator if the remaining stake is 0, and after the unbonding delay, automatically delegate to a new validator.",
-          "type": "object",
-          "required": [
-            "Redelegate"
-          ],
-          "properties": {
-            "Redelegate": {
-              "$ref": "#/definitions/RuntimeArgs"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Calls the `get_era_validators` entry point to provide the validators for the current era and configured number of future eras.",
-          "type": "object",
-          "required": [
-            "GetEraValidators"
-          ],
-          "properties": {
-            "GetEraValidators": {
-              "$ref": "#/definitions/RuntimeArgs"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Calls the `read_era_id` entry point to provide the current era ID.",
-          "type": "object",
-          "required": [
-            "ReadEraId"
-          ],
-          "properties": {
-            "ReadEraId": {
-              "$ref": "#/definitions/RuntimeArgs"
-            }
-          },
-          "additionalProperties": false
+          "description": "The Casper Version 1 Virtual Machine.",
+          "type": "string",
+          "enum": [
+            "VmCasperV1"
+          ]
         }
       ]
     },
-    "UserlandTransactionV1": {
-      "description": "A TransactionV1 with userland (i.e. not native) functionality.",
+    "TransactionSessionKind": {
+      "description": "Session kind of a Transaction.",
       "oneOf": [
         {
-          "description": "A general purpose transaction.",
-          "type": "object",
-          "required": [
+          "description": "A standard (non-special-case) session.\n\nThis kind of session is not allowed to install or upgrade a stored contract, but can call stored contracts.",
+          "type": "string",
+          "enum": [
             "Standard"
-          ],
-          "properties": {
-            "Standard": {
-              "type": "object",
-              "required": [
-                "args",
-                "module_bytes"
-              ],
-              "properties": {
-                "module_bytes": {
-                  "description": "Raw Wasm module bytes with 'call' exported as an entrypoint.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/Bytes"
-                    }
-                  ]
-                },
-                "args": {
-                  "description": "Runtime arguments.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/RuntimeArgs"
-                    }
-                  ]
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
+          ]
         },
         {
-          "description": "An installer or upgrader for a stored contract.",
-          "type": "object",
-          "required": [
-            "InstallerUpgrader"
-          ],
-          "properties": {
-            "InstallerUpgrader": {
-              "type": "object",
-              "required": [
-                "args",
-                "module_bytes"
-              ],
-              "properties": {
-                "contract_package_id": {
-                  "description": "If `Some`, this is an upgrade for the given contract, otherwise it is an installer.",
-                  "anyOf": [
-                    {
-                      "$ref": "#/definitions/PackageIdentifier"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "module_bytes": {
-                  "description": "Raw Wasm module bytes with 'call' exported as an entrypoint.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/Bytes"
-                    }
-                  ]
-                },
-                "args": {
-                  "description": "Runtime arguments.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/RuntimeArgs"
-                    }
-                  ]
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
+          "description": "A session which installs a stored contract.",
+          "type": "string",
+          "enum": [
+            "Installer"
+          ]
         },
         {
-          "description": "A transaction targeting a stored contract.",
-          "type": "object",
-          "required": [
-            "DirectCall"
-          ],
-          "properties": {
-            "DirectCall": {
-              "$ref": "#/definitions/DirectCallV1"
-            }
-          },
-          "additionalProperties": false
+          "description": "A session which upgrades a previously-installed stored contract.  Such a session must have \"package_id: PackageIdentifier\" runtime arg present.",
+          "type": "string",
+          "enum": [
+            "Upgrader"
+          ]
         },
         {
-          "description": "A transaction which doesn't call stored contracts.",
-          "type": "object",
-          "required": [
-            "Closed"
-          ],
-          "properties": {
-            "Closed": {
-              "type": "object",
-              "required": [
-                "args",
-                "module_bytes"
-              ],
-              "properties": {
-                "module_bytes": {
-                  "description": "Raw Wasm module bytes with 'call' exported as an entrypoint.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/Bytes"
-                    }
-                  ]
-                },
-                "args": {
-                  "description": "Runtime arguments.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/RuntimeArgs"
-                    }
-                  ]
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
+          "description": "A session which doesn't call any stored contracts.\n\nThis kind of session is not allowed to install or upgrade a stored contract.",
+          "type": "string",
+          "enum": [
+            "Isolated"
+          ]
         }
       ]
     },
@@ -1937,263 +1935,103 @@
       "description": "Hex-encoded bytes.",
       "type": "string"
     },
-    "PackageIdentifier": {
-      "description": "Identifier for a package.",
+    "TransactionEntryPoint": {
+      "description": "Entry point of a Transaction.",
       "oneOf": [
         {
-          "description": "The stored contract package within the deploy item is identified by its hash.",
+          "description": "A non-native, arbitrary entry point.",
           "type": "object",
           "required": [
-            "Hash"
+            "Custom"
           ],
           "properties": {
-            "Hash": {
-              "type": "object",
-              "required": [
-                "package_hash"
-              ],
-              "properties": {
-                "package_hash": {
-                  "description": "Hash of the contract package.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/PackageHash"
-                    }
-                  ]
-                },
-                "version": {
-                  "description": "The version specified in the deploy item.",
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "format": "uint32",
-                  "minimum": 0.0
-                }
-              }
+            "Custom": {
+              "type": "string"
             }
           },
           "additionalProperties": false
         },
         {
-          "description": "The stored contract package within the deploy item is identified by name.",
+          "description": "The `transfer` native entry point, used to transfer `Motes` from a source purse to a target purse.",
+          "type": "string",
+          "enum": [
+            "Transfer"
+          ]
+        },
+        {
+          "description": "The `add_bid` native entry point, used to create or top off a bid purse.",
+          "type": "string",
+          "enum": [
+            "AddBid"
+          ]
+        },
+        {
+          "description": "The `withdraw_bid` native entry point, used to decrease a stake.",
+          "type": "string",
+          "enum": [
+            "WithdrawBid"
+          ]
+        },
+        {
+          "description": "The `delegate` native entry point, used to add a new delegator or increase an existing delegator's stake.",
+          "type": "string",
+          "enum": [
+            "Delegate"
+          ]
+        },
+        {
+          "description": "The `undelegate` native entry point, used to reduce a delegator's stake or remove the delegator if the remaining stake is 0.",
+          "type": "string",
+          "enum": [
+            "Undelegate"
+          ]
+        },
+        {
+          "description": "The `redelegate` native entry point, used to reduce a delegator's stake or remove the delegator if the remaining stake is 0, and after the unbonding delay, automatically delegate to a new validator.",
+          "type": "string",
+          "enum": [
+            "Redelegate"
+          ]
+        }
+      ]
+    },
+    "TransactionScheduling": {
+      "description": "Scheduling mode of a Transaction.",
+      "oneOf": [
+        {
+          "description": "No special scheduling applied.",
+          "type": "string",
+          "enum": [
+            "Standard"
+          ]
+        },
+        {
+          "description": "Execution should be scheduled for the specified era.",
           "type": "object",
           "required": [
-            "Name"
+            "FutureEra"
           ],
           "properties": {
-            "Name": {
-              "type": "object",
-              "required": [
-                "name"
-              ],
-              "properties": {
-                "name": {
-                  "description": "Name of the contract package.",
-                  "type": "string"
-                },
-                "version": {
-                  "description": "The version specified in the deploy item.",
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "format": "uint32",
-                  "minimum": 0.0
-                }
-              }
+            "FutureEra": {
+              "$ref": "#/definitions/EraId"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Execution should be scheduled for the specified timestamp or later.",
+          "type": "object",
+          "required": [
+            "FutureTimestamp"
+          ],
+          "properties": {
+            "FutureTimestamp": {
+              "$ref": "#/definitions/Timestamp"
             }
           },
           "additionalProperties": false
         }
       ]
-    },
-    "PackageHash": {
-      "description": "The hex-encoded address of the Package.",
-      "type": "string"
-    },
-    "DirectCallV1": {
-      "description": "A TransactionV1 targeting a stored contract.",
-      "oneOf": [
-        {
-          "description": "Stored contract referenced by its hash.",
-          "type": "object",
-          "required": [
-            "StoredContractByHash"
-          ],
-          "properties": {
-            "StoredContractByHash": {
-              "type": "object",
-              "required": [
-                "args",
-                "entry_point",
-                "hash"
-              ],
-              "properties": {
-                "hash": {
-                  "description": "Contract hash.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/AddressableEntityHash"
-                    }
-                  ]
-                },
-                "entry_point": {
-                  "description": "Name of the entry point.",
-                  "type": "string"
-                },
-                "args": {
-                  "description": "Runtime arguments.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/RuntimeArgs"
-                    }
-                  ]
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Stored contract referenced by the name of a named key in the signer's account context.",
-          "type": "object",
-          "required": [
-            "StoredContractByName"
-          ],
-          "properties": {
-            "StoredContractByName": {
-              "type": "object",
-              "required": [
-                "args",
-                "entry_point",
-                "name"
-              ],
-              "properties": {
-                "name": {
-                  "description": "Name of the named key.",
-                  "type": "string"
-                },
-                "entry_point": {
-                  "description": "Name of the entry point.",
-                  "type": "string"
-                },
-                "args": {
-                  "description": "Runtime arguments.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/RuntimeArgs"
-                    }
-                  ]
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Stored versioned contract referenced by its hash.",
-          "type": "object",
-          "required": [
-            "StoredVersionedContractByHash"
-          ],
-          "properties": {
-            "StoredVersionedContractByHash": {
-              "type": "object",
-              "required": [
-                "args",
-                "entry_point",
-                "hash"
-              ],
-              "properties": {
-                "hash": {
-                  "description": "Contract package hash.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/PackageHash"
-                    }
-                  ]
-                },
-                "version": {
-                  "description": "Version of the contract to call; defaults to highest enabled version if unspecified.",
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "format": "uint32",
-                  "minimum": 0.0
-                },
-                "entry_point": {
-                  "description": "Name of the entry point.",
-                  "type": "string"
-                },
-                "args": {
-                  "description": "Runtime arguments.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/RuntimeArgs"
-                    }
-                  ]
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "Stored versioned contract referenced by the name of a named key in the signer's account context.",
-          "type": "object",
-          "required": [
-            "StoredVersionedContractByName"
-          ],
-          "properties": {
-            "StoredVersionedContractByName": {
-              "type": "object",
-              "required": [
-                "args",
-                "entry_point",
-                "name"
-              ],
-              "properties": {
-                "name": {
-                  "description": "Name of the named key.",
-                  "type": "string"
-                },
-                "version": {
-                  "description": "Version of the contract to call; defaults to highest enabled version if unspecified.",
-                  "type": [
-                    "integer",
-                    "null"
-                  ],
-                  "format": "uint32",
-                  "minimum": 0.0
-                },
-                "entry_point": {
-                  "description": "Name of the entry point.",
-                  "type": "string"
-                },
-                "args": {
-                  "description": "Runtime arguments.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/RuntimeArgs"
-                    }
-                  ]
-                }
-              },
-              "additionalProperties": false
-            }
-          },
-          "additionalProperties": false
-        }
-      ]
-    },
-    "AddressableEntityHash": {
-      "description": "The hex-encoded address of the addressable entity.",
-      "type": "string"
     },
     "TransactionV1Approval": {
       "description": "A struct containing a signature of a transaction hash and the public key of the signer.",
@@ -2724,10 +2562,6 @@
           "additionalProperties": false
         }
       ]
-    },
-    "AccountHash": {
-      "description": "Account hash as a formatted string.",
-      "type": "string"
     },
     "DeployInfo": {
       "description": "Information relating to the given Deploy.",

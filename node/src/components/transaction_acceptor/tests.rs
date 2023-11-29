@@ -28,9 +28,9 @@ use casper_types::{
     bytesrepr::Bytes,
     testing::TestRng,
     Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, DeployConfigFailure,
-    EraId, Package, PublicKey, RuntimeArgs, SecretKey, StoredValue, TestBlockBuilder,
-    TestTransactionV1Builder, TimeDiff, Timestamp, Transaction, TransactionV1,
-    TransactionV1ConfigFailure, TransactionV1Kind, URef, U512,
+    EraId, Package, PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff, Timestamp,
+    Transaction, TransactionSessionKind, TransactionV1, TransactionV1Builder,
+    TransactionV1ConfigFailure, URef, U512,
 };
 
 use super::*;
@@ -242,6 +242,7 @@ impl TestScenario {
     }
 
     fn transaction(&self, rng: &mut TestRng, admin: &SecretKey) -> Transaction {
+        let secret_key = SecretKey::random(rng);
         match self {
             TestScenario::FromPeerInvalidTransaction(TxnType::Deploy)
             | TestScenario::FromClientInvalidTransaction(TxnType::Deploy) => {
@@ -261,15 +262,16 @@ impl TestScenario {
             }
             TestScenario::FromPeerExpired(TxnType::V1)
             | TestScenario::FromClientExpired(TxnType::V1) => {
-                let body = TransactionV1Kind::new_userland_standard(
+                let txn = TransactionV1Builder::new_session(
+                    TransactionSessionKind::Standard,
                     Bytes::from(vec![1]),
-                    RuntimeArgs::new(),
-                );
-                let txn = TestTransactionV1Builder::new(rng)
-                    .with_chain_name("casper-example")
-                    .with_timestamp(Timestamp::zero())
-                    .with_body(body)
-                    .build();
+                    "call",
+                )
+                .with_chain_name("casper-example")
+                .with_timestamp(Timestamp::zero())
+                .with_secret_key(&secret_key)
+                .build()
+                .unwrap();
                 Transaction::from(txn)
             }
             TestScenario::FromPeerValidTransaction(txn_type)
@@ -285,15 +287,16 @@ impl TestScenario {
             | TestScenario::FromClientAccountWithInsufficientWeight(txn_type) => match txn_type {
                 TxnType::Deploy => Transaction::from(Deploy::random_valid_native_transfer(rng)),
                 TxnType::V1 => {
-                    let body = TransactionV1Kind::new_userland_standard(
+                    let txn = TransactionV1Builder::new_session(
+                        TransactionSessionKind::Standard,
                         Bytes::from(vec![1]),
-                        RuntimeArgs::new(),
-                    );
-                    let txn = TestTransactionV1Builder::new(rng)
-                        .with_chain_name("casper-example")
-                        .with_timestamp(Timestamp::now())
-                        .with_body(body)
-                        .build();
+                        "call",
+                    )
+                    .with_chain_name("casper-example")
+                    .with_timestamp(Timestamp::now())
+                    .with_secret_key(&secret_key)
+                    .build()
+                    .unwrap();
                     Transaction::from(txn)
                 }
             },
@@ -303,17 +306,16 @@ impl TestScenario {
                 Transaction::from(deploy)
             }
             TestScenario::FromClientSignedByAdmin(TxnType::V1) => {
-                let body = TransactionV1Kind::new_userland_standard(
+                let txn = TransactionV1Builder::new_session(
+                    TransactionSessionKind::Standard,
                     Bytes::from(vec![1]),
-                    RuntimeArgs::new(),
-                );
-                let cloned_secret_key = SecretKey::from_der(admin.to_der().unwrap()).unwrap();
-                let txn = TestTransactionV1Builder::new(rng)
-                    .with_chain_name("casper-example")
-                    .with_timestamp(Timestamp::now())
-                    .with_body(body)
-                    .with_secret_key(Some(cloned_secret_key))
-                    .build();
+                    "call",
+                )
+                .with_chain_name("casper-example")
+                .with_timestamp(Timestamp::now())
+                .with_secret_key(admin)
+                .build()
+                .unwrap();
                 Transaction::from(txn)
             }
             TestScenario::AccountWithUnknownBalance
@@ -385,42 +387,38 @@ impl TestScenario {
             | TestScenario::FromClientSessionContract(TxnType::V1, contract_scenario) => {
                 match contract_scenario {
                     ContractScenario::Valid | ContractScenario::MissingContractAtName => {
-                        let body = TransactionV1Kind::new_stored_contract_by_name(
-                            "Test".to_string(),
-                            "call".to_string(),
-                            RuntimeArgs::new(),
-                        );
-                        let txn = TestTransactionV1Builder::new(rng)
-                            .with_chain_name("casper-example")
-                            .with_timestamp(Timestamp::now())
-                            .with_body(body)
-                            .build();
+                        let txn = TransactionV1Builder::new_targeting_invocable_entity_via_alias(
+                            "Test", "call",
+                        )
+                        .with_chain_name("casper-example")
+                        .with_timestamp(Timestamp::now())
+                        .with_secret_key(&secret_key)
+                        .build()
+                        .unwrap();
                         Transaction::from(txn)
                     }
                     ContractScenario::MissingContractAtHash => {
-                        let body = TransactionV1Kind::new_stored_contract_by_hash(
-                            AddressableEntityHash::default(),
-                            "call".to_string(),
-                            RuntimeArgs::new(),
-                        );
-                        let txn = TestTransactionV1Builder::new(rng)
-                            .with_chain_name("casper-example")
-                            .with_timestamp(Timestamp::now())
-                            .with_body(body)
-                            .build();
+                        let txn = TransactionV1Builder::new_targeting_invocable_entity(
+                            EntityAddr::default(),
+                            "call",
+                        )
+                        .with_chain_name("casper-example")
+                        .with_timestamp(Timestamp::now())
+                        .with_secret_key(&secret_key)
+                        .build()
+                        .unwrap();
                         Transaction::from(txn)
                     }
                     ContractScenario::MissingEntryPoint => {
-                        let body = TransactionV1Kind::new_stored_contract_by_hash(
-                            AddressableEntityHash::default(),
-                            "non-existent-entry-point".to_string(),
-                            RuntimeArgs::new(),
-                        );
-                        let txn = TestTransactionV1Builder::new(rng)
-                            .with_chain_name("casper-example")
-                            .with_timestamp(Timestamp::now())
-                            .with_body(body)
-                            .build();
+                        let txn = TransactionV1Builder::new_targeting_invocable_entity(
+                            EntityAddr::default(),
+                            "non-existent-entry-point",
+                        )
+                        .with_chain_name("casper-example")
+                        .with_timestamp(Timestamp::now())
+                        .with_secret_key(&secret_key)
+                        .build()
+                        .unwrap();
                         Transaction::from(txn)
                     }
                 }
@@ -452,45 +450,39 @@ impl TestScenario {
                 contract_package_scenario,
             ) => match contract_package_scenario {
                 ContractPackageScenario::Valid | ContractPackageScenario::MissingPackageAtName => {
-                    let body = TransactionV1Kind::new_stored_versioned_contract_by_name(
-                        "Test".to_string(),
-                        None,
-                        "call".to_string(),
-                        RuntimeArgs::new(),
-                    );
-                    let txn = TestTransactionV1Builder::new(rng)
-                        .with_chain_name("casper-example")
-                        .with_timestamp(Timestamp::now())
-                        .with_body(body)
-                        .build();
+                    let txn =
+                        TransactionV1Builder::new_targeting_package_via_alias("Test", None, "call")
+                            .with_chain_name("casper-example")
+                            .with_timestamp(Timestamp::now())
+                            .with_secret_key(&secret_key)
+                            .build()
+                            .unwrap();
                     Transaction::from(txn)
                 }
                 ContractPackageScenario::MissingPackageAtHash => {
-                    let body = TransactionV1Kind::new_stored_versioned_contract_by_hash(
-                        PackageHash::default(),
+                    let txn = TransactionV1Builder::new_targeting_package(
+                        PackageAddr::default(),
                         None,
-                        "call".to_string(),
-                        RuntimeArgs::new(),
-                    );
-                    let txn = TestTransactionV1Builder::new(rng)
-                        .with_chain_name("casper-example")
-                        .with_timestamp(Timestamp::now())
-                        .with_body(body)
-                        .build();
+                        "call",
+                    )
+                    .with_chain_name("casper-example")
+                    .with_timestamp(Timestamp::now())
+                    .with_secret_key(&secret_key)
+                    .build()
+                    .unwrap();
                     Transaction::from(txn)
                 }
                 ContractPackageScenario::MissingContractVersion => {
-                    let body = TransactionV1Kind::new_stored_versioned_contract_by_hash(
-                        PackageHash::default(),
+                    let txn = TransactionV1Builder::new_targeting_package(
+                        PackageAddr::default(),
                         Some(6),
-                        "call".to_string(),
-                        RuntimeArgs::new(),
-                    );
-                    let txn = TestTransactionV1Builder::new(rng)
-                        .with_chain_name("casper-example")
-                        .with_timestamp(Timestamp::now())
-                        .with_body(body)
-                        .build();
+                        "call",
+                    )
+                    .with_chain_name("casper-example")
+                    .with_timestamp(Timestamp::now())
+                    .with_secret_key(&secret_key)
+                    .build()
+                    .unwrap();
                     Transaction::from(txn)
                 }
             },
@@ -510,16 +502,17 @@ impl TestScenario {
                         ),
                     ),
                     TxnType::V1 => {
-                        let body = TransactionV1Kind::new_userland_standard(
+                        let txn = TransactionV1Builder::new_session(
+                            TransactionSessionKind::Standard,
                             Bytes::from(vec![1]),
-                            RuntimeArgs::new(),
-                        );
-                        let txn = TestTransactionV1Builder::new(rng)
-                            .with_chain_name("casper-example")
-                            .with_timestamp(timestamp)
-                            .with_ttl(ttl)
-                            .with_body(body)
-                            .build();
+                            "call",
+                        )
+                        .with_chain_name("casper-example")
+                        .with_timestamp(timestamp)
+                        .with_ttl(ttl)
+                        .with_secret_key(&secret_key)
+                        .build()
+                        .unwrap();
                         Transaction::from(txn)
                     }
                 }
@@ -536,16 +529,17 @@ impl TestScenario {
                         ),
                     ),
                     TxnType::V1 => {
-                        let body = TransactionV1Kind::new_userland_standard(
+                        let txn = TransactionV1Builder::new_session(
+                            TransactionSessionKind::Standard,
                             Bytes::from(vec![1]),
-                            RuntimeArgs::new(),
-                        );
-                        let txn = TestTransactionV1Builder::new(rng)
-                            .with_chain_name("casper-example")
-                            .with_timestamp(timestamp)
-                            .with_ttl(ttl)
-                            .with_body(body)
-                            .build();
+                            "call",
+                        )
+                        .with_chain_name("casper-example")
+                        .with_timestamp(timestamp)
+                        .with_ttl(ttl)
+                        .with_secret_key(&secret_key)
+                        .build()
+                        .unwrap();
                         Transaction::from(txn)
                     }
                 }

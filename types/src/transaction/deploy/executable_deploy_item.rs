@@ -1,5 +1,3 @@
-mod identifiers;
-
 use alloc::{string::String, vec::Vec};
 use core::fmt::{self, Debug, Display, Formatter};
 
@@ -24,11 +22,11 @@ use crate::{
     package::{EntityVersion, PackageHash},
     runtime_args, serde_helpers,
     system::mint::ARG_AMOUNT,
-    AddressableEntityHash, Gas, Motes, Phase, PublicKey, RuntimeArgs, URef, U512,
+    AddressableEntityHash, AddressableEntityIdentifier, Gas, Motes, PackageIdentifier, Phase,
+    PublicKey, RuntimeArgs, URef, U512,
 };
 #[cfg(any(feature = "testing", test))]
 use crate::{testing::TestRng, CLValue};
-pub use identifiers::{EntityIdentifier, ExecutableDeployItemIdentifier, PackageIdentifier};
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 const MODULE_BYTES_TAG: u8 = 0;
@@ -41,6 +39,19 @@ const TRANSFER_ARG_AMOUNT: &str = "amount";
 const TRANSFER_ARG_SOURCE: &str = "source";
 const TRANSFER_ARG_TARGET: &str = "target";
 const TRANSFER_ARG_ID: &str = "id";
+
+/// Identifier for an [`ExecutableDeployItem`].
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub enum ExecutableDeployItemIdentifier {
+    /// The deploy item is of the type [`ExecutableDeployItem::ModuleBytes`]
+    Module,
+    /// The deploy item is a variation of a stored contract.
+    AddressableEntity(AddressableEntityIdentifier),
+    /// The deploy item is a variation of a stored contract package.
+    Package(PackageIdentifier),
+    /// The deploy item is a native transfer.
+    Transfer,
+}
 
 /// The executable component of a [`Deploy`].
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -250,12 +261,14 @@ impl ExecutableDeployItem {
         match self {
             ExecutableDeployItem::ModuleBytes { .. } => ExecutableDeployItemIdentifier::Module,
             ExecutableDeployItem::StoredContractByHash { hash, .. } => {
-                ExecutableDeployItemIdentifier::AddressableEntity(EntityIdentifier::Hash(*hash))
+                ExecutableDeployItemIdentifier::AddressableEntity(
+                    AddressableEntityIdentifier::Hash(*hash),
+                )
             }
             ExecutableDeployItem::StoredContractByName { name, .. } => {
-                ExecutableDeployItemIdentifier::AddressableEntity(EntityIdentifier::Name(
-                    name.clone(),
-                ))
+                ExecutableDeployItemIdentifier::AddressableEntity(
+                    AddressableEntityIdentifier::Name(name.clone()),
+                )
             }
             ExecutableDeployItem::StoredVersionedContractByHash { hash, version, .. } => {
                 ExecutableDeployItemIdentifier::Package(PackageIdentifier::Hash {
@@ -274,17 +287,17 @@ impl ExecutableDeployItem {
     }
 
     /// Returns the identifier of the contract in the deploy item, if present.
-    pub fn contract_identifier(&self) -> Option<EntityIdentifier> {
+    pub fn contract_identifier(&self) -> Option<AddressableEntityIdentifier> {
         match self {
             ExecutableDeployItem::ModuleBytes { .. }
             | ExecutableDeployItem::StoredVersionedContractByHash { .. }
             | ExecutableDeployItem::StoredVersionedContractByName { .. }
             | ExecutableDeployItem::Transfer { .. } => None,
             ExecutableDeployItem::StoredContractByHash { hash, .. } => {
-                Some(EntityIdentifier::Hash(*hash))
+                Some(AddressableEntityIdentifier::Hash(*hash))
             }
             ExecutableDeployItem::StoredContractByName { name, .. } => {
-                Some(EntityIdentifier::Name(name.clone()))
+                Some(AddressableEntityIdentifier::Name(name.clone()))
             }
         }
     }
