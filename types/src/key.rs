@@ -1167,7 +1167,9 @@ impl ToBytes for Key {
             Key::AddressableEntity(..) => {
                 U8_SERIALIZED_LENGTH + KEY_ID_SERIALIZED_LENGTH + ADDR_LENGTH
             }
-            Key::ByteCode(byte_code_addr) => byte_code_addr.serialized_length(),
+            Key::ByteCode(byte_code_addr) => {
+                U8_SERIALIZED_LENGTH + byte_code_addr.serialized_length()
+            }
             Key::Message(message_addr) => {
                 KEY_ID_SERIALIZED_LENGTH + message_addr.serialized_length()
             }

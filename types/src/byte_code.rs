@@ -143,10 +143,10 @@ impl ToBytes for ByteCodeAddr {
     }
 
     fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH +
-            match self {
+        U8_SERIALIZED_LENGTH
+            + match self {
                 Self::Empty => 0,
-                Self::V1CasperWasm(_) => KEY_HASH_LENGTH
+                Self::V1CasperWasm(_) => KEY_HASH_LENGTH,
             }
     }
 
@@ -217,8 +217,8 @@ impl Debug for ByteCodeAddr {
 impl Distribution<ByteCodeAddr> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ByteCodeAddr {
         match rng.gen_range(0..=1) {
-            0 => ByteCodeAddr::V1CasperWasm(rng.gen()),
-            1 => ByteCodeAddr::Empty,
+            1 => ByteCodeAddr::V1CasperWasm(rng.gen()),
+            0 => ByteCodeAddr::Empty,
             _ => unreachable!(),
         }
     }
