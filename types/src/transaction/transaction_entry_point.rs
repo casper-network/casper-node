@@ -129,6 +129,7 @@ pub enum TransactionEntryPoint {
     )]
     Redelegate,
 }
+
 impl TransactionEntryPoint {
     /// Returns a random `TransactionEntryPoint`.
     #[cfg(any(feature = "testing", test))]

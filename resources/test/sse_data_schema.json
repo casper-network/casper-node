@@ -784,7 +784,7 @@
           }
         },
         "install_upgrade": {
-          "description": "The hashes of the installer/upgrader userland transactions within the block.",
+          "description": "The hashes of the installer/upgrader transactions within the block.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/TransactionHash"
