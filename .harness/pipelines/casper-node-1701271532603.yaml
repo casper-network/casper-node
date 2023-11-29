@@ -44,7 +44,7 @@ pipeline:
                     resources:
                       limits:
                         memory: 8Gi
-                        cpu: "8"
+                        cpu: "7"
           infrastructure:
             type: KubernetesDirect
             spec:
