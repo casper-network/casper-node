@@ -600,12 +600,17 @@ impl RpcWithoutParams for GetStatus {
             .read_block_hash_from_height(available_block_range.low())
             .await
             .map_err(|err| Error::NodeRequest("lowest block hash", err))?
-            .ok_or_else(|| Error::NoBlockAtHeight(available_block_range.low()))?;
+            .ok_or_else(|| {
+                Error::NoBlockAtHeight(available_block_range.low(), available_block_range)
+            })?;
         let lowest_block_header = node_client
             .read_block_header(lowest_block_hash)
             .await
             .map_err(|err| Error::NodeRequest("lowest block header", err))?
-            .ok_or(Error::NoBlockWithHash(lowest_block_hash))?;
+            .ok_or(Error::NoBlockWithHash(
+                lowest_block_hash,
+                available_block_range,
+            ))?;
 
         Ok(Self::ResponseResult {
             peers,

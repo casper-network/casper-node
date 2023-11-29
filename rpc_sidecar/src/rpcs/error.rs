@@ -1,21 +1,24 @@
 use crate::node_client::Error as NodeClientError;
 use casper_json_rpc::Error as RpcError;
-use casper_types::{BlockHash, Digest, KeyFromStrError, KeyTag, TransactionHash, URefFromStrError};
+use casper_types::{
+    AvailableBlockRange, BlockHash, Digest, KeyFromStrError, KeyTag, TransactionHash,
+    URefFromStrError,
+};
 
-use super::ErrorCode;
+use super::{ErrorCode, ErrorData};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("request for {0} has failed: {1}")]
     NodeRequest(&'static str, NodeClientError),
     #[error("no block for hash {0}")]
-    NoBlockWithHash(BlockHash),
-    #[error("no block at height {0}")]
-    NoBlockAtHeight(u64),
-    #[error("no highest block found")]
-    NoHighestBlock,
+    NoBlockWithHash(BlockHash, AvailableBlockRange),
     #[error("no block body for hash {0}")]
-    NoBlockBodyWithHash(Digest),
+    NoBlockBodyWithHash(Digest, AvailableBlockRange),
+    #[error("no block at height {0}")]
+    NoBlockAtHeight(u64, AvailableBlockRange),
+    #[error("no highest block found")]
+    NoHighestBlock(AvailableBlockRange),
     #[error("could not verify block with hash {0}")]
     CouldNotVerifyBlock(BlockHash),
     #[error("no transaction for hash {0}")]
@@ -62,6 +65,8 @@ pub enum Error {
     InvalidAuctionContract,
     #[error("the auction validators were invalid")]
     InvalidAuctionValidators,
+    #[error("speculative execution returned nothing")]
+    SpecExecReturnedNothing,
 }
 
 impl Error {
@@ -70,10 +75,10 @@ impl Error {
             Error::NodeRequest(_, _) | Error::InvalidPeersResponse(_) => {
                 ErrorCode::NodeRequestFailed
             }
-            Error::NoBlockWithHash(_)
-            | Error::NoBlockAtHeight(_)
-            | Error::NoHighestBlock
-            | Error::NoBlockBodyWithHash(_) => ErrorCode::NoSuchBlock,
+            Error::NoBlockWithHash(_, _)
+            | Error::NoBlockAtHeight(_, _)
+            | Error::NoHighestBlock(_)
+            | Error::NoBlockBodyWithHash(_, _) => ErrorCode::NoSuchBlock,
             Error::CouldNotVerifyBlock(_) => ErrorCode::InvalidBlock,
             Error::NoTransactionWithHash(_) => ErrorCode::NoSuchTransaction,
             Error::InconsistentTransactionVersions(_) | Error::FoundTransactionInsteadOfDeploy => {
@@ -94,7 +99,7 @@ impl Error {
             | Error::DictionaryValueIsNotAUref(_)
             | Error::DictionaryKeyCouldNotBeParsed(_) => ErrorCode::FailedToGetDictionaryURef,
             Error::InvalidTransaction(_) => ErrorCode::InvalidTransaction,
-            Error::InvalidDeploy(_) => ErrorCode::InvalidDeploy,
+            Error::InvalidDeploy(_) | Error::SpecExecReturnedNothing => ErrorCode::InvalidDeploy,
             Error::InvalidAuctionBids
             | Error::InvalidAuctionContract
             | Error::InvalidAuctionValidators => ErrorCode::InvalidAuctionState,
@@ -104,6 +109,18 @@ impl Error {
 
 impl From<Error> for RpcError {
     fn from(value: Error) -> Self {
-        RpcError::new(value.code(), value.to_string())
+        match value {
+            Error::NoBlockWithHash(_, available_block_range)
+            | Error::NoBlockBodyWithHash(_, available_block_range)
+            | Error::NoBlockAtHeight(_, available_block_range)
+            | Error::NoHighestBlock(available_block_range) => RpcError::new(
+                value.code(),
+                ErrorData::MissingBlockOrStateRoot {
+                    message: value.to_string(),
+                    available_block_range,
+                },
+            ),
+            _ => RpcError::new(value.code(), value.to_string()),
+        }
     }
 }

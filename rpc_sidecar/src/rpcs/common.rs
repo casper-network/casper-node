@@ -6,8 +6,8 @@ use tracing::info;
 use crate::rpcs::error::Error;
 use casper_types::{
     account::AccountHash, binary_port::global_state::GlobalStateQueryResult, AddressableEntity,
-    AvailableBlockRange, Block, BlockHeader, BlockSignatures, Digest, ExecutionInfo,
-    FinalizedApprovals, Key, SignedBlock, StoredValue, Transaction, TransactionHash, URef, U512,
+    AvailableBlockRange, BlockHeader, Digest, ExecutionInfo, FinalizedApprovals, Key, SignedBlock,
+    StoredValue, Transaction, TransactionHash, URef, U512,
 };
 
 use crate::NodeClient;
@@ -49,18 +49,22 @@ pub async fn get_signed_block(
     node_client: &dyn NodeClient,
     identifier: Option<BlockIdentifier>,
 ) -> Result<SignedBlock, Error> {
+    let available_block_range = node_client
+        .read_available_block_range()
+        .await
+        .map_err(|err| Error::NodeRequest("available block range", err))?;
     let hash = match identifier {
         Some(BlockIdentifier::Hash(hash)) => hash,
         Some(BlockIdentifier::Height(height)) => node_client
             .read_block_hash_from_height(height)
             .await
             .map_err(|err| Error::NodeRequest("block hash from height", err))?
-            .ok_or(Error::NoBlockAtHeight(height))?,
+            .ok_or(Error::NoBlockAtHeight(height, available_block_range))?,
         None => *node_client
             .read_highest_completed_block_info()
             .await
             .map_err(|err| Error::NodeRequest("highest completed block", err))?
-            .ok_or(Error::NoHighestBlock)?
+            .ok_or(Error::NoHighestBlock(available_block_range))?
             .block_hash(),
     };
 
@@ -70,14 +74,14 @@ pub async fn get_signed_block(
         .map_err(|err| Error::NodeRequest("completed block existence", err))?;
 
     if !should_return_block {
-        return Err(Error::NoBlockWithHash(hash));
+        return Err(Error::NoBlockWithHash(hash, available_block_range));
     }
 
     let header = node_client
         .read_block_header(hash)
         .await
         .map_err(|err| Error::NodeRequest("block header", err))?
-        .ok_or(Error::NoBlockWithHash(hash))?;
+        .ok_or(Error::NoBlockWithHash(hash, available_block_range))?;
 
     dbg!(&header);
     todo!();
@@ -87,7 +91,7 @@ pub async fn get_signed_block(
         .read_block_body(*header.body_hash())
         .await
         .map_err(|err| Error::NodeRequest("block body", err))?
-        .ok_or_else(|| Error::NoBlockBodyWithHash(*header.body_hash()))?;
+        .ok_or_else(|| Error::NoBlockBodyWithHash(*header.body_hash(), available_block_range))?;
     let signatures = node_client
         .read_block_signatures(hash)
         .await
@@ -107,26 +111,30 @@ pub async fn resolve_state_root_hash(
     node_client: &dyn NodeClient,
     identifier: Option<GlobalStateIdentifier>,
 ) -> Result<(Digest, Option<BlockHeader>), Error> {
+    let available_block_range = node_client
+        .read_available_block_range()
+        .await
+        .map_err(|err| Error::NodeRequest("available block range", err))?;
     let hash = match identifier {
         None => *node_client
             .read_highest_completed_block_info()
             .await
             .map_err(|err| Error::NodeRequest("highest completed block", err))?
-            .ok_or(Error::NoHighestBlock)?
+            .ok_or(Error::NoHighestBlock(available_block_range))?
             .block_hash(),
         Some(GlobalStateIdentifier::BlockHash(hash)) => hash,
         Some(GlobalStateIdentifier::BlockHeight(height)) => node_client
             .read_block_hash_from_height(height)
             .await
             .map_err(|err| Error::NodeRequest("block hash from height", err))?
-            .ok_or(Error::NoBlockAtHeight(height))?,
+            .ok_or(Error::NoBlockAtHeight(height, available_block_range))?,
         Some(GlobalStateIdentifier::StateRootHash(hash)) => return Ok((hash, None)),
     };
     let header = node_client
         .read_block_header(hash)
         .await
         .map_err(|err| Error::NodeRequest("block header", err))?
-        .ok_or(Error::NoBlockWithHash(hash))?;
+        .ok_or(Error::NoBlockWithHash(hash, available_block_range))?;
 
     Ok((*header.state_root_hash(), Some(header)))
 }

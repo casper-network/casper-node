@@ -19,20 +19,18 @@ use super::{
     Error, NodeClient, RpcError, RpcWithParams,
 };
 
-static SPECULATIVE_EXEC_TXN_PARAMS: Lazy<SpeculativeExecTxnParams> = Lazy::new(|| {
-    SpeculativeExecTxnParams {
+static SPECULATIVE_EXEC_TXN_PARAMS: Lazy<SpeculativeExecTxnParams> =
+    Lazy::new(|| SpeculativeExecTxnParams {
         block_identifier: Some(BlockIdentifier::Hash(*BlockHash::example())),
         transaction: Transaction::doc_example().clone(),
-    }
-});
-static SPECULATIVE_EXEC_TXN_RESULT: Lazy<SpeculativeExecTxnResult> = Lazy::new(|| {
-    SpeculativeExecTxnResult {
+    });
+static SPECULATIVE_EXEC_TXN_RESULT: Lazy<SpeculativeExecTxnResult> =
+    Lazy::new(|| SpeculativeExecTxnResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
         block_hash: *BlockHash::example(),
         execution_result: ExecutionResultV2::example().clone(),
         messages: Vec::new(),
-    }
-});
+    });
 static SPECULATIVE_EXEC_PARAMS: Lazy<SpeculativeExecParams> = Lazy::new(|| SpeculativeExecParams {
     block_identifier: Some(BlockIdentifier::Hash(*BlockHash::example())),
     deploy: Deploy::doc_example().clone(),
@@ -162,7 +160,7 @@ async fn handle_request(
         .exec_speculatively(state_root_hash, block_time, protocol_version, transaction)
         .await
         .map_err(|err| Error::NodeRequest("speculatively executing a transaction", err))?
-        .ok_or(Error::NoBlockWithHash(block_hash))?;
+        .ok_or(Error::SpecExecReturnedNothing)?;
 
     Ok(SpeculativeExecTxnResult {
         api_version,
