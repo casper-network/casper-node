@@ -6,9 +6,9 @@ pipeline:
   properties:
     ci:
       codebase:
-        build: <+input>
         connectorRef: org.casperdrone_github_connector
-        repoName: casper-network/casper-node
+        repoName: casper-node
+        build: <+input>
   stages:
     - stage:
         identifier: build
