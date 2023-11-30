@@ -296,14 +296,17 @@
               "$ref": "#/components/schemas/Deploy"
             },
             "block_hash": {
+              "description": "The hash of the block in which the deploy was executed.",
               "$ref": "#/components/schemas/BlockHash"
             },
             "block_height": {
+              "description": "The height of the block in which the deploy was executed.",
               "type": "integer",
               "format": "uint64",
               "minimum": 0.0
             },
             "execution_result": {
+              "description": "The execution result if known.",
               "anyOf": [
                 {
                   "$ref": "#/components/schemas/ExecutionResult"
@@ -455,14 +458,17 @@
               "$ref": "#/components/schemas/Transaction"
             },
             "block_hash": {
+              "description": "The hash of the block in which the deploy was executed.",
               "$ref": "#/components/schemas/BlockHash"
             },
             "block_height": {
+              "description": "The height of the block in which the deploy was executed.",
               "type": "integer",
               "format": "uint64",
               "minimum": 0.0
             },
             "execution_result": {
+              "description": "The execution result if known.",
               "anyOf": [
                 {
                   "$ref": "#/components/schemas/ExecutionResult"
@@ -2149,10 +2155,8 @@
         "type": "string"
       },
       "Timestamp": {
-        "description": "Timestamp formatted as per RFC 3339",
-        "type": "integer",
-        "format": "uint64",
-        "minimum": 0.0
+        "description": "Human-readable timestamp in RFC 3339 format.",
+        "type": "string"
       },
       "TimeDiff": {
         "description": "Human-readable duration.",
@@ -4598,281 +4602,152 @@
         "description": "A log of all transforms produced during execution.",
         "type": "array",
         "items": {
-          "$ref": "#/components/schemas/Transform"
+          "$ref": "#/components/schemas/Transform2"
         }
       },
-      "AccountIdentifier": {
-        "description": "Identifier of an account.",
-        "anyOf": [
+      "Transform2": {
+        "description": "A transformation performed while executing a deploy.",
+        "type": "object",
+        "required": [
+          "key",
+          "kind"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/components/schemas/Key"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TransformKind"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TransformKind": {
+        "description": "Representation of a single transformation occurring during execution.\n\nNote that all arithmetic variants of [`TransformKind`] are commutative which means that a given collection of them can be executed in any order to produce the same end result.",
+        "oneOf": [
           {
-            "description": "The public key of an account",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/PublicKey"
-              }
+            "description": "An identity transformation that does not modify a value in the global state.\n\nCreated as a result of reading from the global state.",
+            "type": "string",
+            "enum": [
+              "Identity"
             ]
           },
           {
-            "description": "The account hash of an account",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/AccountHash"
-              }
-            ]
-          }
-        ]
-      },
-      "BlockIdentifier": {
-        "description": "Identifier for possible ways to retrieve a block.",
-        "oneOf": [
-          {
-            "description": "Identify and retrieve the block with its hash.",
+            "description": "Writes a new value in the global state.",
             "type": "object",
             "required": [
-              "Hash"
+              "Write"
             ],
             "properties": {
-              "Hash": {
-                "$ref": "#/components/schemas/BlockHash"
+              "Write": {
+                "$ref": "#/components/schemas/StoredValue"
               }
             },
             "additionalProperties": false
           },
           {
-            "description": "Identify and retrieve the block with its height.",
+            "description": "A wrapping addition of an `i32` to an existing numeric value (not necessarily an `i32`) in the global state.",
             "type": "object",
             "required": [
-              "Height"
+              "AddInt32"
             ],
             "properties": {
-              "Height": {
+              "AddInt32": {
+                "type": "integer",
+                "format": "int32"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "A wrapping addition of a `u64` to an existing numeric value (not necessarily an `u64`) in the global state.",
+            "type": "object",
+            "required": [
+              "AddUInt64"
+            ],
+            "properties": {
+              "AddUInt64": {
                 "type": "integer",
                 "format": "uint64",
                 "minimum": 0.0
               }
             },
             "additionalProperties": false
-          }
-        ]
-      },
-      "Account": {
-        "description": "Represents an Account in the global state.",
-        "type": "object",
-        "required": [
-          "account_hash",
-          "action_thresholds",
-          "associated_keys",
-          "main_purse",
-          "named_keys"
-        ],
-        "properties": {
-          "account_hash": {
-            "$ref": "#/components/schemas/AccountHash"
           },
-          "named_keys": {
-            "$ref": "#/components/schemas/NamedKeys"
-          },
-          "main_purse": {
-            "$ref": "#/components/schemas/URef"
-          },
-          "associated_keys": {
-            "$ref": "#/components/schemas/AssociatedKeys"
-          },
-          "action_thresholds": {
-            "$ref": "#/components/schemas/ActionThresholds"
-          }
-        },
-        "additionalProperties": false
-      },
-      "NamedKeys": {
-        "description": "A collection of named keys.",
-        "allOf": [
           {
-            "$ref": "#/components/schemas/Array_of_NamedKey"
-          }
-        ]
-      },
-      "Array_of_NamedKey": {
-        "type": "array",
-        "items": {
-          "$ref": "#/components/schemas/NamedKey"
-        }
-      },
-      "AssociatedKeys": {
-        "description": "A collection of weighted public keys (represented as account hashes) associated with an account.",
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/Array_of_AssociatedKey"
-          }
-        ]
-      },
-      "Array_of_AssociatedKey": {
-        "type": "array",
-        "items": {
-          "$ref": "#/components/schemas/AssociatedKey"
-        }
-      },
-      "AssociatedKey": {
-        "description": "A weighted public key.",
-        "type": "object",
-        "required": [
-          "account_hash",
-          "weight"
-        ],
-        "properties": {
-          "account_hash": {
-            "description": "The account hash of the public key.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/AccountHash"
-              }
-            ]
-          },
-          "weight": {
-            "description": "The weight assigned to the public key.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Weight"
-              }
-            ]
-          }
-        }
-      },
-      "Weight": {
-        "description": "The weight associated with public keys in an account's associated keys.",
-        "type": "integer",
-        "format": "uint8",
-        "minimum": 0.0
-      },
-      "ActionThresholds": {
-        "description": "Thresholds that have to be met when executing an action of a certain type.",
-        "type": "object",
-        "required": [
-          "deployment",
-          "key_management"
-        ],
-        "properties": {
-          "deployment": {
-            "description": "Threshold for deploy execution.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Weight"
-              }
-            ]
-          },
-          "key_management": {
-            "description": "Threshold for managing action threshold.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Weight"
-              }
-            ]
-          }
-        }
-      },
-      "DictionaryIdentifier": {
-        "description": "Options for dictionary item lookups.",
-        "oneOf": [
-          {
-            "description": "Lookup a dictionary item via an Account's named keys.",
+            "description": "A wrapping addition of a `U128` to an existing numeric value (not necessarily an `U128`) in the global state.",
             "type": "object",
             "required": [
-              "AccountNamedKey"
+              "AddUInt128"
             ],
             "properties": {
-              "AccountNamedKey": {
-                "type": "object",
-                "required": [
-                  "dictionary_item_key",
-                  "dictionary_name",
-                  "key"
-                ],
-                "properties": {
-                  "key": {
-                    "description": "The account key as a formatted string whose named keys contains dictionary_name.",
-                    "type": "string"
-                  },
-                  "dictionary_name": {
-                    "description": "The named key under which the dictionary seed URef is stored.",
-                    "type": "string"
-                  },
-                  "dictionary_item_key": {
-                    "description": "The dictionary item key formatted as a string.",
-                    "type": "string"
-                  }
-                }
+              "AddUInt128": {
+                "$ref": "#/components/schemas/U128"
               }
             },
             "additionalProperties": false
           },
           {
-            "description": "Lookup a dictionary item via a Contract's named keys.",
+            "description": "A wrapping addition of a `U256` to an existing numeric value (not necessarily an `U256`) in the global state.",
             "type": "object",
             "required": [
-              "ContractNamedKey"
+              "AddUInt256"
             ],
             "properties": {
-              "ContractNamedKey": {
-                "type": "object",
-                "required": [
-                  "dictionary_item_key",
-                  "dictionary_name",
-                  "key"
-                ],
-                "properties": {
-                  "key": {
-                    "description": "The contract key as a formatted string whose named keys contains dictionary_name.",
-                    "type": "string"
-                  },
-                  "dictionary_name": {
-                    "description": "The named key under which the dictionary seed URef is stored.",
-                    "type": "string"
-                  },
-                  "dictionary_item_key": {
-                    "description": "The dictionary item key formatted as a string.",
-                    "type": "string"
-                  }
-                }
+              "AddUInt256": {
+                "$ref": "#/components/schemas/U256"
               }
             },
             "additionalProperties": false
           },
           {
-            "description": "Lookup a dictionary item via its seed URef.",
+            "description": "A wrapping addition of a `U512` to an existing numeric value (not necessarily an `U512`) in the global state.",
             "type": "object",
             "required": [
-              "URef"
+              "AddUInt512"
             ],
             "properties": {
-              "URef": {
-                "type": "object",
-                "required": [
-                  "dictionary_item_key",
-                  "seed_uref"
-                ],
-                "properties": {
-                  "seed_uref": {
-                    "description": "The dictionary's seed URef.",
-                    "type": "string"
-                  },
-                  "dictionary_item_key": {
-                    "description": "The dictionary item key formatted as a string.",
-                    "type": "string"
-                  }
-                }
+              "AddUInt512": {
+                "$ref": "#/components/schemas/U512"
               }
             },
             "additionalProperties": false
           },
           {
-            "description": "Lookup a dictionary item via its unique key.",
+            "description": "Adds new named keys to an existing entry in the global state.\n\nThis transform assumes that the existing stored value is either an Account or a Contract.",
             "type": "object",
             "required": [
-              "Dictionary"
+              "AddKeys"
             ],
             "properties": {
-              "Dictionary": {
-                "type": "string"
+              "AddKeys": {
+                "$ref": "#/components/schemas/NamedKeys"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "Removes the pathing to the global state entry of the specified key. The pruned element remains reachable from previously generated global state root hashes, but will not be included in the next generated global state root hash and subsequent state accumulated from it.",
+            "type": "object",
+            "required": [
+              "Prune"
+            ],
+            "properties": {
+              "Prune": {
+                "$ref": "#/components/schemas/Key"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "Represents the case where applying a transform would cause an error.",
+            "type": "object",
+            "required": [
+              "Failure"
+            ],
+            "properties": {
+              "Failure": {
+                "$ref": "#/components/schemas/TransformError"
               }
             },
             "additionalProperties": false
@@ -5110,6 +4985,143 @@
             "additionalProperties": false
           }
         ]
+      },
+      "Account": {
+        "description": "Represents an Account in the global state.",
+        "type": "object",
+        "required": [
+          "account_hash",
+          "action_thresholds",
+          "associated_keys",
+          "main_purse",
+          "named_keys"
+        ],
+        "properties": {
+          "account_hash": {
+            "$ref": "#/components/schemas/AccountHash"
+          },
+          "named_keys": {
+            "$ref": "#/components/schemas/NamedKeys"
+          },
+          "main_purse": {
+            "$ref": "#/components/schemas/URef"
+          },
+          "associated_keys": {
+            "$ref": "#/components/schemas/AssociatedKeys"
+          },
+          "action_thresholds": {
+            "$ref": "#/components/schemas/ActionThresholds"
+          }
+        },
+        "additionalProperties": false
+      },
+      "NamedKeys": {
+        "description": "A collection of named keys.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Array_of_NamedKey"
+          }
+        ]
+      },
+      "Array_of_NamedKey": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/NamedKey2"
+        }
+      },
+      "NamedKey2": {
+        "description": "A key with a name.",
+        "type": "object",
+        "required": [
+          "key",
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "description": "The name of the entry.",
+            "type": "string"
+          },
+          "key": {
+            "description": "The value of the entry: a casper `Key` type.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Key"
+              }
+            ]
+          }
+        }
+      },
+      "AssociatedKeys": {
+        "description": "A collection of weighted public keys (represented as account hashes) associated with an account.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Array_of_AssociatedKey"
+          }
+        ]
+      },
+      "Array_of_AssociatedKey": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/AssociatedKey"
+        }
+      },
+      "AssociatedKey": {
+        "description": "A weighted public key.",
+        "type": "object",
+        "required": [
+          "account_hash",
+          "weight"
+        ],
+        "properties": {
+          "account_hash": {
+            "description": "The account hash of the public key.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AccountHash"
+              }
+            ]
+          },
+          "weight": {
+            "description": "The weight assigned to the public key.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Weight"
+              }
+            ]
+          }
+        }
+      },
+      "Weight": {
+        "description": "The weight associated with public keys in an account's associated keys.",
+        "type": "integer",
+        "format": "uint8",
+        "minimum": 0.0
+      },
+      "ActionThresholds": {
+        "description": "Thresholds that have to be met when executing an action of a certain type.",
+        "type": "object",
+        "required": [
+          "deployment",
+          "key_management"
+        ],
+        "properties": {
+          "deployment": {
+            "description": "Threshold for deploy execution.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Weight"
+              }
+            ]
+          },
+          "key_management": {
+            "description": "Threshold for managing action threshold.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Weight"
+              }
+            ]
+          }
+        }
       },
       "ContractWasm": {
         "description": "A container for contract's WASM bytes.",
@@ -5456,10 +5468,10 @@
             "$ref": "#/components/schemas/URef"
           },
           "associated_keys": {
-            "$ref": "#/components/schemas/AssociatedKeys"
+            "$ref": "#/components/schemas/AssociatedKeys2"
           },
           "action_thresholds": {
-            "$ref": "#/components/schemas/ActionThresholds"
+            "$ref": "#/components/schemas/ActionThresholds2"
           },
           "message_topics": {
             "$ref": "#/components/schemas/Array_of_MessageTopic"
@@ -5473,6 +5485,55 @@
       "ByteCodeHash": {
         "description": "The hash address of the contract wasm",
         "type": "string"
+      },
+      "AssociatedKeys2": {
+        "description": "A collection of weighted public keys (represented as account hashes) associated with an account.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Array_of_AssociatedKey"
+          }
+        ]
+      },
+      "ActionThresholds2": {
+        "description": "Thresholds that have to be met when executing an action of a certain type.",
+        "type": "object",
+        "required": [
+          "deployment",
+          "key_management",
+          "upgrade_management"
+        ],
+        "properties": {
+          "deployment": {
+            "description": "Threshold for deploy execution.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Weight2"
+              }
+            ]
+          },
+          "upgrade_management": {
+            "description": "Threshold for upgrading contracts.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Weight2"
+              }
+            ]
+          },
+          "key_management": {
+            "description": "Threshold for managing action threshold.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Weight2"
+              }
+            ]
+          }
+        }
+      },
+      "Weight2": {
+        "description": "The weight associated with public keys in an account's associated keys.",
+        "type": "integer",
+        "format": "uint8",
+        "minimum": 0.0
       },
       "Array_of_MessageTopic": {
         "type": "array",
@@ -5778,6 +5839,272 @@
       "MessageChecksum": {
         "description": "Message checksum as a formatted string.",
         "type": "string"
+      },
+      "TransformError": {
+        "description": "Error type for applying and combining transforms.\n\nA `TypeMismatch` occurs when a transform cannot be applied because the types are not compatible (e.g. trying to add a number to a string).",
+        "oneOf": [
+          {
+            "description": "Error while (de)serializing data.",
+            "type": "object",
+            "required": [
+              "Serialization"
+            ],
+            "properties": {
+              "Serialization": {
+                "$ref": "#/components/schemas/Error"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "Type mismatch error.",
+            "type": "object",
+            "required": [
+              "TypeMismatch"
+            ],
+            "properties": {
+              "TypeMismatch": {
+                "$ref": "#/components/schemas/TypeMismatch"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "Type no longer supported.",
+            "type": "string",
+            "enum": [
+              "Deprecated"
+            ]
+          }
+        ]
+      },
+      "Error": {
+        "description": "Serialization and deserialization errors.",
+        "oneOf": [
+          {
+            "description": "Early end of stream while deserializing.",
+            "type": "string",
+            "enum": [
+              "EarlyEndOfStream"
+            ]
+          },
+          {
+            "description": "Formatting error while deserializing.",
+            "type": "string",
+            "enum": [
+              "Formatting"
+            ]
+          },
+          {
+            "description": "Not all input bytes were consumed in [`deserialize`].",
+            "type": "string",
+            "enum": [
+              "LeftOverBytes"
+            ]
+          },
+          {
+            "description": "Out of memory error.",
+            "type": "string",
+            "enum": [
+              "OutOfMemory"
+            ]
+          },
+          {
+            "description": "No serialized representation is available for a value.",
+            "type": "string",
+            "enum": [
+              "NotRepresentable"
+            ]
+          },
+          {
+            "description": "Exceeded a recursion depth limit.",
+            "type": "string",
+            "enum": [
+              "ExceededRecursionDepth"
+            ]
+          }
+        ]
+      },
+      "TypeMismatch": {
+        "description": "An error struct representing a type mismatch in [`StoredValue`](crate::StoredValue) operations.",
+        "type": "object",
+        "required": [
+          "expected",
+          "found"
+        ],
+        "properties": {
+          "expected": {
+            "description": "The name of the expected type.",
+            "type": "string"
+          },
+          "found": {
+            "description": "The actual type found.",
+            "type": "string"
+          }
+        }
+      },
+      "AccountIdentifier": {
+        "description": "Identifier of an account.",
+        "anyOf": [
+          {
+            "description": "The public key of an account",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PublicKey"
+              }
+            ]
+          },
+          {
+            "description": "The account hash of an account",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AccountHash"
+              }
+            ]
+          }
+        ]
+      },
+      "BlockIdentifier": {
+        "description": "Identifier for possible ways to retrieve a block.",
+        "oneOf": [
+          {
+            "description": "Identify and retrieve the block with its hash.",
+            "type": "object",
+            "required": [
+              "Hash"
+            ],
+            "properties": {
+              "Hash": {
+                "$ref": "#/components/schemas/BlockHash"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "Identify and retrieve the block with its height.",
+            "type": "object",
+            "required": [
+              "Height"
+            ],
+            "properties": {
+              "Height": {
+                "type": "integer",
+                "format": "uint64",
+                "minimum": 0.0
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "DictionaryIdentifier": {
+        "description": "Options for dictionary item lookups.",
+        "oneOf": [
+          {
+            "description": "Lookup a dictionary item via an Account's named keys.",
+            "type": "object",
+            "required": [
+              "AccountNamedKey"
+            ],
+            "properties": {
+              "AccountNamedKey": {
+                "type": "object",
+                "required": [
+                  "dictionary_item_key",
+                  "dictionary_name",
+                  "key"
+                ],
+                "properties": {
+                  "key": {
+                    "description": "The account key as a formatted string whose named keys contains dictionary_name.",
+                    "type": "string"
+                  },
+                  "dictionary_name": {
+                    "description": "The named key under which the dictionary seed URef is stored.",
+                    "type": "string"
+                  },
+                  "dictionary_item_key": {
+                    "description": "The dictionary item key formatted as a string.",
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "Lookup a dictionary item via a Contract's named keys.",
+            "type": "object",
+            "required": [
+              "ContractNamedKey"
+            ],
+            "properties": {
+              "ContractNamedKey": {
+                "type": "object",
+                "required": [
+                  "dictionary_item_key",
+                  "dictionary_name",
+                  "key"
+                ],
+                "properties": {
+                  "key": {
+                    "description": "The contract key as a formatted string whose named keys contains dictionary_name.",
+                    "type": "string"
+                  },
+                  "dictionary_name": {
+                    "description": "The named key under which the dictionary seed URef is stored.",
+                    "type": "string"
+                  },
+                  "dictionary_item_key": {
+                    "description": "The dictionary item key formatted as a string.",
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "Lookup a dictionary item via its seed URef.",
+            "type": "object",
+            "required": [
+              "URef"
+            ],
+            "properties": {
+              "URef": {
+                "type": "object",
+                "required": [
+                  "dictionary_item_key",
+                  "seed_uref"
+                ],
+                "properties": {
+                  "seed_uref": {
+                    "description": "The dictionary's seed URef.",
+                    "type": "string"
+                  },
+                  "dictionary_item_key": {
+                    "description": "The dictionary item key formatted as a string.",
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "Lookup a dictionary item via its unique key.",
+            "type": "object",
+            "required": [
+              "Dictionary"
+            ],
+            "properties": {
+              "Dictionary": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
       },
       "GlobalStateIdentifier": {
         "description": "Identifier for possible ways to query Global State",

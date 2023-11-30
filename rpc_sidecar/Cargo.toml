@@ -1,6 +1,6 @@
 [package]
 name = "casper-rpc-sidecar"
-version = "1.5.2" # when updating, also update 'html_root_url' in lib.rs
+version = "1.5.3" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Jacek Malec <jacek@casperlabs.io>"]
 edition = "2018"
 description = "The Casper blockchain RPC sidecard"
@@ -39,6 +39,9 @@ juliet = "0.1"
 [dev-dependencies]
 casper-types = { path = "../types", features = ["datasize", "json-schema", "std", "testing"] }
 tokio = { version = "1", features = ["test-util"] }
+assert-json-diff = "2"
+tempfile = "3"
+regex = "1"
 
 [build-dependencies]
 vergen = { version = "8.2.1", default-features = false, features = [

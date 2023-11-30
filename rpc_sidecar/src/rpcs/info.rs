@@ -51,7 +51,7 @@ static GET_TRANSACTION_RESULT: Lazy<GetTransactionResult> = Lazy::new(|| GetTran
 });
 static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-    peers: Some((format!("tls:{:0<128}", ""), "127.0.0.1:54321".to_owned()))
+    peers: Some(("tls:0101..0101".to_owned(), "127.0.0.1:54321".to_owned()))
         .into_iter()
         .collect::<BTreeMap<_, _>>()
         .into(),

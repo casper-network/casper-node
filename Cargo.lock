@@ -678,9 +678,10 @@ dependencies = [
 
 [[package]]
 name = "casper-rpc-sidecar"
-version = "1.5.2"
+version = "1.5.3"
 dependencies = [
  "anyhow",
+ "assert-json-diff",
  "async-trait",
  "backtrace",
  "base16",
@@ -693,10 +694,12 @@ dependencies = [
  "juliet",
  "num_cpus",
  "once_cell",
+ "regex",
  "schemars",
  "serde",
  "serde_json",
  "structopt",
+ "tempfile",
  "thiserror",
  "tokio",
  "toml 0.5.11",

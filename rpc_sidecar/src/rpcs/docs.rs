@@ -19,7 +19,7 @@ use super::{
     chain::{
         GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetEraSummary, GetStateRootHash,
     },
-    info::{GetChainspec, GetDeploy, GetTransaction, GetValidatorChanges},
+    info::{GetChainspec, GetDeploy, GetPeers, GetStatus, GetTransaction, GetValidatorChanges},
     state::{
         GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, GetItem, QueryBalance,
         QueryGlobalState,
@@ -28,7 +28,7 @@ use super::{
 };
 
 pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
-    ProtocolVersion::from_parts(1, 5, 2);
+    ProtocolVersion::from_parts(1, 5, 3);
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
@@ -84,9 +84,8 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     schema.push_with_params::<QueryBalance>(
         "query for a balance using a purse identifier and a state identifier",
     );
-    // TODO: handle peers and status
-    // schema.push_without_params::<GetPeers>("returns a list of peers connected to the node");
-    // schema.push_without_params::<GetStatus>("returns the current status of the node");
+    schema.push_without_params::<GetPeers>("returns a list of peers connected to the node");
+    schema.push_without_params::<GetStatus>("returns the current status of the node");
     schema
         .push_without_params::<GetValidatorChanges>("returns status changes of active validators");
     schema.push_without_params::<GetChainspec>(

@@ -30,11 +30,6 @@ const TIMESTAMP: Timestamp = Timestamp(1_605_573_564_072);
 /// A timestamp type, representing a concrete moment in time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(
-    feature = "json-schema",
-    derive(JsonSchema),
-    schemars(with = "String", description = "Timestamp formatted as per RFC 3339")
-)]
 pub struct Timestamp(u64);
 
 impl Timestamp {
@@ -231,6 +226,21 @@ impl FromBytes for Timestamp {
 impl From<u64> for Timestamp {
     fn from(milliseconds_since_epoch: u64) -> Timestamp {
         Timestamp(milliseconds_since_epoch)
+    }
+}
+
+#[cfg(feature = "json-schema")]
+impl JsonSchema for Timestamp {
+    fn schema_name() -> String {
+        String::from("Timestamp")
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description =
+            Some("Human-readable timestamp in RFC 3339 format.".to_string());
+        schema_object.into()
     }
 }
 
