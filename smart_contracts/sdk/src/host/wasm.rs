@@ -6,6 +6,8 @@ use std::{
 };
 
 use super::{CallError, CreateResult, Entry, Error, Manifest, ResultCode};
+use borsh::BorshSerialize;
+use vm_common::flags::ReturnFlags;
 
 pub(crate) mod ext {
     use crate::host::{CreateResult, Manifest};
@@ -123,8 +125,12 @@ pub fn copy_input_dest(dest: &mut [u8]) -> Option<&[u8]> {
     Some(&dest[..length])
 }
 
-pub fn casper_return(flags: u32, data: &[u8]) -> ! {
-    unsafe { ext::casper_return(flags, data.as_ptr(), data.len()) };
+pub fn casper_return(flags: ReturnFlags, data: Option<&[u8]>) -> ! {
+    let (data_ptr, data_len) = match data {
+        Some(data) => (data.as_ptr(), data.len()),
+        None => (ptr::null(), 0),
+    };
+    unsafe { ext::casper_return(flags.bits(), data_ptr, data_len) };
     unreachable!()
 }
 
@@ -237,12 +243,25 @@ pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     ResultCode::from(result_code)
 }
 
+#[derive(Debug)]
+pub struct CallResult {
+    pub result_code: ResultCode,
+    pub output: Vec<u8>,
+}
+
+impl CallResult {
+    pub fn did_revert(&self) -> bool {
+        self.result_code == ResultCode::CalleeReverted
+    }
+}
+
 pub fn casper_call(
     address: &Address,
     value: u64,
     entry_point: &str,
     input_data: &[u8],
-) -> Result<Vec<u8>, CallError> {
+) -> (Option<Vec<u8>>, ResultCode) {
+    let mut callback_happened = false;
     let mut vec = Vec::new();
     let result_code = call_into(
         address,
@@ -250,16 +269,21 @@ pub fn casper_call(
         entry_point,
         input_data,
         Some(|size| {
+            callback_happened = true;
             reserve_vec_space(&mut vec, size);
             Some(unsafe { ptr::NonNull::new_unchecked(vec.as_mut_ptr()) })
         }),
     );
-    casper_print(&format!("result_code: {:?} vec={:?}", result_code, vec));
-    match result_code {
-        ResultCode::Success => Ok(vec),
-        ResultCode::CalleeReverted => Ok(vec),
-        ResultCode::CalleeTrapped => Err(CallError::CalleeTrapped),
-        ResultCode::CalleeGasDepleted => Err(CallError::CalleeGasDepleted),
-        ResultCode::Unknown => Err(CallError::Unknown),
+    if callback_happened {
+        (Some(vec), result_code)
+    } else {
+        (None, result_code)
     }
+
+    // match result_code {
+    //     result_code @ ResultCode::Success | result_code @ ResultCode::CalleeReverted =>
+    // Ok(CallResult { result_code, output: vec }),     ResultCode::CalleeTrapped =>
+    // Err(CallError::CalleeTrapped),     ResultCode::CalleeGasDepleted =>
+    // Err(CallError::CalleeGasDepleted),     ResultCode::Unknown => Err(CallError::Unknown),
+    // }
 }

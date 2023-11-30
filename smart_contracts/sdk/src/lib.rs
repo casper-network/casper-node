@@ -275,3 +275,13 @@ macro_rules! log {
         $crate::host::casper_print(&format!($($arg)*));
     })
 }
+
+#[macro_export]
+macro_rules! revert {
+    () => {
+        $crate::host::revert(None)
+    };
+    ($arg:expr) => {{
+        $crate::host::revert(Some($arg))
+    }};
+}

@@ -2,12 +2,12 @@ pub mod backend;
 pub mod chain;
 pub(crate) mod host;
 pub mod storage;
-
 use bytes::Bytes;
 
 use backend::{wasmer::WasmerInstance, Context, Error as BackendError, WasmInstance};
 use storage::Storage;
 use thiserror::Error;
+use vm_common::flags::ReturnFlags;
 
 struct Arguments {
     bytes: Bytes,
@@ -80,8 +80,8 @@ pub enum TrapCode {
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum VMError {
-    #[error("Return 0x{flags:x} {data:?}")]
-    Return { flags: u32, data: Bytes },
+    #[error("Return 0x{flags:?} {data:?}")]
+    Return { flags: ReturnFlags, data: Bytes },
     #[error("Out of gas")]
     OutOfGas,
     #[error(transparent)]

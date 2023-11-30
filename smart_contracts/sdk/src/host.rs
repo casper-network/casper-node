@@ -1,5 +1,5 @@
 use core::slice;
-use std::ptr::NonNull;
+use std::{marker::PhantomData, ptr::NonNull};
 
 #[derive(Debug)]
 pub enum Error {
@@ -59,7 +59,7 @@ pub struct CreateResult {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ResultCode {
     /// Called contract returned successfully.
     Success = 0,
@@ -100,6 +100,7 @@ mod native;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 
+use vm_common::flags::ReturnFlags;
 #[cfg(target_arch = "wasm32")]
 pub use wasm::{
     casper_call, casper_copy_input, casper_create, casper_print, casper_read, casper_return,
@@ -112,7 +113,13 @@ pub use native::{
     casper_write,
 };
 
-/// TODO: Remove once procedural macros are improved, this is just to save the boilerplate
+pub fn revert<T: BorshSerialize>(value: T) -> T {
+    let data = borsh::to_vec(&value).expect("Revert value should serialize");
+    casper_return(ReturnFlags::REVERT, Some(data.as_slice()))
+}
+
+/// TODO: Remove once procedural macros are improved, this is just to save the boilerplate when
+/// doing things manually.
 pub fn start<Args: BorshDeserialize, Ret: BorshSerialize>(func: impl Fn(Args) -> Ret) {
     // Set panic hook (assumes std is enabled etc.)
     #[cfg(target_arch = "wasm32")]
@@ -123,5 +130,38 @@ pub fn start<Args: BorshDeserialize, Ret: BorshSerialize>(func: impl Fn(Args) ->
     let args: Args = BorshDeserialize::try_from_slice(&input).unwrap();
     let result = func(args);
     let serialized_result = borsh::to_vec(&result).unwrap();
-    casper_return(0, &serialized_result);
+    casper_return(ReturnFlags::empty(), Some(serialized_result.as_slice()));
+}
+
+pub struct CallResult<T: BorshDeserialize> {
+    data: Vec<u8>,
+    result: ResultCode,
+    marker: PhantomData<T>,
+}
+
+pub fn call<Ret: BorshDeserialize>(
+    contract_address: &Address,
+    value: u64,
+    entry_point_name: &str,
+    args: &[u8],
+) -> Result<CallResult<Ret>, CallError> {
+    todo!()
+    // let (data, result)  = casper_call(contract_address, value, entry_point_name, args);
+    // match result {
+    //     ResultCode::Success => Ok(CallResult { data: data.unwrap_or_default(), result, marker:
+    // PhantomData }),     ResultCode::CalleeReverted => Ok(CallResult { data:
+    // data.unwrap_or_default(), result, marker: PhantomData }),     ResultCode::CalleeTrapped
+    // => Err(CallError::CalleeTrapped),     ResultCode::CalleeGasDepleted =>
+    // Err(CallError::CalleeGasDepleted),     ResultCode::Unknown => Err(CallError::Unknown),
+    // }
+    // match result {
+    //     Ok((result_code, data)) => match result_code {
+    //         ResultCode::Success => Ok(data),
+    //         ResultCode::CalleeReverted => Err(CallError::CalleeReverted),
+    //         ResultCode::CalleeTrapped => Err(CallError::CalleeTrapped),
+    //         ResultCode::CalleeGasDepleted => Err(CallError::CalleeGasDepleted),
+    //         ResultCode::Unknown => Err(CallError::Unknown),
+    //     },
+    //     Err(_) => Err(CallError::Unknown),
+    // }
 }

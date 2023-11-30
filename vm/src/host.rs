@@ -10,6 +10,7 @@ use std::{
 
 use bytes::Bytes;
 use safe_transmute::SingleManyGuard;
+use vm_common::flags::ReturnFlags;
 
 use crate::{
     backend::{Caller, Context, MeteringPoints, WasmInstance},
@@ -23,6 +24,7 @@ use self::abi::ReadInfo;
 /// Represents the result of a host function call.
 ///
 /// 0 is used as a success.
+#[derive(Debug)]
 pub enum HostError {
     /// Callee contract reverted.
     CalleeReverted = 1,
@@ -147,15 +149,10 @@ pub(crate) fn casper_return<S: Storage>(
     data_ptr: u32,
     data_len: u32,
 ) -> VMResult<()> {
+    let flags = ReturnFlags::from_bits(flags).expect("should be valid flags"); // SAFETY: All unknown bits should be preserved.
     let data = caller
         .memory_read(data_ptr, data_len.try_into().unwrap())
         .map(Bytes::from)?;
-
-    // if let Some(config) = caller.config().callback.as_ref() {
-    //     config.on_retu
-    //     rn(flags, data.clone());
-    // }
-
     Err(VMError::Return { flags, data })
 }
 
@@ -385,28 +382,29 @@ pub(crate) fn casper_call<S: Storage + 'static>(
             // Call function by the index
             let (call_result, gas_usage) = new_instance.call_function(function_index);
 
-            let host_result = match call_result {
+            let (return_data, host_result) = match call_result {
                 Ok(()) => {
                     // Contract did not call `casper_return` - implies that it did not revert, and
                     // did not pass any data.
-                    Ok(None)
+                    (None, Ok(()))
                 }
                 Err(VMError::Return { flags, data }) => {
-                    if flags == 1 {
-                        todo!("revert?")
+                    // If the contract called `casper_return` function with revert bit set, we have
+                    // to pass the reverted code to the caller.
+                    let host_result = if flags.contains(ReturnFlags::REVERT) {
+                        Err(HostError::CalleeReverted)
                     } else {
-                        Ok(Some(data))
-                    }
+                        Ok(())
+                    };
+                    (Some(data), host_result)
                 }
                 Err(VMError::OutOfGas) => {
                     todo!()
                 }
-                Err(VMError::Trap(_trap)) => {
-                    
-                    Err(HostError::CalleeTrapped)
-                }
+                Err(VMError::Trap(_trap)) => (None, Err(HostError::CalleeTrapped)),
                 Err(other_error) => todo!("{other_error:?}"),
             };
+            dbg!(&return_data, &host_result);
 
             // Calculate how much gas was spent during execution of the called contract.
             let gas_spent = gas_usage
@@ -421,19 +419,17 @@ pub(crate) fn casper_call<S: Storage + 'static>(
                 }
             }
 
-            match host_result {
-                Ok(Some(returned_data)) => {
+            match &host_result {
+                Ok(()) | Err(HostError::CalleeReverted) => {
                     // Called contract did return data by calling `casper_return` function.
-                    let out_ptr: u32 = caller.alloc(cb_alloc, returned_data.len(), cb_ctx)?;
-                    caller.memory_write(out_ptr, &returned_data)?;
-                    Ok(Ok(()))
+                    if let Some(returned_data) = return_data {
+                        let out_ptr: u32 = caller.alloc(cb_alloc, returned_data.len(), cb_ctx)?;
+                        caller.memory_write(out_ptr, &returned_data)?;
+                    }
                 }
-                Ok(None) => {
-                    // Called contract did not return any data by calling `casper_return` function.
-                    Ok(Ok(()))
-                }
-                Err(host_error) => Ok(Err(host_error)),
+                Err(_other_host_error) => {}
             }
+            Ok(host_result)
         }
         None => todo!("not found"),
     }

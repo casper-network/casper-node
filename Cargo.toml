@@ -13,6 +13,7 @@ members = [
     "utils/global-state-update-gen",
     "utils/validation",
     "vm",
+    "vm-common",
     "smart_contracts/sdk",
     "smart_contracts/macros"
 ]
@@ -29,6 +30,7 @@ default-members = [
     "utils/global-state-update-gen",
     "utils/validation",
     "vm",
+    "vm-common",
     "smart_contracts/sdk",
     "smart_contracts/macros"
 ]

@@ -15,7 +15,8 @@ wasmer-types = "4.1.0"
 
 thiserror = "1.0.44"
 criterion = "0.5.1"
-borsh = "1.2.0"
+borsh = {version = "1.2.0", features = ["derive"] }
+borsh-derive = "1.2.0"
 
 blake2 = "0.10.6"
 rand = "0.8.5"
@@ -26,6 +27,8 @@ num-traits = "0.2.14"
 num-derive = "0.4.1"
 
 tracing = "0.1.40"
+
+vm-common = { path = "../vm-common"}
 
 [[bench]]
 name = "vm_call"

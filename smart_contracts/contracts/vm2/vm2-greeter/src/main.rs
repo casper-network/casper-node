@@ -8,15 +8,23 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
+use borsh::{BorshDeserialize, BorshSerialize};
+// use borsh_derive::BorshSerialize;
 use casper_macros::{casper, Contract};
 use casper_sdk::{
-    host::{self, CreateResult},
-    log, Value,
+    host::{self, CreateResult, ResultCode},
+    log, revert, Value,
 };
 
 #[derive(Contract)]
 struct Greeter {
     greeting: Value<String>,
+}
+
+#[derive(Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+pub enum CustomError {
+    Foo,
+    Bar,
 }
 
 #[casper(entry_points)]
@@ -42,9 +50,15 @@ impl Greeter {
             panic!("unreachable")
         }
     }
+
+    pub fn emit_revert(&self) -> Result<(), CustomError> {
+        // host::casper_return(ReturnFlags::REVERT, Some(&[1, 2, 3]));
+        host::revert(Err(CustomError::Bar))
+    }
 }
 
 use casper_sdk::Contract;
+use vm_common::flags::ReturnFlags;
 
 #[casper(export)]
 pub fn call() {
@@ -60,38 +74,52 @@ pub fn call() {
             log!("contract_address: {:?}", contract_address);
             log!("version: {:?}", version);
 
-            let call0 = "get_greeting";
-            let res0 = host::casper_call(&contract_address, 0, call0, &[]).unwrap();
-            assert_eq!(borsh::from_slice::<String>(&res0).unwrap(), "".to_string()); // TODO: Constructors
-            log!("{call0:?} result={res0:?}");
+            let call_0 = "get_greeting";
+            let (maybe_data_0, result_code_0) =
+                host::casper_call(&contract_address, 0, call_0, &[]);
+            log!("{call_0:?} result={result_code_0:?}");
+            assert_eq!(
+                borsh::from_slice::<String>(&maybe_data_0.as_ref().expect("return value")).unwrap(),
+                "".to_string()
+            ); // TODO: Constructors
 
-            let call1 = "set_greeting";
-            let input_data1: (String,) = ("Foo".into(),);
-            let res1 = host::casper_call(
+            let call_1 = "set_greeting";
+            let input_data_1: (String,) = ("Foo".into(),);
+            let (maybe_data_1, result_code_1) = host::casper_call(
                 &contract_address,
                 0,
-                call1,
-                &borsh::to_vec(&input_data1).unwrap(),
+                call_1,
+                &borsh::to_vec(&input_data_1).unwrap(),
             );
+            log!("{call_1:?} result={result_code_1:?}");
 
-            log!("{call1:?} result={res1:?}");
-
-            let call2 = "get_greeting";
-            let res2 = host::casper_call(&contract_address, 0, call2, &[]).unwrap();
+            let call_2 = "get_greeting";
+            let (maybe_data_2, result_code_2) =
+                host::casper_call(&contract_address, 0, call_2, &[]);
+            log!("{call_2:?} result={result_code_2:?}");
             assert_eq!(
-                borsh::from_slice::<String>(&res2).unwrap(),
+                borsh::from_slice::<String>(&maybe_data_2.as_ref().expect("return value")).unwrap(),
                 "Foo".to_string()
             );
-            log!("{call2:?} result={res2:?}");
 
-            let call3 = "emit_unreachable_trap";
-            let res3 = host::casper_call(&contract_address, 0, call3, &[]).unwrap_err();
-            assert_eq!(res3, host::CallError::CalleeTrapped);
+            let call_3 = "emit_unreachable_trap";
+            let (maybe_data_3, result_code_3) =
+                host::casper_call(&contract_address, 0, call_3, &[]);
+            assert_eq!(maybe_data_3, None);
+            assert_eq!(result_code_3, ResultCode::CalleeTrapped);
 
-            // let call4: &str = "unreachable";
-            // let res4 = host::casper_call(&contract_address, 0, call4, &[]);
-
-            // log!("{call4:?} result={res4:?}");
+            let call_4: &str = "emit_revert";
+            let (maybe_data_4, maybe_result_4) =
+                host::casper_call(&contract_address, 0, call_4, &[]);
+            log!("{call_4:?} result={maybe_data_4:?}");
+            assert_eq!(maybe_result_4, ResultCode::CalleeReverted);
+            assert_eq!(
+                borsh::from_slice::<Result<(), CustomError>>(
+                    &maybe_data_4.as_ref().expect("return value")
+                )
+                .unwrap(),
+                Err(CustomError::Bar),
+            );
         }
         Err(error) => {
             log!("error {:?}", error);
