@@ -1,7 +1,12 @@
 //! Implementation of all host functions.
 pub(crate) mod abi;
 
-use std::{io::Cursor, mem};
+use std::{
+    cell::RefCell,
+    io::Cursor,
+    mem,
+    sync::{Arc, Mutex},
+};
 
 use bytes::Bytes;
 use safe_transmute::SingleManyGuard;
@@ -14,6 +19,24 @@ use crate::{
 };
 
 use self::abi::ReadInfo;
+
+pub enum HostError {
+    /// Callee contract reverted.
+    CalleeReverted = 1,
+    /// Called contract trapped.
+    CalleeTrapped = 2,
+    /// Called contract reached gas limit.
+    CalleeGasDepleted = 3,
+}
+
+type HostResult = Result<(), HostError>;
+
+pub(crate) fn u32_from_host_result(result: HostResult) -> u32 {
+    match result {
+        Ok(()) => 0,
+        Err(error) => error as u32,
+    }
+}
 
 /// Write value under a key.
 pub(crate) fn casper_write<S: Storage>(
@@ -92,11 +115,6 @@ pub(crate) fn casper_read<S: Storage>(
     }
 }
 
-/// Reverts the execution of a smart contract.
-pub(crate) fn casper_revert(code: u32) -> VMResult<()> {
-    Err(VMError::Revert { code })
-}
-
 pub(crate) fn casper_copy_input<S: Storage>(
     mut caller: impl Caller<S>,
     cb_alloc: u32,
@@ -119,11 +137,23 @@ pub(crate) fn casper_copy_input<S: Storage>(
     }
 }
 
-pub(crate) fn casper_copy_output<S: Storage>(mut caller: impl Caller<S>, data_ptr: u32, data_size: u32) -> Vec<u8> {
-    let data = caller.memory_read(data_ptr, data_size.try_into().unwrap()).unwrap();
-    // caller.config().output.write_all(&data).unwrap();
-    // Ok(0)
-    todo!()
+/// Returns from the execution of a smart contract with an optional flags.
+pub(crate) fn casper_return<S: Storage>(
+    caller: impl Caller<S>,
+    flags: u32,
+    data_ptr: u32,
+    data_len: u32,
+) -> VMResult<()> {
+    let data = caller
+        .memory_read(data_ptr, data_len.try_into().unwrap())
+        .map(Bytes::from)?;
+
+    // if let Some(config) = caller.config().callback.as_ref() {
+    //     config.on_retu
+    //     rn(flags, data.clone());
+    // }
+
+    Err(VMError::Return { flags, data })
 }
 
 pub(crate) fn casper_create_contract<S: Storage>(
@@ -272,7 +302,7 @@ pub(crate) fn casper_call<S: Storage + 'static>(
     input_len: u32,
     cb_alloc: u32,
     cb_ctx: u32,
-) -> VMResult<u32> {
+) -> VMResult<HostResult> {
     // 1. Look up address in the storage
     // 1a. if it's legacy contract, wire up old EE, pretend you're 1.x. Input data would be
     // "RuntimeArgs". Serialized output of the call has to be passed as output. Value is ignored as
@@ -318,10 +348,14 @@ pub(crate) fn casper_call<S: Storage + 'static>(
             .try_into_remaining()
             .expect("should be remaining");
 
+        // let wasm_callbacks = Arc::new(WasmCallbacks::default());
+        // let cloned = Arc::clone(&wasm_callbacks);
+
         let new_config = ConfigBuilder::new()
             .with_gas_limit(gas_limit)
             .with_memory_limit(current_config.memory_limit)
             .with_input(input_data)
+            // .with_callback(cloned)
             .build();
 
         let mut new_instance = vm
@@ -346,7 +380,29 @@ pub(crate) fn casper_call<S: Storage + 'static>(
         };
 
         let (call_result, gas_usage) = new_instance.call_function(function_index);
-        dbg!(&call_result);
+        match call_result {
+            Ok(()) => {
+                // Contract did not call `casper_return` - implies that it did not revert, and did
+                // not pass data.
+            }
+            Err(VMError::Return { flags, data }) => {
+                if flags == 1 {
+                    todo!("revert?")
+                } else {
+                    // Pass the data to the caller.
+                    let ptr = caller.alloc(cb_alloc, data.len(), cb_ctx)?;
+                    caller.memory_write(ptr, &data)?;
+                }
+            }
+            Err(VMError::OutOfGas) => {
+                todo!()
+            }
+            Err(VMError::Trap(trap)) => {
+                todo!("{trap:?}")
+            }
+            Err(_) => todo!(),
+        }
+
         let _ = call_result; // TODO: Allow contract to intercept errors happening inside chain of calls.
 
         let gas_spent = gas_usage
@@ -363,5 +419,5 @@ pub(crate) fn casper_call<S: Storage + 'static>(
         }
     }
 
-    Ok(0)
+    Ok(Ok(()))
 }

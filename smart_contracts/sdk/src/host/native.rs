@@ -32,14 +32,14 @@ thread_local! {
     static DB: RefCell<LocalKV> = RefCell::new(LocalKV::default());
 }
 
-pub fn copy_input() -> Vec<u8> {
+pub fn casper_copy_input() -> Vec<u8> {
     todo!()
 }
 
-pub fn print(msg: &str) {
+pub fn casper_print(msg: &str) {
     println!("💻 {msg}");
 }
-pub fn write(key_space: u64, key: &[u8], value_tag: u64, value: &[u8]) -> Result<(), Error> {
+pub fn casper_write(key_space: u64, key: &[u8], value_tag: u64, value: &[u8]) -> Result<(), Error> {
     // NEW_VM.storage.
 
     DB.with(|db| {
@@ -53,7 +53,7 @@ pub fn write(key_space: u64, key: &[u8], value_tag: u64, value: &[u8]) -> Result
     });
     Ok(())
 }
-pub fn read(
+pub fn casper_read(
     key_space: u64,
     key: &[u8],
     func: impl FnOnce(usize) -> Option<ptr::NonNull<u8>>,
@@ -83,18 +83,15 @@ pub fn read(
     }
 }
 
-// pub fn dispatch<Args, R>(export: impl Fn(Args) -> R, args: Args) -> R {
-//     export(args)
-// }
-pub fn revert(code: u32) -> ! {
-    panic!("revert with code {code}")
+pub fn casper_return(flags: u32, data: &[u8]) -> ! {
+    panic!("revert with flags={flags:?} data={data:?}")
 }
 
-pub fn create(_code: Option<&[u8]>, _manifest: &Manifest) -> Result<CreateResult, Error> {
+pub fn casper_create(_code: Option<&[u8]>, _manifest: &Manifest) -> Result<CreateResult, Error> {
     todo!()
 }
 
-pub fn call(
+pub fn casper_call(
     address: &Address,
     value: u64,
     entry_point: &str,

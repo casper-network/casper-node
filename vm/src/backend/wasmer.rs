@@ -391,8 +391,15 @@ where
 
             imports.define(
                 "env",
-                "casper_revert",
-                Function::new_typed(&mut store, |code| host::casper_revert(code)),
+                "casper_return",
+                Function::new_typed_with_env(
+                    &mut store,
+                    &function_env,
+                    |env: FunctionEnvMut<WasmerEnv<S>>, flags, data_ptr, data_len| {
+                        let wasmer_caller = WasmerCaller { env };
+                        host::casper_return(wasmer_caller, flags, data_ptr, data_len)
+                    },
+                ),
             );
 
             imports.define(
@@ -411,23 +418,18 @@ where
                 ),
             );
 
-
             imports.define(
                 "env",
-                "casper_copy_output",
+                "casper_return",
                 Function::new_typed_with_env(
                     &mut store,
                     &function_env,
                     |env: FunctionEnvMut<WasmerEnv<S>>,
-                     cb_alloc: u32,
-                     cb_ctx: u32|
-                     -> Result<u32, RuntimeError> {
-                        todo!("can I call parent's (callee) alloc cb")
-                        // callback.
-
-                        // let wasmer_caller = WasmerCaller { env };
-                        // let ret = host::casper_copy_input(wasmer_caller, cb_alloc, cb_ctx);
-                        // (ret)
+                     flags: u32,
+                     data_ptr: u32,
+                     data_len: u32| {
+                        let wasmer_caller = WasmerCaller { env };
+                        host::casper_return(wasmer_caller, flags, data_ptr, data_len)
                     },
                 ),
             );
@@ -474,7 +476,7 @@ where
                      cb_alloc: u32,
                      cb_ctx: u32| {
                         let wasmer_caller = WasmerCaller { env };
-                        host::casper_call(
+                        match host::casper_call(
                             wasmer_caller,
                             address_ptr,
                             address_len,
@@ -485,7 +487,11 @@ where
                             input_len,
                             cb_alloc,
                             cb_ctx,
-                        )
+                        ) {
+                            Ok(Ok(())) => Ok(0),
+                            Ok(Err(call_error)) => Ok(call_error as u32),
+                            Err(error) => Err(error),
+                        }
                     },
                 ),
             );

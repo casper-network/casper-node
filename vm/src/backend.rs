@@ -74,8 +74,6 @@ pub enum Error {
     Instantiation(String),
 }
 
-// struct Payload
-
 pub trait WasmInstance<S: Storage> {
     fn call_export(&mut self, name: &str) -> (Result<(), VMError>, GasUsage);
     fn call_function(&mut self, function_index: u32) -> (Result<(), VMError>, GasUsage);

@@ -4,7 +4,10 @@
 #[macro_use]
 extern crate alloc;
 
-use alloc::{string::String, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 use casper_macros::{casper, Contract};
 use casper_sdk::{
     host::{self, CreateResult},
@@ -27,10 +30,6 @@ impl Greeter {
     pub fn set_greeting(&mut self, greeting: String) {
         log!("Saving greeting {}", greeting);
         self.greeting.write(greeting).unwrap();
-    }
-
-    pub fn revert(&self, code: u32) -> ! {
-        host::revert(code);
     }
 
     pub fn unreachable(&self) -> ! {
@@ -61,9 +60,14 @@ pub fn call() {
             log!("contract_address: {:?}", contract_address);
             log!("version: {:?}", version);
 
+            let call0 = "get_greeting";
+            let res0 = host::casper_call(&contract_address, 0, call0, &[]).unwrap();
+            assert_eq!(borsh::from_slice::<String>(&res0).unwrap(), "".to_string()); // TODO: Constructors
+            log!("{call0:?} result={res0:?}");
+
             let call1 = "set_greeting";
             let input_data1: (String,) = ("Foo".into(),);
-            let res1 = host::call(
+            let res1 = host::casper_call(
                 &contract_address,
                 0,
                 call1,
@@ -73,23 +77,26 @@ pub fn call() {
             log!("{call1:?} result={res1:?}");
 
             let call2 = "get_greeting";
-            let res2 = host::call(&contract_address, 0, call2, &[]);
-
+            let res2 = host::casper_call(&contract_address, 0, call2, &[]).unwrap();
+            assert_eq!(
+                borsh::from_slice::<String>(&res2).unwrap(),
+                "Foo".to_string()
+            );
             log!("{call2:?} result={res2:?}");
 
-            let call3 = "revert";
-            let input_data2: (u32,) = (1234,);
-            let res3 = host::call(
-                &contract_address,
-                0,
-                call3,
-                &borsh::to_vec(&input_data2).unwrap(),
-            );
+            // let call3 = "revert";
+            // let input_data2: (u32,) = (1234,);
+            // let res3 = host::casper_call(
+            //     &contract_address,
+            //     0,
+            //     call3,
+            //     &borsh::to_vec(&input_data2).unwrap(),
+            // );
 
-            let call4: &str = "unreachable";
-            let res3 = host::call(&contract_address, 0, call4, &[]);
+            // let call4: &str = "unreachable";
+            // let res4 = host::casper_call(&contract_address, 0, call4, &[]);
 
-            log!("{call3:?} result={res3:?}");
+            // log!("{call4:?} result={res4:?}");
         }
         Err(error) => {
             log!("error {:?}", error);

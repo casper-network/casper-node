@@ -80,8 +80,8 @@ pub enum TrapCode {
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum VMError {
-    #[error("Revert: {code}")]
-    Revert { code: u32 },
+    #[error("Return 0x{flags:x} {data:?}")]
+    Return { flags: u32, data: Bytes },
     #[error("Out of gas")]
     OutOfGas,
     #[error(transparent)]

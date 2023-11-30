@@ -16,7 +16,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(target_arch = "wasm32")]
 fn hook_impl(info: &std::panic::PanicInfo) {
     let msg = info.to_string();
-    host::print(&msg);
+    host::casper_print(&msg);
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -195,7 +195,7 @@ impl<T> Value<T> {
 impl<T: BorshSerialize> Value<T> {
     pub fn write(&mut self, value: T) -> io::Result<()> {
         let v = borsh::to_vec(&value)?;
-        host::write(self.key_space, self.name.as_bytes(), 0, &v)
+        host::casper_write(self.key_space, self.name.as_bytes(), 0, &v)
             .map_err(|_error| io::Error::new(io::ErrorKind::Other, "todo"))?;
         Ok(())
     }
@@ -203,7 +203,7 @@ impl<T: BorshSerialize> Value<T> {
 impl<T: BorshDeserialize> Value<T> {
     pub fn read(&self) -> io::Result<Option<T>> {
         let mut read = None;
-        host::read(self.key_space, self.name.as_bytes(), |size| {
+        host::casper_read(self.key_space, self.name.as_bytes(), |size| {
             *(&mut read) = Some(Vec::new());
             reserve_vec_space(read.as_mut().unwrap(), size)
         })
@@ -272,6 +272,6 @@ pub fn register_entrypoint<'a, F: fmt::Debug + Fn()>(entrypoint: EntryPoint<'a, 
 #[macro_export]
 macro_rules! log {
     ($($arg:tt)*) => ({
-        $crate::host::print(&format!($($arg)*));
+        $crate::host::casper_print(&format!($($arg)*));
     })
 }

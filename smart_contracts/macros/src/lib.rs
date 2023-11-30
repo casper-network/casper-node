@@ -168,7 +168,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     extern "C" fn #name() {
                                         casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
                                             let mut contract_instance = <#struct_name as casper_sdk::Contract>::new();
-                                            let _result = contract_instance.#name(#(#arg_names,)*);
+                                            contract_instance.#name(#(#arg_names,)*)
                                         })
                                     }
                                     (stringify!(#name), [#(#entrypoint_params,)*], #name)
@@ -302,7 +302,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 entry_points_size: ENTRY_POINTS.len(),
                             };
 
-                            casper_sdk::host::create(None, &MANIFEST)
+                            casper_sdk::host::casper_create(None, &MANIFEST)
                         }
                     }
                 };
@@ -391,7 +391,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                         // ("foo", 1234) -> input
 
-                        let input = casper_sdk::host::copy_input();
+                        let input = casper_sdk::host::casper_copy_input();
                         // let args = #mod_name::Arguments::try_from_slice(&input).unwrap();
                         let ( #(#arg_names,)* ) = BorshDeserialize::try_from_slice(&input).unwrap();
 

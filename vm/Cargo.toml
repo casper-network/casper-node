@@ -22,6 +22,9 @@ rand = "0.8.5"
 digest = "0.10.7"
 safe-transmute = "0.11.2"
 
+num-traits = "0.2.14"
+num-derive = "0.4.1"
+
 [[bench]]
 name = "vm_call"
 harness = false

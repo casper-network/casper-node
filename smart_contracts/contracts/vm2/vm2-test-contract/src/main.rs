@@ -48,33 +48,33 @@ mod exports {
         // (String, u32) = deserialize
 
         // (arg1, arg2): (String, u32) = Deserialize(input);
-        host::print(&format!("arg1: {arg1}"));
-        host::print(&format!("arg2: {arg2}"));
+        host::casper_print(&format!("arg1: {arg1}"));
+        host::casper_print(&format!("arg2: {arg2}"));
 
         let mut read1 = Vec::new();
 
-        let _non_existing_entry = host::read(KEY_SPACE_DEFAULT, b"hello", |size| {
-            host::print(&format!("first cb alloc cb with size={size}"));
+        let _non_existing_entry = host::casper_read(KEY_SPACE_DEFAULT, b"hello", |size| {
+            host::casper_print(&format!("first cb alloc cb with size={size}"));
             reserve_vec_space(&mut read1, size)
             // static_buffer.as_mut_ptr()
         })
         .expect("should read");
-        // host::print(&format!("non_existing_entry={:?}", non_existing_entry));
+        // host::casper_print(&format!("non_existing_entry={:?}", non_existing_entry));
 
-        host::write(KEY_SPACE_DEFAULT, b"hello", TAG_BYTES, b"Hello, world!").unwrap();
+        host::casper_write(KEY_SPACE_DEFAULT, b"hello", TAG_BYTES, b"Hello, world!").unwrap();
 
         let mut read2 = Vec::new();
-        let existing_entry = host::read(KEY_SPACE_DEFAULT, b"hello", |size| {
-            host::print(&format!("second cb alloc cb with size={size}"));
+        let existing_entry = host::casper_read(KEY_SPACE_DEFAULT, b"hello", |size| {
+            host::casper_print(&format!("second cb alloc cb with size={size}"));
             reserve_vec_space(&mut read2, size)
         })
         .expect("should read")
         .expect("should have entry");
-        host::print(&format!("existing_entry={:?}", existing_entry));
+        host::casper_print(&format!("existing_entry={:?}", existing_entry));
         let msg = String::from_utf8(read2).unwrap();
-        host::print(&format!("existing_entry={:?}", msg));
+        host::casper_print(&format!("existing_entry={:?}", msg));
 
-        host::write(KEY_SPACE_DEFAULT, b"read back", TAG_BYTES, msg.as_bytes()).unwrap();
+        host::casper_write(KEY_SPACE_DEFAULT, b"read back", TAG_BYTES, msg.as_bytes()).unwrap();
 
         const PARAM_1: &str = "param_1";
         const PARAM_2: &str = "param_2";
@@ -94,17 +94,17 @@ mod exports {
 
         extern "C" fn mangled_entry_point_wrapper_1() {
             host::start(|(name, value): (String, u32)| {
-                host::print(&format!("Hello, world! Name={:?} value={:?}", name, value));
+                host::casper_print(&format!("Hello, world! Name={:?} value={:?}", name, value));
             })
-            // let input_bytes = host::copy_input();
+            // let input_bytes = host::casper_copy_input();
             // // mangled_entry_point(param_1, param_2)
-            // host::print("called inside a mangled entry point 1");
-            // // host::print()
+            // host::casper_print("called inside a mangled entry point 1");
+            // // host::casper_print()
         }
 
         extern "C" fn mangled_entry_point_wrapper_2() {
             // mangled_entry_point(param_1, param_2)
-            host::print("called inside a mangled entry point 2");
+            host::casper_print("called inside a mangled entry point 2");
         }
 
         let name_1 = "mangled_entry_point_1";
@@ -128,7 +128,7 @@ mod exports {
 
         type _Foo = extern "C" fn() -> ();
 
-        // host::print(&format!("{:?}", mem::size_of::<
+        // host::casper_print(&format!("{:?}", mem::size_of::<
         let entry_point_1 = EntryPoint {
             name_ptr: name_1.as_ptr(),
             name_len: name_1.len(),
@@ -148,13 +148,13 @@ mod exports {
 
         // struct Foo{};
 
-        host::print(&format!(
+        host::casper_print(&format!(
             "Foo size/align {}/{}",
             core::mem::size_of::<*const [Param]>(),
             core::mem::size_of::<*const Param>()
         ));
 
-        host::print(&format!(
+        host::casper_print(&format!(
             "{:?} (sz={})",
             &entry_points,
             core::mem::size_of::<EntryPoint>()
@@ -164,9 +164,9 @@ mod exports {
             entry_points: entry_points.as_ptr(),
             entry_points_size: entry_points.len(),
         };
-        host::print(&format!("manifest {:?}", manifest));
-        let res = host::create(None, &manifest);
-        host::print(&format!("create res {:?}", res));
+        host::casper_print(&format!("manifest {:?}", manifest));
+        let res = host::casper_create(None, &manifest);
+        host::casper_print(&format!("create res {:?}", res));
 
         match res {
             Ok(CreateResult {
@@ -174,27 +174,30 @@ mod exports {
                 contract_address,
                 version,
             }) => {
-                host::print("success");
+                host::casper_print("success");
 
                 let input_data = borsh::to_vec(&("Hello, world!", 42)).unwrap();
 
                 let call_result =
-                    host::call(&contract_address, 10, "mangled_entry_point_1", &input_data);
+                    host::casper_call(&contract_address, 10, "mangled_entry_point_1", &input_data);
                 match call_result {
                     Ok(output_data) => {
-                        host::print(&format!("✅ Call succeeded. Output: {:?}", output_data));
+                        host::casper_print(&format!(
+                            "✅ Call succeeded. Output: {:?}",
+                            output_data
+                        ));
                     }
                     Err(error) => {
-                        host::print(&format!("❌ Call failed. Error: {:?}", error));
+                        host::casper_print(&format!("❌ Call failed. Error: {:?}", error));
                     }
                 }
             }
             Err(error) => {
-                host::print(&format!("error {:?}", error));
+                host::casper_print(&format!("error {:?}", error));
             }
         }
 
-        host::print("👋 Goodbye");
+        host::casper_print("👋 Goodbye");
     }
 }
 

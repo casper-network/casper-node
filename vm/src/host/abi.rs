@@ -1,3 +1,4 @@
+use num_derive::{FromPrimitive, ToPrimitive};
 use safe_transmute::TriviallyTransmutable;
 
 #[repr(C)]

@@ -1,77 +1,80 @@
+use crate::{host::Address, reserve_vec_space};
 use std::{
     ffi::c_void,
     mem::MaybeUninit,
     ptr::{self, NonNull},
 };
 
-use crate::{host::Address, reserve_vec_space};
+use super::{CallError, CreateResult, Entry, Error, Manifest, ResultCode};
 
-use super::{CreateResult, Entry, Error, Manifest};
+pub(crate) mod ext {
+    use crate::host::{CreateResult, Manifest};
+    use std::ffi::c_void;
 
-#[derive(Debug)]
-#[repr(C)]
-pub struct ReadInfo {
-    data: *const u8,
-    /// Size in bytes.
-    size: usize,
-    /// Value tag.
-    tag: u64,
+    #[derive(Debug)]
+    #[repr(C)]
+    pub struct ReadInfo {
+        pub(crate) data: *const u8,
+        /// Size in bytes.
+        pub(crate) size: usize,
+        /// Value tag.
+        pub(crate) tag: u64,
+    }
+
+    extern "C" {
+        // pub fn legacy_interface();
+        // pub fn casper_new_uref();
+        pub fn casper_read(
+            key_space: u64,
+            key_ptr: *const u8,
+            key_size: usize,
+            info: *mut ReadInfo,
+            alloc: extern "C" fn(usize, *mut c_void) -> *mut u8,
+            alloc_ctx: *const c_void,
+        ) -> i32;
+        pub fn casper_write(
+            key_space: u64,
+            key_ptr: *const u8,
+            key_size: usize,
+            value_tag: u64,
+            value_ptr: *const u8,
+            value_size: usize,
+        ) -> i32;
+        pub fn casper_print(msg_ptr: *const u8, msg_size: usize) -> i32;
+        pub fn casper_return(flags: u32, data_ptr: *const u8, data_len: usize) -> !;
+        pub fn casper_copy_input(
+            alloc: extern "C" fn(usize, *mut c_void) -> *mut u8,
+            alloc_ctx: *const c_void,
+        ) -> *mut u8;
+        pub fn casper_copy_output(output_ptr: *const u8, output_len: usize); // todo
+        pub fn casper_create_contract(
+            code_ptr: *const u8,
+            code_size: usize,
+            manifest_ptr: *mut Manifest,
+            result_ptr: *mut CreateResult,
+        ) -> i32;
+
+        pub fn casper_call(
+            // acct_or_contract,
+            address_ptr: *const u8,
+            address_size: usize,
+            value: u64,
+            entry_point_ptr: *const u8, // nullptr
+            entry_point_size: usize,
+            input_ptr: *const u8,
+            input_size: usize,
+            alloc: extern "C" fn(usize, *mut c_void) -> *mut u8, // For capturing output data
+            alloc_ctx: *const c_void,
+        ) -> u32;
+    }
 }
 
-extern "C" {
-    // pub fn legacy_interface();
-    // pub fn casper_new_uref();
-    pub fn casper_read(
-        key_space: u64,
-        key_ptr: *const u8,
-        key_size: usize,
-        info: *mut ReadInfo,
-        alloc: extern "C" fn(usize, *mut c_void) -> *mut u8,
-        alloc_ctx: *const c_void,
-    ) -> i32;
-    pub fn casper_write(
-        key_space: u64,
-        key_ptr: *const u8,
-        key_size: usize,
-        value_tag: u64,
-        value_ptr: *const u8,
-        value_size: usize,
-    ) -> i32;
-    pub fn casper_print(msg_ptr: *const u8, msg_size: usize) -> i32;
-    pub fn casper_revert(code: u32);
-    pub fn casper_copy_input(
-        alloc: extern "C" fn(usize, *mut c_void) -> *mut u8,
-        alloc_ctx: *const c_void,
-    ) -> *mut u8;
-    pub fn casper_copy_output(output_ptr: *const u8, output_len: usize); // todo
-    pub fn casper_create_contract(
-        code_ptr: *const u8,
-        code_size: usize,
-        manifest_ptr: *mut Manifest,
-        result_ptr: *mut CreateResult,
-    ) -> i32;
-
-    pub fn casper_call(
-        // acct_or_contract,
-        address_ptr: *const u8,
-        address_size: usize,
-        value: u64,
-        entry_point_ptr: *const u8, // nullptr
-        entry_point_size: usize,
-        input_ptr: *const u8,
-        input_size: usize,
-        alloc: extern "C" fn(usize, *mut c_void) -> *mut u8, // For capturing output data
-        alloc_ctx: *const c_void,
-    ) -> i32;
+pub fn casper_print(msg: &str) {
+    let _res = unsafe { ext::casper_print(msg.as_ptr(), msg.len()) };
 }
 
-pub fn print(msg: &str) {
-    let _res = unsafe { casper_print(msg.as_ptr(), msg.len()) };
-}
-
-pub fn revert(code: u32) -> ! {
-    unsafe { casper_revert(code) };
-    unreachable!()
+pub fn capser_return(flags: u32, data: &[u8]) -> ! {
+    unsafe { ext::casper_return(flags, data.as_ptr(), data.len()) }
 }
 
 extern "C" fn alloc_callback<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
@@ -91,16 +94,14 @@ extern "C" fn alloc_callback<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
 pub fn copy_input_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     alloc: Option<F>,
 ) -> Option<NonNull<u8>> {
-    let ret = unsafe { casper_copy_input(alloc_callback::<F>, &alloc as *const _ as *mut c_void) };
+    let ret =
+        unsafe { ext::casper_copy_input(alloc_callback::<F>, &alloc as *const _ as *mut c_void) };
     NonNull::<u8>::new(ret)
 }
 
-pub fn copy_input() -> Vec<u8> {
+pub fn casper_copy_input() -> Vec<u8> {
     let mut vec = Vec::new();
-    let last_ptr = copy_input_into(Some(|size| {
-        print(&format!("callback alloc called {size}"));
-        reserve_vec_space(&mut vec, size)
-    }));
+    let last_ptr = copy_input_into(Some(|size| reserve_vec_space(&mut vec, size)));
     last_ptr.unwrap();
     vec
 }
@@ -122,13 +123,18 @@ pub fn copy_input_dest(dest: &mut [u8]) -> Option<&[u8]> {
     Some(&dest[..length])
 }
 
-pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
+pub fn casper_return(flags: u32, data: &[u8]) -> ! {
+    unsafe { ext::casper_return(flags, data.as_ptr(), data.len()) };
+    unreachable!()
+}
+
+pub fn casper_read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     key_space: u64,
     key: &[u8],
     f: F,
 ) -> Result<Option<Entry>, Error> {
     // let mut info = MaybeUninit::uninit();
-    let mut info = ReadInfo {
+    let mut info = ext::ReadInfo {
         data: ptr::null(),
         size: 0,
         tag: 0,
@@ -146,14 +152,14 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
         }
     }
 
-    let ctx = &Some(f) as *const _ as *mut c_void;
+    let ctx = &Some(f) as *const _ as *mut _;
 
     let ret = unsafe {
-        casper_read(
+        ext::casper_read(
             key_space,
             key.as_ptr(),
             key.len(),
-            &mut info as *mut ReadInfo,
+            &mut info as *mut ext::ReadInfo,
             alloc_cb::<F>,
             ctx,
         )
@@ -168,9 +174,9 @@ pub fn read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     }
 }
 
-pub fn write(key_space: u64, key: &[u8], value_tag: u64, value: &[u8]) -> Result<(), Error> {
+pub fn casper_write(key_space: u64, key: &[u8], value_tag: u64, value: &[u8]) -> Result<(), Error> {
     let _ret = unsafe {
-        casper_write(
+        ext::casper_write(
             key_space,
             key.as_ptr(),
             key.len(),
@@ -182,7 +188,7 @@ pub fn write(key_space: u64, key: &[u8], value_tag: u64, value: &[u8]) -> Result
     Ok(())
 }
 
-pub fn create(code: Option<&[u8]>, manifest: &Manifest) -> Result<CreateResult, Error> {
+pub fn casper_create(code: Option<&[u8]>, manifest: &Manifest) -> Result<CreateResult, Error> {
     let (code_ptr, code_size): (*const u8, usize) = match code {
         Some(code) => (code.as_ptr(), code.len()),
         None => (ptr::null(), 0),
@@ -193,7 +199,7 @@ pub fn create(code: Option<&[u8]>, manifest: &Manifest) -> Result<CreateResult, 
     let manifest_ptr = NonNull::from(manifest);
 
     let ret = unsafe {
-        casper_create_contract(
+        ext::casper_create_contract(
             code_ptr,
             code_size,
             manifest_ptr.as_ptr(),
@@ -214,9 +220,9 @@ pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     entry_point: &str,
     input_data: &[u8],
     alloc: Option<F>,
-) -> Result<(), Error> {
-    let ret = unsafe {
-        casper_call(
+) -> ResultCode {
+    let result_code = unsafe {
+        ext::casper_call(
             address.as_ptr(),
             address.len(),
             value,
@@ -225,23 +231,20 @@ pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
             input_data.as_ptr(),
             input_data.len(),
             alloc_callback::<F>,
-            &alloc as *const _ as *mut c_void,
+            &alloc as *const _ as *mut _,
         )
     };
-    if ret == 0 {
-        Ok(())
-    } else {
-        Err(Error::Foo)
-    }
+    ResultCode::from(result_code)
 }
-pub fn call(
+
+pub fn casper_call(
     address: &Address,
     value: u64,
     entry_point: &str,
     input_data: &[u8],
-) -> Result<Vec<u8>, Error> {
+) -> Result<Vec<u8>, CallError> {
     let mut vec = Vec::new();
-    call_into(
+    let result_code = call_into(
         address,
         value,
         entry_point,
@@ -250,6 +253,13 @@ pub fn call(
             reserve_vec_space(&mut vec, size);
             Some(unsafe { ptr::NonNull::new_unchecked(vec.as_mut_ptr()) })
         }),
-    )?;
-    Ok(vec)
+    );
+    casper_print(&format!("result_code: {:?} vec={:?}", result_code, vec));
+    match result_code {
+        ResultCode::Success => Ok(vec),
+        ResultCode::CalleeReverted => Ok(vec),
+        ResultCode::CalleeTrapped => Err(CallError::CalleeTrapped),
+        ResultCode::CalleeGasDepleted => Err(CallError::CalleeGasDepleted),
+        ResultCode::Unknown => Err(CallError::Unknown),
+    }
 }

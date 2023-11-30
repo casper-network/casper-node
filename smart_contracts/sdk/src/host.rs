@@ -58,6 +58,40 @@ pub struct CreateResult {
     pub version: u32,
 }
 
+#[repr(C)]
+#[derive(Debug)]
+pub enum ResultCode {
+    /// Called contract returned successfully.
+    Success = 0,
+    /// Callee contract reverted.
+    CalleeReverted = 1,
+    /// Called contract trapped.
+    CalleeTrapped = 2,
+    /// Called contract reached gas limit.
+    CalleeGasDepleted = 3,
+    Unknown,
+}
+
+impl From<u32> for ResultCode {
+    fn from(value: u32) -> Self {
+        match value {
+            0 => ResultCode::Success,
+            1 => ResultCode::CalleeReverted,
+            2 => ResultCode::CalleeTrapped,
+            3 => ResultCode::CalleeGasDepleted,
+            _ => ResultCode::Unknown,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum CallError {
+    CalleeReverted,
+    CalleeTrapped,
+    CalleeGasDepleted,
+    Unknown,
+}
+
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 
@@ -67,10 +101,16 @@ mod native;
 use borsh::{BorshDeserialize, BorshSerialize};
 
 #[cfg(target_arch = "wasm32")]
-pub use wasm::{call, copy_input, create, print, read, revert, write};
+pub use wasm::{
+    casper_call, casper_copy_input, casper_create, casper_print, casper_read, casper_return,
+    casper_write,
+};
 
 #[cfg(not(target_arch = "wasm32"))]
-pub use native::{call, copy_input, create, print, read, revert, write};
+pub use native::{
+    casper_call, casper_copy_input, casper_create, casper_print, casper_read, casper_return,
+    casper_write,
+};
 
 /// TODO: Remove once procedural macros are improved, this is just to save the boilerplate
 pub fn start<Args: BorshDeserialize, Ret: BorshSerialize>(func: impl Fn(Args) -> Ret) {
@@ -79,7 +119,9 @@ pub fn start<Args: BorshDeserialize, Ret: BorshSerialize>(func: impl Fn(Args) ->
     {
         crate::set_panic_hook();
     }
-    let input = copy_input();
+    let input = casper_copy_input();
     let args: Args = BorshDeserialize::try_from_slice(&input).unwrap();
-    let _ret = func(args);
+    let result = func(args);
+    let serialized_result = borsh::to_vec(&result).unwrap();
+    casper_return(0, &serialized_result);
 }

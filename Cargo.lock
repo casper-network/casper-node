@@ -598,7 +598,7 @@ dependencies = [
  "linked-hash-map",
  "log",
  "num",
- "num-derive",
+ "num-derive 0.3.3",
  "num-rational 0.4.1",
  "num-traits",
  "num_cpus",
@@ -688,7 +688,7 @@ dependencies = [
  "lmdb-rkv",
  "log",
  "num",
- "num-derive",
+ "num-derive 0.3.3",
  "num-rational 0.4.1",
  "num-traits",
  "num_cpus",
@@ -764,7 +764,7 @@ dependencies = [
  "either",
  "lmdb-rkv",
  "num",
- "num-derive",
+ "num-derive 0.3.3",
  "num-traits",
  "proptest",
  "rand 0.8.5",
@@ -797,7 +797,7 @@ dependencies = [
  "k256",
  "libc",
  "num",
- "num-derive",
+ "num-derive 0.3.3",
  "num-integer",
  "num-rational 0.4.1",
  "num-traits",
@@ -4084,6 +4084,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-derive"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cfb77679af88f8b125209d354a202862602672222e7f2313fdd6dc349bad4712"
+dependencies = [
+ "proc-macro2 1.0.63",
+ "quote 1.0.29",
+ "syn 2.0.32",
+]
+
+[[package]]
 name = "num-integer"
 version = "0.1.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6527,6 +6538,8 @@ dependencies = [
  "casper-types",
  "criterion 0.5.1",
  "digest 0.10.7",
+ "num-derive 0.4.1",
+ "num-traits",
  "rand 0.8.5",
  "safe-transmute",
  "thiserror",
