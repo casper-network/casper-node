@@ -36,7 +36,7 @@ pub enum NonPersistedDataRequest {
     /// Returns true if `self.completed_blocks.highest_sequence()` contains the given hash
     CompletedBlocksContain {
         /// Block hash.
-        block_hash: BlockHash,
+        block_hash: BlockHash, // TODO[RC]: BlockIdentifier
     },
     /// Returns block hash and height for a given transaction hash.
     TransactionHash2BlockHashAndHeight {

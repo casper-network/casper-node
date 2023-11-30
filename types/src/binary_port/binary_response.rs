@@ -1,6 +1,13 @@
 //! The binary response.
 
-use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use core::any;
+
+use tracing::error;
+
+use crate::{
+    bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    BlockHash, BlockHashAndHeight, PeersMap,
+};
 
 use super::{binary_request::BinaryRequest, db_id::DbId, DbRawBytesSpec, PROTOCOL_VERSION};
 
@@ -21,6 +28,10 @@ pub enum PayloadType {
     VecU8,
     FinalizedDeployApprovals,
     FinalizedApprovals,
+    Bool,
+    BlockHashAndHeight,
+    BlockHash,
+    PeersMap,
 }
 
 impl PayloadType {
@@ -48,6 +59,36 @@ impl PayloadType {
     }
 }
 
+impl From<bool> for PayloadType {
+    fn from(_: bool) -> Self {
+        Self::Bool
+    }
+}
+
+impl<T> From<Option<T>> for PayloadType {
+    fn from(_: Option<T>) -> Self {
+        panic!("could this be a compile time error?");
+    }
+}
+
+impl From<BlockHashAndHeight> for PayloadType {
+    fn from(_: BlockHashAndHeight) -> Self {
+        Self::BlockHashAndHeight
+    }
+}
+
+impl From<BlockHash> for PayloadType {
+    fn from(_: BlockHash) -> Self {
+        Self::BlockHash
+    }
+}
+
+impl From<PeersMap> for PayloadType {
+    fn from(_: PeersMap) -> Self {
+        Self::PeersMap
+    }
+}
+
 const BLOCK_HEADER_V1_TAG: u8 = 0;
 const BLOCK_HEADER_TAG: u8 = 1;
 const BLOCK_BODY_V1_TAG: u8 = 2;
@@ -63,6 +104,10 @@ const VEC_TRANSFERS_TAG: u8 = 11;
 const VEC_U8_TAG: u8 = 12;
 const FINALIZED_DEPLOY_APPROVALS_TAG: u8 = 13;
 const FINALIZED_APPROVALS_TAG: u8 = 14;
+const BOOL_TAG: u8 = 15;
+const BLOCK_HASH_AND_HEIGHT_TAG: u8 = 16;
+const BLOCK_HASH_TAG: u8 = 17;
+const PEERS_MAP_TAG: u8 = 18;
 
 impl ToBytes for PayloadType {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
@@ -88,6 +133,10 @@ impl ToBytes for PayloadType {
             PayloadType::VecU8 => VEC_U8_TAG,
             PayloadType::FinalizedDeployApprovals => FINALIZED_DEPLOY_APPROVALS_TAG,
             PayloadType::FinalizedApprovals => FINALIZED_APPROVALS_TAG,
+            PayloadType::Bool => BOOL_TAG,
+            PayloadType::BlockHashAndHeight => BLOCK_HASH_AND_HEIGHT_TAG,
+            PayloadType::BlockHash => BLOCK_HASH_TAG,
+            PayloadType::PeersMap => PEERS_MAP_TAG,
         }
         .write_bytes(writer)
     }
@@ -116,6 +165,10 @@ impl FromBytes for PayloadType {
             VEC_U8_TAG => PayloadType::VecU8,
             FINALIZED_DEPLOY_APPROVALS_TAG => PayloadType::FinalizedDeployApprovals,
             FINALIZED_APPROVALS_TAG => PayloadType::FinalizedApprovals,
+            BOOL_TAG => PayloadType::Bool,
+            BLOCK_HASH_AND_HEIGHT_TAG => PayloadType::BlockHashAndHeight,
+            BLOCK_HASH_TAG => PayloadType::BlockHash,
+            PEERS_MAP_TAG => PayloadType::PeersMap,
             _ => return Err(bytesrepr::Error::Formatting),
         };
         Ok((db_id, remainder))
@@ -204,7 +257,11 @@ impl BinaryResponse {
         todo!()
     }
 
-    pub fn new(db_id: &DbId, binary_request: BinaryRequest, spec: Option<DbRawBytesSpec>) -> Self {
+    pub fn from_db_raw_bytes(
+        db_id: &DbId,
+        binary_request: BinaryRequest,
+        spec: Option<DbRawBytesSpec>,
+    ) -> Self {
         match spec {
             Some(DbRawBytesSpec {
                 is_legacy,
@@ -213,13 +270,41 @@ impl BinaryResponse {
                 header: BinaryResponseHeader::new(Some(PayloadType::new_from_db_id(
                     db_id, is_legacy,
                 ))),
-                original_request: ToBytes::to_bytes(&binary_request).unwrap(), // TODO[RC]: Do not serializer here, thread the original serialized request into here
+                original_request: ToBytes::to_bytes(&binary_request).unwrap(), // TODO[RC]: Do not serialize here, thread the original serialized request into here
                 payload: raw_bytes,
             },
             None => BinaryResponse {
                 header: BinaryResponseHeader::new(None),
-                original_request: ToBytes::to_bytes(&binary_request).unwrap(), // TODO[RC]: Do not serializer here, thread the original serialized request into here
+                original_request: ToBytes::to_bytes(&binary_request).unwrap(), // TODO[RC]: Do not serialize here, thread the original serialized request into here
                 payload: vec![],
+            },
+        }
+    }
+
+    // TODO[RC]: Can we prevent V from being an Option here?
+    pub fn from_value<V>(binary_request: BinaryRequest, val: V) -> Self
+    where
+        V: ToBytes,
+        V: Into<PayloadType>,
+    {
+        BinaryResponse {
+            payload: ToBytes::to_bytes(&val).unwrap(),
+            header: BinaryResponseHeader::new(Some(val.into())),
+            original_request: ToBytes::to_bytes(&binary_request).unwrap(), // TODO[RC]: Do not serialize here, thread the original serialized request into here
+        }
+    }
+
+    pub fn from_opt<V>(binary_request: BinaryRequest, val: Option<V>) -> Self
+    where
+        V: ToBytes,
+        V: Into<PayloadType>,
+    {
+        match val {
+            Some(val) => Self::from_value(binary_request, val),
+            None => BinaryResponse {
+                payload: vec![],
+                header: BinaryResponseHeader::new(None),
+                original_request: ToBytes::to_bytes(&binary_request).unwrap(), // TODO[RC]: Do not serialize here, thread the original serialized request into here
             },
         }
     }
@@ -238,7 +323,7 @@ impl ToBytes for BinaryResponse {
             original_request,
             payload,
         } = self;
-        
+
         header.write_bytes(writer)?;
         original_request.write_bytes(writer)?;
         payload.write_bytes(writer)

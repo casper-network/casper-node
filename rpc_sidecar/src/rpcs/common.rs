@@ -64,7 +64,6 @@ pub async fn get_signed_block(
             .block_hash(),
     };
 
-    /* Temporarily disabled, since I just need to grab a header for testing purposes
     let should_return_block = node_client
         .does_exist_in_completed_blocks(hash)
         .await
@@ -73,7 +72,6 @@ pub async fn get_signed_block(
     if !should_return_block {
         return Err(Error::NoBlockWithHash(hash));
     }
-    */
 
     let header = node_client
         .read_block_header(hash)

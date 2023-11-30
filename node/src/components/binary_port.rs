@@ -181,6 +181,7 @@ where
     error!("XXXXX - Binary Port is handling request: {req:?}");
 
     let temporarily_cloned_req = req.clone();
+
     // TODO[RC]: clean this up, delegate to specialized functions
     match req {
         BinaryRequest::TryAcceptTransaction {
@@ -272,69 +273,72 @@ where
             GetRequest::Db { db, key } => {
                 let maybe_raw_bytes = effect_builder.get_raw_data(db, key).await;
                 let binary_response =
-                    BinaryResponse::new(&db, temporarily_cloned_req, maybe_raw_bytes);
+                    BinaryResponse::from_db_raw_bytes(&db, temporarily_cloned_req, maybe_raw_bytes);
                 let payload =
                     ToBytes::to_bytes(&binary_response).map_err(|err| Error::BytesRepr(err))?;
                 Ok(Some(Bytes::from(payload)))
             }
-
-            // Ok(
-            // .map(|raw_data| Bytes::from(raw_data))),
             GetRequest::NonPersistedData(req) => match req {
                 NonPersistedDataRequest::BlockHeight2Hash { height } => {
-                    todo!()
-                    // let block_hash = effect_builder.get_block_hash_for_height(height).await;
-                    // let payload = block_hash
-                    //     .map(|data| data.to_bytes().map(Bytes::from))
-                    //     .transpose()
-                    //     .map_err(|err| Error::BytesRepr(err))?;
-                    // Ok(payload)
+                    let binary_response = BinaryResponse::from_opt(
+                        temporarily_cloned_req,
+                        effect_builder.get_block_hash_for_height(height).await,
+                    );
+                    Ok(Some(Bytes::from(
+                        ToBytes::to_bytes(&binary_response).map_err(|err| Error::BytesRepr(err))?,
+                    )))
                 }
                 NonPersistedDataRequest::HighestCompleteBlock => {
-                    todo!()
-                    // let block_hash_and_height = effect_builder
-                    //     .get_highest_complete_block_header_from_storage()
-                    //     .await
-                    //     .map(|block_header| {
-                    //         BlockHashAndHeight::new(
-                    //             block_header.block_hash(),
-                    //             block_header.height(),
-                    //         )
-                    //     });
-                    // let payload = block_hash_and_height
-                    //     .map(|data| data.to_bytes().map(Bytes::from))
-                    //     .transpose()
-                    //     .map_err(|err| Error::BytesRepr(err))?;
-                    // Ok(payload)
+                    let binary_response = BinaryResponse::from_opt(
+                        temporarily_cloned_req,
+                        effect_builder
+                            .get_highest_complete_block_header_from_storage()
+                            .await
+                            .map(|block_header| {
+                                BlockHashAndHeight::new(
+                                    block_header.block_hash(),
+                                    block_header.height(),
+                                )
+                            }),
+                    );
+                    Ok(Some(Bytes::from(
+                        ToBytes::to_bytes(&binary_response).map_err(|err| Error::BytesRepr(err))?,
+                    )))
                 }
                 NonPersistedDataRequest::CompletedBlocksContain { block_hash } => {
-                    todo!()
-                    // let val = effect_builder
-                    //     .highest_completed_block_sequence_contains_hash(block_hash)
-                    //     .await;
-                    // let payload = ToBytes::to_bytes(&val).map_err(|err| Error::BytesRepr(err))?;
-                    // Ok(Some(Bytes::from(payload)))
+                    let binary_response = BinaryResponse::from_value(
+                        temporarily_cloned_req,
+                        Some(
+                            effect_builder
+                                .highest_completed_block_sequence_contains_hash(block_hash)
+                                .await,
+                        ),
+                    );
+                    Ok(Some(Bytes::from(
+                        ToBytes::to_bytes(&binary_response).map_err(|err| Error::BytesRepr(err))?,
+                    )))
                 }
                 NonPersistedDataRequest::TransactionHash2BlockHashAndHeight {
                     transaction_hash,
                 } => {
-                    todo!()
-                    // let block_hash_and_height = effect_builder
-                    //     .get_block_hash_and_height_for_transaction(transaction_hash)
-                    //     .await;
-                    // let payload = block_hash_and_height
-                    //     .map(|data| data.to_bytes().map(Bytes::from))
-                    //     .transpose()
-                    //     .map_err(|err| Error::BytesRepr(err))?;
-                    // Ok(payload)
+                    let binary_response = BinaryResponse::from_opt(
+                        temporarily_cloned_req,
+                        effect_builder
+                            .get_block_hash_and_height_for_transaction(transaction_hash)
+                            .await,
+                    );
+                    Ok(Some(Bytes::from(
+                        ToBytes::to_bytes(&binary_response).map_err(|err| Error::BytesRepr(err))?,
+                    )))
                 }
                 NonPersistedDataRequest::Peers => {
-                    todo!()
-                    // let peers = effect_builder.network_peers().await;
-                    // let peers_map = PeersMap::from(peers);
-                    // let payload =
-                    //     ToBytes::to_bytes(&peers_map).map_err(|err| Error::BytesRepr(err))?;
-                    // Ok(Some(Bytes::from(payload)))
+                    let binary_response = BinaryResponse::from_value(
+                        temporarily_cloned_req,
+                        PeersMap::from(effect_builder.network_peers().await),
+                    );
+                    Ok(Some(Bytes::from(
+                        ToBytes::to_bytes(&binary_response).map_err(|err| Error::BytesRepr(err))?,
+                    )))
                 }
                 NonPersistedDataRequest::Uptime => {
                     todo!()
@@ -581,6 +585,19 @@ where
     let config = Arc::new(config);
 
     let listener = TcpListener::bind(&config.address).await;
+
+    // TODO[RC]: Temporary code for `from_value()` testing.
+    // let br = BinaryRequest::Get(GetRequest::NonPersistedData(NonPersistedDataRequest::Peers));
+    // let binary_response =
+    //     BinaryResponse::from_value(br, PeersMap::from(effect_builder.network_peers().await));
+    // error!("XXXXX - should be seen");
+    // let br = BinaryRequest::Get(GetRequest::NonPersistedData(NonPersistedDataRequest::Peers));
+    // let binary_response = BinaryResponse::from_value(
+    //     br,
+    //     Some(PeersMap::from(effect_builder.network_peers().await)),
+    // );
+    // error!("XXXXX - should NOT be seen");
+
     match listener {
         Ok(listener) => loop {
             match listener.accept().await {
