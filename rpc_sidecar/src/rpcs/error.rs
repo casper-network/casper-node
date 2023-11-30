@@ -1,7 +1,7 @@
 use crate::node_client::Error as NodeClientError;
 use casper_json_rpc::Error as RpcError;
 use casper_types::{
-    AvailableBlockRange, BlockHash, Digest, KeyFromStrError, KeyTag, TransactionHash,
+    AvailableBlockRange, BlockHash, DeployHash, Digest, KeyFromStrError, KeyTag, TransactionHash,
     URefFromStrError,
 };
 
@@ -23,6 +23,8 @@ pub enum Error {
     CouldNotVerifyBlock(BlockHash),
     #[error("no transaction for hash {0}")]
     NoTransactionWithHash(TransactionHash),
+    #[error("no deploy for hash {0}")]
+    NoDeployWithHash(DeployHash),
     #[error("transaction {0} and its approval versions are inconsistent")]
     InconsistentTransactionVersions(TransactionHash),
     #[error("found a transaction when searching for a deploy")]
@@ -81,6 +83,7 @@ impl Error {
             | Error::NoBlockBodyWithHash(_, _) => ErrorCode::NoSuchBlock,
             Error::CouldNotVerifyBlock(_) => ErrorCode::InvalidBlock,
             Error::NoTransactionWithHash(_) => ErrorCode::NoSuchTransaction,
+            Error::NoDeployWithHash(_) => ErrorCode::NoSuchDeploy,
             Error::InconsistentTransactionVersions(_) | Error::FoundTransactionInsteadOfDeploy => {
                 ErrorCode::VariantMismatch
             }

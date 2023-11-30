@@ -442,7 +442,7 @@ function setup_asset_node_configs()
 
         if [ ! -z "$SPECULATIVE_EXEC_ADDR" ]; then
             SCRIPT+=(
-                "cfg['speculative_exec_server']['address']='0.0.0.0:$(get_node_port_speculative_exec "$NODE_ID")';"
+                "cfg['speculative_exec_server']['address']='0.0.0.0:$(get_node_port_speculative_exec "$IDX")';"
             )
         fi
 

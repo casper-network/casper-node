@@ -247,11 +247,6 @@ impl JsonSchema for Timestamp {
 /// A time difference between two timestamps.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(
-    feature = "json-schema",
-    derive(JsonSchema),
-    schemars(with = "String", description = "Human-readable duration.")
-)]
 pub struct TimeDiff(u64);
 
 impl Display for TimeDiff {
@@ -271,6 +266,20 @@ impl FromStr for TimeDiff {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         let inner = humantime::parse_duration(value)?.as_millis() as u64;
         Ok(TimeDiff(inner))
+    }
+}
+
+#[cfg(feature = "json-schema")]
+impl JsonSchema for TimeDiff {
+    fn schema_name() -> String {
+        String::from("TimeDiff")
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some("Human-readable duration.".to_string());
+        schema_object.into()
     }
 }
 

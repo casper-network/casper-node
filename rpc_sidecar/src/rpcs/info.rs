@@ -154,8 +154,12 @@ impl RpcWithParams for GetDeploy {
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
         let hash = TransactionHash::from(params.deploy_hash);
-        let (transaction, approvals) =
-            common::get_transaction_with_approvals(&*node_client, hash).await?;
+        let (transaction, approvals) = common::get_transaction_with_approvals(&*node_client, hash)
+            .await
+            .map_err(|err| match err {
+                Error::NoTransactionWithHash(_) => Error::NoDeployWithHash(params.deploy_hash),
+                other => other,
+            })?;
 
         let deploy = match (transaction, approvals) {
             (Transaction::Deploy(deploy), Some(FinalizedApprovals::Deploy(approvals)))
