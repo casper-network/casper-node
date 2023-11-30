@@ -104,11 +104,11 @@ impl FromBytes for BinaryRequest {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
             GET_TAG => {
-                let (get_request, remainder) = GetRequest::from_bytes(remainder)?;
+                let (get_request, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((BinaryRequest::Get(get_request), remainder))
             }
             TRY_ACCEPT_TRANSACTION_TAG => {
-                let (transaction, remainder) = Transaction::from_bytes(remainder)?;
+                let (transaction, remainder) = FromBytes::from_bytes(remainder)?;
                 let (speculative_exec_at_block, remainder) =
                     Option::<BlockHeader>::from_bytes(remainder)?;
                 Ok((
@@ -120,10 +120,10 @@ impl FromBytes for BinaryRequest {
                 ))
             }
             SPECULATIVE_EXEC_TAG => {
-                let (transaction, remainder) = Transaction::from_bytes(remainder)?;
-                let (state_root_hash, remainder) = Digest::from_bytes(remainder)?;
-                let (block_time, remainder) = Timestamp::from_bytes(remainder)?;
-                let (protocol_version, remainder) = ProtocolVersion::from_bytes(remainder)?;
+                let (transaction, remainder) = FromBytes::from_bytes(remainder)?;
+                let (state_root_hash, remainder) = FromBytes::from_bytes(remainder)?;
+                let (block_time, remainder) = FromBytes::from_bytes(remainder)?;
+                let (protocol_version, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((
                     BinaryRequest::TrySpeculativeExec {
                         transaction,

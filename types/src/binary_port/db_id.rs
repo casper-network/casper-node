@@ -83,7 +83,7 @@ impl ToBytes for DbId {
 
 impl FromBytes for DbId {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
+        let (tag, remainder) = FromBytes::from_bytes(bytes)?;
         let db_id = match tag {
             BLOCK_HEADER_DB_TAG => DbId::BlockHeader,
             BLOCK_METADATA_DB_TAG => DbId::BlockMetadata,

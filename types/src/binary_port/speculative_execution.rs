@@ -61,15 +61,15 @@ impl ToBytes for SpeculativeExecutionError {
 
 impl FromBytes for SpeculativeExecutionError {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
+        let (tag, remainder) = FromBytes::from_bytes(bytes)?;
         match tag {
             NO_SUCH_STATE_ROOT_TAG => Ok((SpeculativeExecutionError::NoSuchStateRoot, remainder)),
             INVALID_DEPLOY_TAG => {
-                let (err, remainder) = String::from_bytes(remainder)?;
+                let (err, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((SpeculativeExecutionError::InvalidDeploy(err), remainder))
             }
             INTERNAL_ERROR_TAG => {
-                let (err, remainder) = String::from_bytes(remainder)?;
+                let (err, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((SpeculativeExecutionError::InternalError(err), remainder))
             }
             _ => return Err(bytesrepr::Error::NotRepresentable),
@@ -93,8 +93,12 @@ impl ToBytes for SpeculativeExecutionResult {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.execution_result.write_bytes(writer)?;
-        self.messages.write_bytes(writer)
+        let SpeculativeExecutionResult {
+            execution_result,
+            messages,
+        } = self;
+        execution_result.write_bytes(writer)?;
+        messages.write_bytes(writer)
     }
 
     fn serialized_length(&self) -> usize {
@@ -104,8 +108,8 @@ impl ToBytes for SpeculativeExecutionResult {
 
 impl FromBytes for SpeculativeExecutionResult {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (execution_result, remainder) = ExecutionResultV2::from_bytes(bytes)?;
-        let (messages, remainder) = Messages::from_bytes(remainder)?;
+        let (execution_result, remainder) = FromBytes::from_bytes(bytes)?;
+        let (messages, remainder) = FromBytes::from_bytes(remainder)?;
         Ok((
             SpeculativeExecutionResult {
                 execution_result,

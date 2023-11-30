@@ -69,11 +69,11 @@ impl ToBytes for GlobalStateQueryResult {
 
 impl FromBytes for GlobalStateQueryResult {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
+        let (tag, remainder) = FromBytes::from_bytes(bytes)?;
         match tag {
             SUCCESS_TAG => {
-                let (value, remainder) = StoredValue::from_bytes(remainder)?;
-                let (merkle_proof, remainder) = String::from_bytes(remainder)?;
+                let (value, remainder) = FromBytes::from_bytes(remainder)?;
+                let (merkle_proof, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((
                     GlobalStateQueryResult::Success {
                         value,
@@ -85,7 +85,7 @@ impl FromBytes for GlobalStateQueryResult {
             VALUE_NOT_FOUND_TAG => Ok((GlobalStateQueryResult::ValueNotFound, remainder)),
             ROOT_NOT_FOUND_TAG => Ok((GlobalStateQueryResult::RootNotFound, remainder)),
             ERROR_TAG => {
-                let (error, remainder) = String::from_bytes(remainder)?;
+                let (error, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((GlobalStateQueryResult::Error(error), remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),

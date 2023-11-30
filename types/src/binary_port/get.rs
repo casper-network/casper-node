@@ -116,10 +116,10 @@ impl ToBytes for GetRequest {
 
 impl FromBytes for GetRequest {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
+        let (tag, remainder) = FromBytes::from_bytes(bytes)?;
         match tag {
             DB_TAG => {
-                let (db, remainder) = DbId::from_bytes(remainder)?;
+                let (db, remainder) = FromBytes::from_bytes(remainder)?;
                 let (key, remainder) = Bytes::from_bytes(remainder)?;
                 Ok((
                     GetRequest::Db {
@@ -130,14 +130,13 @@ impl FromBytes for GetRequest {
                 ))
             }
             NON_PERSISTED_DATA_TAG => {
-                let (non_persisted_data, remainder) =
-                    NonPersistedDataRequest::from_bytes(remainder)?;
+                let (non_persisted_data, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((GetRequest::NonPersistedData(non_persisted_data), remainder))
             }
             STATE_TAG => {
-                let (state_root_hash, remainder) = Digest::from_bytes(remainder)?;
-                let (base_key, remainder) = Key::from_bytes(remainder)?;
-                let (path, remainder) = Vec::<String>::from_bytes(remainder)?;
+                let (state_root_hash, remainder) = FromBytes::from_bytes(remainder)?;
+                let (base_key, remainder) = FromBytes::from_bytes(remainder)?;
+                let (path, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((
                     GetRequest::State {
                         state_root_hash,
@@ -148,8 +147,8 @@ impl FromBytes for GetRequest {
                 ))
             }
             ALL_VALUES_TAG => {
-                let (state_root_hash, remainder) = Digest::from_bytes(remainder)?;
-                let (key_tag, remainder) = u8::from_bytes(remainder)?;
+                let (state_root_hash, remainder) = FromBytes::from_bytes(remainder)?;
+                let (key_tag, remainder) = FromBytes::from_bytes(remainder)?;
                 let key_tag = match key_tag {
                     0 => KeyTag::Account,
                     1 => KeyTag::Hash,
@@ -182,7 +181,7 @@ impl FromBytes for GetRequest {
                 ))
             }
             TRIE_TAG => {
-                let (trie_key, remainder) = Digest::from_bytes(remainder)?;
+                let (trie_key, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((GetRequest::Trie { trie_key }, remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),

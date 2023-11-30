@@ -99,7 +99,7 @@ impl ToBytes for PayloadType {
 
 impl FromBytes for PayloadType {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
+        let (tag, remainder) = FromBytes::from_bytes(bytes)?;
         let db_id = match tag {
             BLOCK_HEADER_V1_TAG => PayloadType::BlockHeaderV1,
             BLOCK_HEADER_TAG => PayloadType::BlockHeader,
@@ -154,9 +154,15 @@ impl ToBytes for BinaryResponseHeader {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.protocol_version.write_bytes(writer)?;
-        self.error.write_bytes(writer)?;
-        self.returned_data_type.write_bytes(writer)
+        let Self {
+            protocol_version,
+            error,
+            returned_data_type,
+        } = self;
+
+        protocol_version.write_bytes(writer)?;
+        error.write_bytes(writer)?;
+        returned_data_type.write_bytes(writer)
     }
 
     fn serialized_length(&self) -> usize {
@@ -168,9 +174,9 @@ impl ToBytes for BinaryResponseHeader {
 
 impl FromBytes for BinaryResponseHeader {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (protocol_version, remainder) = u8::from_bytes(bytes)?;
-        let (error, remainder) = u8::from_bytes(remainder)?;
-        let (payload_type, remainder) = Option::<PayloadType>::from_bytes(remainder)?;
+        let (protocol_version, remainder) = FromBytes::from_bytes(bytes)?;
+        let (error, remainder) = FromBytes::from_bytes(remainder)?;
+        let (payload_type, remainder) = FromBytes::from_bytes(remainder)?;
 
         Ok((
             BinaryResponseHeader {
@@ -227,9 +233,15 @@ impl ToBytes for BinaryResponse {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.header.write_bytes(writer)?;
-        self.original_request.write_bytes(writer)?;
-        self.payload.write_bytes(writer)
+        let BinaryResponse {
+            header,
+            original_request,
+            payload,
+        } = self;
+        
+        header.write_bytes(writer)?;
+        original_request.write_bytes(writer)?;
+        payload.write_bytes(writer)
     }
 
     fn serialized_length(&self) -> usize {
@@ -241,7 +253,7 @@ impl ToBytes for BinaryResponse {
 
 impl FromBytes for BinaryResponse {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (header, remainder) = BinaryResponseHeader::from_bytes(bytes)?;
+        let (header, remainder) = FromBytes::from_bytes(bytes)?;
         let (original_request, remainder) = Bytes::from_bytes(remainder)?;
         let (payload, remainder) = Bytes::from_bytes(remainder)?;
 

@@ -48,10 +48,10 @@ impl ToBytes for GetAllValuesResult {
 
 impl FromBytes for GetAllValuesResult {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
+        let (tag, remainder) = FromBytes::from_bytes(bytes)?;
         match tag {
             SUCCESS_TAG => {
-                let (values, remainder) = <Vec<StoredValue>>::from_bytes(remainder)?;
+                let (values, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((GetAllValuesResult::Success { values }, remainder))
             }
             ROOT_NOT_FOUND_TAG => Ok((GetAllValuesResult::RootNotFound, remainder)),

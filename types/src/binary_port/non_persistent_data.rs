@@ -150,10 +150,10 @@ impl ToBytes for NonPersistedDataRequest {
 
 impl FromBytes for NonPersistedDataRequest {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
+        let (tag, remainder) = FromBytes::from_bytes(bytes)?;
         match tag {
             BLOCK_HEIGHT_2_HASH_TAG => {
-                let (height, remainder) = u64::from_bytes(remainder)?;
+                let (height, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((
                     NonPersistedDataRequest::BlockHeight2Hash { height },
                     remainder,
@@ -163,14 +163,14 @@ impl FromBytes for NonPersistedDataRequest {
                 Ok((NonPersistedDataRequest::HighestCompleteBlock, remainder))
             }
             COMPLETED_BLOCK_CONTAINS_TAG => {
-                let (block_hash, remainder) = BlockHash::from_bytes(remainder)?;
+                let (block_hash, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((
                     NonPersistedDataRequest::CompletedBlocksContain { block_hash },
                     remainder,
                 ))
             }
             TRANSACTION_HASH_2_BLOCK_HASH_AND_HEIGHT_TAG => {
-                let (transaction_hash, remainder) = TransactionHash::from_bytes(remainder)?;
+                let (transaction_hash, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((
                     NonPersistedDataRequest::TransactionHash2BlockHashAndHeight {
                         transaction_hash,
@@ -278,33 +278,33 @@ impl ToBytes for NonPersistedDataResponse {
 
 impl FromBytes for NonPersistedDataResponse {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
+        let (tag, remainder) = FromBytes::from_bytes(bytes)?;
         match tag {
             BLOCK_HEIGHT_2_HASH_TAG => {
-                let (hash, remainder) = BlockHash::from_bytes(remainder)?;
+                let (hash, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((
                     NonPersistedDataResponse::BlockHeight2Hash { hash },
                     remainder,
                 ))
             }
             HIGHEST_COMPLETE_BLOCK_TAG => {
-                let (hash, remainder) = BlockHash::from_bytes(remainder)?;
-                let (height, remainder) = u64::from_bytes(remainder)?;
+                let (hash, remainder) = FromBytes::from_bytes(remainder)?;
+                let (height, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((
                     NonPersistedDataResponse::HighestBlock { hash, height },
                     remainder,
                 ))
             }
             COMPLETED_BLOCK_CONTAINS_TAG => {
-                let (val, remainder) = bool::from_bytes(remainder)?;
+                let (val, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((
                     NonPersistedDataResponse::CompletedBlockContains(val),
                     remainder,
                 ))
             }
             TRANSACTION_HASH_2_BLOCK_HASH_AND_HEIGHT_TAG => {
-                let (hash, remainder) = BlockHash::from_bytes(remainder)?;
-                let (height, remainder) = u64::from_bytes(remainder)?;
+                let (hash, remainder) = FromBytes::from_bytes(remainder)?;
+                let (height, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((
                     NonPersistedDataResponse::TransactionHash2BlockHashAndHeight { hash, height },
                     remainder,
