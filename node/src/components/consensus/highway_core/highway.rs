@@ -112,6 +112,9 @@ impl<C: Context> ValidVertex<C> {
         &self.0
     }
 
+    pub(crate) fn is_proposal(&self) -> bool {
+        self.0.value().is_some()
+    }
     pub(crate) fn endorsements(&self) -> Option<&Endorsements<C>> {
         match &self.0 {
             Vertex::Endorsements(endorsements) => Some(endorsements),
