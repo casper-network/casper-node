@@ -84,7 +84,7 @@ impl From<u32> for ResultCode {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum CallError {
     CalleeReverted,
     CalleeTrapped,

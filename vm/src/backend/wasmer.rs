@@ -207,7 +207,7 @@ pub(crate) struct WasmerInstance<S: Storage> {
 }
 
 fn handle_wasmer_result<T: Debug>(wasmer_result: Result<T, RuntimeError>) -> VMResult<T> {
-    match dbg!(wasmer_result) {
+    match wasmer_result {
         Ok(result) => Ok(result),
         Err(error) => match error.downcast::<VMError>() {
             Ok(vm_error) => Err(vm_error),

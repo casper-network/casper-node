@@ -25,6 +25,8 @@ safe-transmute = "0.11.2"
 num-traits = "0.2.14"
 num-derive = "0.4.1"
 
+tracing = "0.1.40"
+
 [[bench]]
 name = "vm_call"
 harness = false

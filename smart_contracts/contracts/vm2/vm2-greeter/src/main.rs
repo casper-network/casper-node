@@ -32,7 +32,7 @@ impl Greeter {
         self.greeting.write(greeting).unwrap();
     }
 
-    pub fn unreachable(&self) -> ! {
+    pub fn emit_unreachable_trap(&self) -> ! {
         #[cfg(target_arch = "wasm32")]
         {
             unsafe { core::arch::wasm32::unreachable() }
@@ -84,14 +84,9 @@ pub fn call() {
             );
             log!("{call2:?} result={res2:?}");
 
-            // let call3 = "revert";
-            // let input_data2: (u32,) = (1234,);
-            // let res3 = host::casper_call(
-            //     &contract_address,
-            //     0,
-            //     call3,
-            //     &borsh::to_vec(&input_data2).unwrap(),
-            // );
+            let call3 = "emit_unreachable_trap";
+            let res3 = host::casper_call(&contract_address, 0, call3, &[]).unwrap_err();
+            assert_eq!(res3, host::CallError::CalleeTrapped);
 
             // let call4: &str = "unreachable";
             // let res4 = host::casper_call(&contract_address, 0, call4, &[]);

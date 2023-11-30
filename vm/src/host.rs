@@ -20,6 +20,9 @@ use crate::{
 
 use self::abi::ReadInfo;
 
+/// Represents the result of a host function call.
+///
+/// 0 is used as a success.
 pub enum HostError {
     /// Callee contract reverted.
     CalleeReverted = 1,
@@ -325,99 +328,113 @@ pub(crate) fn casper_call<S: Storage + 'static>(
 
     let contract = caller.context().storage.read_contract(&address).unwrap();
 
-    if let Some(Contract {
-        code_hash,
-        manifest,
-    }) = contract
-    {
-        let wasm_bytes = caller.context().storage.read_code(&code_hash).unwrap();
+    match contract {
+        Some(Contract {
+            code_hash,
+            manifest,
+        }) => {
+            let wasm_bytes = caller.context().storage.read_code(&code_hash).unwrap();
 
-        let mut vm = VM::new();
-        let storage = caller.context().storage.clone();
+            let mut vm = VM::new();
+            let storage = caller.context().storage.clone();
 
-        let new_context = Context { storage };
+            let new_context = Context { storage };
 
-        // let config = ConfigBuilder:
-        // caller.self.config()
+            // let config = ConfigBuilder:
+            // caller.self.config()
 
-        let current_config = caller.config().clone();
+            let current_config = caller.config().clone();
 
-        // Take the gas spent so far and use it as a limit for the new VM.
-        let gas_limit = caller
-            .gas_consumed()
-            .try_into_remaining()
-            .expect("should be remaining");
+            // Take the gas spent so far and use it as a limit for the new VM.
+            let gas_limit = caller
+                .gas_consumed()
+                .try_into_remaining()
+                .expect("should be remaining");
 
-        // let wasm_callbacks = Arc::new(WasmCallbacks::default());
-        // let cloned = Arc::clone(&wasm_callbacks);
+            // let wasm_callbacks = Arc::new(WasmCallbacks::default());
+            // let cloned = Arc::clone(&wasm_callbacks);
 
-        let new_config = ConfigBuilder::new()
-            .with_gas_limit(gas_limit)
-            .with_memory_limit(current_config.memory_limit)
-            .with_input(input_data)
-            // .with_callback(cloned)
-            .build();
+            let new_config = ConfigBuilder::new()
+                .with_gas_limit(gas_limit)
+                .with_memory_limit(current_config.memory_limit)
+                .with_input(input_data)
+                // .with_callback(cloned)
+                .build();
 
-        let mut new_instance = vm
-            .prepare(wasm_bytes, new_context, new_config)
-            .expect("should prepare instance");
+            let mut new_instance = vm
+                .prepare(wasm_bytes, new_context, new_config)
+                .expect("should prepare instance");
 
-        // NOTE: We probably don't need to keep instances alive for repeated calls
+            // NOTE: We probably don't need to keep instances alive for repeated calls
 
-        let function_index = {
-            let entry_points = manifest.entrypoints;
-            let entry_point = entry_points
-                .iter()
-                .find_map(|entry_point| {
-                    if entry_point.name == entry_point_name {
-                        Some(entry_point)
+            let function_index = {
+                let entry_points = manifest.entrypoints;
+                let entry_point = entry_points
+                    .iter()
+                    .find_map(|entry_point| {
+                        if entry_point.name == entry_point_name {
+                            Some(entry_point)
+                        } else {
+                            None
+                        }
+                    })
+                    .expect("should find entry point");
+                entry_point.function_index
+            };
+
+            // Call function by the index
+            let (call_result, gas_usage) = new_instance.call_function(function_index);
+
+            let host_result = match call_result {
+                Ok(()) => {
+                    // Contract did not call `casper_return` - implies that it did not revert, and
+                    // did not pass any data.
+                    Ok(None)
+                }
+                Err(VMError::Return { flags, data }) => {
+                    if flags == 1 {
+                        todo!("revert?")
                     } else {
-                        None
+                        Ok(Some(data))
                     }
-                })
-                .expect("should find entry point");
-            entry_point.function_index
-        };
+                }
+                Err(VMError::OutOfGas) => {
+                    todo!()
+                }
+                Err(VMError::Trap(_trap)) => {
+                    
+                    Err(HostError::CalleeTrapped)
+                }
+                Err(other_error) => todo!("{other_error:?}"),
+            };
 
-        let (call_result, gas_usage) = new_instance.call_function(function_index);
-        match call_result {
-            Ok(()) => {
-                // Contract did not call `casper_return` - implies that it did not revert, and did
-                // not pass data.
-            }
-            Err(VMError::Return { flags, data }) => {
-                if flags == 1 {
-                    todo!("revert?")
-                } else {
-                    // Pass the data to the caller.
-                    let ptr = caller.alloc(cb_alloc, data.len(), cb_ctx)?;
-                    caller.memory_write(ptr, &data)?;
+            // Calculate how much gas was spent during execution of the called contract.
+            let gas_spent = gas_usage
+                .gas_limit
+                .checked_sub(gas_usage.remaining_points)
+                .expect("remaining points always below or equal to the limit");
+
+            match caller.consume_gas(gas_spent) {
+                MeteringPoints::Remaining(_) => {}
+                MeteringPoints::Exhausted => {
+                    todo!("exhausted")
                 }
             }
-            Err(VMError::OutOfGas) => {
-                todo!()
-            }
-            Err(VMError::Trap(trap)) => {
-                todo!("{trap:?}")
-            }
-            Err(_) => todo!(),
-        }
 
-        let _ = call_result; // TODO: Allow contract to intercept errors happening inside chain of calls.
-
-        let gas_spent = gas_usage
-            .gas_limit
-            .checked_sub(gas_usage.remaining_points)
-            .expect("remaining points always below or equal to the limit");
-
-        match caller.consume_gas(gas_spent) {
-            MeteringPoints::Remaining(_) => {}
-            MeteringPoints::Exhausted => {
-                // return Err(Outcome::OutOfGas);
-                todo!("exhausted")
+            match host_result {
+                Ok(Some(returned_data)) => {
+                    // Called contract did return data by calling `casper_return` function.
+                    let out_ptr: u32 = caller.alloc(cb_alloc, returned_data.len(), cb_ctx)?;
+                    caller.memory_write(out_ptr, &returned_data)?;
+                    Ok(Ok(()))
+                }
+                Ok(None) => {
+                    // Called contract did not return any data by calling `casper_return` function.
+                    Ok(Ok(()))
+                }
+                Err(host_error) => Ok(Err(host_error)),
             }
         }
+        None => todo!("not found"),
     }
-
-    Ok(Ok(()))
 }
