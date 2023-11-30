@@ -5,17 +5,21 @@ use async_trait::async_trait;
 use crate::{config::ExponentialBackoffConfig, NodeClientConfig};
 use casper_types::{
     binary_port::{
-        binary_request::BinaryRequest, db_id::DbId, get::GetRequest,
-        get_all_values::GetAllValuesResult, global_state::GlobalStateQueryResult,
+        binary_request::BinaryRequest,
+        binary_response::{self, BinaryResponse, PayloadType},
+        db_id::DbId,
+        get::GetRequest,
+        get_all_values::GetAllValuesResult,
+        global_state::GlobalStateQueryResult,
         non_persistent_data::NonPersistedDataRequest,
     },
-    bytesrepr::{self, ToBytes},
+    bytesrepr::{self, FromBytes, ToBytes},
     contract_messages::Message,
     execution::{ExecutionResult, ExecutionResultV2},
-    AvailableBlockRange, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
-    BlockSynchronizerStatus, Digest, FinalizedApprovals, Key, KeyTag, NextUpgrade, PeersMap,
-    ProtocolVersion, PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash,
-    Transfer,
+    AvailableBlockRange, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderV1,
+    BlockSignatures, BlockSynchronizerStatus, Digest, FinalizedApprovals, Key, KeyTag, NextUpgrade,
+    PeersMap, ProtocolVersion, PublicKey, ReactorState, TimeDiff, Timestamp, Transaction,
+    TransactionHash, Transfer,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -66,46 +70,62 @@ pub trait NodeClient: Send + Sync {
     ) -> Result<Option<(ExecutionResultV2, Vec<Message>)>, Error>;
 
     async fn read_transaction(&self, hash: TransactionHash) -> Result<Option<Transaction>, Error> {
-        todo!()
-        // let key = hash.to_bytes().expect("should always serialize a digest");
-        // self.read_from_db(DbId::Transactions, &key)
-        //     .await?
-        //     .map(bytesrepr::deserialize_from_slice)
-        //     .transpose()
-        //     .map_err(|err| Error::Deserialization(err.to_string()))
+        let key = hash.to_bytes().expect("should always serialize a digest");
+        self.read_from_db(DbId::Transaction, &key)
+            .await?
+            .map(bytesrepr::deserialize_from_slice)
+            .transpose()
+            .map_err(|err| Error::Deserialization(err.to_string()))
     }
 
     async fn read_finalized_approvals(
         &self,
         hash: TransactionHash,
     ) -> Result<Option<FinalizedApprovals>, Error> {
-        todo!()
-        // let key = hash.to_bytes().expect("should always serialize a digest");
-        // self.read_from_db(DbId::VersionedFinalizedApprovals, &key)
-        //     .await?
-        //     .map(bytesrepr::deserialize_from_slice)
-        //     .transpose()
-        //     .map_err(|err| Error::Deserialization(err.to_string()))
+        let key = hash.to_bytes().expect("should always serialize a digest");
+        self.read_from_db(DbId::FinalizedTransactionApprovals, &key)
+            .await?
+            .map(bytesrepr::deserialize_from_slice)
+            .transpose()
+            .map_err(|err| Error::Deserialization(err.to_string()))
     }
 
     async fn read_block_header(&self, hash: BlockHash) -> Result<Option<BlockHeader>, Error> {
-        todo!()
-        // let key = hash.to_bytes().expect("should always serialize a digest");
-        // self.read_from_db(DbId::BlockHeaderV2, &key)
-        //     .await?
-        //     .map(bytesrepr::deserialize_from_slice)
-        //     .transpose()
-        //     .map_err(|err| Error::Deserialization(err.to_string()))
+        let key = hash.to_bytes().expect("should always serialize a digest");
+        let binary_response: BinaryResponse = self
+            .read_from_db(DbId::BlockHeader, &key)
+            .await?
+            .map(bytesrepr::deserialize_from_slice)
+            .transpose()
+            .map_err(|err| Error::Deserialization(err.to_string()))
+            .unwrap()
+            .unwrap();
+
+        match binary_response.header.returned_data_type() {
+            Some(t) => match t {
+                PayloadType::BlockHeaderV1 => {
+                    let (legacy_header, _) = BlockHeaderV1::from_bytes(&binary_response.payload)
+                        .expect("should deserialize");
+                    return Ok(Some(BlockHeader::V1(legacy_header)));
+                }
+                PayloadType::BlockHeader => {
+                    let (current, _) = BlockHeader::from_bytes(&binary_response.payload)
+                        .expect("should deserialize");
+                    return Ok(Some(current));
+                }
+                _ => panic!("incompatible response"),
+            },
+            None => return Ok(None),
+        }
     }
 
     async fn read_block_body(&self, hash: Digest) -> Result<Option<BlockBody>, Error> {
-        todo!()
-        // let key = hash.to_bytes().expect("should always serialize a digest");
-        // self.read_from_db(DbId::BlockBodyV2, &key)
-        //     .await?
-        //     .map(bytesrepr::deserialize_from_slice)
-        //     .transpose()
-        //     .map_err(|err| Error::Deserialization(err.to_string()))
+        let key = hash.to_bytes().expect("should always serialize a digest");
+        self.read_from_db(DbId::BlockBody, &key)
+            .await?
+            .map(bytesrepr::deserialize_from_slice)
+            .transpose()
+            .map_err(|err| Error::Deserialization(err.to_string()))
     }
 
     async fn read_block_signatures(
@@ -133,13 +153,12 @@ pub trait NodeClient: Send + Sync {
         &self,
         hash: TransactionHash,
     ) -> Result<Option<ExecutionResult>, Error> {
-        todo!()
-        // let key = hash.to_bytes().expect("should always serialize a digest");
-        // self.read_from_db(DbId::ExecutionResults, &key)
-        //     .await?
-        //     .map(bytesrepr::deserialize_from_slice)
-        //     .transpose()
-        //     .map_err(|err| Error::Deserialization(err.to_string()))
+        let key = hash.to_bytes().expect("should always serialize a digest");
+        self.read_from_db(DbId::ExecutionResult, &key)
+            .await?
+            .map(bytesrepr::deserialize_from_slice)
+            .transpose()
+            .map_err(|err| Error::Deserialization(err.to_string()))
     }
 
     async fn read_transaction_block_info(

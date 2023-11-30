@@ -14,6 +14,7 @@ use std::marker::PhantomData;
 #[cfg(test)]
 use casper_types::bytesrepr;
 use casper_types::{
+    binary_port::DbRawBytesSpec,
     bytesrepr::{FromBytes, ToBytes},
     execution::ExecutionResult,
     BlockBody, BlockBodyV1, BlockHash, BlockHeader, BlockHeaderV1, Deploy, DeployHash, Digest,
@@ -96,7 +97,7 @@ where
         &self,
         txn: &RoTransaction,
         key: &[u8],
-    ) -> Result<Option<(bool, Vec<u8>)>, LmdbExtError> {
+    ) -> Result<Option<DbRawBytesSpec>, LmdbExtError> {
         self.get_raw(txn, key)
     }
 }
@@ -183,14 +184,14 @@ where
         &self,
         txn: &RoTransaction,
         key: &[u8],
-    ) -> Result<Option<(bool, Vec<u8>)>, LmdbExtError> {
+    ) -> Result<Option<DbRawBytesSpec>, LmdbExtError> {
         let value = txn.get(self.current, &key);
         match value {
-            Ok(raw_bytes) => return Ok(Some((false, raw_bytes.to_vec()))),
+            Ok(raw_bytes) => return Ok(Some(DbRawBytesSpec::new_current(raw_bytes))),
             Err(lmdb::Error::NotFound) => {
                 let value = txn.get(self.legacy, &key);
                 match value {
-                    Ok(raw_bytes) => return Ok(Some((true, raw_bytes.to_vec()))),
+                    Ok(raw_bytes) => return Ok(Some(DbRawBytesSpec::new_legacy(raw_bytes))),
                     Err(lmdb::Error::NotFound) => return Ok(None),
                     Err(err) => return Err(err.into()),
                 }

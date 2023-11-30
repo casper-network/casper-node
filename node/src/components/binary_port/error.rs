@@ -1,5 +1,5 @@
 use casper_execution_engine::engine_state;
-use casper_types::bytesrepr;
+use casper_types::{binary_port::db_id::DbId, bytesrepr};
 use thiserror::Error;
 
 use crate::components::transaction_acceptor;
@@ -14,6 +14,8 @@ pub(crate) enum Error {
     TransactionAcceptor(transaction_acceptor::Error),
     #[error("This function is disabled: {}", _0)]
     FunctionDisabled(String),
+    #[error("No such database: {}", _0)]
+    NoSuchDatabase(DbId),
 }
 
 #[repr(u8)]
@@ -23,6 +25,7 @@ pub enum ErrorCode {
     InvalidTransaction = 2,
     FunctionDisabled = 3,
     InternalError = 4,
+    NoSuchDatabase = 5,
 }
 
 impl Error {
@@ -32,6 +35,7 @@ impl Error {
             Error::EngineState(_) => ErrorCode::InternalError as u8,
             Error::TransactionAcceptor(_) => ErrorCode::InvalidTransaction as u8,
             Error::FunctionDisabled(_) => ErrorCode::FunctionDisabled as u8,
+            Error::NoSuchDatabase(_) => ErrorCode::NoSuchDatabase as u8,
         }
     }
 }

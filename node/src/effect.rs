@@ -121,7 +121,7 @@ use casper_execution_engine::engine_state::{
 };
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
-    binary_port::{db_id::DbId, get_all_values::GetAllValuesResult},
+    binary_port::{db_id::DbId, get_all_values::GetAllValuesResult, DbRawBytesSpec},
     bytesrepr::Bytes,
     contract_messages::Messages,
     execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},
@@ -1195,7 +1195,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn get_raw_data(self, db: DbId, key: Vec<u8>) -> Option<Vec<u8>>
+    pub(crate) async fn get_raw_data(self, db: DbId, key: Vec<u8>) -> Option<DbRawBytesSpec>
     where
         REv: From<StorageRequest>,
     {

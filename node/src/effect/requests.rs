@@ -29,7 +29,7 @@ use casper_execution_engine::engine_state::{
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     addressable_entity::AddressableEntity,
-    binary_port::{db_id::DbId, get_all_values::GetAllValuesResult},
+    binary_port::{db_id::DbId, get_all_values::GetAllValuesResult, DbRawBytesSpec},
     bytesrepr::Bytes,
     contract_messages::Messages,
     execution::{ExecutionResult, ExecutionResultV2},
@@ -348,7 +348,7 @@ pub(crate) enum StorageRequest {
         key: Vec<u8>,
         /// Responder to call with the result.  Returns `None` if the data doesn't exist in
         /// local storage.
-        responder: Responder<Option<Vec<u8>>>,
+        responder: Responder<Option<DbRawBytesSpec>>,
     },
     GetBlockHeaderByHeight {
         /// Height of block to get header of.

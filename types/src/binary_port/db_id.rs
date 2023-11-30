@@ -15,7 +15,7 @@ const TRANSACTION_DB_TAG: u8 = 7;
 const EXECUTION_RESULT_DB_TAG: u8 = 8;
 
 /// Allows to indicate to which database the binary request refers to.
-#[derive(Debug, Eq, PartialEq, Hash, Serialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Serialize)]
 #[repr(u8)]
 pub enum DbId {
     /// Refers to `BlockHeader` db.

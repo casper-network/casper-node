@@ -72,7 +72,7 @@ use tracing::{debug, error, info, trace, warn};
 #[cfg(test)]
 use casper_types::Deploy;
 use casper_types::{
-    binary_port::db_id::DbId,
+    binary_port::{binary_response::BinaryResponse, db_id::DbId, DbRawBytesSpec},
     bytesrepr::{FromBytes, ToBytes},
     execution::{
         execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
@@ -158,7 +158,7 @@ trait RawDataAccess {
         &self,
         txn: &RoTransaction,
         key: &[u8],
-    ) -> Result<Option<(bool, Vec<u8>)>, LmdbExtError>;
+    ) -> Result<Option<DbRawBytesSpec>, LmdbExtError>;
 }
 
 impl RawDataAccess for Database {
@@ -166,10 +166,9 @@ impl RawDataAccess for Database {
         &self,
         txn: &RoTransaction,
         key: &[u8],
-    ) -> Result<Option<(bool, Vec<u8>)>, LmdbExtError> {
-        let value = txn.get(*self, &key);
-        match value {
-            Ok(raw_bytes) => return Ok(Some((false, raw_bytes.to_vec()))),
+    ) -> Result<Option<DbRawBytesSpec>, LmdbExtError> {
+        match txn.get(*self, &key) {
+            Ok(raw_bytes) => return Ok(Some(DbRawBytesSpec::new_legacy(raw_bytes))),
             Err(lmdb::Error::NotFound) => return Ok(None),
             Err(err) => return Err(err.into()),
         }
@@ -1227,21 +1226,12 @@ impl Storage {
             }
             StorageRequest::GetRawData { key, responder, db } => {
                 let mut txn = self.env.begin_ro_txn()?;
-                let x = self
-                    .db_mapper
-                    .get(&db)
-                    .unwrap()
-                    .get_raw_bytes(&mut txn, key.as_slice());
-                /*
-                let maybe_raw_data = self.read_raw_data(
-                    self.db_mapper
-                        .get(&db)
-                        .ok_or(FatalStorageError::DatabaseNotFound(db))?,
-                    &key,
-                )?;
-                responder.respond(maybe_raw_data).ignore()
-                */
-                todo!()
+                if let Some(db) = self.db_mapper.get(&db) {
+                    responder.respond(db.get_raw_bytes(&mut txn, key.as_slice())?)
+                } else {
+                    responder.respond(None)
+                }
+                .ignore()
             }
             StorageRequest::GetBlockHashAndHeightForTransaction {
                 transaction_hash,

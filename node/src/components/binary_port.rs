@@ -8,14 +8,14 @@ mod tests;
 
 use std::{net::SocketAddr, sync::Arc};
 
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
 use casper_execution_engine::engine_state::{
     get_all_values::GetAllValuesRequest, Error as EngineStateError, QueryRequest,
 };
 use casper_types::{
     binary_port::{
-        binary_request::BinaryRequest, get::GetRequest, global_state::GlobalStateQueryResult,
-        non_persistent_data::NonPersistedDataRequest,
+        binary_request::BinaryRequest, binary_response::BinaryResponse, get::GetRequest,
+        global_state::GlobalStateQueryResult, non_persistent_data::NonPersistedDataRequest,
         speculative_execution::SpeculativeExecutionError,
     },
     bytesrepr::{FromBytes, ToBytes},
@@ -178,6 +178,9 @@ where
         + From<ChainspecRawBytesRequest>
         + Send,
 {
+    error!("XXXXX - Binary Port is handling request: {req:?}");
+
+    let temporarily_cloned_req = req.clone();
     // TODO[RC]: clean this up, delegate to specialized functions
     match req {
         BinaryRequest::TryAcceptTransaction {
@@ -265,11 +268,18 @@ where
             //     .into();
             // Ok(Some(bytes))
         }
-        BinaryRequest::Get(req) => match req {
-            GetRequest::Db { db, key } => Ok(effect_builder
-                .get_raw_data(db, key)
-                .await
-                .map(|raw_data| Bytes::from(raw_data))),
+        BinaryRequest::Get(get_req) => match get_req {
+            GetRequest::Db { db, key } => {
+                let maybe_raw_bytes = effect_builder.get_raw_data(db, key).await;
+                let binary_response =
+                    BinaryResponse::new(&db, temporarily_cloned_req, maybe_raw_bytes);
+                let payload =
+                    ToBytes::to_bytes(&binary_response).map_err(|err| Error::BytesRepr(err))?;
+                Ok(Some(Bytes::from(payload)))
+            }
+
+            // Ok(
+            // .map(|raw_data| Bytes::from(raw_data))),
             GetRequest::NonPersistedData(req) => match req {
                 NonPersistedDataRequest::BlockHeight2Hash { height } => {
                     todo!()

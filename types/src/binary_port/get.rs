@@ -14,7 +14,7 @@ const ALL_VALUES_TAG: u8 = 3;
 const TRIE_TAG: u8 = 4;
 
 /// The kind of the `Get` operation.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum GetRequest {
     /// Gets data stored under the given key from the given db.
     Db {

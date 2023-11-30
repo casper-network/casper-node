@@ -24,7 +24,7 @@ const GENESIS_ACCOUNTS_BYTES_TAG: u8 = 15;
 const GLOBAL_STATE_BYTES_TAG: u8 = 16;
 
 /// Request for non persistent data
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum NonPersistedDataRequest {
     /// Returns hash for a given height.
     BlockHeight2Hash {
