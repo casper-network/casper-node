@@ -134,8 +134,8 @@ impl<C: Context> RoundSuccessMeter<C> {
             self.rounds.push_front(false);
         }
 
-        self.current_round_id =
-            Timestamp::zero() + self.current_round_len.saturating_mul(new_round_index);
+        self.current_round_id = Timestamp::zero()
+            .saturating_add(self.current_round_len.saturating_mul(new_round_index));
 
         self.clean_old_rounds();
 
