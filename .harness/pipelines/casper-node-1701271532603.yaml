@@ -32,7 +32,7 @@ pipeline:
                       make test-contracts CARGO_FLAGS=--release
                     resources:
                       limits:
-                        memory: 16Gi
+                        memory: 24Gi
                         cpu: "12"
           infrastructure:
             type: KubernetesDirect
