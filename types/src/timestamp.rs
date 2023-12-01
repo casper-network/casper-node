@@ -30,11 +30,6 @@ const TIMESTAMP: Timestamp = Timestamp(1_605_573_564_072);
 /// A timestamp type, representing a concrete moment in time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(
-    feature = "json-schema",
-    derive(JsonSchema),
-    schemars(with = "String", description = "Timestamp formatted as per RFC 3339")
-)]
 pub struct Timestamp(u64);
 
 impl Timestamp {
@@ -234,14 +229,24 @@ impl From<u64> for Timestamp {
     }
 }
 
+#[cfg(feature = "json-schema")]
+impl JsonSchema for Timestamp {
+    fn schema_name() -> String {
+        String::from("Timestamp")
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description =
+            Some("Timestamp formatted as per RFC 3339".to_string());
+        schema_object.into()
+    }
+}
+
 /// A time difference between two timestamps.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(
-    feature = "json-schema",
-    derive(JsonSchema),
-    schemars(with = "String", description = "Human-readable duration.")
-)]
 pub struct TimeDiff(u64);
 
 impl Display for TimeDiff {
@@ -261,6 +266,20 @@ impl FromStr for TimeDiff {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         let inner = humantime::parse_duration(value)?.as_millis() as u64;
         Ok(TimeDiff(inner))
+    }
+}
+
+#[cfg(feature = "json-schema")]
+impl JsonSchema for TimeDiff {
+    fn schema_name() -> String {
+        String::from("TimeDiff")
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some("Human-readable duration.".to_string());
+        schema_object.into()
     }
 }
 

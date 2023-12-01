@@ -2150,15 +2150,11 @@
       },
       "Timestamp": {
         "description": "Timestamp formatted as per RFC 3339",
-        "type": "integer",
-        "format": "uint64",
-        "minimum": 0.0
+        "type": "string"
       },
       "TimeDiff": {
         "description": "Human-readable duration.",
-        "type": "integer",
-        "format": "uint64",
-        "minimum": 0.0
+        "type": "string"
       },
       "Digest": {
         "description": "Hex-encoded hash digest.",
@@ -2773,11 +2769,7 @@
       },
       "TransactionV1Hash": {
         "description": "Hex-encoded TransactionV1 hash.",
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/Digest"
-          }
-        ]
+        "type": "string"
       },
       "TransactionV1Header": {
         "description": "The header portion of a TransactionV1.",

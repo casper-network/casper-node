@@ -532,9 +532,7 @@
     },
     "Timestamp": {
       "description": "Timestamp formatted as per RFC 3339",
-      "type": "integer",
-      "format": "uint64",
-      "minimum": 0.0
+      "type": "string"
     },
     "EraId": {
       "description": "Era ID newtype.",
@@ -840,11 +838,7 @@
     },
     "TransactionV1Hash": {
       "description": "Hex-encoded TransactionV1 hash.",
-      "allOf": [
-        {
-          "$ref": "#/definitions/Digest"
-        }
-      ]
+      "type": "string"
     },
     "RewardedSignatures": {
       "description": "Describes finality signatures that will be rewarded in a block. Consists of a vector of `SingleBlockRewardedSignatures`, each of which describes signatures for a single ancestor block. The first entry represents the signatures for the parent block, the second for the parent of the parent, and so on.",
@@ -970,9 +964,7 @@
     },
     "TimeDiff": {
       "description": "Human-readable duration.",
-      "type": "integer",
-      "format": "uint64",
-      "minimum": 0.0
+      "type": "string"
     },
     "ExecutableDeployItem": {
       "description": "The executable component of a [`Deploy`].",
