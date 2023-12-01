@@ -5,9 +5,13 @@ use tracing::info;
 
 use crate::rpcs::error::Error;
 use casper_types::{
-    account::AccountHash, binary_port::global_state::GlobalStateQueryResult, AddressableEntity,
-    AvailableBlockRange, BlockHeader, Digest, ExecutionInfo, FinalizedApprovals, Key, SignedBlock,
-    StoredValue, Transaction, TransactionHash, URef, U512,
+    account::AccountHash,
+    binary_port::{
+        global_state::GlobalStateQueryResult, type_wrappers::HighestBlockSequenceCheckResult,
+    },
+    AddressableEntity, AvailableBlockRange, Block, BlockHeader, BlockSignatures, Digest,
+    ExecutionInfo, FinalizedApprovals, Key, SignedBlock, StoredValue, Transaction, TransactionHash,
+    URef, U512,
 };
 
 use crate::NodeClient;
@@ -68,7 +72,7 @@ pub async fn get_signed_block(
             .block_hash(),
     };
 
-    let should_return_block = node_client
+    let HighestBlockSequenceCheckResult(should_return_block) = node_client
         .does_exist_in_completed_blocks(hash)
         .await
         .map_err(|err| Error::NodeRequest("completed block existence", err))?;
@@ -83,10 +87,6 @@ pub async fn get_signed_block(
         .map_err(|err| Error::NodeRequest("block header", err))?
         .ok_or(Error::NoBlockWithHash(hash, available_block_range))?;
 
-    dbg!(&header);
-    todo!();
-
-    /* Temporarily disabled, since I just need to grab a header for testing purposes
     let body = node_client
         .read_block_body(*header.body_hash())
         .await
@@ -104,7 +104,6 @@ pub async fn get_signed_block(
     };
 
     Ok(SignedBlock::new(block, signatures))
-    */
 }
 
 pub async fn resolve_state_root_hash(
