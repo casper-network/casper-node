@@ -1,5 +1,5 @@
 [package]
-name = "vm2-greeter"
+name = "vm2-harness"
 version = "0.1.0"
 edition = "2021"
 

@@ -279,11 +279,4 @@ pub fn casper_call(
     } else {
         (None, result_code)
     }
-
-    // match result_code {
-    //     result_code @ ResultCode::Success | result_code @ ResultCode::CalleeReverted =>
-    // Ok(CallResult { result_code, output: vec }),     ResultCode::CalleeTrapped =>
-    // Err(CallError::CalleeTrapped),     ResultCode::CalleeGasDepleted =>
-    // Err(CallError::CalleeGasDepleted),     ResultCode::Unknown => Err(CallError::Unknown),
-    // }
 }

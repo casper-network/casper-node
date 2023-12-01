@@ -17,7 +17,7 @@ use vm::{
 
 // use super::*;
 const VM2_TEST_CONTRACT: &[u8] = include_bytes!("../vm2-test-contract.wasm");
-const VM2_GREETER: &[u8] = include_bytes!("../vm2-greeter.wasm");
+const VM2_HARNESS: &[u8] = include_bytes!("../vm2-harness.wasm");
 
 type Blake2b256 = Blake2b<U32>;
 

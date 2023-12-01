@@ -2,7 +2,7 @@
 set -e
 VM2_CONTRACTS=(
   "vm2-test-contract"
-  "vm2-greeter"
+  "vm2-harness"
 )
 for contract in "${VM2_CONTRACTS[@]}"
 do
