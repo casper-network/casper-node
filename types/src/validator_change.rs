@@ -1,10 +1,11 @@
+use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 /// A change to a validator's status between two eras.
-#[derive(Serialize, Deserialize, Debug, JsonSchema, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Serialize, DataSize, Deserialize, Debug, JsonSchema, Eq, PartialEq, Ord, PartialOrd)]
 pub enum ValidatorChange {
     /// The validator got newly added to the validator set.
     Added,

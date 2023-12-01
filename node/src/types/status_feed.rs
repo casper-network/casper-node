@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     ActivationPoint, AvailableBlockRange, Block, BlockHash, BlockSynchronizerStatus, Digest, EraId,
-    NextUpgrade, PeersMap, ProtocolVersion, PublicKey, ReactorState, TimeDiff, Timestamp,
+    NextUpgrade, Peers, ProtocolVersion, PublicKey, ReactorState, TimeDiff, Timestamp,
 };
 
 use crate::{
@@ -173,7 +173,7 @@ impl From<Block> for MinimalBlockInfo {
 #[serde(deny_unknown_fields)]
 pub struct GetStatusResult {
     /// The node ID and network address of each connected peer.
-    pub peers: PeersMap,
+    pub peers: Peers,
     /// The RPC API version.
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,
@@ -207,7 +207,7 @@ impl GetStatusResult {
     #[allow(deprecated)]
     pub(crate) fn new(status_feed: StatusFeed, api_version: ProtocolVersion) -> Self {
         GetStatusResult {
-            peers: PeersMap::from(status_feed.peers),
+            peers: Peers::from(status_feed.peers),
             api_version,
             chainspec_name: status_feed.chainspec_info.name,
             starting_state_root_hash: status_feed.starting_state_root_hash,

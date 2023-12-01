@@ -11,7 +11,7 @@ use casper_types::{
     execution::{ExecutionResult, ExecutionResultV2},
     ActivationPoint, AvailableBlockRange, Block, BlockHash, BlockSynchronizerStatus,
     ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, ExecutionInfo, FinalizedApprovals,
-    NextUpgrade, PeersMap, ProtocolVersion, PublicKey, ReactorState, TimeDiff, Timestamp,
+    NextUpgrade, Peers, ProtocolVersion, PublicKey, ReactorState, TimeDiff, Timestamp,
     Transaction, TransactionHash, ValidatorChange,
 };
 use tracing::warn;
@@ -275,7 +275,7 @@ pub struct GetPeersResult {
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,
     /// The node ID and network address of each connected peer.
-    pub peers: PeersMap,
+    pub peers: Peers,
 }
 
 impl DocExample for GetPeersResult {
@@ -437,6 +437,8 @@ impl RpcWithoutParams for GetChainspec {
             .read_chainspec_bytes()
             .await
             .map_err(|err| Error::NodeRequest("chainspec bytes", err))?;
+
+        /*
         let maybe_genesis_account_bytes = node_client
             .read_genesis_account_bytes()
             .await
@@ -454,6 +456,8 @@ impl RpcWithoutParams for GetChainspec {
                 maybe_global_state_bytes.map(Into::into),
             ),
         })
+        */
+        todo!()
     }
 }
 
@@ -462,7 +466,7 @@ impl RpcWithoutParams for GetChainspec {
 #[serde(deny_unknown_fields)]
 pub struct GetStatusResult {
     /// The node ID and network address of each connected peer.
-    pub peers: PeersMap,
+    pub peers: Peers,
     /// The RPC API version.
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,

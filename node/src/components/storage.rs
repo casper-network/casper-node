@@ -72,7 +72,10 @@ use tracing::{debug, error, info, trace, warn};
 #[cfg(test)]
 use casper_types::Deploy;
 use casper_types::{
-    binary_port::{binary_response::BinaryResponse, db_id::DbId, DbRawBytesSpec},
+    binary_port::{
+        binary_response::BinaryResponse, db_id::DbId,
+        type_wrappers::HighestBlockSequenceCheckResult, DbRawBytesSpec,
+    },
     bytesrepr::{FromBytes, ToBytes},
     execution::{
         execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
@@ -1252,18 +1255,20 @@ impl Storage {
                 block_hash,
                 responder,
             } => responder
-                .respond(self.read_block_header_by_hash(&block_hash).map_or(
-                    false,
-                    |maybe_block_header| {
-                        maybe_block_header.map_or(false, |block_header| {
-                            let height = block_header.height();
-                            self.completed_blocks
-                                .highest_sequence()
-                                .map_or(false, |sequence| {
-                                    height >= sequence.low() && height <= sequence.high()
-                                })
-                        })
-                    },
+                .respond(HighestBlockSequenceCheckResult(
+                    self.read_block_header_by_hash(&block_hash).map_or(
+                        false,
+                        |maybe_block_header| {
+                            maybe_block_header.map_or(false, |block_header| {
+                                let height = block_header.height();
+                                self.completed_blocks
+                                    .highest_sequence()
+                                    .map_or(false, |sequence| {
+                                        height >= sequence.low() && height <= sequence.high()
+                                    })
+                            })
+                        },
+                    ),
                 ))
                 .ignore(),
         })

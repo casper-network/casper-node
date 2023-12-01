@@ -6,7 +6,7 @@ use crate::{config::ExponentialBackoffConfig, NodeClientConfig};
 use casper_types::{
     binary_port::{
         binary_request::BinaryRequest,
-        binary_response::{self, BinaryResponse, PayloadType},
+        binary_response::{self, BinaryResponse},
         db_id::DbId,
         get::GetRequest,
         get_all_values::GetAllValuesResult,
@@ -18,8 +18,8 @@ use casper_types::{
     execution::{ExecutionResult, ExecutionResultV2},
     AvailableBlockRange, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderV1,
     BlockSignatures, BlockSynchronizerStatus, Digest, FinalizedApprovals, Key, KeyTag, NextUpgrade,
-    PeersMap, ProtocolVersion, PublicKey, ReactorState, TimeDiff, Timestamp, Transaction,
-    TransactionHash, Transfer,
+    PayloadType, Peers, ProtocolVersion, PublicKey, ReactorState, TimeDiff, Timestamp,
+    Transaction, TransactionHash, Transfer,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -199,7 +199,7 @@ pub trait NodeClient: Send + Sync {
             .map_err(|err| Error::Deserialization(err.to_string()))
     }
 
-    async fn read_peers(&self) -> Result<PeersMap, Error> {
+    async fn read_peers(&self) -> Result<Peers, Error> {
         let resp = self
             .read_from_mem(NonPersistedDataRequest::Peers)
             .await?
@@ -283,16 +283,6 @@ pub trait NodeClient: Send + Sync {
         self.read_from_mem(NonPersistedDataRequest::ChainspecRawBytes)
             .await?
             .ok_or(Error::NoResponseBody)
-    }
-
-    async fn read_genesis_account_bytes(&self) -> Result<Option<Vec<u8>>, Error> {
-        self.read_from_mem(NonPersistedDataRequest::GenesisAccountsBytes)
-            .await
-    }
-
-    async fn read_global_state_bytes(&self) -> Result<Option<Vec<u8>>, Error> {
-        self.read_from_mem(NonPersistedDataRequest::GlobalStateBytes)
-            .await
     }
 }
 

@@ -25,9 +25,10 @@ use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
+    binary_port::type_wrappers::{LastProgress, NetworkName},
     Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, DeployId, EraId, FinalitySignature,
     PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader,
-    TransactionId, U512,
+    TransactionId, Uptime, U512,
 };
 
 #[cfg(test)]
@@ -293,13 +294,13 @@ impl reactor::Reactor for MainReactor {
                     responder.respond(self.state).ignore()
                 }
                 ReactorInfoRequest::LastProgress { responder } => {
-                    responder.respond(self.last_progress).ignore()
+                    responder.respond(LastProgress(self.last_progress)).ignore()
                 }
                 ReactorInfoRequest::Uptime { responder } => responder
-                    .respond(self.node_startup_instant.elapsed())
+                    .respond(Uptime(self.node_startup_instant.elapsed().as_secs()))
                     .ignore(),
                 ReactorInfoRequest::NetworkName { responder } => responder
-                    .respond(self.chainspec.network_config.name.clone())
+                    .respond(NetworkName(self.chainspec.network_config.name.clone()))
                     .ignore(),
             },
             MainEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(meta_block)) => {

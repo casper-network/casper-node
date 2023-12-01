@@ -31,9 +31,9 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
-    AsymmetricType, BlockHash, BlockHeader, Chainspec, ConsensusProtocolName, Digest, DisplayIter,
-    EraId, FinalizedApprovals, PublicKey, RewardedSignatures, TimeDiff, Timestamp, Transaction,
-    TransactionHash, ValidatorChange,
+    binary_port::type_wrappers::ConsensusValidatorChanges, AsymmetricType, BlockHash, BlockHeader,
+    Chainspec, ConsensusProtocolName, Digest, DisplayIter, EraId, FinalizedApprovals, PublicKey,
+    RewardedSignatures, TimeDiff, Timestamp, Transaction, TransactionHash, ValidatorChange,
 };
 
 use crate::{
@@ -246,16 +246,14 @@ impl EraSupervisor {
     }
 
     /// Returns a list of status changes of active validators.
-    pub(super) fn get_validator_changes(
-        &self,
-    ) -> BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>> {
+    pub(super) fn get_validator_changes(&self) -> ConsensusValidatorChanges {
         let mut result: BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>> = BTreeMap::new();
         for ((_, era0), (era_id, era1)) in self.open_eras.iter().tuple_windows() {
             for (pub_key, change) in ValidatorChanges::new(era0, era1).0 {
                 result.entry(pub_key).or_default().push((*era_id, change));
             }
         }
-        result
+        ConsensusValidatorChanges(result)
     }
 
     fn era_seed(booking_block_hash: BlockHash, key_block_seed: Digest) -> u64 {

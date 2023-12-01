@@ -6,7 +6,7 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::bytesrepr::Bytes;
+use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
 /// The raw bytes of the chainspec.toml, genesis accounts.toml, and global_state.toml files.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -110,5 +110,53 @@ impl Display for ChainspecRawBytes {
             write!(formatter, "{}", String::from_utf8_lossy(global_state_bytes))?;
         }
         Ok(())
+    }
+}
+
+impl ToBytes for ChainspecRawBytes {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        let ChainspecRawBytes {
+            chainspec_bytes,
+            maybe_genesis_accounts_bytes,
+            maybe_global_state_bytes,
+        } = self;
+
+        chainspec_bytes.write_bytes(writer)?;
+        maybe_genesis_accounts_bytes.write_bytes(writer)?;
+        maybe_global_state_bytes.write_bytes(writer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        let ChainspecRawBytes {
+            chainspec_bytes,
+            maybe_genesis_accounts_bytes,
+            maybe_global_state_bytes,
+        } = self;
+        chainspec_bytes.serialized_length()
+            + maybe_genesis_accounts_bytes.serialized_length()
+            + maybe_global_state_bytes.serialized_length()
+    }
+}
+
+impl FromBytes for ChainspecRawBytes {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (chainspec_bytes, remainder) = FromBytes::from_bytes(bytes)?;
+        let (maybe_genesis_accounts_bytes, remainder) = FromBytes::from_bytes(remainder)?;
+        let (maybe_global_state_bytes, remainder) = FromBytes::from_bytes(remainder)?;
+
+        Ok((
+            ChainspecRawBytes {
+                chainspec_bytes,
+                maybe_genesis_accounts_bytes,
+                maybe_global_state_bytes,
+            },
+            remainder,
+        ))
     }
 }

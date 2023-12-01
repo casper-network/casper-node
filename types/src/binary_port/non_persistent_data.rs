@@ -20,8 +20,6 @@ const AVAILABLE_BLOCK_RANGE_TAG: u8 = 11;
 const NEXT_UPGRADE_TAG: u8 = 12;
 const CONSENSUS_STATUS_TAG: u8 = 13;
 const CHAINSPEC_RAW_BYTES: u8 = 14;
-const GENESIS_ACCOUNTS_BYTES_TAG: u8 = 15;
-const GLOBAL_STATE_BYTES_TAG: u8 = 16;
 
 /// Request for non persistent data
 #[derive(Clone, Debug)]
@@ -66,10 +64,6 @@ pub enum NonPersistedDataRequest {
     ConsensusStatus,
     /// Returns chainspec raw bytes.
     ChainspecRawBytes,
-    /// Returns genesis accounts raw bytes.
-    GenesisAccountsBytes,
-    /// Returns global state raw bytes.
-    GlobalStateBytes,
 }
 
 impl ToBytes for NonPersistedDataRequest {
@@ -113,10 +107,6 @@ impl ToBytes for NonPersistedDataRequest {
             NonPersistedDataRequest::NextUpgrade => NEXT_UPGRADE_TAG.write_bytes(writer),
             NonPersistedDataRequest::ConsensusStatus => CONSENSUS_STATUS_TAG.write_bytes(writer),
             NonPersistedDataRequest::ChainspecRawBytes => CHAINSPEC_RAW_BYTES.write_bytes(writer),
-            NonPersistedDataRequest::GenesisAccountsBytes => {
-                GENESIS_ACCOUNTS_BYTES_TAG.write_bytes(writer)
-            }
-            NonPersistedDataRequest::GlobalStateBytes => GLOBAL_STATE_BYTES_TAG.write_bytes(writer),
         }
     }
 
@@ -142,8 +132,6 @@ impl ToBytes for NonPersistedDataRequest {
                 NonPersistedDataRequest::NextUpgrade => 0,
                 NonPersistedDataRequest::ConsensusStatus => 0,
                 NonPersistedDataRequest::ChainspecRawBytes => 0,
-                NonPersistedDataRequest::GenesisAccountsBytes => 0,
-                NonPersistedDataRequest::GlobalStateBytes => 0,
             }
     }
 }
@@ -196,10 +184,6 @@ impl FromBytes for NonPersistedDataRequest {
             NEXT_UPGRADE_TAG => Ok((NonPersistedDataRequest::NextUpgrade, remainder)),
             CONSENSUS_STATUS_TAG => Ok((NonPersistedDataRequest::ConsensusStatus, remainder)),
             CHAINSPEC_RAW_BYTES => Ok((NonPersistedDataRequest::ChainspecRawBytes, remainder)),
-            GENESIS_ACCOUNTS_BYTES_TAG => {
-                Ok((NonPersistedDataRequest::GenesisAccountsBytes, remainder))
-            }
-            GLOBAL_STATE_BYTES_TAG => Ok((NonPersistedDataRequest::GlobalStateBytes, remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }

@@ -121,7 +121,12 @@ use casper_execution_engine::engine_state::{
 };
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
-    binary_port::{db_id::DbId, get_all_values::GetAllValuesResult, DbRawBytesSpec},
+    binary_port::{
+        db_id::DbId,
+        get_all_values::GetAllValuesResult,
+        type_wrappers::{ConsensusValidatorChanges, LastProgress, NetworkName, HighestBlockSequenceCheckResult},
+        DbRawBytesSpec,
+    },
     bytesrepr::Bytes,
     contract_messages::Messages,
     execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},
@@ -131,7 +136,7 @@ use casper_types::{
     BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, DeployHeader,
     Digest, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key,
     NextUpgrade, PublicKey, ReactorState, SignedBlock, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionId, Transfer, ValidatorChange, U512,
+    TransactionHash, TransactionId, Transfer, Uptime, ValidatorChange, U512,
 };
 
 use crate::{
@@ -1411,7 +1416,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn highest_completed_block_sequence_contains_hash(
         self,
         block_hash: BlockHash,
-    ) -> bool
+    ) -> HighestBlockSequenceCheckResult
     where
         REv: From<StorageRequest>,
     {
@@ -1486,7 +1491,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn get_last_progress(self) -> Timestamp
+    pub(crate) async fn get_last_progress(self) -> LastProgress
     where
         REv: From<ReactorInfoRequest>,
     {
@@ -1497,7 +1502,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn get_uptime(self) -> Duration
+    pub(crate) async fn get_uptime(self) -> Uptime
     where
         REv: From<ReactorInfoRequest>,
     {
@@ -1508,7 +1513,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn get_network_name(self) -> String
+    pub(crate) async fn get_network_name(self) -> NetworkName
     where
         REv: From<ReactorInfoRequest>,
     {
@@ -2224,6 +2229,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Get our public key from consensus, and if we're a validator, the next round length.
+    // TODO[RC]: Turn the return type into `ConsensusStatus`
     pub(crate) async fn consensus_status(self) -> Option<(PublicKey, Option<TimeDiff>)>
     where
         REv: From<ConsensusRequest>,
@@ -2233,9 +2239,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Returns a list of validator status changes, by public key.
-    pub(crate) async fn get_consensus_validator_changes(
-        self,
-    ) -> BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>
+    pub(crate) async fn get_consensus_validator_changes(self) -> ConsensusValidatorChanges
     where
         REv: From<ConsensusRequest>,
     {

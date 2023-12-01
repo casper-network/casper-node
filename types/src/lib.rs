@@ -79,6 +79,7 @@ use libc::{c_long, sysconf, _SC_PAGESIZE};
 #[cfg(feature = "std")]
 use once_cell::sync::Lazy;
 
+pub use crate::binary_port::{error::Error, payload_type::PayloadType, type_wrappers::Uptime};
 pub use crate::uint::{UIntParseError, U128, U256, U512};
 pub use access_rights::{
     AccessRights, ContextAccessRights, GrantedAccess, ACCESS_RIGHTS_SERIALIZED_LENGTH,
@@ -161,7 +162,7 @@ pub use motes::Motes;
 pub use package::{
     EntityVersion, EntityVersionKey, EntityVersions, Group, Groups, Package, PackageHash,
 };
-pub use peers_map::{PeerEntry, PeersMap};
+pub use peers_map::{PeerEntry, Peers};
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
 pub use reactor_state::ReactorState;

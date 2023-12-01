@@ -55,7 +55,7 @@ pub use config::Config;
 pub use docs::DocExample;
 pub(crate) use docs::DOCS_EXAMPLE_PROTOCOL_VERSION;
 pub(crate) use event::Event;
-pub(crate) use info::{GetValidatorChangesResult, GetChainspecResult};
+pub(crate) use info::{GetChainspecResult, GetValidatorChangesResult};
 
 const COMPONENT_NAME: &str = "rest_server";
 
@@ -220,7 +220,7 @@ where
                             consensus_status,
                             node_uptime,
                             reactor_state,
-                            last_progress,
+                            last_progress.0,
                             available_block_range,
                             block_sync,
                             starting_state_root_hash,

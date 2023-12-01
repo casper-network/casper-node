@@ -29,7 +29,14 @@ use casper_execution_engine::engine_state::{
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     addressable_entity::AddressableEntity,
-    binary_port::{db_id::DbId, get_all_values::GetAllValuesResult, DbRawBytesSpec},
+    binary_port::{
+        db_id::DbId,
+        get_all_values::GetAllValuesResult,
+        type_wrappers::{
+            ConsensusValidatorChanges, HighestBlockSequenceCheckResult, LastProgress, NetworkName,
+        },
+        DbRawBytesSpec,
+    },
     bytesrepr::Bytes,
     contract_messages::Messages,
     execution::{ExecutionResult, ExecutionResultV2},
@@ -38,7 +45,7 @@ use casper_types::{
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, DeployHeader, Digest,
     DisplayIter, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalizedApprovals,
     Key, NextUpgrade, PublicKey, ReactorState, SignedBlock, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionId, Transfer, ValidatorChange, U512,
+    TransactionHash, TransactionId, Transfer, Uptime, ValidatorChange, U512,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -537,7 +544,7 @@ pub(crate) enum StorageRequest {
     /// Checks if a block with the given hash is among the contiguous sequence of completed blocks.
     HighestCompletedBlockSequenceContainsHash {
         block_hash: BlockHash,
-        responder: Responder<bool>,
+        responder: Responder<HighestBlockSequenceCheckResult>,
     },
 }
 
@@ -1107,7 +1114,7 @@ pub(crate) enum ConsensusRequest {
     /// Request for our public key, and if we're a validator, the next round length.
     Status(Responder<Option<(PublicKey, Option<TimeDiff>)>>),
     /// Request for a list of validator status changes, by public key.
-    ValidatorChanges(Responder<BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>>),
+    ValidatorChanges(Responder<ConsensusValidatorChanges>),
 }
 
 /// ChainspecLoader component requests.
@@ -1141,9 +1148,9 @@ impl Display for UpgradeWatcherRequest {
 #[derive(Debug, Serialize)]
 pub(crate) enum ReactorInfoRequest {
     ReactorState { responder: Responder<ReactorState> },
-    LastProgress { responder: Responder<Timestamp> },
-    Uptime { responder: Responder<Duration> },
-    NetworkName { responder: Responder<String> },
+    LastProgress { responder: Responder<LastProgress> },
+    Uptime { responder: Responder<Uptime> },
+    NetworkName { responder: Responder<NetworkName> },
 }
 
 impl Display for ReactorInfoRequest {

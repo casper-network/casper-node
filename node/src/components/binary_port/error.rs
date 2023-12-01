@@ -1,5 +1,8 @@
 use casper_execution_engine::engine_state;
-use casper_types::{binary_port::db_id::DbId, bytesrepr};
+use casper_types::{
+    binary_port::{self, db_id::DbId},
+    bytesrepr,
+};
 use thiserror::Error;
 
 use crate::components::transaction_acceptor;
@@ -16,26 +19,6 @@ pub(crate) enum Error {
     FunctionDisabled(String),
     #[error("No such database: {}", _0)]
     NoSuchDatabase(DbId),
-}
-
-#[repr(u8)]
-pub enum ErrorCode {
-    NoError = 0,
-    Serialization = 1,
-    InvalidTransaction = 2,
-    FunctionDisabled = 3,
-    InternalError = 4,
-    NoSuchDatabase = 5,
-}
-
-impl Error {
-    fn as_error_code(&self) -> u8 {
-        match self {
-            Error::BytesRepr(_) => ErrorCode::Serialization as u8,
-            Error::EngineState(_) => ErrorCode::InternalError as u8,
-            Error::TransactionAcceptor(_) => ErrorCode::InvalidTransaction as u8,
-            Error::FunctionDisabled(_) => ErrorCode::FunctionDisabled as u8,
-            Error::NoSuchDatabase(_) => ErrorCode::NoSuchDatabase as u8,
-        }
-    }
+    #[error("Binary port error: {}", _0)]
+    BinaryPort(binary_port::Error),
 }

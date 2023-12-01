@@ -15,11 +15,10 @@ use casper_execution_engine::engine_state::{
 use casper_types::{
     binary_port::{
         binary_request::BinaryRequest, binary_response::BinaryResponse, get::GetRequest,
-        global_state::GlobalStateQueryResult, non_persistent_data::NonPersistedDataRequest,
-        speculative_execution::SpeculativeExecutionError,
+        non_persistent_data::NonPersistedDataRequest, type_wrappers::NetworkName,
     },
     bytesrepr::{FromBytes, ToBytes},
-    BlockHashAndHeight, PeersMap, Transaction,
+    BlockHashAndHeight, Peers,
 };
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
@@ -178,8 +177,6 @@ where
         + From<ChainspecRawBytesRequest>
         + Send,
 {
-    error!("XXXXX - Binary Port is handling request: {req:?}");
-
     let temporarily_cloned_req = req.clone();
 
     // TODO[RC]: clean this up, delegate to specialized functions
@@ -308,11 +305,9 @@ where
                 NonPersistedDataRequest::CompletedBlocksContain { block_hash } => {
                     let binary_response = BinaryResponse::from_value(
                         temporarily_cloned_req,
-                        Some(
-                            effect_builder
-                                .highest_completed_block_sequence_contains_hash(block_hash)
-                                .await,
-                        ),
+                        effect_builder
+                            .highest_completed_block_sequence_contains_hash(block_hash)
+                            .await,
                     );
                     Ok(Some(Bytes::from(
                         ToBytes::to_bytes(&binary_response).map_err(|err| Error::BytesRepr(err))?,
@@ -334,104 +329,103 @@ where
                 NonPersistedDataRequest::Peers => {
                     let binary_response = BinaryResponse::from_value(
                         temporarily_cloned_req,
-                        PeersMap::from(effect_builder.network_peers().await),
+                        Peers::from(effect_builder.network_peers().await),
                     );
                     Ok(Some(Bytes::from(
                         ToBytes::to_bytes(&binary_response).map_err(|err| Error::BytesRepr(err))?,
                     )))
                 }
                 NonPersistedDataRequest::Uptime => {
-                    todo!()
-                    // let uptime = effect_builder.get_uptime().await.as_secs();
-                    // let payload =
-                    //     ToBytes::to_bytes(&uptime).map_err(|err| Error::BytesRepr(err))?;
-                    // Ok(Some(Bytes::from(payload)))
+                    let uptime = BinaryResponse::from_value(
+                        temporarily_cloned_req,
+                        effect_builder.get_uptime().await,
+                    );
+                    Ok(Some(Bytes::from(
+                        ToBytes::to_bytes(&uptime).map_err(|err| Error::BytesRepr(err))?,
+                    )))
                 }
                 NonPersistedDataRequest::LastProgress => {
-                    todo!()
-                    // let last_progress = effect_builder.get_last_progress().await;
-                    // let payload =
-                    //     ToBytes::to_bytes(&last_progress).map_err(|err| Error::BytesRepr(err))?;
-                    // Ok(Some(Bytes::from(payload)))
+                    let binary_response = BinaryResponse::from_value(
+                        temporarily_cloned_req,
+                        effect_builder.get_last_progress().await,
+                    );
+                    Ok(Some(Bytes::from(
+                        ToBytes::to_bytes(&binary_response).map_err(|err| Error::BytesRepr(err))?,
+                    )))
                 }
                 NonPersistedDataRequest::ReactorState => {
-                    todo!()
-                    // let reactor_state = effect_builder.get_reactor_state().await;
-                    // let payload =
-                    //     ToBytes::to_bytes(&reactor_state).map_err(|err| Error::BytesRepr(err))?;
-                    // Ok(Some(Bytes::from(payload)))
+                    let binary_response = BinaryResponse::from_value(
+                        temporarily_cloned_req,
+                        effect_builder.get_reactor_state().await,
+                    );
+                    Ok(Some(Bytes::from(
+                        ToBytes::to_bytes(&binary_response).map_err(|err| Error::BytesRepr(err))?,
+                    )))
                 }
                 NonPersistedDataRequest::NetworkName => {
-                    todo!()
-                    // let network_name = effect_builder.get_network_name().await;
-                    // let payload =
-                    //     ToBytes::to_bytes(&network_name).map_err(|err| Error::BytesRepr(err))?;
-                    // Ok(Some(Bytes::from(payload)))
+                    let binary_response = BinaryResponse::from_value(
+                        temporarily_cloned_req,
+                        effect_builder.get_network_name().await,
+                    );
+                    Ok(Some(Bytes::from(
+                        ToBytes::to_bytes(&binary_response).map_err(|err| Error::BytesRepr(err))?,
+                    )))
                 }
                 NonPersistedDataRequest::ConsensusValidatorChanges => {
-                    todo!()
-                    // let consensus_validator_changes =
-                    //     effect_builder.get_consensus_validator_changes().await;
-                    // let payload = ToBytes::to_bytes(&consensus_validator_changes)
-                    //     .map_err(|err| Error::BytesRepr(err))?;
-                    // Ok(Some(Bytes::from(payload)))
+                    let binary_response = BinaryResponse::from_value(
+                        temporarily_cloned_req,
+                        effect_builder.get_consensus_validator_changes().await,
+                    );
+                    Ok(Some(Bytes::from(
+                        ToBytes::to_bytes(&binary_response).map_err(|err| Error::BytesRepr(err))?,
+                    )))
                 }
                 NonPersistedDataRequest::BlockSynchronizerStatus => {
-                    todo!()
-                    // let block_synchronizer_status =
-                    //     effect_builder.get_block_synchronizer_status().await;
-                    // let payload = ToBytes::to_bytes(&block_synchronizer_status)
-                    //     .map_err(|err| Error::BytesRepr(err))?;
-                    // Ok(Some(Bytes::from(payload)))
+                    let binary_response = BinaryResponse::from_value(
+                        temporarily_cloned_req,
+                        effect_builder.get_block_synchronizer_status().await,
+                    );
+                    Ok(Some(Bytes::from(
+                        ToBytes::to_bytes(&binary_response).map_err(|err| Error::BytesRepr(err))?,
+                    )))
                 }
                 NonPersistedDataRequest::AvailableBlockRange => {
-                    todo!()
-                    // let available_block_range = effect_builder
-                    //     .get_available_block_range_from_storage()
-                    //     .await;
-                    // let payload = ToBytes::to_bytes(&available_block_range)
-                    //     .map_err(|err| Error::BytesRepr(err))?;
-                    // Ok(Some(Bytes::from(payload)))
+                    let binary_response = BinaryResponse::from_value(
+                        temporarily_cloned_req,
+                        effect_builder
+                            .get_available_block_range_from_storage()
+                            .await,
+                    );
+                    Ok(Some(Bytes::from(
+                        ToBytes::to_bytes(&binary_response).map_err(|err| Error::BytesRepr(err))?,
+                    )))
                 }
                 NonPersistedDataRequest::NextUpgrade => {
-                    todo!()
-                    // let next_upgrade = effect_builder.get_next_upgrade().await;
-                    // let payload = next_upgrade
-                    //     .map(|data| data.to_bytes().map(Bytes::from))
-                    //     .transpose()
-                    //     .map_err(|err| Error::BytesRepr(err))?;
-                    // Ok(payload)
+                    let binary_response = BinaryResponse::from_opt(
+                        temporarily_cloned_req,
+                        effect_builder.get_next_upgrade().await,
+                    );
+                    Ok(Some(Bytes::from(
+                        ToBytes::to_bytes(&binary_response).map_err(|err| Error::BytesRepr(err))?,
+                    )))
                 }
                 NonPersistedDataRequest::ConsensusStatus => {
-                    todo!()
-                    // let consensus_status = effect_builder.consensus_status().await;
-                    // let payload = consensus_status
-                    //     .map(|data| data.to_bytes().map(Bytes::from))
-                    //     .transpose()
-                    //     .map_err(|err| Error::BytesRepr(err))?;
-                    // Ok(payload)
+                    let binary_response = BinaryResponse::from_opt(
+                        temporarily_cloned_req,
+                        effect_builder.consensus_status().await,
+                    );
+                    Ok(Some(Bytes::from(
+                        ToBytes::to_bytes(&binary_response).map_err(|err| Error::BytesRepr(err))?,
+                    )))
                 }
                 NonPersistedDataRequest::ChainspecRawBytes => {
-                    todo!()
-                    // let chainspec_raw_bytes = effect_builder.get_chainspec_raw_bytes().await;
-                    // let payload = chainspec_raw_bytes.chainspec_bytes().to_vec();
-                    // Ok(Some(payload.into()))
-                }
-                NonPersistedDataRequest::GenesisAccountsBytes => {
-                    todo!()
-                    // let chainspec_raw_bytes = effect_builder.get_chainspec_raw_bytes().await;
-                    // let payload = chainspec_raw_bytes
-                    //     .maybe_genesis_accounts_bytes()
-                    //     .map(|bytes| bytes.to_vec().into());
-                    // Ok(payload)
-                }
-                NonPersistedDataRequest::GlobalStateBytes => {
-                    todo!()
-                    // let chainspec_raw_bytes = effect_builder.get_chainspec_raw_bytes().await;
-                    // let payload = chainspec_raw_bytes
-                    //     .maybe_global_state_bytes()
-                    //     .map(|bytes| bytes.to_vec().into());
-                    // Ok(payload)
+                    let binary_response = BinaryResponse::from_value(
+                        temporarily_cloned_req,
+                        (*effect_builder.get_chainspec_raw_bytes().await).clone(),
+                    );
+                    Ok(Some(Bytes::from(
+                        ToBytes::to_bytes(&binary_response).map_err(|err| Error::BytesRepr(err))?,
+                    )))
                 }
             },
             GetRequest::State {

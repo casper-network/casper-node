@@ -42,16 +42,16 @@ impl FromBytes for PeerEntry {
 /// Map of peer IDs to network addresses.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct PeersMap(Vec<PeerEntry>);
+pub struct Peers(Vec<PeerEntry>);
 
-impl PeersMap {
+impl Peers {
     /// Retrieve collection of `PeerEntry` records.
     pub fn into_inner(self) -> Vec<PeerEntry> {
         self.0
     }
 }
 
-impl<Id: ToString> From<BTreeMap<Id, String>> for PeersMap {
+impl<Id: ToString> From<BTreeMap<Id, String>> for Peers {
     fn from(input: BTreeMap<Id, String>) -> Self {
         let ret = input
             .into_iter()
@@ -60,11 +60,11 @@ impl<Id: ToString> From<BTreeMap<Id, String>> for PeersMap {
                 address,
             })
             .collect();
-        PeersMap(ret)
+        Peers(ret)
     }
 }
 
-impl ToBytes for PeersMap {
+impl ToBytes for Peers {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         self.write_bytes(&mut buffer)?;
@@ -80,9 +80,9 @@ impl ToBytes for PeersMap {
     }
 }
 
-impl FromBytes for PeersMap {
+impl FromBytes for Peers {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (inner, remainder) = Vec::<PeerEntry>::from_bytes(bytes)?;
-        Ok((PeersMap(inner), remainder))
+        Ok((Peers(inner), remainder))
     }
 }

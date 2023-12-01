@@ -3,7 +3,10 @@ use std::{collections::BTreeMap, str};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{ChainspecRawBytes, EraId, ProtocolVersion, PublicKey, ValidatorChange};
+use casper_types::{
+    binary_port::type_wrappers::ConsensusValidatorChanges, ChainspecRawBytes, EraId,
+    ProtocolVersion, PublicKey, ValidatorChange,
+};
 
 /// A single change to a validator's status in the given era.
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
@@ -58,11 +61,9 @@ pub struct GetValidatorChangesResult {
 }
 
 impl GetValidatorChangesResult {
-    pub(crate) fn new(
-        api_version: ProtocolVersion,
-        changes: BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>,
-    ) -> Self {
+    pub(crate) fn new(api_version: ProtocolVersion, changes: ConsensusValidatorChanges) -> Self {
         let changes = changes
+            .0
             .into_iter()
             .map(|(public_key, mut validator_changes)| {
                 validator_changes.sort();
