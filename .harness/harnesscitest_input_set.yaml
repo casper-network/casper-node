@@ -1,0 +1,15 @@
+inputSet:
+  pipeline:
+    identifier: Build_caspernode_harnesscitest
+    properties:
+      ci:
+        codebase:
+          build:
+            spec:
+              branch: harness-ci-test
+            type: branch
+    object Object: properties.ci.codebase
+  name: harness-ci-test input set
+  identifier: harnesscitest_input_set
+  orgIdentifier: default
+  projectIdentifier: caspernode
