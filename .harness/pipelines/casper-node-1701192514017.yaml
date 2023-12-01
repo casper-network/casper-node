@@ -5,26 +5,31 @@ pipeline:
   orgIdentifier: default
   stages:
     - stage:
-        name: Build
-        identifier: Build
-        type: CI
+        name: approval
+        identifier: approval
+        description: ""
+        type: Approval
         spec:
-          cloneCodebase: true
           execution:
             steps:
               - step:
-                  type: Run
-                  name: Echo Welcome Message
-                  identifier: Echo_Welcome_Message
+                  name: approve
+                  identifier: approve
+                  type: HarnessApproval
+                  timeout: 1d
                   spec:
-                    shell: Sh
-                    command: echo "Welcome to Harness CI"
-          platform:
-            os: Linux
-            arch: Amd64
-          runtime:
-            type: Cloud
-            spec: {}
+                    approvalMessage: |-
+                      Please review the following information
+                      and approve the pipeline progression
+                    includePipelineExecutionHistory: true
+                    approvers:
+                      minimumCount: 1
+                      disallowPipelineExecutor: false
+                      userGroups:
+                        - account._account_all_users
+                    isAutoRejectEnabled: false
+                    approverInputs: []
+        tags: {}
   properties:
     ci:
       codebase:
