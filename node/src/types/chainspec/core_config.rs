@@ -65,7 +65,7 @@ pub struct CoreConfig {
     /// The period in which genesis validator's bid is released over time after it's unlocked.
     pub vesting_schedule_period: TimeDiff,
 
-    /// The delay in number of eras for paying out the the unbonding amount.
+    /// The delay in number of eras for paying out the unbonding amount.
     pub unbonding_delay: u64,
 
     /// Round seigniorage rate represented as a fractional number.
@@ -104,7 +104,7 @@ pub struct CoreConfig {
     pub(crate) allow_unrestricted_transfers: bool,
     /// If set to false then consensus doesn't compute rewards and always uses 0.
     pub(crate) compute_rewards: bool,
-    /// Administrative accounts are valid option for for a private chain only.
+    /// Administrative accounts are valid option for a private chain only.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub(crate) administrators: BTreeSet<PublicKey>,
     /// Refund handling.

@@ -4,8 +4,6 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-use std::convert::TryFrom;
-
 use base16;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

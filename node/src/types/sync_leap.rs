@@ -389,27 +389,40 @@ impl FetchItem for SyncLeap {
 }
 
 mod specimen_support {
-    use crate::utils::specimen::{
-        estimator_max_rounds_per_era, vec_of_largest_specimen, vec_prop_specimen, Cache,
-        LargestSpecimen, SizeEstimator,
+    use crate::{
+        types::block::specimen_support::BlockHeaderWithoutEraEnd,
+        utils::specimen::{
+            estimator_max_rounds_per_era, vec_of_largest_specimen, vec_prop_specimen, Cache,
+            LargestSpecimen, SizeEstimator,
+        },
     };
 
     use super::{SyncLeap, SyncLeapIdentifier};
 
     impl LargestSpecimen for SyncLeap {
         fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            // Will at most contain as many blocks as a single era. And how many blocks can
+            // there be in an era is determined by the chainspec: it's the
+            // maximum of minimum_era_height and era_duration / minimum_block_time
+            let count = estimator_max_rounds_per_era(estimator).saturating_sub(1);
+
+            let non_switch_block_ancestors: Vec<BlockHeaderWithoutEraEnd> =
+                vec_of_largest_specimen(estimator, count, cache);
+
+            let mut trusted_ancestor_headers =
+                vec![LargestSpecimen::largest_specimen(estimator, cache)];
+            trusted_ancestor_headers.extend(
+                non_switch_block_ancestors
+                    .into_iter()
+                    .map(BlockHeaderWithoutEraEnd::into_inner),
+            );
+
+            let signed_block_headers = vec_prop_specimen(estimator, "recent_era_count", cache);
             SyncLeap {
                 trusted_ancestor_only: LargestSpecimen::largest_specimen(estimator, cache),
                 trusted_block_header: LargestSpecimen::largest_specimen(estimator, cache),
-                // Will at most contain as many blocks as a single era. And how many blocks can
-                // there be in an era is determined by the chainspec: it's the
-                // maximum of minimum_era_height and era_duration / minimum_block_time
-                trusted_ancestor_headers: vec_of_largest_specimen(
-                    estimator,
-                    estimator_max_rounds_per_era(estimator),
-                    cache,
-                ),
-                signed_block_headers: vec_prop_specimen(estimator, "recent_era_count", cache),
+                trusted_ancestor_headers,
+                signed_block_headers,
             }
         }
     }
@@ -1867,7 +1880,7 @@ mod tests {
 
         let fault_tolerance_fraction = Ratio::new_raw(1, 3);
 
-        // Assert only if correct eras are selected, since the the
+        // Assert only if correct eras are selected, since the
         // `should_return_era_validator_weights_for_correct_sync_leap` test already covers the
         // actual weight validation.
 
@@ -1921,7 +1934,7 @@ mod tests {
 
         let fault_tolerance_fraction = Ratio::new_raw(1, 3);
 
-        // Assert only if correct eras are selected, since the the
+        // Assert only if correct eras are selected, since the
         // `should_return_era_validator_weights_for_correct_sync_leap` test already covers the
         // actual weight validation.
 

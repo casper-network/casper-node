@@ -590,7 +590,7 @@ impl<'a> SizeEstimator for NetworkMessageEstimator<'a> {
         serialize_net_message(&val).len()
     }
 
-    fn parameter<T: std::convert::TryFrom<i64>>(&self, name: &'static str) -> T {
+    fn parameter<T: TryFrom<i64>>(&self, name: &'static str) -> T {
         let value = self
             .get_parameter(name)
             .unwrap_or_else(|| panic!("missing parameter \"{}\" for specimen estimation", name));

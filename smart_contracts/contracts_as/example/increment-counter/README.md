@@ -63,7 +63,7 @@ function counterInc(contractHash: Uint8Array): void {
 
 The `call` function serves to execute the session code, calling the counter contract. To do so, it uses the `COUNTER_KEY` constant, which should contain the `contractHash` of the counter contract.
 
-It then reads the current value of the counter, increments the value by 1 and then reads the updated value of the counter. Finally, it observes the difference between the first value observed (`currentCounterValue`) and the new value (`newCounterValue`). If the the difference is not equal to 1, it will cause an error.
+It then reads the current value of the counter, increments the value by 1 and then reads the updated value of the counter. Finally, it observes the difference between the first value observed (`currentCounterValue`) and the new value (`newCounterValue`). If the difference is not equal to 1, it will cause an error.
 
 ```typescript
 

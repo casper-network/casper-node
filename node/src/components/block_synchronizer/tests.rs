@@ -95,7 +95,7 @@ impl MockReactor {
     ) -> Vec<MockReactorEvent> {
         let mut events = Vec::new();
         for effect in effects {
-            tokio::spawn(async move { effect.await });
+            tokio::spawn(effect);
             let event = self.crank().await;
             events.push(event);
         }
@@ -661,7 +661,7 @@ async fn should_not_stall_after_registering_new_era_validator_weights() {
 
     // bleed off the event q, checking the expected event kind
     for effect in effects {
-        tokio::spawn(async move { effect.await });
+        tokio::spawn(effect);
         let event = mock_reactor.crank().await;
         match event {
             MockReactorEvent::SyncLeapFetcherRequest(_) => (),
@@ -3649,7 +3649,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
         );
     }
 
-    // Receive the rest of the the missing signatures to get strict finality. This would switch the
+    // Receive the rest of the missing signatures to get strict finality. This would switch the
     // state to HaveStrictFinality and continue to request to make the block executable.
     {
         let mut generated_effects = Effects::new();

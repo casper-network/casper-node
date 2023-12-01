@@ -1165,6 +1165,7 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
     const VALIDATOR_1_REWARD_FACTOR_1: u64 = 333333333334;
     const VALIDATOR_2_REWARD_FACTOR_1: u64 = 333333333333;
     const VALIDATOR_3_REWARD_FACTOR_1: u64 = 333333333333;
+    const DUST: u64 = 1;
 
     const VALIDATOR_1_REWARD_FACTOR_2: u64 = 333333333333;
     const VALIDATOR_2_REWARD_FACTOR_2: u64 = 333333333333;
@@ -1340,7 +1341,8 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
             U512::from(BLOCK_REWARD),
         ))
         .map(|ratio| ratio.to_integer())
-        .unwrap();
+        .unwrap()
+        - U512::from(DUST);
     assert_eq!(validator_2_actual_payout_1, validator_2_expected_payout_1);
 
     let validator_3_actual_payout_1 = {
@@ -1354,7 +1356,8 @@ fn should_distribute_reinvested_rewards_by_different_factor() {
             U512::from(BLOCK_REWARD),
         ))
         .map(|ratio| ratio.to_integer())
-        .unwrap();
+        .unwrap()
+        - U512::from(DUST);
     assert_eq!(validator_3_actual_payout_1, validator_3_expected_payout_1);
 
     let era_info_1 = {
@@ -2235,6 +2238,7 @@ fn should_distribute_by_factor() {
 
     const DELEGATION_RATE: DelegationRate = DELEGATION_RATE_DENOMINATOR;
 
+    const DUST: u64 = 1;
     const VALIDATOR_1_REWARD_FACTOR: u64 = 333333333334;
     const VALIDATOR_2_REWARD_FACTOR: u64 = 333333333333;
     const VALIDATOR_3_REWARD_FACTOR: u64 = 333333333333;
@@ -2401,7 +2405,8 @@ fn should_distribute_by_factor() {
             U512::from(BLOCK_REWARD),
         ))
         .map(|ratio| ratio.to_integer())
-        .unwrap();
+        .unwrap()
+        - U512::from(DUST);
     assert_eq!(validator_2_actual_payout, validator_2_expected_payout);
 
     let validator_3_actual_payout = {
@@ -2417,7 +2422,8 @@ fn should_distribute_by_factor() {
             U512::from(BLOCK_REWARD),
         ))
         .map(|ratio| ratio.to_integer())
-        .unwrap();
+        .unwrap()
+        - U512::from(DUST);
     assert_eq!(validator_3_actual_payout, validator_3_expected_payout);
 
     let era_info = {
@@ -2462,6 +2468,8 @@ fn should_distribute_by_factor_regardless_of_stake() {
     const VALIDATOR_1_REWARD_FACTOR: u64 = 333333333334;
     const VALIDATOR_2_REWARD_FACTOR: u64 = 333333333333;
     const VALIDATOR_3_REWARD_FACTOR: u64 = 333333333333;
+
+    const DUST: u64 = 1;
 
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2626,7 +2634,8 @@ fn should_distribute_by_factor_regardless_of_stake() {
             U512::from(BLOCK_REWARD),
         ))
         .map(|ratio| ratio.to_integer())
-        .unwrap();
+        .unwrap()
+        - U512::from(DUST);
     assert_eq!(validator_2_actual_payout, validator_2_expected_payout);
 
     let validator_3_actual_payout = {
@@ -2642,7 +2651,8 @@ fn should_distribute_by_factor_regardless_of_stake() {
             U512::from(BLOCK_REWARD),
         ))
         .map(|ratio| ratio.to_integer())
-        .unwrap();
+        .unwrap()
+        - U512::from(DUST);
     assert_eq!(validator_3_actual_payout, validator_3_expected_payout);
 
     let era_info = {
@@ -3228,6 +3238,8 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     const VALIDATOR_2_REWARD_FACTOR: u64 = 333333333333;
     const VALIDATOR_3_REWARD_FACTOR: u64 = 333333333333;
 
+    const DUST: u64 = 1;
+
     const DELEGATOR_1_STAKE: u64 = DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 
     let system_fund_request = ExecuteRequestBuilder::standard(
@@ -3525,7 +3537,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             ))
             .unwrap();
         let validator_portion = validator_share - Ratio::from(validator_2_delegator_1_share);
-        validator_portion.to_integer()
+        validator_portion.to_integer() - U512::from(DUST)
     };
     assert_eq!(validator_2_actual_payout, validator_2_expected_payout);
 
@@ -3573,7 +3585,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             ))
             .unwrap();
         let validator_portion = validator_share - Ratio::from(validator_3_delegator_1_share);
-        validator_portion.to_integer()
+        validator_portion.to_integer() - U512::from(DUST)
     };
     assert_eq!(validator_3_actual_payout, validator_3_expected_payout);
 

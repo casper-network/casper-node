@@ -44,7 +44,7 @@ pub use self::{
     deploy_config::DeployConfig,
     error::Error,
     global_state_update::GlobalStateUpdate,
-    highway_config::HighwayConfig,
+    highway_config::{HighwayConfig, PerformanceMeterConfig},
     network_config::NetworkConfig,
     protocol_config::ProtocolConfig,
 };

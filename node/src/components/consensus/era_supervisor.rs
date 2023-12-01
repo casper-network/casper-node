@@ -53,6 +53,7 @@ use crate::{
         requests::{BlockValidationRequest, ContractRuntimeRequest, StorageRequest},
         AutoClosingResponder, EffectBuilder, EffectExt, Effects, Responder,
     },
+    failpoints::Failpoint,
     fatal, protocol,
     types::{
         chainspec::ConsensusProtocolName, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash,
@@ -113,6 +114,10 @@ pub struct EraSupervisor {
     /// The path to the folder where unit files will be stored.
     unit_files_folder: PathBuf,
     last_progress: Timestamp,
+
+    /// Failpoints
+    pub(super) message_delay_failpoint: Failpoint<u64>,
+    pub(super) proposal_delay_failpoint: Failpoint<u64>,
 }
 
 impl Debug for EraSupervisor {
@@ -149,6 +154,8 @@ impl EraSupervisor {
             unit_files_folder,
             next_executed_height: 0,
             last_progress: Timestamp::now(),
+            message_delay_failpoint: Failpoint::new("consensus.message_delay"),
+            proposal_delay_failpoint: Failpoint::new("consensus.proposal_delay"),
         };
 
         Ok(era_supervisor)
@@ -461,7 +468,7 @@ impl EraSupervisor {
         let seed = Self::era_seed(booking_block_hash, key_block.accumulated_seed());
 
         // The beginning of the new era is marked by the key block.
-        #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
+        #[allow(clippy::arithmetic_side_effects)] // Block height should never reach u64::MAX.
         let start_height = key_block.height() + 1;
         let start_time = key_block.timestamp();
 
@@ -942,7 +949,7 @@ impl EraSupervisor {
         self.open_eras.get_mut(&era_id).unwrap()
     }
 
-    #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
+    #[allow(clippy::arithmetic_side_effects)] // Block height should never reach u64::MAX.
     fn handle_consensus_outcome<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
@@ -974,9 +981,18 @@ impl EraSupervisor {
             }
             ProtocolOutcome::CreatedGossipMessage(payload) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
-                effect_builder
-                    .broadcast_message_to_validators(message.into(), era_id)
-                    .ignore()
+                let delay_by = self.message_delay_failpoint.fire(rng).cloned();
+                async move {
+                    if let Some(delay) = delay_by {
+                        effect_builder
+                            .set_timeout(Duration::from_millis(delay))
+                            .await;
+                    }
+                    effect_builder
+                        .broadcast_message_to_validators(message.into(), era_id)
+                        .await
+                }
+                .ignore()
             }
             ProtocolOutcome::CreatedTargetedMessage(payload, to) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
@@ -1026,18 +1042,24 @@ impl EraSupervisor {
                     .cloned()
                     .collect();
                 let random_bit = rng.gen();
-                effect_builder
-                    .request_appendable_block(block_context.timestamp())
-                    .map(move |appendable_block| {
-                        Arc::new(appendable_block.into_block_payload(accusations, random_bit))
+                let timestamp = block_context.timestamp();
+                let delay_by = self.proposal_delay_failpoint.fire(rng).cloned();
+                async move {
+                    if let Some(delay) = delay_by {
+                        effect_builder
+                            .set_timeout(Duration::from_millis(delay))
+                            .await;
+                    }
+                    let appendable_block = effect_builder.request_appendable_block(timestamp).await;
+                    Arc::new(appendable_block.into_block_payload(accusations, random_bit))
+                }
+                .event(move |block_payload| {
+                    Event::NewBlockPayload(NewBlockPayload {
+                        era_id,
+                        block_payload,
+                        block_context,
                     })
-                    .event(move |block_payload| {
-                        Event::NewBlockPayload(NewBlockPayload {
-                            era_id,
-                            block_payload,
-                            block_context,
-                        })
-                    })
+                })
             }
             ProtocolOutcome::FinalizedBlock(CpFinalizedBlock {
                 value,

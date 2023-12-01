@@ -86,7 +86,7 @@ compute_rewards = true
 # The only valid value for 'type' is currently 'refund'.  This causes excess payment amounts to be sent to either a
 # pre-defined purse, or back to the sender.  The refunded amount is calculated as the given ratio of the payment amount
 # minus the execution costs.
-refund_handling = { type = 'refund', refund_ratio = [0, 1] }
+refund_handling = { type = 'refund', refund_ratio = [99, 100] }
 # Defines how fees are handled.
 #
 # Valid options are:
@@ -105,6 +105,10 @@ maximum_round_length = '525 seconds'
 # The factor by which rewards for a round are multiplied if the greatest summit has ≤50% quorum, i.e. no finality.
 # Expressed as a fraction (1/5 by default).
 reduced_reward_multiplier = [1, 5]
+
+[highway.performance_meter]
+# The number of recent blocks to consider when measuring performance for the purpose of deciding the round length.
+blocks_to_consider = 10
 
 [deploys]
 # The maximum number of Motes allowed to be spent during payment.  0 means unlimited.
@@ -183,17 +187,17 @@ loop = 440
 if = 440
 else = 440
 end = 440
-br = 440_000
-br_if = 440_000
+br = 35_000
+br_if = 35_000
 return = 440
 select = 440
-call = 140_000
-call_indirect = 140_000
+call = 68_000
+call_indirect = 68_000
 drop = 440
 
 [wasm.opcode_costs.control_flow.br_table]
 # Fixed cost per `br_table` opcode
-cost = 440_000
+cost = 35_000
 # Size of target labels in the `br_table` opcode will be multiplied by `size_multiplier`
 size_multiplier = 100
 

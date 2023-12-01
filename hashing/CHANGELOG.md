@@ -11,6 +11,13 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 3.0.0
+
+### Changed
+* Update `casper-types` to v4.0.1, requiring a major version bump here.
+
+
+
 ## 2.0.0
 
 ### Added

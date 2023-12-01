@@ -171,7 +171,7 @@ impl<REv: 'static + Debug> ComponentHarnessBuilder<REv> {
             }
         };
 
-        let rng = self.rng.unwrap_or_else(TestRng::new);
+        let rng = self.rng.unwrap_or_default();
 
         let scheduler = Box::leak(Box::new(Scheduler::new(QueueKind::weights(), None)));
         let event_queue_handle = EventQueueHandle::without_shutdown(scheduler);
@@ -291,6 +291,10 @@ impl<REv: 'static> ComponentHarness<REv> {
                     ControlAnnouncement::QueueDumpRequest { .. } => {
                         panic!("queue dumps are not supported in the test harness")
                     }
+                    ControlAnnouncement::ActivateFailpoint { .. } => {
+                        panic!("currently no failpoint activations implemented in test harness")
+                        // TODO: forward to component instead
+                    },
                 }
             }
 

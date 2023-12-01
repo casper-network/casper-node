@@ -100,6 +100,21 @@ function get_node_protocol_version()
 }
 
 #######################################
+# Returns the current round length on the node
+# Arguments:
+#   Node ordinal identifier.
+#   Duration for which to retry once per second in the case the node is not responding.
+#######################################
+function get_node_round_len()
+{
+    local NODE_ID=${1}
+    local TIMEOUT_SEC=${2:-20}
+
+    echo $(_get_from_status_with_retry "$NODE_ID" "$TIMEOUT_SEC" ".round_length") \
+        | sed -e 's/^"//' -e 's/"$//'
+}
+
+#######################################
 # Returns the lowest complete block the node has.
 # Arguments:
 #   Node ordinal identifier.

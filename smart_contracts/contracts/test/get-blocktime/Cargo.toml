@@ -2,7 +2,7 @@
 name = "get-blocktime"
 version = "0.1.0"
 authors = ["Ed Hastings <ed@casperlabs.io>, Henry Till <henrytill@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "get_blocktime"
