@@ -49,13 +49,21 @@ pipeline:
             steps:
               - step:
                   type: Run
-                  name: Run_1
+                  name: Build Node
                   identifier: Run_1
                   spec:
                     connectorRef: account.harnessImage
-                    image: ubuntu
-                    shell: Sh
-                    command: echo "test"
+                    image: casperlabs/node-build-u1804
+                    shell: Bash
+                    command: |-
+                      cargo install elfx86exts --version 0.5.0
+                      make setup
+                      make test CARGO_FLAGS=--release
+                      make test-contracts CARGO_FLAGS=--release
+                    resources:
+                      limits:
+                        memory: 14Gi
+                        cpu: "12"
   properties:
     ci:
       codebase:
