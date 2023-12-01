@@ -42,5 +42,5 @@ pipeline:
     ci:
       codebase:
         connectorRef: org.casperdrone_github_connector
-        repoName: casper-network/casper-node
+        repoName: casper-node
         build: <+input>
