@@ -42,6 +42,8 @@ pub struct EntryPoint {
     pub params_size: usize,
 
     pub fptr: extern "C" fn() -> (), // extern "C" fn(A1) -> (),
+
+    pub flags: u32,
 }
 
 #[repr(C)]

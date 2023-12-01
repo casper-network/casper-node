@@ -16,6 +16,8 @@ use casper_sdk::{
     log, revert, Value,
 };
 
+const INITIAL_GREETING: &str = "This is initial data set from a constructor";
+
 #[derive(Contract)]
 struct Greeter {
     greeting: Value<String>,
@@ -29,6 +31,12 @@ pub enum CustomError {
 
 #[casper(entry_points)]
 impl Greeter {
+    #[constructor]
+    pub fn initialize(&mut self) {
+        log!("👋 Hello from constructor");
+        self.greeting.write(INITIAL_GREETING.to_string()).unwrap();
+    }
+
     pub fn get_greeting(&self) -> String {
         self.greeting
             .read()
@@ -87,8 +95,8 @@ pub fn call() {
             log!("{call_0:?} result={result_code_0:?}");
             assert_eq!(
                 borsh::from_slice::<String>(&maybe_data_0.as_ref().expect("return value")).unwrap(),
-                "".to_string()
-            ); // TODO: Constructors
+                INITIAL_GREETING.to_string()
+            );
 
             let call_1 = "set_greeting";
             let input_data_1: (String,) = ("Foo".into(),);

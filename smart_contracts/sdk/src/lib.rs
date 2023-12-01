@@ -219,8 +219,6 @@ impl<T: BorshDeserialize> Value<T> {
 }
 
 pub trait Contract {
-    type EntryPoint;
-
     fn new() -> Self;
     fn name() -> &'static str;
     fn schema() -> Schema;

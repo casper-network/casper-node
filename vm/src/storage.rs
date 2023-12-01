@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use vm_common::flags::EntryPointFlags;
 
 pub enum Tag {
     Bytes = 0,
@@ -34,6 +35,7 @@ pub(crate) struct EntryPoint {
     pub(crate) name: Bytes,
     pub(crate) params: Vec<Param>,
     pub(crate) function_index: u32,
+    pub(crate) flags: EntryPointFlags,
 }
 
 #[derive(Default, Debug, Clone)]

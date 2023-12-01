@@ -10,7 +10,7 @@ use std::{
 
 use bytes::Bytes;
 use safe_transmute::SingleManyGuard;
-use vm_common::flags::ReturnFlags;
+use vm_common::flags::{EntryPointFlags, ReturnFlags};
 
 use crate::{
     backend::{Caller, Context, MeteringPoints, WasmInstance},
@@ -255,11 +255,29 @@ pub(crate) fn casper_create_contract<S: Storage>(
                 name: entry_point_name.into(),
                 params: params_vec,
                 function_index: entry_point.fptr,
+                flags: EntryPointFlags::from_bits_truncate(entry_point.flags),
             })
         }
 
         vec
     };
+
+    // Find all entrypoints with a flag set to CONSTRUCTOR
+    let mut constructors = entrypoints.iter().filter_map(|entrypoint| {
+        if entrypoint.flags.contains(EntryPointFlags::CONSTRUCTOR) {
+            Some(entrypoint)
+        } else {
+            None
+        }
+    });
+
+    if let Some(first_constructor) = constructors.next() {
+        todo!("call constructor {first_constructor:?}")
+    }
+
+    if constructors.next().is_some() {
+        todo!("only one constructor supported");
+    }
 
     let manifest = storage::Manifest { entrypoints };
 

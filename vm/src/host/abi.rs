@@ -24,6 +24,8 @@ pub(crate) struct EntryPoint {
     pub(crate) params_size: u32,
 
     pub(crate) fptr: u32, // extern "C" fn(A1) -> (),
+
+    pub(crate) flags: u32,
 }
 
 unsafe impl TriviallyTransmutable for EntryPoint {}

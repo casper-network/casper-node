@@ -37,6 +37,7 @@ mod exports {
         reserve_vec_space,
     };
     use core::ptr::NonNull;
+    use vm_common::flags::EntryPointFlags;
 
     // use crate::reserve_vec_space;
 
@@ -135,6 +136,7 @@ mod exports {
             params_ptr: NonNull::from(params.as_slice()).as_ptr() as _,
             params_size: params.len(),
             fptr: mangled_entry_point_wrapper_1,
+            flags: EntryPointFlags::empty().bits(),
         };
 
         let entry_point_2 = EntryPoint {
@@ -143,6 +145,7 @@ mod exports {
             params_ptr: NonNull::from(params.as_slice()).as_ptr() as _,
             params_size: params.len(),
             fptr: mangled_entry_point_wrapper_2,
+            flags: EntryPointFlags::empty().bits(),
         };
         let entry_points = [entry_point_1, entry_point_2];
 

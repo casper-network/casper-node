@@ -1,8 +1,12 @@
 extern crate proc_macro;
 
+use std::collections::BTreeSet;
+
+use darling::{FromAttributes, FromDeriveInput, FromMeta};
 use proc_macro::{Literal, TokenStream};
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, token::Struct, Data, DeriveInput, ItemFn, ItemImpl, Type};
+use syn::{parse_macro_input, token::Struct, Data, DeriveInput, ItemFn, ItemImpl, Meta, Type};
+use vm_common::flags::EntryPointFlags;
 
 #[proc_macro_derive(Contract)]
 pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
@@ -53,13 +57,12 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
     let f = quote! {
 
         impl casper_sdk::Contract for #name {
-            type EntryPoint = ();
-
             fn new() -> Self {
                 Self {
                     #(#fields_for_new,)*
                 }
             }
+
             fn name() -> &'static str {
                 stringify!(#name)
             }
@@ -85,6 +88,11 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
     f.into()
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Attribute {
+    Constructor,
+}
+
 #[proc_macro_attribute]
 pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
     // #[casper(foo)]
@@ -96,7 +104,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
         let item = item.clone();
         match attr {
             proc_macro::TokenTree::Ident(ident) if ident.to_string() == "entry_points" => {
-                let entry_points = parse_macro_input!(item as ItemImpl);
+                let mut entry_points = parse_macro_input!(item as ItemImpl);
 
                 let struct_name = match entry_points.self_ty.as_ref() {
                     Type::Path(ref path) => &path.path,
@@ -118,12 +126,32 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                 let mut manifest_entry_point_enum_match_name = Vec::new();
                 let mut manifest_entry_point_input_data = Vec::new();
 
-                for entry_point in &entry_points.items {
+                for entry_point in &mut entry_points.items {
                     let func = match entry_point {
                         syn::ImplItem::Const(_) => todo!(),
-                        syn::ImplItem::Fn(func) => {
-                            let name = &func.sig.ident;
-                            names.push(name);
+                        syn::ImplItem::Fn(ref mut func) => {
+                            // TODO: Can we use darling to parse this in a sane way?
+                            let mut func_attrs = BTreeSet::new();
+                            for func_attr in &func.attrs {
+                                // todo!("{:?}", func_attr);
+                                match &func_attr.meta {
+                                    Meta::Path(path) => {
+                                        for seg in &path.segments {
+                                            if seg.ident == "constructor" {
+                                                func_attrs.insert(Attribute::Constructor);
+                                            } else {
+                                                panic!("Unknown modifier")
+                                            }
+                                        }
+                                    }
+                                    other => todo!("{other:?}"),
+                                }
+                            }
+
+                            func.attrs.clear();
+
+                            let name = func.sig.ident.clone();
+                            names.push(name.clone());
 
                             let arg_names_and_types = func
                                 .sig
@@ -144,6 +172,20 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 arg_names_and_types.iter().map(|(_name, ty)| ty).collect();
 
                             let arg_count = arg_names.len();
+
+                            if func_attrs.contains(&Attribute::Constructor) {
+                                if arg_count > 0 {
+                                    panic!("Constructor cannot have arguments");
+                                }
+                                let sig = &func.sig;
+                                match &func.sig.output {
+                                    syn::ReturnType::Default => {}
+                                    syn::ReturnType::Type(_, ty) => {
+                                        panic!("Constructor cannot have return type");
+                                    }
+                                }
+                            }
+
                             assert_eq!(arg_names.len(), arg_types.len());
 
                             let mut entrypoint_params = Vec::new();
@@ -178,6 +220,17 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                             });
 
+                            let mut flag_value = EntryPointFlags::empty();
+                            for func_attr in func_attrs {
+                                match func_attr {
+                                    Attribute::Constructor => {
+                                        flag_value |= EntryPointFlags::CONSTRUCTOR;
+                                    }
+                                }
+                            }
+
+                            let bits = flag_value.bits();
+
                             manifest_entry_points.push(quote! {
                                 {
                                     casper_sdk::host::EntryPoint {
@@ -186,6 +239,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                         params_ptr: #name.1.as_ptr(),
                                         params_size: #name.1.len(),
                                         fptr: #name.2,
+                                        flags: #bits,
                                     }
                                 }
                             });
@@ -207,7 +261,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 }
                             });
 
-                            func
+                            func.clone()
                         }
                         syn::ImplItem::Type(_) => todo!(),
                         syn::ImplItem::Macro(_) => todo!(),
@@ -431,7 +485,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                 return token.into();
             }
-            _ => todo!(),
+            other => todo!("other attribute {other:?}"),
         }
     }
     todo!()
@@ -523,3 +577,10 @@ pub fn entry_point(_attr: TokenStream, item: TokenStream) -> TokenStream {
 //     // if let
 //     // item
 // }
+
+// #[proc_macro_attribute]
+// pub fn constructor(attrs: TokenStream, item: TokenStream) -> TokenStream {
+//     let func = parse_macro_input!(item as ItemFn);
+//     quote! {
+//         #func
+//     }.into()

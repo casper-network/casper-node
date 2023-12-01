@@ -14,3 +14,4 @@ quote = "1"
 casper-sdk = { path = "../sdk" }
 vm-common = { path = "../../vm-common" }
 paste = "1"
+darling = "0.20.3"
