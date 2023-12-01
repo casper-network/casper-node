@@ -139,29 +139,26 @@ pub struct CallResult<T: BorshDeserialize> {
     marker: PhantomData<T>,
 }
 
-pub fn call<Ret: BorshDeserialize>(
+pub fn call<Args: BorshSerialize, Ret: BorshDeserialize>(
     contract_address: &Address,
     value: u64,
     entry_point_name: &str,
-    args: &[u8],
+    args: Args,
 ) -> Result<CallResult<Ret>, CallError> {
-    todo!()
-    // let (data, result)  = casper_call(contract_address, value, entry_point_name, args);
-    // match result {
-    //     ResultCode::Success => Ok(CallResult { data: data.unwrap_or_default(), result, marker:
-    // PhantomData }),     ResultCode::CalleeReverted => Ok(CallResult { data:
-    // data.unwrap_or_default(), result, marker: PhantomData }),     ResultCode::CalleeTrapped
-    // => Err(CallError::CalleeTrapped),     ResultCode::CalleeGasDepleted =>
-    // Err(CallError::CalleeGasDepleted),     ResultCode::Unknown => Err(CallError::Unknown),
-    // }
-    // match result {
-    //     Ok((result_code, data)) => match result_code {
-    //         ResultCode::Success => Ok(data),
-    //         ResultCode::CalleeReverted => Err(CallError::CalleeReverted),
-    //         ResultCode::CalleeTrapped => Err(CallError::CalleeTrapped),
-    //         ResultCode::CalleeGasDepleted => Err(CallError::CalleeGasDepleted),
-    //         ResultCode::Unknown => Err(CallError::Unknown),
-    //     },
-    //     Err(_) => Err(CallError::Unknown),
-    // }
+    let input_data = borsh::to_vec(&args).unwrap();
+    let (maybe_data, result) =
+        casper_call(contract_address, value, entry_point_name, &input_data);
+    match result {
+        ResultCode::Success | ResultCode::CalleeReverted => {
+            let data = maybe_data.unwrap_or_default();
+            Ok(CallResult {
+                data,
+                result,
+                marker: PhantomData,
+            })
+        }
+        ResultCode::CalleeTrapped => Err(CallError::CalleeTrapped),
+        ResultCode::CalleeGasDepleted => Err(CallError::CalleeGasDepleted),
+        ResultCode::Unknown => Err(CallError::Unknown),
+    }
 }

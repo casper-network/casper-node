@@ -202,7 +202,7 @@ fn test_contract() {
 
 #[test]
 fn greeter() {
-    run_wasm(VM2_GREETER, ());
+    run_wasm(VM2_HARNESS, ());
 }
 
 fn run_wasm<T: BorshSerialize>(contract_name: &'static [u8], input_data: T) {

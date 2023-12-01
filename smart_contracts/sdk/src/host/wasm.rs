@@ -261,22 +261,19 @@ pub fn casper_call(
     entry_point: &str,
     input_data: &[u8],
 ) -> (Option<Vec<u8>>, ResultCode) {
-    let mut callback_happened = false;
-    let mut vec = Vec::new();
+    let mut output = None;
     let result_code = call_into(
         address,
         value,
         entry_point,
         input_data,
         Some(|size| {
-            callback_happened = true;
+            let mut vec = Vec::new();
             reserve_vec_space(&mut vec, size);
-            Some(unsafe { ptr::NonNull::new_unchecked(vec.as_mut_ptr()) })
+            let result = Some(unsafe { ptr::NonNull::new_unchecked(vec.as_mut_ptr()) });
+            output = Some(vec);
+            result
         }),
     );
-    if callback_happened {
-        (Some(vec), result_code)
-    } else {
-        (None, result_code)
-    }
+    (output, result_code)
 }
