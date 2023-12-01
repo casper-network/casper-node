@@ -1,5 +1,7 @@
 //! The payload type.
 
+use core::fmt;
+
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     AvailableBlockRange, BlockHash, BlockHashAndHeight, BlockSynchronizerStatus, ChainspecRawBytes,
@@ -13,6 +15,7 @@ use super::{
     },
 };
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum PayloadType {
     /// Legacy version of the block header.
@@ -74,6 +77,44 @@ pub enum PayloadType {
     Uptime,
     /// Result of checking if given block is in the highest available block range.
     HighestBlockSequenceCheckResult,
+}
+
+impl fmt::Display for PayloadType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PayloadType::BlockHeaderV1 => write!(f, "BlockHeaderV1"),
+            PayloadType::BlockHeader => write!(f, "BlockHeader"),
+            PayloadType::BlockBodyV1 => write!(f, "BlockBodyV1"),
+            PayloadType::BlockBody => write!(f, "BlockBody"),
+            PayloadType::ApprovalsHashes => write!(f, "ApprovalsHashes"),
+            PayloadType::ApprovalsHashesV1 => write!(f, "ApprovalsHashesV1"),
+            PayloadType::BlockSignatures => write!(f, "BlockSignatures"),
+            PayloadType::Deploy => write!(f, "Deploy"),
+            PayloadType::Transaction => write!(f, "Transaction"),
+            PayloadType::ExecutionResultV1 => write!(f, "ExecutionResultV1"),
+            PayloadType::ExecutionResult => write!(f, "ExecutionResult"),
+            PayloadType::VecTransfers => write!(f, "VecTransfers"),
+            PayloadType::VecU8 => write!(f, "VecU8"),
+            PayloadType::FinalizedDeployApprovals => write!(f, "FinalizedDeployApprovals"),
+            PayloadType::FinalizedApprovals => write!(f, "FinalizedApprovals"),
+            PayloadType::BlockHashAndHeight => write!(f, "BlockHashAndHeight"),
+            PayloadType::BlockHash => write!(f, "BlockHash"),
+            PayloadType::Peers => write!(f, "Peers"),
+            PayloadType::LastProgress => write!(f, "LastProgress"),
+            PayloadType::ReactorState => write!(f, "ReactorState"),
+            PayloadType::NetworkName => write!(f, "NetworkName"),
+            PayloadType::ConsensusValidatorChanges => write!(f, "ConsensusValidatorChanges"),
+            PayloadType::BlockSynchronizerStatus => write!(f, "BlockSynchronizerStatus"),
+            PayloadType::AvailableBlockRange => write!(f, "AvailableBlockRange"),
+            PayloadType::NextUpgrade => write!(f, "NextUpgrade"),
+            PayloadType::ConsensusStatus => write!(f, "ConsensusStatus"),
+            PayloadType::ChainspecRawBytes => write!(f, "ChainspecRawBytes"),
+            PayloadType::Uptime => write!(f, "Uptime"),
+            PayloadType::HighestBlockSequenceCheckResult => {
+                write!(f, "HighestBlockSequenceCheckResult")
+            }
+        }
+    }
 }
 
 impl PayloadType {
