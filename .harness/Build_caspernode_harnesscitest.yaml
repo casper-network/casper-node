@@ -1,0 +1,45 @@
+---
+pipeline:
+  projectIdentifier: "caspernode"
+  orgIdentifier: "default"
+  stages:
+  - stage:
+      name: "Build Node"
+      identifier: "Build_Node"
+      description: ""
+      type: "CI"
+      spec:
+        cloneCodebase: true
+        infrastructure:
+          type: "KubernetesDirect"
+          spec:
+            connectorRef: "org.casperkube"
+            namespace: "default"
+            automountServiceAccountToken: true
+            nodeSelector: {}
+            os: "Linux"
+        execution:
+          steps:
+          - step:
+              type: "Run"
+              name: "Build Node"
+              identifier: "Run_1"
+              spec:
+                connectorRef: "account.harnessImage"
+                image: "casperlabs/node-build-u1804"
+                shell: "Bash"
+                command: "cargo install elfx86exts --version 0.5.0\nmake setup\nmake\
+                  \ test CARGO_FLAGS=--release\nmake test-contracts CARGO_FLAGS=--release"
+                resources:
+                  limits:
+                    memory: "22Gi"
+                    cpu: "12"
+  properties:
+    ci:
+      codebase:
+        connectorRef: "org.casperdrone_github_connector"
+        repoName: "casper-node"
+        build: "<+input>"
+  identifier: "Build_caspernode_harnesscitest"
+  tags: {}
+  name: "Build casper-node harness-ci-test"
