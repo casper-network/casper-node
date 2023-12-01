@@ -5,13 +5,9 @@ use tracing::info;
 
 use crate::rpcs::error::Error;
 use casper_types::{
-    account::AccountHash,
-    binary_port::{
-        global_state::GlobalStateQueryResult, type_wrappers::HighestBlockSequenceCheckResult,
-    },
-    AddressableEntity, AvailableBlockRange, Block, BlockHeader, BlockSignatures, Digest,
-    ExecutionInfo, FinalizedApprovals, Key, SignedBlock, StoredValue, Transaction, TransactionHash,
-    URef, U512,
+    account::AccountHash, binary_port::global_state::GlobalStateQueryResult, AddressableEntity,
+    AvailableBlockRange, Block, BlockHeader, BlockSignatures, Digest, ExecutionInfo,
+    FinalizedApprovals, Key, SignedBlock, StoredValue, Transaction, TransactionHash, URef, U512,
 };
 
 use crate::NodeClient;
@@ -72,7 +68,7 @@ pub async fn get_signed_block(
             .block_hash(),
     };
 
-    let HighestBlockSequenceCheckResult(should_return_block) = node_client
+    let should_return_block = node_client
         .does_exist_in_completed_blocks(hash)
         .await
         .map_err(|err| Error::NodeRequest("completed block existence", err))?;

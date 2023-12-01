@@ -1,4 +1,5 @@
 use alloc::vec::Vec;
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
@@ -7,8 +8,9 @@ use serde::{Deserialize, Serialize};
 use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 /// A change to a validator's status between two eras.
-#[derive(Serialize, DataSize, Deserialize, Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Ord, PartialOrd)]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum ValidatorChange {
     /// The validator got newly added to the validator set.
     Added,

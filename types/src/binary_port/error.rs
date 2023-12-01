@@ -1,12 +1,11 @@
 //! Binary port error.
 
-use thiserror::Error;
-
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "std", derive(thiserror::Error))]
 #[repr(u8)]
 pub enum Error {
-    #[error("request executed correctly")]
+    #[cfg_attr(feature = "std", error("request executed correctly"))]
     NoError = 0,
-    #[error("data not found")]
+    #[cfg_attr(feature = "std", error("data not found"))]
     NotFound = 1,
 }

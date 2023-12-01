@@ -1,6 +1,7 @@
 //! The binary response.
 
 use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes};
+use alloc::vec::Vec;
 
 use super::{
     binary_request::BinaryRequest, db_id::DbId, error::Error, payload_type::PayloadType,

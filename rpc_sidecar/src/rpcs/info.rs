@@ -11,8 +11,8 @@ use casper_types::{
     execution::{ExecutionResult, ExecutionResultV2},
     ActivationPoint, AvailableBlockRange, Block, BlockHash, BlockSynchronizerStatus,
     ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, ExecutionInfo, FinalizedApprovals,
-    NextUpgrade, Peers, ProtocolVersion, PublicKey, ReactorState, TimeDiff, Timestamp,
-    Transaction, TransactionHash, ValidatorChange,
+    NextUpgrade, Peers, ProtocolVersion, PublicKey, ReactorState, TimeDiff, Timestamp, Transaction,
+    TransactionHash, ValidatorChange,
 };
 use tracing::warn;
 
@@ -407,7 +407,7 @@ impl RpcWithoutParams for GetValidatorChanges {
             .read_validator_changes()
             .await
             .map_err(|err| Error::NodeRequest("validator changes", err))?;
-        Ok(Self::ResponseResult::new(api_version, changes))
+        Ok(Self::ResponseResult::new(api_version, changes.into()))
     }
 }
 
@@ -444,26 +444,10 @@ impl RpcWithoutParams for GetChainspec {
             .await
             .map_err(|err| Error::NodeRequest("chainspec bytes", err))?;
 
-        /*
-        let maybe_genesis_account_bytes = node_client
-            .read_genesis_account_bytes()
-            .await
-            .map_err(|err| Error::NodeRequest("genesis account bytes", err))?;
-        let maybe_global_state_bytes = node_client
-            .read_global_state_bytes()
-            .await
-            .map_err(|err| Error::NodeRequest("global state bytes", err))?;
-
         Ok(Self::ResponseResult {
             api_version,
-            chainspec_bytes: ChainspecRawBytes::new(
-                chainspec_bytes.into(),
-                maybe_genesis_account_bytes.map(Into::into),
-                maybe_global_state_bytes.map(Into::into),
-            ),
+            chainspec_bytes,
         })
-        */
-        todo!()
     }
 }
 

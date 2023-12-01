@@ -15,6 +15,8 @@ pub use error::Error;
 pub use payload_type::PayloadType;
 pub use type_wrappers::Uptime;
 
+use alloc::vec::Vec;
+
 const PROTOCOL_VERSION: u8 = 0;
 
 // TODO[RC]: Move to a separate file, add bytesrepr, etc.

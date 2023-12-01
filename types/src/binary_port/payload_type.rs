@@ -1,11 +1,12 @@
 //! The payload type.
 
+use alloc::vec::Vec;
 use core::fmt;
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    AvailableBlockRange, BlockHash, BlockHashAndHeight, BlockSynchronizerStatus, ChainspecRawBytes,
-    NextUpgrade, Peers, PublicKey, ReactorState, TimeDiff, Uptime,
+    AvailableBlockRange, BlockHash, BlockHashAndHeight, BlockSynchronizerStatus, Peers, PublicKey,
+    ReactorState, TimeDiff, Uptime,
 };
 
 use super::{
@@ -86,8 +87,8 @@ impl fmt::Display for PayloadType {
             PayloadType::BlockHeader => write!(f, "BlockHeader"),
             PayloadType::BlockBodyV1 => write!(f, "BlockBodyV1"),
             PayloadType::BlockBody => write!(f, "BlockBody"),
-            PayloadType::ApprovalsHashes => write!(f, "ApprovalsHashes"),
             PayloadType::ApprovalsHashesV1 => write!(f, "ApprovalsHashesV1"),
+            PayloadType::ApprovalsHashes => write!(f, "ApprovalsHashes"),
             PayloadType::BlockSignatures => write!(f, "BlockSignatures"),
             PayloadType::Deploy => write!(f, "Deploy"),
             PayloadType::Transaction => write!(f, "Transaction"),
@@ -138,44 +139,6 @@ impl PayloadType {
             (false, DbId::Transfer) => Self::VecTransfers,
             (false, DbId::StateStore) => Self::VecU8,
             (false, DbId::FinalizedTransactionApprovals) => Self::FinalizedApprovals,
-        }
-    }
-}
-
-impl fmt::Display for PayloadType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            PayloadType::BlockHeaderV1 => write!(f, "BlockHeaderV1"),
-            PayloadType::BlockHeader => write!(f, "BlockHeader"),
-            PayloadType::BlockBodyV1 => write!(f, "BlockBodyV1"),
-            PayloadType::BlockBody => write!(f, "BlockBody"),
-            PayloadType::ApprovalsHashesV1 => write!(f, "ApprovalsHashesV1"),
-            PayloadType::ApprovalsHashes => write!(f, "ApprovalsHashes"),
-            PayloadType::BlockSignatures => write!(f, "BlockSignatures"),
-            PayloadType::Deploy => write!(f, "Deploy"),
-            PayloadType::Transaction => write!(f, "Transaction"),
-            PayloadType::ExecutionResultV1 => write!(f, "ExecutionResultV1"),
-            PayloadType::ExecutionResult => write!(f, "ExecutionResult"),
-            PayloadType::VecTransfers => write!(f, "VecTransfers"),
-            PayloadType::VecU8 => write!(f, "VecU8"),
-            PayloadType::FinalizedDeployApprovals => write!(f, "FinalizedDeployApprovals"),
-            PayloadType::FinalizedApprovals => write!(f, "FinalizedApprovals"),
-            PayloadType::BlockHashAndHeight => write!(f, "BlockHashAndHeight"),
-            PayloadType::BlockHash => write!(f, "BlockHash"),
-            PayloadType::Peers => write!(f, "Peers"),
-            PayloadType::LastProgress => write!(f, "LastProgress"),
-            PayloadType::ReactorState => write!(f, "ReactorState"),
-            PayloadType::NetworkName => write!(f, "NetworkName"),
-            PayloadType::ConsensusValidatorChanges => write!(f, "ConsensusValidatorChanges"),
-            PayloadType::BlockSynchronizerStatus => write!(f, "BlockSynchronizerStatus"),
-            PayloadType::AvailableBlockRange => write!(f, "AvailableBlockRange"),
-            PayloadType::NextUpgrade => write!(f, "NextUpgrade"),
-            PayloadType::ConsensusStatus => write!(f, "ConsensusStatus"),
-            PayloadType::ChainspecRawBytes => write!(f, "ChainspecRawBytes"),
-            PayloadType::Uptime => write!(f, "Uptime"),
-            PayloadType::HighestBlockSequenceCheckResult => {
-                write!(f, "HighestBlockSequenceCheckResult")
-            }
         }
     }
 }
@@ -240,8 +203,9 @@ impl From<ConsensusValidatorChanges> for PayloadType {
     }
 }
 
-impl From<NextUpgrade> for PayloadType {
-    fn from(_: NextUpgrade) -> Self {
+#[cfg(any(feature = "std", test))]
+impl From<crate::NextUpgrade> for PayloadType {
+    fn from(_: crate::NextUpgrade) -> Self {
         Self::NextUpgrade
     }
 }
@@ -252,8 +216,9 @@ impl From<(PublicKey, Option<TimeDiff>)> for PayloadType {
     }
 }
 
-impl From<ChainspecRawBytes> for PayloadType {
-    fn from(_: ChainspecRawBytes) -> Self {
+#[cfg(any(feature = "std", test))]
+impl From<crate::ChainspecRawBytes> for PayloadType {
+    fn from(_: crate::ChainspecRawBytes) -> Self {
         Self::ChainspecRawBytes
     }
 }

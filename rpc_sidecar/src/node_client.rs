@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, future::Future, net::SocketAddr, sync::Arc, time::Duration};
+use std::{future::Future, net::SocketAddr, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
@@ -6,19 +6,25 @@ use serde::de::DeserializeOwned;
 use crate::{config::ExponentialBackoffConfig, NodeClientConfig};
 use casper_types::{
     binary_port::{
-        binary_request::BinaryRequest, binary_response::BinaryResponse, db_id::DbId,
-        get::GetRequest, get_all_values::GetAllValuesResult, global_state::GlobalStateQueryResult,
+        binary_request::BinaryRequest,
+        binary_response::BinaryResponse,
+        db_id::DbId,
+        get::GetRequest,
+        get_all_values::GetAllValuesResult,
+        global_state::GlobalStateQueryResult,
         non_persistent_data::NonPersistedDataRequest,
-        type_wrappers::HighestBlockSequenceCheckResult,
+        type_wrappers::{
+            ConsensusValidatorChanges, HighestBlockSequenceCheckResult, LastProgress, NetworkName,
+        },
     },
     bytesrepr::{self, FromBytes, ToBytes},
     contract_messages::Message,
     execution::{ExecutionResult, ExecutionResultV1, ExecutionResultV2},
     AvailableBlockRange, BlockBody, BlockBodyV1, BlockHash, BlockHashAndHeight, BlockHeader,
-    BlockHeaderV1, BlockSignatures, BlockSynchronizerStatus, Deploy, Digest, EraId,
+    BlockHeaderV1, BlockSignatures, BlockSynchronizerStatus, ChainspecRawBytes, Deploy, Digest,
     FinalizedApprovals, FinalizedDeployApprovals, Key, KeyTag, NextUpgrade, PayloadType, Peers,
     ProtocolVersion, PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash,
-    Transfer, ValidatorChange,
+    Transfer, Uptime,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -159,84 +165,77 @@ pub trait NodeClient: Send + Sync {
     }
 
     async fn read_uptime(&self) -> Result<Duration, Error> {
-        todo!()
-        // let resp = self.read_from_mem(NonPersistedDataRequest::Uptime).await?;
-        // try_parse::<TimeDiff>(&resp)?
-        //     .ok_or(Error::NoResponseBody)
-        //     .map(Into::into)
+        let resp = self.read_from_mem(NonPersistedDataRequest::Uptime).await?;
+        parse_response::<Uptime>(&resp)?
+            .map(Into::into)
+            .ok_or(Error::NoResponseBody)
     }
 
     async fn read_last_progress(&self) -> Result<Timestamp, Error> {
-        todo!()
-        // let resp = self
-        //     .read_from_mem(NonPersistedDataRequest::LastProgress)
-        //     .await?;
-        // try_parse::<Timestamp>(&resp)?.ok_or(Error::NoResponseBody)
+        let resp = self
+            .read_from_mem(NonPersistedDataRequest::LastProgress)
+            .await?;
+        parse_response::<LastProgress>(&resp)?
+            .map(Into::into)
+            .ok_or(Error::NoResponseBody)
     }
 
     async fn read_reactor_state(&self) -> Result<ReactorState, Error> {
-        todo!()
-        // let resp = self
-        //     .read_from_mem(NonPersistedDataRequest::ReactorState)
-        //     .await?;
-        // try_parse::<ReactorState>(&resp)?.ok_or(Error::NoResponseBody)
+        let resp = self
+            .read_from_mem(NonPersistedDataRequest::ReactorState)
+            .await?;
+        parse_response::<ReactorState>(&resp)?.ok_or(Error::NoResponseBody)
     }
 
     async fn read_network_name(&self) -> Result<String, Error> {
-        todo!()
-        // let resp = self
-        //     .read_from_mem(NonPersistedDataRequest::NetworkName)
-        //     .await?;
-        // try_parse::<String>(&resp)?.ok_or(Error::NoResponseBody)
+        let resp = self
+            .read_from_mem(NonPersistedDataRequest::NetworkName)
+            .await?;
+        parse_response::<NetworkName>(&resp)?
+            .map(Into::into)
+            .ok_or(Error::NoResponseBody)
     }
 
     async fn read_block_sync_status(&self) -> Result<BlockSynchronizerStatus, Error> {
-        todo!()
-        // let resp = self
-        //     .read_from_mem(NonPersistedDataRequest::BlockSynchronizerStatus)
-        //     .await?;
-        // try_parse::<BlockSynchronizerStatus>(&resp)?.ok_or(Error::NoResponseBody)
+        let resp = self
+            .read_from_mem(NonPersistedDataRequest::BlockSynchronizerStatus)
+            .await?;
+        parse_response::<BlockSynchronizerStatus>(&resp)?.ok_or(Error::NoResponseBody)
     }
 
     async fn read_available_block_range(&self) -> Result<AvailableBlockRange, Error> {
-        todo!()
-        // let resp = self
-        //     .read_from_mem(NonPersistedDataRequest::AvailableBlockRange)
-        //     .await?;
-        // try_parse::<AvailableBlockRange>(&resp)?.ok_or(Error::NoResponseBody)
+        let resp = self
+            .read_from_mem(NonPersistedDataRequest::AvailableBlockRange)
+            .await?;
+        parse_response::<AvailableBlockRange>(&resp)?.ok_or(Error::NoResponseBody)
     }
 
     async fn read_next_upgrade(&self) -> Result<Option<NextUpgrade>, Error> {
-        todo!()
-        // let resp = self
-        //     .read_from_mem(NonPersistedDataRequest::NextUpgrade)
-        //     .await?;
-        // try_parse::<NextUpgrade>(&resp)
+        let resp = self
+            .read_from_mem(NonPersistedDataRequest::NextUpgrade)
+            .await?;
+        parse_response::<NextUpgrade>(&resp)
     }
 
     async fn read_consensus_status(&self) -> Result<Option<(PublicKey, Option<TimeDiff>)>, Error> {
-        todo!()
-        // let resp = self
-        //     .read_from_mem(NonPersistedDataRequest::ConsensusStatus)
-        //     .await?;
-        // try_parse(&resp)
+        let resp = self
+            .read_from_mem(NonPersistedDataRequest::ConsensusStatus)
+            .await?;
+        parse_response(&resp)
     }
 
-    async fn read_chainspec_bytes(&self) -> Result<Vec<u8>, Error> {
+    async fn read_chainspec_bytes(&self) -> Result<ChainspecRawBytes, Error> {
         let resp = self
             .read_from_mem(NonPersistedDataRequest::ChainspecRawBytes)
             .await?;
-        parse_response::<Vec<u8>>(&resp)?.ok_or(Error::NoResponseBody)
+        parse_response::<ChainspecRawBytes>(&resp)?.ok_or(Error::NoResponseBody)
     }
 
-    async fn read_validator_changes(
-        &self,
-    ) -> Result<BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>, Error> {
-        todo!()
-        // let resp = self
-        //     .read_from_mem(NonPersistedDataRequest::ConsensusValidatorChanges)
-        //     .await?;
-        // <BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>>::try_accept(&resp)?
+    async fn read_validator_changes(&self) -> Result<ConsensusValidatorChanges, Error> {
+        let resp = self
+            .read_from_mem(NonPersistedDataRequest::ConsensusValidatorChanges)
+            .await?;
+        parse_response::<ConsensusValidatorChanges>(&resp)?.ok_or(Error::NoResponseBody)
     }
 }
 
@@ -561,4 +560,44 @@ impl PayloadEntity for HighestBlockSequenceCheckResult {
 
 impl PayloadEntity for Vec<u8> {
     const PAYLOAD_TYPE: PayloadType = PayloadType::VecU8;
+}
+
+impl PayloadEntity for LastProgress {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::LastProgress;
+}
+
+impl PayloadEntity for Uptime {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::Uptime;
+}
+
+impl PayloadEntity for ReactorState {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::ReactorState;
+}
+
+impl PayloadEntity for NetworkName {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::NetworkName;
+}
+
+impl PayloadEntity for BlockSynchronizerStatus {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::BlockSynchronizerStatus;
+}
+
+impl PayloadEntity for AvailableBlockRange {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::AvailableBlockRange;
+}
+
+impl PayloadEntity for NextUpgrade {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::NextUpgrade;
+}
+
+impl PayloadEntity for (PublicKey, Option<TimeDiff>) {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::ConsensusStatus;
+}
+
+impl PayloadEntity for ChainspecRawBytes {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::ChainspecRawBytes;
+}
+
+impl PayloadEntity for ConsensusValidatorChanges {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::ConsensusValidatorChanges;
 }
