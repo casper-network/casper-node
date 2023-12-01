@@ -81,7 +81,10 @@ pub enum TrapCode {
 #[non_exhaustive]
 pub enum VMError {
     #[error("Return 0x{flags:?} {data:?}")]
-    Return { flags: ReturnFlags, data: Bytes },
+    Return {
+        flags: ReturnFlags,
+        data: Option<Bytes>,
+    },
     #[error("Out of gas")]
     OutOfGas,
     #[error(transparent)]

@@ -660,6 +660,7 @@ dependencies = [
  "paste",
  "quote 1.0.29",
  "syn 2.0.32",
+ "vm-common",
 ]
 
 [[package]]
@@ -6633,6 +6634,7 @@ dependencies = [
  "casper-sdk",
  "ctor 0.2.5",
  "serde_json",
+ "vm-common",
 ]
 
 [[package]]

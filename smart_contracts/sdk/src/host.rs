@@ -113,11 +113,6 @@ pub use native::{
     casper_write,
 };
 
-pub fn revert<T: BorshSerialize>(value: T) -> T {
-    let data = borsh::to_vec(&value).expect("Revert value should serialize");
-    casper_return(ReturnFlags::REVERT, Some(data.as_slice()))
-}
-
 /// TODO: Remove once procedural macros are improved, this is just to save the boilerplate when
 /// doing things manually.
 pub fn start<Args: BorshDeserialize, Ret: BorshSerialize>(func: impl Fn(Args) -> Ret) {
@@ -146,14 +141,14 @@ pub fn call<Args: BorshSerialize, Ret: BorshDeserialize>(
     args: Args,
 ) -> Result<CallResult<Ret>, CallError> {
     let input_data = borsh::to_vec(&args).unwrap();
-    let (maybe_data, result) =
+    let (maybe_data, result_code) =
         casper_call(contract_address, value, entry_point_name, &input_data);
-    match result {
+    match result_code {
         ResultCode::Success | ResultCode::CalleeReverted => {
             let data = maybe_data.unwrap_or_default();
             Ok(CallResult {
                 data,
-                result,
+                result: result_code,
                 marker: PhantomData,
             })
         }

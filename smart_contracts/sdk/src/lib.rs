@@ -282,6 +282,9 @@ macro_rules! revert {
         $crate::host::revert(None)
     };
     ($arg:expr) => {{
-        $crate::host::revert(Some($arg))
+        let value = $arg;
+        let data = borsh::to_vec(&value).expect("Revert value should serialize");
+        casper_sdk::host::revert(Some(data.as_slice()));
+        value
     }};
 }

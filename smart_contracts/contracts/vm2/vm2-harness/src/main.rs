@@ -51,9 +51,16 @@ impl Greeter {
         }
     }
 
-    pub fn emit_revert(&self) -> Result<(), CustomError> {
-        // host::casper_return(ReturnFlags::REVERT, Some(&[1, 2, 3]));
-        host::revert(Err(CustomError::Bar))
+    pub fn emit_revert_with_data(&self) -> Result<(), CustomError> {
+        let output = Err(CustomError::Bar);
+        let input_data = borsh::to_vec(&output).unwrap();
+        host::casper_return(ReturnFlags::REVERT, Some(input_data.as_slice()));
+        #[allow(unreachable_code)]
+        output
+    }
+
+    pub fn emit_revert_without_data(&self) -> Result<(), CustomError> {
+        host::casper_return(ReturnFlags::REVERT, None);
     }
 }
 
@@ -108,7 +115,7 @@ pub fn call() {
             assert_eq!(maybe_data_3, None);
             assert_eq!(result_code_3, ResultCode::CalleeTrapped);
 
-            let call_4: &str = "emit_revert";
+            let call_4: &str = "emit_revert_with_data";
             let (maybe_data_4, maybe_result_4) =
                 host::casper_call(&contract_address, 0, call_4, &[]);
             log!("{call_4:?} result={maybe_data_4:?}");
@@ -120,6 +127,13 @@ pub fn call() {
                 .unwrap(),
                 Err(CustomError::Bar),
             );
+
+            let call_5: &str = "emit_revert_without_data";
+            let (maybe_data_5, maybe_result_5) =
+                host::casper_call(&contract_address, 0, call_5, &[]);
+            log!("{call_5:?} result={maybe_data_5:?}");
+            assert_eq!(maybe_result_5, ResultCode::CalleeReverted);
+            assert_eq!(maybe_data_5, None);
         }
         Err(error) => {
             log!("error {:?}", error);

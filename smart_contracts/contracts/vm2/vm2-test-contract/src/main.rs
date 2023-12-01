@@ -178,15 +178,12 @@ mod exports {
 
                 let input_data = borsh::to_vec(&("Hello, world!", 42)).unwrap();
 
-                let (output_data, result_code) =
+                let (data, result_code) =
                     host::casper_call(&contract_address, 10, "mangled_entry_point_1", &input_data);
 
                 match result_code {
                     host::ResultCode::Success => {
-                        host::casper_print(&format!(
-                            "✅ Call succeeded. Output: {:?}",
-                            output_data
-                        ));
+                        host::casper_print(&format!("✅ Call succeeded. Output: {:?}", data));
                     }
                     error => {
                         host::casper_print(&format!("❌ Call failed. Error: {:?}", error));

@@ -150,9 +150,14 @@ pub(crate) fn casper_return<S: Storage>(
     data_len: u32,
 ) -> VMResult<()> {
     let flags = ReturnFlags::from_bits(flags).expect("should be valid flags"); // SAFETY: All unknown bits should be preserved.
-    let data = caller
-        .memory_read(data_ptr, data_len.try_into().unwrap())
-        .map(Bytes::from)?;
+    let data = if data_ptr == 0 {
+        None
+    } else {
+        let data = caller
+            .memory_read(data_ptr, data_len.try_into().unwrap())
+            .map(Bytes::from)?;
+        Some(data)
+    };
     Err(VMError::Return { flags, data })
 }
 
@@ -396,7 +401,7 @@ pub(crate) fn casper_call<S: Storage + 'static>(
                     } else {
                         Ok(())
                     };
-                    (Some(data), host_result)
+                    (data, host_result)
                 }
                 Err(VMError::OutOfGas) => {
                     todo!()

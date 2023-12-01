@@ -168,7 +168,9 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     extern "C" fn #name() {
                                         casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
                                             let mut contract_instance = <#struct_name as casper_sdk::Contract>::new();
-                                            contract_instance.#name(#(#arg_names,)*)
+                                            let result = contract_instance.#name(#(#arg_names,)*);
+                                            let serialized_result = borsh::to_vec(&result).unwrap();
+                                            casper_sdk::host::casper_return(vm_common::flags::ReturnFlags::empty(), Some(&serialized_result));
                                         })
                                     }
                                     (stringify!(#name), [#(#entrypoint_params,)*], #name)
