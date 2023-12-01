@@ -36,7 +36,7 @@ pipeline:
                       make test-contracts CARGO_FLAGS=--release
                     resources:
                       limits:
-                        memory: 14Gi
+                        memory: 22Gi
                         cpu: "12"
   properties:
     ci:
