@@ -151,15 +151,17 @@ async fn handle_request(
     let block_time = block.timestamp();
     let protocol_version = block.protocol_version();
 
-    node_client
-        .try_accept_transaction(transaction.clone(), Some(block.take_header()))
-        .await
-        .map_err(|err| Error::NodeRequest("submitting a transaction", err))?;
-
     let (execution_result, messages) = node_client
-        .exec_speculatively(state_root_hash, block_time, protocol_version, transaction)
+        .exec_speculatively(
+            state_root_hash,
+            block_time,
+            protocol_version,
+            transaction,
+            block.take_header(),
+        )
         .await
         .map_err(|err| Error::NodeRequest("speculatively executing a transaction", err))?
+        .into_inner()
         .ok_or(Error::SpecExecReturnedNothing)?;
 
     Ok(SpeculativeExecTxnResult {

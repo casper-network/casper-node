@@ -77,7 +77,7 @@ impl RpcWithParams for PutDeploy {
     ) -> Result<Self::ResponseResult, RpcError> {
         let deploy_hash = *params.deploy.hash();
         match node_client
-            .try_accept_transaction(Transaction::from(params.deploy), None)
+            .try_accept_transaction(params.deploy.into())
             .await
         {
             Ok(()) => Ok(Self::ResponseResult {
@@ -136,10 +136,7 @@ impl RpcWithParams for PutTransaction {
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
         let transaction_hash = params.transaction.hash();
-        match node_client
-            .try_accept_transaction(params.transaction, None)
-            .await
-        {
+        match node_client.try_accept_transaction(params.transaction).await {
             Ok(()) => Ok(Self::ResponseResult {
                 api_version,
                 transaction_hash,

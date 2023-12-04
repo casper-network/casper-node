@@ -10,8 +10,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    Block, BlockHash, BlockHeaderV2, Digest, DigestError, JsonBlockWithSignatures, ProtocolVersion,
-    StoredValue, Transfer,
+    Block, BlockHash, BlockHeaderV2, Digest, DigestError, JsonBlockWithSignatures, Key,
+    ProtocolVersion, StoredValue, Transfer,
 };
 
 use super::{
@@ -430,26 +430,24 @@ async fn get_era_summary_by_block(
         }
     }
 
-    /*
     let state_root_hash = *block.state_root_hash();
     let result = node_client
         .query_global_state(state_root_hash, Key::EraSummary, vec![])
         .await
         .map_err(|err| Error::NodeRequest("era summary", err))?;
 
-    let era_summary = if !matches!(result, GlobalStateQueryResult::ValueNotFound) {
-        let result = common::handle_query_result(result)?;
-        create_era_summary(block, result.value, result.merkle_proof)
+    let era_summary = if let Some(result) = result {
+        let (value, merkle_proof) = result.into_inner();
+        create_era_summary(block, value, merkle_proof)
     } else {
-        let result = node_client
+        let (result, merkle_proof) = node_client
             .query_global_state(state_root_hash, Key::EraInfo(block.era_id()), vec![])
             .await
-            .map_err(|err| Error::NodeRequest("era info", err))?;
-        let result = common::handle_query_result(result)?;
-        create_era_summary(block, result.value, result.merkle_proof)
+            .map_err(|err| Error::NodeRequest("era info", err))?
+            .ok_or(Error::GlobalStateEntryNotFound)?
+            .into_inner();
+
+        create_era_summary(block, result, merkle_proof)
     };
     Ok(era_summary)
-    */
-
-    todo!()
 }

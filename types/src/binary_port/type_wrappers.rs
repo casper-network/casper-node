@@ -149,6 +149,13 @@ impl FromBytes for HighestBlockSequenceCheckResult {
 #[derive(Debug)]
 pub struct SpeculativeExecutionResult(pub Option<(ExecutionResultV2, Messages)>);
 
+impl SpeculativeExecutionResult {
+    /// Returns the inner value.
+    pub fn into_inner(self) -> Option<(ExecutionResultV2, Messages)> {
+        self.0
+    }
+}
+
 impl ToBytes for SpeculativeExecutionResult {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.0.to_bytes()
@@ -169,6 +176,13 @@ impl FromBytes for SpeculativeExecutionResult {
 /// Type representing results of the get full trie request.
 #[derive(Debug)]
 pub struct GetTrieFullResult(pub Option<Bytes>);
+
+impl GetTrieFullResult {
+    /// Returns the inner value.
+    pub fn into_inner(self) -> Option<Bytes> {
+        self.0
+    }
+}
 
 impl ToBytes for GetTrieFullResult {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {

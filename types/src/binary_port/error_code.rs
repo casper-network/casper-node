@@ -1,5 +1,7 @@
 //! Binary port error.
 
+use core::{convert::TryFrom, fmt};
+
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "std", derive(thiserror::Error))]
 #[repr(u8)]
@@ -24,7 +26,10 @@ pub enum ErrorCode {
     InvalidDeploy = 8,
     #[cfg_attr(feature = "std", error("internal error"))]
     InternalError = 9,
-    #[cfg_attr(feature = "std", error("the query to global state failed to find a result"))]
+    #[cfg_attr(
+        feature = "std",
+        error("the query to global state failed to find a result")
+    )]
     QueryFailed = 10,
     #[cfg_attr(feature = "std", error("the query to global state failed"))]
     QueryFailedToExecute = 11,
@@ -35,3 +40,37 @@ pub enum ErrorCode {
     //    #[cfg_attr(feature = "std", error("get trie failed"))]
     //    GetTrieFailed = 13,
 }
+
+impl TryFrom<u8> for ErrorCode {
+    type Error = UnknownErrorCode;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::NoError),
+            1 => Ok(Self::FunctionIsDisabled),
+            3 => Ok(Self::NotFound),
+            4 => Ok(Self::RootNotFound),
+            5 => Ok(Self::InvalidDeployItemVariant),
+            6 => Ok(Self::WasmPreprocessing),
+            7 => Ok(Self::InvalidProtocolVersion),
+            8 => Ok(Self::InvalidDeploy),
+            9 => Ok(Self::InternalError),
+            10 => Ok(Self::QueryFailed),
+            11 => Ok(Self::QueryFailedToExecute),
+            _ => Err(UnknownErrorCode(value)),
+        }
+    }
+}
+
+/// Error indicating that the error code is unknown.
+#[derive(Debug, Clone, Copy)]
+pub struct UnknownErrorCode(u8);
+
+impl fmt::Display for UnknownErrorCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "unknown error code: {}", self.0)
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for UnknownErrorCode {}

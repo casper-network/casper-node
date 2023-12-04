@@ -11,7 +11,6 @@ use crate::{
 
 use super::{
     db_id::DbId,
-    get_all_values::GetAllValuesResult,
     global_state::GlobalStateQueryResult,
     type_wrappers::{
         ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,

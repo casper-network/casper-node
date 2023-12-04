@@ -175,15 +175,17 @@ impl RpcWithParams for GetItem {
         api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
-        let result = node_client
+        let (stored_value, merkle_proof) = node_client
             .query_global_state(params.state_root_hash, params.key, params.path)
             .await
-            .map_err(|err| Error::NodeRequest("global state item", err))?;
-        let result = common::handle_query_result(result)?;
+            .map_err(|err| Error::NodeRequest("global state item", err))?
+            .ok_or(Error::GlobalStateEntryNotFound)?
+            .into_inner();
+
         Ok(Self::ResponseResult {
             api_version,
-            stored_value: result.value,
-            merkle_proof: result.merkle_proof,
+            stored_value,
+            merkle_proof,
         })
     }
 }
@@ -313,30 +315,31 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .map(|bid| bid.into_bid_kind().ok_or(Error::InvalidAuctionBids))
             .collect::<Result<Vec<_>, Error>>()?;
 
-        let registry_result = node_client
+        let (registry_value, _) = node_client
             .query_global_state(state_root_hash, Key::SystemContractRegistry, vec![])
             .await
-            .map_err(|err| Error::NodeRequest("system contract registry", err))?;
-        let registry: BTreeMap<String, AddressableEntityHash> =
-            common::handle_query_result(registry_result)?
-                .value
-                .into_cl_value()
-                .ok_or(Error::InvalidAuctionContract)?
-                .into_t()
-                .map_err(|_| Error::InvalidAuctionContract)?;
+            .map_err(|err| Error::NodeRequest("system contract registry", err))?
+            .ok_or(Error::GlobalStateEntryNotFound)?
+            .into_inner();
+        let registry: BTreeMap<String, AddressableEntityHash> = registry_value
+            .into_cl_value()
+            .ok_or(Error::InvalidAuctionContract)?
+            .into_t()
+            .map_err(|_| Error::InvalidAuctionContract)?;
 
         let &auction_hash = registry.get(AUCTION).ok_or(Error::InvalidAuctionContract)?;
         let auction_key = Key::addressable_entity_key(PackageKindTag::System, auction_hash);
-        let snapshot_result = node_client
+        let (snapshot_value, _) = node_client
             .query_global_state(
                 state_root_hash,
                 auction_key,
                 vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_owned()],
             )
             .await
-            .map_err(|err| Error::NodeRequest("auction snapshot", err))?;
-        let snapshot = common::handle_query_result(snapshot_result)?
-            .value
+            .map_err(|err| Error::NodeRequest("auction snapshot", err))?
+            .ok_or(Error::GlobalStateEntryNotFound)?
+            .into_inner();
+        let snapshot = snapshot_value
             .into_cl_value()
             .ok_or(Error::InvalidAuctionValidators)?
             .into_t()
@@ -422,20 +425,20 @@ impl RpcWithParams for GetAccountInfo {
             };
             Key::Account(account_hash)
         };
-        let result = node_client
+        let (account_value, merkle_proof) = node_client
             .query_global_state(state_root_hash, base_key, vec![])
             .await
-            .map_err(|err| Error::NodeRequest("account info", err))?;
-        let result = common::handle_query_result(result)?;
-        let account = result
-            .value
+            .map_err(|err| Error::NodeRequest("account info", err))?
+            .ok_or(Error::GlobalStateEntryNotFound)?
+            .into_inner();
+        let account = account_value
             .into_account()
             .ok_or(Error::InvalidAccountInfo)?;
 
         Ok(Self::ResponseResult {
             api_version,
             account,
-            merkle_proof: result.merkle_proof,
+            merkle_proof,
         })
     }
 }
@@ -577,30 +580,32 @@ impl RpcWithParams for GetDictionaryItem {
             DictionaryIdentifier::AccountNamedKey { ref key, .. }
             | DictionaryIdentifier::ContractNamedKey { ref key, .. } => {
                 let base_key = Key::from_formatted_str(key).map_err(Error::InvalidDictionaryKey)?;
-                let result = node_client
+                let (value, _) = node_client
                     .query_global_state(params.state_root_hash, base_key, vec![])
                     .await
-                    .map_err(|err| Error::NodeRequest("dictionary key", err))?;
-                let result = common::handle_query_result(result)?;
+                    .map_err(|err| Error::NodeRequest("dictionary key", err))?
+                    .ok_or(Error::GlobalStateEntryNotFound)?
+                    .into_inner();
                 params
                     .dictionary_identifier
-                    .get_dictionary_address(Some(result.value))?
+                    .get_dictionary_address(Some(value))?
             }
             DictionaryIdentifier::URef { .. } | DictionaryIdentifier::Dictionary(_) => {
                 params.dictionary_identifier.get_dictionary_address(None)?
             }
         };
-        let result = node_client
+        let (stored_value, merkle_proof) = node_client
             .query_global_state(params.state_root_hash, dictionary_key, vec![])
             .await
-            .map_err(|err| Error::NodeRequest("dictionary item", err))?;
-        let result = common::handle_query_result(result)?;
+            .map_err(|err| Error::NodeRequest("dictionary item", err))?
+            .ok_or(Error::GlobalStateEntryNotFound)?
+            .into_inner();
 
         Ok(Self::ResponseResult {
             api_version,
             dictionary_key: dictionary_key.to_formatted_string(),
-            stored_value: result.value,
-            merkle_proof: result.merkle_proof,
+            stored_value,
+            merkle_proof,
         })
     }
 }
@@ -674,17 +679,18 @@ impl RpcWithParams for QueryGlobalState {
         let (state_root_hash, block_header) =
             common::resolve_state_root_hash(&*node_client, params.state_identifier).await?;
 
-        let result = node_client
+        let (stored_value, merkle_proof) = node_client
             .query_global_state(state_root_hash, params.key, params.path)
             .await
-            .map_err(|err| Error::NodeRequest("global state item", err))?;
-        let result = common::handle_query_result(result)?;
+            .map_err(|err| Error::NodeRequest("global state item", err))?
+            .ok_or(Error::GlobalStateEntryNotFound)?
+            .into_inner();
 
         Ok(Self::ResponseResult {
             api_version,
             block_header,
-            stored_value: result.value,
-            merkle_proof: result.merkle_proof,
+            stored_value,
+            merkle_proof,
         })
     }
 }

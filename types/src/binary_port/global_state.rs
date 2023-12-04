@@ -22,6 +22,11 @@ impl GlobalStateQueryResult {
             merkle_proof,
         }
     }
+
+    /// Returns the stored value and the merkle proof.
+    pub fn into_inner(self) -> (StoredValue, String) {
+        (self.value, self.merkle_proof)
+    }
 }
 
 impl ToBytes for GlobalStateQueryResult {

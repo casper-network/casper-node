@@ -1,4 +1,4 @@
-use std::{future::Future, net::SocketAddr, sync::Arc, time::Duration};
+use std::{convert::TryFrom, future::Future, net::SocketAddr, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
@@ -14,12 +14,12 @@ use casper_types::{
         global_state::GlobalStateQueryResult,
         non_persistent_data::NonPersistedDataRequest,
         type_wrappers::{
-            ConsensusValidatorChanges, HighestBlockSequenceCheckResult, LastProgress, NetworkName,
+            ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
+            LastProgress, NetworkName, SpeculativeExecutionResult,
         },
     },
     bytesrepr::{self, FromBytes, ToBytes},
-    contract_messages::Message,
-    execution::{ExecutionResult, ExecutionResultV1, ExecutionResultV2},
+    execution::{ExecutionResult, ExecutionResultV1},
     AvailableBlockRange, BlockBody, BlockBodyV1, BlockHash, BlockHashAndHeight, BlockHeader,
     BlockHeaderV1, BlockSignatures, BlockSynchronizerStatus, ChainspecRawBytes, Deploy, Digest,
     FinalizedApprovals, FinalizedDeployApprovals, Key, KeyTag, NextUpgrade, PayloadType, Peers,
@@ -54,7 +54,7 @@ pub trait NodeClient: Send + Sync {
         state_root_hash: Digest,
         base_key: Key,
         path: Vec<String>,
-    ) -> Result<GlobalStateQueryResult, Error>;
+    ) -> Result<Option<GlobalStateQueryResult>, Error>;
 
     async fn query_global_state_by_tag(
         &self,
@@ -62,11 +62,7 @@ pub trait NodeClient: Send + Sync {
         tag: KeyTag,
     ) -> Result<GetAllValuesResult, Error>;
 
-    async fn try_accept_transaction(
-        &self,
-        transaction: Transaction,
-        speculative_exec_block: Option<BlockHeader>,
-    ) -> Result<(), Error>;
+    async fn try_accept_transaction(&self, transaction: Transaction) -> Result<(), Error>;
 
     async fn exec_speculatively(
         &self,
@@ -74,7 +70,8 @@ pub trait NodeClient: Send + Sync {
         block_time: Timestamp,
         protocol_version: ProtocolVersion,
         transaction: Transaction,
-    ) -> Result<Option<(ExecutionResultV2, Vec<Message>)>, Error>;
+        exec_at_block: BlockHeader,
+    ) -> Result<SpeculativeExecutionResult, Error>;
 
     async fn read_transaction(&self, hash: TransactionHash) -> Result<Option<Transaction>, Error> {
         let key = hash.to_bytes().expect("should always serialize a digest");
@@ -253,14 +250,22 @@ pub enum Error {
     NoResponseBody,
     #[error("unexpectedly received an empty envelope")]
     EmptyEnvelope,
-    #[error("received a node error code: {0}")]
-    NodeError(u8),
-    #[error("transaction failed: {0}")]
+    #[error("received an unexpected node error: {0}")]
+    UnexpectedNodeError(String),
+    #[error("transaction failed with code: {0}")]
     TransactionFailed(String),
     #[error("speculative execution failed: {0}")]
     SpeculativeExecFailed(String),
     #[error("unexpected variant received in the response: {0}")]
     UnexpectedVariantReceived(PayloadType),
+}
+
+impl Error {
+    fn from_error_code(code: u8) -> Self {
+        let err = casper_types::binary_port::ErrorCode::try_from(code)
+            .map_or_else(|err| err.to_string(), |err| err.to_string());
+        Error::UnexpectedNodeError(err)
+    }
 }
 
 const CHANNEL_COUNT: usize = 1;
@@ -378,72 +383,67 @@ impl NodeClient for JulietNodeClient {
     async fn read_trie_bytes(&self, trie_key: Digest) -> Result<Option<Vec<u8>>, Error> {
         let get = GetRequest::Trie { trie_key };
         let resp = self.dispatch(BinaryRequest::Get(get)).await?;
-        parse_response::<Vec<u8>>(&resp)
+        let res = parse_response::<GetTrieFullResult>(&resp)?.ok_or(Error::EmptyEnvelope)?;
+        Ok(res.into_inner().map(Into::into))
     }
 
     async fn query_global_state(
         &self,
-        _state_root_hash: Digest,
-        _base_key: Key,
-        _path: Vec<String>,
-    ) -> Result<GlobalStateQueryResult, Error> {
-        todo!()
-        // let get = GetRequest::State {
-        //     state_root_hash,
-        //     base_key,
-        //     path,
-        // };
-        // let resp = self.dispatch(BinaryRequest::Get(get)).await?;
-        // GlobalStateQueryResult::try_accept(&resp)?.ok_or(Error::NoResponseBody)
+        state_root_hash: Digest,
+        base_key: Key,
+        path: Vec<String>,
+    ) -> Result<Option<GlobalStateQueryResult>, Error> {
+        let get = GetRequest::State {
+            state_root_hash,
+            base_key,
+            path,
+        };
+        let resp = self.dispatch(BinaryRequest::Get(get)).await?;
+        parse_response::<GlobalStateQueryResult>(&resp)
     }
 
     async fn query_global_state_by_tag(
         &self,
-        _state_root_hash: Digest,
-        _key_tag: KeyTag,
+        state_root_hash: Digest,
+        key_tag: KeyTag,
     ) -> Result<GetAllValuesResult, Error> {
-        todo!()
-        // let get = GetRequest::AllValues {
-        //     state_root_hash,
-        //     key_tag,
-        // };
-        // let resp = self.dispatch(BinaryRequest::Get(get)).await?;
-        // GetAllValuesResult::try_accept(&resp)?.ok_or(Error::NoResponseBody)
+        let get = GetRequest::AllValues {
+            state_root_hash,
+            key_tag,
+        };
+        let resp = self.dispatch(BinaryRequest::Get(get)).await?;
+        parse_response::<GetAllValuesResult>(&resp)?.ok_or(Error::EmptyEnvelope)
     }
 
-    async fn try_accept_transaction(
-        &self,
-        _transaction: Transaction,
-        _speculative_exec_block: Option<BlockHeader>,
-    ) -> Result<(), Error> {
-        todo!()
-        // let request = BinaryRequest::TryAcceptTransaction {
-        //     transaction,
-        //     speculative_exec_at_block: speculative_exec_block,
-        // };
-        // let resp = self.dispatch(request).await?;
-        // <()>::try_accept(&resp)?.ok_or(Error::NoResponseBody)
+    async fn try_accept_transaction(&self, transaction: Transaction) -> Result<(), Error> {
+        let request = BinaryRequest::TryAcceptTransaction { transaction };
+        let resp = self.dispatch(request).await?;
+        if resp.header.is_success() {
+            return Ok(());
+        } else {
+            let err = casper_types::binary_port::ErrorCode::try_from(resp.header.error_code())
+                .map_or_else(|err| err.to_string(), |err| err.to_string());
+            return Err(Error::TransactionFailed(err));
+        }
     }
 
     async fn exec_speculatively(
         &self,
-        _state_root_hash: Digest,
-        _block_time: Timestamp,
-        _protocol_version: ProtocolVersion,
-        _transaction: Transaction,
-    ) -> Result<Option<(ExecutionResultV2, Vec<Message>)>, Error> {
-        todo!()
-        // let request = BinaryRequest::TrySpeculativeExec {
-        //     transaction,
-        //     state_root_hash,
-        //     block_time,
-        //     protocol_version,
-        // };
-        // let resp = self.dispatch(request).await?;
-        // let result: Result<Option<(ExecutionResultV2, Vec<Message>)>, String> =
-        //     bytesrepr::deserialize_from_slice(resp)
-        //         .map_err(|err| Error::Deserialization(err.to_string()))?;
-        // result.map_err(Error::SpeculativeExecFailed)
+        state_root_hash: Digest,
+        block_time: Timestamp,
+        protocol_version: ProtocolVersion,
+        transaction: Transaction,
+        exec_at_block: BlockHeader,
+    ) -> Result<SpeculativeExecutionResult, Error> {
+        let request = BinaryRequest::TrySpeculativeExec {
+            transaction,
+            state_root_hash,
+            block_time,
+            protocol_version,
+            speculative_exec_at_block: exec_at_block,
+        };
+        let resp = self.dispatch(request).await?;
+        parse_response::<SpeculativeExecutionResult>(&resp)?.ok_or(Error::EmptyEnvelope)
     }
 }
 
@@ -455,7 +455,7 @@ where
         return Ok(None);
     }
     if !resp.header.is_success() {
-        return Err(Error::NodeError(resp.header.error_code()));
+        return Err(Error::from_error_code(resp.header.error_code()));
     }
     match resp.header.returned_data_type() {
         Some(&found) if found == A::PAYLOAD_TYPE => {
@@ -477,7 +477,7 @@ where
         return Ok(None);
     }
     if !resp.header.is_success() {
-        return Err(Error::NodeError(resp.header.error_code()));
+        return Err(Error::from_error_code(resp.header.error_code()));
     }
     match resp.header.returned_data_type() {
         Some(&found) if found == V1::PAYLOAD_TYPE => bincode::deserialize(&resp.payload)
@@ -501,7 +501,7 @@ where
         return Ok(None);
     }
     if !resp.header.is_success() {
-        return Err(Error::NodeError(resp.header.error_code()));
+        return Err(Error::from_error_code(resp.header.error_code()));
     }
     match resp.header.returned_data_type() {
         Some(&found) if found == A::PAYLOAD_TYPE => bincode::deserialize(&resp.payload)
@@ -622,4 +622,20 @@ impl PayloadEntity for ChainspecRawBytes {
 
 impl PayloadEntity for ConsensusValidatorChanges {
     const PAYLOAD_TYPE: PayloadType = PayloadType::ConsensusValidatorChanges;
+}
+
+impl PayloadEntity for GlobalStateQueryResult {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::GlobalStateQueryResult;
+}
+
+impl PayloadEntity for GetAllValuesResult {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::StoredValues;
+}
+
+impl PayloadEntity for GetTrieFullResult {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::GetTrieFullResult;
+}
+
+impl PayloadEntity for SpeculativeExecutionResult {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::SpeculativeExecutionResult;
 }

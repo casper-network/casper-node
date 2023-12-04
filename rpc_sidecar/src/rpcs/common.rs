@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::rpcs::error::Error;
 use casper_types::{
-    account::AccountHash, binary_port::global_state::GlobalStateQueryResult, AddressableEntity,
-    AvailableBlockRange, Block, BlockHeader, BlockSignatures, Digest, ExecutionInfo,
-    FinalizedApprovals, Key, SignedBlock, StoredValue, Transaction, TransactionHash, URef, U512,
+    account::AccountHash, AddressableEntity, AvailableBlockRange, Block, BlockHeader,
+    BlockSignatures, Digest, ExecutionInfo, FinalizedApprovals, Key, SignedBlock, StoredValue,
+    Transaction, TransactionHash, URef, U512,
 };
 
 use crate::NodeClient;
@@ -178,23 +178,26 @@ pub async fn get_account(
     state_root_hash: Digest,
 ) -> Result<AddressableEntity, Error> {
     let account_key = Key::Account(account_hash);
-    let result = node_client
+    let (value, _) = node_client
         .query_global_state(state_root_hash, account_key, vec![])
         .await
-        .map_err(|err| Error::NodeRequest("account stored value", err))?;
+        .map_err(|err| Error::NodeRequest("account stored value", err))?
+        .ok_or(Error::GlobalStateEntryNotFound)?
+        .into_inner();
 
-    match handle_query_result(result)?.value {
+    match value {
         StoredValue::Account(account) => Ok(account.into()),
         StoredValue::CLValue(entity_key_as_clvalue) => {
             let key: Key = entity_key_as_clvalue
                 .into_t()
                 .map_err(|_| Error::InvalidAccountInfo)?;
-            let result = node_client
+            let (value, _) = node_client
                 .query_global_state(state_root_hash, key, vec![])
                 .await
-                .map_err(|err| Error::NodeRequest("account owning a purse", err))?;
-            handle_query_result(result)?
-                .value
+                .map_err(|err| Error::NodeRequest("account owning a purse", err))?
+                .ok_or(Error::GlobalStateEntryNotFound)?
+                .into_inner();
+            value
                 .into_addressable_entity()
                 .ok_or(Error::InvalidAccountInfo)
         }
@@ -226,44 +229,21 @@ pub async fn get_balance(
     state_root_hash: Digest,
 ) -> Result<SuccessfulQueryResult<U512>, Error> {
     let key = Key::Balance(uref.addr());
-    let result = node_client
+    let (value, merkle_proof) = node_client
         .query_global_state(state_root_hash, key, vec![])
         .await
-        .map_err(|err| Error::NodeRequest("balance by uref", err))?;
-    let result = handle_query_result(result)?;
-    let value = result
-        .value
+        .map_err(|err| Error::NodeRequest("balance by uref", err))?
+        .ok_or(Error::GlobalStateEntryNotFound)?
+        .into_inner();
+    let value = value
         .into_cl_value()
         .ok_or(Error::InvalidPurseBalance)?
         .into_t()
         .map_err(|_| Error::InvalidPurseBalance)?;
     Ok(SuccessfulQueryResult {
         value,
-        merkle_proof: result.merkle_proof,
+        merkle_proof,
     })
-}
-
-pub fn handle_query_result(
-    query_result: GlobalStateQueryResult,
-) -> Result<SuccessfulQueryResult<StoredValue>, Error> {
-    /*
-    match query_result {
-        GlobalStateQueryResult::Success {
-            value,
-            merkle_proof,
-        } => Ok(SuccessfulQueryResult {
-            value,
-            merkle_proof,
-        }),
-        GlobalStateQueryResult::ValueNotFound => Err(Error::GlobalStateEntryNotFound),
-        GlobalStateQueryResult::RootNotFound => Err(Error::GlobalStateRootHashNotFound),
-        GlobalStateQueryResult::Error(error) => {
-            info!(?error, "query failed");
-            Err(Error::GlobalStateQueryFailed(error))
-        }
-    }
-    */
-    todo!()
 }
 
 #[derive(Debug)]
