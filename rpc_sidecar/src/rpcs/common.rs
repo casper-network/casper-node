@@ -1,7 +1,6 @@
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tracing::info;
 
 use crate::rpcs::error::Error;
 use casper_types::{
@@ -247,6 +246,7 @@ pub async fn get_balance(
 pub fn handle_query_result(
     query_result: GlobalStateQueryResult,
 ) -> Result<SuccessfulQueryResult<StoredValue>, Error> {
+    /*
     match query_result {
         GlobalStateQueryResult::Success {
             value,
@@ -262,6 +262,8 @@ pub fn handle_query_result(
             Err(Error::GlobalStateQueryFailed(error))
         }
     }
+    */
+    todo!()
 }
 
 #[derive(Debug)]

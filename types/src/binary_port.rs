@@ -2,7 +2,7 @@
 pub mod binary_request;
 pub mod binary_response;
 pub mod db_id;
-pub mod error;
+pub mod error_code;
 pub mod get;
 pub mod get_all_values;
 pub mod global_state;
@@ -11,7 +11,7 @@ pub mod payload_type;
 pub mod speculative_execution;
 pub mod type_wrappers;
 
-pub use error::Error;
+pub use error_code::ErrorCode;
 pub use payload_type::PayloadType;
 pub use type_wrappers::Uptime;
 

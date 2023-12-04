@@ -3,8 +3,8 @@ use serde::Serialize;
 use thiserror::Error;
 
 use casper_types::{
-    AddressableEntityHash, BlockHash, BlockHeader, DeployConfigFailure, Digest, EntityVersion,
-    InitiatorAddr, PackageHash, Timestamp, TransactionV1ConfigFailure,
+    binary_port, AddressableEntityHash, BlockHash, BlockHeader, DeployConfigFailure, Digest,
+    EntityVersion, InitiatorAddr, PackageHash, Timestamp, TransactionV1ConfigFailure,
 };
 
 // `allow` can be removed once https://github.com/casper-network/casper-node/issues/3063 is fixed.

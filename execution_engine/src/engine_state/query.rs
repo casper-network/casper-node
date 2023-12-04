@@ -1,8 +1,6 @@
 //! Support for global state queries.
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
-use casper_types::{
-    binary_port::global_state::GlobalStateQueryResult, bytesrepr::ToBytes, Digest, Key, StoredValue,
-};
+use casper_types::{Digest, Key, StoredValue};
 
 use crate::tracking_copy::TrackingCopyQueryResult;
 
@@ -75,30 +73,6 @@ impl From<TrackingCopyQueryResult> for QueryResult {
                 QueryResult::Success { value, proofs }
             }
             TrackingCopyQueryResult::DepthLimit { depth } => QueryResult::DepthLimit { depth },
-        }
-    }
-}
-
-impl From<QueryResult> for GlobalStateQueryResult {
-    fn from(query_result: QueryResult) -> Self {
-        match query_result {
-            QueryResult::Success { value, proofs } => match proofs.to_bytes() {
-                Ok(bytes) => {
-                    return GlobalStateQueryResult::Success {
-                        value: *value,
-                        merkle_proof: base16::encode_lower(&bytes),
-                    }
-                }
-                Err(err) => GlobalStateQueryResult::Error(format!(
-                    "failed to encode proof {} {:?}",
-                    err, proofs
-                )),
-            },
-            QueryResult::RootNotFound => GlobalStateQueryResult::RootNotFound,
-            QueryResult::ValueNotFound(_) => GlobalStateQueryResult::ValueNotFound,
-            QueryResult::DepthLimit { .. } | QueryResult::CircularReference(_) => {
-                GlobalStateQueryResult::Error(format!("{:?}", query_result))
-            }
         }
     }
 }

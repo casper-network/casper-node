@@ -4,8 +4,8 @@ use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 use alloc::vec::Vec;
 
 use super::{
-    binary_request::BinaryRequest, db_id::DbId, error::Error, payload_type::PayloadType,
-    DbRawBytesSpec, PROTOCOL_VERSION,
+    binary_request::BinaryRequest, db_id::DbId, payload_type::PayloadType, DbRawBytesSpec,
+    ErrorCode, PROTOCOL_VERSION,
 };
 
 /// Header of the binary response.
@@ -20,13 +20,13 @@ impl BinaryResponseHeader {
     pub fn new(returned_data_type: Option<PayloadType>) -> Self {
         Self {
             protocol_version: PROTOCOL_VERSION,
-            error: Error::NoError as u8,
+            error: ErrorCode::NoError as u8,
             returned_data_type,
         }
     }
 
     /// Creates new binary response header representing error.
-    pub fn new_error(error: Error) -> Self {
+    pub fn new_error(error: ErrorCode) -> Self {
         Self {
             protocol_version: PROTOCOL_VERSION,
             error: error as u8,
@@ -37,6 +37,11 @@ impl BinaryResponseHeader {
     /// Returns the type of the returned data.
     pub fn returned_data_type(&self) -> Option<&PayloadType> {
         self.returned_data_type.as_ref()
+    }
+
+    /// Returns the error code.
+    pub fn error(&self) -> u8 {
+        self.error
     }
 }
 
@@ -93,10 +98,8 @@ pub struct BinaryResponse {
     pub payload: Vec<u8>,
 }
 
-// We'll never be returning Ok(None), it'll always be Ok(Some(...)) pushed through Juliet
-
 impl BinaryResponse {
-    pub fn new_error(error: Error, binary_request: BinaryRequest) -> Self {
+    pub fn new_error(error: ErrorCode, binary_request: BinaryRequest) -> Self {
         BinaryResponse {
             header: BinaryResponseHeader::new_error(error),
             original_request: ToBytes::to_bytes(&binary_request).unwrap(), // TODO[RC]: Do not serialize here, thread the original serialized request into here
@@ -121,7 +124,7 @@ impl BinaryResponse {
                 payload: raw_bytes,
             },
             None => BinaryResponse {
-                header: BinaryResponseHeader::new_error(Error::NotFound),
+                header: BinaryResponseHeader::new_error(ErrorCode::NotFound),
                 original_request: ToBytes::to_bytes(&binary_request).unwrap(), // TODO[RC]: Do not serialize here, thread the original serialized request into here
                 payload: vec![],
             },
@@ -150,14 +153,14 @@ impl BinaryResponse {
             Some(val) => Self::from_value(binary_request, val),
             None => BinaryResponse {
                 payload: vec![],
-                header: BinaryResponseHeader::new_error(Error::NotFound),
+                header: BinaryResponseHeader::new_error(ErrorCode::NotFound),
                 original_request: ToBytes::to_bytes(&binary_request).unwrap(), // TODO[RC]: Do not serialize here, thread the original serialized request into here
             },
         }
     }
 
     pub fn is_error(&self) -> bool {
-        self.header.error() != Error::NoError as u8
+        self.header.error() != ErrorCode::NoError as u8
     }
 }
 
