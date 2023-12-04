@@ -150,7 +150,7 @@ impl FromBytes for GetRequest {
             }
             ALL_VALUES_TAG => {
                 let (state_root_hash, remainder) = FromBytes::from_bytes(remainder)?;
-                let (key_tag, remainder) = FromBytes::from_bytes(remainder)?;
+                let (key_tag, remainder) = u8::from_bytes(remainder)?;
                 let key_tag = match key_tag {
                     0 => KeyTag::Account,
                     1 => KeyTag::Hash,
