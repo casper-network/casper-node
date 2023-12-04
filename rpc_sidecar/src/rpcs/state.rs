@@ -11,8 +11,9 @@ use super::{
     chain::BlockIdentifier,
     common,
     common::MERKLE_PROOF,
-    docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-    Error, NodeClient, RpcError, RpcWithOptionalParams, RpcWithParams,
+    docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
+    ApiVersion, Error, NodeClient, RpcError, RpcWithOptionalParams, RpcWithParams,
+    CURRENT_API_VERSION,
 };
 use casper_types::{
     account::{Account, AccountHash},
@@ -27,7 +28,7 @@ use casper_types::{
         AUCTION,
     },
     AddressableEntityHash, AuctionState, BlockHash, BlockHeader, BlockHeaderV2, BlockV2, CLValue,
-    Digest, Key, KeyTag, ProtocolVersion, PublicKey, SecretKey, StoredValue, Tagged, URef, U512,
+    Digest, Key, KeyTag, PublicKey, SecretKey, StoredValue, Tagged, URef, U512,
 };
 
 static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
@@ -39,7 +40,7 @@ static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
     path: vec!["inner".to_string()],
 });
 static GET_ITEM_RESULT: Lazy<GetItemResult> = Lazy::new(|| GetItemResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_API_VERSION,
     stored_value: StoredValue::CLValue(CLValue::from_t(1u64).unwrap()),
     merkle_proof: MERKLE_PROOF.clone(),
 });
@@ -49,7 +50,7 @@ static GET_BALANCE_PARAMS: Lazy<GetBalanceParams> = Lazy::new(|| GetBalanceParam
         .to_string(),
 });
 static GET_BALANCE_RESULT: Lazy<GetBalanceResult> = Lazy::new(|| GetBalanceResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_API_VERSION,
     balance_value: U512::from(123_456),
     merkle_proof: MERKLE_PROOF.clone(),
 });
@@ -57,7 +58,7 @@ static GET_AUCTION_INFO_PARAMS: Lazy<GetAuctionInfoParams> = Lazy::new(|| GetAuc
     block_identifier: BlockIdentifier::Hash(*BlockHash::example()),
 });
 static GET_AUCTION_INFO_RESULT: Lazy<GetAuctionInfoResult> = Lazy::new(|| GetAuctionInfoResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_API_VERSION,
     auction_state: AuctionState::doc_example().clone(),
 });
 static GET_ACCOUNT_INFO_PARAMS: Lazy<GetAccountInfoParams> = Lazy::new(|| {
@@ -69,7 +70,7 @@ static GET_ACCOUNT_INFO_PARAMS: Lazy<GetAccountInfoParams> = Lazy::new(|| {
     }
 });
 static GET_ACCOUNT_INFO_RESULT: Lazy<GetAccountInfoResult> = Lazy::new(|| GetAccountInfoResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_API_VERSION,
     account: Account::doc_example().clone(),
     merkle_proof: MERKLE_PROOF.clone(),
 });
@@ -84,7 +85,7 @@ static GET_DICTIONARY_ITEM_PARAMS: Lazy<GetDictionaryItemParams> =
     });
 static GET_DICTIONARY_ITEM_RESULT: Lazy<GetDictionaryItemResult> =
     Lazy::new(|| GetDictionaryItemResult {
-        api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+        api_version: DOCS_EXAMPLE_API_VERSION,
         dictionary_key:
             "dictionary-67518854aa916c97d4e53df8570c8217ccc259da2721b692102d76acd0ee8d1f"
                 .to_string(),
@@ -102,7 +103,7 @@ static QUERY_GLOBAL_STATE_PARAMS: Lazy<QueryGlobalStateParams> =
     });
 static QUERY_GLOBAL_STATE_RESULT: Lazy<QueryGlobalStateResult> =
     Lazy::new(|| QueryGlobalStateResult {
-        api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+        api_version: DOCS_EXAMPLE_API_VERSION,
         block_header: Some(BlockHeaderV2::example().clone().into()),
         stored_value: StoredValue::Account(Account::doc_example().clone()),
         merkle_proof: MERKLE_PROOF.clone(),
@@ -111,7 +112,7 @@ static GET_TRIE_PARAMS: Lazy<GetTrieParams> = Lazy::new(|| GetTrieParams {
     trie_key: *BlockHeaderV2::example().state_root_hash(),
 });
 static GET_TRIE_RESULT: Lazy<GetTrieResult> = Lazy::new(|| GetTrieResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_API_VERSION,
     maybe_trie_bytes: None,
 });
 static QUERY_BALANCE_PARAMS: Lazy<QueryBalanceParams> = Lazy::new(|| QueryBalanceParams {
@@ -119,7 +120,7 @@ static QUERY_BALANCE_PARAMS: Lazy<QueryBalanceParams> = Lazy::new(|| QueryBalanc
     purse_identifier: PurseIdentifier::MainPurseUnderAccountHash(AccountHash::new([9u8; 32])),
 });
 static QUERY_BALANCE_RESULT: Lazy<QueryBalanceResult> = Lazy::new(|| QueryBalanceResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_API_VERSION,
     balance: U512::from(123_456),
 });
 
@@ -148,7 +149,7 @@ impl DocExample for GetItemParams {
 pub struct GetItemResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// The stored value.
     pub stored_value: StoredValue,
     /// The Merkle proof.
@@ -172,7 +173,6 @@ impl RpcWithParams for GetItem {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
         let (stored_value, merkle_proof) = node_client
@@ -183,7 +183,7 @@ impl RpcWithParams for GetItem {
             .into_inner();
 
         Ok(Self::ResponseResult {
-            api_version,
+            api_version: CURRENT_API_VERSION,
             stored_value,
             merkle_proof,
         })
@@ -212,7 +212,7 @@ impl DocExample for GetBalanceParams {
 pub struct GetBalanceResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// The balance value.
     pub balance_value: U512,
     /// The Merkle proof.
@@ -236,14 +236,13 @@ impl RpcWithParams for GetBalance {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
         let purse_uref =
             URef::from_formatted_str(&params.purse_uref).map_err(Error::InvalidPurseURef)?;
         let result = common::get_balance(&*node_client, purse_uref, params.state_root_hash).await?;
         Ok(Self::ResponseResult {
-            api_version,
+            api_version: CURRENT_API_VERSION,
             balance_value: result.value,
             merkle_proof: result.merkle_proof,
         })
@@ -270,7 +269,7 @@ impl DocExample for GetAuctionInfoParams {
 pub struct GetAuctionInfoResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// The auction state.
     pub auction_state: AuctionState,
 }
@@ -292,7 +291,6 @@ impl RpcWithOptionalParams for GetAuctionInfo {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
         let maybe_block_id = maybe_params.map(|params| params.block_identifier);
@@ -350,7 +348,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
         let auction_state = AuctionState::new(state_root_hash, height, validators, bids);
 
         Ok(Self::ResponseResult {
-            api_version,
+            api_version: CURRENT_API_VERSION,
             auction_state,
         })
     }
@@ -389,7 +387,7 @@ impl DocExample for GetAccountInfoParams {
 pub struct GetAccountInfoResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// The account.
     pub account: Account,
     /// The Merkle proof.
@@ -413,7 +411,6 @@ impl RpcWithParams for GetAccountInfo {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
         let signed_block = common::get_signed_block(&*node_client, params.block_identifier).await?;
@@ -436,7 +433,7 @@ impl RpcWithParams for GetAccountInfo {
             .ok_or(Error::InvalidAccountInfo)?;
 
         Ok(Self::ResponseResult {
-            api_version,
+            api_version: CURRENT_API_VERSION,
             account,
             merkle_proof,
         })
@@ -547,7 +544,7 @@ impl DocExample for GetDictionaryItemParams {
 pub struct GetDictionaryItemResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// The key under which the value is stored.
     pub dictionary_key: String,
     /// The stored value.
@@ -573,7 +570,6 @@ impl RpcWithParams for GetDictionaryItem {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
         let dictionary_key = match params.dictionary_identifier {
@@ -602,7 +598,7 @@ impl RpcWithParams for GetDictionaryItem {
             .into_inner();
 
         Ok(Self::ResponseResult {
-            api_version,
+            api_version: CURRENT_API_VERSION,
             dictionary_key: dictionary_key.to_formatted_string(),
             stored_value,
             merkle_proof,
@@ -647,7 +643,7 @@ impl DocExample for QueryGlobalStateParams {
 pub struct QueryGlobalStateResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// The block header if a Block hash was provided.
     pub block_header: Option<BlockHeader>,
     /// The stored value.
@@ -673,7 +669,6 @@ impl RpcWithParams for QueryGlobalState {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
         let (state_root_hash, block_header) =
@@ -687,7 +682,7 @@ impl RpcWithParams for QueryGlobalState {
             .into_inner();
 
         Ok(Self::ResponseResult {
-            api_version,
+            api_version: CURRENT_API_VERSION,
             block_header,
             stored_value,
             merkle_proof,
@@ -728,7 +723,7 @@ impl DocExample for QueryBalanceParams {
 pub struct QueryBalanceResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// The balance represented in motes.
     pub balance: U512,
 }
@@ -750,7 +745,6 @@ impl RpcWithParams for QueryBalance {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
         let (state_root_hash, _) =
@@ -760,7 +754,7 @@ impl RpcWithParams for QueryBalance {
         let balance = common::get_balance(&*node_client, purse, state_root_hash).await?;
 
         Ok(Self::ResponseResult {
-            api_version,
+            api_version: CURRENT_API_VERSION,
             balance: balance.value,
         })
     }
@@ -785,7 +779,7 @@ impl DocExample for GetTrieParams {
 pub struct GetTrieResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// A list of keys read under the specified prefix.
     #[schemars(
         with = "Option<String>",
@@ -811,7 +805,6 @@ impl RpcWithParams for GetTrie {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
         let maybe_trie = node_client
@@ -820,7 +813,7 @@ impl RpcWithParams for GetTrie {
             .map_err(|err| Error::NodeRequest("trie", err))?;
 
         Ok(Self::ResponseResult {
-            api_version,
+            api_version: CURRENT_API_VERSION,
             maybe_trie_bytes: maybe_trie.map(Into::into),
         })
     }

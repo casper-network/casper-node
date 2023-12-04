@@ -7,18 +7,18 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{Deploy, DeployHash, ProtocolVersion, Transaction, TransactionHash};
+use casper_types::{Deploy, DeployHash, Transaction, TransactionHash};
 
 use super::{
-    docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-    ClientError, Error, NodeClient, RpcError, RpcWithParams,
+    docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
+    ApiVersion, ClientError, Error, NodeClient, RpcError, RpcWithParams, CURRENT_API_VERSION,
 };
 
 static PUT_DEPLOY_PARAMS: Lazy<PutDeployParams> = Lazy::new(|| PutDeployParams {
     deploy: Deploy::doc_example().clone(),
 });
 static PUT_DEPLOY_RESULT: Lazy<PutDeployResult> = Lazy::new(|| PutDeployResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_API_VERSION,
     deploy_hash: *Deploy::doc_example().hash(),
 });
 
@@ -26,7 +26,7 @@ static PUT_TRANSACTION_PARAMS: Lazy<PutTransactionParams> = Lazy::new(|| PutTran
     transaction: Transaction::doc_example().clone(),
 });
 static PUT_TRANSACTION_RESULT: Lazy<PutTransactionResult> = Lazy::new(|| PutTransactionResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_API_VERSION,
     transaction_hash: Transaction::doc_example().hash(),
 });
 
@@ -50,7 +50,7 @@ impl DocExample for PutDeployParams {
 pub struct PutDeployResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// The deploy hash.
     pub deploy_hash: DeployHash,
 }
@@ -72,7 +72,6 @@ impl RpcWithParams for PutDeploy {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
         let deploy_hash = *params.deploy.hash();
@@ -81,7 +80,7 @@ impl RpcWithParams for PutDeploy {
             .await
         {
             Ok(()) => Ok(Self::ResponseResult {
-                api_version,
+                api_version: CURRENT_API_VERSION,
                 deploy_hash,
             }),
             Err(ClientError::ReceivedNodeError(err)) => Err(Error::InvalidDeploy(err).into()),
@@ -110,7 +109,7 @@ impl DocExample for PutTransactionParams {
 pub struct PutTransactionResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// The transaction hash.
     pub transaction_hash: TransactionHash,
 }
@@ -132,13 +131,12 @@ impl RpcWithParams for PutTransaction {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
         let transaction_hash = params.transaction.hash();
         match node_client.try_accept_transaction(params.transaction).await {
             Ok(()) => Ok(Self::ResponseResult {
-                api_version,
+                api_version: CURRENT_API_VERSION,
                 transaction_hash,
             }),
             Err(ClientError::ReceivedNodeError(err)) => Err(Error::InvalidTransaction(err).into()),

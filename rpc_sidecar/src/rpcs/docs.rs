@@ -12,8 +12,6 @@ use schemars::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use casper_types::ProtocolVersion;
-
 use super::{
     account::{PutDeploy, PutTransaction},
     chain::{
@@ -24,11 +22,11 @@ use super::{
         GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, GetItem, QueryBalance,
         QueryGlobalState,
     },
-    NodeClient, RpcError, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
+    ApiVersion, NodeClient, RpcError, RpcWithOptionalParams, RpcWithParams, RpcWithoutParams,
+    CURRENT_API_VERSION,
 };
 
-pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
-    ProtocolVersion::from_parts(1, 5, 3);
+pub(crate) const DOCS_EXAMPLE_API_VERSION: ApiVersion = CURRENT_API_VERSION;
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
@@ -43,7 +41,7 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
         url: "https://www.apache.org/licenses/LICENSE-2.0".to_string(),
     };
     let info = OpenRpcInfoField {
-        version: DOCS_EXAMPLE_PROTOCOL_VERSION.to_string(),
+        version: DOCS_EXAMPLE_API_VERSION.to_string(),
         title: "Client API of Casper Node".to_string(),
         description: "This describes the JSON-RPC 2.0 API of a node on the Casper network."
             .to_string(),
@@ -119,7 +117,7 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     schema
 });
 static LIST_RPCS_RESULT: Lazy<ListRpcsResult> = Lazy::new(|| ListRpcsResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_API_VERSION,
     name: "OpenRPC Schema".to_string(),
     schema: OPEN_RPC_SCHEMA.clone(),
 });
@@ -433,7 +431,7 @@ struct Components {
 pub struct ListRpcsResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    api_version: ProtocolVersion,
+    api_version: ApiVersion,
     name: String,
     /// The list of supported RPCs.
     #[schemars(skip)]
@@ -458,7 +456,6 @@ impl RpcWithoutParams for ListRpcs {
 
     async fn do_handle_request(
         _node_client: Arc<dyn NodeClient>,
-        _api_version: ProtocolVersion,
     ) -> Result<Self::ResponseResult, RpcError> {
         Ok(ListRpcsResult::doc_example().clone())
     }
@@ -546,7 +543,7 @@ mod tests {
             url: "https://www.apache.org/licenses/LICENSE-2.0".to_string(),
         };
         let info = OpenRpcInfoField {
-            version: DOCS_EXAMPLE_PROTOCOL_VERSION.to_string(),
+            version: DOCS_EXAMPLE_API_VERSION.to_string(),
             title: "Client API of Casper Node".to_string(),
             description: "This describes the JSON-RPC 2.0 API of a node on the Casper network."
                 .to_string(),

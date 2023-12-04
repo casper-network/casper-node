@@ -3,7 +3,6 @@ use std::sync::Arc;
 use hyper::server::{conn::AddrIncoming, Builder};
 
 use casper_json_rpc::{CorsOrigin, RequestHandlersBuilder};
-use casper_types::ProtocolVersion;
 
 use crate::{
     rpcs::info::{GetPeers, GetStatus},
@@ -33,33 +32,32 @@ pub const RPC_API_SERVER_NAME: &str = "JSON RPC";
 pub async fn run(
     node: Arc<dyn NodeClient>,
     builder: Builder<AddrIncoming>,
-    api_version: ProtocolVersion,
     qps_limit: u64,
     max_body_bytes: u32,
     cors_origin: String,
 ) {
     let mut handlers = RequestHandlersBuilder::new();
-    PutDeploy::register_as_handler(node.clone(), api_version, &mut handlers);
-    PutTransaction::register_as_handler(node.clone(), api_version, &mut handlers);
-    GetBlock::register_as_handler(node.clone(), api_version, &mut handlers);
-    GetBlockTransfers::register_as_handler(node.clone(), api_version, &mut handlers);
-    GetStateRootHash::register_as_handler(node.clone(), api_version, &mut handlers);
-    GetItem::register_as_handler(node.clone(), api_version, &mut handlers);
-    QueryGlobalState::register_as_handler(node.clone(), api_version, &mut handlers);
-    GetBalance::register_as_handler(node.clone(), api_version, &mut handlers);
-    GetAccountInfo::register_as_handler(node.clone(), api_version, &mut handlers);
-    GetDeploy::register_as_handler(node.clone(), api_version, &mut handlers);
-    GetPeers::register_as_handler(node.clone(), api_version, &mut handlers);
-    GetStatus::register_as_handler(node.clone(), api_version, &mut handlers);
-    GetEraInfoBySwitchBlock::register_as_handler(node.clone(), api_version, &mut handlers);
-    GetEraSummary::register_as_handler(node.clone(), api_version, &mut handlers);
-    GetAuctionInfo::register_as_handler(node.clone(), api_version, &mut handlers);
-    GetTrie::register_as_handler(node.clone(), api_version, &mut handlers);
-    GetValidatorChanges::register_as_handler(node.clone(), api_version, &mut handlers);
-    ListRpcs::register_as_handler(node.clone(), api_version, &mut handlers);
-    GetDictionaryItem::register_as_handler(node.clone(), api_version, &mut handlers);
-    GetChainspec::register_as_handler(node.clone(), api_version, &mut handlers);
-    QueryBalance::register_as_handler(node, api_version, &mut handlers);
+    PutDeploy::register_as_handler(node.clone(), &mut handlers);
+    PutTransaction::register_as_handler(node.clone(), &mut handlers);
+    GetBlock::register_as_handler(node.clone(), &mut handlers);
+    GetBlockTransfers::register_as_handler(node.clone(), &mut handlers);
+    GetStateRootHash::register_as_handler(node.clone(), &mut handlers);
+    GetItem::register_as_handler(node.clone(), &mut handlers);
+    QueryGlobalState::register_as_handler(node.clone(), &mut handlers);
+    GetBalance::register_as_handler(node.clone(), &mut handlers);
+    GetAccountInfo::register_as_handler(node.clone(), &mut handlers);
+    GetDeploy::register_as_handler(node.clone(), &mut handlers);
+    GetPeers::register_as_handler(node.clone(), &mut handlers);
+    GetStatus::register_as_handler(node.clone(), &mut handlers);
+    GetEraInfoBySwitchBlock::register_as_handler(node.clone(), &mut handlers);
+    GetEraSummary::register_as_handler(node.clone(), &mut handlers);
+    GetAuctionInfo::register_as_handler(node.clone(), &mut handlers);
+    GetTrie::register_as_handler(node.clone(), &mut handlers);
+    GetValidatorChanges::register_as_handler(node.clone(), &mut handlers);
+    ListRpcs::register_as_handler(node.clone(), &mut handlers);
+    GetDictionaryItem::register_as_handler(node.clone(), &mut handlers);
+    GetChainspec::register_as_handler(node.clone(), &mut handlers);
+    QueryBalance::register_as_handler(node, &mut handlers);
     let handlers = handlers.build();
 
     match cors_origin.as_str() {

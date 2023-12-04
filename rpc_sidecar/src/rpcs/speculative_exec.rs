@@ -8,15 +8,14 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    contract_messages::Messages, execution::ExecutionResultV2, BlockHash, Deploy, ProtocolVersion,
-    Transaction,
+    contract_messages::Messages, execution::ExecutionResultV2, BlockHash, Deploy, Transaction,
 };
 
 use super::{
     chain::BlockIdentifier,
     common,
-    docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-    Error, NodeClient, RpcError, RpcWithParams,
+    docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
+    ApiVersion, Error, NodeClient, RpcError, RpcWithParams, CURRENT_API_VERSION,
 };
 
 static SPECULATIVE_EXEC_TXN_PARAMS: Lazy<SpeculativeExecTxnParams> =
@@ -26,7 +25,7 @@ static SPECULATIVE_EXEC_TXN_PARAMS: Lazy<SpeculativeExecTxnParams> =
     });
 static SPECULATIVE_EXEC_TXN_RESULT: Lazy<SpeculativeExecTxnResult> =
     Lazy::new(|| SpeculativeExecTxnResult {
-        api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+        api_version: DOCS_EXAMPLE_API_VERSION,
         block_hash: *BlockHash::example(),
         execution_result: ExecutionResultV2::example().clone(),
         messages: Vec::new(),
@@ -58,7 +57,7 @@ impl DocExample for SpeculativeExecTxnParams {
 pub struct SpeculativeExecTxnResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// Hash of the block on top of which the transaction was executed.
     pub block_hash: BlockHash,
     /// Result of the execution.
@@ -84,16 +83,9 @@ impl RpcWithParams for SpeculativeExecTxn {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
-        handle_request(
-            node_client,
-            api_version,
-            params.block_identifier,
-            params.transaction,
-        )
-        .await
+        handle_request(node_client, params.block_identifier, params.transaction).await
     }
 }
 
@@ -124,22 +116,14 @@ impl RpcWithParams for SpeculativeExec {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
-        handle_request(
-            node_client,
-            api_version,
-            params.block_identifier,
-            Transaction::from(params.deploy),
-        )
-        .await
+        handle_request(node_client, params.block_identifier, params.deploy.into()).await
     }
 }
 
 async fn handle_request(
     node_client: Arc<dyn NodeClient>,
-    api_version: ProtocolVersion,
     identifier: Option<BlockIdentifier>,
     transaction: Transaction,
 ) -> Result<SpeculativeExecTxnResult, RpcError> {
@@ -165,7 +149,7 @@ async fn handle_request(
         .ok_or(Error::SpecExecReturnedNothing)?;
 
     Ok(SpeculativeExecTxnResult {
-        api_version,
+        api_version: CURRENT_API_VERSION,
         block_hash,
         execution_result,
         messages,

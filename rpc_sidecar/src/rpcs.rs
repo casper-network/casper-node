@@ -1,6 +1,6 @@
 //! The set of JSON-RPCs which the API server handles.
 
-use std::convert::Infallible;
+use std::convert::{Infallible, TryFrom};
 
 pub mod account;
 pub mod chain;
@@ -12,13 +12,15 @@ pub mod info;
 pub mod speculative_exec;
 pub mod state;
 
+use std::fmt;
 use std::{str, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use http::header::ACCEPT_ENCODING;
 use hyper::server::{conn::AddrIncoming, Builder};
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::de::Error as SerdeError;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use tokio::sync::oneshot;
 use tower::ServiceBuilder;
@@ -29,7 +31,7 @@ use casper_json_rpc::{
     CorsOrigin, Error as RpcError, Params, RequestHandlers, RequestHandlersBuilder,
     ReservedErrorCode,
 };
-use casper_types::ProtocolVersion;
+use casper_types::SemVer;
 
 pub use common::ErrorData;
 use docs::DocExample;
@@ -37,6 +39,8 @@ pub use error::Error;
 pub use error_code::ErrorCode;
 
 use crate::{ClientError, NodeClient};
+
+pub const CURRENT_API_VERSION: ApiVersion = ApiVersion(SemVer::new(1, 5, 5));
 
 /// This setting causes the server to ignore extra fields in JSON-RPC requests other than the
 /// standard 'id', 'jsonrpc', 'method', and 'params' fields.
@@ -90,14 +94,13 @@ pub(super) trait RpcWithParams {
     /// `Self::METHOD`.
     fn register_as_handler(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         handlers_builder: &mut RequestHandlersBuilder,
     ) {
         let handler = move |maybe_params| {
             let node_client = Arc::clone(&node_client);
             async move {
                 let params = Self::try_parse_params(maybe_params)?;
-                Self::do_handle_request(node_client, api_version, params).await
+                Self::do_handle_request(node_client, params).await
             }
         };
         handlers_builder.register_handler(Self::METHOD, Arc::new(handler))
@@ -116,7 +119,6 @@ pub(super) trait RpcWithParams {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError>;
 }
@@ -152,14 +154,13 @@ pub(super) trait RpcWithoutParams {
     /// `Self::METHOD`.
     fn register_as_handler(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         handlers_builder: &mut RequestHandlersBuilder,
     ) {
         let handler = move |maybe_params| {
             let node_client = Arc::clone(&node_client);
             async move {
                 Self::check_no_params(maybe_params)?;
-                Self::do_handle_request(node_client.clone(), api_version).await
+                Self::do_handle_request(node_client.clone()).await
             }
         };
         handlers_builder.register_handler(Self::METHOD, Arc::new(handler))
@@ -177,7 +178,6 @@ pub(super) trait RpcWithoutParams {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
     ) -> Result<Self::ResponseResult, RpcError>;
 }
 
@@ -235,14 +235,13 @@ pub(super) trait RpcWithOptionalParams {
     /// `Self::METHOD`.
     fn register_as_handler(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         handlers_builder: &mut RequestHandlersBuilder,
     ) {
         let handler = move |maybe_params| {
             let node_client = Arc::clone(&node_client);
             async move {
                 let params = Self::try_parse_params(maybe_params)?;
-                Self::do_handle_request(node_client, api_version, params).await
+                Self::do_handle_request(node_client, params).await
             }
         };
         handlers_builder.register_handler(Self::METHOD, Arc::new(handler))
@@ -261,7 +260,6 @@ pub(super) trait RpcWithOptionalParams {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError>;
 }
@@ -354,6 +352,38 @@ pub(super) async fn run(
     let _ = tokio::spawn(server_with_shutdown).await;
     let _ = shutdown_sender.send(());
     info!("{} server shut down", server_name);
+}
+
+#[derive(Copy, Clone, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ApiVersion(SemVer);
+
+impl Serialize for ApiVersion {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            let str = format!("{}.{}.{}", self.0.major, self.0.minor, self.0.patch);
+            String::serialize(&str, serializer)
+        } else {
+            self.0.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ApiVersion {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let semver = if deserializer.is_human_readable() {
+            let value_as_string = String::deserialize(deserializer)?;
+            SemVer::try_from(value_as_string.as_str()).map_err(SerdeError::custom)?
+        } else {
+            SemVer::deserialize(deserializer)?
+        };
+        Ok(ApiVersion(semver))
+    }
+}
+
+impl fmt::Display for ApiVersion {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
 }
 
 #[cfg(test)]

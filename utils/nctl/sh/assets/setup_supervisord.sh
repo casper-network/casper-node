@@ -69,7 +69,7 @@ stdout_logfile_maxbytes=500MB ;
 [program:casper-net-$NET_ID-sidecar-$NODE_ID]
 autostart=false
 autorestart=false
-command=$PATH_NODE_BIN/$NODE_PROTOCOL_VERSION/casper-rpc-sidecar $PATH_NODE_CONFIG/$NODE_PROTOCOL_VERSION/sidecar.toml 1.2.3
+command=$PATH_NODE_BIN/$NODE_PROTOCOL_VERSION/casper-rpc-sidecar $PATH_NODE_CONFIG/$NODE_PROTOCOL_VERSION/sidecar.toml
 environment=CASPER_BIN_DIR="$PATH_NODE_BIN",CASPER_CONFIG_DIR="$PATH_NODE_CONFIG"
 numprocs=1
 numprocs_start=0

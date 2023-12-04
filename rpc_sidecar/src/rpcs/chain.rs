@@ -16,8 +16,8 @@ use casper_types::{
 
 use super::{
     common,
-    docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-    Error, NodeClient, RpcError, RpcWithOptionalParams,
+    docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
+    ApiVersion, Error, NodeClient, RpcError, RpcWithOptionalParams, CURRENT_API_VERSION,
 };
 pub use era_summary::EraSummary;
 use era_summary::ERA_SUMMARY;
@@ -26,7 +26,7 @@ static GET_BLOCK_PARAMS: Lazy<GetBlockParams> = Lazy::new(|| GetBlockParams {
     block_identifier: BlockIdentifier::Hash(*JsonBlockWithSignatures::example().block.hash()),
 });
 static GET_BLOCK_RESULT: Lazy<GetBlockResult> = Lazy::new(|| GetBlockResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_API_VERSION,
     block_with_signatures: Some(JsonBlockWithSignatures::example().clone()),
 });
 static GET_BLOCK_TRANSFERS_PARAMS: Lazy<GetBlockTransfersParams> =
@@ -35,7 +35,7 @@ static GET_BLOCK_TRANSFERS_PARAMS: Lazy<GetBlockTransfersParams> =
     });
 static GET_BLOCK_TRANSFERS_RESULT: Lazy<GetBlockTransfersResult> =
     Lazy::new(|| GetBlockTransfersResult {
-        api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+        api_version: DOCS_EXAMPLE_API_VERSION,
         block_hash: Some(*BlockHash::example()),
         transfers: Some(vec![Transfer::default()]),
     });
@@ -45,21 +45,21 @@ static GET_STATE_ROOT_HASH_PARAMS: Lazy<GetStateRootHashParams> =
     });
 static GET_STATE_ROOT_HASH_RESULT: Lazy<GetStateRootHashResult> =
     Lazy::new(|| GetStateRootHashResult {
-        api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+        api_version: DOCS_EXAMPLE_API_VERSION,
         state_root_hash: Some(*BlockHeaderV2::example().state_root_hash()),
     });
 static GET_ERA_INFO_PARAMS: Lazy<GetEraInfoParams> = Lazy::new(|| GetEraInfoParams {
     block_identifier: BlockIdentifier::Hash(ERA_SUMMARY.block_hash),
 });
 static GET_ERA_INFO_RESULT: Lazy<GetEraInfoResult> = Lazy::new(|| GetEraInfoResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_API_VERSION,
     era_summary: Some(ERA_SUMMARY.clone()),
 });
 static GET_ERA_SUMMARY_PARAMS: Lazy<GetEraSummaryParams> = Lazy::new(|| GetEraSummaryParams {
     block_identifier: BlockIdentifier::Hash(ERA_SUMMARY.block_hash),
 });
 static GET_ERA_SUMMARY_RESULT: Lazy<GetEraSummaryResult> = Lazy::new(|| GetEraSummaryResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_API_VERSION,
     era_summary: ERA_SUMMARY.clone(),
 });
 
@@ -128,7 +128,7 @@ impl DocExample for GetBlockParams {
 pub struct GetBlockResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// The block, if found.
     pub block_with_signatures: Option<JsonBlockWithSignatures>,
 }
@@ -150,7 +150,6 @@ impl RpcWithOptionalParams for GetBlock {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
         let identifier = maybe_params.map(|params| params.block_identifier);
@@ -158,7 +157,7 @@ impl RpcWithOptionalParams for GetBlock {
             .await?
             .into_inner();
         Ok(Self::ResponseResult {
-            api_version,
+            api_version: CURRENT_API_VERSION,
             block_with_signatures: Some(JsonBlockWithSignatures::new(block, Some(signatures))),
         })
     }
@@ -184,7 +183,7 @@ impl DocExample for GetBlockTransfersParams {
 pub struct GetBlockTransfersResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// The block hash, if found.
     pub block_hash: Option<BlockHash>,
     /// The block's transfers, if found.
@@ -201,7 +200,7 @@ impl GetBlockTransfersResult {
         transfers: Option<Vec<Transfer>>,
     ) -> Self {
         GetBlockTransfersResult {
-            api_version,
+            api_version: CURRENT_API_VERSION,
             block_hash,
             transfers,
         }
@@ -225,7 +224,6 @@ impl RpcWithOptionalParams for GetBlockTransfers {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
         let identifier = maybe_params.map(|params| params.block_identifier);
@@ -235,7 +233,7 @@ impl RpcWithOptionalParams for GetBlockTransfers {
             .await
             .map_err(|err| Error::NodeRequest("block transfers", err))?;
         Ok(Self::ResponseResult {
-            api_version,
+            api_version: CURRENT_API_VERSION,
             block_hash: Some(*signed_block.block().hash()),
             transfers,
         })
@@ -262,7 +260,7 @@ impl DocExample for GetStateRootHashParams {
 pub struct GetStateRootHashResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// Hex-encoded hash of the state root.
     pub state_root_hash: Option<Digest>,
 }
@@ -284,13 +282,12 @@ impl RpcWithOptionalParams for GetStateRootHash {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
         let identifier = maybe_params.map(|params| params.block_identifier);
         let signed_block = common::get_signed_block(&*node_client, identifier).await?;
         Ok(Self::ResponseResult {
-            api_version,
+            api_version: CURRENT_API_VERSION,
             state_root_hash: Some(*signed_block.block().state_root_hash()),
         })
     }
@@ -316,7 +313,7 @@ impl DocExample for GetEraInfoParams {
 pub struct GetEraInfoResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// The era summary.
     pub era_summary: Option<EraSummary>,
 }
@@ -338,7 +335,6 @@ impl RpcWithOptionalParams for GetEraInfoBySwitchBlock {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
         let identifier = maybe_params.map(|params| params.block_identifier);
@@ -350,7 +346,7 @@ impl RpcWithOptionalParams for GetEraInfoBySwitchBlock {
         };
 
         Ok(Self::ResponseResult {
-            api_version,
+            api_version: CURRENT_API_VERSION,
             era_summary,
         })
     }
@@ -376,7 +372,7 @@ impl DocExample for GetEraSummaryParams {
 pub struct GetEraSummaryResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// The era summary.
     pub era_summary: EraSummary,
 }
@@ -398,7 +394,6 @@ impl RpcWithOptionalParams for GetEraSummary {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
         let identifier = maybe_params.map(|params| params.block_identifier);
@@ -406,7 +401,7 @@ impl RpcWithOptionalParams for GetEraSummary {
         let era_summary = get_era_summary_by_block(node_client, signed_block.block()).await?;
 
         Ok(Self::ResponseResult {
-            api_version,
+            api_version: CURRENT_API_VERSION,
             era_summary,
         })
     }

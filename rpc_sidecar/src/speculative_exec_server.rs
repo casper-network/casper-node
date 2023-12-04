@@ -3,7 +3,6 @@ use std::sync::Arc;
 use hyper::server::{conn::AddrIncoming, Builder};
 
 use casper_json_rpc::{CorsOrigin, RequestHandlersBuilder};
-use casper_types::ProtocolVersion;
 
 use crate::{
     node_client::NodeClient,
@@ -22,14 +21,13 @@ pub const SPECULATIVE_EXEC_SERVER_NAME: &str = "speculative execution";
 pub async fn run(
     node: Arc<dyn NodeClient>,
     builder: Builder<AddrIncoming>,
-    api_version: ProtocolVersion,
     qps_limit: u64,
     max_body_bytes: u32,
     cors_origin: String,
 ) {
     let mut handlers = RequestHandlersBuilder::new();
-    SpeculativeExecTxn::register_as_handler(node.clone(), api_version, &mut handlers);
-    SpeculativeExec::register_as_handler(node, api_version, &mut handlers);
+    SpeculativeExecTxn::register_as_handler(node.clone(), &mut handlers);
+    SpeculativeExec::register_as_handler(node, &mut handlers);
     let handlers = handlers.build();
 
     match cors_origin.as_str() {

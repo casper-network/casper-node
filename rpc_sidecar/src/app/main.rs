@@ -13,7 +13,6 @@ use casper_rpc_sidecar::{
     run_rpc_server, run_speculative_exec_server, JulietNodeClient, NodeClient, RpcConfig,
     SpeculativeExecConfig,
 };
-use casper_types::ProtocolVersion;
 use config::Config;
 
 use hyper::{
@@ -67,16 +66,11 @@ async fn run_all(opts: &Cli) -> anyhow::Result<()> {
     let (node_client, client_loop) = JulietNodeClient::new(&config.node_client).await;
     let node_client: Arc<dyn NodeClient> = Arc::new(node_client);
 
-    let rpc_server = run_rpc(
-        &config.rpc_server,
-        opts.protocol_version,
-        Arc::clone(&node_client),
-    );
+    let rpc_server = run_rpc(&config.rpc_server, Arc::clone(&node_client));
 
     let spec_exec_server = if let Some(spec_exec_config) = config.speculative_exec_server.as_ref() {
         Box::pin(run_speculative_exec(
             spec_exec_config,
-            opts.protocol_version,
             Arc::clone(&node_client),
         )) as Pin<Box<dyn Future<Output = anyhow::Result<()>>>>
     } else {
@@ -88,15 +82,10 @@ async fn run_all(opts: &Cli) -> anyhow::Result<()> {
     rpc_result.and(spec_exec_result)
 }
 
-async fn run_rpc(
-    config: &RpcConfig,
-    version: ProtocolVersion,
-    node_client: Arc<dyn NodeClient>,
-) -> anyhow::Result<()> {
+async fn run_rpc(config: &RpcConfig, node_client: Arc<dyn NodeClient>) -> anyhow::Result<()> {
     run_rpc_server(
         node_client,
         start_listening(&config.address)?,
-        version,
         config.qps_limit,
         config.max_body_bytes,
         config.cors_origin.clone(),
@@ -107,13 +96,11 @@ async fn run_rpc(
 
 async fn run_speculative_exec(
     config: &SpeculativeExecConfig,
-    version: ProtocolVersion,
     node_client: Arc<dyn NodeClient>,
 ) -> anyhow::Result<()> {
     run_speculative_exec_server(
         node_client,
         start_listening(&config.address)?,
-        version,
         config.qps_limit,
         config.max_body_bytes,
         config.cors_origin.clone(),
@@ -229,7 +216,4 @@ fn init_logging() -> anyhow::Result<()> {
 pub struct Cli {
     /// Path to configuration file.
     config: PathBuf,
-    // TODO: this is here temporarily, it should be requested from the node
-    /// Version of the protocol.
-    protocol_version: ProtocolVersion,
 }

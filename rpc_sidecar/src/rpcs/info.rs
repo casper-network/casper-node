@@ -19,8 +19,8 @@ use tracing::warn;
 use super::{
     chain::BlockIdentifier,
     common,
-    docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-    Error, NodeClient, RpcError, RpcWithParams, RpcWithoutParams,
+    docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
+    ApiVersion, Error, NodeClient, RpcError, RpcWithParams, RpcWithoutParams, CURRENT_API_VERSION,
 };
 
 static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
@@ -28,7 +28,7 @@ static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
     finalized_approvals: true,
 });
 static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_API_VERSION,
     deploy: Deploy::doc_example().clone(),
     execution_info: Some(ExecutionInfo {
         block_hash: *Block::example().hash(),
@@ -41,7 +41,7 @@ static GET_TRANSACTION_PARAMS: Lazy<GetTransactionParams> = Lazy::new(|| GetTran
     finalized_approvals: true,
 });
 static GET_TRANSACTION_RESULT: Lazy<GetTransactionResult> = Lazy::new(|| GetTransactionResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_API_VERSION,
     transaction: Transaction::doc_example().clone(),
     execution_info: Some(ExecutionInfo {
         block_hash: *Block::example().hash(),
@@ -50,7 +50,7 @@ static GET_TRANSACTION_RESULT: Lazy<GetTransactionResult> = Lazy::new(|| GetTran
     }),
 });
 static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_API_VERSION,
     peers: Some(("tls:0101..0101".to_owned(), "127.0.0.1:54321".to_owned()))
         .into_iter()
         .collect::<BTreeMap<_, _>>()
@@ -61,18 +61,18 @@ static GET_VALIDATOR_CHANGES_RESULT: Lazy<GetValidatorChangesResult> = Lazy::new
     let public_key = PublicKey::example().clone();
     let changes = vec![JsonValidatorChanges::new(public_key, vec![change])];
     GetValidatorChangesResult {
-        api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+        api_version: DOCS_EXAMPLE_API_VERSION,
         changes,
     }
 });
 static GET_CHAINSPEC_RESULT: Lazy<GetChainspecResult> = Lazy::new(|| GetChainspecResult {
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_API_VERSION,
     chainspec_bytes: ChainspecRawBytes::new(vec![42, 42].into(), None, None),
 });
 
 static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| GetStatusResult {
     peers: GET_PEERS_RESULT.peers.clone(),
-    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    api_version: DOCS_EXAMPLE_API_VERSION,
     chainspec_name: String::from("casper-example"),
     starting_state_root_hash: Digest::default(),
     last_added_block_info: Some(MinimalBlockInfo::from(Block::example().clone())),
@@ -125,7 +125,7 @@ impl DocExample for GetDeployParams {
 pub struct GetDeployResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// The deploy.
     pub deploy: Deploy,
     /// Execution info, if available.
@@ -150,7 +150,6 @@ impl RpcWithParams for GetDeploy {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
         let hash = TransactionHash::from(params.deploy_hash);
@@ -175,7 +174,7 @@ impl RpcWithParams for GetDeploy {
         let execution_info = common::get_transaction_execution_info(&*node_client, hash).await?;
 
         Ok(Self::ResponseResult {
-            api_version,
+            api_version: CURRENT_API_VERSION,
             deploy,
             execution_info,
         })
@@ -207,7 +206,7 @@ impl DocExample for GetTransactionParams {
 pub struct GetTransactionResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// The transaction.
     pub transaction: Transaction,
     /// Execution info, if available.
@@ -232,7 +231,6 @@ impl RpcWithParams for GetTransaction {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
         let (transaction, approvals) =
@@ -265,7 +263,7 @@ impl RpcWithParams for GetTransaction {
 
         Ok(Self::ResponseResult {
             transaction,
-            api_version,
+            api_version: CURRENT_API_VERSION,
             execution_info,
         })
     }
@@ -277,7 +275,7 @@ impl RpcWithParams for GetTransaction {
 pub struct GetPeersResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// The node ID and network address of each connected peer.
     pub peers: Peers,
 }
@@ -298,13 +296,15 @@ impl RpcWithoutParams for GetPeers {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
     ) -> Result<Self::ResponseResult, RpcError> {
         let peers = node_client
             .read_peers()
             .await
             .map_err(|err| Error::NodeRequest("peers", err))?;
-        Ok(Self::ResponseResult { api_version, peers })
+        Ok(Self::ResponseResult {
+            api_version: CURRENT_API_VERSION,
+            peers,
+        })
     }
 }
 
@@ -355,16 +355,13 @@ impl JsonValidatorChanges {
 pub struct GetValidatorChangesResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// The validators' status changes.
     pub changes: Vec<JsonValidatorChanges>,
 }
 
 impl GetValidatorChangesResult {
-    pub(crate) fn new(
-        api_version: ProtocolVersion,
-        changes: BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>,
-    ) -> Self {
+    pub(crate) fn new(changes: BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>) -> Self {
         let changes = changes
             .into_iter()
             .map(|(public_key, mut validator_changes)| {
@@ -379,7 +376,7 @@ impl GetValidatorChangesResult {
             })
             .collect();
         GetValidatorChangesResult {
-            api_version,
+            api_version: CURRENT_API_VERSION,
             changes,
         }
     }
@@ -401,13 +398,12 @@ impl RpcWithoutParams for GetValidatorChanges {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
     ) -> Result<Self::ResponseResult, RpcError> {
         let changes = node_client
             .read_validator_changes()
             .await
             .map_err(|err| Error::NodeRequest("validator changes", err))?;
-        Ok(Self::ResponseResult::new(api_version, changes.into()))
+        Ok(Self::ResponseResult::new(changes.into()))
     }
 }
 
@@ -416,7 +412,7 @@ impl RpcWithoutParams for GetValidatorChanges {
 pub struct GetChainspecResult {
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// The chainspec file bytes.
     pub chainspec_bytes: ChainspecRawBytes,
 }
@@ -437,7 +433,6 @@ impl RpcWithoutParams for GetChainspec {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
     ) -> Result<Self::ResponseResult, RpcError> {
         let chainspec_bytes = node_client
             .read_chainspec_bytes()
@@ -445,7 +440,7 @@ impl RpcWithoutParams for GetChainspec {
             .map_err(|err| Error::NodeRequest("chainspec bytes", err))?;
 
         Ok(Self::ResponseResult {
-            api_version,
+            api_version: CURRENT_API_VERSION,
             chainspec_bytes,
         })
     }
@@ -459,7 +454,7 @@ pub struct GetStatusResult {
     pub peers: Peers,
     /// The RPC API version.
     #[schemars(with = "String")]
-    pub api_version: ProtocolVersion,
+    pub api_version: ApiVersion,
     /// The compiled node version.
     pub build_version: String,
     /// The chainspec name.
@@ -532,7 +527,6 @@ impl RpcWithoutParams for GetStatus {
 
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
-        api_version: ProtocolVersion,
     ) -> Result<Self::ResponseResult, RpcError> {
         let uptime = node_client
             .read_uptime()
@@ -602,7 +596,7 @@ impl RpcWithoutParams for GetStatus {
 
         Ok(Self::ResponseResult {
             peers,
-            api_version,
+            api_version: CURRENT_API_VERSION,
             chainspec_name: network_name,
             starting_state_root_hash: *lowest_block_header.state_root_hash(),
             last_added_block_info: last_added_block.map(Into::into),
