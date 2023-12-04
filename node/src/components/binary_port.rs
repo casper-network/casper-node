@@ -439,11 +439,11 @@ where
                         let error_code = binary_port::ErrorCode::RootNotFound;
                         BinaryResponse::new_error(error_code, temporarily_cloned_req)
                     }
-                    Ok(query_result) => {
+                    Ok(_) => {
                         let error_code = binary_port::ErrorCode::QueryFailed;
                         BinaryResponse::new_error(error_code, temporarily_cloned_req)
                     }
-                    Err(error) => {
+                    Err(_) => {
                         let error_code = binary_port::ErrorCode::QueryFailedToExecute;
                         BinaryResponse::new_error(error_code, temporarily_cloned_req)
                     }
