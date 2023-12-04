@@ -12,7 +12,7 @@ use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contract_messages::Messages,
     execution::ExecutionResultV2,
-    EraId, PublicKey, Timestamp, ValidatorChange,
+    EraId, PublicKey, StoredValue, Timestamp, ValidatorChange,
 };
 
 /// Type representing uptime.
@@ -184,5 +184,26 @@ impl FromBytes for GetTrieFullResult {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (inner, remainder) = FromBytes::from_bytes(bytes)?;
         Ok((GetTrieFullResult(inner), remainder))
+    }
+}
+
+/// Type representing successful result of GetAllValues request.
+#[derive(Debug)]
+pub struct StoredValues(pub Vec<StoredValue>);
+
+impl ToBytes for StoredValues {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for StoredValues {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (inner, remainder) = FromBytes::from_bytes(bytes)?;
+        Ok((StoredValues(inner), remainder))
     }
 }

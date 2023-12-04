@@ -15,7 +15,7 @@ use super::{
     global_state::GlobalStateQueryResult,
     type_wrappers::{
         ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
-        LastProgress, NetworkName, SpeculativeExecutionResult,
+        LastProgress, NetworkName, SpeculativeExecutionResult, StoredValues,
     },
 };
 
@@ -86,7 +86,7 @@ pub enum PayloadType {
     /// Result of querying global state,
     GlobalStateQueryResult,
     /// Result of querying global state for all values under a specified key.
-    GetAllValuesResult,
+    StoredValues,
     /// Result of querying global state for a full trie.
     GetTrieFullResult,
 }
@@ -127,7 +127,7 @@ impl fmt::Display for PayloadType {
             }
             PayloadType::SpeculativeExecutionResult => write!(f, "SpeculativeExecutionResult"),
             PayloadType::GlobalStateQueryResult => write!(f, "GlobalStateQueryResult"),
-            PayloadType::GetAllValuesResult => write!(f, "GetAllValuesResult"),
+            PayloadType::StoredValues => write!(f, "StoredValues"),
             PayloadType::GetTrieFullResult => write!(f, "GetTrieFullResult"),
         }
     }
@@ -262,9 +262,9 @@ impl From<GlobalStateQueryResult> for PayloadType {
     }
 }
 
-impl From<GetAllValuesResult> for PayloadType {
-    fn from(_: GetAllValuesResult) -> Self {
-        Self::GetAllValuesResult
+impl From<StoredValues> for PayloadType {
+    fn from(_: StoredValues) -> Self {
+        Self::StoredValues
     }
 }
 
@@ -305,7 +305,7 @@ const CHAINSPEC_RAW_BYTES_TAG: u8 = 27;
 const HIGHEST_BLOCK_SEQUENCE_CHECK_RESULT_TAG: u8 = 28;
 const SPECULATIVE_EXECUTION_RESULT_TAG: u8 = 29;
 const GLOBAL_STATE_QUERY_RESULT_TAG: u8 = 30;
-const GET_ALL_VALUES_RESULT_TAG: u8 = 31;
+const STORED_VALUES_TAG: u8 = 31;
 const GET_TRIE_FULL_RESULT_TAG: u8 = 32;
 
 impl ToBytes for PayloadType {
@@ -348,7 +348,7 @@ impl ToBytes for PayloadType {
             PayloadType::HighestBlockSequenceCheckResult => HIGHEST_BLOCK_SEQUENCE_CHECK_RESULT_TAG,
             PayloadType::SpeculativeExecutionResult => SPECULATIVE_EXECUTION_RESULT_TAG,
             PayloadType::GlobalStateQueryResult => GLOBAL_STATE_QUERY_RESULT_TAG,
-            PayloadType::GetAllValuesResult => GET_ALL_VALUES_RESULT_TAG,
+            PayloadType::StoredValues => STORED_VALUES_TAG,
             PayloadType::GetTrieFullResult => GET_TRIE_FULL_RESULT_TAG,
         }
         .write_bytes(writer)
@@ -393,7 +393,7 @@ impl FromBytes for PayloadType {
             HIGHEST_BLOCK_SEQUENCE_CHECK_RESULT_TAG => PayloadType::HighestBlockSequenceCheckResult,
             SPECULATIVE_EXECUTION_RESULT_TAG => PayloadType::SpeculativeExecutionResult,
             GLOBAL_STATE_QUERY_RESULT_TAG => PayloadType::GlobalStateQueryResult,
-            GET_ALL_VALUES_RESULT_TAG => PayloadType::GetAllValuesResult,
+            STORED_VALUES_TAG => PayloadType::StoredValues,
             GET_TRIE_FULL_RESULT_TAG => PayloadType::GetTrieFullResult,
             _ => return Err(bytesrepr::Error::Formatting),
         };

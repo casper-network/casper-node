@@ -308,6 +308,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             }
         };
         let bids = bid_stored_values
+            .0
             .into_iter()
             .map(|bid| bid.into_bid_kind().ok_or(Error::InvalidAuctionBids))
             .collect::<Result<Vec<_>, Error>>()?;

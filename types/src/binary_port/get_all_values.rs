@@ -1,10 +1,9 @@
 //! Types for the `State::AllValues` request.
 
-use crate::{
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    StoredValue,
-};
+use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 use alloc::vec::Vec;
+
+use super::type_wrappers::StoredValues;
 
 const ROOT_NOT_FOUND_TAG: u8 = 0;
 const SUCCESS_TAG: u8 = 1;
@@ -17,7 +16,7 @@ pub enum GetAllValuesResult {
     /// Contains values returned from the global state.
     Success {
         /// Current values.
-        values: Vec<StoredValue>,
+        values: StoredValues,
     },
 }
 

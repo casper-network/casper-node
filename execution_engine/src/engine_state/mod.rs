@@ -49,7 +49,7 @@ use casper_storage::{
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{AssociatedKeys, MessageTopics, NamedKeys},
-    binary_port::get_all_values::GetAllValuesResult,
+    binary_port::{get_all_values::GetAllValuesResult, type_wrappers::StoredValues},
     bytesrepr::ToBytes,
     execution::Effects,
     package::{EntityVersions, Groups, PackageKind, PackageKindTag, PackageStatus},
@@ -2237,7 +2237,9 @@ where
             // TODO[RC]: Do not ignore errors here?
             .filter_map(|key| tracking_copy.get(key).ok().flatten())
             .collect();
-        Ok(GetAllValuesResult::Success { values })
+        Ok(GetAllValuesResult::Success {
+            values: StoredValues(values),
+        })
     }
 
     /// Gets current bids from the auction system.

@@ -18,6 +18,7 @@ use casper_types::{
         binary_request::BinaryRequest,
         binary_response::{self, BinaryResponse, BinaryResponseHeader},
         get::GetRequest,
+        get_all_values::GetAllValuesResult,
         global_state::GlobalStateQueryResult,
         non_persistent_data::NonPersistedDataRequest,
         type_wrappers::NetworkName,
@@ -456,7 +457,6 @@ where
                 state_root_hash,
                 key_tag,
             } => {
-                /*
                 let response = if !config.allow_request_get_all_values {
                     BinaryResponse::new_error(
                         binary_port::ErrorCode::FunctionIsDisabled,
@@ -465,15 +465,22 @@ where
                 } else {
                     let get_all_values_request = GetAllValuesRequest::new(state_root_hash, key_tag);
                     match effect_builder.get_all_values(get_all_values_request).await {
-                        Ok(result) => BinaryResponse::from_value(temporarily_cloned_req, result),
-                        Err(err) => BinaryResponse::new_error(err.into(), temporarily_cloned_req),
+                        Ok(GetAllValuesResult::Success { values }) => {
+                            BinaryResponse::from_value(temporarily_cloned_req, values)
+                        }
+                        Ok(GetAllValuesResult::RootNotFound) => {
+                            let error_code = binary_port::ErrorCode::RootNotFound;
+                            BinaryResponse::new_error(error_code, temporarily_cloned_req)
+                        }
+                        Err(err) => BinaryResponse::new_error(
+                            binary_port::ErrorCode::InternalError,
+                            temporarily_cloned_req,
+                        ),
                     }
                 };
 
                 let payload = ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?;
                 Ok(Some(Bytes::from(payload)))
-                */
-                todo!()
             }
             GetRequest::Trie { trie_key } => {
                 /*
