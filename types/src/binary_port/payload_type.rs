@@ -11,6 +11,7 @@ use crate::{
 
 use super::{
     db_id::DbId,
+    global_state::GlobalStateQueryResult,
     type_wrappers::{
         ConsensusValidatorChanges, HighestBlockSequenceCheckResult, LastProgress, NetworkName,
         SpeculativeExecutionResult,
@@ -81,6 +82,8 @@ pub enum PayloadType {
     HighestBlockSequenceCheckResult,
     /// Result of the speculative execution,
     SpeculativeExecutionResult,
+    /// Result of querying global state,
+    GlobalStateQueryResult,
 }
 
 impl fmt::Display for PayloadType {
@@ -118,6 +121,7 @@ impl fmt::Display for PayloadType {
                 write!(f, "HighestBlockSequenceCheckResult")
             }
             PayloadType::SpeculativeExecutionResult => write!(f, "SpeculativeExecutionResult"),
+            PayloadType::GlobalStateQueryResult => write!(f, "GlobalStateQueryResult"),
         }
     }
 }
@@ -245,6 +249,12 @@ impl From<SpeculativeExecutionResult> for PayloadType {
     }
 }
 
+impl From<GlobalStateQueryResult> for PayloadType {
+    fn from(_: GlobalStateQueryResult) -> Self {
+        Self::GlobalStateQueryResult
+    }
+}
+
 const BLOCK_HEADER_V1_TAG: u8 = 0;
 const BLOCK_HEADER_TAG: u8 = 1;
 const BLOCK_BODY_V1_TAG: u8 = 2;
@@ -275,6 +285,7 @@ const CONSENSUS_STATUS_TAG: u8 = 26;
 const CHAINSPEC_RAW_BYTES_TAG: u8 = 27;
 const HIGHEST_BLOCK_SEQUENCE_CHECK_RESULT_TAG: u8 = 28;
 const SPECULATIVE_EXECUTION_RESULT_TAG: u8 = 29;
+const GLOBAL_STATE_QUERY_RESULT_TAG: u8 = 30;
 
 impl ToBytes for PayloadType {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
@@ -315,6 +326,7 @@ impl ToBytes for PayloadType {
             PayloadType::Uptime => UPTIME_TAG,
             PayloadType::HighestBlockSequenceCheckResult => HIGHEST_BLOCK_SEQUENCE_CHECK_RESULT_TAG,
             PayloadType::SpeculativeExecutionResult => SPECULATIVE_EXECUTION_RESULT_TAG,
+            PayloadType::GlobalStateQueryResult => GLOBAL_STATE_QUERY_RESULT_TAG,
         }
         .write_bytes(writer)
     }
@@ -357,6 +369,7 @@ impl FromBytes for PayloadType {
             UPTIME_TAG => PayloadType::Uptime,
             HIGHEST_BLOCK_SEQUENCE_CHECK_RESULT_TAG => PayloadType::HighestBlockSequenceCheckResult,
             SPECULATIVE_EXECUTION_RESULT_TAG => PayloadType::SpeculativeExecutionResult,
+            GLOBAL_STATE_QUERY_RESULT_TAG => PayloadType::GlobalStateQueryResult,
             _ => return Err(bytesrepr::Error::Formatting),
         };
         Ok((db_id, remainder))

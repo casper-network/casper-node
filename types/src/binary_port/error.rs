@@ -22,4 +22,6 @@ pub enum Error {
     InvalidDeploy = 7,
     #[cfg_attr(feature = "std", error("internal error"))]
     InternalError = 8,
+    #[cfg_attr(feature = "std", error("query global state failed"))]
+    GetStateFailed = 9,
 }

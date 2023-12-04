@@ -18,6 +18,7 @@ use casper_types::{
         binary_request::BinaryRequest,
         binary_response::{self, BinaryResponse, BinaryResponseHeader},
         get::GetRequest,
+        global_state::GlobalStateQueryResult,
         non_persistent_data::NonPersistedDataRequest,
         type_wrappers::NetworkName,
     },
@@ -227,10 +228,10 @@ where
                 Err(err) => BinaryResponse::new_error(
                     match err {
                         EngineStateError::RootNotFound(_) => binary_port::Error::RootNotFound,
-                        EngineStateError::InvalidDeployItemVariant(error) => {
+                        EngineStateError::InvalidDeployItemVariant(_) => {
                             binary_port::Error::InvalidDeployItemVariant
                         }
-                        EngineStateError::WasmPreprocessing(error) => {
+                        EngineStateError::WasmPreprocessing(_) => {
                             binary_port::Error::WasmPreprocessing
                         }
                         EngineStateError::InvalidProtocolVersion(_) => {
@@ -413,16 +414,22 @@ where
                 base_key,
                 path,
             } => {
-                todo!()
-                // let query_result: GlobalStateQueryResult = effect_builder
-                //     .query_global_state(QueryRequest::new(state_root_hash, base_key, path))
-                //     .await
-                //     .map_err(|err| Error::EngineState(err))?
-                //     .into();
+                let response = match effect_builder
+                    .query_global_state(QueryRequest::new(state_root_hash, base_key, path))
+                    .await
+                {
+                    Ok(result) => {
+                        let result: GlobalStateQueryResult = result.into();
+                        BinaryResponse::from_value(temporarily_cloned_req, result)
+                    }
+                    Err(_err) => BinaryResponse::new_error(
+                        binary_port::Error::GetStateFailed,
+                        temporarily_cloned_req,
+                    ),
+                };
 
-                // let payload =
-                //     ToBytes::to_bytes(&query_result).map_err(|err| Error::BytesRepr(err))?;
-                // Ok(Some(payload.into()))
+                let payload = ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?;
+                Ok(Some(Bytes::from(payload)))
             }
             GetRequest::AllValues {
                 state_root_hash,
