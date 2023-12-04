@@ -479,11 +479,11 @@ where
                     }
                 };
 
-                let payload = ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?;
-                Ok(Some(Bytes::from(payload)))
+                Ok(Some(Bytes::from(
+                    ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?,
+                )))
             }
             GetRequest::Trie { trie_key } => {
-                /*
                 let response = if !config.allow_request_get_trie {
                     BinaryResponse::new_error(
                         binary_port::ErrorCode::FunctionIsDisabled,
@@ -492,14 +492,15 @@ where
                 } else {
                     match effect_builder.get_trie_full(trie_key).await {
                         Ok(result) => BinaryResponse::from_value(temporarily_cloned_req, result),
-                        Err(err) => BinaryResponse::new_error(err.into(), temporarily_cloned_req),
+                        Err(err) => BinaryResponse::new_error(
+                            binary_port::ErrorCode::InternalError,
+                            temporarily_cloned_req,
+                        ),
                     }
                 };
 
                 let payload = ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?;
                 Ok(Some(Bytes::from(payload)))
-                */
-                todo!()
             }
         },
     }
