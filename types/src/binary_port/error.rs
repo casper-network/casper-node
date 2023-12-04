@@ -28,4 +28,6 @@ pub enum Error {
     FunctionIsDisabled = 10,
     #[cfg_attr(feature = "std", error("get all values failed"))]
     GetAllValuesFailed = 11,
+    #[cfg_attr(feature = "std", error("get trie failed"))]
+    GetTrieFailed = 12,
 }

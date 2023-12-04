@@ -9,7 +9,7 @@ use alloc::vec::Vec;
 use datasize::DataSize;
 
 use crate::{
-    bytesrepr::{self, FromBytes, ToBytes},
+    bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contract_messages::Messages,
     execution::ExecutionResultV2,
     EraId, PublicKey, Timestamp, ValidatorChange,
@@ -163,5 +163,26 @@ impl FromBytes for SpeculativeExecutionResult {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (inner, remainder) = FromBytes::from_bytes(bytes)?;
         Ok((SpeculativeExecutionResult(inner), remainder))
+    }
+}
+
+/// Type representing results of the get full trie request.
+#[derive(Debug)]
+pub struct GetTrieFullResult(pub Option<Bytes>);
+
+impl ToBytes for GetTrieFullResult {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for GetTrieFullResult {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (inner, remainder) = FromBytes::from_bytes(bytes)?;
+        Ok((GetTrieFullResult(inner), remainder))
     }
 }

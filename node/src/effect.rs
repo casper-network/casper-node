@@ -125,8 +125,8 @@ use casper_types::{
         db_id::DbId,
         get_all_values::GetAllValuesResult,
         type_wrappers::{
-            ConsensusValidatorChanges, HighestBlockSequenceCheckResult, LastProgress, NetworkName,
-            SpeculativeExecutionResult,
+            ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
+            LastProgress, NetworkName, SpeculativeExecutionResult,
         },
         DbRawBytesSpec,
     },
@@ -1541,7 +1541,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_trie_full(
         self,
         trie_key: Digest,
-    ) -> Result<Option<Bytes>, engine_state::Error>
+    ) -> Result<GetTrieFullResult, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {

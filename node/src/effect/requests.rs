@@ -33,8 +33,8 @@ use casper_types::{
         db_id::DbId,
         get_all_values::GetAllValuesResult,
         type_wrappers::{
-            ConsensusValidatorChanges, HighestBlockSequenceCheckResult, LastProgress, NetworkName,
-            SpeculativeExecutionResult,
+            ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
+            LastProgress, NetworkName, SpeculativeExecutionResult,
         },
         DbRawBytesSpec,
     },
@@ -915,7 +915,7 @@ pub(crate) enum ContractRuntimeRequest {
         /// The ID of the trie to be read.
         trie_key: Digest,
         /// Responder to call with the result.
-        responder: Responder<Result<Option<Bytes>, engine_state::Error>>,
+        responder: Responder<Result<GetTrieFullResult, engine_state::Error>>,
     },
     /// Insert a trie into global storage
     PutTrie {

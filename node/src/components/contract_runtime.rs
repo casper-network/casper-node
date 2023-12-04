@@ -44,9 +44,9 @@ use casper_storage::{
     },
 };
 use casper_types::{
-    bytesrepr::Bytes, package::PackageKindTag, BlockHash, BlockHeaderV2, Chainspec,
-    ChainspecRawBytes, ChainspecRegistry, Digest, EraId, Key, ProtocolVersion, Timestamp,
-    Transaction, UpgradeConfig, U512,
+    binary_port::type_wrappers::GetTrieFullResult, bytesrepr::Bytes, package::PackageKindTag,
+    BlockHash, BlockHeaderV2, Chainspec, ChainspecRawBytes, ChainspecRegistry, Digest, EraId, Key,
+    ProtocolVersion, Timestamp, Transaction, UpgradeConfig, U512,
 };
 
 use crate::{
@@ -1091,13 +1091,13 @@ impl ContractRuntime {
         engine_state: &EngineState<DataAccessLayer<LmdbGlobalState>>,
         metrics: &Metrics,
         trie_key: Digest,
-    ) -> Result<Option<Bytes>, engine_state::Error> {
+    ) -> Result<GetTrieFullResult, engine_state::Error> {
         let start = Instant::now();
         let result = engine_state.get_trie_full(trie_key);
         metrics.get_trie.observe(start.elapsed().as_secs_f64());
         // Extract the inner Bytes, we don't want this change to ripple through the system right
         // now.
-        result.map(|option| option.map(|trie_raw| trie_raw.into_inner()))
+        result.map(|option| GetTrieFullResult(option.map(|trie_raw| trie_raw.into_inner())))
     }
 
     #[inline]

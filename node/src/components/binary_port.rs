@@ -455,17 +455,23 @@ where
                 Ok(Some(Bytes::from(payload)))
             }
             GetRequest::Trie { trie_key } => {
-                todo!()
-                // if !config.allow_request_get_trie {
-                //     return Err(Error::FunctionDisabled("GetRequest::Trie".to_string()));
-                // }
+                let response = if !config.allow_request_get_trie {
+                    BinaryResponse::new_error(
+                        binary_port::Error::FunctionIsDisabled,
+                        temporarily_cloned_req,
+                    )
+                } else {
+                    match effect_builder.get_trie_full(trie_key).await {
+                        Ok(result) => BinaryResponse::from_value(temporarily_cloned_req, result),
+                        Err(_err) => BinaryResponse::new_error(
+                            binary_port::Error::GetTrieFailed,
+                            temporarily_cloned_req,
+                        ),
+                    }
+                };
 
-                // let maybe_trie_bytes = effect_builder
-                //     .get_trie_full(trie_key)
-                //     .await
-                //     .map_err(|error| Error::EngineState(error))?;
-                // let payload = maybe_trie_bytes.map(|bytes| Bytes::from(bytes.take_inner()));
-                // Ok(payload)
+                let payload = ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?;
+                Ok(Some(Bytes::from(payload)))
             }
         },
     }
