@@ -7,8 +7,7 @@ use crate::{
 use alloc::string::String;
 use alloc::vec::Vec;
 
-/// Carries the result of the global state query.
-// Direct usage of `QueryResult` in binary port would require moving in into `casper_types` along with `TrieMerkleProof`. To avoid that the `GlobalStateQueryResult` is used to extract and carry only the information from `QueryResult` that are needed by RPC sidecar to formulate a proper response to clients.
+/// Carries the successful result of the global state query.
 pub struct GlobalStateQueryResult {
     /// Stored value.
     value: StoredValue,
