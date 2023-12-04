@@ -435,19 +435,24 @@ where
                 state_root_hash,
                 key_tag,
             } => {
-                todo!()
-                // if !config.allow_request_get_all_values {
-                //     return Err(Error::FunctionDisabled("GetRequest::AllValues".to_string()));
-                // }
-                // let get_all_values_request = GetAllValuesRequest::new(state_root_hash, key_tag);
-                // let get_all_values_result = effect_builder
-                //     .get_all_values(get_all_values_request)
-                //     .await
-                //     .map_err(|error| Error::EngineState(error))?;
-                // let bytes = ToBytes::to_bytes(&get_all_values_result)
-                //     .map_err(|err| Error::BytesRepr(err))?
-                //     .into();
-                // Ok(Some(bytes))
+                let response = if !config.allow_request_get_all_values {
+                    BinaryResponse::new_error(
+                        binary_port::Error::FunctionIsDisabled,
+                        temporarily_cloned_req,
+                    )
+                } else {
+                    let get_all_values_request = GetAllValuesRequest::new(state_root_hash, key_tag);
+                    match effect_builder.get_all_values(get_all_values_request).await {
+                        Ok(result) => BinaryResponse::from_value(temporarily_cloned_req, result),
+                        Err(_err) => BinaryResponse::new_error(
+                            binary_port::Error::GetAllValuesFailed,
+                            temporarily_cloned_req,
+                        ),
+                    }
+                };
+
+                let payload = ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?;
+                Ok(Some(Bytes::from(payload)))
             }
             GetRequest::Trie { trie_key } => {
                 todo!()

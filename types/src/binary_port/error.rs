@@ -24,4 +24,8 @@ pub enum Error {
     InternalError = 8,
     #[cfg_attr(feature = "std", error("query global state failed"))]
     GetStateFailed = 9,
+    #[cfg_attr(feature = "std", error("this function is disabled"))]
+    FunctionIsDisabled = 10,
+    #[cfg_attr(feature = "std", error("get all values failed"))]
+    GetAllValuesFailed = 11,
 }
