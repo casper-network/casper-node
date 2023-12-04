@@ -40,8 +40,18 @@ impl BinaryResponseHeader {
     }
 
     /// Returns the error code.
-    pub fn error(&self) -> u8 {
+    pub fn error_code(&self) -> u8 {
         self.error
+    }
+
+    /// Returns true if the response represents success.
+    pub fn is_success(&self) -> bool {
+        self.error == ErrorCode::NoError as u8
+    }
+
+    /// Returns true if the response represents error.
+    pub fn is_not_found(&self) -> bool {
+        self.error == ErrorCode::NotFound as u8
     }
 }
 
@@ -157,10 +167,6 @@ impl BinaryResponse {
                 original_request: ToBytes::to_bytes(&binary_request).unwrap(), // TODO[RC]: Do not serialize here, thread the original serialized request into here
             },
         }
-    }
-
-    pub fn is_error(&self) -> bool {
-        self.header.error() != ErrorCode::NoError as u8
     }
 }
 

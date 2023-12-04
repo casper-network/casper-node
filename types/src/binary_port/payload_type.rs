@@ -385,6 +385,7 @@ impl FromBytes for PayloadType {
             REACTOR_STATE_TAG => PayloadType::ReactorState,
             NETWORK_NAME_TAG => PayloadType::NetworkName,
             CONSENSUS_VALIDATOR_CHANGES_TAG => PayloadType::ConsensusValidatorChanges,
+            BLOCK_SYNCHRONIZER_STATUS_TAG => PayloadType::BlockSynchronizerStatus,
             AVAILABLE_BLOCK_RANGE_TAG => PayloadType::AvailableBlockRange,
             NEXT_UPGRADE_TAG => PayloadType::NextUpgrade,
             CONSENSUS_STATUS_TAG => PayloadType::ConsensusStatus,

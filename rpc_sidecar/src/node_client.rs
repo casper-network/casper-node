@@ -156,19 +156,19 @@ pub trait NodeClient: Send + Sync {
         let resp = self.read_from_mem(req).await?;
         parse_response::<HighestBlockSequenceCheckResult>(&resp)?
             .map(|HighestBlockSequenceCheckResult(result)| result)
-            .ok_or(Error::NoResponseBody)
+            .ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_peers(&self) -> Result<Peers, Error> {
         let resp = self.read_from_mem(NonPersistedDataRequest::Peers).await?;
-        parse_response::<Peers>(&resp)?.ok_or(Error::NoResponseBody)
+        parse_response::<Peers>(&resp)?.ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_uptime(&self) -> Result<Duration, Error> {
         let resp = self.read_from_mem(NonPersistedDataRequest::Uptime).await?;
         parse_response::<Uptime>(&resp)?
             .map(Into::into)
-            .ok_or(Error::NoResponseBody)
+            .ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_last_progress(&self) -> Result<Timestamp, Error> {
@@ -177,14 +177,14 @@ pub trait NodeClient: Send + Sync {
             .await?;
         parse_response::<LastProgress>(&resp)?
             .map(Into::into)
-            .ok_or(Error::NoResponseBody)
+            .ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_reactor_state(&self) -> Result<ReactorState, Error> {
         let resp = self
             .read_from_mem(NonPersistedDataRequest::ReactorState)
             .await?;
-        parse_response::<ReactorState>(&resp)?.ok_or(Error::NoResponseBody)
+        parse_response::<ReactorState>(&resp)?.ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_network_name(&self) -> Result<String, Error> {
@@ -193,21 +193,21 @@ pub trait NodeClient: Send + Sync {
             .await?;
         parse_response::<NetworkName>(&resp)?
             .map(Into::into)
-            .ok_or(Error::NoResponseBody)
+            .ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_block_sync_status(&self) -> Result<BlockSynchronizerStatus, Error> {
         let resp = self
             .read_from_mem(NonPersistedDataRequest::BlockSynchronizerStatus)
             .await?;
-        parse_response::<BlockSynchronizerStatus>(&resp)?.ok_or(Error::NoResponseBody)
+        parse_response::<BlockSynchronizerStatus>(&resp)?.ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_available_block_range(&self) -> Result<AvailableBlockRange, Error> {
         let resp = self
             .read_from_mem(NonPersistedDataRequest::AvailableBlockRange)
             .await?;
-        parse_response::<AvailableBlockRange>(&resp)?.ok_or(Error::NoResponseBody)
+        parse_response::<AvailableBlockRange>(&resp)?.ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_next_upgrade(&self) -> Result<Option<NextUpgrade>, Error> {
@@ -228,14 +228,14 @@ pub trait NodeClient: Send + Sync {
         let resp = self
             .read_from_mem(NonPersistedDataRequest::ChainspecRawBytes)
             .await?;
-        parse_response::<ChainspecRawBytes>(&resp)?.ok_or(Error::NoResponseBody)
+        parse_response::<ChainspecRawBytes>(&resp)?.ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_validator_changes(&self) -> Result<ConsensusValidatorChanges, Error> {
         let resp = self
             .read_from_mem(NonPersistedDataRequest::ConsensusValidatorChanges)
             .await?;
-        parse_response::<ConsensusValidatorChanges>(&resp)?.ok_or(Error::NoResponseBody)
+        parse_response::<ConsensusValidatorChanges>(&resp)?.ok_or(Error::EmptyEnvelope)
     }
 }
 
@@ -251,6 +251,10 @@ pub enum Error {
     Serialization(String),
     #[error("unexpectedly received no response body")]
     NoResponseBody,
+    #[error("unexpectedly received an empty envelope")]
+    EmptyEnvelope,
+    #[error("received a node error code: {0}")]
+    NodeError(u8),
     #[error("transaction failed: {0}")]
     TransactionFailed(String),
     #[error("speculative execution failed: {0}")]
@@ -447,6 +451,12 @@ fn parse_response<A>(resp: &BinaryResponse) -> Result<Option<A>, Error>
 where
     A: FromBytes + PayloadEntity,
 {
+    if resp.header.is_not_found() {
+        return Ok(None);
+    }
+    if !resp.header.is_success() {
+        return Err(Error::NodeError(resp.header.error_code()));
+    }
     match resp.header.returned_data_type() {
         Some(&found) if found == A::PAYLOAD_TYPE => {
             bytesrepr::deserialize_from_slice(&resp.payload)
@@ -463,6 +473,12 @@ where
     V1: DeserializeOwned + PayloadEntity,
     V2: FromBytes + PayloadEntity + From<V1>,
 {
+    if resp.header.is_not_found() {
+        return Ok(None);
+    }
+    if !resp.header.is_success() {
+        return Err(Error::NodeError(resp.header.error_code()));
+    }
     match resp.header.returned_data_type() {
         Some(&found) if found == V1::PAYLOAD_TYPE => bincode::deserialize(&resp.payload)
             .map(|val| Some(V2::from(val)))
@@ -473,7 +489,7 @@ where
                 .map_err(|err| Error::Deserialization(err.to_string()))
         }
         Some(&other) => Err(Error::UnexpectedVariantReceived(other)),
-        _ => Err(Error::NoResponseBody),
+        _ => Ok(None),
     }
 }
 
@@ -481,12 +497,18 @@ fn parse_response_bincode<A>(resp: &BinaryResponse) -> Result<Option<A>, Error>
 where
     A: DeserializeOwned + PayloadEntity,
 {
+    if resp.header.is_not_found() {
+        return Ok(None);
+    }
+    if !resp.header.is_success() {
+        return Err(Error::NodeError(resp.header.error_code()));
+    }
     match resp.header.returned_data_type() {
         Some(&found) if found == A::PAYLOAD_TYPE => bincode::deserialize(&resp.payload)
             .map(Some)
             .map_err(|err| Error::Deserialization(err.to_string())),
         Some(&other) => Err(Error::UnexpectedVariantReceived(other)),
-        _ => Err(Error::NoResponseBody),
+        _ => Ok(None),
     }
 }
 

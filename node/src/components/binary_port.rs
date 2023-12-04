@@ -214,7 +214,7 @@ where
                 Some(speculative_exec_at_block),
             )
             .await;
-            if response.is_error() {
+            if !response.header.is_success() {
                 let payload = ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?;
                 return Ok(Some(Bytes::from(payload)));
             }
