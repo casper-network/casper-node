@@ -124,19 +124,21 @@ use casper_types::{
     binary_port::{
         db_id::DbId,
         get_all_values::GetAllValuesResult,
-        type_wrappers::{ConsensusValidatorChanges, LastProgress, NetworkName, HighestBlockSequenceCheckResult},
+        type_wrappers::{
+            ConsensusValidatorChanges, HighestBlockSequenceCheckResult, LastProgress, NetworkName,
+            SpeculativeExecutionResult,
+        },
         DbRawBytesSpec,
     },
     bytesrepr::Bytes,
-    contract_messages::Messages,
-    execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},
+    execution::{Effects as ExecutionEffects, ExecutionResult},
     package::Package,
     system::auction::EraValidators,
     AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader,
     BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, DeployHeader,
     Digest, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key,
     NextUpgrade, PublicKey, ReactorState, SignedBlock, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionId, Transfer, Uptime, ValidatorChange, U512,
+    TransactionHash, TransactionId, Transfer, Uptime, U512,
 };
 
 use crate::{
@@ -2384,7 +2386,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         execution_prestate: SpeculativeExecutionState,
         transaction: Box<Transaction>,
-    ) -> Result<Option<(ExecutionResultV2, Messages)>, engine_state::Error>
+    ) -> Result<SpeculativeExecutionResult, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {

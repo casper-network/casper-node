@@ -19,7 +19,7 @@ use alloc::vec::Vec;
 
 const PROTOCOL_VERSION: u8 = 0;
 
-// TODO[RC]: Move to a separate file, add bytesrepr, etc.
+/// Stores raw bytes from the DB along with the flag indicating whether data come from legacy or current version of the DB.
 #[derive(Debug)]
 pub struct DbRawBytesSpec {
     is_legacy: bool,
@@ -27,6 +27,7 @@ pub struct DbRawBytesSpec {
 }
 
 impl DbRawBytesSpec {
+    /// Creates a variant indicating that raw bytes are coming from the legacy database.
     pub fn new_legacy(raw_bytes: &[u8]) -> Self {
         Self {
             is_legacy: true,
@@ -34,6 +35,7 @@ impl DbRawBytesSpec {
         }
     }
 
+    /// Creates a variant indicating that raw bytes are coming from the current database.
     pub fn new_current(raw_bytes: &[u8]) -> Self {
         Self {
             is_legacy: false,

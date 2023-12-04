@@ -34,6 +34,7 @@ use casper_types::{
         get_all_values::GetAllValuesResult,
         type_wrappers::{
             ConsensusValidatorChanges, HighestBlockSequenceCheckResult, LastProgress, NetworkName,
+            SpeculativeExecutionResult,
         },
         DbRawBytesSpec,
     },
@@ -930,7 +931,7 @@ pub(crate) enum ContractRuntimeRequest {
         /// Transaction to execute.
         transaction: Box<Transaction>,
         /// Results
-        responder: Responder<Result<Option<(ExecutionResultV2, Messages)>, engine_state::Error>>,
+        responder: Responder<Result<SpeculativeExecutionResult, engine_state::Error>>,
     },
 }
 

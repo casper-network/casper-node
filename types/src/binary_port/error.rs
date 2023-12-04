@@ -10,4 +10,16 @@ pub enum Error {
     NotFound = 1,
     #[cfg_attr(feature = "std", error("transaction not accepted"))]
     TransactionNotAccepted = 2,
+    #[cfg_attr(feature = "std", error("root not found"))]
+    RootNotFound = 3,
+    #[cfg_attr(feature = "std", error("invalid deploy item variant"))]
+    InvalidDeployItemVariant = 4,
+    #[cfg_attr(feature = "std", error("wasm preprocessing"))]
+    WasmPreprocessing = 5,
+    #[cfg_attr(feature = "std", error("invalid protocol version"))]
+    InvalidProtocolVersion = 6,
+    #[cfg_attr(feature = "std", error("invalid deploy"))]
+    InvalidDeploy = 7,
+    #[cfg_attr(feature = "std", error("internal error"))]
+    InternalError = 8,
 }

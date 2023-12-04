@@ -34,6 +34,8 @@ pub enum BinaryRequest {
         protocol_version: ProtocolVersion,
         /// Transaction to execute.
         transaction: Transaction,
+        /// Block header of block at which we should perform speculative execution.
+        speculative_exec_at_block: BlockHeader,
     },
 }
 
@@ -59,12 +61,14 @@ impl ToBytes for BinaryRequest {
                 state_root_hash,
                 block_time,
                 protocol_version,
+                speculative_exec_at_block,
             } => {
                 SPECULATIVE_EXEC_TAG.write_bytes(writer)?;
                 transaction.write_bytes(writer)?;
                 state_root_hash.write_bytes(writer)?;
                 block_time.write_bytes(writer)?;
-                protocol_version.write_bytes(writer)
+                protocol_version.write_bytes(writer)?;
+                speculative_exec_at_block.write_bytes(writer)
             }
         }
     }
@@ -81,11 +85,13 @@ impl ToBytes for BinaryRequest {
                     state_root_hash,
                     block_time,
                     protocol_version,
+                    speculative_exec_at_block,
                 } => {
                     transaction.serialized_length()
                         + state_root_hash.serialized_length()
                         + block_time.serialized_length()
                         + protocol_version.serialized_length()
+                        + speculative_exec_at_block.serialized_length()
                 }
             }
     }
@@ -101,8 +107,6 @@ impl FromBytes for BinaryRequest {
             }
             TRY_ACCEPT_TRANSACTION_TAG => {
                 let (transaction, remainder) = FromBytes::from_bytes(remainder)?;
-                let (speculative_exec_at_block, remainder) =
-                    Option::<BlockHeader>::from_bytes(remainder)?;
                 Ok((
                     BinaryRequest::TryAcceptTransaction { transaction },
                     remainder,
@@ -113,12 +117,14 @@ impl FromBytes for BinaryRequest {
                 let (state_root_hash, remainder) = FromBytes::from_bytes(remainder)?;
                 let (block_time, remainder) = FromBytes::from_bytes(remainder)?;
                 let (protocol_version, remainder) = FromBytes::from_bytes(remainder)?;
+                let (speculative_exec_at_block, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((
                     BinaryRequest::TrySpeculativeExec {
                         transaction,
                         state_root_hash,
                         block_time,
                         protocol_version,
+                        speculative_exec_at_block,
                     },
                     remainder,
                 ))

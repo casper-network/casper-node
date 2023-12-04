@@ -22,7 +22,7 @@ use casper_types::{
         type_wrappers::NetworkName,
     },
     bytesrepr::{FromBytes, ToBytes},
-    BlockHashAndHeight, Peers, Transaction,
+    BlockHashAndHeight, BlockHeader, Peers, Transaction,
 };
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
@@ -186,23 +186,9 @@ where
     // TODO[RC]: clean this up, delegate to specialized functions
     match req {
         BinaryRequest::TryAcceptTransaction { transaction } => {
-            let response = match effect_builder
-                .try_accept_transaction(Transaction::from(transaction), None)
-                .await
-            {
-                Ok(_) => BinaryResponse {
-                    header: BinaryResponseHeader::new(None),
-                    original_request: ToBytes::to_bytes(&temporarily_cloned_req).unwrap(),
-                    payload: vec![],
-                },
-                Err(_err) => {
-                    // TODO[RC]: Should we send more details to the sidecar?
-                    BinaryResponse::new_error(
-                        binary_port::Error::TransactionNotAccepted,
-                        temporarily_cloned_req,
-                    )
-                }
-            };
+            let response =
+                try_accept_transaction(effect_builder, transaction, temporarily_cloned_req, None)
+                    .await;
 
             let payload = ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?;
             Ok(Some(Bytes::from(payload)))
@@ -212,67 +198,53 @@ where
             state_root_hash,
             block_time,
             protocol_version,
+            speculative_exec_at_block,
         } => {
-            todo!();
-            // let execution_prestate = SpeculativeExecutionState {
-            //     state_root_hash,
-            //     block_time,
-            //     protocol_version,
-            // };
-            // let speculative_execution_result = effect_builder
-            //     .speculatively_execute(execution_prestate, Box::new(transaction))
-            //     .await
-            //     .map_err(|error| match error {
-            //         // TODO[RC]: Proper error conversion.
-            //         EngineStateError::RootNotFound(_) => SpeculativeExecutionError::NoSuchStateRoot,
-            //         EngineStateError::InvalidDeployItemVariant(error) => {
-            //             SpeculativeExecutionError::InvalidDeploy(error.to_string())
-            //         }
-            //         EngineStateError::WasmPreprocessing(error) => {
-            //             SpeculativeExecutionError::InvalidDeploy(error.to_string())
-            //         }
+            let response = try_accept_transaction(
+                effect_builder,
+                transaction.clone(),
+                temporarily_cloned_req.clone(),
+                Some(speculative_exec_at_block),
+            )
+            .await;
+            if response.is_error() {
+                let payload = ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?;
+                return Ok(Some(Bytes::from(payload)));
+            }
 
-            //         EngineStateError::InvalidProtocolVersion(_) => {
-            //             SpeculativeExecutionError::InvalidDeploy(format!(
-            //                 "deploy used invalid protocol version {}",
-            //                 error
-            //             ))
-            //         }
-            //         EngineStateError::Deploy => SpeculativeExecutionError::InvalidDeploy("".into()),
-            //         EngineStateError::Genesis(_)
-            //         | EngineStateError::WasmSerialization(_)
-            //         | EngineStateError::Exec(_)
-            //         | EngineStateError::Storage(_)
-            //         | EngineStateError::Authorization
-            //         | EngineStateError::InsufficientPayment
-            //         | EngineStateError::GasConversionOverflow
-            //         | EngineStateError::Finalization
-            //         | EngineStateError::Bytesrepr(_)
-            //         | EngineStateError::Mint(_)
-            //         | EngineStateError::InvalidKeyVariant
-            //         | EngineStateError::ProtocolUpgrade(_)
-            //         | EngineStateError::CommitError(_)
-            //         | EngineStateError::MissingSystemContractRegistry
-            //         | EngineStateError::MissingSystemContractHash(_)
-            //         | EngineStateError::RuntimeStackOverflow
-            //         | EngineStateError::FailedToGetKeys(_)
-            //         | EngineStateError::FailedToGetStoredWithdraws
-            //         | EngineStateError::FailedToGetWithdrawPurses
-            //         | EngineStateError::FailedToRetrieveUnbondingDelay
-            //         | EngineStateError::FailedToRetrieveEraId => {
-            //             SpeculativeExecutionError::InternalError(error.to_string())
-            //         }
+            let execution_prestate = SpeculativeExecutionState {
+                state_root_hash,
+                block_time,
+                protocol_version,
+            };
 
-            //         _ => SpeculativeExecutionError::InternalError(format!(
-            //             "Unhandled engine state error: {}",
-            //             error
-            //         )),
-            //     });
+            let speculative_execution_result = effect_builder
+                .speculatively_execute(execution_prestate, Box::new(transaction))
+                .await;
 
-            // let bytes = ToBytes::to_bytes(&speculative_execution_result)
-            //     .map_err(|err| Error::BytesRepr(err))?
-            //     .into();
-            // Ok(Some(bytes))
+            let response = match speculative_execution_result {
+                Ok(result) => BinaryResponse::from_value(temporarily_cloned_req, result),
+                Err(err) => BinaryResponse::new_error(
+                    match err {
+                        EngineStateError::RootNotFound(_) => binary_port::Error::RootNotFound,
+                        EngineStateError::InvalidDeployItemVariant(error) => {
+                            binary_port::Error::InvalidDeployItemVariant
+                        }
+                        EngineStateError::WasmPreprocessing(error) => {
+                            binary_port::Error::WasmPreprocessing
+                        }
+                        EngineStateError::InvalidProtocolVersion(_) => {
+                            binary_port::Error::InvalidProtocolVersion
+                        }
+                        EngineStateError::Deploy => binary_port::Error::InvalidDeploy,
+                        _ => binary_port::Error::InternalError,
+                    },
+                    temporarily_cloned_req,
+                ),
+            };
+
+            let payload = ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?;
+            Ok(Some(Bytes::from(payload)))
         }
         BinaryRequest::Get(get_req) => match get_req {
             GetRequest::Db { db, key } => {
@@ -484,6 +456,37 @@ where
                 // Ok(payload)
             }
         },
+    }
+}
+
+async fn try_accept_transaction<REv>(
+    effect_builder: EffectBuilder<REv>,
+    transaction: Transaction,
+    temporarily_cloned_req: BinaryRequest,
+    speculative_exec_at: Option<BlockHeader>,
+) -> BinaryResponse
+where
+    REv: From<AcceptTransactionRequest>,
+{
+    match effect_builder
+        .try_accept_transaction(
+            transaction,
+            speculative_exec_at.map(|block_header| Box::new(block_header)),
+        )
+        .await
+    {
+        Ok(_) => BinaryResponse {
+            header: BinaryResponseHeader::new(None),
+            original_request: ToBytes::to_bytes(&temporarily_cloned_req).unwrap(),
+            payload: vec![],
+        },
+        Err(_err) => {
+            // TODO[RC]: Should we send more details to the sidecar?
+            BinaryResponse::new_error(
+                binary_port::Error::TransactionNotAccepted,
+                temporarily_cloned_req,
+            )
+        }
     }
 }
 

@@ -10,9 +10,12 @@ use datasize::DataSize;
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
+    contract_messages::Messages,
+    execution::ExecutionResultV2,
     EraId, PublicKey, Timestamp, ValidatorChange,
 };
 
+/// Type representing uptime.
 #[derive(Debug, Clone, Copy)]
 pub struct Uptime(pub u64);
 
@@ -39,6 +42,7 @@ impl FromBytes for Uptime {
     }
 }
 
+/// Type representing changes in consensus validators.
 #[derive(Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ConsensusValidatorChanges(pub BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>);
@@ -66,6 +70,7 @@ impl FromBytes for ConsensusValidatorChanges {
     }
 }
 
+/// Type representing network name.
 #[derive(Debug)]
 pub struct NetworkName(pub String);
 
@@ -92,6 +97,7 @@ impl FromBytes for NetworkName {
     }
 }
 
+/// Type representing last progress of the sync process.
 #[derive(Debug)]
 pub struct LastProgress(pub Timestamp);
 
@@ -118,6 +124,7 @@ impl FromBytes for LastProgress {
     }
 }
 
+/// Type representing results of checking whether a block is in the highest sequence of available blocks.
 #[derive(Debug)]
 pub struct HighestBlockSequenceCheckResult(pub bool);
 
@@ -135,5 +142,26 @@ impl FromBytes for HighestBlockSequenceCheckResult {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (inner, remainder) = FromBytes::from_bytes(bytes)?;
         Ok((HighestBlockSequenceCheckResult(inner), remainder))
+    }
+}
+
+/// Type representing results of the speculative execution.
+#[derive(Debug)]
+pub struct SpeculativeExecutionResult(pub Option<(ExecutionResultV2, Messages)>);
+
+impl ToBytes for SpeculativeExecutionResult {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for SpeculativeExecutionResult {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (inner, remainder) = FromBytes::from_bytes(bytes)?;
+        Ok((SpeculativeExecutionResult(inner), remainder))
     }
 }

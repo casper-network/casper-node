@@ -20,6 +20,7 @@ use casper_storage::{
 };
 use casper_types::{
     account::AccountHash,
+    binary_port::type_wrappers::SpeculativeExecutionResult,
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
@@ -463,7 +464,7 @@ pub fn execute_only<S>(
     engine_state: &EngineState<S>,
     execution_state: SpeculativeExecutionState,
     deploy: DeployItem,
-) -> Result<Option<(ExecutionResultV2, Messages)>, engine_state::Error>
+) -> Result<SpeculativeExecutionResult, engine_state::Error>
 where
     S: StateProvider + CommitProvider,
     S::Error: Into<execution::Error>,
@@ -489,20 +490,20 @@ where
                 ?deploy_hash,
                 "got more ({}) execution results from a single transaction", len
             );
-            None
+            SpeculativeExecutionResult(None)
         } else {
             // We know it must be 1, we could unwrap and then wrap
             // with `Some(_)` but `pop_front` already returns an `Option`.
             // We need to transform the `engine_state::ExecutionResult` into
             // `casper_types::ExecutionResult` as well.
-            execution_results.pop_front().map(|result| {
+            SpeculativeExecutionResult(execution_results.pop_front().map(|result| {
                 let ExecutionResultAndMessages {
                     execution_result,
                     messages,
                 } = result.into();
 
                 (execution_result, messages)
-            })
+            }))
         }
     })
 }
