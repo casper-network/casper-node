@@ -8,4 +8,6 @@ pub enum Error {
     NoError = 0,
     #[cfg_attr(feature = "std", error("data not found"))]
     NotFound = 1,
+    #[cfg_attr(feature = "std", error("transaction not accepted"))]
+    TransactionNotAccepted = 2,
 }

@@ -23,8 +23,6 @@ pub enum BinaryRequest {
     TryAcceptTransaction {
         /// Transaction to be handled.
         transaction: Transaction,
-        /// Optional block header required if the request should perform speculative execution.
-        speculative_exec_at_block: Option<BlockHeader>,
     },
     /// Request to execute a transaction speculatively.
     TrySpeculativeExec {
@@ -52,13 +50,9 @@ impl ToBytes for BinaryRequest {
                 GET_TAG.write_bytes(writer)?;
                 inner.write_bytes(writer)
             }
-            BinaryRequest::TryAcceptTransaction {
-                transaction,
-                speculative_exec_at_block,
-            } => {
+            BinaryRequest::TryAcceptTransaction { transaction } => {
                 TRY_ACCEPT_TRANSACTION_TAG.write_bytes(writer)?;
-                transaction.write_bytes(writer)?;
-                speculative_exec_at_block.write_bytes(writer)
+                transaction.write_bytes(writer)
             }
             BinaryRequest::TrySpeculativeExec {
                 transaction,
@@ -79,11 +73,8 @@ impl ToBytes for BinaryRequest {
         U8_SERIALIZED_LENGTH
             + match self {
                 BinaryRequest::Get(inner) => inner.serialized_length(),
-                BinaryRequest::TryAcceptTransaction {
-                    transaction,
-                    speculative_exec_at_block,
-                } => {
-                    transaction.serialized_length() + speculative_exec_at_block.serialized_length()
+                BinaryRequest::TryAcceptTransaction { transaction } => {
+                    transaction.serialized_length()
                 }
                 BinaryRequest::TrySpeculativeExec {
                     transaction,
@@ -113,10 +104,7 @@ impl FromBytes for BinaryRequest {
                 let (speculative_exec_at_block, remainder) =
                     Option::<BlockHeader>::from_bytes(remainder)?;
                 Ok((
-                    BinaryRequest::TryAcceptTransaction {
-                        transaction,
-                        speculative_exec_at_block,
-                    },
+                    BinaryRequest::TryAcceptTransaction { transaction },
                     remainder,
                 ))
             }

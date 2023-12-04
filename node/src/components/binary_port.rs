@@ -14,11 +14,15 @@ use casper_execution_engine::engine_state::{
 };
 use casper_types::{
     binary_port::{
-        binary_request::BinaryRequest, binary_response::BinaryResponse, get::GetRequest,
-        non_persistent_data::NonPersistedDataRequest, type_wrappers::NetworkName,
+        self,
+        binary_request::BinaryRequest,
+        binary_response::{self, BinaryResponse, BinaryResponseHeader},
+        get::GetRequest,
+        non_persistent_data::NonPersistedDataRequest,
+        type_wrappers::NetworkName,
     },
     bytesrepr::{FromBytes, ToBytes},
-    BlockHashAndHeight, Peers,
+    BlockHashAndHeight, Peers, Transaction,
 };
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
@@ -181,23 +185,27 @@ where
 
     // TODO[RC]: clean this up, delegate to specialized functions
     match req {
-        BinaryRequest::TryAcceptTransaction {
-            transaction,
-            speculative_exec_at_block,
-        } => {
-            todo!()
-            // let accept_transaction_result = effect_builder
-            //     .try_accept_transaction(
-            //         Transaction::from(transaction),
-            //         speculative_exec_at_block
-            //             .map(|speculative_exec_at_block| Box::new(speculative_exec_at_block)),
-            //     )
-            //     .await
-            //     .map_err(|err| Error::TransactionAcceptor(err).to_string()); // TODO[RC]: No string, but transaction acceptor error
-            // let bytes = ToBytes::to_bytes(&accept_transaction_result)
-            //     .map_err(|err| Error::BytesRepr(err))?
-            //     .into();
-            // Ok(Some(bytes))
+        BinaryRequest::TryAcceptTransaction { transaction } => {
+            let response = match effect_builder
+                .try_accept_transaction(Transaction::from(transaction), None)
+                .await
+            {
+                Ok(_) => BinaryResponse {
+                    header: BinaryResponseHeader::new(None),
+                    original_request: ToBytes::to_bytes(&temporarily_cloned_req).unwrap(),
+                    payload: vec![],
+                },
+                Err(_err) => {
+                    // TODO[RC]: Should we send more details to the sidecar?
+                    BinaryResponse::new_error(
+                        binary_port::Error::TransactionNotAccepted,
+                        temporarily_cloned_req,
+                    )
+                }
+            };
+
+            let payload = ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?;
+            Ok(Some(Bytes::from(payload)))
         }
         BinaryRequest::TrySpeculativeExec {
             transaction,
