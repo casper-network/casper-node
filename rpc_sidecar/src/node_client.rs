@@ -250,12 +250,8 @@ pub enum Error {
     NoResponseBody,
     #[error("unexpectedly received an empty envelope")]
     EmptyEnvelope,
-    #[error("received an unexpected node error: {0}")]
-    UnexpectedNodeError(String),
-    #[error("transaction failed with code: {0}")]
-    TransactionFailed(String),
-    #[error("speculative execution failed: {0}")]
-    SpeculativeExecFailed(String),
+    #[error("received a node error: {0}")]
+    ReceivedNodeError(String),
     #[error("unexpected variant received in the response: {0}")]
     UnexpectedVariantReceived(PayloadType),
 }
@@ -264,7 +260,7 @@ impl Error {
     fn from_error_code(code: u8) -> Self {
         let err = casper_types::binary_port::ErrorCode::try_from(code)
             .map_or_else(|err| err.to_string(), |err| err.to_string());
-        Error::UnexpectedNodeError(err)
+        Error::ReceivedNodeError(err)
     }
 }
 
@@ -421,9 +417,7 @@ impl NodeClient for JulietNodeClient {
         if resp.header.is_success() {
             return Ok(());
         } else {
-            let err = casper_types::binary_port::ErrorCode::try_from(resp.header.error_code())
-                .map_or_else(|err| err.to_string(), |err| err.to_string());
-            return Err(Error::TransactionFailed(err));
+            return Err(Error::from_error_code(resp.header.error_code()));
         }
     }
 
