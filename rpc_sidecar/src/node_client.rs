@@ -601,10 +601,6 @@ impl PayloadEntity for HighestBlockSequenceCheckResult {
     const PAYLOAD_TYPE: PayloadType = PayloadType::HighestBlockSequenceCheckResult;
 }
 
-impl PayloadEntity for Vec<u8> {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::VecU8;
-}
-
 impl PayloadEntity for LastProgress {
     const PAYLOAD_TYPE: PayloadType = PayloadType::LastProgress;
 }
