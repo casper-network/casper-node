@@ -9,12 +9,11 @@ use casper_types::{
         binary_request::BinaryRequest,
         db_id::DbId,
         get::GetRequest,
-        get_all_values::GetAllValuesResult,
         global_state::GlobalStateQueryResult,
         non_persistent_data::NonPersistedDataRequest,
         type_wrappers::{
             ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
-            LastProgress, NetworkName, SpeculativeExecutionResult,
+            LastProgress, NetworkName, SpeculativeExecutionResult, StoredValues,
         },
         ErrorCode as BinaryPortError,
     },
@@ -63,7 +62,7 @@ pub trait NodeClient: Send + Sync {
         &self,
         state_root_hash: Digest,
         tag: KeyTag,
-    ) -> Result<GetAllValuesResult, Error>;
+    ) -> Result<StoredValues, Error>;
 
     async fn try_accept_transaction(&self, transaction: Transaction) -> Result<(), Error>;
 
@@ -434,13 +433,13 @@ impl NodeClient for JulietNodeClient {
         &self,
         state_root_hash: Digest,
         key_tag: KeyTag,
-    ) -> Result<GetAllValuesResult, Error> {
+    ) -> Result<StoredValues, Error> {
         let get = GetRequest::AllValues {
             state_root_hash,
             key_tag,
         };
         let resp = self.dispatch(BinaryRequest::Get(get)).await?;
-        parse_response::<GetAllValuesResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)
+        parse_response::<StoredValues>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
     async fn try_accept_transaction(&self, transaction: Transaction) -> Result<(), Error> {
@@ -651,7 +650,7 @@ impl PayloadEntity for GlobalStateQueryResult {
     const PAYLOAD_TYPE: PayloadType = PayloadType::GlobalStateQueryResult;
 }
 
-impl PayloadEntity for GetAllValuesResult {
+impl PayloadEntity for StoredValues {
     const PAYLOAD_TYPE: PayloadType = PayloadType::StoredValues;
 }
 

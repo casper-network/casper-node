@@ -205,6 +205,13 @@ impl FromBytes for GetTrieFullResult {
 #[derive(Debug)]
 pub struct StoredValues(pub Vec<StoredValue>);
 
+impl StoredValues {
+    /// Returns the inner value.
+    pub fn into_inner(self) -> Vec<StoredValue> {
+        self.0
+    }
+}
+
 impl ToBytes for StoredValues {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.0.to_bytes()

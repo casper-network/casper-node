@@ -31,8 +31,6 @@ pub enum Error {
     FoundTransactionInsteadOfDeploy,
     #[error("value was not found in the global state")]
     GlobalStateEntryNotFound,
-    #[error("global state root hash not found")]
-    GlobalStateRootHashNotFound,
     #[error("the requested purse URef was invalid: {0}")]
     InvalidPurseURef(URefFromStrError),
     #[error("the requested purse balance could not be parsed")]
@@ -80,8 +78,9 @@ impl Error {
             Error::InconsistentTransactionVersions(_) | Error::FoundTransactionInsteadOfDeploy => {
                 ErrorCode::VariantMismatch
             }
-            Error::NodeRequest(_, NodeClientError::UnknownStateRootHash)
-            | Error::GlobalStateRootHashNotFound => ErrorCode::NoSuchStateRoot,
+            Error::NodeRequest(_, NodeClientError::UnknownStateRootHash) => {
+                ErrorCode::NoSuchStateRoot
+            }
             Error::GlobalStateEntryNotFound => ErrorCode::QueryFailed,
             Error::NodeRequest(_, NodeClientError::QueryFailedToExecute) => {
                 ErrorCode::QueryFailedToExecute

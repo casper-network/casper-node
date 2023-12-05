@@ -17,7 +17,6 @@ use super::{
 };
 use casper_types::{
     account::{Account, AccountHash},
-    binary_port::get_all_values::GetAllValuesResult,
     bytesrepr::Bytes,
     package::PackageKindTag,
     system::{
@@ -297,18 +296,12 @@ impl RpcWithOptionalParams for GetAuctionInfo {
         let signed_block = common::get_signed_block(&*node_client, maybe_block_id).await?;
         let state_root_hash = *signed_block.block().state_root_hash();
 
-        let bid_stored_values = match node_client
+        let bid_stored_values = node_client
             .query_global_state_by_tag(state_root_hash, KeyTag::Bid)
             .await
-            .map_err(|err| Error::NodeRequest("auction bids", err))?
-        {
-            GetAllValuesResult::Success { values } => values,
-            GetAllValuesResult::RootNotFound => {
-                return Err(Error::GlobalStateRootHashNotFound.into())
-            }
-        };
+            .map_err(|err| Error::NodeRequest("auction bids", err))?;
         let bids = bid_stored_values
-            .0
+            .into_inner()
             .into_iter()
             .map(|bid| bid.into_bid_kind().ok_or(Error::InvalidAuctionBids))
             .collect::<Result<Vec<_>, Error>>()?;
