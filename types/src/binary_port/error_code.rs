@@ -26,19 +26,8 @@ pub enum ErrorCode {
     InvalidDeploy = 8,
     #[cfg_attr(feature = "std", error("internal error"))]
     InternalError = 9,
-    #[cfg_attr(
-        feature = "std",
-        error("the query to global state failed to find a result")
-    )]
-    QueryFailed = 10,
     #[cfg_attr(feature = "std", error("the query to global state failed"))]
-    QueryFailedToExecute = 11,
-    //    #[cfg_attr(feature = "std", error("query global state failed"))]
-    //    GetStateFailed = 11,
-    //    #[cfg_attr(feature = "std", error("get all values failed"))]
-    //    GetAllValuesFailed = 12,
-    //    #[cfg_attr(feature = "std", error("get trie failed"))]
-    //    GetTrieFailed = 13,
+    QueryFailedToExecute = 10,
 }
 
 impl TryFrom<u8> for ErrorCode {
@@ -55,8 +44,7 @@ impl TryFrom<u8> for ErrorCode {
             7 => Ok(Self::InvalidProtocolVersion),
             8 => Ok(Self::InvalidDeploy),
             9 => Ok(Self::InternalError),
-            10 => Ok(Self::QueryFailed),
-            11 => Ok(Self::QueryFailedToExecute),
+            10 => Ok(Self::QueryFailedToExecute),
             _ => Err(UnknownErrorCode),
         }
     }

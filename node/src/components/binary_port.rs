@@ -440,7 +440,7 @@ where
                         BinaryResponse::new_error(error_code, temporarily_cloned_req)
                     }
                     Ok(_) => {
-                        let error_code = binary_port::ErrorCode::QueryFailed;
+                        let error_code = binary_port::ErrorCode::NotFound;
                         BinaryResponse::new_error(error_code, temporarily_cloned_req)
                     }
                     Err(_) => {
