@@ -115,7 +115,7 @@ pub trait NodeClient: Send + Sync {
     async fn read_block_transfers(&self, hash: BlockHash) -> Result<Option<Vec<Transfer>>, Error> {
         let key = hash.to_bytes().expect("should always serialize a digest");
         let resp = self.read_from_db(DbId::Transfer, &key).await?;
-        parse_response::<Vec<Transfer>>(&resp)
+        parse_response_bincode::<Vec<Transfer>>(&resp)
     }
 
     async fn read_execution_result(
