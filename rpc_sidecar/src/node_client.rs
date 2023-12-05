@@ -272,20 +272,20 @@ pub enum Error {
 impl Error {
     fn from_error_code(code: u8) -> Self {
         match BinaryPortError::try_from(code) {
-            Ok(BinaryPortError::FunctionIsDisabled) => Error::FunctionIsDisabled,
-            Ok(BinaryPortError::InvalidDeploy) => Error::InvalidDeploy,
-            Ok(BinaryPortError::RootNotFound) => Error::UnknownStateRootHash,
-            Ok(BinaryPortError::QueryFailedToExecute) => Error::QueryFailedToExecute,
+            Ok(BinaryPortError::FunctionIsDisabled) => Self::FunctionIsDisabled,
+            Ok(BinaryPortError::InvalidDeploy) => Self::InvalidDeploy,
+            Ok(BinaryPortError::RootNotFound) => Self::UnknownStateRootHash,
+            Ok(BinaryPortError::QueryFailedToExecute) => Self::QueryFailedToExecute,
             Ok(
                 err @ (BinaryPortError::WasmPreprocessing
                 | BinaryPortError::InvalidProtocolVersion
                 | BinaryPortError::InvalidDeployItemVariant),
-            ) => Error::SpecExecutionFailed(err.to_string()),
-            Ok(err) => Error::UnexpectedNodeError {
+            ) => Self::SpecExecutionFailed(err.to_string()),
+            Ok(err) => Self::UnexpectedNodeError {
                 message: err.to_string(),
                 code,
             },
-            Err(err) => Error::UnexpectedNodeError {
+            Err(err) => Self::UnexpectedNodeError {
                 message: err.to_string(),
                 code,
             },
