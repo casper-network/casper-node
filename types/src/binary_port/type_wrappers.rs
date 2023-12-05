@@ -145,6 +145,12 @@ impl FromBytes for HighestBlockSequenceCheckResult {
     }
 }
 
+impl From<HighestBlockSequenceCheckResult> for bool {
+    fn from(highest_block_sequence_check_result: HighestBlockSequenceCheckResult) -> Self {
+        highest_block_sequence_check_result.0
+    }
+}
+
 /// Type representing results of the speculative execution.
 #[derive(Debug)]
 pub struct SpeculativeExecutionResult(pub Option<(ExecutionResultV2, Messages)>);

@@ -154,7 +154,7 @@ pub trait NodeClient: Send + Sync {
         let req = NonPersistedDataRequest::CompletedBlocksContain { block_hash };
         let resp = self.read_from_mem(req).await?;
         parse_response::<HighestBlockSequenceCheckResult>(&resp.into())?
-            .map(|HighestBlockSequenceCheckResult(result)| result)
+            .map(bool::from)
             .ok_or(Error::EmptyEnvelope)
     }
 
@@ -166,7 +166,7 @@ pub trait NodeClient: Send + Sync {
     async fn read_uptime(&self) -> Result<Duration, Error> {
         let resp = self.read_from_mem(NonPersistedDataRequest::Uptime).await?;
         parse_response::<Uptime>(&resp.into())?
-            .map(Into::into)
+            .map(Duration::from)
             .ok_or(Error::EmptyEnvelope)
     }
 
@@ -175,7 +175,7 @@ pub trait NodeClient: Send + Sync {
             .read_from_mem(NonPersistedDataRequest::LastProgress)
             .await?;
         parse_response::<LastProgress>(&resp.into())?
-            .map(Into::into)
+            .map(Timestamp::from)
             .ok_or(Error::EmptyEnvelope)
     }
 
@@ -191,7 +191,7 @@ pub trait NodeClient: Send + Sync {
             .read_from_mem(NonPersistedDataRequest::NetworkName)
             .await?;
         parse_response::<NetworkName>(&resp.into())?
-            .map(Into::into)
+            .map(String::from)
             .ok_or(Error::EmptyEnvelope)
     }
 
@@ -411,7 +411,7 @@ impl NodeClient for JulietNodeClient {
         let get = GetRequest::Trie { trie_key };
         let resp = self.dispatch(BinaryRequest::Get(get)).await?;
         let res = parse_response::<GetTrieFullResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)?;
-        Ok(res.into_inner().map(Into::into))
+        Ok(res.into_inner().map(<Vec<u8>>::from))
     }
 
     async fn query_global_state(
