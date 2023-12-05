@@ -23,16 +23,22 @@ use casper_types::{
         non_persistent_data::NonPersistedDataRequest,
         type_wrappers::NetworkName,
     },
-    bytesrepr::{FromBytes, ToBytes},
+    bytesrepr::{self, FromBytes, ToBytes},
     BlockHashAndHeight, BlockHeader, Peers, Transaction,
 };
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use juliet::{
-    io::IoCoreBuilder, protocol::ProtocolBuilder, rpc::RpcBuilder, ChannelConfiguration, ChannelId,
+    io::IoCoreBuilder,
+    protocol::ProtocolBuilder,
+    rpc::{JulietRpcServer, RpcBuilder},
+    ChannelConfiguration, ChannelId,
 };
 use prometheus::Registry;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    net::{TcpListener, TcpStream},
+};
 use tracing::{debug, error, info, warn};
 
 use crate::{
@@ -171,7 +177,7 @@ async fn handle_request<REv>(
     req: BinaryRequest,
     config: &Config,
     effect_builder: EffectBuilder<REv>,
-) -> Result<Option<Bytes>, Error>
+) -> BinaryResponse
 where
     REv: From<Event>
         + From<StorageRequest>
@@ -192,13 +198,7 @@ where
         // Related RPC errors:
         // - ErrorCode::InvalidDeploy -->
         BinaryRequest::TryAcceptTransaction { transaction } => {
-            let response =
-                try_accept_transaction(effect_builder, transaction, temporarily_cloned_req, None)
-                    .await;
-
-            Ok(Some(Bytes::from(
-                ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?,
-            )))
+            try_accept_transaction(effect_builder, transaction, temporarily_cloned_req, None).await
         }
         BinaryRequest::TrySpeculativeExec {
             transaction,
@@ -215,8 +215,7 @@ where
             )
             .await;
             if !response.header.is_success() {
-                let payload = ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?;
-                return Ok(Some(Bytes::from(payload)));
+                return response;
             }
 
             let execution_prestate = SpeculativeExecutionState {
@@ -249,179 +248,99 @@ where
                     temporarily_cloned_req,
                 ),
             };
-
-            Ok(Some(Bytes::from(
-                ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?,
-            )))
+            response
         }
         BinaryRequest::Get(get_req) => match get_req {
             GetRequest::Db { db, key } => {
                 let maybe_raw_bytes = effect_builder.get_raw_data(db, key).await;
-                let response =
-                    BinaryResponse::from_db_raw_bytes(&db, temporarily_cloned_req, maybe_raw_bytes);
-                Ok(Some(Bytes::from(
-                    ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?,
-                )))
+                BinaryResponse::from_db_raw_bytes(&db, temporarily_cloned_req, maybe_raw_bytes)
             }
             GetRequest::NonPersistedData(req) => match req {
-                NonPersistedDataRequest::BlockHeight2Hash { height } => {
-                    let response = BinaryResponse::from_opt(
-                        temporarily_cloned_req,
-                        effect_builder.get_block_hash_for_height(height).await,
-                    );
-                    Ok(Some(Bytes::from(
-                        ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?,
-                    )))
-                }
-                NonPersistedDataRequest::HighestCompleteBlock => {
-                    let response = BinaryResponse::from_opt(
-                        temporarily_cloned_req,
-                        effect_builder
-                            .get_highest_complete_block_header_from_storage()
-                            .await
-                            .map(|block_header| {
-                                BlockHashAndHeight::new(
-                                    block_header.block_hash(),
-                                    block_header.height(),
-                                )
-                            }),
-                    );
-                    Ok(Some(Bytes::from(
-                        ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?,
-                    )))
-                }
+                NonPersistedDataRequest::BlockHeight2Hash { height } => BinaryResponse::from_opt(
+                    temporarily_cloned_req,
+                    effect_builder.get_block_hash_for_height(height).await,
+                ),
+                NonPersistedDataRequest::HighestCompleteBlock => BinaryResponse::from_opt(
+                    temporarily_cloned_req,
+                    effect_builder
+                        .get_highest_complete_block_header_from_storage()
+                        .await
+                        .map(|block_header| {
+                            BlockHashAndHeight::new(
+                                block_header.block_hash(),
+                                block_header.height(),
+                            )
+                        }),
+                ),
                 NonPersistedDataRequest::CompletedBlocksContain { block_hash } => {
-                    let response = BinaryResponse::from_value(
+                    BinaryResponse::from_value(
                         temporarily_cloned_req,
                         effect_builder
                             .highest_completed_block_sequence_contains_hash(block_hash)
                             .await,
-                    );
-                    Ok(Some(Bytes::from(
-                        ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?,
-                    )))
+                    )
                 }
                 NonPersistedDataRequest::TransactionHash2BlockHashAndHeight {
                     transaction_hash,
-                } => {
-                    let response = BinaryResponse::from_opt(
-                        temporarily_cloned_req,
-                        effect_builder
-                            .get_block_hash_and_height_for_transaction(transaction_hash)
-                            .await,
-                    );
-                    Ok(Some(Bytes::from(
-                        ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?,
-                    )))
-                }
-                NonPersistedDataRequest::Peers => {
-                    let response = BinaryResponse::from_value(
-                        temporarily_cloned_req,
-                        Peers::from(effect_builder.network_peers().await),
-                    );
-                    Ok(Some(Bytes::from(
-                        ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?,
-                    )))
-                }
-                NonPersistedDataRequest::Uptime => {
-                    let response = BinaryResponse::from_value(
-                        temporarily_cloned_req,
-                        effect_builder.get_uptime().await,
-                    );
-                    Ok(Some(Bytes::from(
-                        ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?,
-                    )))
-                }
-                NonPersistedDataRequest::LastProgress => {
-                    let response = BinaryResponse::from_value(
-                        temporarily_cloned_req,
-                        effect_builder.get_last_progress().await,
-                    );
-                    Ok(Some(Bytes::from(
-                        ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?,
-                    )))
-                }
-                NonPersistedDataRequest::ReactorState => {
-                    let response = BinaryResponse::from_value(
-                        temporarily_cloned_req,
-                        effect_builder.get_reactor_state().await,
-                    );
-                    Ok(Some(Bytes::from(
-                        ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?,
-                    )))
-                }
-                NonPersistedDataRequest::NetworkName => {
-                    let response = BinaryResponse::from_value(
-                        temporarily_cloned_req,
-                        effect_builder.get_network_name().await,
-                    );
-                    Ok(Some(Bytes::from(
-                        ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?,
-                    )))
-                }
-                NonPersistedDataRequest::ConsensusValidatorChanges => {
-                    let response = BinaryResponse::from_value(
-                        temporarily_cloned_req,
-                        effect_builder.get_consensus_validator_changes().await,
-                    );
-                    Ok(Some(Bytes::from(
-                        ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?,
-                    )))
-                }
-                NonPersistedDataRequest::BlockSynchronizerStatus => {
-                    let response = BinaryResponse::from_value(
-                        temporarily_cloned_req,
-                        effect_builder.get_block_synchronizer_status().await,
-                    );
-                    Ok(Some(Bytes::from(
-                        ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?,
-                    )))
-                }
-                NonPersistedDataRequest::AvailableBlockRange => {
-                    let response = BinaryResponse::from_value(
-                        temporarily_cloned_req,
-                        effect_builder
-                            .get_available_block_range_from_storage()
-                            .await,
-                    );
-                    Ok(Some(Bytes::from(
-                        ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?,
-                    )))
-                }
-                NonPersistedDataRequest::NextUpgrade => {
-                    let response = BinaryResponse::from_opt(
-                        temporarily_cloned_req,
-                        effect_builder.get_next_upgrade().await,
-                    );
-                    Ok(Some(Bytes::from(
-                        ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?,
-                    )))
-                }
-                NonPersistedDataRequest::ConsensusStatus => {
-                    let response = BinaryResponse::from_opt(
-                        temporarily_cloned_req,
-                        effect_builder.consensus_status().await,
-                    );
-                    Ok(Some(Bytes::from(
-                        ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?,
-                    )))
-                }
-                NonPersistedDataRequest::ChainspecRawBytes => {
-                    let response = BinaryResponse::from_value(
-                        temporarily_cloned_req,
-                        (*effect_builder.get_chainspec_raw_bytes().await).clone(),
-                    );
-                    Ok(Some(Bytes::from(
-                        ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?,
-                    )))
-                }
+                } => BinaryResponse::from_opt(
+                    temporarily_cloned_req,
+                    effect_builder
+                        .get_block_hash_and_height_for_transaction(transaction_hash)
+                        .await,
+                ),
+                NonPersistedDataRequest::Peers => BinaryResponse::from_value(
+                    temporarily_cloned_req,
+                    Peers::from(effect_builder.network_peers().await),
+                ),
+                NonPersistedDataRequest::Uptime => BinaryResponse::from_value(
+                    temporarily_cloned_req,
+                    effect_builder.get_uptime().await,
+                ),
+                NonPersistedDataRequest::LastProgress => BinaryResponse::from_value(
+                    temporarily_cloned_req,
+                    effect_builder.get_last_progress().await,
+                ),
+                NonPersistedDataRequest::ReactorState => BinaryResponse::from_value(
+                    temporarily_cloned_req,
+                    effect_builder.get_reactor_state().await,
+                ),
+                NonPersistedDataRequest::NetworkName => BinaryResponse::from_value(
+                    temporarily_cloned_req,
+                    effect_builder.get_network_name().await,
+                ),
+                NonPersistedDataRequest::ConsensusValidatorChanges => BinaryResponse::from_value(
+                    temporarily_cloned_req,
+                    effect_builder.get_consensus_validator_changes().await,
+                ),
+                NonPersistedDataRequest::BlockSynchronizerStatus => BinaryResponse::from_value(
+                    temporarily_cloned_req,
+                    effect_builder.get_block_synchronizer_status().await,
+                ),
+                NonPersistedDataRequest::AvailableBlockRange => BinaryResponse::from_value(
+                    temporarily_cloned_req,
+                    effect_builder
+                        .get_available_block_range_from_storage()
+                        .await,
+                ),
+                NonPersistedDataRequest::NextUpgrade => BinaryResponse::from_opt(
+                    temporarily_cloned_req,
+                    effect_builder.get_next_upgrade().await,
+                ),
+                NonPersistedDataRequest::ConsensusStatus => BinaryResponse::from_opt(
+                    temporarily_cloned_req,
+                    effect_builder.consensus_status().await,
+                ),
+                NonPersistedDataRequest::ChainspecRawBytes => BinaryResponse::from_value(
+                    temporarily_cloned_req,
+                    (*effect_builder.get_chainspec_raw_bytes().await).clone(),
+                ),
             },
             GetRequest::State {
                 state_root_hash,
                 base_key,
                 path,
             } => {
-                let response = match effect_builder
+                match effect_builder
                     .query_global_state(QueryRequest::new(state_root_hash, base_key, path))
                     .await
                 {
@@ -447,17 +366,13 @@ where
                         let error_code = binary_port::ErrorCode::QueryFailedToExecute;
                         BinaryResponse::new_error(error_code, temporarily_cloned_req)
                     }
-                };
-
-                Ok(Some(Bytes::from(
-                    ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?,
-                )))
+                }
             }
             GetRequest::AllValues {
                 state_root_hash,
                 key_tag,
             } => {
-                let response = if !config.allow_request_get_all_values {
+                if !config.allow_request_get_all_values {
                     BinaryResponse::new_error(
                         binary_port::ErrorCode::FunctionIsDisabled,
                         temporarily_cloned_req,
@@ -477,11 +392,7 @@ where
                             temporarily_cloned_req,
                         ),
                     }
-                };
-
-                Ok(Some(Bytes::from(
-                    ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?,
-                )))
+                }
             }
             GetRequest::Trie { trie_key } => {
                 let response = if !config.allow_request_get_trie {
@@ -498,9 +409,7 @@ where
                         ),
                     }
                 };
-
-                let payload = ToBytes::to_bytes(&response).map_err(|err| Error::BytesRepr(err))?;
-                Ok(Some(Bytes::from(payload)))
+                response
             }
         },
     }
@@ -544,8 +453,52 @@ where
     }
 }
 
-// TODO[RC]: Move to Self::
-// TODO[RC]: Handle graceful shutdown
+async fn client_loop<REv, const N: usize, R, W>(
+    mut server: JulietRpcServer<N, R, W>,
+    config: Arc<Config>,
+    effect_builder: EffectBuilder<REv>,
+) -> Result<(), Error>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<ContractRuntimeRequest>
+        + From<AcceptTransactionRequest>
+        + From<NetworkInfoRequest>
+        + From<ReactorInfoRequest>
+        + From<ConsensusRequest>
+        + From<BlockSynchronizerRequest>
+        + From<UpgradeWatcherRequest>
+        + From<ChainspecRawBytesRequest>
+        + Send,
+{
+    loop {
+        let Some(incoming_request) = server.next_request().await? else { 
+            debug!("remote party closed the connection");
+            return Ok(());
+        };
+        match incoming_request.payload() {
+            Some(payload) => match BinaryRequest::from_bytes(payload.as_ref())? {
+                (_, reminder) if !reminder.is_empty() => {
+                    return Err(bytesrepr::Error::LeftOverBytes.into());
+                }
+                (req, _) => {
+                    let response = handle_request(req, &*config, effect_builder).await;
+
+                    // TODO[RC]: Here decorate with original request.
+
+                    let payload = ToBytes::to_bytes(&response)?;
+                    incoming_request.respond(Some(Bytes::from(payload)))
+                }
+            },
+            None => {
+                return Err(Error::NoPayload);
+            }
+        }
+    }
+}
+
 async fn handle_client<REv, const N: usize>(
     addr: SocketAddr,
     mut client: TcpStream,
@@ -566,51 +519,11 @@ async fn handle_client<REv, const N: usize>(
         + Send,
 {
     let (reader, writer) = client.split();
-    let (client, mut server) = rpc_builder.build(reader, writer);
+    let (client, server) = rpc_builder.build(reader, writer);
 
-    loop {
-        match server.next_request().await {
-            Ok(Some(incoming_request)) => match incoming_request.payload() {
-                Some(payload) => match BinaryRequest::from_bytes(payload.as_ref()) {
-                    Ok((_, reminder)) if !reminder.is_empty() => {
-                        info!("binary request leftover bytes detected, closing connection");
-                        break;
-                    }
-                    Ok((req, _)) => {
-                        let response = handle_request(req, &*config, effect_builder).await;
-                        match response {
-                            Ok(response) => incoming_request.respond(response),
-                            Err(err) => {
-                                info!(
-                                    %err,
-                                    "unable to serialize binary response, closing connection"
-                                );
-                                break;
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        info!(
-                            %err,
-                            "unable to deserialize binary request, closing connection"
-                        );
-                        break;
-                    }
-                },
-                None => {
-                    info!("binary request without payload, closing connection");
-                    break;
-                }
-            },
-            Ok(None) => {
-                debug!("remote party closed the connection");
-                break;
-            }
-            Err(err) => {
-                warn!(%addr, %err, "closing connection");
-                break;
-            }
-        }
+    if let Err(err) = client_loop(server, config, effect_builder).await {
+        // Low severity is used to prevent malicious clients from causing log floods.
+        info!(%addr, %err, "binary port client handler error");
     }
 
     // We are a server, we won't make any requests of our own, but we need to keep the client
