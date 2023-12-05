@@ -17,6 +17,7 @@ use casper_types::{
             ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
             LastProgress, NetworkName, SpeculativeExecutionResult,
         },
+        ErrorCode as BinaryPortError,
     },
     bytesrepr::{self, FromBytes, ToBytes},
     execution::{ExecutionResult, ExecutionResultV1},
@@ -250,17 +251,43 @@ pub enum Error {
     NoResponseBody,
     #[error("unexpectedly received an empty envelope")]
     EmptyEnvelope,
-    #[error("received a node error: {0}")]
-    ReceivedNodeError(String),
     #[error("unexpected variant received in the response: {0}")]
     UnexpectedVariantReceived(PayloadType),
+    #[error("attempted to use a function that's disabled on the node")]
+    FunctionIsDisabled,
+    #[error("could not find the provided state root hash")]
+    UnknownStateRootHash,
+    #[error("the provided global state query failed to execute")]
+    QueryFailedToExecute,
+    #[error("could not execute the provided deploy")]
+    InvalidDeploy,
+    #[error("speculative execution has failed: {0}")]
+    SpecExecutionFailed(String),
+    #[error("received an unexpected node error: {message} ({code})")]
+    UnexpectedNodeError { message: String, code: u8 },
 }
 
 impl Error {
     fn from_error_code(code: u8) -> Self {
-        let err = casper_types::binary_port::ErrorCode::try_from(code)
-            .map_or_else(|err| err.to_string(), |err| err.to_string());
-        Error::ReceivedNodeError(err)
+        match BinaryPortError::try_from(code) {
+            Ok(BinaryPortError::FunctionIsDisabled) => Error::FunctionIsDisabled,
+            Ok(BinaryPortError::InvalidDeploy) => Error::InvalidDeploy,
+            Ok(BinaryPortError::RootNotFound) => Error::UnknownStateRootHash,
+            Ok(BinaryPortError::QueryFailedToExecute) => Error::QueryFailedToExecute,
+            Ok(
+                err @ (BinaryPortError::WasmPreprocessing
+                | BinaryPortError::InvalidProtocolVersion
+                | BinaryPortError::InvalidDeployItemVariant),
+            ) => Error::SpecExecutionFailed(err.to_string()),
+            Ok(err) => Error::UnexpectedNodeError {
+                message: err.to_string(),
+                code,
+            },
+            Err(err) => Error::UnexpectedNodeError {
+                message: err.to_string(),
+                code,
+            },
+        }
     }
 }
 

@@ -33,8 +33,6 @@ pub enum Error {
     GlobalStateEntryNotFound,
     #[error("global state root hash not found")]
     GlobalStateRootHashNotFound,
-    #[error("global state query has failed: {0}")]
-    GlobalStateQueryFailed(String),
     #[error("the requested purse URef was invalid: {0}")]
     InvalidPurseURef(URefFromStrError),
     #[error("the requested purse balance could not be parsed")]
@@ -59,8 +57,6 @@ pub enum Error {
     InvalidTransaction(String),
     #[error("the deploy was invalid: {0}")]
     InvalidDeploy(String),
-    #[error("the peers response was invalid: {0}")]
-    InvalidPeersResponse(String),
     #[error("the auction bids were invalid")]
     InvalidAuctionBids,
     #[error("the auction contract was invalid")]
@@ -74,9 +70,6 @@ pub enum Error {
 impl Error {
     fn code(&self) -> ErrorCode {
         match self {
-            Error::NodeRequest(_, _) | Error::InvalidPeersResponse(_) => {
-                ErrorCode::NodeRequestFailed
-            }
             Error::NoBlockWithHash(_, _)
             | Error::NoBlockAtHeight(_, _)
             | Error::NoHighestBlock(_)
@@ -87,9 +80,14 @@ impl Error {
             Error::InconsistentTransactionVersions(_) | Error::FoundTransactionInsteadOfDeploy => {
                 ErrorCode::VariantMismatch
             }
-            Error::GlobalStateRootHashNotFound => ErrorCode::NoSuchStateRoot,
-            Error::GlobalStateQueryFailed(_) | Error::GlobalStateEntryNotFound => {
-                ErrorCode::QueryFailed
+            Error::NodeRequest(_, NodeClientError::UnknownStateRootHash)
+            | Error::GlobalStateRootHashNotFound => ErrorCode::NoSuchStateRoot,
+            Error::GlobalStateEntryNotFound => ErrorCode::QueryFailed,
+            Error::NodeRequest(_, NodeClientError::QueryFailedToExecute) => {
+                ErrorCode::QueryFailedToExecute
+            }
+            Error::NodeRequest(_, NodeClientError::FunctionIsDisabled) => {
+                ErrorCode::FunctionIsDisabled
             }
             Error::InvalidPurseURef(_) => ErrorCode::FailedToParseGetBalanceURef,
             Error::InvalidPurseBalance => ErrorCode::FailedToGetBalance,
@@ -102,10 +100,13 @@ impl Error {
             | Error::DictionaryValueIsNotAUref(_)
             | Error::DictionaryKeyCouldNotBeParsed(_) => ErrorCode::FailedToGetDictionaryURef,
             Error::InvalidTransaction(_) => ErrorCode::InvalidTransaction,
-            Error::InvalidDeploy(_) | Error::SpecExecReturnedNothing => ErrorCode::InvalidDeploy,
+            Error::NodeRequest(_, NodeClientError::SpecExecutionFailed(_))
+            | Error::InvalidDeploy(_)
+            | Error::SpecExecReturnedNothing => ErrorCode::InvalidDeploy,
             Error::InvalidAuctionBids
             | Error::InvalidAuctionContract
             | Error::InvalidAuctionValidators => ErrorCode::InvalidAuctionState,
+            Error::NodeRequest(_, _) => ErrorCode::NodeRequestFailed,
         }
     }
 }

@@ -57,18 +57,18 @@ impl TryFrom<u8> for ErrorCode {
             9 => Ok(Self::InternalError),
             10 => Ok(Self::QueryFailed),
             11 => Ok(Self::QueryFailedToExecute),
-            _ => Err(UnknownErrorCode(value)),
+            _ => Err(UnknownErrorCode),
         }
     }
 }
 
 /// Error indicating that the error code is unknown.
 #[derive(Debug, Clone, Copy)]
-pub struct UnknownErrorCode(u8);
+pub struct UnknownErrorCode;
 
 impl fmt::Display for UnknownErrorCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "unknown error code: {}", self.0)
+        write!(f, "unknown node error code")
     }
 }
 

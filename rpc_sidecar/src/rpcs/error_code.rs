@@ -49,6 +49,8 @@ pub enum ErrorCode {
     NodeRequestFailed = -32018,
     /// Auction state could not be parsed.
     InvalidAuctionState = -32019,
+    /// The request could not be satisfied because an underlying function is disabled.
+    FunctionIsDisabled = -32020,
 }
 
 impl From<ErrorCode> for (i64, &'static str) {
@@ -80,6 +82,10 @@ impl From<ErrorCode> for (i64, &'static str) {
             ErrorCode::InvalidBlock => (error_code as i64, "Invalid block"),
             ErrorCode::NodeRequestFailed => (error_code as i64, "Node request failure"),
             ErrorCode::InvalidAuctionState => (error_code as i64, "Invalid auction state"),
+            ErrorCode::FunctionIsDisabled => (
+                error_code as i64,
+                "Function needed to execute this request is disabled",
+            ),
         }
     }
 }

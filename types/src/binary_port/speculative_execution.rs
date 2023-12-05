@@ -76,7 +76,7 @@ impl FromBytes for SpeculativeExecutionError {
                 let (err, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((SpeculativeExecutionError::InternalError(err), remainder))
             }
-            _ => return Err(bytesrepr::Error::NotRepresentable),
+            _ => Err(bytesrepr::Error::NotRepresentable),
         }
     }
 }
