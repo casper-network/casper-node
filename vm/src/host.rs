@@ -161,7 +161,7 @@ pub(crate) fn casper_return<S: Storage>(
     Err(VMError::Return { flags, data })
 }
 
-pub(crate) fn casper_create_contract<S: Storage>(
+pub(crate) fn casper_create_contract<S: Storage + 'static>(
     mut caller: impl Caller<S>,
     code_ptr: u32,
     code_len: u32,
@@ -237,14 +237,11 @@ pub(crate) fn casper_create_contract<S: Storage>(
                         )
                     }
                 };
-            dbg!(&params_bytes);
+
             for param in params {
-                // dbg!(&param);
                 let name = caller
                     .memory_read(param.name_ptr, param.name_len as usize)
                     .unwrap();
-                dbg!(&name);
-
                 params_vec.push(storage::Param {
                     name: name.into(),
                     ty: param.ty,
@@ -271,8 +268,58 @@ pub(crate) fn casper_create_contract<S: Storage>(
         }
     });
 
+    // TODO: Should we validate amount of constructors or just rely on the fact that the proc macro
+    // will statically check it, and the document the behavior that only first constructor will be
+    // called
+
     if let Some(first_constructor) = constructors.next() {
-        todo!("call constructor {first_constructor:?}")
+        let mut vm = VM::new();
+        let storage = caller.context().storage.clone();
+
+        let current_config = caller.config().clone();
+        let gas_limit = caller
+            .gas_consumed()
+            .try_into_remaining()
+            .expect("should be remaining");
+
+        let new_context = Context { storage };
+        let new_config = ConfigBuilder::new()
+            .with_gas_limit(gas_limit)
+            .with_memory_limit(current_config.memory_limit)
+            .with_input(Bytes::new())
+            // .with_callback(cloned)
+            .build();
+
+        let mut new_instance = vm
+            .prepare(code.clone(), new_context, new_config)
+            .expect("should prepare instance");
+
+        let (call_result, gas_usage) = new_instance.call_function(first_constructor.function_index);
+
+        let (return_data, host_result) = match call_result {
+            Ok(()) => {
+                // Contract did not call `casper_return` - implies that it did not revert, and
+                // did not pass any data.
+                (None, Ok(()))
+            }
+            Err(VMError::Return { flags, data }) => {
+                // If the contract called `casper_return` function with revert bit set, we have
+                // to pass the reverted code to the caller.
+                let host_result = if flags.contains(ReturnFlags::REVERT) {
+                    Err(HostError::CalleeReverted)
+                } else {
+                    Ok(())
+                };
+                (data, host_result)
+            }
+            Err(VMError::OutOfGas) => {
+                todo!()
+            }
+            Err(VMError::Trap(_trap)) => (None, Err(HostError::CalleeTrapped)),
+            Err(other_error) => todo!("{other_error:?}"),
+        };
+
+        dbg!(&return_data, &host_result);
     }
 
     if constructors.next().is_some() {
