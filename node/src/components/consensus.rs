@@ -666,5 +666,6 @@ where
 
     fn activate_failpoint(&mut self, activation: &FailpointActivation) {
         self.message_delay_failpoint.update_from(activation);
+        self.proposal_delay_failpoint.update_from(activation);
     }
 }
