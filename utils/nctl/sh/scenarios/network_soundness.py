@@ -205,7 +205,7 @@ def huge_deploy_sender_thread(count, interval):
             huge_deploy_path = make_huge_deploy(random_node)
             command = "{} send-deploy -v --input {} --node-address http://{}".format(
                 path_to_client, huge_deploy_path,
-                get_node_rpc_endpoint(random_node))
+                get_node_rpc_address(random_node))
             invoke(command)
 
         log("sent " + str(count) + " huge deploys and sleeping " +
@@ -225,12 +225,12 @@ def get_node_metrics_endpoint(node):
     return
 
 
-def get_node_rpc_endpoint(node):
+def get_node_rpc_address(node):
     command = "nctl-view-node-ports node={}".format(node)
     result = invoke(command, True)
     m = re.match(r'.*RPC @ (\d*).*', result)
     if m and m.group(1):
-        return "localhost:{}/rpc/".format(int(m.group(1)))
+        return "localhost:{}".format(int(m.group(1)))
     return
 
 
