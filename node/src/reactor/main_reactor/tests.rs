@@ -22,10 +22,10 @@ use casper_types::{
         AUCTION,
     },
     testing::TestRng,
-    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, Block, BlockHash,
-    BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Deploy, EraId, Key, Motes,
-    ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, Timestamp, Transaction,
-    TransactionHash, ValidatorConfig, U512,
+    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, AvailableBlockRange,
+    Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Deploy, EraId,
+    Key, Motes, NextUpgrade, ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff,
+    Timestamp, Transaction, TransactionHash, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -34,7 +34,6 @@ use crate::{
             self, ClContext, ConsensusMessage, HighwayMessage, HighwayVertex, NewBlockPayload,
         },
         gossiper, network, storage,
-        upgrade_watcher::NextUpgrade,
     },
     effect::{
         incoming::ConsensusMessageIncoming,
@@ -50,8 +49,8 @@ use crate::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
     },
     types::{
-        AvailableBlockRange, BlockPayload, DeployOrTransferHash, DeployWithFinalizedApprovals,
-        ExitCode, NodeId, SyncHandling, TransactionWithFinalizedApprovals,
+        BlockPayload, DeployOrTransferHash, ExitCode, NodeId, SyncHandling,
+        TransactionWithFinalizedApprovals,
     },
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
@@ -1269,16 +1268,16 @@ async fn should_store_finalized_approvals() {
                 TransactionWithFinalizedApprovals::Deploy {
                     deploy,
                     finalized_approvals,
-                } => DeployWithFinalizedApprovals::new(deploy, finalized_approvals),
+                } => (deploy, finalized_approvals),
                 _ => panic!("should receive deploy with finalized approvals"),
             });
         let maybe_finalized_approvals = maybe_dwa
             .as_ref()
-            .and_then(|dwa| dwa.finalized_approvals())
+            .and_then(|(_, approvals)| approvals.as_ref())
             .map(|fa| fa.inner().iter().cloned().collect());
         let maybe_original_approvals = maybe_dwa
             .as_ref()
-            .map(|dwa| dwa.original_approvals().iter().cloned().collect());
+            .map(|(deploy, _)| deploy.approvals().iter().cloned().collect());
         if runner.main_reactor().consensus().public_key() != &alice_public_key {
             // Bob should have finalized approvals, and his original approvals should be different.
             assert_eq!(

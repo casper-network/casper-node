@@ -173,7 +173,7 @@ impl RawDataAccess for Database {
 }
 
 /// The storage component.
-#[derive(DataSize)]
+#[derive(Debug, DataSize)]
 pub struct Storage {
     /// Storage location.
     root: PathBuf,

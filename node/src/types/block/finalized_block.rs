@@ -7,9 +7,9 @@ use std::{
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-#[cfg(test)]
-use casper_types::Transaction;
 use casper_types::{BlockV2, EraId, PublicKey, RewardedSignatures, Timestamp, TransactionHash};
+#[cfg(test)]
+use casper_types::{SecretKey, Transaction};
 #[cfg(any(feature = "testing", test))]
 use {casper_types::testing::TestRng, rand::Rng};
 
