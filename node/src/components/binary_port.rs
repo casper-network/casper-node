@@ -16,12 +16,12 @@ use casper_types::{
     binary_port::{
         self,
         binary_request::BinaryRequest,
-        binary_response::{self, BinaryResponse, BinaryResponseHeader},
+        binary_response::{self,  BinaryResponse},
         get::GetRequest,
         get_all_values::GetAllValuesResult,
         global_state::GlobalStateQueryResult,
         non_persistent_data::NonPersistedDataRequest,
-        type_wrappers::NetworkName,
+        type_wrappers::NetworkName, binary_response_header::BinaryResponseHeader, binary_response_and_request::BinaryResponseAndRequest,
     },
     bytesrepr::{self, FromBytes, ToBytes},
     BlockHashAndHeight, BlockHeader, Peers, Transaction,
@@ -191,14 +191,12 @@ where
         + From<ChainspecRawBytesRequest>
         + Send,
 {
-    let temporarily_cloned_req = req.clone();
-
     // TODO[RC]: clean this up, delegate to specialized functions
     match req {
         // Related RPC errors:
         // - ErrorCode::InvalidDeploy -->
         BinaryRequest::TryAcceptTransaction { transaction } => {
-            try_accept_transaction(effect_builder, transaction, temporarily_cloned_req, None).await
+            try_accept_transaction(effect_builder, transaction, None).await
         }
         BinaryRequest::TrySpeculativeExec {
             transaction,
@@ -210,7 +208,6 @@ where
             let response = try_accept_transaction(
                 effect_builder,
                 transaction.clone(),
-                temporarily_cloned_req.clone(),
                 Some(speculative_exec_at_block),
             )
             .await;
@@ -229,7 +226,7 @@ where
                 .await;
 
             let response = match speculative_execution_result {
-                Ok(result) => BinaryResponse::from_value(temporarily_cloned_req, result),
+                Ok(result) => BinaryResponse::from_value(result),
                 Err(err) => BinaryResponse::new_error(
                     match err {
                         EngineStateError::RootNotFound(_) => binary_port::ErrorCode::RootNotFound,
@@ -245,7 +242,6 @@ where
                         EngineStateError::Deploy => binary_port::ErrorCode::InvalidDeploy,
                         _ => binary_port::ErrorCode::InternalError,
                     },
-                    temporarily_cloned_req,
                 ),
             };
             response
@@ -253,15 +249,13 @@ where
         BinaryRequest::Get(get_req) => match get_req {
             GetRequest::Db { db, key } => {
                 let maybe_raw_bytes = effect_builder.get_raw_data(db, key).await;
-                BinaryResponse::from_db_raw_bytes(&db, temporarily_cloned_req, maybe_raw_bytes)
+                BinaryResponse::from_db_raw_bytes(&db,  maybe_raw_bytes)
             }
             GetRequest::NonPersistedData(req) => match req {
                 NonPersistedDataRequest::BlockHeight2Hash { height } => BinaryResponse::from_opt(
-                    temporarily_cloned_req,
                     effect_builder.get_block_hash_for_height(height).await,
                 ),
                 NonPersistedDataRequest::HighestCompleteBlock => BinaryResponse::from_opt(
-                    temporarily_cloned_req,
                     effect_builder
                         .get_highest_complete_block_header_from_storage()
                         .await
@@ -274,7 +268,6 @@ where
                 ),
                 NonPersistedDataRequest::CompletedBlocksContain { block_hash } => {
                     BinaryResponse::from_value(
-                        temporarily_cloned_req,
                         effect_builder
                             .highest_completed_block_sequence_contains_hash(block_hash)
                             .await,
@@ -283,55 +276,43 @@ where
                 NonPersistedDataRequest::TransactionHash2BlockHashAndHeight {
                     transaction_hash,
                 } => BinaryResponse::from_opt(
-                    temporarily_cloned_req,
                     effect_builder
                         .get_block_hash_and_height_for_transaction(transaction_hash)
                         .await,
                 ),
                 NonPersistedDataRequest::Peers => BinaryResponse::from_value(
-                    temporarily_cloned_req,
                     Peers::from(effect_builder.network_peers().await),
                 ),
                 NonPersistedDataRequest::Uptime => BinaryResponse::from_value(
-                    temporarily_cloned_req,
                     effect_builder.get_uptime().await,
                 ),
                 NonPersistedDataRequest::LastProgress => BinaryResponse::from_value(
-                    temporarily_cloned_req,
                     effect_builder.get_last_progress().await,
                 ),
                 NonPersistedDataRequest::ReactorState => BinaryResponse::from_value(
-                    temporarily_cloned_req,
                     effect_builder.get_reactor_state().await,
                 ),
                 NonPersistedDataRequest::NetworkName => BinaryResponse::from_value(
-                    temporarily_cloned_req,
                     effect_builder.get_network_name().await,
                 ),
                 NonPersistedDataRequest::ConsensusValidatorChanges => BinaryResponse::from_value(
-                    temporarily_cloned_req,
                     effect_builder.get_consensus_validator_changes().await,
                 ),
                 NonPersistedDataRequest::BlockSynchronizerStatus => BinaryResponse::from_value(
-                    temporarily_cloned_req,
                     effect_builder.get_block_synchronizer_status().await,
                 ),
                 NonPersistedDataRequest::AvailableBlockRange => BinaryResponse::from_value(
-                    temporarily_cloned_req,
                     effect_builder
                         .get_available_block_range_from_storage()
                         .await,
                 ),
                 NonPersistedDataRequest::NextUpgrade => BinaryResponse::from_opt(
-                    temporarily_cloned_req,
                     effect_builder.get_next_upgrade().await,
                 ),
                 NonPersistedDataRequest::ConsensusStatus => BinaryResponse::from_opt(
-                    temporarily_cloned_req,
                     effect_builder.consensus_status().await,
                 ),
                 NonPersistedDataRequest::ChainspecRawBytes => BinaryResponse::from_value(
-                    temporarily_cloned_req,
                     (*effect_builder.get_chainspec_raw_bytes().await).clone(),
                 ),
             },
@@ -346,25 +327,24 @@ where
                 {
                     Ok(QueryResult::Success { value, proofs }) => match proofs.to_bytes() {
                         Ok(proofs) => BinaryResponse::from_value(
-                            temporarily_cloned_req,
                             GlobalStateQueryResult::new(*value, base16::encode_lower(&proofs)),
                         ),
                         Err(_) => {
                             let error_code = binary_port::ErrorCode::InternalError;
-                            BinaryResponse::new_error(error_code, temporarily_cloned_req)
+                            BinaryResponse::new_error(error_code)
                         }
                     },
                     Ok(QueryResult::RootNotFound) => {
                         let error_code = binary_port::ErrorCode::RootNotFound;
-                        BinaryResponse::new_error(error_code, temporarily_cloned_req)
+                        BinaryResponse::new_error(error_code)
                     }
                     Ok(_) => {
                         let error_code = binary_port::ErrorCode::NotFound;
-                        BinaryResponse::new_error(error_code, temporarily_cloned_req)
+                        BinaryResponse::new_error(error_code)
                     }
                     Err(_) => {
                         let error_code = binary_port::ErrorCode::QueryFailedToExecute;
-                        BinaryResponse::new_error(error_code, temporarily_cloned_req)
+                        BinaryResponse::new_error(error_code)
                     }
                 }
             }
@@ -375,21 +355,19 @@ where
                 if !config.allow_request_get_all_values {
                     BinaryResponse::new_error(
                         binary_port::ErrorCode::FunctionIsDisabled,
-                        temporarily_cloned_req,
                     )
                 } else {
                     let get_all_values_request = GetAllValuesRequest::new(state_root_hash, key_tag);
                     match effect_builder.get_all_values(get_all_values_request).await {
                         Ok(GetAllValuesResult::Success { values }) => {
-                            BinaryResponse::from_value(temporarily_cloned_req, values)
+                            BinaryResponse::from_value( values)
                         }
                         Ok(GetAllValuesResult::RootNotFound) => {
                             let error_code = binary_port::ErrorCode::RootNotFound;
-                            BinaryResponse::new_error(error_code, temporarily_cloned_req)
+                            BinaryResponse::new_error(error_code)
                         }
                         Err(err) => BinaryResponse::new_error(
                             binary_port::ErrorCode::InternalError,
-                            temporarily_cloned_req,
                         ),
                     }
                 }
@@ -398,14 +376,12 @@ where
                 let response = if !config.allow_request_get_trie {
                     BinaryResponse::new_error(
                         binary_port::ErrorCode::FunctionIsDisabled,
-                        temporarily_cloned_req,
                     )
                 } else {
                     match effect_builder.get_trie_full(trie_key).await {
-                        Ok(result) => BinaryResponse::from_value(temporarily_cloned_req, result),
+                        Ok(result) => BinaryResponse::from_value( result),
                         Err(err) => BinaryResponse::new_error(
                             binary_port::ErrorCode::InternalError,
-                            temporarily_cloned_req,
                         ),
                     }
                 };
@@ -418,7 +394,6 @@ where
 async fn try_accept_transaction<REv>(
     effect_builder: EffectBuilder<REv>,
     transaction: Transaction,
-    temporarily_cloned_req: BinaryRequest,
     speculative_exec_at: Option<BlockHeader>,
 ) -> BinaryResponse
 where
@@ -431,11 +406,7 @@ where
         )
         .await
     {
-        Ok(_) => BinaryResponse {
-            header: BinaryResponseHeader::new(None),
-            original_request: ToBytes::to_bytes(&temporarily_cloned_req).unwrap(),
-            payload: vec![],
-        },
+        Ok(_) => BinaryResponse::new_empty(),
         Err(err) => BinaryResponse::new_error(
             match err {
                 transaction_acceptor::Error::EmptyBlockchain
@@ -447,8 +418,7 @@ where
                 | transaction_acceptor::Error::ExpectedTransactionV1 => {
                     binary_port::ErrorCode::InvalidDeploy
                 }
-            },
-            temporarily_cloned_req,
+            }
         ),
     }
 }
@@ -488,12 +458,8 @@ where
                 return Err(bytesrepr::Error::LeftOverBytes.into());
             }
             (req, _) => {
-                let response = handle_request(req, &*config, effect_builder).await;
-
-                // TODO[RC]: Here decorate with original request.
-
-                let payload = ToBytes::to_bytes(&response)?;
-                incoming_request.respond(Some(Bytes::from(payload)))
+                let response = BinaryResponseAndRequest::new(handle_request(req, &*config, effect_builder).await, payload.as_ref());
+                incoming_request.respond(Some(Bytes::from(ToBytes::to_bytes(&response)?)))
             }
         }
     }

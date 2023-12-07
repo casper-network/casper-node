@@ -8,6 +8,7 @@ use casper_types::{
     binary_port::{
         binary_request::BinaryRequest,
         binary_response::BinaryResponse,
+        binary_response_and_request::BinaryResponseAndRequest,
         db_id::DbId,
         get::GetRequest,
         get_all_values::GetAllValuesResult,
@@ -44,9 +45,12 @@ use tracing::{error, info, warn};
 
 #[async_trait]
 pub trait NodeClient: Send + Sync {
-    async fn read_from_db(&self, db: DbId, key: &[u8]) -> Result<BinaryResponse, Error>;
+    async fn read_from_db(&self, db: DbId, key: &[u8]) -> Result<BinaryResponseAndRequest, Error>;
 
-    async fn read_from_mem(&self, req: NonPersistedDataRequest) -> Result<BinaryResponse, Error>;
+    async fn read_from_mem(
+        &self,
+        req: NonPersistedDataRequest,
+    ) -> Result<BinaryResponseAndRequest, Error>;
 
     async fn read_trie_bytes(&self, trie_key: Digest) -> Result<Option<Vec<u8>>, Error>;
 
@@ -77,7 +81,7 @@ pub trait NodeClient: Send + Sync {
     async fn read_transaction(&self, hash: TransactionHash) -> Result<Option<Transaction>, Error> {
         let key = hash.to_bytes().expect("should always serialize a digest");
         let resp = self.read_from_db(DbId::Transaction, &key).await?;
-        parse_response_versioned::<Deploy, Transaction>(&resp)
+        parse_response_versioned::<Deploy, Transaction>(&resp.into())
     }
 
     async fn read_finalized_approvals(
@@ -88,19 +92,19 @@ pub trait NodeClient: Send + Sync {
         let resp = self
             .read_from_db(DbId::FinalizedTransactionApprovals, &key)
             .await?;
-        parse_response_versioned::<FinalizedDeployApprovals, FinalizedApprovals>(&resp)
+        parse_response_versioned::<FinalizedDeployApprovals, FinalizedApprovals>(&resp.into())
     }
 
     async fn read_block_header(&self, hash: BlockHash) -> Result<Option<BlockHeader>, Error> {
         let key = hash.to_bytes().expect("should always serialize a digest");
         let resp = self.read_from_db(DbId::BlockHeader, &key).await?;
-        parse_response_versioned::<BlockHeaderV1, BlockHeader>(&resp)
+        parse_response_versioned::<BlockHeaderV1, BlockHeader>(&resp.into())
     }
 
     async fn read_block_body(&self, hash: Digest) -> Result<Option<BlockBody>, Error> {
         let key = hash.to_bytes().expect("should always serialize a digest");
         let resp = self.read_from_db(DbId::BlockBody, &key).await?;
-        parse_response_versioned::<BlockBodyV1, BlockBody>(&resp)
+        parse_response_versioned::<BlockBodyV1, BlockBody>(&resp.into())
     }
 
     async fn read_block_signatures(
@@ -109,13 +113,13 @@ pub trait NodeClient: Send + Sync {
     ) -> Result<Option<BlockSignatures>, Error> {
         let key = hash.to_bytes().expect("should always serialize a digest");
         let resp = self.read_from_db(DbId::BlockMetadata, &key).await?;
-        parse_response_bincode::<BlockSignatures>(&resp)
+        parse_response_bincode::<BlockSignatures>(&resp.into())
     }
 
     async fn read_block_transfers(&self, hash: BlockHash) -> Result<Option<Vec<Transfer>>, Error> {
         let key = hash.to_bytes().expect("should always serialize a digest");
         let resp = self.read_from_db(DbId::Transfer, &key).await?;
-        parse_response_bincode::<Vec<Transfer>>(&resp)
+        parse_response_bincode::<Vec<Transfer>>(&resp.into())
     }
 
     async fn read_execution_result(
@@ -124,7 +128,7 @@ pub trait NodeClient: Send + Sync {
     ) -> Result<Option<ExecutionResult>, Error> {
         let key = hash.to_bytes().expect("should always serialize a digest");
         let resp = self.read_from_db(DbId::ExecutionResult, &key).await?;
-        parse_response_versioned::<ExecutionResultV1, ExecutionResult>(&resp)
+        parse_response_versioned::<ExecutionResultV1, ExecutionResult>(&resp.into())
     }
 
     async fn read_transaction_block_info(
@@ -133,38 +137,38 @@ pub trait NodeClient: Send + Sync {
     ) -> Result<Option<BlockHashAndHeight>, Error> {
         let req = NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { transaction_hash };
         let resp = self.read_from_mem(req).await?;
-        parse_response::<BlockHashAndHeight>(&resp)
+        parse_response::<BlockHashAndHeight>(&resp.into())
     }
 
     async fn read_highest_completed_block_info(&self) -> Result<Option<BlockHashAndHeight>, Error> {
         let resp = self
             .read_from_mem(NonPersistedDataRequest::HighestCompleteBlock)
             .await?;
-        parse_response::<BlockHashAndHeight>(&resp)
+        parse_response::<BlockHashAndHeight>(&resp.into())
     }
 
     async fn read_block_hash_from_height(&self, height: u64) -> Result<Option<BlockHash>, Error> {
         let req = NonPersistedDataRequest::BlockHeight2Hash { height };
         let resp = self.read_from_mem(req).await?;
-        parse_response::<BlockHash>(&resp)
+        parse_response::<BlockHash>(&resp.into())
     }
 
     async fn does_exist_in_completed_blocks(&self, block_hash: BlockHash) -> Result<bool, Error> {
         let req = NonPersistedDataRequest::CompletedBlocksContain { block_hash };
         let resp = self.read_from_mem(req).await?;
-        parse_response::<HighestBlockSequenceCheckResult>(&resp)?
+        parse_response::<HighestBlockSequenceCheckResult>(&resp.into())?
             .map(|HighestBlockSequenceCheckResult(result)| result)
             .ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_peers(&self) -> Result<Peers, Error> {
         let resp = self.read_from_mem(NonPersistedDataRequest::Peers).await?;
-        parse_response::<Peers>(&resp)?.ok_or(Error::EmptyEnvelope)
+        parse_response::<Peers>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_uptime(&self) -> Result<Duration, Error> {
         let resp = self.read_from_mem(NonPersistedDataRequest::Uptime).await?;
-        parse_response::<Uptime>(&resp)?
+        parse_response::<Uptime>(&resp.into())?
             .map(Into::into)
             .ok_or(Error::EmptyEnvelope)
     }
@@ -173,7 +177,7 @@ pub trait NodeClient: Send + Sync {
         let resp = self
             .read_from_mem(NonPersistedDataRequest::LastProgress)
             .await?;
-        parse_response::<LastProgress>(&resp)?
+        parse_response::<LastProgress>(&resp.into())?
             .map(Into::into)
             .ok_or(Error::EmptyEnvelope)
     }
@@ -182,14 +186,14 @@ pub trait NodeClient: Send + Sync {
         let resp = self
             .read_from_mem(NonPersistedDataRequest::ReactorState)
             .await?;
-        parse_response::<ReactorState>(&resp)?.ok_or(Error::EmptyEnvelope)
+        parse_response::<ReactorState>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_network_name(&self) -> Result<String, Error> {
         let resp = self
             .read_from_mem(NonPersistedDataRequest::NetworkName)
             .await?;
-        parse_response::<NetworkName>(&resp)?
+        parse_response::<NetworkName>(&resp.into())?
             .map(Into::into)
             .ok_or(Error::EmptyEnvelope)
     }
@@ -198,42 +202,42 @@ pub trait NodeClient: Send + Sync {
         let resp = self
             .read_from_mem(NonPersistedDataRequest::BlockSynchronizerStatus)
             .await?;
-        parse_response::<BlockSynchronizerStatus>(&resp)?.ok_or(Error::EmptyEnvelope)
+        parse_response::<BlockSynchronizerStatus>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_available_block_range(&self) -> Result<AvailableBlockRange, Error> {
         let resp = self
             .read_from_mem(NonPersistedDataRequest::AvailableBlockRange)
             .await?;
-        parse_response::<AvailableBlockRange>(&resp)?.ok_or(Error::EmptyEnvelope)
+        parse_response::<AvailableBlockRange>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_next_upgrade(&self) -> Result<Option<NextUpgrade>, Error> {
         let resp = self
             .read_from_mem(NonPersistedDataRequest::NextUpgrade)
             .await?;
-        parse_response::<NextUpgrade>(&resp)
+        parse_response::<NextUpgrade>(&resp.into())
     }
 
     async fn read_consensus_status(&self) -> Result<Option<(PublicKey, Option<TimeDiff>)>, Error> {
         let resp = self
             .read_from_mem(NonPersistedDataRequest::ConsensusStatus)
             .await?;
-        parse_response(&resp)
+        parse_response(&resp.into())
     }
 
     async fn read_chainspec_bytes(&self) -> Result<ChainspecRawBytes, Error> {
         let resp = self
             .read_from_mem(NonPersistedDataRequest::ChainspecRawBytes)
             .await?;
-        parse_response::<ChainspecRawBytes>(&resp)?.ok_or(Error::EmptyEnvelope)
+        parse_response::<ChainspecRawBytes>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
     async fn read_validator_changes(&self) -> Result<ConsensusValidatorChanges, Error> {
         let resp = self
             .read_from_mem(NonPersistedDataRequest::ConsensusValidatorChanges)
             .await?;
-        parse_response::<ConsensusValidatorChanges>(&resp)?.ok_or(Error::EmptyEnvelope)
+        parse_response::<ConsensusValidatorChanges>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 }
 
@@ -368,7 +372,7 @@ impl JulietNodeClient {
         }
     }
 
-    async fn dispatch(&self, req: BinaryRequest) -> Result<BinaryResponse, Error> {
+    async fn dispatch(&self, req: BinaryRequest) -> Result<BinaryResponseAndRequest, Error> {
         let payload = req.to_bytes().expect("should always serialize a request");
         let request_guard = self
             .client
@@ -390,7 +394,7 @@ impl JulietNodeClient {
 
 #[async_trait]
 impl NodeClient for JulietNodeClient {
-    async fn read_from_db(&self, db: DbId, key: &[u8]) -> Result<BinaryResponse, Error> {
+    async fn read_from_db(&self, db: DbId, key: &[u8]) -> Result<BinaryResponseAndRequest, Error> {
         let get = GetRequest::Db {
             db,
             key: key.to_vec(),
@@ -398,7 +402,10 @@ impl NodeClient for JulietNodeClient {
         self.dispatch(BinaryRequest::Get(get)).await
     }
 
-    async fn read_from_mem(&self, req: NonPersistedDataRequest) -> Result<BinaryResponse, Error> {
+    async fn read_from_mem(
+        &self,
+        req: NonPersistedDataRequest,
+    ) -> Result<BinaryResponseAndRequest, Error> {
         let get = GetRequest::NonPersistedData(req);
         self.dispatch(BinaryRequest::Get(get)).await
     }
@@ -406,7 +413,7 @@ impl NodeClient for JulietNodeClient {
     async fn read_trie_bytes(&self, trie_key: Digest) -> Result<Option<Vec<u8>>, Error> {
         let get = GetRequest::Trie { trie_key };
         let resp = self.dispatch(BinaryRequest::Get(get)).await?;
-        let res = parse_response::<GetTrieFullResult>(&resp)?.ok_or(Error::EmptyEnvelope)?;
+        let res = parse_response::<GetTrieFullResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)?;
         Ok(res.into_inner().map(Into::into))
     }
 
@@ -422,7 +429,7 @@ impl NodeClient for JulietNodeClient {
             path,
         };
         let resp = self.dispatch(BinaryRequest::Get(get)).await?;
-        parse_response::<GlobalStateQueryResult>(&resp)
+        parse_response::<GlobalStateQueryResult>(&resp.into())
     }
 
     async fn query_global_state_by_tag(
@@ -435,16 +442,17 @@ impl NodeClient for JulietNodeClient {
             key_tag,
         };
         let resp = self.dispatch(BinaryRequest::Get(get)).await?;
-        parse_response::<GetAllValuesResult>(&resp)?.ok_or(Error::EmptyEnvelope)
+        parse_response::<GetAllValuesResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
     async fn try_accept_transaction(&self, transaction: Transaction) -> Result<(), Error> {
         let request = BinaryRequest::TryAcceptTransaction { transaction };
-        let resp = self.dispatch(request).await?;
-        if resp.header.is_success() {
+        let BinaryResponseAndRequest { response, .. } = self.dispatch(request).await?;
+
+        if response.header.is_success() {
             return Ok(());
         } else {
-            return Err(Error::from_error_code(resp.header.error_code()));
+            return Err(Error::from_error_code(response.header.error_code()));
         }
     }
 
@@ -464,7 +472,7 @@ impl NodeClient for JulietNodeClient {
             speculative_exec_at_block: exec_at_block,
         };
         let resp = self.dispatch(request).await?;
-        parse_response::<SpeculativeExecutionResult>(&resp)?.ok_or(Error::EmptyEnvelope)
+        parse_response::<SpeculativeExecutionResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 }
 
@@ -479,12 +487,10 @@ where
         return Err(Error::from_error_code(resp.header.error_code()));
     }
     match resp.header.returned_data_type() {
-        Some(&found) if found == A::PAYLOAD_TYPE => {
-            bytesrepr::deserialize_from_slice(&resp.payload)
-                .map(Some)
-                .map_err(|err| Error::Deserialization(err.to_string()))
-        }
-        Some(&other) => Err(Error::UnexpectedVariantReceived(other)),
+        Some(found) if found == A::PAYLOAD_TYPE => bytesrepr::deserialize_from_slice(&resp.payload)
+            .map(Some)
+            .map_err(|err| Error::Deserialization(err.to_string())),
+        Some(other) => Err(Error::UnexpectedVariantReceived(other)),
         _ => Ok(None),
     }
 }
@@ -501,15 +507,15 @@ where
         return Err(Error::from_error_code(resp.header.error_code()));
     }
     match resp.header.returned_data_type() {
-        Some(&found) if found == V1::PAYLOAD_TYPE => bincode::deserialize(&resp.payload)
+        Some(found) if found == V1::PAYLOAD_TYPE => bincode::deserialize(&resp.payload)
             .map(|val| Some(V2::from(val)))
             .map_err(|err| Error::Deserialization(err.to_string())),
-        Some(&found) if found == V2::PAYLOAD_TYPE => {
+        Some(found) if found == V2::PAYLOAD_TYPE => {
             bytesrepr::deserialize_from_slice(&resp.payload)
                 .map(Some)
                 .map_err(|err| Error::Deserialization(err.to_string()))
         }
-        Some(&other) => Err(Error::UnexpectedVariantReceived(other)),
+        Some(other) => Err(Error::UnexpectedVariantReceived(other)),
         _ => Ok(None),
     }
 }
@@ -525,10 +531,10 @@ where
         return Err(Error::from_error_code(resp.header.error_code()));
     }
     match resp.header.returned_data_type() {
-        Some(&found) if found == A::PAYLOAD_TYPE => bincode::deserialize(&resp.payload)
+        Some(found) if found == A::PAYLOAD_TYPE => bincode::deserialize(&resp.payload)
             .map(Some)
             .map_err(|err| Error::Deserialization(err.to_string())),
-        Some(&other) => Err(Error::UnexpectedVariantReceived(other)),
+        Some(other) => Err(Error::UnexpectedVariantReceived(other)),
         _ => Ok(None),
     }
 }
