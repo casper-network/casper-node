@@ -22,7 +22,6 @@ use casper_execution_engine::engine_state::{
     balance::{BalanceRequest, BalanceResult},
     era_validators::GetEraValidatorsError,
     get_all_values::GetAllValuesRequest,
-    get_bids::{GetBidsRequest, GetBidsResult},
     query::{QueryRequest, QueryResult},
 };
 use casper_storage::global_state::trie::TrieRaw;
@@ -41,9 +40,9 @@ use casper_types::{
     system::auction::EraValidators,
     AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, DeployHeader, Digest,
-    DisplayIter, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalizedApprovals,
-    Key, NextUpgrade, PublicKey, ReactorState, SignedBlock, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionId, Transfer, Uptime, U512,
+    DisplayIter, EraId, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key,
+    NextUpgrade, PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash,
+    TransactionId, Uptime, U512,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -371,14 +370,6 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the result.
         responder: Responder<Option<BlockHeader>>,
     },
-    /// Retrieve all transfers in a block with given hash.
-    GetBlockTransfers {
-        /// Hash of block to get transfers of.
-        block_hash: BlockHash,
-        /// Responder to call with the result.  Returns `None` if the transfers do not exist in
-        /// local storage under the block_hash provided.
-        responder: Responder<Option<Vec<Transfer>>>,
-    },
     PutTransaction {
         transaction: Arc<Transaction>,
         /// Returns `true` if the transaction was stored on this attempt or false if it was
@@ -431,20 +422,6 @@ pub(crate) enum StorageRequest {
         /// None is returned when we don't have the block in the storage.
         responder: Responder<Option<BlockExecutionResultsOrChunk>>,
     },
-    GetTransactionAndExecutionInfo {
-        transaction_hash: TransactionHash,
-        responder: Responder<Option<(TransactionWithFinalizedApprovals, Option<ExecutionInfo>)>>,
-    },
-    /// Retrieve block and its signatures by its hash.
-    GetSignedBlockByHash {
-        /// The hash of the block.
-        block_hash: BlockHash,
-        /// If true, only return `Some` if the block is in the available block range, i.e. the
-        /// highest contiguous range of complete blocks.
-        only_from_available_block_range: bool,
-        /// The responder to call with the results.
-        responder: Responder<Option<SignedBlock>>,
-    },
     /// Retrieve a finality signature by block hash and public key.
     GetFinalitySignature {
         id: Box<FinalitySignatureId>,
@@ -453,16 +430,6 @@ pub(crate) enum StorageRequest {
     IsFinalitySignatureStored {
         id: Box<FinalitySignatureId>,
         responder: Responder<bool>,
-    },
-    /// Retrieve block and its signatures at a given height.
-    GetSignedBlockByHeight {
-        /// The height of the block.
-        block_height: BlockHeight,
-        /// If true, only return `Some` if the block is in the available block range, i.e. the
-        /// highest contiguous range of complete blocks.
-        only_from_available_block_range: bool,
-        /// The responder to call with the results.
-        responder: Responder<Option<SignedBlock>>,
     },
     /// Retrieve block and its metadata at a given height.
     GetBlockAndMetadataByHeight {
@@ -473,14 +440,6 @@ pub(crate) enum StorageRequest {
         only_from_available_block_range: bool,
         /// The responder to call with the results.
         responder: Responder<Option<BlockWithMetadata>>,
-    },
-    /// Get the highest block and its signatures.
-    GetHighestSignedBlock {
-        /// If true, only consider blocks in the available block range, i.e. the highest contiguous
-        /// range of complete blocks.
-        only_from_available_block_range: bool,
-        /// The responder to call the results with.
-        responder: Responder<Option<SignedBlock>>,
     },
     /// Get a single finality signature for a block hash.
     GetBlockSignature {
@@ -590,9 +549,6 @@ impl Display for StorageRequest {
             StorageRequest::GetSwitchBlockHeaderByEra { era_id, .. } => {
                 write!(formatter, "get header for era {}", era_id)
             }
-            StorageRequest::GetBlockTransfers { block_hash, .. } => {
-                write!(formatter, "get transfers for {}", block_hash)
-            }
             StorageRequest::PutTransaction { transaction, .. } => {
                 write!(formatter, "put {}", transaction)
             }
@@ -624,27 +580,11 @@ impl Display for StorageRequest {
                 write!(formatter, "get block execution results or chunk for {}", id)
             }
 
-            StorageRequest::GetTransactionAndExecutionInfo {
-                transaction_hash, ..
-            } => {
-                write!(
-                    formatter,
-                    "get transaction and metadata for {}",
-                    transaction_hash
-                )
-            }
             StorageRequest::GetFinalitySignature { id, .. } => {
                 write!(formatter, "get finality signature {}", id)
             }
             StorageRequest::IsFinalitySignatureStored { id, .. } => {
                 write!(formatter, "is finality signature {} stored", id)
-            }
-            StorageRequest::GetSignedBlockByHash { block_hash, .. } => {
-                write!(
-                    formatter,
-                    "get signed block for block with hash: {}",
-                    block_hash
-                )
             }
             StorageRequest::GetBlockAndMetadataByHeight { block_height, .. } => {
                 write!(
@@ -652,16 +592,6 @@ impl Display for StorageRequest {
                     "get block and metadata for block at height: {}",
                     block_height
                 )
-            }
-            StorageRequest::GetSignedBlockByHeight { block_height, .. } => {
-                write!(
-                    formatter,
-                    "get signed block for block at height: {}",
-                    block_height
-                )
-            }
-            StorageRequest::GetHighestSignedBlock { .. } => {
-                write!(formatter, "get highest signed block")
             }
             StorageRequest::GetBlockSignature {
                 block_hash,
@@ -870,14 +800,6 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the result.
         responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
     },
-    /// Return bids at a given state root hash
-    GetBids {
-        /// Get bids request.
-        #[serde(skip_serializing)]
-        get_bids_request: GetBidsRequest,
-        /// Responder to call with the result.
-        responder: Responder<Result<GetBidsResult, engine_state::Error>>,
-    },
     /// Return all values at a given state root hash and given key tag.
     // TODO[RC]: Reconsider this - could be attackable.
     GetAllValues {
@@ -974,11 +896,6 @@ impl Display for ContractRuntimeRequest {
                     "get all values request: {:?}",
                     get_all_values_request
                 )
-            }
-            ContractRuntimeRequest::GetBids {
-                get_bids_request, ..
-            } => {
-                write!(formatter, "get bids request: {:?}", get_bids_request)
             }
             ContractRuntimeRequest::GetExecutionResultsChecksum {
                 state_root_hash, ..

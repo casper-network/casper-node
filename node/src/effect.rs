@@ -117,7 +117,7 @@ use tracing::{debug, error, warn};
 
 use casper_execution_engine::engine_state::{
     self, era_validators::GetEraValidatorsError, get_all_values::GetAllValuesRequest,
-    BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
+    BalanceRequest, BalanceResult, QueryRequest, QueryResult,
 };
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
@@ -135,9 +135,9 @@ use casper_types::{
     system::auction::EraValidators,
     AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader,
     BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, DeployHeader,
-    Digest, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key,
-    NextUpgrade, PublicKey, ReactorState, SignedBlock, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionId, Transfer, Uptime, U512,
+    Digest, EraId, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key, NextUpgrade,
+    PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId,
+    Uptime, U512,
 };
 
 use crate::{
@@ -1352,24 +1352,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested block's transfers from storage.
-    pub(crate) async fn get_block_transfers_from_storage(
-        self,
-        block_hash: BlockHash,
-    ) -> Option<Vec<Transfer>>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetBlockTransfers {
-                block_hash,
-                responder,
-            },
-            QueueKind::FromStorage,
-        )
-        .await
-    }
-
     /// Returns the era IDs of the blocks in which the given transactions were executed.  If none
     /// of the transactions have been executed yet, an empty set will be returned.
     pub(crate) async fn get_transactions_era_ids(
@@ -1689,44 +1671,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested transaction and associated execution info if available.
-    pub(crate) async fn get_transaction_and_execution_info_from_storage(
-        self,
-        transaction_hash: TransactionHash,
-    ) -> Option<(TransactionWithFinalizedApprovals, Option<ExecutionInfo>)>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetTransactionAndExecutionInfo {
-                transaction_hash,
-                responder,
-            },
-            QueueKind::FromStorage,
-        )
-        .await
-    }
-
-    /// Gets the requested block and its finality signatures.
-    pub(crate) async fn get_signed_block_at_height_from_storage(
-        self,
-        block_height: u64,
-        only_from_available_block_range: bool,
-    ) -> Option<SignedBlock>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetSignedBlockByHeight {
-                block_height,
-                only_from_available_block_range,
-                responder,
-            },
-            QueueKind::FromStorage,
-        )
-        .await
-    }
-
     /// Gets the requested block and its finality signatures.
     pub(crate) async fn get_block_at_height_with_metadata_from_storage(
         self,
@@ -1787,44 +1731,6 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::IsFinalitySignatureStored { id, responder },
-            QueueKind::FromStorage,
-        )
-        .await
-    }
-
-    /// Gets the requested block by hash with its associated metadata.
-    pub(crate) async fn get_signed_block_from_storage(
-        self,
-        block_hash: BlockHash,
-        only_from_available_block_range: bool,
-    ) -> Option<SignedBlock>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetSignedBlockByHash {
-                block_hash,
-                only_from_available_block_range,
-                responder,
-            },
-            QueueKind::FromStorage,
-        )
-        .await
-    }
-
-    /// Gets the highest block with its associated metadata.
-    pub(crate) async fn get_highest_signed_block_from_storage(
-        self,
-        only_from_available_block_range: bool,
-    ) -> Option<SignedBlock>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetHighestSignedBlock {
-                only_from_available_block_range,
-                responder,
-            },
             QueueKind::FromStorage,
         )
         .await
@@ -2167,24 +2073,6 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             move |responder| ContractRuntimeRequest::GetRoundSeigniorageRate {
                 round_seigniorage_rate_request,
-                responder,
-            },
-            QueueKind::ContractRuntime,
-        )
-        .await
-    }
-
-    /// Requests a query be executed on the Contract Runtime component.
-    pub(crate) async fn get_bids(
-        self,
-        get_bids_request: GetBidsRequest,
-    ) -> Result<GetBidsResult, engine_state::Error>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            |responder| ContractRuntimeRequest::GetBids {
-                get_bids_request,
                 responder,
             },
             QueueKind::ContractRuntime,

@@ -632,22 +632,6 @@ impl ContractRuntime {
                     .set(self.exec_queue.len().try_into().unwrap_or(i64::MIN));
                 effects
             }
-            ContractRuntimeRequest::GetBids {
-                get_bids_request,
-                responder,
-            } => {
-                trace!(?get_bids_request, "get bids request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let start = Instant::now();
-                    let result = engine_state.get_bids(get_bids_request);
-                    metrics.get_bids.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "get bids result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
             ContractRuntimeRequest::GetAllValues {
                 get_all_values_request,
                 responder,

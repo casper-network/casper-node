@@ -1,72 +1,20 @@
 use std::{
     cmp::{Ord, PartialOrd},
-    collections::BTreeSet,
     fmt::{self, Display, Formatter},
     hash::Hash,
 };
 
 use datasize::DataSize;
-use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
 use casper_types::Transaction;
-use casper_types::{
-    BlockV2, EraId, PublicKey, RewardedSignatures, SecretKey, SingleBlockRewardedSignatures,
-    Timestamp, TransactionHash, TransactionV1Approval, TransactionV1Hash,
-};
+use casper_types::{BlockV2, EraId, PublicKey, RewardedSignatures, Timestamp, TransactionHash};
 #[cfg(any(feature = "testing", test))]
 use {casper_types::testing::TestRng, rand::Rng};
 
 use super::BlockPayload;
-use crate::{components::rest_server::DocExample, types::TransactionHashWithApprovals};
-
-static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
-    let validator_set = {
-        let mut validator_set = BTreeSet::new();
-        validator_set.insert(PublicKey::from(
-            &SecretKey::ed25519_from_bytes([5u8; SecretKey::ED25519_LENGTH]).unwrap(),
-        ));
-        validator_set.insert(PublicKey::from(
-            &SecretKey::ed25519_from_bytes([7u8; SecretKey::ED25519_LENGTH]).unwrap(),
-        ));
-        validator_set
-    };
-    let rewarded_signatures =
-        RewardedSignatures::new(vec![SingleBlockRewardedSignatures::from_validator_set(
-            &validator_set,
-            &validator_set,
-        )]);
-    let secret_key = SecretKey::example();
-    let hash = TransactionV1Hash::from_raw([19; 32]);
-    let approval = TransactionV1Approval::create(&hash, secret_key);
-    let mut approvals = BTreeSet::new();
-    approvals.insert(approval);
-    let transfer = TransactionHashWithApprovals::new_v1(hash, approvals);
-    let random_bit = true;
-    let block_payload = BlockPayload::new(
-        vec![transfer],
-        vec![],
-        vec![],
-        vec![],
-        vec![],
-        rewarded_signatures,
-        random_bit,
-    );
-    let era_report = Some(InternalEraReport::doc_example().clone());
-    let timestamp = *Timestamp::doc_example();
-    let era_id = EraId::from(1);
-    let height = 10;
-    let public_key = PublicKey::from(secret_key);
-    FinalizedBlock::new(
-        block_payload,
-        era_report,
-        timestamp,
-        era_id,
-        height,
-        public_key,
-    )
-});
+use crate::types::TransactionHashWithApprovals;
 
 /// The piece of information that will become the content of a future block after it was finalized
 /// and before execution happened yet.

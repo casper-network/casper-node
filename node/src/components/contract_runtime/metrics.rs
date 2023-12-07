@@ -78,7 +78,7 @@ pub struct Metrics {
     pub(super) get_total_supply: Histogram,
     pub(super) get_round_seigniorage_rate: Histogram,
     pub(super) get_era_validators: Histogram,
-    pub(super) get_bids: Histogram,
+    pub(super) get_bids: Histogram, // TODO[RC]: Remove as `GetBids` request has been removed.
     pub(super) get_all_values: Histogram,
     pub(super) put_trie: Histogram,
     pub(super) get_trie: Histogram,

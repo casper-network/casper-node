@@ -78,7 +78,7 @@ use casper_types::{
     },
     AvailableBlockRange, Block, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader,
     BlockSignatures, BlockV2, DeployApprovalsHash, DeployHash, DeployHeader, Digest, EraId,
-    ExecutionInfo, FinalitySignature, FinalizedApprovals, ProtocolVersion, PublicKey, SignedBlock,
+    FinalitySignature, FinalizedApprovals, ProtocolVersion, PublicKey, SignedBlock,
     SignedBlockHeader, StoredValue, Timestamp, Transaction, TransactionApprovalsHash,
     TransactionHash, TransactionId, TransactionV1ApprovalsHash, Transfer,
 };
@@ -849,13 +849,6 @@ impl Storage {
                     )?)
                     .ignore()
             }
-            StorageRequest::GetBlockTransfers {
-                block_hash,
-                responder,
-            } => {
-                let maybe_transfers = self.get_transfers(&block_hash)?;
-                responder.respond(maybe_transfers).ignore()
-            }
             StorageRequest::PutTransaction {
                 transaction,
                 responder,
@@ -936,79 +929,6 @@ impl Storage {
                 txn.commit()?;
                 responder.respond(()).ignore()
             }
-            StorageRequest::GetTransactionAndExecutionInfo {
-                transaction_hash,
-                responder,
-            } => {
-                let mut txn = self.env.begin_ro_txn()?;
-
-                let transaction_wfa = match self
-                    .get_transaction_with_finalized_approvals(&mut txn, &transaction_hash)?
-                {
-                    Some(transaction_wfa) => transaction_wfa,
-                    None => return Ok(responder.respond(None).ignore()),
-                };
-
-                let block_hash_height_and_era = match self
-                    .transaction_hash_index
-                    .get(&transaction_hash)
-                {
-                    Some(value) => *value,
-                    None => return Ok(responder.respond(Some((transaction_wfa, None))).ignore()),
-                };
-                let execution_result =
-                    self.execution_result_dbs.get(&mut txn, &transaction_hash)?;
-                let execution_info = ExecutionInfo {
-                    block_hash: block_hash_height_and_era.block_hash,
-                    block_height: block_hash_height_and_era.block_height,
-                    execution_result,
-                };
-
-                responder
-                    .respond(Some((transaction_wfa, Some(execution_info))))
-                    .ignore()
-            }
-            StorageRequest::GetSignedBlockByHash {
-                block_hash,
-                only_from_available_block_range,
-                responder,
-            } => {
-                let mut txn = self.env.begin_ro_txn()?;
-
-                let block: Block =
-                    if let Some(block) = self.get_single_block(&mut txn, &block_hash)? {
-                        block
-                    } else {
-                        return Ok(responder.respond(None).ignore());
-                    };
-
-                if !(self.should_return_block(block.height(), only_from_available_block_range)?) {
-                    return Ok(responder.respond(None).ignore());
-                }
-
-                // Check that the hash of the block retrieved is correct.
-                if block_hash != *block.hash() {
-                    error!(
-                        queried_block_hash = ?block_hash,
-                        actual_block_hash = ?block.hash(),
-                        "block not stored under hash"
-                    );
-                    debug_assert_eq!(&block_hash, block.hash());
-                    return Ok(responder.respond(None).ignore());
-                }
-                let block_signatures = match self.get_block_signatures(&mut txn, &block_hash)? {
-                    Some(signatures) => signatures,
-                    None => BlockSignatures::new(block_hash, block.era_id()),
-                };
-                if block_signatures.is_verified().is_err() {
-                    error!(?block, "invalid block signatures for block");
-                    debug_assert!(block_signatures.is_verified().is_ok());
-                    return Ok(responder.respond(None).ignore());
-                }
-                responder
-                    .respond(Some(SignedBlock::new(block, block_signatures)))
-                    .ignore()
-            }
             StorageRequest::GetFinalitySignature { id, responder } => {
                 let mut txn = self.env.begin_ro_txn()?;
                 let maybe_sig = self
@@ -1054,61 +974,6 @@ impl Storage {
                         block,
                         block_signatures,
                     }))
-                    .ignore()
-            }
-            StorageRequest::GetSignedBlockByHeight {
-                block_height,
-                only_from_available_block_range,
-                responder,
-            } => {
-                if !(self.should_return_block(block_height, only_from_available_block_range)?) {
-                    return Ok(responder.respond(None).ignore());
-                }
-
-                let mut txn = self.env.begin_ro_txn()?;
-
-                let block: Block = {
-                    if let Some(block) = self.get_block_by_height(&mut txn, block_height)? {
-                        block
-                    } else {
-                        return Ok(responder.respond(None).ignore());
-                    }
-                };
-
-                let hash = block.hash();
-                let block_signatures = match self.get_block_signatures(&mut txn, hash)? {
-                    Some(signatures) => signatures,
-                    None => BlockSignatures::new(*hash, block.era_id()),
-                };
-                responder
-                    .respond(Some(SignedBlock::new(block, block_signatures)))
-                    .ignore()
-            }
-            StorageRequest::GetHighestSignedBlock {
-                only_from_available_block_range,
-                responder,
-            } => {
-                let mut txn = self.env.begin_ro_txn()?;
-                let maybe_height = if only_from_available_block_range {
-                    self.highest_complete_block_height()
-                } else {
-                    self.block_height_index.keys().last().copied()
-                };
-                let height = match maybe_height {
-                    Some(height) => height,
-                    None => return Ok(responder.respond(None).ignore()),
-                };
-                let highest_block = match self.get_block_by_height(&mut txn, height)? {
-                    Some(block) => block,
-                    None => return Ok(responder.respond(None).ignore()),
-                };
-                let hash = highest_block.hash();
-                let block_signatures = match self.get_block_signatures(&mut txn, hash)? {
-                    Some(signatures) => signatures,
-                    None => BlockSignatures::new(*hash, highest_block.era_id()),
-                };
-                responder
-                    .respond(Some(SignedBlock::new(highest_block, block_signatures)))
                     .ignore()
             }
             StorageRequest::PutBlockSignatures {
@@ -2249,58 +2114,6 @@ impl Storage {
         };
 
         Ok(Some(ret))
-    }
-
-    /// Retrieves successful transfers associated with block.
-    ///
-    /// If there is no record of successful transfers for this block, then the list will be built
-    /// from the execution results and stored to `transfer_db`.  The record could have been missing
-    /// or incorrectly set to an empty collection due to previous synchronization and storage
-    /// issues.  See https://github.com/casper-network/casper-node/issues/4255 and
-    /// https://github.com/casper-network/casper-node/issues/4268 for further info.
-    fn get_transfers(
-        &self,
-        block_hash: &BlockHash,
-    ) -> Result<Option<Vec<Transfer>>, FatalStorageError> {
-        let mut txn = self.env.begin_rw_txn()?;
-        if let Some(transfers) = txn.get_value::<_, Vec<Transfer>>(self.transfer_db, block_hash)? {
-            if !transfers.is_empty() {
-                return Ok(Some(transfers));
-            }
-        }
-
-        let block = match self.get_single_block(&mut txn, block_hash)? {
-            Some(block) => block,
-            None => return Ok(None),
-        };
-
-        let deploy_hashes: Vec<DeployHash> = match block.clone_body() {
-            BlockBody::V1(v1) => v1.deploy_and_transfer_hashes().copied().collect(),
-            BlockBody::V2(v2) => v2
-                .all_transactions()
-                .filter_map(|transaction_hash| match transaction_hash {
-                    TransactionHash::Deploy(deploy_hash) => Some(*deploy_hash),
-                    TransactionHash::V1(_) => None,
-                })
-                .collect(),
-        };
-
-        let mut transfers: Vec<Transfer> = vec![];
-        for deploy_hash in deploy_hashes {
-            let transaction_hash = TransactionHash::Deploy(deploy_hash);
-            let successful_xfers =
-                match self.execution_result_dbs.get(&mut txn, &transaction_hash)? {
-                    Some(exec_result) => successful_transfers(&exec_result),
-                    None => {
-                        error!(%deploy_hash, %block_hash, "should have exec result");
-                        vec![]
-                    }
-                };
-            transfers.extend(successful_xfers);
-        }
-        txn.put_value(self.transfer_db, block_hash, &transfers, true)?;
-        txn.commit()?;
-        Ok(Some(transfers))
     }
 
     /// Retrieves block signatures for a block with a given block hash.

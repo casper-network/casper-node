@@ -73,14 +73,4 @@ impl TransactionWithFinalizedApprovals {
             }
         }
     }
-
-    /// Extracts the original transaction by discarding the finalized approvals.
-    pub(crate) fn discard_finalized_approvals(self) -> Transaction {
-        match self {
-            TransactionWithFinalizedApprovals::Deploy { deploy, .. } => Transaction::Deploy(deploy),
-            TransactionWithFinalizedApprovals::V1 { transaction, .. } => {
-                Transaction::V1(transaction)
-            }
-        }
-    }
 }
