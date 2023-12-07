@@ -239,7 +239,7 @@ impl JsonSchema for Timestamp {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
         schema_object.metadata().description =
-            Some("Human-readable timestamp in RFC 3339 format.".to_string());
+            Some("Timestamp formatted as per RFC 3339".to_string());
         schema_object.into()
     }
 }

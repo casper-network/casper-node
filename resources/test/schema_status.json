@@ -20,7 +20,7 @@
       "description": "The node ID and network address of each connected peer.",
       "allOf": [
         {
-          "$ref": "#/definitions/PeersMap"
+          "$ref": "#/definitions/Peers"
         }
       ]
     },
@@ -131,7 +131,7 @@
   },
   "additionalProperties": false,
   "definitions": {
-    "PeersMap": {
+    "Peers": {
       "description": "Map of peer IDs to network addresses.",
       "type": "array",
       "items": {
@@ -202,9 +202,7 @@
     },
     "Timestamp": {
       "description": "Timestamp formatted as per RFC 3339",
-      "type": "integer",
-      "format": "uint64",
-      "minimum": 0.0
+      "type": "string"
     },
     "EraId": {
       "description": "Era ID newtype.",
@@ -235,9 +233,7 @@
     },
     "TimeDiff": {
       "description": "Human-readable duration.",
-      "type": "integer",
-      "format": "uint64",
-      "minimum": 0.0
+      "type": "string"
     },
     "NextUpgrade": {
       "description": "Information about the next protocol upgrade.",

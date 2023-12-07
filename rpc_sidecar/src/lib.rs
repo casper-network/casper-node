@@ -22,6 +22,13 @@ mod tests {
 
     use crate::rpcs::docs::OPEN_RPC_SCHEMA;
 
+    use crate::rpcs::info::GetStatusResult;
+    use crate::rpcs::{
+        docs::OpenRpcSchema,
+        info::{GetChainspecResult, GetValidatorChangesResult},
+    };
+    use schemars::schema_for;
+
     #[test]
     fn json_schema_check() {
         let schema_path = format!(
@@ -59,6 +66,54 @@ mod tests {
             !regex.is_match(&schema),
             "seems like a byte array is not hex-encoded - see comment in `json_schema_check` for \
             further info"
+        );
+    }
+
+    #[test]
+    fn json_schema_status_check() {
+        let schema_path = format!(
+            "{}/../resources/test/schema_status.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        assert_schema(
+            &schema_path,
+            &serde_json::to_string_pretty(&schema_for!(GetStatusResult)).unwrap(),
+        );
+    }
+
+    #[test]
+    fn json_schema_validator_changes_check() {
+        let schema_path = format!(
+            "{}/../resources/test/schema_validator_changes.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        assert_schema(
+            &schema_path,
+            &serde_json::to_string_pretty(&schema_for!(GetValidatorChangesResult)).unwrap(),
+        );
+    }
+
+    #[test]
+    fn json_schema_rpc_schema_check() {
+        let schema_path = format!(
+            "{}/../resources/test/schema_rpc_schema.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        assert_schema(
+            &schema_path,
+            &serde_json::to_string_pretty(&schema_for!(OpenRpcSchema)).unwrap(),
+        );
+    }
+
+    #[test]
+    fn json_schema_chainspec_bytes_check() {
+        let schema_path = format!(
+            "{}/../resources/test/schema_chainspec_bytes.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        assert_schema(
+            &schema_path,
+            &serde_json::to_string_pretty(&schema_for!(GetChainspecResult)).unwrap(),
         );
     }
 
