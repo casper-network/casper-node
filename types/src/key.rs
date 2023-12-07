@@ -1209,9 +1209,16 @@ mod tests {
         // Prefix is 2^32-1 = shouldn't allocate that much
         let bytes: Vec<u8> = vec![255, 255, 255, 255, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
         let res: Result<(Vec<Key>, &[u8]), _> = FromBytes::from_bytes(&bytes);
-        #[cfg(target_os = "linux")]
-        assert_eq!(res.expect_err("should fail"), Error::OutOfMemory);
-        #[cfg(target_os = "macos")]
+        assert_eq!(res.expect_err("should fail"), Error::EarlyEndOfStream);
+
+        // Prefix is 2^32-2 = shouldn't allocate that much
+        let bytes: Vec<u8> = vec![255, 255, 255, 254, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let res: Result<(Vec<Key>, &[u8]), _> = FromBytes::from_bytes(&bytes);
+        assert_eq!(res.expect_err("should fail"), Error::EarlyEndOfStream);
+
+        // Prefix is 2^32-2 = shouldn't allocate that much
+        let bytes: Vec<u8> = vec![0, 0, 0, 254, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let res: Result<(Vec<Key>, &[u8]), _> = FromBytes::from_bytes(&bytes);
         assert_eq!(res.expect_err("should fail"), Error::EarlyEndOfStream);
     }
 
