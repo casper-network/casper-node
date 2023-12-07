@@ -51,7 +51,7 @@ use std::{
     borrow::Cow,
     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
     convert::TryInto,
-    fmt::{self, Display, Formatter},
+    fmt::{self, Debug, Display, Formatter},
     fs::{self, OpenOptions},
     io::ErrorKind,
     path::{Path, PathBuf},
@@ -169,6 +169,12 @@ impl RawDataAccess for Database {
             Err(lmdb::Error::NotFound) => return Ok(None),
             Err(err) => return Err(err.into()),
         }
+    }
+}
+
+impl Debug for dyn RawDataAccess + 'static {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "[RawDataAccess]")
     }
 }
 

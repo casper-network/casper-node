@@ -1,7 +1,17 @@
 //! The payload type.
 
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
+
+#[cfg(test)]
+use rand::Rng;
+
 use alloc::vec::Vec;
 use core::fmt;
+use std::convert::TryFrom;
+
+#[cfg(test)]
+use crate::testing::TestRng;
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -21,6 +31,7 @@ use super::{
 /// A type of the payload being returned in a binary response.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum PayloadType {
     /// Legacy version of the block header.
     BlockHeaderV1,
@@ -91,6 +102,94 @@ pub enum PayloadType {
     GetTrieFullResult,
 }
 
+impl PayloadType {
+    pub(crate) fn new_from_db_id(db_id: &DbId, is_legacy: bool) -> Self {
+        match (is_legacy, db_id) {
+            (true, DbId::BlockHeader) => Self::BlockHeaderV1,
+            (true, DbId::BlockBody) => Self::BlockBodyV1,
+            (true, DbId::ApprovalsHashes) => Self::ApprovalsHashes,
+            (true, DbId::BlockMetadata) => Self::BlockSignatures,
+            (true, DbId::Transaction) => Self::Deploy,
+            (true, DbId::ExecutionResult) => Self::ExecutionResultV1,
+            (true, DbId::Transfer) => Self::VecTransfers,
+            (true, DbId::StateStore) => Self::VecU8,
+            (true, DbId::FinalizedTransactionApprovals) => Self::FinalizedDeployApprovals,
+            (false, DbId::BlockHeader) => Self::BlockHeader,
+            (false, DbId::BlockBody) => Self::BlockBody,
+            (false, DbId::ApprovalsHashes) => Self::ApprovalsHashesV1,
+            (false, DbId::BlockMetadata) => Self::BlockSignatures,
+            (false, DbId::Transaction) => Self::Transaction,
+            (false, DbId::ExecutionResult) => Self::ExecutionResult,
+            (false, DbId::Transfer) => Self::VecTransfers,
+            (false, DbId::StateStore) => Self::VecU8,
+            (false, DbId::FinalizedTransactionApprovals) => Self::FinalizedApprovals,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn random(rng: &mut TestRng) -> Self {
+        Self::try_from(rng.gen_range(0..33)).unwrap()
+    }
+}
+
+impl TryFrom<u8> for PayloadType {
+    type Error = ();
+
+    // TODO: replace with macro or find better option
+    fn try_from(v: u8) -> Result<Self, Self::Error> {
+        match v {
+            x if x == PayloadType::BlockHeaderV1 as u8 => Ok(PayloadType::BlockHeaderV1),
+            x if x == PayloadType::BlockHeader as u8 => Ok(PayloadType::BlockHeader),
+            x if x == PayloadType::BlockBodyV1 as u8 => Ok(PayloadType::BlockBodyV1),
+            x if x == PayloadType::BlockBody as u8 => Ok(PayloadType::BlockBody),
+            x if x == PayloadType::ApprovalsHashesV1 as u8 => Ok(PayloadType::ApprovalsHashesV1),
+            x if x == PayloadType::ApprovalsHashes as u8 => Ok(PayloadType::ApprovalsHashes),
+            x if x == PayloadType::BlockSignatures as u8 => Ok(PayloadType::BlockSignatures),
+            x if x == PayloadType::Deploy as u8 => Ok(PayloadType::Deploy),
+            x if x == PayloadType::Transaction as u8 => Ok(PayloadType::Transaction),
+            x if x == PayloadType::ExecutionResultV1 as u8 => Ok(PayloadType::ExecutionResultV1),
+            x if x == PayloadType::ExecutionResult as u8 => Ok(PayloadType::ExecutionResult),
+            x if x == PayloadType::VecTransfers as u8 => Ok(PayloadType::VecTransfers),
+            x if x == PayloadType::VecU8 as u8 => Ok(PayloadType::VecU8),
+            x if x == PayloadType::FinalizedDeployApprovals as u8 => {
+                Ok(PayloadType::FinalizedDeployApprovals)
+            }
+            x if x == PayloadType::FinalizedApprovals as u8 => Ok(PayloadType::FinalizedApprovals),
+            x if x == PayloadType::BlockHashAndHeight as u8 => Ok(PayloadType::BlockHashAndHeight),
+            x if x == PayloadType::BlockHash as u8 => Ok(PayloadType::BlockHash),
+            x if x == PayloadType::Peers as u8 => Ok(PayloadType::Peers),
+            x if x == PayloadType::LastProgress as u8 => Ok(PayloadType::LastProgress),
+            x if x == PayloadType::ReactorState as u8 => Ok(PayloadType::ReactorState),
+            x if x == PayloadType::NetworkName as u8 => Ok(PayloadType::NetworkName),
+            x if x == PayloadType::ConsensusValidatorChanges as u8 => {
+                Ok(PayloadType::ConsensusValidatorChanges)
+            }
+            x if x == PayloadType::BlockSynchronizerStatus as u8 => {
+                Ok(PayloadType::BlockSynchronizerStatus)
+            }
+            x if x == PayloadType::AvailableBlockRange as u8 => {
+                Ok(PayloadType::AvailableBlockRange)
+            }
+            x if x == PayloadType::NextUpgrade as u8 => Ok(PayloadType::NextUpgrade),
+            x if x == PayloadType::ConsensusStatus as u8 => Ok(PayloadType::ConsensusStatus),
+            x if x == PayloadType::ChainspecRawBytes as u8 => Ok(PayloadType::ChainspecRawBytes),
+            x if x == PayloadType::Uptime as u8 => Ok(PayloadType::Uptime),
+            x if x == PayloadType::HighestBlockSequenceCheckResult as u8 => {
+                Ok(PayloadType::HighestBlockSequenceCheckResult)
+            }
+            x if x == PayloadType::SpeculativeExecutionResult as u8 => {
+                Ok(PayloadType::SpeculativeExecutionResult)
+            }
+            x if x == PayloadType::GlobalStateQueryResult as u8 => {
+                Ok(PayloadType::GlobalStateQueryResult)
+            }
+            x if x == PayloadType::StoredValues as u8 => Ok(PayloadType::StoredValues),
+            x if x == PayloadType::GetTrieFullResult as u8 => Ok(PayloadType::GetTrieFullResult),
+            _ => Err(()),
+        }
+    }
+}
+
 impl fmt::Display for PayloadType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -129,31 +228,6 @@ impl fmt::Display for PayloadType {
             PayloadType::GlobalStateQueryResult => write!(f, "GlobalStateQueryResult"),
             PayloadType::StoredValues => write!(f, "StoredValues"),
             PayloadType::GetTrieFullResult => write!(f, "GetTrieFullResult"),
-        }
-    }
-}
-
-impl PayloadType {
-    pub(crate) fn new_from_db_id(db_id: &DbId, is_legacy: bool) -> Self {
-        match (is_legacy, db_id) {
-            (true, DbId::BlockHeader) => Self::BlockHeaderV1,
-            (true, DbId::BlockBody) => Self::BlockBodyV1,
-            (true, DbId::ApprovalsHashes) => Self::ApprovalsHashes,
-            (true, DbId::BlockMetadata) => Self::BlockSignatures,
-            (true, DbId::Transaction) => Self::Deploy,
-            (true, DbId::ExecutionResult) => Self::ExecutionResultV1,
-            (true, DbId::Transfer) => Self::VecTransfers,
-            (true, DbId::StateStore) => Self::VecU8,
-            (true, DbId::FinalizedTransactionApprovals) => Self::FinalizedDeployApprovals,
-            (false, DbId::BlockHeader) => Self::BlockHeader,
-            (false, DbId::BlockBody) => Self::BlockBody,
-            (false, DbId::ApprovalsHashes) => Self::ApprovalsHashesV1,
-            (false, DbId::BlockMetadata) => Self::BlockSignatures,
-            (false, DbId::Transaction) => Self::Transaction,
-            (false, DbId::ExecutionResult) => Self::ExecutionResult,
-            (false, DbId::Transfer) => Self::VecTransfers,
-            (false, DbId::StateStore) => Self::VecU8,
-            (false, DbId::FinalizedTransactionApprovals) => Self::FinalizedApprovals,
         }
     }
 }
@@ -399,5 +473,19 @@ impl FromBytes for PayloadType {
             _ => return Err(bytesrepr::Error::Formatting),
         };
         Ok((db_id, remainder))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::TestRng;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+
+        let val = PayloadType::random(rng);
+        bytesrepr::test_serialization_roundtrip(&val);
     }
 }

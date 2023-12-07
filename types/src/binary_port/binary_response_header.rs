@@ -1,11 +1,23 @@
+use super::PROTOCOL_VERSION;
+#[cfg(test)]
+use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     ErrorCode, PayloadType,
 };
-
-use super::PROTOCOL_VERSION;
+#[cfg(test)]
+use rand::Rng;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
 
 /// Header of the binary response.
+#[derive(Debug, PartialEq)]
+#[cfg_attr(
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(description = "The header of the binary response.")
+)]
+
 pub struct BinaryResponseHeader {
     protocol_version: u8,
     error: u8,
@@ -50,6 +62,23 @@ impl BinaryResponseHeader {
     pub fn is_not_found(&self) -> bool {
         self.error == ErrorCode::NotFound as u8
     }
+
+    #[cfg(test)]
+    pub(crate) fn random(rng: &mut TestRng) -> Self {
+        let protocol_version = rng.gen();
+        let error = rng.gen();
+        let returned_data_type = if rng.gen() {
+            None
+        } else {
+            Some(PayloadType::random(rng))
+        };
+
+        BinaryResponseHeader {
+            protocol_version,
+            error,
+            returned_data_type,
+        }
+    }
 }
 
 impl ToBytes for BinaryResponseHeader {
@@ -92,5 +121,19 @@ impl FromBytes for BinaryResponseHeader {
             },
             remainder,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::TestRng;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+
+        let val = BinaryResponseHeader::random(rng);
+        bytesrepr::test_serialization_roundtrip(&val);
     }
 }

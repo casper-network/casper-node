@@ -1,6 +1,8 @@
 use std::fmt::{self, Display, Formatter};
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -10,11 +12,11 @@ use crate::{
 };
 
 /// Information about the next protocol upgrade.
-#[derive(PartialEq, Eq, DataSize, Debug, Serialize, Deserialize, Clone, JsonSchema)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[derive(PartialEq, Eq, Debug, Serialize, Deserialize, Clone)]
 pub struct NextUpgrade {
     activation_point: ActivationPoint,
-    #[data_size(skip)]
-    #[schemars(with = "String")]
     protocol_version: ProtocolVersion,
 }
 
