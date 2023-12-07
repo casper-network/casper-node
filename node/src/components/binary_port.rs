@@ -478,22 +478,22 @@ where
             debug!("remote party closed the connection");
             return Ok(());
         };
-        match incoming_request.payload() {
-            Some(payload) => match BinaryRequest::from_bytes(payload.as_ref())? {
-                (_, reminder) if !reminder.is_empty() => {
-                    return Err(bytesrepr::Error::LeftOverBytes.into());
-                }
-                (req, _) => {
-                    let response = handle_request(req, &*config, effect_builder).await;
 
-                    // TODO[RC]: Here decorate with original request.
+        let Some(payload) = incoming_request.payload() else {
+            return Err(Error::NoPayload);
+        };
 
-                    let payload = ToBytes::to_bytes(&response)?;
-                    incoming_request.respond(Some(Bytes::from(payload)))
-                }
-            },
-            None => {
-                return Err(Error::NoPayload);
+        match BinaryRequest::from_bytes(payload.as_ref())? {
+            (_, reminder) if !reminder.is_empty() => {
+                return Err(bytesrepr::Error::LeftOverBytes.into());
+            }
+            (req, _) => {
+                let response = handle_request(req, &*config, effect_builder).await;
+
+                // TODO[RC]: Here decorate with original request.
+
+                let payload = ToBytes::to_bytes(&response)?;
+                incoming_request.respond(Some(Bytes::from(payload)))
             }
         }
     }
