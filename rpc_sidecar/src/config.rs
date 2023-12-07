@@ -52,8 +52,8 @@ impl Default for Config {
 }
 
 /// Default address to connect to the node.
-const DEFAULT_NODE_CONNECT_ADDRESS: SocketAddr =
-    SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 28104);
+// Change this to SocketAddr, once SocketAddr::new is const stable.
+const DEFAULT_NODE_CONNECT_ADDRESS: (IpAddr, u16) = (IpAddr::V4(Ipv4Addr::LOCALHOST), 28104);
 /// Default request limit.
 const DEFAULT_NODE_REQUEST_LIMIT: u16 = 3;
 /// Default maximum payload size.
@@ -90,7 +90,7 @@ impl NodeClientConfig {
     /// Creates a default instance for `NodeClientConfig`.
     pub fn new() -> Self {
         NodeClientConfig {
-            address: DEFAULT_NODE_CONNECT_ADDRESS,
+            address: DEFAULT_NODE_CONNECT_ADDRESS.into(),
             request_limit: DEFAULT_NODE_REQUEST_LIMIT,
             max_request_size_bytes: DEFAULT_MAX_NODE_PAYLOAD_SIZE,
             max_response_size_bytes: DEFAULT_MAX_NODE_PAYLOAD_SIZE,
