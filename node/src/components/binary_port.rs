@@ -8,23 +8,21 @@ mod tests;
 
 use std::{net::SocketAddr, sync::Arc};
 
-use bytes::{Buf, Bytes};
+use bytes::{Bytes};
 use casper_execution_engine::engine_state::{
-    self, get_all_values::GetAllValuesRequest, Error as EngineStateError, QueryRequest, QueryResult,
+    get_all_values::GetAllValuesRequest, Error as EngineStateError, QueryRequest, QueryResult,
 };
 use casper_types::{
     binary_port::{
         self,
         binary_request::BinaryRequest,
-        binary_response::{self,  BinaryResponse},
         get::GetRequest,
         get_all_values::GetAllValuesResult,
         global_state::GlobalStateQueryResult,
         non_persistent_data::NonPersistedDataRequest,
-        type_wrappers::NetworkName, binary_response_header::BinaryResponseHeader, binary_response_and_request::BinaryResponseAndRequest,
     },
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockHashAndHeight, BlockHeader, Peers, Transaction,
+    BlockHashAndHeight, BlockHeader, Peers, Transaction, BinaryResponse, BinaryResponseAndRequest,
 };
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
@@ -211,7 +209,7 @@ where
                 Some(speculative_exec_at_block),
             )
             .await;
-            if !response.header.is_success() {
+            if !response.is_success() {
                 return response;
             }
 
@@ -366,7 +364,7 @@ where
                             let error_code = binary_port::ErrorCode::RootNotFound;
                             BinaryResponse::new_error(error_code)
                         }
-                        Err(err) => BinaryResponse::new_error(
+                        Err(_err) => BinaryResponse::new_error(
                             binary_port::ErrorCode::InternalError,
                         ),
                     }
@@ -380,7 +378,7 @@ where
                 } else {
                     match effect_builder.get_trie_full(trie_key).await {
                         Ok(result) => BinaryResponse::from_value( result),
-                        Err(err) => BinaryResponse::new_error(
+                        Err(_err) => BinaryResponse::new_error(
                             binary_port::ErrorCode::InternalError,
                         ),
                     }

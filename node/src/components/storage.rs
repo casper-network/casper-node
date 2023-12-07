@@ -54,7 +54,6 @@ use std::{
     fmt::{self, Display, Formatter},
     fs::{self, OpenOptions},
     io::ErrorKind,
-    iter::FromIterator,
     path::{Path, PathBuf},
     rc::Rc,
     sync::Arc,
@@ -72,10 +71,7 @@ use tracing::{debug, error, info, trace, warn};
 #[cfg(test)]
 use casper_types::Deploy;
 use casper_types::{
-    binary_port::{
-        binary_response::BinaryResponse, db_id::DbId,
-        type_wrappers::HighestBlockSequenceCheckResult, DbRawBytesSpec,
-    },
+    binary_port::{db_id::DbId, type_wrappers::HighestBlockSequenceCheckResult, DbRawBytesSpec},
     bytesrepr::{FromBytes, ToBytes},
     execution::{
         execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
@@ -119,8 +115,6 @@ use lmdb_ext::{BytesreprError, LmdbExtError, TransactionExt, WriteTransactionExt
 use metrics::Metrics;
 use object_pool::ObjectPool;
 use versioned_databases::VersionedDatabases;
-
-use self::versioned_databases::VersionedValue;
 
 const COMPONENT_NAME: &str = "storage";
 
@@ -2337,23 +2331,6 @@ impl Storage {
     ) -> Result<Option<BlockSignatures>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
         self.get_block_signatures(&mut txn, block_hash)
-    }
-
-    fn read_raw_data(
-        &self,
-        db: &Database,
-        key: &Vec<u8>,
-    ) -> Result<Option<Vec<u8>>, FatalStorageError> {
-        let txn = self.env.begin_ro_txn()?;
-        let result = txn.get(*db, key);
-        match result {
-            Ok(maybe_raw_data) => return Ok(Some(maybe_raw_data.to_vec())),
-            Err(err) => {
-                // TODO[RC]: Clean-up these.
-                error!("XXXXX - error {}", err);
-                Ok(None)
-            }
-        }
     }
 
     /// Stores a set of finalized approvals if they are different to the approvals in the original

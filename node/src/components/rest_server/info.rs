@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, str};
+use std::str;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

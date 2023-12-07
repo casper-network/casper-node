@@ -80,7 +80,9 @@ use libc::{c_long, sysconf, _SC_PAGESIZE};
 use once_cell::sync::Lazy;
 
 pub use crate::binary_port::{
-    error_code::ErrorCode, payload_type::PayloadType, type_wrappers::Uptime,
+    binary_response::BinaryResponse, binary_response_and_request::BinaryResponseAndRequest,
+    binary_response_header::BinaryResponseHeader, error_code::ErrorCode, payload_type::PayloadType,
+    type_wrappers::Uptime,
 };
 pub use crate::uint::{UIntParseError, U128, U256, U512};
 pub use access_rights::{

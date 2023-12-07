@@ -5,10 +5,9 @@
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    fmt::{self, Debug, Display, Formatter},
+    fmt::{self, Display, Formatter},
     mem,
     sync::Arc,
-    time::Duration,
 };
 
 use datasize::DataSize;
@@ -38,15 +37,13 @@ use casper_types::{
         },
         DbRawBytesSpec,
     },
-    bytesrepr::Bytes,
-    contract_messages::Messages,
-    execution::{ExecutionResult, ExecutionResultV2},
+    execution::ExecutionResult,
     system::auction::EraValidators,
     AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, DeployHeader, Digest,
     DisplayIter, EraId, ExecutionInfo, FinalitySignature, FinalitySignatureId, FinalizedApprovals,
     Key, NextUpgrade, PublicKey, ReactorState, SignedBlock, TimeDiff, Timestamp, Transaction,
-    TransactionHash, TransactionId, Transfer, Uptime, ValidatorChange, U512,
+    TransactionHash, TransactionId, Transfer, Uptime, U512,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};

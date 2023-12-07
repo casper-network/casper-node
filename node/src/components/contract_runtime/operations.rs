@@ -23,7 +23,7 @@ use casper_types::{
     binary_port::type_wrappers::SpeculativeExecutionResult,
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     contract_messages::Messages,
-    execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
+    execution::{Effects, ExecutionResult, Transform, TransformKind},
     AddressableEntity, AddressableEntityHash, BlockV2, CLValue, DeployHash, Digest, EraEndV2,
     EraId, HashAddr, Key, ProtocolVersion, PublicKey, StoredValue, Transaction, U512,
 };

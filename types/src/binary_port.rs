@@ -1,8 +1,8 @@
 //! The binary port.
 pub mod binary_request;
-pub mod binary_response;
-pub mod binary_response_and_request;
-pub mod binary_response_header;
+pub(crate) mod binary_response;
+pub(crate) mod binary_response_and_request;
+pub(crate) mod binary_response_header;
 pub mod db_id;
 pub mod error_code;
 pub mod get;

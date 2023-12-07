@@ -2,19 +2,31 @@ use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
 use super::binary_response::BinaryResponse;
 
+/// The binary response along with the original binary request attached.
 pub struct BinaryResponseAndRequest {
     /// The original request (as serialized bytes).
-    pub original_request: Vec<u8>,
+    original_request: Vec<u8>,
     /// The response.
-    pub response: BinaryResponse,
+    response: BinaryResponse,
 }
 
 impl BinaryResponseAndRequest {
+    /// Creates new binary response with the original request attached.
     pub fn new(data: BinaryResponse, original_request: &[u8]) -> Self {
         Self {
             original_request: original_request.to_vec(),
             response: data,
         }
+    }
+
+    /// Returns true if response is success.
+    pub fn is_success(&self) -> bool {
+        self.response.is_success()
+    }
+
+    /// Returns the error code.
+    pub fn error_code(&self) -> u8 {
+        self.response.error_code()
     }
 }
 

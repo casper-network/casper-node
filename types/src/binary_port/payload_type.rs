@@ -18,6 +18,7 @@ use super::{
     },
 };
 
+/// A type of the payload being returned in a binary response.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum PayloadType {

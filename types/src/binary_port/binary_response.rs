@@ -11,12 +11,13 @@ use super::{
 /// The response use in the binary port protocol.
 pub struct BinaryResponse {
     /// Header of the binary response.
-    pub header: BinaryResponseHeader,
+    header: BinaryResponseHeader,
     /// The response.
-    pub payload: Vec<u8>,
+    payload: Vec<u8>,
 }
 
 impl BinaryResponse {
+    /// Creates new empty binary response.
     pub fn new_empty() -> Self {
         Self {
             header: BinaryResponseHeader::new(None),
@@ -24,6 +25,7 @@ impl BinaryResponse {
         }
     }
 
+    /// Creates new binary response with error code.
     pub fn new_error(error: ErrorCode) -> Self {
         BinaryResponse {
             header: BinaryResponseHeader::new_error(error),
@@ -31,6 +33,7 @@ impl BinaryResponse {
         }
     }
 
+    /// Creates new binary response from raw DB bytes.
     pub fn from_db_raw_bytes(db_id: &DbId, spec: Option<DbRawBytesSpec>) -> Self {
         match spec {
             Some(DbRawBytesSpec {
@@ -50,6 +53,7 @@ impl BinaryResponse {
     }
 
     // TODO[RC]: Can we prevent V from being an Option here?
+    /// Creates a new binary response from a value.
     pub fn from_value<V>(val: V) -> Self
     where
         V: ToBytes,
@@ -61,6 +65,7 @@ impl BinaryResponse {
         }
     }
 
+    /// Creates a new binary response from an optional value.
     pub fn from_opt<V>(val: Option<V>) -> Self
     where
         V: ToBytes,
@@ -73,6 +78,31 @@ impl BinaryResponse {
                 header: BinaryResponseHeader::new_error(ErrorCode::NotFound),
             },
         }
+    }
+
+    /// Returns true if response is success.
+    pub fn is_success(&self) -> bool {
+        self.header.is_success()
+    }
+
+    /// Returns the error code.
+    pub fn error_code(&self) -> u8 {
+        self.header.error_code()
+    }
+
+    /// Returns the payload type of the response.
+    pub fn returned_data_type(&self) -> Option<PayloadType> {
+        self.header.returned_data_type()
+    }
+
+    /// Returns true if the response means that data has not been found.
+    pub fn is_not_found(&self) -> bool {
+        self.header.is_not_found()
+    }
+
+    /// Returns the payload.
+    pub fn payload(&self) -> &[u8] {
+        self.payload.as_ref()
     }
 }
 

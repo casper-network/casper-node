@@ -16,6 +16,7 @@ pub struct GlobalStateQueryResult {
 }
 
 impl GlobalStateQueryResult {
+    /// Creates the global state query result.
     pub fn new(value: StoredValue, merkle_proof: String) -> Self {
         Self {
             value,

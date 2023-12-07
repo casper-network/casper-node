@@ -7,8 +7,6 @@ use crate::{config::ExponentialBackoffConfig, NodeClientConfig};
 use casper_types::{
     binary_port::{
         binary_request::BinaryRequest,
-        binary_response::BinaryResponse,
-        binary_response_and_request::BinaryResponseAndRequest,
         db_id::DbId,
         get::GetRequest,
         get_all_values::GetAllValuesResult,
@@ -22,11 +20,11 @@ use casper_types::{
     },
     bytesrepr::{self, FromBytes, ToBytes},
     execution::{ExecutionResult, ExecutionResultV1},
-    AvailableBlockRange, BlockBody, BlockBodyV1, BlockHash, BlockHashAndHeight, BlockHeader,
-    BlockHeaderV1, BlockSignatures, BlockSynchronizerStatus, ChainspecRawBytes, Deploy, Digest,
-    FinalizedApprovals, FinalizedDeployApprovals, Key, KeyTag, NextUpgrade, PayloadType, Peers,
-    ProtocolVersion, PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash,
-    Transfer, Uptime,
+    AvailableBlockRange, BinaryResponse, BinaryResponseAndRequest, BlockBody, BlockBodyV1,
+    BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderV1, BlockSignatures,
+    BlockSynchronizerStatus, ChainspecRawBytes, Deploy, Digest, FinalizedApprovals,
+    FinalizedDeployApprovals, Key, KeyTag, NextUpgrade, PayloadType, Peers, ProtocolVersion,
+    PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash, Transfer, Uptime,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -447,12 +445,12 @@ impl NodeClient for JulietNodeClient {
 
     async fn try_accept_transaction(&self, transaction: Transaction) -> Result<(), Error> {
         let request = BinaryRequest::TryAcceptTransaction { transaction };
-        let BinaryResponseAndRequest { response, .. } = self.dispatch(request).await?;
+        let response = self.dispatch(request).await?;
 
-        if response.header.is_success() {
+        if response.is_success() {
             return Ok(());
         } else {
-            return Err(Error::from_error_code(response.header.error_code()));
+            return Err(Error::from_error_code(response.error_code()));
         }
     }
 
@@ -480,16 +478,18 @@ fn parse_response<A>(resp: &BinaryResponse) -> Result<Option<A>, Error>
 where
     A: FromBytes + PayloadEntity,
 {
-    if resp.header.is_not_found() {
+    if resp.is_not_found() {
         return Ok(None);
     }
-    if !resp.header.is_success() {
-        return Err(Error::from_error_code(resp.header.error_code()));
+    if !resp.is_success() {
+        return Err(Error::from_error_code(resp.error_code()));
     }
-    match resp.header.returned_data_type() {
-        Some(found) if found == A::PAYLOAD_TYPE => bytesrepr::deserialize_from_slice(&resp.payload)
-            .map(Some)
-            .map_err(|err| Error::Deserialization(err.to_string())),
+    match resp.returned_data_type() {
+        Some(found) if found == A::PAYLOAD_TYPE => {
+            bytesrepr::deserialize_from_slice(resp.payload())
+                .map(Some)
+                .map_err(|err| Error::Deserialization(err.to_string()))
+        }
         Some(other) => Err(Error::UnexpectedVariantReceived(other)),
         _ => Ok(None),
     }
@@ -500,18 +500,18 @@ where
     V1: DeserializeOwned + PayloadEntity,
     V2: FromBytes + PayloadEntity + From<V1>,
 {
-    if resp.header.is_not_found() {
+    if resp.is_not_found() {
         return Ok(None);
     }
-    if !resp.header.is_success() {
-        return Err(Error::from_error_code(resp.header.error_code()));
+    if !resp.is_success() {
+        return Err(Error::from_error_code(resp.error_code()));
     }
-    match resp.header.returned_data_type() {
-        Some(found) if found == V1::PAYLOAD_TYPE => bincode::deserialize(&resp.payload)
+    match resp.returned_data_type() {
+        Some(found) if found == V1::PAYLOAD_TYPE => bincode::deserialize(resp.payload())
             .map(|val| Some(V2::from(val)))
             .map_err(|err| Error::Deserialization(err.to_string())),
         Some(found) if found == V2::PAYLOAD_TYPE => {
-            bytesrepr::deserialize_from_slice(&resp.payload)
+            bytesrepr::deserialize_from_slice(resp.payload())
                 .map(Some)
                 .map_err(|err| Error::Deserialization(err.to_string()))
         }
@@ -524,14 +524,14 @@ fn parse_response_bincode<A>(resp: &BinaryResponse) -> Result<Option<A>, Error>
 where
     A: DeserializeOwned + PayloadEntity,
 {
-    if resp.header.is_not_found() {
+    if resp.is_not_found() {
         return Ok(None);
     }
-    if !resp.header.is_success() {
-        return Err(Error::from_error_code(resp.header.error_code()));
+    if !resp.is_success() {
+        return Err(Error::from_error_code(resp.error_code()));
     }
-    match resp.header.returned_data_type() {
-        Some(found) if found == A::PAYLOAD_TYPE => bincode::deserialize(&resp.payload)
+    match resp.returned_data_type() {
+        Some(found) if found == A::PAYLOAD_TYPE => bincode::deserialize(resp.payload())
             .map(Some)
             .map_err(|err| Error::Deserialization(err.to_string())),
         Some(other) => Err(Error::UnexpectedVariantReceived(other)),

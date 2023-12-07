@@ -130,7 +130,6 @@ use casper_types::{
         },
         DbRawBytesSpec,
     },
-    bytesrepr::Bytes,
     execution::{Effects as ExecutionEffects, ExecutionResult},
     package::Package,
     system::auction::EraValidators,

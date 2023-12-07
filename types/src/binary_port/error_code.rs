@@ -2,30 +2,41 @@
 
 use core::{convert::TryFrom, fmt};
 
+/// The error code indicating the result of handling the binary request.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "std", derive(thiserror::Error))]
 #[repr(u8)]
 pub enum ErrorCode {
+    /// Request executed correctly.
     #[cfg_attr(feature = "std", error("request executed correctly"))]
     NoError = 0,
+    /// This function is disabled.
     #[cfg_attr(feature = "std", error("this function is disabled"))]
     FunctionIsDisabled = 1,
     //    #[cfg_attr(feature = "std", error("request cannot be decoded"))]
     //    InvalidRequest = 2, // TODO[RC]: handle this
+    /// Data not found.
     #[cfg_attr(feature = "std", error("data not found"))]
     NotFound = 3,
+    /// Root not found.
     #[cfg_attr(feature = "std", error("root not found"))]
     RootNotFound = 4,
+    /// Invalid deploy item variant.
     #[cfg_attr(feature = "std", error("invalid deploy item variant"))]
     InvalidDeployItemVariant = 5,
+    /// Wasm preprocessing.
     #[cfg_attr(feature = "std", error("wasm preprocessing"))]
     WasmPreprocessing = 6,
+    /// Invalid protocol version.
     #[cfg_attr(feature = "std", error("invalid protocol version"))]
     InvalidProtocolVersion = 7,
+    /// Invalid deploy.
     #[cfg_attr(feature = "std", error("invalid deploy"))]
     InvalidDeploy = 8,
+    /// Internal error.
     #[cfg_attr(feature = "std", error("internal error"))]
     InternalError = 9,
+    /// The query to global state failed.
     #[cfg_attr(feature = "std", error("the query to global state failed"))]
     QueryFailedToExecute = 10,
 }
