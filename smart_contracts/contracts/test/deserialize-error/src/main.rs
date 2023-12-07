@@ -8,7 +8,7 @@ use alloc::{vec, vec::Vec};
 use casper_contract::{self, contract_api::storage, unwrap_or_revert::UnwrapOrRevert};
 use casper_types::{
     api_error, bytesrepr::ToBytes, contracts::Parameters, CLType, ContractHash, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, RuntimeArgs,
+    EntryPointAccess, EntryPointType, EntryPoints,
 };
 
 #[no_mangle]
@@ -42,10 +42,10 @@ mod malicious_ffi {
 
 // This is half-baked runtime::call_contract with changed `extra_urefs`
 // parameter with a desired payload that's supposed to bring the node down.
-pub fn my_call_contract(contract_hash: ContractHash, _entry_point_name: &str) -> usize {
+pub fn my_call_contract(contract_hash: ContractHash, entry_point_name: &str) -> usize {
     let (contract_hash_ptr, contract_hash_size, _bytes1) = to_ptr(contract_hash);
 
-    let entry_point_name = ToBytes::to_bytes("do_nothing").unwrap();
+    let entry_point_name = ToBytes::to_bytes(entry_point_name).unwrap();
     let malicious_args = vec![255, 255, 255, 255, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 
     {
