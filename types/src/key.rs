@@ -1216,7 +1216,7 @@ mod tests {
         let res: Result<(Vec<Key>, &[u8]), _> = FromBytes::from_bytes(&bytes);
         assert_eq!(res.expect_err("should fail"), Error::EarlyEndOfStream);
 
-        // Prefix is 2^32-2 = shouldn't allocate that much
+        // Valid prefix but not enough data in the stream
         let bytes: Vec<u8> = vec![0, 0, 0, 254, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
         let res: Result<(Vec<Key>, &[u8]), _> = FromBytes::from_bytes(&bytes);
         assert_eq!(res.expect_err("should fail"), Error::EarlyEndOfStream);

@@ -901,6 +901,7 @@ fn should_refund_proper_amount() {
         user_purse_balance_before - payment_amount + refund
     );
 }
+
 #[ignore]
 #[test]
 fn faucet_costs() {
