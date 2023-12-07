@@ -28,13 +28,14 @@ pipeline:
                     image: casperlabs/node-build-u1804
                     shell: Bash
                     command: |-
+                      echo 0 > /proc/sys/vm/overcommit_memory
                       cargo install elfx86exts --version 0.5.0
                       make setup
                       make test CARGO_FLAGS=--release
                       make test-contracts CARGO_FLAGS=--release
                     resources:
                       limits:
-                        memory: 60Gi
+                        memory: 24Gi
                         cpu: "12"
   properties:
     ci:
