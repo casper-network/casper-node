@@ -1,5 +1,4 @@
-use alloc::string::String;
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 #[cfg(feature = "json-schema")]
 use once_cell::sync::Lazy;
 #[cfg(feature = "json-schema")]

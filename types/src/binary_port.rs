@@ -21,7 +21,8 @@ use alloc::vec::Vec;
 
 const PROTOCOL_VERSION: u8 = 0;
 
-/// Stores raw bytes from the DB along with the flag indicating whether data come from legacy or current version of the DB.
+/// Stores raw bytes from the DB along with the flag indicating whether data come from legacy or
+/// current version of the DB.
 #[derive(Debug)]
 pub struct DbRawBytesSpec {
     is_legacy: bool,

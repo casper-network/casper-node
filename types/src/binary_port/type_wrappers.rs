@@ -2,9 +2,7 @@
 
 use core::time::Duration;
 
-use alloc::collections::BTreeMap;
-use alloc::string::String;
-use alloc::vec::Vec;
+use alloc::{collections::BTreeMap, string::String, vec::Vec};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 
@@ -124,7 +122,8 @@ impl FromBytes for LastProgress {
     }
 }
 
-/// Type representing results of checking whether a block is in the highest sequence of available blocks.
+/// Type representing results of checking whether a block is in the highest sequence of available
+/// blocks.
 #[derive(Debug)]
 pub struct HighestBlockSequenceCheckResult(pub bool);
 

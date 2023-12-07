@@ -4,8 +4,7 @@ use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     Digest, Key, KeyTag,
 };
-use alloc::string::String;
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 
 use super::{db_id::DbId, non_persistent_data::NonPersistedDataRequest};
 

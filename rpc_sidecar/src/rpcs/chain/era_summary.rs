@@ -23,14 +23,11 @@ pub(super) static ERA_SUMMARY: Lazy<EraSummary> = Lazy::new(|| {
         validator_public_key,
         delegator_amount,
     );
-    let validator =
-        SeigniorageAllocation::validator(
-            PublicKey::from_hex(
-                "012a1732addc639ea43a89e25d3ad912e40232156dcaa4b9edfc709f43d2fb0876",
-            )
+    let validator = SeigniorageAllocation::validator(
+        PublicKey::from_hex("012a1732addc639ea43a89e25d3ad912e40232156dcaa4b9edfc709f43d2fb0876")
             .unwrap(),
-            validator_amount,
-        );
+        validator_amount,
+    );
     let seigniorage_allocations = vec![delegator, validator];
     let mut era_info = EraInfo::new();
     *era_info.seigniorage_allocations_mut() = seigniorage_allocations;

@@ -1,9 +1,10 @@
 use alloc::collections::BTreeMap;
 
 use crate::bytesrepr::{self, FromBytes, ToBytes};
-use alloc::string::String;
-use alloc::string::ToString;
-use alloc::vec::Vec;
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

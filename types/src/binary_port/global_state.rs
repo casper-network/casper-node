@@ -4,8 +4,7 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     StoredValue,
 };
-use alloc::string::String;
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 
 /// Carries the successful result of the global state query.
 pub struct GlobalStateQueryResult {

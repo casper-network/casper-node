@@ -1,7 +1,6 @@
 //! The result of the speculative execution request.
 
-use alloc::string::String;
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 #[cfg(any(feature = "std", test))]
 use thiserror::Error;
 

@@ -12,15 +12,13 @@ pub mod info;
 pub mod speculative_exec;
 pub mod state;
 
-use std::fmt;
-use std::{str, sync::Arc, time::Duration};
+use std::{fmt, str, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use http::header::ACCEPT_ENCODING;
 use hyper::server::{conn::AddrIncoming, Builder};
 use schemars::JsonSchema;
-use serde::de::Error as SerdeError;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use tokio::sync::oneshot;
 use tower::ServiceBuilder;

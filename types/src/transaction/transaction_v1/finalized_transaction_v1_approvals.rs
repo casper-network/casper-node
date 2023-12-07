@@ -1,5 +1,4 @@
-use alloc::collections::BTreeSet;
-use alloc::vec::Vec;
+use alloc::{collections::BTreeSet, vec::Vec};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(test)]

@@ -8,8 +8,7 @@ use crate::{
     Transaction,
 };
 
-use super::deploy::FinalizedDeployApprovals;
-use super::transaction_v1::FinalizedTransactionV1Approvals;
+use super::{deploy::FinalizedDeployApprovals, transaction_v1::FinalizedTransactionV1Approvals};
 
 const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;

@@ -32,8 +32,10 @@ static ERA_VALIDATORS: Lazy<EraValidators> = Lazy::new(|| {
 });
 #[cfg(feature = "json-schema")]
 static AUCTION_INFO: Lazy<AuctionState> = Lazy::new(|| {
-    use crate::system::auction::{DelegationRate, Delegator};
-    use crate::{AccessRights, SecretKey, URef};
+    use crate::{
+        system::auction::{DelegationRate, Delegator},
+        AccessRights, SecretKey, URef,
+    };
     use num_traits::Zero;
 
     let state_root_hash = Digest::from([11; Digest::LENGTH]);
