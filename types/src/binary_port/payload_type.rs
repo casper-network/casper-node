@@ -7,8 +7,8 @@ use schemars::JsonSchema;
 use rand::Rng;
 
 use alloc::vec::Vec;
+use core::convert::TryFrom;
 use core::fmt;
-use std::convert::TryFrom;
 
 #[cfg(test)]
 use crate::testing::TestRng;
