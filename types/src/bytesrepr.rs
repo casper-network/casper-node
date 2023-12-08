@@ -413,7 +413,7 @@ impl<T: ToBytes> ToBytes for Vec<T> {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         ensure_efficient_serialization::<T>();
 
-        let mut result = Vec::with_capacity(cautious::<T>(self.serialized_length()));
+        let mut result = Vec::with_capacity(self.serialized_length());
         let length_32: u32 = self.len().try_into().map_err(|_| Error::NotRepresentable)?;
         result.append(&mut length_32.to_bytes()?);
 
@@ -458,6 +458,10 @@ fn vec_from_vec<T: FromBytes>(bytes: Vec<u8>) -> Result<(Vec<T>, Vec<u8>), Error
     Vec::<T>::from_bytes(bytes.as_slice()).map(|(x, remainder)| (x, Vec::from(remainder)))
 }
 
+/// Returns a conservative estimate for the preallocated number of elements for a new `Vec<T>`.
+///
+/// `hint` indicates the desired upper limit in heap size (in bytes), which is itself bounded by
+/// 4096 bytes. This function will never return less than 1.
 #[inline]
 fn cautious<T>(hint: usize) -> usize {
     let el_size = core::mem::size_of::<T>();
@@ -469,6 +473,10 @@ impl<T: FromBytes> FromBytes for Vec<T> {
         ensure_efficient_serialization::<T>();
 
         let (count, mut stream) = u32::from_bytes(bytes)?;
+
+        if count == 0 {
+            return Ok((Vec::new(), stream));
+        }
 
         let mut result = Vec::with_capacity(cautious::<T>(count as usize));
 
@@ -1369,6 +1377,12 @@ mod tests {
             u16_field: u16,
             u32_field: u32,
             u64_field: u64,
+            // Here we're using U128 type that represents u128 with a two u64s which is what the
+            // compiler is doing for x86_64. On 64-bit ARM architecture u128 is aligned
+            // to 16 bytes, but on x86_64 it's aligned to 8 bytes. This changes the
+            // memory layout of the struct and affects the results of function `cautious`.
+            // The expected behaviour of u128 alignment is 8 bytes instead of 16,
+            // and there is a bug in the rust compiler for this: https://github.com/rust-lang/rust/issues/54341
             u128_field: U128,
             str_field: String,
         }
@@ -1376,6 +1390,15 @@ mod tests {
         assert_eq!(cautious::<u8>(usize::MAX), 4096);
         assert_eq!(cautious::<u8>(usize::MAX), 4096);
         assert_eq!(cautious::<CustomStruct>(usize::MAX), 73);
+    }
+
+    #[test]
+    fn deserializing_empty_vec_has_no_capacity() {
+        let bytes = ToBytes::to_bytes(&(0u32, b"123")).unwrap();
+        let (vec, rem): (Vec<u32>, _) = FromBytes::from_bytes(&bytes).unwrap();
+        assert!(vec.is_empty());
+        assert_eq!(vec.capacity(), 0);
+        assert_eq!(rem, b"123");
     }
 }
 
