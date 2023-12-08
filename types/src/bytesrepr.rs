@@ -1386,10 +1386,26 @@ mod tests {
             u128_field: U128,
             str_field: String,
         }
-        assert_eq!(cautious::<usize>(u32::MAX as usize), 512);
-        assert_eq!(cautious::<u8>(usize::MAX), 4096);
-        assert_eq!(cautious::<u8>(usize::MAX), 4096);
-        assert_eq!(cautious::<CustomStruct>(usize::MAX), 73);
+        assert_eq!(
+            cautious::<usize>(u32::MAX as usize),
+            512,
+            "hint is 2^32-1 and we can only preallocate 512 elements"
+        );
+        assert_eq!(
+            cautious::<u8>(usize::MAX),
+            4096,
+            "hint is usize::MAX and we can only preallocate 4096 elements"
+        );
+        assert_eq!(
+            cautious::<u16>(usize::MAX),
+            2048,
+            "hint is usize::MAX and we can only preallocate 2048 elements"
+        );
+        assert_eq!(
+            cautious::<CustomStruct>(usize::MAX),
+            73,
+            "hint is usize::MAX and we can only preallocate 73 elements"
+        );
     }
 
     #[test]
