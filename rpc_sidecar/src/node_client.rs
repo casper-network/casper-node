@@ -20,7 +20,7 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     execution::{ExecutionResult, ExecutionResultV1},
     AvailableBlockRange, BinaryResponse, BinaryResponseAndRequest, BlockBody, BlockBodyV1,
-    BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderV1, BlockSignatures,
+    BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderV1, BlockIdentifier, BlockSignatures,
     BlockSynchronizerStatus, ChainspecRawBytes, Deploy, Digest, FinalizedApprovals,
     FinalizedDeployApprovals, Key, KeyTag, NextUpgrade, PayloadType, Peers, ProtocolVersion,
     PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash, Transfer, Uptime,
@@ -151,7 +151,8 @@ pub trait NodeClient: Send + Sync {
     }
 
     async fn does_exist_in_completed_blocks(&self, block_hash: BlockHash) -> Result<bool, Error> {
-        let req = NonPersistedDataRequest::CompletedBlocksContain { block_hash };
+        let block_identifier = BlockIdentifier::Hash(block_hash);
+        let req = NonPersistedDataRequest::CompletedBlocksContain { block_identifier };
         let resp = self.read_from_mem(req).await?;
         parse_response::<HighestBlockSequenceCheckResult>(&resp.into())?
             .map(bool::from)

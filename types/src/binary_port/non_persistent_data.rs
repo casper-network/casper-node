@@ -2,7 +2,7 @@
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    BlockHash, TransactionHash,
+    BlockHash, BlockIdentifier, TransactionHash,
 };
 use alloc::vec::Vec;
 
@@ -35,8 +35,8 @@ pub enum NonPersistedDataRequest {
     HighestCompleteBlock,
     /// Returns true if `self.completed_blocks.highest_sequence()` contains the given hash
     CompletedBlocksContain {
-        /// Block hash.
-        block_hash: BlockHash, // TODO[RC]: BlockIdentifier
+        /// Block identifier.
+        block_identifier: BlockIdentifier,
     },
     /// Returns block hash and height for a given transaction hash.
     TransactionHash2BlockHashAndHeight {
@@ -86,7 +86,9 @@ impl ToBytes for NonPersistedDataRequest {
             NonPersistedDataRequest::HighestCompleteBlock => {
                 HIGHEST_COMPLETE_BLOCK_TAG.write_bytes(writer)
             }
-            NonPersistedDataRequest::CompletedBlocksContain { block_hash } => {
+            NonPersistedDataRequest::CompletedBlocksContain {
+                block_identifier: block_hash,
+            } => {
                 COMPLETED_BLOCK_CONTAINS_TAG.write_bytes(writer)?;
                 block_hash.write_bytes(writer)
             }
@@ -119,9 +121,9 @@ impl ToBytes for NonPersistedDataRequest {
         U8_SERIALIZED_LENGTH
             + match self {
                 NonPersistedDataRequest::BlockHeight2Hash { height } => height.serialized_length(),
-                NonPersistedDataRequest::CompletedBlocksContain { block_hash } => {
-                    block_hash.serialized_length()
-                }
+                NonPersistedDataRequest::CompletedBlocksContain {
+                    block_identifier: block_hash,
+                } => block_hash.serialized_length(),
                 NonPersistedDataRequest::TransactionHash2BlockHashAndHeight {
                     transaction_hash,
                 } => transaction_hash.serialized_length(),
@@ -159,7 +161,9 @@ impl FromBytes for NonPersistedDataRequest {
             COMPLETED_BLOCK_CONTAINS_TAG => {
                 let (block_hash, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((
-                    NonPersistedDataRequest::CompletedBlocksContain { block_hash },
+                    NonPersistedDataRequest::CompletedBlocksContain {
+                        block_identifier: block_hash,
+                    },
                     remainder,
                 ))
             }

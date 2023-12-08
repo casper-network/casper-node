@@ -2,7 +2,7 @@
 
 mod era_summary;
 
-use std::{clone::Clone, num::ParseIntError, str, sync::Arc};
+use std::{clone::Clone, str, sync::Arc};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
@@ -10,7 +10,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    Block, BlockHash, BlockHeaderV2, Digest, DigestError, JsonBlockWithSignatures, Key,
+    Block, BlockHash, BlockHeaderV2, BlockIdentifier, Digest, JsonBlockWithSignatures, Key,
     ProtocolVersion, StoredValue, Transfer,
 };
 
@@ -62,51 +62,6 @@ static GET_ERA_SUMMARY_RESULT: Lazy<GetEraSummaryResult> = Lazy::new(|| GetEraSu
     api_version: DOCS_EXAMPLE_API_VERSION,
     era_summary: ERA_SUMMARY.clone(),
 });
-
-/// Identifier for possible ways to retrieve a block.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub enum BlockIdentifier {
-    /// Identify and retrieve the block with its hash.
-    Hash(BlockHash),
-    /// Identify and retrieve the block with its height.
-    Height(u64),
-}
-
-impl str::FromStr for BlockIdentifier {
-    type Err = ParseBlockIdentifierError;
-
-    fn from_str(maybe_block_identifier: &str) -> Result<Self, Self::Err> {
-        if maybe_block_identifier.is_empty() {
-            return Err(ParseBlockIdentifierError::EmptyString);
-        }
-
-        if maybe_block_identifier.len() == (Digest::LENGTH * 2) {
-            let hash = Digest::from_hex(maybe_block_identifier)
-                .map_err(ParseBlockIdentifierError::FromHexError)?;
-            Ok(BlockIdentifier::Hash(BlockHash::new(hash)))
-        } else {
-            let height = maybe_block_identifier
-                .parse()
-                .map_err(ParseBlockIdentifierError::ParseIntError)?;
-            Ok(BlockIdentifier::Height(height))
-        }
-    }
-}
-
-/// Represents errors that can arise when parsing a [`BlockIdentifier`].
-#[derive(thiserror::Error, Debug)]
-pub enum ParseBlockIdentifierError {
-    /// String was empty.
-    #[error("Empty string is not a valid block identifier.")]
-    EmptyString,
-    /// Couldn't parse a height value.
-    #[error("Unable to parse height from string. {0}")]
-    ParseIntError(ParseIntError),
-    /// Couldn't parse a blake2bhash.
-    #[error("Unable to parse digest from string. {0}")]
-    FromHexError(DigestError),
-}
 
 /// Params for "chain_get_block" RPC request.
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]

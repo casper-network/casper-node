@@ -299,10 +299,10 @@ where
                             )
                         }),
                 ),
-                NonPersistedDataRequest::CompletedBlocksContain { block_hash } => {
+                NonPersistedDataRequest::CompletedBlocksContain { block_identifier } => {
                     BinaryResponse::from_value(
                         effect_builder
-                            .highest_completed_block_sequence_contains_hash(block_hash)
+                            .highest_completed_block_sequence_contains(block_identifier)
                             .await,
                     )
                 }

@@ -544,7 +544,9 @@ mod tests {
     }
 
     mod rpc_with_optional_params {
-        use crate::rpcs::chain::{BlockIdentifier, GetBlock, GetBlockParams, GetBlockResult};
+        use casper_types::BlockIdentifier;
+
+        use crate::rpcs::chain::{GetBlock, GetBlockParams, GetBlockResult};
 
         use super::*;
 

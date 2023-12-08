@@ -38,9 +38,9 @@ use casper_types::{
     },
     execution::ExecutionResult,
     system::auction::EraValidators,
-    AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
-    BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, DeployHeader, Digest,
-    DisplayIter, EraId, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key,
+    AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockIdentifier,
+    BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, DeployHeader,
+    Digest, DisplayIter, EraId, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key,
     NextUpgrade, PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash,
     TransactionId, Transfer, Uptime, U512,
 };
@@ -546,8 +546,8 @@ pub(crate) enum StorageRequest {
         responder: Responder<Option<BlockHash>>,
     },
     /// Checks if a block with the given hash is among the contiguous sequence of completed blocks.
-    HighestCompletedBlockSequenceContainsHash {
-        block_hash: BlockHash,
+    HighestCompletedBlockSequenceContains {
+        block_identifier: BlockIdentifier,
         responder: Responder<HighestBlockSequenceCheckResult>,
     },
 }
@@ -733,16 +733,25 @@ impl Display for StorageRequest {
             } => {
                 write!(formatter, "get block hash for height {}", height)
             }
-            StorageRequest::HighestCompletedBlockSequenceContainsHash {
-                block_hash,
+            StorageRequest::HighestCompletedBlockSequenceContains {
+                block_identifier,
                 responder: _responder,
-            } => {
-                write!(
-                    formatter,
-                    "highest completed block sequence contains hash {}",
-                    block_hash
-                )
-            }
+            } => match block_identifier {
+                BlockIdentifier::Hash(hash) => {
+                    write!(
+                        formatter,
+                        "highest completed block sequence contains hash {}",
+                        hash
+                    )
+                }
+                BlockIdentifier::Height(height) => {
+                    write!(
+                        formatter,
+                        "highest completed block sequence contains height {}",
+                        height
+                    )
+                }
+            },
         }
     }
 }

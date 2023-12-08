@@ -77,8 +77,8 @@ use casper_types::{
         execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
     },
     AvailableBlockRange, Block, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader,
-    BlockSignatures, BlockV2, DeployApprovalsHash, DeployHash, DeployHeader, Digest, EraId,
-    FinalitySignature, FinalizedApprovals, ProtocolVersion, PublicKey, SignedBlock,
+    BlockIdentifier, BlockSignatures, BlockV2, DeployApprovalsHash, DeployHash, DeployHeader,
+    Digest, EraId, FinalitySignature, FinalizedApprovals, ProtocolVersion, PublicKey, SignedBlock,
     SignedBlockHeader, StoredValue, Timestamp, Transaction, TransactionApprovalsHash,
     TransactionHash, TransactionId, TransactionV1ApprovalsHash, Transfer,
 };
@@ -1258,26 +1258,33 @@ impl Storage {
                 let block_hash = self.block_height_index.get(&height).copied();
                 responder.respond(block_hash).ignore()
             }
-            StorageRequest::HighestCompletedBlockSequenceContainsHash {
-                block_hash,
+            StorageRequest::HighestCompletedBlockSequenceContains {
+                block_identifier,
                 responder,
-            } => responder
-                .respond(HighestBlockSequenceCheckResult(
-                    self.read_block_header_by_hash(&block_hash).map_or(
-                        false,
-                        |maybe_block_header| {
-                            maybe_block_header.map_or(false, |block_header| {
-                                let height = block_header.height();
-                                self.completed_blocks
-                                    .highest_sequence()
-                                    .map_or(false, |sequence| {
-                                        height >= sequence.low() && height <= sequence.high()
-                                    })
-                            })
-                        },
-                    ),
-                ))
-                .ignore(),
+            } => {
+                let result = match block_identifier {
+                    BlockIdentifier::Hash(block_hash) => {
+                        self.read_block_header_by_hash(&block_hash)?
+                    }
+                    BlockIdentifier::Height(block_height) => {
+                        self.read_block_header_by_height(block_height, true)?
+                    }
+                };
+                let Some(header) = result else {
+                    return Ok(responder.respond(HighestBlockSequenceCheckResult(false)).ignore());
+                };
+
+                let height = header.height();
+                let result = self
+                    .completed_blocks
+                    .highest_sequence()
+                    .map_or(false, |sequence| {
+                        height >= sequence.low() && height <= sequence.high()
+                    });
+                responder
+                    .respond(HighestBlockSequenceCheckResult(result))
+                    .ignore()
+            }
         })
     }
 

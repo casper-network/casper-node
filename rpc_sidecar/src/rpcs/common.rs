@@ -5,16 +5,13 @@ use serde::{Deserialize, Serialize};
 use crate::rpcs::error::Error;
 use casper_types::{
     account::AccountHash, AddressableEntity, AvailableBlockRange, Block, BlockHeader,
-    BlockSignatures, Digest, ExecutionInfo, FinalizedApprovals, Key, SignedBlock, StoredValue,
-    Transaction, TransactionHash, URef, U512,
+    BlockIdentifier, BlockSignatures, Digest, ExecutionInfo, FinalizedApprovals, Key, SignedBlock,
+    StoredValue, Transaction, TransactionHash, URef, U512,
 };
 
 use crate::NodeClient;
 
-use super::{
-    chain::BlockIdentifier,
-    state::{GlobalStateIdentifier, PurseIdentifier},
-};
+use super::state::{GlobalStateIdentifier, PurseIdentifier};
 
 pub(super) static MERKLE_PROOF: Lazy<String> = Lazy::new(|| {
     String::from(

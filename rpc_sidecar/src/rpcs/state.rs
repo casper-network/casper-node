@@ -8,7 +8,6 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    chain::BlockIdentifier,
     common,
     common::MERKLE_PROOF,
     docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
@@ -26,8 +25,8 @@ use casper_types::{
         },
         AUCTION,
     },
-    AddressableEntityHash, AuctionState, BlockHash, BlockHeader, BlockHeaderV2, BlockV2, CLValue,
-    Digest, Key, KeyTag, PublicKey, SecretKey, StoredValue, Tagged, URef, U512,
+    AddressableEntityHash, AuctionState, BlockHash, BlockHeader, BlockHeaderV2, BlockIdentifier,
+    BlockV2, CLValue, Digest, Key, KeyTag, PublicKey, SecretKey, StoredValue, Tagged, URef, U512,
 };
 
 static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {

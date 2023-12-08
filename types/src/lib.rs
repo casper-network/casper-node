@@ -100,11 +100,11 @@ pub use api_error::ApiError;
 pub use auction_state::{AuctionState, JsonEraValidators, JsonValidatorWeights};
 pub use block::{
     AvailableBlockRange, Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHashAndHeight,
-    BlockHeader, BlockHeaderV1, BlockHeaderV2, BlockSignatures, BlockSignaturesMergeError,
-    BlockSyncStatus, BlockSynchronizerStatus, BlockV1, BlockV2, BlockValidationError, EraEnd,
-    EraEndV1, EraEndV2, EraReport, FinalitySignature, FinalitySignatureId, JsonBlockWithSignatures,
-    RewardedSignatures, Rewards, SignedBlock, SignedBlockHeader, SignedBlockHeaderValidationError,
-    SingleBlockRewardedSignatures,
+    BlockHeader, BlockHeaderV1, BlockHeaderV2, BlockIdentifier, BlockSignatures,
+    BlockSignaturesMergeError, BlockSyncStatus, BlockSynchronizerStatus, BlockV1, BlockV2,
+    BlockValidationError, EraEnd, EraEndV1, EraEndV2, EraReport, FinalitySignature,
+    FinalitySignatureId, JsonBlockWithSignatures, RewardedSignatures, Rewards, SignedBlock,
+    SignedBlockHeader, SignedBlockHeaderValidationError, SingleBlockRewardedSignatures,
 };
 #[cfg(any(feature = "testing", test))]
 pub use block::{TestBlockBuilder, TestBlockV1Builder};

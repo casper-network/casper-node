@@ -8,11 +8,11 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    contract_messages::Messages, execution::ExecutionResultV2, BlockHash, Deploy, Transaction,
+    contract_messages::Messages, execution::ExecutionResultV2, BlockHash, BlockIdentifier, Deploy,
+    Transaction,
 };
 
 use super::{
-    chain::BlockIdentifier,
     common,
     docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
     ApiVersion, Error, NodeClient, RpcError, RpcWithParams, CURRENT_API_VERSION,

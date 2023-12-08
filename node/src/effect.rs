@@ -134,10 +134,10 @@ use casper_types::{
     package::Package,
     system::auction::EraValidators,
     AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader,
-    BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, DeployHeader,
-    Digest, EraId, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key, NextUpgrade,
-    PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId,
-    Transfer, Uptime, U512,
+    BlockIdentifier, BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes,
+    DeployHash, DeployHeader, Digest, EraId, FinalitySignature, FinalitySignatureId,
+    FinalizedApprovals, Key, NextUpgrade, PublicKey, ReactorState, TimeDiff, Timestamp,
+    Transaction, TransactionHash, TransactionId, Transfer, Uptime, U512,
 };
 
 use crate::{
@@ -1414,16 +1414,16 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Checks if a block with the given hash is among the contiguous sequence of completed blocks.
-    pub(crate) async fn highest_completed_block_sequence_contains_hash(
+    pub(crate) async fn highest_completed_block_sequence_contains(
         self,
-        block_hash: BlockHash,
+        block_identifier: BlockIdentifier,
     ) -> HighestBlockSequenceCheckResult
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::HighestCompletedBlockSequenceContainsHash {
-                block_hash,
+            |responder| StorageRequest::HighestCompletedBlockSequenceContains {
+                block_identifier,
                 responder,
             },
             QueueKind::FromStorage,
