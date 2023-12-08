@@ -137,7 +137,7 @@ use casper_types::{
     BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, DeployHeader,
     Digest, EraId, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key, NextUpgrade,
     PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId,
-    Uptime, U512,
+    Transfer, Uptime, U512,
 };
 
 use crate::{
@@ -1348,6 +1348,24 @@ impl<REv> EffectBuilder<REv> {
                 responder,
             },
             QueueKind::ToStorage,
+        )
+        .await
+    }
+
+    /// Gets the requested block's transfers from storage.
+    pub(crate) async fn get_block_transfers_from_storage(
+        self,
+        block_hash: BlockHash,
+    ) -> Option<Vec<Transfer>>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockTransfers {
+                block_hash,
+                responder,
+            },
+            QueueKind::FromStorage,
         )
         .await
     }

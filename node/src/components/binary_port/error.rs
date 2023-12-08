@@ -9,5 +9,5 @@ pub(crate) enum Error {
     #[error("received request without payload")]
     NoPayload,
     #[error(transparent)]
-    RpcServerError(#[from] RpcServerError),
+    RpcServer(#[from] RpcServerError),
 }

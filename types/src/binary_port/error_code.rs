@@ -39,6 +39,9 @@ pub enum ErrorCode {
     /// The query to global state failed.
     #[cfg_attr(feature = "std", error("the query to global state failed"))]
     QueryFailedToExecute = 10,
+    /// Bad request.
+    #[cfg_attr(feature = "std", error("bad request"))]
+    BadRequest = 11,
 }
 
 impl TryFrom<u8> for ErrorCode {
@@ -56,6 +59,7 @@ impl TryFrom<u8> for ErrorCode {
             8 => Ok(Self::InvalidDeploy),
             9 => Ok(Self::InternalError),
             10 => Ok(Self::QueryFailedToExecute),
+            11 => Ok(Self::BadRequest),
             _ => Err(UnknownErrorCode),
         }
     }

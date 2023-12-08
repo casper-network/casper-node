@@ -970,8 +970,7 @@ impl reactor::Reactor for MainReactor {
             ),
             MainEvent::BinaryPort(req) => reactor::wrap_effects(
                 MainEvent::BinaryPort,
-                self.binary_port
-                    .handle_event(effect_builder, rng, req.into()),
+                self.binary_port.handle_event(effect_builder, rng, req),
             ),
 
             // This event gets emitted when we manage to read the era validators from the global

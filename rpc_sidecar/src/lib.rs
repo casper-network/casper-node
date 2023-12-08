@@ -122,14 +122,14 @@ mod tests {
     /// method will create a temporary file with the actual schema and print the location if it
     /// fails.
     pub fn assert_schema(schema_path: &str, actual_schema: &str) {
-        let expected_schema = fs::read_to_string(&schema_path).unwrap();
+        let expected_schema = fs::read_to_string(schema_path).unwrap();
         let expected_schema: Value = serde_json::from_str(&expected_schema).unwrap();
         let mut temp_file = tempfile::Builder::new()
             .suffix(".json")
             .tempfile_in(env!("OUT_DIR"))
             .unwrap();
         temp_file.write_all(actual_schema.as_bytes()).unwrap();
-        let actual_schema: Value = serde_json::from_str(&actual_schema).unwrap();
+        let actual_schema: Value = serde_json::from_str(actual_schema).unwrap();
         let (_file, temp_file_path) = temp_file.keep().unwrap();
 
         let result = assert_json_matches_no_panic(

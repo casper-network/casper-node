@@ -14,8 +14,9 @@ use casper_execution_engine::engine_state::{
 };
 use casper_types::{
     binary_port::{
-        self, binary_request::BinaryRequest, get::GetRequest, get_all_values::GetAllValuesResult,
-        global_state::GlobalStateQueryResult, non_persistent_data::NonPersistedDataRequest,
+        self, binary_request::BinaryRequest, db_id::DbId, get::GetRequest,
+        get_all_values::GetAllValuesResult, global_state::GlobalStateQueryResult,
+        non_persistent_data::NonPersistedDataRequest, DbRawBytesSpec,
     },
     bytesrepr::{self, FromBytes, ToBytes},
     BinaryResponse, BinaryResponseAndRequest, BlockHashAndHeight, BlockHeader, Peers, Transaction,
@@ -219,7 +220,7 @@ where
                 .speculatively_execute(execution_prestate, Box::new(transaction))
                 .await;
 
-            let response = match speculative_execution_result {
+            match speculative_execution_result {
                 Ok(result) => BinaryResponse::from_value(result),
                 Err(err) => BinaryResponse::new_error(match err {
                     EngineStateError::RootNotFound(_) => binary_port::ErrorCode::RootNotFound,
@@ -235,10 +236,24 @@ where
                     EngineStateError::Deploy => binary_port::ErrorCode::InvalidDeploy,
                     _ => binary_port::ErrorCode::InternalError,
                 }),
-            };
-            response
+            }
         }
         BinaryRequest::Get(get_req) => match get_req {
+            // this workaround is in place because get_block_transfers performs a lazy migration
+            GetRequest::Db { db, key } if db == DbId::Transfer => {
+                let Ok(block_hash) = bytesrepr::deserialize_from_slice(&key) else {
+                    return BinaryResponse::new_error(binary_port::ErrorCode::BadRequest);
+                };
+                let Some(transfers) = effect_builder
+                    .get_block_transfers_from_storage(block_hash)
+                    .await else {
+                    return BinaryResponse::from_db_raw_bytes(&db, None);
+                };
+                let serialized =
+                    bincode::serialize(&transfers).expect("should serialize transfers to bytes");
+                let bytes = DbRawBytesSpec::new_legacy(&serialized);
+                BinaryResponse::from_db_raw_bytes(&db, Some(bytes))
+            }
             GetRequest::Db { db, key } => {
                 let maybe_raw_bytes = effect_builder.get_raw_data(db, key).await;
                 BinaryResponse::from_db_raw_bytes(&db, maybe_raw_bytes)
@@ -389,10 +404,7 @@ where
     REv: From<AcceptTransactionRequest>,
 {
     match effect_builder
-        .try_accept_transaction(
-            transaction,
-            speculative_exec_at.map(|block_header| Box::new(block_header)),
-        )
+        .try_accept_transaction(transaction, speculative_exec_at.map(Box::new))
         .await
     {
         Ok(_) => BinaryResponse::new_empty(),
@@ -446,7 +458,7 @@ where
             }
             (req, _) => {
                 let response = BinaryResponseAndRequest::new(
-                    handle_request(req, &*config, effect_builder).await,
+                    handle_request(req, &config, effect_builder).await,
                     payload.as_ref(),
                 );
                 incoming_request.respond(Some(Bytes::from(ToBytes::to_bytes(&response)?)))
@@ -533,7 +545,7 @@ where
                 }
             }
         },
-        Err(_) => (), // TODO[RC]: Handle this
+        Err(_) => todo!(), // TODO[RC]: Handle this
     };
 }
 

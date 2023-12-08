@@ -1,4 +1,2 @@
 #[test]
-fn binary_port_test_1() {
-    assert!(true);
-}
+fn binary_port_test_1() {}

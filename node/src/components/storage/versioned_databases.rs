@@ -187,16 +187,16 @@ where
     ) -> Result<Option<DbRawBytesSpec>, LmdbExtError> {
         let value = txn.get(self.current, &key);
         match value {
-            Ok(raw_bytes) => return Ok(Some(DbRawBytesSpec::new_current(raw_bytes))),
+            Ok(raw_bytes) => Ok(Some(DbRawBytesSpec::new_current(raw_bytes))),
             Err(lmdb::Error::NotFound) => {
                 let value = txn.get(self.legacy, &key);
                 match value {
-                    Ok(raw_bytes) => return Ok(Some(DbRawBytesSpec::new_legacy(raw_bytes))),
-                    Err(lmdb::Error::NotFound) => return Ok(None),
-                    Err(err) => return Err(err.into()),
+                    Ok(raw_bytes) => Ok(Some(DbRawBytesSpec::new_legacy(raw_bytes))),
+                    Err(lmdb::Error::NotFound) => Ok(None),
+                    Err(err) => Err(err.into()),
                 }
             }
-            Err(err) => return Err(err.into()),
+            Err(err) => Err(err.into()),
         }
     }
 

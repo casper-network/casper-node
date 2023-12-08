@@ -42,7 +42,7 @@ use casper_types::{
     BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, DeployHeader, Digest,
     DisplayIter, EraId, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key,
     NextUpgrade, PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash,
-    TransactionId, Uptime, U512,
+    TransactionId, Transfer, Uptime, U512,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -72,6 +72,9 @@ use crate::{
     },
     utils::Source,
 };
+
+#[cfg(test)]
+use casper_types::{ExecutionInfo, SignedBlock};
 
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
 const_assert!(_STORAGE_REQUEST_SIZE < 97);
@@ -370,6 +373,14 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the result.
         responder: Responder<Option<BlockHeader>>,
     },
+    /// Retrieve all transfers in a block with given hash.
+    GetBlockTransfers {
+        /// Hash of block to get transfers of.
+        block_hash: BlockHash,
+        /// Responder to call with the result.  Returns `None` if the transfers do not exist in
+        /// local storage under the block_hash provided.
+        responder: Responder<Option<Vec<Transfer>>>,
+    },
     PutTransaction {
         transaction: Arc<Transaction>,
         /// Returns `true` if the transaction was stored on this attempt or false if it was
@@ -421,6 +432,42 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the execution results.
         /// None is returned when we don't have the block in the storage.
         responder: Responder<Option<BlockExecutionResultsOrChunk>>,
+    },
+    #[cfg(test)]
+    GetTransactionAndExecutionInfo {
+        transaction_hash: TransactionHash,
+        responder: Responder<Option<(TransactionWithFinalizedApprovals, Option<ExecutionInfo>)>>,
+    },
+    /// Retrieve block and its signatures by its hash.
+    #[cfg(test)]
+    GetSignedBlockByHash {
+        /// The hash of the block.
+        block_hash: BlockHash,
+        /// If true, only return `Some` if the block is in the available block range, i.e. the
+        /// highest contiguous range of complete blocks.
+        only_from_available_block_range: bool,
+        /// The responder to call with the results.
+        responder: Responder<Option<SignedBlock>>,
+    },
+    /// Retrieve block and its signatures at a given height.
+    #[cfg(test)]
+    GetSignedBlockByHeight {
+        /// The height of the block.
+        block_height: BlockHeight,
+        /// If true, only return `Some` if the block is in the available block range, i.e. the
+        /// highest contiguous range of complete blocks.
+        only_from_available_block_range: bool,
+        /// The responder to call with the results.
+        responder: Responder<Option<SignedBlock>>,
+    },
+    /// Get the highest block and its signatures.
+    #[cfg(test)]
+    GetHighestSignedBlock {
+        /// If true, only consider blocks in the available block range, i.e. the highest contiguous
+        /// range of complete blocks.
+        only_from_available_block_range: bool,
+        /// The responder to call the results with.
+        responder: Responder<Option<SignedBlock>>,
     },
     /// Retrieve a finality signature by block hash and public key.
     GetFinalitySignature {
@@ -549,6 +596,9 @@ impl Display for StorageRequest {
             StorageRequest::GetSwitchBlockHeaderByEra { era_id, .. } => {
                 write!(formatter, "get header for era {}", era_id)
             }
+            StorageRequest::GetBlockTransfers { block_hash, .. } => {
+                write!(formatter, "get transfers for {}", block_hash)
+            }
             StorageRequest::PutTransaction { transaction, .. } => {
                 write!(formatter, "put {}", transaction)
             }
@@ -579,7 +629,36 @@ impl Display for StorageRequest {
             StorageRequest::GetBlockExecutionResultsOrChunk { id, .. } => {
                 write!(formatter, "get block execution results or chunk for {}", id)
             }
-
+            #[cfg(test)]
+            StorageRequest::GetTransactionAndExecutionInfo {
+                transaction_hash, ..
+            } => {
+                write!(
+                    formatter,
+                    "get transaction and metadata for {}",
+                    transaction_hash
+                )
+            }
+            #[cfg(test)]
+            StorageRequest::GetSignedBlockByHash { block_hash, .. } => {
+                write!(
+                    formatter,
+                    "get signed block for block with hash: {}",
+                    block_hash
+                )
+            }
+            #[cfg(test)]
+            StorageRequest::GetSignedBlockByHeight { block_height, .. } => {
+                write!(
+                    formatter,
+                    "get signed block for block at height: {}",
+                    block_height
+                )
+            }
+            #[cfg(test)]
+            StorageRequest::GetHighestSignedBlock { .. } => {
+                write!(formatter, "get highest signed block")
+            }
             StorageRequest::GetFinalitySignature { id, .. } => {
                 write!(formatter, "get finality signature {}", id)
             }
