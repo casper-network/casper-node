@@ -166,8 +166,12 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
     code_ptr: u32,
     code_len: u32,
     manifest_ptr: u32,
+    entry_name: u32,
+    entry_len: u32,
+    input_ptr: u32,
+    input_len: u32,
     result_ptr: u32,
-) -> VMResult<u32> {
+) -> VMResult<HostResult> {
     let code = if code_ptr != 0 {
         caller
             .memory_read(code_ptr, code_len as usize)
@@ -175,6 +179,23 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
             .unwrap()
     } else {
         caller.bytecode()
+    };
+
+    // For calling a constructor
+    let entry_point_name = if entry_name == 0 {
+        None
+    } else {
+        let data = caller.memory_read(entry_name, entry_len as _).unwrap();
+        let str = String::from_utf8(data).expect("should be valid utf8");
+        Some(str)
+    };
+
+    // Pass input data when calling a constructor. It's optional, as constructors aren't required
+    let input_data: Option<Bytes> = if input_ptr == 0 {
+        None
+    } else {
+        let input_data = caller.memory_read(input_ptr, input_len as _)?.into();
+        Some(input_data)
     };
 
     let manifest = caller
@@ -259,71 +280,101 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
         vec
     };
 
-    // Find all entrypoints with a flag set to CONSTRUCTOR
-    let mut constructors = entrypoints.iter().filter_map(|entrypoint| {
-        if entrypoint.flags.contains(EntryPointFlags::CONSTRUCTOR) {
-            Some(entrypoint)
-        } else {
-            None
-        }
-    });
-
-    // TODO: Should we validate amount of constructors or just rely on the fact that the proc macro
-    // will statically check it, and the document the behavior that only first constructor will be
-    // called
-
-    if let Some(first_constructor) = constructors.next() {
-        let mut vm = VM::new();
-        let storage = caller.context().storage.clone();
-
-        let current_config = caller.config().clone();
-        let gas_limit = caller
-            .gas_consumed()
-            .try_into_remaining()
-            .expect("should be remaining");
-
-        let new_context = Context { storage };
-        let new_config = ConfigBuilder::new()
-            .with_gas_limit(gas_limit)
-            .with_memory_limit(current_config.memory_limit)
-            .with_input(Bytes::new())
-            // .with_callback(cloned)
-            .build();
-
-        let mut new_instance = vm
-            .prepare(code.clone(), new_context, new_config)
-            .expect("should prepare instance");
-
-        let (call_result, gas_usage) = new_instance.call_function(first_constructor.function_index);
-
-        let (return_data, host_result) = match call_result {
-            Ok(()) => {
-                // Contract did not call `casper_return` - implies that it did not revert, and
-                // did not pass any data.
-                (None, Ok(()))
-            }
-            Err(VMError::Return { flags, data }) => {
-                // If the contract called `casper_return` function with revert bit set, we have
-                // to pass the reverted code to the caller.
-                let host_result = if flags.contains(ReturnFlags::REVERT) {
-                    Err(HostError::CalleeReverted)
+    if let Some(entry_point_name) = entry_point_name {
+        // Find all entrypoints with a flag set to CONSTRUCTOR
+        let mut constructors = entrypoints
+            .iter()
+            .filter_map(|entrypoint| {
+                if entrypoint.flags.contains(EntryPointFlags::CONSTRUCTOR) {
+                    Some(entrypoint)
                 } else {
-                    Ok(())
+                    None
+                }
+            })
+            .filter(|entry_point| entry_point.name == entry_point_name);
+
+        // TODO: Should we validate amount of constructors or just rely on the fact that the proc
+        // macro will statically check it, and the document the behavior that only first
+        // constructor will be called
+
+        match constructors.next() {
+            Some(first_constructor) => {
+                let mut vm = VM::new();
+                let storage = caller.context().storage.clone();
+
+                let current_config = caller.config().clone();
+                let gas_limit = caller
+                    .gas_consumed()
+                    .try_into_remaining()
+                    .expect("should be remaining");
+
+                let new_context = Context { storage };
+
+                let new_config = ConfigBuilder::new()
+                    .with_gas_limit(gas_limit)
+                    .with_memory_limit(current_config.memory_limit)
+                    .with_input(input_data.unwrap_or(Bytes::new()))
+                    .build();
+
+                let mut new_instance = vm
+                    .prepare(code.clone(), new_context, new_config)
+                    .expect("should prepare instance");
+
+                let (call_result, gas_usage) =
+                    new_instance.call_function(first_constructor.function_index);
+
+                let (return_data, host_result) = match call_result {
+                    Ok(()) => {
+                        // Contract did not call `casper_return` - implies that it did not revert,
+                        // and did not pass any data.
+                        (None, Ok(()))
+                    }
+                    Err(VMError::Return { flags, data }) => {
+                        // If the contract called `casper_return` function with revert bit set, we
+                        // have to pass the reverted code to the caller.
+                        let host_result = if flags.contains(ReturnFlags::REVERT) {
+                            Err(HostError::CalleeReverted)
+                        } else {
+                            Ok(())
+                        };
+                        (data, host_result)
+                    }
+                    Err(VMError::OutOfGas) => {
+                        todo!()
+                    }
+                    Err(VMError::Trap(_trap)) => (None, Err(HostError::CalleeTrapped)),
+                    Err(other_error) => todo!("{other_error:?}"),
                 };
-                (data, host_result)
-            }
-            Err(VMError::OutOfGas) => {
-                todo!()
-            }
-            Err(VMError::Trap(_trap)) => (None, Err(HostError::CalleeTrapped)),
-            Err(other_error) => todo!("{other_error:?}"),
-        };
 
-        dbg!(&return_data, &host_result);
-    }
+                // Calculate how much gas was spent during execution of the called contract.
+                let gas_spent = gas_usage
+                    .gas_limit
+                    .checked_sub(gas_usage.remaining_points)
+                    .expect("remaining points always below or equal to the limit");
 
-    if constructors.next().is_some() {
-        todo!("only one constructor supported");
+                match caller.consume_gas(gas_spent) {
+                    MeteringPoints::Remaining(_) => {}
+                    MeteringPoints::Exhausted => {
+                        todo!("exhausted")
+                    }
+                }
+
+                match host_result {
+                    Ok(()) => {
+                        // We don't allow capturing output from a constructor. All constructors are
+                        // expected to have return value of ().
+                    }
+                    error @ Err(_) => {
+                        dbg!(&error);
+                        // If the constructor failed, we have to return the error to the caller.
+                        return Ok(error);
+                    }
+                }
+            }
+            None => {
+                todo!("Constructor not found; raise error")
+            }
+        }
     }
 
     let manifest = storage::Manifest { entrypoints };
@@ -357,7 +408,7 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
         .memory_write(result_ptr, create_result_bytes)
         .unwrap();
 
-    Ok(0)
+    Ok(Ok(()))
 }
 
 #[allow(clippy::too_many_arguments)]

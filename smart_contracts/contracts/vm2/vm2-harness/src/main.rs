@@ -32,6 +32,26 @@ pub enum CustomError {
 #[casper(entry_points)]
 impl Greeter {
     #[constructor]
+    pub fn constructor_with_args(&mut self, who: String) {
+        log!("👋 Hello from constructor with args: {who}");
+        self.greeting.write(format!("Hello, {who}!")).unwrap();
+    }
+
+    #[constructor]
+    pub fn failing_constructor(&mut self, who: String) {
+        log!("👋 Hello from failing constructor with args: {who}");
+        revert!();
+    }
+
+    #[constructor]
+    pub fn trapping_constructor(&mut self) {
+        log!("👋 Hello from trapping constructor");
+        // TODO: Storage doesn't fork as of yet, need to integrate casper-storage crate and leverage
+        // the tracking copy.
+        panic!("This will revert the execution of this constructor and won't create a new package");
+    }
+
+    #[constructor]
     pub fn initialize(&mut self) {
         log!("👋 Hello from constructor");
         self.greeting.write(INITIAL_GREETING.to_string()).unwrap();
@@ -78,7 +98,10 @@ use vm_common::flags::ReturnFlags;
 #[casper(export)]
 pub fn call() {
     log!("calling create");
-    match Greeter::create() {
+
+    // Constructor without args
+
+    match Greeter::create(Some("initialize"), None) {
         Ok(CreateResult {
             package_address,
             contract_address,
@@ -147,6 +170,50 @@ pub fn call() {
             log!("error {:?}", error);
         }
     }
+
+    // Constructor with args
+
+    let args = ("World".to_string(),);
+    match Greeter::create(
+        Some("constructor_with_args"),
+        Some(&borsh::to_vec(&args).unwrap()),
+    ) {
+        Ok(CreateResult {
+            package_address,
+            contract_address,
+            version,
+        }) => {
+            log!("success 2");
+            log!("package_address: {:?}", package_address);
+            log!("contract_address: {:?}", contract_address);
+            log!("version: {:?}", version);
+
+            let call_0 = "get_greeting";
+            let (maybe_data_0, result_code_0) =
+                host::casper_call(&contract_address, 0, call_0, &[]);
+            log!("{call_0:?} result={result_code_0:?}");
+            assert_eq!(
+                borsh::from_slice::<String>(&maybe_data_0.as_ref().expect("return value")).unwrap(),
+                "Hello, World!".to_string(),
+            );
+        }
+        Err(error) => {
+            log!("error {:?}", error);
+        }
+    }
+
+    let args = ("World".to_string(),);
+
+    let error = Greeter::create(
+        Some("failing_constructor"),
+        Some(&borsh::to_vec(&args).unwrap()),
+    )
+    .expect_err("Constructor that reverts should fail to create");
+    assert_eq!(error, host::CallError::CalleeReverted);
+
+    let error = Greeter::create(Some("trapping_constructor"), None)
+        .expect_err("Constructor that traps should fail to create");
+    assert_eq!(error, host::CallError::CalleeTrapped);
 
     log!("👋 Goodbye");
 }

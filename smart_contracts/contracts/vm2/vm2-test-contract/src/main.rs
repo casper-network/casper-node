@@ -168,7 +168,7 @@ mod exports {
             entry_points_size: entry_points.len(),
         };
         host::casper_print(&format!("manifest {:?}", manifest));
-        let res = host::casper_create(None, &manifest);
+        let res = host::casper_create(None, &manifest, None, None);
         host::casper_print(&format!("create res {:?}", res));
 
         match res {

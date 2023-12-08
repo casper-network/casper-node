@@ -71,8 +71,8 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
                 Self::__casper_schema()
             }
 
-            fn create() -> Result<casper_sdk::host::CreateResult, casper_sdk::host::Error> {
-                Self::__casper_create()
+            fn create(entry_point: Option<&str>, input_data: Option<&[u8]>) -> Result<casper_sdk::host::CreateResult, casper_sdk::host::CallError> {
+                Self::__casper_create(entry_point, input_data)
             }
         }
 
@@ -174,9 +174,6 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                             let arg_count = arg_names.len();
 
                             if func_attrs.contains(&Attribute::Constructor) {
-                                if arg_count > 0 {
-                                    panic!("Constructor cannot have arguments");
-                                }
                                 let sig = &func.sig;
                                 match &func.sig.output {
                                     syn::ReturnType::Default => {}
@@ -349,7 +346,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                         #[inline(always)]
                         #[doc(hidden)]
-                        fn __casper_create() -> Result<casper_sdk::host::CreateResult, casper_sdk::host::Error> {
+                        fn __casper_create(entry_point: Option<&str>, input_data: Option<&[u8]>) -> Result<casper_sdk::host::CreateResult, casper_sdk::host::CallError> {
                             #(#manifest_entry_points_data)*;
                             const ENTRY_POINTS: [casper_sdk::host::EntryPoint; #manifest_entry_points_data_len] = [#(#manifest_entry_points,)*];
 
@@ -358,7 +355,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 entry_points_size: ENTRY_POINTS.len(),
                             };
 
-                            casper_sdk::host::casper_create(None, &MANIFEST)
+                            casper_sdk::host::casper_create(None, &MANIFEST, entry_point, input_data)
                         }
                     }
                 };

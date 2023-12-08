@@ -125,7 +125,8 @@ impl CLTyped for u32 {
     }
 }
 
-use host::{CreateResult, Error};
+use host::{CallError, CreateResult};
+
 #[cfg(not(target_arch = "wasm32"))]
 use serde::{Deserialize, Serialize};
 #[derive(Debug)]
@@ -222,7 +223,10 @@ pub trait Contract {
     fn new() -> Self;
     fn name() -> &'static str;
     fn schema() -> Schema;
-    fn create() -> Result<CreateResult, Error>;
+    fn create(
+        entry_point: Option<&str>,
+        input_data: Option<&[u8]>,
+    ) -> Result<CreateResult, CallError>;
 }
 
 #[derive(Debug)]
@@ -277,12 +281,15 @@ macro_rules! log {
 #[macro_export]
 macro_rules! revert {
     () => {
-        $crate::host::revert(None)
+        casper_sdk::host::casper_return(vm_common::flags::ReturnFlags::REVERT, None)
     };
     ($arg:expr) => {{
         let value = $arg;
         let data = borsh::to_vec(&value).expect("Revert value should serialize");
-        casper_sdk::host::revert(Some(data.as_slice()));
+        casper_sdk::host::casper_return(
+            vm_common::flags::ReturnFlags::REVERT,
+            Some(data.as_slice()),
+        );
         value
     }};
 }

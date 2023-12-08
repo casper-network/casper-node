@@ -441,20 +441,30 @@ where
                     &mut store,
                     &function_env,
                     |env: FunctionEnvMut<WasmerEnv<S>>,
-                     // casper_create_contract(code_ptr: *const u8, code_size: usize,
-                     // manifest_ptr: *mut Manifest, result_ptr: *mut CreateResult) -> i32;
                      code_ptr: u32,
                      code_size: u32,
                      manifest_ptr: u32,
+                     entry_name: u32,
+                     entry_len: u32,
+                     input_ptr: u32,
+                     input_len: u32,
                      result_ptr: u32| {
                         let wasmer_caller = WasmerCaller { env };
-                        host::casper_create_contract(
+                        match host::casper_create_contract(
                             wasmer_caller,
                             code_ptr,
                             code_size,
                             manifest_ptr,
+                            entry_name,
+                            entry_len,
+                            input_ptr,
+                            input_len,
                             result_ptr,
-                        )
+                        ) {
+                            Ok(Ok(())) => Ok(0),
+                            Ok(Err(call_error)) => Ok(call_error as u32),
+                            Err(error) => Err(error),
+                        }
                     },
                 ),
             );

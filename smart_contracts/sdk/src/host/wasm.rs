@@ -52,9 +52,13 @@ pub(crate) mod ext {
         pub fn casper_create_contract(
             code_ptr: *const u8,
             code_size: usize,
-            manifest_ptr: *mut Manifest,
+            manifest_ptr: *const Manifest,
+            entry_point_ptr: *const u8,
+            entry_point_size: usize,
+            input_ptr: *const u8,
+            input_size: usize,
             result_ptr: *mut CreateResult,
-        ) -> i32;
+        ) -> u32;
 
         pub fn casper_call(
             // acct_or_contract,
@@ -194,7 +198,12 @@ pub fn casper_write(key_space: u64, key: &[u8], value_tag: u64, value: &[u8]) ->
     Ok(())
 }
 
-pub fn casper_create(code: Option<&[u8]>, manifest: &Manifest) -> Result<CreateResult, Error> {
+pub fn casper_create(
+    code: Option<&[u8]>,
+    manifest: &Manifest,
+    entry_point: Option<&str>,
+    input_data: Option<&[u8]>,
+) -> Result<CreateResult, CallError> {
     let (code_ptr, code_size): (*const u8, usize) = match code {
         Some(code) => (code.as_ptr(), code.len()),
         None => (ptr::null(), 0),
@@ -204,19 +213,28 @@ pub fn casper_create(code: Option<&[u8]>, manifest: &Manifest) -> Result<CreateR
 
     let manifest_ptr = NonNull::from(manifest);
 
-    let ret = unsafe {
+    let result_code = unsafe {
         ext::casper_create_contract(
             code_ptr,
             code_size,
             manifest_ptr.as_ptr(),
+            entry_point.map(|s| s.as_ptr()).unwrap_or(ptr::null()),
+            entry_point.map(|s| s.len()).unwrap_or(0),
+            input_data.map(|s| s.as_ptr()).unwrap_or(ptr::null()),
+            input_data.map(|s| s.len()).unwrap_or(0),
             result.as_mut_ptr(),
         )
     };
-    if ret == 0 {
-        let result = unsafe { result.assume_init() };
-        Ok(result)
-    } else {
-        Err(Error::Foo) // todo: host -> wasm error handling
+
+    match ResultCode::from(result_code) {
+        ResultCode::Success => {
+            let result = unsafe { result.assume_init() };
+            Ok(result)
+        }
+        ResultCode::CalleeReverted => Err(CallError::CalleeReverted),
+        ResultCode::CalleeTrapped => Err(CallError::CalleeTrapped),
+        ResultCode::CalleeGasDepleted => Err(CallError::CalleeGasDepleted),
+        ResultCode::Unknown => Err(CallError::Unknown),
     }
 }
 

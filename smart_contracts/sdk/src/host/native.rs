@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::BTreeMap, ptr};
 use bytes::Bytes;
 use vm_common::flags::ReturnFlags;
 
-use super::{Address, CreateResult, Entry, Error, Manifest, ResultCode};
+use super::{Address, CallError, CreateResult, Entry, Error, Manifest, ResultCode};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
 struct TaggedValue {
@@ -88,7 +88,10 @@ pub fn casper_return(flags: ReturnFlags, data: Option<&[u8]>) -> ! {
     panic!("revert with flags={flags:?} data={data:?}")
 }
 
-pub fn casper_create(_code: Option<&[u8]>, _manifest: &Manifest) -> Result<CreateResult, Error> {
+pub fn casper_create(
+    _code: Option<&[u8]>,
+    _manifest: &Manifest,
+) -> Result<CreateResult, CallError> {
     todo!()
 }
 

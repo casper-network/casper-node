@@ -53,7 +53,7 @@ pub struct Manifest {
     pub entry_points_size: usize,
 }
 #[repr(C)]
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct CreateResult {
     pub package_address: [u8; 32],
     pub contract_address: [u8; 32],
