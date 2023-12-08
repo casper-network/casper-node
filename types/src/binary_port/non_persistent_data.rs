@@ -21,6 +21,7 @@ const AVAILABLE_BLOCK_RANGE_TAG: u8 = 11;
 const NEXT_UPGRADE_TAG: u8 = 12;
 const CONSENSUS_STATUS_TAG: u8 = 13;
 const CHAINSPEC_RAW_BYTES: u8 = 14;
+const STATUS_TAG: u8 = 15;
 
 /// Request for non persistent data
 #[derive(Clone, Debug)]
@@ -65,6 +66,8 @@ pub enum NonPersistedDataRequest {
     ConsensusStatus,
     /// Returns chainspec raw bytes.
     ChainspecRawBytes,
+    /// Returns the status information of the node.
+    NodeStatus,
 }
 
 impl ToBytes for NonPersistedDataRequest {
@@ -108,6 +111,7 @@ impl ToBytes for NonPersistedDataRequest {
             NonPersistedDataRequest::NextUpgrade => NEXT_UPGRADE_TAG.write_bytes(writer),
             NonPersistedDataRequest::ConsensusStatus => CONSENSUS_STATUS_TAG.write_bytes(writer),
             NonPersistedDataRequest::ChainspecRawBytes => CHAINSPEC_RAW_BYTES.write_bytes(writer),
+            NonPersistedDataRequest::NodeStatus => STATUS_TAG.write_bytes(writer),
         }
     }
 
@@ -115,24 +119,25 @@ impl ToBytes for NonPersistedDataRequest {
         U8_SERIALIZED_LENGTH
             + match self {
                 NonPersistedDataRequest::BlockHeight2Hash { height } => height.serialized_length(),
-                NonPersistedDataRequest::HighestCompleteBlock => 0,
                 NonPersistedDataRequest::CompletedBlocksContain { block_hash } => {
                     block_hash.serialized_length()
                 }
                 NonPersistedDataRequest::TransactionHash2BlockHashAndHeight {
                     transaction_hash,
                 } => transaction_hash.serialized_length(),
-                NonPersistedDataRequest::Peers => 0,
-                NonPersistedDataRequest::Uptime => 0,
-                NonPersistedDataRequest::LastProgress => 0,
-                NonPersistedDataRequest::ReactorState => 0,
-                NonPersistedDataRequest::NetworkName => 0,
-                NonPersistedDataRequest::ConsensusValidatorChanges => 0,
-                NonPersistedDataRequest::BlockSynchronizerStatus => 0,
-                NonPersistedDataRequest::AvailableBlockRange => 0,
-                NonPersistedDataRequest::NextUpgrade => 0,
-                NonPersistedDataRequest::ConsensusStatus => 0,
-                NonPersistedDataRequest::ChainspecRawBytes => 0,
+                NonPersistedDataRequest::HighestCompleteBlock
+                | NonPersistedDataRequest::Peers
+                | NonPersistedDataRequest::Uptime
+                | NonPersistedDataRequest::LastProgress
+                | NonPersistedDataRequest::ReactorState
+                | NonPersistedDataRequest::NetworkName
+                | NonPersistedDataRequest::ConsensusValidatorChanges
+                | NonPersistedDataRequest::BlockSynchronizerStatus
+                | NonPersistedDataRequest::AvailableBlockRange
+                | NonPersistedDataRequest::NextUpgrade
+                | NonPersistedDataRequest::ConsensusStatus
+                | NonPersistedDataRequest::ChainspecRawBytes
+                | NonPersistedDataRequest::NodeStatus => 0,
             }
     }
 }
@@ -185,6 +190,7 @@ impl FromBytes for NonPersistedDataRequest {
             NEXT_UPGRADE_TAG => Ok((NonPersistedDataRequest::NextUpgrade, remainder)),
             CONSENSUS_STATUS_TAG => Ok((NonPersistedDataRequest::ConsensusStatus, remainder)),
             CHAINSPEC_RAW_BYTES => Ok((NonPersistedDataRequest::ChainspecRawBytes, remainder)),
+            STATUS_TAG => Ok((NonPersistedDataRequest::NodeStatus, remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }

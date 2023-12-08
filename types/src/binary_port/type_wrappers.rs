@@ -1,6 +1,6 @@
 //! Type aliases.
 
-use core::time::Duration;
+use core::{convert::TryFrom, num::TryFromIntError, time::Duration};
 
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 #[cfg(feature = "datasize")]
@@ -10,7 +10,7 @@ use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contract_messages::Messages,
     execution::ExecutionResultV2,
-    EraId, PublicKey, StoredValue, Timestamp, ValidatorChange,
+    EraId, PublicKey, StoredValue, TimeDiff, Timestamp, ValidatorChange,
 };
 
 /// Type representing uptime.
@@ -20,6 +20,14 @@ pub struct Uptime(pub u64);
 impl From<Uptime> for Duration {
     fn from(uptime: Uptime) -> Self {
         Duration::from_secs(uptime.0)
+    }
+}
+
+impl TryFrom<Uptime> for TimeDiff {
+    type Error = TryFromIntError;
+
+    fn try_from(uptime: Uptime) -> Result<Self, Self::Error> {
+        u32::try_from(uptime.0).map(TimeDiff::from_seconds)
     }
 }
 

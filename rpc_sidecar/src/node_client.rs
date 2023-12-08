@@ -15,7 +15,7 @@ use casper_types::{
             ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
             LastProgress, NetworkName, SpeculativeExecutionResult, StoredValues,
         },
-        ErrorCode as BinaryPortError,
+        ErrorCode as BinaryPortError, NodeStatus,
     },
     bytesrepr::{self, FromBytes, ToBytes},
     execution::{ExecutionResult, ExecutionResultV1},
@@ -235,6 +235,13 @@ pub trait NodeClient: Send + Sync {
             .read_from_mem(NonPersistedDataRequest::ConsensusValidatorChanges)
             .await?;
         parse_response::<ConsensusValidatorChanges>(&resp.into())?.ok_or(Error::EmptyEnvelope)
+    }
+
+    async fn read_node_status(&self) -> Result<NodeStatus, Error> {
+        let resp = self
+            .read_from_mem(NonPersistedDataRequest::NodeStatus)
+            .await?;
+        parse_response::<NodeStatus>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 }
 
@@ -660,4 +667,8 @@ impl PayloadEntity for GetTrieFullResult {
 
 impl PayloadEntity for SpeculativeExecutionResult {
     const PAYLOAD_TYPE: PayloadType = PayloadType::SpeculativeExecutionResult;
+}
+
+impl PayloadEntity for NodeStatus {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::NodeStatus;
 }

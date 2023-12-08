@@ -6,7 +6,7 @@ mod metrics;
 #[cfg(test)]
 mod tests;
 
-use std::{net::SocketAddr, sync::Arc};
+use std::{convert::TryInto, net::SocketAddr, sync::Arc};
 
 use bytes::Bytes;
 use casper_execution_engine::engine_state::{
@@ -16,7 +16,7 @@ use casper_types::{
     binary_port::{
         self, binary_request::BinaryRequest, db_id::DbId, get::GetRequest,
         get_all_values::GetAllValuesResult, global_state::GlobalStateQueryResult,
-        non_persistent_data::NonPersistedDataRequest, DbRawBytesSpec,
+        non_persistent_data::NonPersistedDataRequest, DbRawBytesSpec, NodeStatus,
     },
     bytesrepr::{self, FromBytes, ToBytes},
     BinaryResponse, BinaryResponseAndRequest, BlockHashAndHeight, BlockHeader, Peers, Transaction,
@@ -32,6 +32,7 @@ use juliet::{
 use prometheus::Registry;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
+    join,
     net::{TcpListener, TcpStream},
 };
 use tracing::{debug, error, info, warn};
@@ -347,6 +348,57 @@ where
                 NonPersistedDataRequest::ChainspecRawBytes => BinaryResponse::from_value(
                     (*effect_builder.get_chainspec_raw_bytes().await).clone(),
                 ),
+                NonPersistedDataRequest::NodeStatus => {
+                    let (
+                        node_uptime,
+                        network_name,
+                        last_added_block,
+                        peers,
+                        next_upgrade,
+                        consensus_status,
+                        reactor_state,
+                        last_progress,
+                        available_block_range,
+                        block_sync,
+                    ) = join!(
+                        effect_builder.get_uptime(),
+                        effect_builder.get_network_name(),
+                        effect_builder.get_highest_complete_block_from_storage(),
+                        effect_builder.network_peers(),
+                        effect_builder.get_next_upgrade(),
+                        effect_builder.consensus_status(),
+                        effect_builder.get_reactor_state(),
+                        effect_builder.get_last_progress(),
+                        effect_builder.get_available_block_range_from_storage(),
+                        effect_builder.get_block_synchronizer_status(),
+                    );
+                    let starting_state_root_hash = effect_builder
+                        .get_block_header_at_height_from_storage(available_block_range.low(), true)
+                        .await
+                        .map(|header| *header.state_root_hash())
+                        .unwrap_or_default();
+                    let (our_public_signing_key, round_length) =
+                        consensus_status.map_or((None, None), |(pk, rl)| (Some(pk), rl));
+
+                    let status = NodeStatus {
+                        peers: Peers::from(peers),
+                        build_version: crate::VERSION_STRING.clone(),
+                        chainspec_name: network_name.into(),
+                        starting_state_root_hash,
+                        last_added_block_info: last_added_block.map(Into::into),
+                        our_public_signing_key,
+                        round_length,
+                        next_upgrade,
+                        uptime: node_uptime
+                            .try_into()
+                            .expect("uptime should fit into TimeDiff"),
+                        reactor_state,
+                        last_progress: last_progress.into(),
+                        available_block_range,
+                        block_sync,
+                    };
+                    BinaryResponse::from_value(status)
+                }
             },
             GetRequest::State {
                 state_root_hash,

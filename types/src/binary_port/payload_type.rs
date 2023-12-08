@@ -100,6 +100,8 @@ pub enum PayloadType {
     StoredValues,
     /// Result of querying global state for a full trie.
     GetTrieFullResult,
+    /// Node status.
+    NodeStatus,
 }
 
 impl PayloadType {
@@ -228,6 +230,7 @@ impl fmt::Display for PayloadType {
             PayloadType::GlobalStateQueryResult => write!(f, "GlobalStateQueryResult"),
             PayloadType::StoredValues => write!(f, "StoredValues"),
             PayloadType::GetTrieFullResult => write!(f, "GetTrieFullResult"),
+            PayloadType::NodeStatus => write!(f, "NodeStatus"),
         }
     }
 }
@@ -348,6 +351,13 @@ impl From<GetTrieFullResult> for PayloadType {
     }
 }
 
+#[cfg(any(feature = "std", test))]
+impl From<super::NodeStatus> for PayloadType {
+    fn from(_: super::NodeStatus) -> Self {
+        Self::NodeStatus
+    }
+}
+
 const BLOCK_HEADER_V1_TAG: u8 = 0;
 const BLOCK_HEADER_TAG: u8 = 1;
 const BLOCK_BODY_V1_TAG: u8 = 2;
@@ -381,6 +391,7 @@ const SPECULATIVE_EXECUTION_RESULT_TAG: u8 = 29;
 const GLOBAL_STATE_QUERY_RESULT_TAG: u8 = 30;
 const STORED_VALUES_TAG: u8 = 31;
 const GET_TRIE_FULL_RESULT_TAG: u8 = 32;
+const NODE_STATUS_TAG: u8 = 33;
 
 impl ToBytes for PayloadType {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
@@ -424,6 +435,7 @@ impl ToBytes for PayloadType {
             PayloadType::GlobalStateQueryResult => GLOBAL_STATE_QUERY_RESULT_TAG,
             PayloadType::StoredValues => STORED_VALUES_TAG,
             PayloadType::GetTrieFullResult => GET_TRIE_FULL_RESULT_TAG,
+            PayloadType::NodeStatus => NODE_STATUS_TAG,
         }
         .write_bytes(writer)
     }
@@ -470,6 +482,7 @@ impl FromBytes for PayloadType {
             GLOBAL_STATE_QUERY_RESULT_TAG => PayloadType::GlobalStateQueryResult,
             STORED_VALUES_TAG => PayloadType::StoredValues,
             GET_TRIE_FULL_RESULT_TAG => PayloadType::GetTrieFullResult,
+            NODE_STATUS_TAG => PayloadType::NodeStatus,
             _ => return Err(bytesrepr::Error::Formatting),
         };
         Ok((db_id, remainder))

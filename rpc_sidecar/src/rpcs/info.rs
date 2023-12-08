@@ -1,6 +1,6 @@
 //! RPCs returning ancillary information.
 
-use std::{collections::BTreeMap, env, str, sync::Arc};
+use std::{collections::BTreeMap, str, sync::Arc};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
@@ -8,16 +8,15 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
+    binary_port::MinimalBlockInfo,
     execution::{ExecutionResult, ExecutionResultV2},
-    ActivationPoint, AvailableBlockRange, Block, BlockHash, BlockSynchronizerStatus,
-    ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, ExecutionInfo, FinalizedApprovals,
-    NextUpgrade, Peers, ProtocolVersion, PublicKey, ReactorState, TimeDiff, Timestamp, Transaction,
-    TransactionHash, ValidatorChange,
+    ActivationPoint, AvailableBlockRange, Block, BlockSynchronizerStatus, ChainspecRawBytes,
+    Deploy, DeployHash, Digest, EraId, ExecutionInfo, FinalizedApprovals, NextUpgrade, Peers,
+    ProtocolVersion, PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash,
+    ValidatorChange,
 };
-use tracing::warn;
 
 use super::{
-    chain::BlockIdentifier,
     common,
     docs::{DocExample, DOCS_EXAMPLE_API_VERSION},
     ApiVersion, Error, NodeClient, RpcError, RpcWithParams, RpcWithoutParams, CURRENT_API_VERSION,
@@ -450,11 +449,11 @@ impl RpcWithoutParams for GetChainspec {
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GetStatusResult {
-    /// The node ID and network address of each connected peer.
-    pub peers: Peers,
     /// The RPC API version.
     #[schemars(with = "String")]
     pub api_version: ApiVersion,
+    /// The node ID and network address of each connected peer.
+    pub peers: Peers,
     /// The compiled node version.
     pub build_version: String,
     /// The chainspec name.
@@ -487,36 +486,6 @@ impl DocExample for GetStatusResult {
     }
 }
 
-/// Minimal info of a `Block`.
-#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct MinimalBlockInfo {
-    hash: BlockHash,
-    timestamp: Timestamp,
-    era_id: EraId,
-    height: u64,
-    state_root_hash: Digest,
-    creator: PublicKey,
-}
-
-impl From<Block> for MinimalBlockInfo {
-    fn from(block: Block) -> Self {
-        let proposer = match &block {
-            Block::V1(v1) => v1.proposer().clone(),
-            Block::V2(v2) => v2.proposer().clone(),
-        };
-
-        MinimalBlockInfo {
-            hash: *block.hash(),
-            timestamp: block.timestamp(),
-            era_id: block.era_id(),
-            height: block.height(),
-            state_root_hash: *block.state_root_hash(),
-            creator: proposer,
-        }
-    }
-}
-
 /// "info_get_status" RPC.
 pub struct GetStatus {}
 
@@ -528,92 +497,35 @@ impl RpcWithoutParams for GetStatus {
     async fn do_handle_request(
         node_client: Arc<dyn NodeClient>,
     ) -> Result<Self::ResponseResult, RpcError> {
-        let uptime = node_client
-            .read_uptime()
+        let status = node_client
+            .read_node_status()
             .await
-            .map_err(|err| Error::NodeRequest("uptime", err))?;
-        let network_name = node_client
-            .read_network_name()
-            .await
-            .map_err(|err| Error::NodeRequest("network_name", err))?;
-        let last_added_block_hash = node_client
-            .read_highest_completed_block_info()
-            .await
-            .map_err(|err| Error::NodeRequest("last added block", err))?;
-        let last_added_block = if let Some(hash) = &last_added_block_hash {
-            let ident = BlockIdentifier::Hash(*hash.block_hash());
-            let (block, _) = common::get_signed_block(&*node_client, Some(ident))
-                .await?
-                .into_inner();
-            Some(block)
-        } else {
-            None
-        };
-        let peers = node_client
-            .read_peers()
-            .await
-            .map_err(|err| Error::NodeRequest("peers", err))?;
-        let next_upgrade = node_client
-            .read_next_upgrade()
-            .await
-            .map_err(|err| Error::NodeRequest("next upgrade", err))?;
-        let (our_public_signing_key, round_length) = node_client
-            .read_consensus_status()
-            .await
-            .map_err(|err| Error::NodeRequest("consensus status", err))?
-            .map_or_else(Default::default, |(pk, rl)| (Some(pk), rl));
-        let reactor_state = node_client
-            .read_reactor_state()
-            .await
-            .map_err(|err| Error::NodeRequest("reactor state", err))?;
-        let last_progress = node_client
-            .read_last_progress()
-            .await
-            .map_err(|err| Error::NodeRequest("last progress", err))?;
-        let available_block_range = node_client
-            .read_available_block_range()
-            .await
-            .map_err(|err| Error::NodeRequest("available block range", err))?;
-        let block_sync = node_client
-            .read_block_sync_status()
-            .await
-            .map_err(|err| Error::NodeRequest("block sync status", err))?;
-        let lowest_block_hash = node_client
-            .read_block_hash_from_height(available_block_range.low())
-            .await
-            .map_err(|err| Error::NodeRequest("lowest block hash", err))?
-            .ok_or_else(|| {
-                Error::NoBlockAtHeight(available_block_range.low(), available_block_range)
-            })?;
-        let lowest_block_header = node_client
-            .read_block_header(lowest_block_hash)
-            .await
-            .map_err(|err| Error::NodeRequest("lowest block header", err))?
-            .ok_or(Error::NoBlockWithHash(
-                lowest_block_hash,
-                available_block_range,
-            ))?;
+            .map_err(|err| Error::NodeRequest("node status", err))?;
 
         Ok(Self::ResponseResult {
-            peers,
             api_version: CURRENT_API_VERSION,
-            chainspec_name: network_name,
-            starting_state_root_hash: *lowest_block_header.state_root_hash(),
-            last_added_block_info: last_added_block.map(Into::into),
-            our_public_signing_key,
-            round_length,
-            next_upgrade,
-            uptime: uptime.into(),
-            reactor_state,
-            last_progress,
-            available_block_range,
-            block_sync,
-            build_version: version_string(),
+            peers: status.peers,
+            chainspec_name: status.chainspec_name,
+            starting_state_root_hash: status.starting_state_root_hash,
+            last_added_block_info: status.last_added_block_info,
+            our_public_signing_key: status.our_public_signing_key,
+            round_length: status.round_length,
+            next_upgrade: status.next_upgrade,
+            uptime: status.uptime,
+            reactor_state: status.reactor_state,
+            last_progress: status.last_progress,
+            available_block_range: status.available_block_range,
+            block_sync: status.block_sync,
+            build_version: status.build_version,
         })
     }
 }
 
+#[cfg(not(test))]
 fn version_string() -> String {
+    use std::env;
+    use tracing::warn;
+
     let mut version = env!("CARGO_PKG_VERSION").to_string();
     if let Ok(git_sha) = env::var("VERGEN_GIT_SHA") {
         version = format!("{}-{}", version, git_sha);
