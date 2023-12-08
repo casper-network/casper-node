@@ -17,7 +17,6 @@ use schemars::JsonSchema;
     derive(JsonSchema),
     schemars(description = "The header of the binary response.")
 )]
-
 pub struct BinaryResponseHeader {
     protocol_version: u8,
     error: u8,

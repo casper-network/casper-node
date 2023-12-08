@@ -9,6 +9,7 @@ use super::{
 };
 
 /// The response use in the binary port protocol.
+#[derive(Debug)]
 pub struct BinaryResponse {
     /// Header of the binary response.
     header: BinaryResponseHeader,

@@ -44,9 +44,9 @@ use crate::{
             ConsensusRequest, ContractRuntimeRequest, NetworkInfoRequest, ReactorInfoRequest,
             StorageRequest, UpgradeWatcherRequest,
         },
-        EffectBuilder, Effects,
+        EffectBuilder, EffectExt, Effects, Responder,
     },
-    reactor::{main_reactor::MainEvent, Finalize},
+    reactor::{main_reactor::MainEvent, Finalize, QueueKind},
     types::NodeRng,
     utils::ListeningError,
 };
@@ -66,14 +66,14 @@ pub(crate) struct BinaryPort {
     #[data_size(skip)]
     _metrics: Metrics,
     state: ComponentState,
-    config: Config,
+    config: Arc<Config>,
 }
 
 impl BinaryPort {
     pub(crate) fn new(config: Config, registry: &Registry) -> Result<Self, prometheus::Error> {
         Ok(Self {
-            config,
             state: ComponentState::Uninitialized,
+            config: Arc::new(config),
             _metrics: Metrics::new(registry)?,
         })
     }
@@ -116,12 +116,37 @@ where
                     <Self as InitializedComponent<MainEvent>>::set_state(self, state);
                     effects
                 }
+                _ => {
+                    warn!(
+                        ?event,
+                        name = <Self as Component<MainEvent>>::name(self),
+                        "binary port is initializing, ignoring event"
+                    );
+                    Effects::new()
+                }
             },
-            ComponentState::Initialized => {
-                // Currently this component does not handle any events. Requests are handled
-                // directly via the spawned `juliet` server.
-                Effects::new()
-            }
+            ComponentState::Initialized => match event {
+                Event::Initialize => {
+                    error!(
+                        ?event,
+                        name = <Self as Component<MainEvent>>::name(self),
+                        "component already initialized"
+                    );
+                    Effects::new()
+                }
+                Event::AcceptConnection { stream, peer } => {
+                    tokio::spawn(handle_client(peer, stream, effect_builder));
+                    Effects::new()
+                }
+                Event::HandleRequest { request, responder } => {
+                    let config = Arc::clone(&self.config);
+                    async move {
+                        let response = handle_request(request, effect_builder, &config).await;
+                        responder.respond(response).await
+                    }
+                    .ignore()
+                }
+            },
             ComponentState::Fatal(msg) => {
                 error!(
                     msg,
@@ -170,8 +195,8 @@ where
 
 async fn handle_request<REv>(
     req: BinaryRequest,
-    config: &Config,
     effect_builder: EffectBuilder<REv>,
+    config: &Config,
 ) -> BinaryResponse
 where
     REv: From<Event>
@@ -424,7 +449,6 @@ where
 
 async fn client_loop<REv, const N: usize, R, W>(
     mut server: JulietRpcServer<N, R, W>,
-    config: Arc<Config>,
     effect_builder: EffectBuilder<REv>,
 ) -> Result<(), Error>
 where
@@ -457,21 +481,26 @@ where
                 return Err(bytesrepr::Error::LeftOverBytes.into());
             }
             (req, _) => {
-                let response = BinaryResponseAndRequest::new(
-                    handle_request(req, &config, effect_builder).await,
-                    payload.as_ref(),
-                );
+                let response = effect_builder
+                    .make_request(
+                        |responder| Event::HandleRequest {
+                            request: req,
+                            responder,
+                        },
+                        QueueKind::Regular,
+                    )
+                    .await;
+
+                let response = BinaryResponseAndRequest::new(response, payload.as_ref());
                 incoming_request.respond(Some(Bytes::from(ToBytes::to_bytes(&response)?)))
             }
         }
     }
 }
 
-async fn handle_client<REv, const N: usize>(
+async fn handle_client<REv>(
     addr: SocketAddr,
     mut client: TcpStream,
-    rpc_builder: Arc<RpcBuilder<N>>,
-    config: Arc<Config>,
     effect_builder: EffectBuilder<REv>,
 ) where
     REv: From<Event>
@@ -487,9 +516,9 @@ async fn handle_client<REv, const N: usize>(
         + Send,
 {
     let (reader, writer) = client.split();
-    let (client, server) = rpc_builder.build(reader, writer);
+    let (client, server) = new_rpc_builder().build(reader, writer);
 
-    if let Err(err) = client_loop(server, config, effect_builder).await {
+    if let Err(err) = client_loop(server, effect_builder).await {
         // Low severity is used to prevent malicious clients from causing log floods.
         info!(%addr, %err, "binary port client handler error");
     }
@@ -500,7 +529,7 @@ async fn handle_client<REv, const N: usize>(
 }
 
 // TODO[RC]: Move to Self::
-async fn run_server<REv>(effect_builder: EffectBuilder<REv>, config: Config)
+async fn run_server<REv>(effect_builder: EffectBuilder<REv>, config: Arc<Config>)
 where
     REv: From<Event>
         + From<StorageRequest>
@@ -514,31 +543,18 @@ where
         + From<ChainspecRawBytesRequest>
         + Send,
 {
-    let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
-        ChannelConfiguration::default()
-            .with_request_limit(3)
-            .with_max_request_payload_size(4 * 1024 * 1024)
-            .with_max_response_payload_size(4 * 1024 * 1024),
-    );
-    let io_builder = IoCoreBuilder::new(protocol_builder).buffer_size(ChannelId::new(0), 16);
-    let rpc_builder = Arc::new(RpcBuilder::new(io_builder));
-    let config = Arc::new(config);
-
     let listener = TcpListener::bind(&config.address).await;
 
     match listener {
         Ok(listener) => loop {
             match listener.accept().await {
-                Ok((client, addr)) => {
-                    let rpc_builder_clone = Arc::clone(&rpc_builder);
-                    let config_clone = Arc::clone(&config);
-                    tokio::spawn(handle_client(
-                        addr,
-                        client,
-                        rpc_builder_clone,
-                        config_clone,
-                        effect_builder,
-                    ));
+                Ok((stream, peer)) => {
+                    effect_builder
+                        .make_request(
+                            |_: Responder<()>| Event::AcceptConnection { stream, peer },
+                            QueueKind::Regular,
+                        )
+                        .await;
                 }
                 Err(io_err) => {
                     println!("acceptance failure: {:?}", io_err);
@@ -570,7 +586,8 @@ where
         &mut self,
         effect_builder: EffectBuilder<REv>,
     ) -> Result<Effects<Self::ComponentEvent>, Self::Error> {
-        let _server_join_handle = tokio::spawn(run_server(effect_builder, self.config.clone()));
+        let _server_join_handle =
+            tokio::spawn(run_server(effect_builder, Arc::clone(&self.config)));
         Ok(Effects::new())
     }
 }
@@ -580,4 +597,15 @@ impl Finalize for BinaryPort {
         // TODO: Shutdown juliet server here
         async move {}.boxed()
     }
+}
+
+fn new_rpc_builder() -> RpcBuilder<1> {
+    let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
+        ChannelConfiguration::default()
+            .with_request_limit(3)
+            .with_max_request_payload_size(4 * 1024 * 1024)
+            .with_max_response_payload_size(4 * 1024 * 1024),
+    );
+    let io_builder = IoCoreBuilder::new(protocol_builder).buffer_size(ChannelId::new(0), 16);
+    RpcBuilder::new(io_builder)
 }
