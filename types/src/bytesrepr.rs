@@ -1315,6 +1315,8 @@ where
 }
 #[cfg(test)]
 mod tests {
+    use crate::U128;
+
     use super::*;
 
     #[test]
@@ -1367,13 +1369,13 @@ mod tests {
             u16_field: u16,
             u32_field: u32,
             u64_field: u64,
-            u128_field: u128,
+            u128_field: U128,
             str_field: String,
         }
         assert_eq!(cautious::<usize>(u32::MAX as usize), 512);
         assert_eq!(cautious::<u8>(usize::MAX), 4096);
         assert_eq!(cautious::<u8>(usize::MAX), 4096);
-        assert_eq!(cautious::<CustomStruct>(usize::MAX), 64);
+        assert_eq!(cautious::<CustomStruct>(usize::MAX), 73);
     }
 }
 
