@@ -762,6 +762,7 @@ dependencies = [
 name = "casper-sdk"
 version = "0.1.0"
 dependencies = [
+ "bitflags 2.4.1",
  "borsh",
  "bytes",
  "ctor 0.2.5",
@@ -6613,6 +6614,7 @@ name = "vm-common"
 version = "0.1.0"
 dependencies = [
  "bitflags 2.4.1",
+ "serde",
 ]
 
 [[package]]

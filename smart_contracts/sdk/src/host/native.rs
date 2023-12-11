@@ -91,6 +91,8 @@ pub fn casper_return(flags: ReturnFlags, data: Option<&[u8]>) -> ! {
 pub fn casper_create(
     _code: Option<&[u8]>,
     _manifest: &Manifest,
+    _entry_point: Option<&str>,
+    _input_data: Option<&[u8]>,
 ) -> Result<CreateResult, CallError> {
     todo!()
 }

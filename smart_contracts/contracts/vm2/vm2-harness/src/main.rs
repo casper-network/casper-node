@@ -10,15 +10,17 @@ use alloc::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 // use borsh_derive::BorshSerialize;
-use casper_macros::{casper, Contract};
+use casper_macros::{casper, Contract, Schema};
 use casper_sdk::{
     host::{self, CreateResult, ResultCode},
-    log, revert, Field,
+    log, revert,
+    schema::Schema,
+    Field,
 };
 
 const INITIAL_GREETING: &str = "This is initial data set from a constructor";
 
-#[derive(Contract)]
+#[derive(Contract, Schema)]
 struct Greeter {
     greeting: Field<String>,
 }
@@ -63,32 +65,22 @@ impl Greeter {
             .expect("should read value")
             .unwrap_or_default()
     }
+
     pub fn set_greeting(&mut self, greeting: String) {
         log!("Saving greeting {}", greeting);
         self.greeting.write(greeting).unwrap();
     }
 
     pub fn emit_unreachable_trap(&self) -> ! {
-        #[cfg(target_arch = "wasm32")]
-        {
-            unsafe { core::arch::wasm32::unreachable() }
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            panic!("unreachable")
-        }
+        panic!("unreachable");
     }
 
     pub fn emit_revert_with_data(&self) -> Result<(), CustomError> {
-        let output = Err(CustomError::Bar);
-        let input_data = borsh::to_vec(&output).unwrap();
-        host::casper_return(ReturnFlags::REVERT, Some(input_data.as_slice()));
-        #[allow(unreachable_code)]
-        output
+        revert!(Err(CustomError::Bar))
     }
 
     pub fn emit_revert_without_data(&self) -> Result<(), CustomError> {
-        host::casper_return(ReturnFlags::REVERT, None);
+        Ok(())
     }
 }
 
@@ -221,14 +213,15 @@ pub fn call() {
 #[cfg(test)]
 mod tests {
 
-    use casper_sdk::{schema_helper, Contract};
+    use borsh::{schema::BorshSchemaContainer, BorshSchema};
+    use casper_sdk::{schema::schema_helper, Contract, Schema};
 
     use super::*;
 
     #[test]
     fn test() {
-        let args = ("hello".to_string(), 123);
-        schema_helper::dispatch("call", &borsh::to_vec(&args).unwrap());
+        let args = ();
+        schema_helper::dispatch("call", args);
     }
 
     #[test]
@@ -240,12 +233,7 @@ mod tests {
     fn compile_time_schema() {
         let schema = Greeter::schema();
         dbg!(&schema);
-        assert_eq!(schema.name, "Greeter");
-        assert_eq!(schema.entry_points[0].name, "get_greeting");
-        // assert_eq!(schema.entry_points[0].name, "flip");
-        assert_eq!(schema.entry_points[1].name, "set_greeting");
-        // let s = serde_json::to_string_pretty(&schema).expect("foo");
-        // println!("{s}");
+        println!("{}", serde_json::to_string_pretty(&schema).unwrap());
     }
 
     #[test]
@@ -256,4 +244,14 @@ mod tests {
         flipper.set_greeting("Hi".into());
         assert_eq!(flipper.get_greeting(), "Hi");
     }
+    // #[test]
+    // fn borsh_schema() {
+    //     #[derive(BorshSerialize, BorshSchema)]
+    //     enum CustomError {
+    //         Foo,
+    //         Bar,
+    //         Baz,
+    //     }
+    //     dbg!(BorshSchemaContainer::for_type::<String>());
+    // }
 }

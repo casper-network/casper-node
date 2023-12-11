@@ -67,9 +67,9 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
                 stringify!(#name)
             }
 
-            fn schema() -> casper_sdk::Schema {
-                Self::__casper_schema()
-            }
+            // fn schema() -> casper_sdk::Schema {
+            //     Self::__casper_schema()
+            // }
 
             fn create(entry_point: Option<&str>, input_data: Option<&[u8]>) -> Result<casper_sdk::host::CreateResult, casper_sdk::host::CallError> {
                 Self::__casper_create(entry_point, input_data)
@@ -77,12 +77,12 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
         }
 
         impl #name {
-            #[doc(hidden)]
-            fn __casper_data() -> Vec<casper_sdk::SchemaData> {
-                vec! [
-                    #(#fields_for_schema,)*
-                ]
-            }
+            // #[doc(hidden)]
+            // fn __casper_data() -> Vec<casper_sdk::SchemaData> {
+            //     vec! [
+            //         #(#fields_for_schema,)*
+            //     ]
+            // }
         }
     };
     f.into()
@@ -127,11 +127,14 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                 let mut manifest_entry_point_input_data = Vec::new();
 
                 for entry_point in &mut entry_points.items {
+                    let mut flag_value = EntryPointFlags::empty();
+
                     let func = match entry_point {
                         syn::ImplItem::Const(_) => todo!(),
                         syn::ImplItem::Fn(ref mut func) => {
                             // TODO: Can we use darling to parse this in a sane way?
                             let mut func_attrs = BTreeSet::new();
+
                             for func_attr in &func.attrs {
                                 // todo!("{:?}", func_attr);
                                 match &func_attr.meta {
@@ -140,7 +143,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                             if seg.ident == "constructor" {
                                                 func_attrs.insert(Attribute::Constructor);
                                             } else {
-                                                panic!("Unknown modifier")
+                                                panic!("Unknown modifier: {:?}", seg)
                                             }
                                         }
                                     }
@@ -217,7 +220,6 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                             });
 
-                            let mut flag_value = EntryPointFlags::empty();
                             for func_attr in func_attrs {
                                 match func_attr {
                                     Attribute::Constructor => {
@@ -298,7 +300,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         };
                         let ty = &typed.ty;
                         args.push(quote! {
-                            casper_sdk::SchemaArgument {
+                            casper_sdk::schema::SchemaArgument {
                                 name: stringify!(#name),
                                 ty: {
                                     use casper_sdk::CLTyped;
@@ -310,19 +312,19 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                     // let mut args = Vec::new();
                     // for arg in &entry_point
+                    let bits = flag_value.bits();
 
                     defs.push(quote! {
-                        casper_sdk::SchemaEntryPoint {
+                        casper_sdk::schema::SchemaEntryPoint {
                             name: stringify!(#func_name),
-                            arguments: vec![ #(#args,)* ]
+                            arguments: vec![ #(#args,)* ],
+                            flags: vm_common::flags::EntryPointFlags::from_bits(#bits).unwrap(),
                         }
                     });
                 }
 
                 // Create a expansion token from the length of `manifest_entry_points_data`
                 let manifest_entry_points_data_len = manifest_entry_points_data.len();
-
-                // let static_schema_ident = format_ident!("__casper_schema_{struct_name}");
 
                 let st_name = struct_name.get_ident().unwrap();
 
@@ -331,13 +333,13 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                     impl #struct_name {
                         #[doc(hidden)]
-                        fn __casper_schema() -> casper_sdk::Schema {
+                        fn __casper_schema() -> casper_sdk::schema::CasperSchema {
                             let entry_points = vec![
                                 #(#defs,)*
                                 // EntryPonit
                             ];
                             let data = Self::__casper_data();
-                            casper_sdk::Schema {
+                            casper_sdk::schema::CasperSchema {
                                 name: stringify!(#struct_name),
                                 data,
                                 entry_points,
@@ -461,12 +463,12 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                     #[cfg(not(target_arch = "wasm32"))]
                     #[ctor::ctor]
                     fn #ctor_name() {
-                        let export = casper_sdk::schema_helper::Export {
+                        let export = casper_sdk::schema::schema_helper::Export {
                             name: stringify!(#func_name),
                             fptr: #func_name,
                         };
 
-                        casper_sdk::schema_helper::register_export(export);
+                        casper_sdk::schema::schema_helper::register_export(export);
                     }
                     // #[cfg(not(target_arch = "wasm32"))]
                     // pub use #mod_name::{#func_name};
@@ -561,23 +563,51 @@ pub fn entry_point(_attr: TokenStream, item: TokenStream) -> TokenStream {
     // item
     gen.into()
 }
-//     // ItemFn
-//     //  syn::parse(function).expect("should be function");
-//     // let input2 = item.clone();
-//     // let DeriveInput { ident, data, .. } = parse_macro_input!(input2);
 
-//     // println!("attr: \"{}\"", attr.to_string());
-//     // println!("item: \"{}\"", item.to_string());
+#[proc_macro_derive(Schema)]
+pub fn derive_casper_schema(input: TokenStream) -> TokenStream {
+    let contract = parse_macro_input!(input as DeriveInput);
+    let data_struct = match &contract.data {
+        Data::Struct(s) => s,
+        Data::Enum(_) => todo!("Enum"),
+        Data::Union(_) => todo!("Union"),
+    };
 
-//     // if let Data::
-//     // println!("{}", data);
-//     // if let
-//     // item
-// }
+    let name = &contract.ident;
+    // let fields_for_new = Vec::new();
+    // let mut fields_for_new = Vec::new();
+    let mut fields_for_schema = Vec::new();
 
-// #[proc_macro_attribute]
-// pub fn constructor(attrs: TokenStream, item: TokenStream) -> TokenStream {
-//     let func = parse_macro_input!(item as ItemFn);
-//     quote! {
-//         #func
-//     }.into()
+    for field in &data_struct.fields {
+        let name = &field.ident;
+        let ty = &field.ty;
+
+        fields_for_schema.push(quote! {
+            casper_sdk::SchemaData {
+                name: stringify!(#name),
+                ty: {
+                    use casper_sdk::CLTyped;
+                    <#ty>::cl_type()
+                },
+            }
+        });
+    }
+    quote! {
+
+        impl casper_sdk::Schema for #name {
+            fn schema() -> casper_sdk::schema::CasperSchema {
+                Self::__casper_schema()
+            }
+        }
+
+        impl #name {
+            #[doc(hidden)]
+            fn __casper_data() -> Vec<casper_sdk::SchemaData> {
+                vec! [
+                    #(#fields_for_schema,)*
+                ]
+            }
+        }
+    }
+    .into()
+}

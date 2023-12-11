@@ -57,7 +57,6 @@ mod exports {
         let _non_existing_entry = host::casper_read(KEY_SPACE_DEFAULT, b"hello", |size| {
             host::casper_print(&format!("first cb alloc cb with size={size}"));
             reserve_vec_space(&mut read1, size)
-            // static_buffer.as_mut_ptr()
         })
         .expect("should read");
         // host::casper_print(&format!("non_existing_entry={:?}", non_existing_entry));
@@ -213,7 +212,7 @@ pub fn foobar() {}
 #[cfg(test)]
 mod tests {
 
-    use casper_sdk::{schema_helper, Contract};
+    use casper_sdk::{schema::schema_helper, Contract, Schema};
 
     use super::*;
 
