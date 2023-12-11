@@ -23,6 +23,11 @@ use crate::{
     Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, Default,
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(description = "Hex-encoded TransactionV1 hash.")
+)]
 #[serde(deny_unknown_fields)]
 pub struct TransactionV1Hash(Digest);
 
@@ -96,20 +101,6 @@ impl ToBytes for TransactionV1Hash {
 impl FromBytes for TransactionV1Hash {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         Digest::from_bytes(bytes).map(|(inner, remainder)| (TransactionV1Hash(inner), remainder))
-    }
-}
-
-#[cfg(feature = "json-schema")]
-impl JsonSchema for TransactionV1Hash {
-    fn schema_name() -> String {
-        String::from("TransactionV1Hash")
-    }
-
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        let schema = gen.subschema_for::<String>();
-        let mut schema_object = schema.into_object();
-        schema_object.metadata().description = Some("Hex-encoded TransactionV1 hash.".to_string());
-        schema_object.into()
     }
 }
 

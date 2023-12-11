@@ -2083,6 +2083,14 @@
       },
       "DeployHash": {
         "description": "Hex-encoded deploy hash.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Digest"
+          }
+        ]
+      },
+      "Digest": {
+        "description": "Hex-encoded hash digest.",
         "type": "string"
       },
       "DeployHeader": {
@@ -2153,11 +2161,7 @@
         "type": "string"
       },
       "TimeDiff": {
-        "description": "Human-readable duration.",
-        "type": "string"
-      },
-      "Digest": {
-        "description": "Hex-encoded hash digest.",
+        "description": "Human-readable duratio.n",
         "type": "string"
       },
       "ExecutableDeployItem": {
@@ -2769,7 +2773,11 @@
       },
       "TransactionV1Hash": {
         "description": "Hex-encoded TransactionV1 hash.",
-        "type": "string"
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Digest"
+          }
+        ]
       },
       "TransactionV1Header": {
         "description": "The header portion of a TransactionV1.",
@@ -3310,7 +3318,11 @@
       },
       "BlockHash": {
         "description": "Hex-encoded cryptographic hash of a block.",
-        "type": "string"
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Digest"
+          }
+        ]
       },
       "ExecutionResult": {
         "description": "The versioned result of executing a single deploy.",
