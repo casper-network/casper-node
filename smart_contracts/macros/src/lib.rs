@@ -34,7 +34,7 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
         // fields.push(field.clone());
         fields.push(quote! {
             #[allow(dead_code)]
-            #name: casper_sdk::Value<#ty>
+            #name: casper_sdk::Field<#ty>
         });
 
         fields_for_schema.push(quote! {
@@ -48,7 +48,7 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
         });
 
         fields_for_new.push(quote! {
-            #name: casper_sdk::Value::new(stringify!(#name), 0)
+            #name: casper_sdk::Field::new(stringify!(#name), 0)
         })
     }
 

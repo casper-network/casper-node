@@ -6,11 +6,11 @@ extern crate alloc;
 
 use alloc::{string::String, vec::Vec};
 use casper_macros::{casper, Contract};
-use casper_sdk::{log, Value};
+use casper_sdk::{log, Field};
 
 #[derive(Contract)]
 struct Greeter {
-    greeting: Value<String>,
+    greeting: Field<String>,
 }
 
 #[casper(entry_points)]

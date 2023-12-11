@@ -13,14 +13,14 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, Contract};
 use casper_sdk::{
     host::{self, CreateResult, ResultCode},
-    log, revert, Value,
+    log, revert, Field,
 };
 
 const INITIAL_GREETING: &str = "This is initial data set from a constructor";
 
 #[derive(Contract)]
 struct Greeter {
-    greeting: Value<String>,
+    greeting: Field<String>,
 }
 
 #[derive(Debug, BorshSerialize, BorshDeserialize, PartialEq)]

@@ -4,27 +4,38 @@ use std::collections::btree_map::Entry;
 use bitflags::bitflags;
 
 bitflags! {
-/// Flags that can be passed as part of returning values.
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ReturnFlags: u32 {
-    /// If this bit is set, the host should return the value to the caller and all the execution effects are reverted.
-    const REVERT = 0x0000_0001;
+    /// Flags that can be passed as part of returning values.
+    #[repr(transparent)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct ReturnFlags: u32 {
+        /// If this bit is set, the host should return the value to the caller and all the execution effects are reverted.
+        const REVERT = 0x0000_0001;
 
-    // The source may set any bits.
-    const _ = !0;
-}
-}
+        // The source may set any bits.
+        const _ = !0;
+    }
 
-bitflags! {
     #[repr(transparent)]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct EntryPointFlags: u32 {
         const CONSTRUCTOR = 0x0000_0001;
     }
+
+    /// Flags that can be passed as part of calling contracts.
+    #[repr(transparent)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct CallFlags: u32 {
+        // TODO: This is a placeholder
+    }
 }
 
 impl Default for EntryPointFlags {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
+impl Default for CallFlags {
     fn default() -> Self {
         Self::empty()
     }

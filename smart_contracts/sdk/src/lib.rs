@@ -162,13 +162,13 @@ pub struct Schema {
 }
 
 #[derive(Debug)]
-pub struct Value<T> {
+pub struct Field<T> {
     name: &'static str,
-    key_space: u64,
+    key_space: u64, // KeyTag
     _marker: PhantomData<T>,
 }
 
-impl<T: CLTyped> CLTyped for Value<T> {
+impl<T: CLTyped> CLTyped for Field<T> {
     const TYPE_ID: u32 = T::TYPE_ID;
     fn cl_type() -> CLType {
         T::cl_type()
@@ -183,7 +183,7 @@ pub fn reserve_vec_space(vec: &mut Vec<u8>, size: usize) -> Option<ptr::NonNull<
     NonNull::new(vec.as_mut_ptr())
 }
 
-impl<T> Value<T> {
+impl<T> Field<T> {
     pub fn new(name: &'static str, key_space: u64) -> Self {
         Self {
             name,
@@ -193,7 +193,7 @@ impl<T> Value<T> {
     }
 }
 
-impl<T: BorshSerialize> Value<T> {
+impl<T: BorshSerialize> Field<T> {
     pub fn write(&mut self, value: T) -> io::Result<()> {
         let v = borsh::to_vec(&value)?;
         host::casper_write(self.key_space, self.name.as_bytes(), 0, &v)
@@ -201,7 +201,7 @@ impl<T: BorshSerialize> Value<T> {
         Ok(())
     }
 }
-impl<T: BorshDeserialize> Value<T> {
+impl<T: BorshDeserialize> Field<T> {
     pub fn read(&self) -> io::Result<Option<T>> {
         let mut read = None;
         host::casper_read(self.key_space, self.name.as_bytes(), |size| {
