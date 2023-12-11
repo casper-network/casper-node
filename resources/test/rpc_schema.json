@@ -2161,7 +2161,7 @@
         "type": "string"
       },
       "TimeDiff": {
-        "description": "Human-readable duratio.n",
+        "description": "Human-readable duration.",
         "type": "string"
       },
       "ExecutableDeployItem": {

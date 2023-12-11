@@ -240,7 +240,7 @@ impl From<u64> for Timestamp {
 #[cfg_attr(
     feature = "json-schema",
     derive(JsonSchema),
-    schemars(description = "Human-readable duratio.n")
+    schemars(description = "Human-readable duration.")
 )]
 pub struct TimeDiff(#[cfg_attr(feature = "json-schema", schemars(with = "String"))] u64);
 
