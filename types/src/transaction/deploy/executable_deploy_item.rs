@@ -79,6 +79,7 @@ pub enum ExecutableDeployItem {
         #[cfg_attr(
             feature = "json-schema",
             schemars(
+                // this attribute is necessary due to a bug: https://github.com/GREsau/schemars/issues/89
                 with = "AddressableEntityHash",
                 description = "Hex-encoded contract hash."
             )
@@ -107,6 +108,7 @@ pub enum ExecutableDeployItem {
         #[cfg_attr(
             feature = "json-schema",
             schemars(
+                // this attribute is necessary due to a bug: https://github.com/GREsau/schemars/issues/89
                 with = "PackageHash",
                 description = "Hex-encoded contract package hash."
             )
