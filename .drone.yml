@@ -11,7 +11,7 @@ environment:
   CARGO_INCREMENTAL: '0'
 
 __buildenv: &buildenv
-  image: casperlabs/node-build-u1804
+  image: casperlabs/node-build-u2004
   volumes:
   - name: rustup
     path: "/root/.rustup"
