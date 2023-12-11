@@ -1135,7 +1135,11 @@ impl Storage {
                         self.read_block_header_by_hash(&block_hash)?
                     }
                     BlockIdentifier::Height(block_height) => {
-                        self.read_block_header_by_height(block_height, true)?
+                        let only_from_available_block_range = true;
+                        self.read_block_header_by_height(
+                            block_height,
+                            only_from_available_block_range,
+                        )?
                     }
                 };
                 let Some(header) = result else {
@@ -1143,12 +1147,7 @@ impl Storage {
                 };
 
                 let height = header.height();
-                let result = self
-                    .completed_blocks
-                    .highest_sequence()
-                    .map_or(false, |sequence| {
-                        height >= sequence.low() && height <= sequence.high()
-                    });
+                let result = self.get_available_block_range().contains(height);
                 responder
                     .respond(HighestBlockSequenceCheckResult(result))
                     .ignore()
