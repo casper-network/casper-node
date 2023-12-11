@@ -1612,14 +1612,12 @@ impl MainReactor {
                 }
             }
             MetaBlock::Historical(historical_meta_block) => {
-                for (deploy_hash, deploy_header, execution_result) in
+                for (transaction_hash, transaction_header, execution_result) in
                     historical_meta_block.execution_results.iter()
                 {
                     let event = event_stream_server::Event::TransactionProcessed {
-                        transaction_hash: TransactionHash::Deploy(*deploy_hash),
-                        transaction_header: Box::new(TransactionHeader::Deploy(
-                            deploy_header.clone(),
-                        )),
+                        transaction_hash: *transaction_hash,
+                        transaction_header: Box::new(transaction_header.clone()),
                         block_hash: *historical_meta_block.block.hash(),
                         execution_result: Box::new(execution_result.clone()),
                         messages: Vec::new(),

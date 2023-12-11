@@ -7,8 +7,8 @@ use datasize::DataSize;
 use serde::Serialize;
 
 use casper_types::{
-    execution::ExecutionResult, ActivationPoint, Block, BlockHash, BlockV2, DeployHash,
-    DeployHeader, EraId,
+    execution::ExecutionResult, ActivationPoint, Block, BlockHash, BlockV2, EraId, TransactionHash,
+    TransactionHeader,
 };
 
 pub(crate) use merge_mismatch_error::MergeMismatchError;
@@ -44,7 +44,7 @@ impl MetaBlock {
 
     pub(crate) fn new_historical(
         block: Arc<Block>,
-        execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
+        execution_results: Vec<(TransactionHash, TransactionHeader, ExecutionResult)>,
         state: State,
     ) -> Self {
         Self::Historical(HistoricalMetaBlock {
@@ -107,7 +107,7 @@ pub(crate) struct ForwardMetaBlock {
 #[derive(Clone, Eq, PartialEq, Serialize, Debug, DataSize)]
 pub(crate) struct HistoricalMetaBlock {
     pub(crate) block: Arc<Block>,
-    pub(crate) execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
+    pub(crate) execution_results: Vec<(TransactionHash, TransactionHeader, ExecutionResult)>,
     pub(crate) state: State,
 }
 

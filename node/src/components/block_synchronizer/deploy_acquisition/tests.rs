@@ -5,44 +5,39 @@ use rand::Rng;
 
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
-    testing::TestRng, AccessRights, CLValue, Deploy, StoredValue, TestBlockBuilder, Transaction,
-    URef,
+    testing::TestRng, AccessRights, CLValue, StoredValue, TestBlockBuilder, Transaction, URef,
 };
 
 use crate::types::ApprovalsHashes;
 
 use super::*;
 
-fn gen_test_deploys(rng: &mut TestRng) -> BTreeMap<DeployHash, Deploy> {
-    let num_deploys = rng.gen_range(2..15);
-    (0..num_deploys)
+fn gen_test_transactions(rng: &mut TestRng) -> BTreeMap<TransactionHash, Transaction> {
+    let num_txns = rng.gen_range(2..15);
+    (0..num_txns)
         .into_iter()
         .map(|_| {
-            let deploy = Deploy::random(rng);
-            (*deploy.hash(), deploy)
+            let transaction = Transaction::random(rng);
+            (transaction.hash(), transaction)
         })
         .collect()
 }
 
-fn gen_approvals_hashes<'a, I: Iterator<Item = &'a Deploy> + Clone>(
+fn gen_approvals_hashes<'a, I: Iterator<Item = &'a Transaction> + Clone>(
     rng: &mut TestRng,
-    deploys_iter: I,
+    transactions_iter: I,
 ) -> ApprovalsHashes {
     let era = rng.gen_range(0..6);
-    let txns: Vec<_> = deploys_iter
-        .clone()
-        .map(|deploy| Transaction::from(deploy.clone()))
-        .collect();
     let block = TestBlockBuilder::new()
         .era(era)
         .height(era * 10 + rng.gen_range(0..10))
-        .transactions(&txns)
+        .transactions(transactions_iter.clone())
         .build(rng);
 
-    ApprovalsHashes::new_v1(
+    ApprovalsHashes::new_v2(
         *block.hash(),
-        deploys_iter
-            .map(|deploy| deploy.compute_approvals_hash().unwrap())
+        transactions_iter
+            .map(|txn| txn.compute_approvals_hash().unwrap())
             .collect(),
         TrieMerkleProof::new(
             URef::new([255; 32], AccessRights::NONE).into(),
@@ -52,164 +47,158 @@ fn gen_approvals_hashes<'a, I: Iterator<Item = &'a Deploy> + Clone>(
     )
 }
 
+fn get_transaction_id(transaction: &Transaction) -> TransactionId {
+    match transaction {
+        Transaction::Deploy(deploy) => {
+            TransactionId::new_deploy(*deploy.hash(), deploy.compute_approvals_hash().unwrap())
+        }
+        Transaction::V1(transaction_v1) => TransactionId::new_v1(
+            *transaction_v1.hash(),
+            transaction_v1.compute_approvals_hash().unwrap(),
+        ),
+    }
+}
+
 #[test]
 fn dont_apply_approvals_hashes_when_acquiring_by_id() {
     let mut rng = TestRng::new();
-    let test_deploys = gen_test_deploys(&mut rng);
-    let approvals_hashes = gen_approvals_hashes(&mut rng, test_deploys.values());
+    let test_transactions = gen_test_transactions(&mut rng);
+    let approvals_hashes = gen_approvals_hashes(&mut rng, test_transactions.values());
 
-    let mut deploy_acquisition = DeployAcquisition::ById(Acquisition::new(
-        test_deploys
-            .iter()
-            .map(|(deploy_hash, deploy)| {
-                DeployId::new(*deploy_hash, deploy.compute_approvals_hash().unwrap())
-            })
+    let mut txn_acquisition = TransactionAcquisition::ById(Acquisition::new(
+        test_transactions
+            .values()
+            .map(|txn| get_transaction_id(txn))
             .collect(),
         false,
     ));
 
     assert_matches!(
-        deploy_acquisition.apply_approvals_hashes(&approvals_hashes),
+        txn_acquisition.apply_approvals_hashes(&approvals_hashes),
         Err(Error::AcquisitionByIdNotPossible)
     );
     assert_matches!(
-        deploy_acquisition.needs_deploy().unwrap(),
-        DeployIdentifier::ById(id) if test_deploys.contains_key(id.deploy_hash())
+        txn_acquisition.next_needed_transaction().unwrap(),
+        TransactionIdentifier::ById(id) if test_transactions.contains_key(&id.transaction_hash())
     );
 }
 
 #[test]
 fn apply_approvals_on_acquisition_by_hash_creates_correct_ids() {
     let mut rng = TestRng::new();
-    let test_deploys = gen_test_deploys(&mut rng);
-    let mut deploy_acquisition =
-        DeployAcquisition::new_by_hash(test_deploys.keys().copied().collect(), false);
+    let test_transactions = gen_test_transactions(&mut rng);
+    let mut txn_acquisition =
+        TransactionAcquisition::new_by_hash(test_transactions.keys().copied().collect(), false);
 
-    // Generate the ApprovalsHashes for all test deploys except the last one
-    let approvals_hashes =
-        gen_approvals_hashes(&mut rng, test_deploys.values().take(test_deploys.len() - 1));
+    // Generate the ApprovalsHashes for all test transactions except the last one
+    let approvals_hashes = gen_approvals_hashes(
+        &mut rng,
+        test_transactions.values().take(test_transactions.len() - 1),
+    );
 
     assert_matches!(
-        deploy_acquisition.needs_deploy().unwrap(),
-        DeployIdentifier::ByHash(hash) if test_deploys.contains_key(&hash)
+        txn_acquisition.next_needed_transaction().unwrap(),
+        TransactionIdentifier::ByHash(hash) if test_transactions.contains_key(&hash)
     );
-    assert!(deploy_acquisition
+    assert!(txn_acquisition
         .apply_approvals_hashes(&approvals_hashes)
         .is_ok());
 
     // Now acquisition is done by id
     assert_matches!(
-        deploy_acquisition.needs_deploy().unwrap(),
-        DeployIdentifier::ById(id) if test_deploys.contains_key(id.deploy_hash())
+        txn_acquisition.next_needed_transaction().unwrap(),
+        TransactionIdentifier::ById(id) if test_transactions.contains_key(&id.transaction_hash())
     );
 
-    // Apply the deploys
-    for (deploy_hash, deploy) in test_deploys.iter().take(test_deploys.len() - 1) {
-        let acceptance = deploy_acquisition.apply_deploy(DeployId::new(
-            *deploy_hash,
-            deploy.compute_approvals_hash().unwrap(),
-        ));
+    // Apply the transactions
+    for transaction in test_transactions.values().take(test_transactions.len() - 1) {
+        let acceptance = txn_acquisition.apply_transaction(get_transaction_id(transaction));
         assert_matches!(acceptance, Some(Acceptance::NeededIt));
     }
 
-    // The last deploy was excluded from acquisition when we applied the approvals hashes so it
+    // The last transaction was excluded from acquisition when we applied the approvals hashes so it
     // should not be needed
-    assert!(deploy_acquisition.needs_deploy().is_none());
+    assert!(!txn_acquisition.needs_transaction());
 
-    // Try to apply the last deploy; it should not be accepted
-    let last_deploy = test_deploys.values().last().unwrap();
-    let last_deploy_acceptance = deploy_acquisition.apply_deploy(DeployId::new(
-        *last_deploy.hash(),
-        last_deploy.compute_approvals_hash().unwrap(),
-    ));
-    assert_matches!(last_deploy_acceptance, None);
+    // Try to apply the last transaction; it should not be accepted
+    let last_transaction = test_transactions.values().last().unwrap();
+    let last_txn_acceptance =
+        txn_acquisition.apply_transaction(get_transaction_id(last_transaction));
+    assert_matches!(last_txn_acceptance, None);
 }
 
 #[test]
-fn apply_approvals_hashes_after_having_already_applied_deploys() {
+fn apply_approvals_hashes_after_having_already_applied_transactions() {
     let mut rng = TestRng::new();
-    let test_deploys = gen_test_deploys(&mut rng);
-    let mut deploy_acquisition =
-        DeployAcquisition::new_by_hash(test_deploys.keys().copied().collect(), false);
-    let (first_deploy_hash, first_deploy) = test_deploys.first_key_value().unwrap();
+    let test_transactions = gen_test_transactions(&mut rng);
+    let mut txn_acquisition =
+        TransactionAcquisition::new_by_hash(test_transactions.keys().copied().collect(), false);
+    let (_, first_txn) = test_transactions.first_key_value().unwrap();
 
-    let approvals_hashes = gen_approvals_hashes(&mut rng, test_deploys.values());
+    let approvals_hashes = gen_approvals_hashes(&mut rng, test_transactions.values());
 
-    // Apply a valid deploy that was not applied before. This should succeed.
-    let acceptance = deploy_acquisition.apply_deploy(DeployId::new(
-        *first_deploy_hash,
-        first_deploy.compute_approvals_hash().unwrap(),
-    ));
+    // Apply a valid transaction that was not applied before. This should succeed.
+    let acceptance = txn_acquisition.apply_transaction(get_transaction_id(first_txn));
     assert_matches!(acceptance, Some(Acceptance::NeededIt));
 
-    // Apply approvals hashes. This should fail since we have already acquired deploys by hash.
+    // Apply approvals hashes. This should fail since we have already acquired transactions by hash.
     assert_matches!(
-        deploy_acquisition.apply_approvals_hashes(&approvals_hashes),
-        Err(Error::EncounteredNonVacantDeployState)
+        txn_acquisition.apply_approvals_hashes(&approvals_hashes),
+        Err(Error::EncounteredNonVacantTransactionState)
     );
 }
 
 #[test]
-fn partially_applied_deploys_on_acquisition_by_hash_should_need_missing_deploys() {
+fn partially_applied_txns_on_acquisition_by_hash_should_need_missing_txns() {
     let mut rng = TestRng::new();
-    let test_deploys = gen_test_deploys(&mut rng);
-    let mut deploy_acquisition =
-        DeployAcquisition::new_by_hash(test_deploys.keys().copied().collect(), false);
+    let test_transactions = gen_test_transactions(&mut rng);
+    let mut txn_acquisition =
+        TransactionAcquisition::new_by_hash(test_transactions.keys().copied().collect(), false);
 
     assert_matches!(
-        deploy_acquisition.needs_deploy().unwrap(),
-        DeployIdentifier::ByHash(hash) if test_deploys.contains_key(&hash)
+        txn_acquisition.next_needed_transaction().unwrap(),
+        TransactionIdentifier::ByHash(hash) if test_transactions.contains_key(&hash)
     );
 
-    // Apply all the deploys except for the last one
-    for (deploy_hash, deploy) in test_deploys.iter().take(test_deploys.len() - 1) {
-        let acceptance = deploy_acquisition.apply_deploy(DeployId::new(
-            *deploy_hash,
-            deploy.compute_approvals_hash().unwrap(),
-        ));
+    // Apply all the transactions except for the last one
+    for transaction in test_transactions.values().take(test_transactions.len() - 1) {
+        let acceptance = txn_acquisition.apply_transaction(get_transaction_id(transaction));
         assert_matches!(acceptance, Some(Acceptance::NeededIt));
     }
 
-    // Last deploy should be needed now
-    let last_deploy = test_deploys.iter().last().unwrap().1;
+    // Last transaction should be needed now
+    let last_txn = test_transactions.iter().last().unwrap().1;
     assert_matches!(
-        deploy_acquisition.needs_deploy().unwrap(),
-        DeployIdentifier::ByHash(hash) if *last_deploy.hash() == hash
+        txn_acquisition.next_needed_transaction().unwrap(),
+        TransactionIdentifier::ByHash(hash) if last_txn.hash() == hash
     );
 
-    // Apply the last deploy and check the acceptance
-    let last_deploy_acceptance = deploy_acquisition.apply_deploy(DeployId::new(
-        *last_deploy.hash(),
-        last_deploy.compute_approvals_hash().unwrap(),
-    ));
-    assert_matches!(last_deploy_acceptance, Some(Acceptance::NeededIt));
+    // Apply the last transaction and check the acceptance
+    let last_txn_acceptance = txn_acquisition.apply_transaction(get_transaction_id(last_txn));
+    assert_matches!(last_txn_acceptance, Some(Acceptance::NeededIt));
 
-    // Try to add the last deploy again to check the acceptance
-    let already_registered_acceptance = deploy_acquisition.apply_deploy(DeployId::new(
-        *last_deploy.hash(),
-        last_deploy.compute_approvals_hash().unwrap(),
-    ));
+    // Try to add the last transaction again to check the acceptance
+    let already_registered_acceptance =
+        txn_acquisition.apply_transaction(get_transaction_id(last_txn));
     assert_matches!(already_registered_acceptance, Some(Acceptance::HadIt));
 }
 
 #[test]
-fn apply_unregistered_deploy_returns_no_acceptance() {
+fn apply_unregistered_transaction_returns_no_acceptance() {
     let mut rng = TestRng::new();
-    let test_deploys = gen_test_deploys(&mut rng);
-    let mut deploy_acquisition =
-        DeployAcquisition::new_by_hash(test_deploys.keys().copied().collect(), false);
+    let test_transactions = gen_test_transactions(&mut rng);
+    let mut txn_acquisition =
+        TransactionAcquisition::new_by_hash(test_transactions.keys().copied().collect(), false);
 
-    let unregistered_deploy = Deploy::random(&mut rng);
-    let unregistered_deploy_acceptance = deploy_acquisition.apply_deploy(DeployId::new(
-        *unregistered_deploy.hash(),
-        unregistered_deploy.compute_approvals_hash().unwrap(),
-    ));
+    let unregistered_transaction = Transaction::random(&mut rng);
+    let unregistered_txn_acceptance =
+        txn_acquisition.apply_transaction(get_transaction_id(&unregistered_transaction));
 
-    // An unregistered deploy should not be accepted
-    assert!(unregistered_deploy_acceptance.is_none());
-    let first_deploy = test_deploys.iter().next().unwrap().1;
+    // An unregistered transaction should not be accepted
+    assert!(unregistered_txn_acceptance.is_none());
+    let first_transaction = test_transactions.iter().next().unwrap().1;
     assert_matches!(
-        deploy_acquisition.needs_deploy().unwrap(),
-        DeployIdentifier::ByHash(hash) if *first_deploy.hash() == hash
+        txn_acquisition.next_needed_transaction().unwrap(),
+        TransactionIdentifier::ByHash(hash) if first_transaction.hash() == hash
     );
 }

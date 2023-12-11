@@ -30,10 +30,10 @@ use casper_types::{
     contract_messages::Messages,
     execution::{ExecutionResult, ExecutionResultV2},
     system::auction::EraValidators,
-    Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash,
-    DeployHeader, Digest, DisplayIter, EraId, FinalitySignature, FinalitySignatureId, Key,
-    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId,
-    Transfer, URef, U512,
+    Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash, Digest,
+    DisplayIter, EraId, FinalitySignature, FinalitySignatureId, Key, ProtocolVersion, PublicKey,
+    TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer,
+    URef, U512,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -289,7 +289,7 @@ pub(crate) enum StorageRequest {
         block: Arc<BlockV2>,
         /// Approvals hashes to store.
         approvals_hashes: Box<ApprovalsHashes>,
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        execution_results: HashMap<TransactionHash, ExecutionResult>,
         responder: Responder<bool>,
     },
     /// Retrieve block with given hash.
@@ -398,14 +398,14 @@ pub(crate) enum StorageRequest {
         block_hash: Box<BlockHash>,
         block_height: u64,
         era_id: EraId,
-        /// Mapping of deploys to execution results of the block.
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        /// Mapping of transactions to execution results of the block.
+        execution_results: HashMap<TransactionHash, ExecutionResult>,
         /// Responder to call when done storing.
         responder: Responder<()>,
     },
     GetExecutionResults {
         block_hash: BlockHash,
-        responder: Responder<Option<Vec<(DeployHash, DeployHeader, ExecutionResult)>>>,
+        responder: Responder<Option<Vec<(TransactionHash, TransactionHeader, ExecutionResult)>>>,
     },
     GetBlockExecutionResultsOrChunk {
         /// Request ID.

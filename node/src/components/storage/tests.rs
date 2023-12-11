@@ -520,7 +520,7 @@ fn put_execution_results(
     block_hash: BlockHash,
     block_height: u64,
     era_id: EraId,
-    execution_results: HashMap<DeployHash, ExecutionResult>,
+    execution_results: HashMap<TransactionHash, ExecutionResult>,
 ) {
     harness.send_request(storage, move |responder| {
         StorageRequest::PutExecutionResults {
@@ -1174,22 +1174,22 @@ fn store_random_execution_results() {
     fn setup_block(
         harness: &mut ComponentHarness<UnitTestEvent>,
         storage: &mut Storage,
-        expected_outcome: &mut HashMap<DeployHash, ExecutionInfo>,
+        expected_outcome: &mut HashMap<TransactionHash, ExecutionInfo>,
         block_hash: &BlockHash,
         block_height: u64,
         era_id: EraId,
     ) {
-        let deploy_count = 5;
+        let transaction_count = 5;
 
         // Results for a single block.
         let mut block_results = HashMap::new();
 
         // Add deploys to block.
-        for _ in 0..deploy_count {
-            let deploy = Deploy::random(&mut harness.rng);
+        for _ in 0..transaction_count {
+            let transaction = Transaction::random(&mut harness.rng);
 
             // Store deploy.
-            put_transaction(harness, storage, &Transaction::from(deploy.clone()));
+            put_transaction(harness, storage, &transaction.clone());
 
             let execution_result =
                 ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
@@ -1200,10 +1200,10 @@ fn store_random_execution_results() {
             };
 
             // Insert deploy results for the unique block-deploy combination.
-            expected_outcome.insert(*deploy.hash(), execution_info);
+            expected_outcome.insert(transaction.hash(), execution_info);
 
             // Add to our expected outcome.
-            block_results.insert(*deploy.hash(), execution_result);
+            block_results.insert(transaction.hash(), execution_result);
         }
 
         // Now we can submit the block's execution results.
@@ -1237,13 +1237,12 @@ fn store_random_execution_results() {
 
     // At this point, we are all set up and ready to receive results. Iterate over every deploy and
     // see if its execution-data-per-block matches our expectations.
-    for (deploy_hash, expected_exec_info) in expected_outcome.into_iter() {
-        let transaction_hash = TransactionHash::from(deploy_hash);
+    for (txn_hash, expected_exec_info) in expected_outcome.into_iter() {
         let (transaction, maybe_exec_info) =
-            get_naive_transaction_and_execution_info(&mut harness, &mut storage, transaction_hash)
+            get_naive_transaction_and_execution_info(&mut harness, &mut storage, txn_hash)
                 .expect("missing transaction");
 
-        assert_eq!(transaction_hash, transaction.hash());
+        assert_eq!(txn_hash, transaction.hash());
         assert_eq!(maybe_exec_info, Some(expected_exec_info));
     }
 }
@@ -1256,24 +1255,20 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
     let block_hash = BlockHash::random(&mut harness.rng);
     let block_height = harness.rng.gen();
     let era_id = EraId::random(&mut harness.rng);
-    let deploy = Deploy::random(&mut harness.rng);
-    let deploy_hash = *deploy.hash();
+    let transaction = Transaction::random(&mut harness.rng);
+    let transaction_hash = transaction.hash();
 
-    put_transaction(
-        &mut harness,
-        &mut storage,
-        &Transaction::from(deploy.clone()),
-    );
+    put_transaction(&mut harness, &mut storage, &transaction.clone());
 
     let mut exec_result_1 = HashMap::new();
     exec_result_1.insert(
-        deploy_hash,
+        transaction_hash,
         ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng)),
     );
 
     let mut exec_result_2 = HashMap::new();
     let new_exec_result = ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
-    exec_result_2.insert(deploy_hash, new_exec_result.clone());
+    exec_result_2.insert(transaction_hash, new_exec_result.clone());
 
     put_execution_results(
         &mut harness,
@@ -1295,19 +1290,16 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
         exec_result_2,
     );
 
-    let (returned_transaction, returned_exec_info) = get_naive_transaction_and_execution_info(
-        &mut harness,
-        &mut storage,
-        TransactionHash::from(deploy_hash),
-    )
-    .expect("missing deploy");
+    let (returned_transaction, returned_exec_info) =
+        get_naive_transaction_and_execution_info(&mut harness, &mut storage, transaction_hash)
+            .expect("missing deploy");
     let expected_exec_info = Some(ExecutionInfo {
         block_hash,
         block_height,
         execution_result: Some(new_exec_result),
     });
 
-    assert_eq!(returned_transaction, Transaction::from(deploy));
+    assert_eq!(returned_transaction, transaction);
     assert_eq!(returned_exec_info, expected_exec_info);
 }
 
@@ -1358,7 +1350,7 @@ fn store_identical_execution_results() {
 
     let (exec_result, transfer) = prepare_exec_result_with_transfer(&mut harness.rng, &deploy_hash);
     let mut exec_results = HashMap::new();
-    exec_results.insert(deploy_hash, exec_result.clone());
+    exec_results.insert(TransactionHash::from(deploy_hash), exec_result.clone());
 
     put_execution_results(
         &mut harness,
@@ -1375,7 +1367,7 @@ fn store_identical_execution_results() {
             .expect("should execute get")
             .expect("should return Some");
         assert_eq!(retrieved_results.len(), 1);
-        assert_eq!(retrieved_results[0].0, deploy_hash);
+        assert_eq!(retrieved_results[0].0, TransactionHash::from(deploy_hash));
         assert_eq!(retrieved_results[0].1, exec_result);
     }
     let retrieved_transfers = storage
@@ -1401,7 +1393,7 @@ fn store_identical_execution_results() {
             .expect("should execute get")
             .expect("should return Some");
         assert_eq!(retrieved_results.len(), 1);
-        assert_eq!(retrieved_results[0].0, deploy_hash);
+        assert_eq!(retrieved_results[0].0, TransactionHash::from(deploy_hash));
         assert_eq!(retrieved_results[0].1, exec_result);
     }
     let retrieved_transfers = storage
@@ -1469,7 +1461,7 @@ fn should_provide_transfers_after_emptied() {
 
     let (exec_result, transfer) = prepare_exec_result_with_transfer(&mut harness.rng, &deploy_hash);
     let mut exec_results = HashMap::new();
-    exec_results.insert(deploy_hash, exec_result);
+    exec_results.insert(TransactionHash::from(deploy_hash), exec_result);
 
     put_execution_results(
         &mut harness,
@@ -1538,26 +1530,22 @@ fn test_legacy_interface() {
 }
 
 #[test]
-fn persist_blocks_deploys_and_execution_info_across_instantiations() {
+fn persist_blocks_txns_and_execution_info_across_instantiations() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
     // Create some sample data.
-    let deploy = Deploy::random(&mut harness.rng);
+    let transaction = Transaction::random(&mut harness.rng);
     let block: Block = TestBlockBuilder::new()
-        .transactions(Some(&Transaction::from(deploy.clone())))
+        .transactions(Some(&transaction.clone()))
         .build_versioned(&mut harness.rng);
 
     let block_height = block.height();
     let execution_result = ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
-    put_transaction(
-        &mut harness,
-        &mut storage,
-        &Transaction::from(deploy.clone()),
-    );
+    put_transaction(&mut harness, &mut storage, &transaction.clone());
     put_complete_block(&mut harness, &mut storage, block.clone());
     let mut execution_results = HashMap::new();
-    execution_results.insert(*deploy.hash(), execution_result.clone());
+    execution_results.insert(transaction.hash(), execution_result.clone());
     put_execution_results(
         &mut harness,
         &mut storage,
@@ -1583,22 +1571,13 @@ fn persist_blocks_deploys_and_execution_info_across_instantiations() {
     let actual_block = get_block(&mut harness, &mut storage, *block.hash())
         .expect("missing block we stored earlier");
     assert_eq!(actual_block, block);
-    let actual_deploys = get_naive_transactions(
-        &mut harness,
-        &mut storage,
-        smallvec![TransactionHash::from(*deploy.hash())],
-    );
-    assert_eq!(
-        actual_deploys,
-        vec![Some(Transaction::from(deploy.clone()))]
-    );
+    let actual_txns =
+        get_naive_transactions(&mut harness, &mut storage, smallvec![transaction.hash()]);
+    assert_eq!(actual_txns, vec![Some(transaction.clone())]);
 
-    let (_, maybe_exec_info) = get_naive_transaction_and_execution_info(
-        &mut harness,
-        &mut storage,
-        TransactionHash::from(*deploy.hash()),
-    )
-    .expect("missing deploy we stored earlier");
+    let (_, maybe_exec_info) =
+        get_naive_transaction_and_execution_info(&mut harness, &mut storage, transaction.hash())
+            .expect("missing deploy we stored earlier");
 
     let retrieved_execution_result = maybe_exec_info
         .expect("should have execution info")
@@ -1619,7 +1598,7 @@ fn should_hard_reset() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    let random_deploys: Vec<_> = iter::repeat_with(|| Deploy::random(&mut harness.rng))
+    let random_txns: Vec<_> = iter::repeat_with(|| Transaction::random(&mut harness.rng))
         .take(blocks_count)
         .collect();
 
@@ -1631,12 +1610,9 @@ fn should_hard_reset() {
                 .era(height as u64 / 3)
                 .height(height as u64)
                 .switch_block(is_switch)
-                .transactions(iter::once(&Transaction::from(
-                    random_deploys
-                        .get(height)
-                        .expect("should_have_deploy")
-                        .clone(),
-                )))
+                .transactions(iter::once(
+                    &random_txns.get(height).expect("should_have_deploy").clone(),
+                ))
                 .build_versioned(&mut harness.rng)
         })
         .collect();
@@ -1661,22 +1637,18 @@ fn should_hard_reset() {
 
     // Add execution results to deploys; deploy 0 will be executed in block 0, deploy 1 in block 1,
     // and so on.
-    let mut deploys = vec![];
+    let mut transactions = vec![];
     let mut execution_results = vec![];
     for (index, (block_hash, block_height, era_id)) in blocks
         .iter()
         .map(|block| (block.hash(), block.height(), block.era_id()))
         .enumerate()
     {
-        let deploy = random_deploys.get(index).expect("should have deploys");
+        let transaction = random_txns.get(index).expect("should have deploys");
         let execution_result = ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
-        put_transaction(
-            &mut harness,
-            &mut storage,
-            &Transaction::from(deploy.clone()),
-        );
+        put_transaction(&mut harness, &mut storage, &transaction.clone());
         let mut exec_results = HashMap::new();
-        exec_results.insert(*deploy.hash(), execution_result);
+        exec_results.insert(transaction.hash(), execution_result);
         put_execution_results(
             &mut harness,
             &mut storage,
@@ -1685,7 +1657,7 @@ fn should_hard_reset() {
             era_id,
             exec_results.clone(),
         );
-        deploys.push(deploy);
+        transactions.push(transaction);
         execution_results.push(exec_results);
     }
 
@@ -1727,11 +1699,11 @@ fn should_hard_reset() {
         }
 
         // Check execution results in deleted blocks have been removed.
-        for (index, deploy) in deploys.iter().enumerate() {
+        for (index, transaction) in transactions.iter().enumerate() {
             let (_, maybe_exec_info) = get_naive_transaction_and_execution_info(
                 &mut harness,
                 &mut storage,
-                TransactionHash::from(*deploy.hash()),
+                transaction.hash(),
             )
             .unwrap();
             let should_have_exec_results = index < blocks_per_era * reset_era;
