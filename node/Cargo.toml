@@ -1,10 +1,7 @@
 [package]
 name = "casper-node"
 version = "1.5.3" # when updating, also update 'html_root_url' in lib.rs
-authors = [
-    "Marc Brinkmann <marc@casperlabs.io>",
-    "Fraser Hutchison <fraser@casperlabs.io>",
-]
+authors = ["Marc Brinkmann <marc@casperlabs.io>", "Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "The Casper blockchain node"
 documentation = "https://docs.rs/casper-node"
@@ -29,17 +26,8 @@ bytes = "1.0.1"
 casper-execution-engine = { version = "6.0.0", path = "../execution_engine" }
 casper-json-rpc = { version = "1.1.0", path = "../json_rpc" }
 casper-storage = { version = "1.4.3", path = "../storage" }
-casper-types = { version = "3.0.0", path = "../types", features = [
-    "datasize",
-    "json-schema",
-    "std",
-] }
-datasize = { version = "0.2.11", features = [
-    "detailed",
-    "fake_clock-types",
-    "futures-types",
-    "smallvec-types",
-] }
+casper-types = { version = "3.0.0", path = "../types", features = ["datasize", "json-schema", "std"] }
+datasize = { version = "0.2.11", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
 derive_more = "0.99.7"
 either = { version = "1", features = ["serde"] }
 enum-iterator = "0.6.0"
@@ -72,10 +60,7 @@ rand = "0.8.3"
 rand_chacha = "0.3.0"
 regex = "1"
 rmp-serde = "0.14.4"
-schemars = { version = "0.8.12", features = [
-    "preserve_order",
-    "impl_json_schema",
-] }
+schemars = { version = "0.8.12", features = ["preserve_order", "impl_json_schema"] }
 serde = { version = "1", features = ["derive", "rc"] }
 serde-big-array = "0.3.0"
 serde-map-to-array = "1.1.0"
@@ -93,13 +78,7 @@ strum = { version = "0.24.1", features = ["strum_macros", "derive"] }
 sys-info = "0.8.0"
 tempfile = "3.4.0"
 thiserror = "1"
-tokio = { version = "1", features = [
-    "macros",
-    "net",
-    "rt-multi-thread",
-    "sync",
-    "time",
-] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 tokio-openssl = "0.6.3"
 tokio-serde = { version = "0.8.0", features = ["bincode"] }
 tokio-stream = { version = "0.1.4", features = ["sync"] }
@@ -108,31 +87,19 @@ toml = "0.5.6"
 tower = { version = "0.4.6", features = ["limit"] }
 tracing = "0.1.18"
 tracing-futures = "0.2.5"
-tracing-subscriber = { version = "0.3.15", features = [
-    "env-filter",
-    "fmt",
-    "json",
-] }
+tracing-subscriber = { version = "0.3.15", features = ["env-filter", "fmt", "json"] }
 uint = "0.9.0"
 uuid = { version = "0.8.1", features = ["serde", "v4"] }
 warp = { version = "0.3.6", features = ["compression"] }
 wheelbuf = "0.2.0"
 
 [build-dependencies]
-vergen = { version = "8.2.1", default-features = false, features = [
-    "git",
-    "gitoxide",
-] }
+vergen = { version = "8.2.1", default-features = false, features = ["git", "gitoxide"] }
 
 [dev-dependencies]
 assert-json-diff = "2.0.1"
 assert_matches = "1.5.0"
-casper-types = { path = "../types", features = [
-    "datasize",
-    "json-schema",
-    "std",
-    "testing",
-] }
+casper-types = { path = "../types", features = ["datasize", "json-schema", "std", "testing"] }
 fake_instant = "0.4.0"
 pnet = "0.28.0"
 pretty_assertions = "0.7.2"
@@ -159,56 +126,16 @@ features = ["vendored-openssl"]
 revision = "0"
 depends = "curl"
 assets = [
-    [
-        "../target/release/casper-node",
-        "/usr/bin/casper-node",
-        "755",
-    ],
-    [
-        "../resources/maintainer_scripts/logrotate.d/casper-node",
-        "/etc/logrotate.d/casper-node",
-        "644",
-    ],
-    [
-        "../resources/maintainer_scripts/pull_genesis.sh",
-        "/etc/casper/pull_genesis.sh",
-        "755",
-    ],
-    [
-        "../resources/maintainer_scripts/delete_local_db.sh",
-        "/etc/casper/delete_local_db.sh",
-        "755",
-    ],
-    [
-        "../resources/maintainer_scripts/config_from_example.sh",
-        "/etc/casper/config_from_example.sh",
-        "755",
-    ],
-    [
-        "../resources/maintainer_scripts/systemd_pre_start.sh",
-        "/etc/casper/systemd_pre_start.sh",
-        "755",
-    ],
-    [
-        "../resources/production/README.md",
-        "/etc/casper/README.md",
-        "644",
-    ],
-    [
-        "../resources/production/CHANGE_LOG.md",
-        "/etc/casper/CHANGE_LOG.md",
-        "644",
-    ],
-    [
-        "../resources/production/config-example.toml",
-        "/etc/casper/config-example.toml",
-        "644",
-    ],
-    [
-        "../resources/production/validator_keys/README.md",
-        "/etc/casper/validator_keys/README.md",
-        "644",
-    ],
+    ["../target/release/casper-node", "/usr/bin/casper-node", "755"],
+    ["../resources/maintainer_scripts/logrotate.d/casper-node", "/etc/logrotate.d/casper-node", "644"],
+    ["../resources/maintainer_scripts/pull_genesis.sh", "/etc/casper/pull_genesis.sh", "755"],
+    ["../resources/maintainer_scripts/delete_local_db.sh", "/etc/casper/delete_local_db.sh", "755"],
+    ["../resources/maintainer_scripts/config_from_example.sh", "/etc/casper/config_from_example.sh", "755"],
+    ["../resources/maintainer_scripts/systemd_pre_start.sh", "/etc/casper/systemd_pre_start.sh", "755"],
+    ["../resources/production/README.md", "/etc/casper/README.md", "644"],
+    ["../resources/production/CHANGE_LOG.md", "/etc/casper/CHANGE_LOG.md", "644"],
+    ["../resources/production/config-example.toml", "/etc/casper/config-example.toml", "644"],
+    ["../resources/production/validator_keys/README.md", "/etc/casper/validator_keys/README.md", "644"]
 ]
 maintainer-scripts = "../resources/maintainer_scripts/debian"
 extended-description = """
