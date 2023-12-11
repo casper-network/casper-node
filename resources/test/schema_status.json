@@ -16,6 +16,10 @@
     "uptime"
   ],
   "properties": {
+    "api_version": {
+      "description": "The RPC API version.",
+      "type": "string"
+    },
     "peers": {
       "description": "The node ID and network address of each connected peer.",
       "allOf": [
@@ -23,10 +27,6 @@
           "$ref": "#/definitions/Peers"
         }
       ]
-    },
-    "api_version": {
-      "description": "The RPC API version.",
-      "type": "string"
     },
     "build_version": {
       "description": "The compiled node version.",
@@ -247,7 +247,7 @@
           "$ref": "#/definitions/ActivationPoint"
         },
         "protocol_version": {
-          "type": "string"
+          "$ref": "#/definitions/ProtocolVersion"
         }
       }
     },
@@ -271,6 +271,10 @@
           ]
         }
       ]
+    },
+    "ProtocolVersion": {
+      "description": "Casper Platform protocol version",
+      "type": "string"
     },
     "ReactorState": {
       "description": "The state of the reactor.",
