@@ -25,7 +25,7 @@ pipeline:
                   identifier: Run_1
                   spec:
                     connectorRef: account.harnessImage
-                    image: casperlabs/node-build-u1804
+                    image: casperlabs/node-build-u2004
                     shell: Bash
                     command: |-
                       sysctl -w vm.overcommit_memory=0
