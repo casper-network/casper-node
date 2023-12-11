@@ -26,7 +26,7 @@ use casper_types::{
     testing::TestRng,
     AccessRights, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2,
     Chainspec, ChainspecRawBytes, Deploy, DeployApprovalsHash, DeployHash, Digest, EraId,
-    ExecutionInfo, FinalitySignature, Key, Key, ProtocolVersion, PublicKey, SecretKey, SignedBlock,
+    ExecutionInfo, FinalitySignature, Key, Key, ProtocolVersion, PublicKey, SecretKey,
     SignedBlockHeader, TestBlockBuilder, TestBlockV1Builder, TimeDiff, Transaction,
     TransactionApprovalsHash, TransactionHash, TransactionV1Hash, TransactionV1Hash, Transfer,
     URef, U512,
@@ -370,21 +370,12 @@ fn get_naive_transactions(
 ///
 /// Any potential finalized approvals are discarded.
 fn get_naive_transaction_and_execution_info(
-    harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     transaction_hash: TransactionHash,
 ) -> Option<(Transaction, Option<ExecutionInfo>)> {
-    let response = harness.send_request(storage, |responder| {
-        StorageRequest::GetTransactionAndExecutionInfo {
-            transaction_hash,
-            responder,
-        }
-        .into()
-    });
-    assert!(harness.is_idle());
-    response.map(|(txn_with_finalized_approvals, exec_info)| {
-        (txn_with_finalized_approvals.into_naive(), exec_info)
-    })
+    let transaction = storage.get_transaction_by_hash(transaction_hash)?;
+    let execution_info = storage.get_execution_info(transaction.hash());
+    Some((transaction, execution_info))
 }
 
 /// Requests the highest complete block from a storage component.
@@ -589,58 +580,6 @@ fn get_block_transfers(
     let response = harness.send_request(storage, move |responder| {
         StorageRequest::GetBlockTransfers {
             block_hash,
-            responder,
-        }
-        .into()
-    });
-    assert!(harness.is_idle());
-    response
-}
-
-fn get_signed_block_by_hash(
-    harness: &mut ComponentHarness<UnitTestEvent>,
-    storage: &mut Storage,
-    block_hash: BlockHash,
-    only_from_available_block_range: bool,
-) -> Option<SignedBlock> {
-    let response = harness.send_request(storage, move |responder| {
-        StorageRequest::GetSignedBlockByHash {
-            block_hash,
-            only_from_available_block_range,
-            responder,
-        }
-        .into()
-    });
-    assert!(harness.is_idle());
-    response
-}
-
-fn get_signed_block_by_height(
-    harness: &mut ComponentHarness<UnitTestEvent>,
-    storage: &mut Storage,
-    block_height: u64,
-    only_from_available_block_range: bool,
-) -> Option<SignedBlock> {
-    let response = harness.send_request(storage, move |responder| {
-        StorageRequest::GetSignedBlockByHeight {
-            block_height,
-            only_from_available_block_range,
-            responder,
-        }
-        .into()
-    });
-    assert!(harness.is_idle());
-    response
-}
-
-fn get_highest_signed_block(
-    harness: &mut ComponentHarness<UnitTestEvent>,
-    storage: &mut Storage,
-    only_from_available_block_range: bool,
-) -> Option<SignedBlock> {
-    let response = harness.send_request(storage, move |responder| {
-        StorageRequest::GetHighestSignedBlock {
-            only_from_available_block_range,
             responder,
         }
         .into()
@@ -949,17 +888,11 @@ fn can_retrieve_store_and_load_transactions() {
 
     // Finally try to get the execution info as well. Since we did not store any, we expect to get
     // the block hash and height from the indices.
-    let (transaction_response, exec_info_response) = harness
-        .send_request(&mut storage, |responder| {
-            StorageRequest::GetTransactionAndExecutionInfo {
-                transaction_hash: transaction.hash(),
-                responder,
-            }
-            .into()
-        })
-        .expect("no transaction with execution info returned");
+    let (transaction_response, exec_info_response) =
+        get_naive_transaction_and_execution_info(&mut storage, transaction.hash())
+            .expect("no transaction with execution info returned");
 
-    assert_eq!(transaction_response.into_naive(), transaction);
+    assert_eq!(transaction_response, transaction);
     match exec_info_response {
         Some(ExecutionInfo {
             execution_result: Some(_),
@@ -986,17 +919,11 @@ fn can_retrieve_store_and_load_transactions() {
     assert!(put_transaction(&mut harness, &mut storage, &transaction));
     // Don't insert to the transaction hash index. Since we have no execution results
     // either, we should receive a `None` execution info response.
-    let (transaction_response, exec_info_response) = harness
-        .send_request(&mut storage, |responder| {
-            StorageRequest::GetTransactionAndExecutionInfo {
-                transaction_hash: transaction.hash(),
-                responder,
-            }
-            .into()
-        })
-        .expect("no transaction with execution info returned");
+    let (transaction_response, exec_info_response) =
+        get_naive_transaction_and_execution_info(&mut storage, transaction.hash())
+            .expect("no transaction with execution info returned");
 
-    assert_eq!(transaction_response.into_naive(), transaction);
+    assert_eq!(transaction_response, transaction);
     assert!(
         exec_info_response.is_none(),
         "We didn't store any block info in the index but we received it in the response."
@@ -1240,7 +1167,7 @@ fn store_random_execution_results() {
     for (deploy_hash, expected_exec_info) in expected_outcome.into_iter() {
         let transaction_hash = TransactionHash::from(deploy_hash);
         let (transaction, maybe_exec_info) =
-            get_naive_transaction_and_execution_info(&mut harness, &mut storage, transaction_hash)
+            get_naive_transaction_and_execution_info(&mut storage, transaction_hash)
                 .expect("missing transaction");
 
         assert_eq!(transaction_hash, transaction.hash());
@@ -1295,12 +1222,9 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
         exec_result_2,
     );
 
-    let (returned_transaction, returned_exec_info) = get_naive_transaction_and_execution_info(
-        &mut harness,
-        &mut storage,
-        TransactionHash::from(deploy_hash),
-    )
-    .expect("missing deploy");
+    let (returned_transaction, returned_exec_info) =
+        get_naive_transaction_and_execution_info(&mut storage, TransactionHash::from(deploy_hash))
+            .expect("missing deploy");
     let expected_exec_info = Some(ExecutionInfo {
         block_hash,
         block_height,
@@ -1594,7 +1518,6 @@ fn persist_blocks_deploys_and_execution_info_across_instantiations() {
     );
 
     let (_, maybe_exec_info) = get_naive_transaction_and_execution_info(
-        &mut harness,
         &mut storage,
         TransactionHash::from(*deploy.hash()),
     )
@@ -1729,7 +1652,6 @@ fn should_hard_reset() {
         // Check execution results in deleted blocks have been removed.
         for (index, deploy) in deploys.iter().enumerate() {
             let (_, maybe_exec_info) = get_naive_transaction_and_execution_info(
-                &mut harness,
                 &mut storage,
                 TransactionHash::from(*deploy.hash()),
             )
@@ -2788,38 +2710,32 @@ fn assert_block_exists_in_storage(
             block_hash
         );
         assert_eq!(
-            get_signed_block_by_hash(
-                harness,
-                storage,
-                *block_hash,
-                only_from_available_block_range
-            )
-            .unwrap()
-            .block()
-            .height(),
-            block_height
-        );
-        assert_eq!(
-            get_signed_block_by_hash(harness, storage, *block_hash, false)
+            storage
+                .get_signed_block_by_hash(*block_hash, only_from_available_block_range)
                 .unwrap()
                 .block()
                 .height(),
             block_height
         );
         assert_eq!(
-            get_signed_block_by_height(
-                harness,
-                storage,
-                block_height,
-                only_from_available_block_range
-            )
-            .unwrap()
-            .block()
-            .hash(),
+            storage
+                .get_signed_block_by_hash(*block_hash, false)
+                .unwrap()
+                .block()
+                .height(),
+            block_height
+        );
+        assert_eq!(
+            storage
+                .get_signed_block_by_height(block_height, only_from_available_block_range)
+                .unwrap()
+                .block()
+                .hash(),
             block_hash
         );
         assert_eq!(
-            get_signed_block_by_height(harness, storage, block_height, false)
+            storage
+                .get_signed_block_by_height(block_height, false)
                 .unwrap()
                 .block()
                 .hash(),
@@ -2883,7 +2799,8 @@ fn assert_highest_block_in_storage(
 
     if only_from_available_block_range {
         assert_eq!(
-            get_highest_signed_block(harness, storage, true)
+            storage
+                .get_highest_signed_block(true)
                 .unwrap()
                 .block()
                 .hash(),
@@ -2904,7 +2821,8 @@ fn assert_highest_block_in_storage(
         );
     }
     assert_eq!(
-        get_highest_signed_block(harness, storage, false)
+        storage
+            .get_highest_signed_block(false)
             .unwrap()
             .block()
             .hash(),
@@ -3014,8 +2932,8 @@ fn check_block_operations_with_node_1_5_2_storage() {
         storage_info.block_range.1,
     );
 
-    assert!(get_highest_signed_block(&mut harness, &mut storage, false).is_some());
-    assert!(get_highest_signed_block(&mut harness, &mut storage, true).is_some());
+    assert!(storage.get_highest_signed_block(false).is_some());
+    assert!(storage.get_highest_signed_block(true).is_some());
     assert!(get_highest_complete_block(&mut harness, &mut storage).is_some());
     assert!(storage.read_highest_block().unwrap().is_some());
     assert!(storage.read_highest_complete_block().unwrap().is_some());

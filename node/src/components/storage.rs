@@ -945,138 +945,6 @@ impl Storage {
                 txn.commit()?;
                 responder.respond(()).ignore()
             }
-            #[cfg(test)]
-            StorageRequest::GetTransactionAndExecutionInfo {
-                transaction_hash,
-                responder,
-            } => {
-                let mut txn = self.env.begin_ro_txn()?;
-
-                let transaction_wfa = match self
-                    .get_transaction_with_finalized_approvals(&mut txn, &transaction_hash)?
-                {
-                    Some(transaction_wfa) => transaction_wfa,
-                    None => return Ok(responder.respond(None).ignore()),
-                };
-
-                let block_hash_height_and_era = match self
-                    .transaction_hash_index
-                    .get(&transaction_hash)
-                {
-                    Some(value) => *value,
-                    None => return Ok(responder.respond(Some((transaction_wfa, None))).ignore()),
-                };
-                let execution_result =
-                    self.execution_result_dbs.get(&mut txn, &transaction_hash)?;
-                let execution_info = ExecutionInfo {
-                    block_hash: block_hash_height_and_era.block_hash,
-                    block_height: block_hash_height_and_era.block_height,
-                    execution_result,
-                };
-
-                responder
-                    .respond(Some((transaction_wfa, Some(execution_info))))
-                    .ignore()
-            }
-            #[cfg(test)]
-            StorageRequest::GetSignedBlockByHash {
-                block_hash,
-                only_from_available_block_range,
-                responder,
-            } => {
-                let mut txn = self.env.begin_ro_txn()?;
-
-                let block: Block =
-                    if let Some(block) = self.get_single_block(&mut txn, &block_hash)? {
-                        block
-                    } else {
-                        return Ok(responder.respond(None).ignore());
-                    };
-
-                if !(self.should_return_block(block.height(), only_from_available_block_range)?) {
-                    return Ok(responder.respond(None).ignore());
-                }
-
-                // Check that the hash of the block retrieved is correct.
-                if block_hash != *block.hash() {
-                    error!(
-                        queried_block_hash = ?block_hash,
-                        actual_block_hash = ?block.hash(),
-                        "block not stored under hash"
-                    );
-                    debug_assert_eq!(&block_hash, block.hash());
-                    return Ok(responder.respond(None).ignore());
-                }
-                let block_signatures = match self.get_block_signatures(&mut txn, &block_hash)? {
-                    Some(signatures) => signatures,
-                    None => BlockSignatures::new(block_hash, block.era_id()),
-                };
-                if block_signatures.is_verified().is_err() {
-                    error!(?block, "invalid block signatures for block");
-                    debug_assert!(block_signatures.is_verified().is_ok());
-                    return Ok(responder.respond(None).ignore());
-                }
-                responder
-                    .respond(Some(SignedBlock::new(block, block_signatures)))
-                    .ignore()
-            }
-            #[cfg(test)]
-            StorageRequest::GetSignedBlockByHeight {
-                block_height,
-                only_from_available_block_range,
-                responder,
-            } => {
-                if !(self.should_return_block(block_height, only_from_available_block_range)?) {
-                    return Ok(responder.respond(None).ignore());
-                }
-
-                let mut txn = self.env.begin_ro_txn()?;
-
-                let block: Block = {
-                    if let Some(block) = self.get_block_by_height(&mut txn, block_height)? {
-                        block
-                    } else {
-                        return Ok(responder.respond(None).ignore());
-                    }
-                };
-
-                let hash = block.hash();
-                let block_signatures = match self.get_block_signatures(&mut txn, hash)? {
-                    Some(signatures) => signatures,
-                    None => BlockSignatures::new(*hash, block.era_id()),
-                };
-                responder
-                    .respond(Some(SignedBlock::new(block, block_signatures)))
-                    .ignore()
-            }
-            #[cfg(test)]
-            StorageRequest::GetHighestSignedBlock {
-                only_from_available_block_range,
-                responder,
-            } => {
-                let mut txn = self.env.begin_ro_txn()?;
-                let maybe_height = if only_from_available_block_range {
-                    self.highest_complete_block_height()
-                } else {
-                    self.block_height_index.keys().last().copied()
-                };
-                let height = match maybe_height {
-                    Some(height) => height,
-                    None => return Ok(responder.respond(None).ignore()),
-                };
-                let highest_block = match self.get_block_by_height(&mut txn, height)? {
-                    Some(block) => block,
-                    None => return Ok(responder.respond(None).ignore()),
-                };
-                let hash = highest_block.hash();
-                let block_signatures = match self.get_block_signatures(&mut txn, hash)? {
-                    Some(signatures) => signatures,
-                    None => BlockSignatures::new(*hash, highest_block.era_id()),
-                };
-                responder
-                    .respond(Some(SignedBlock::new(highest_block, block_signatures)))
-                    .ignore()
-            }
             StorageRequest::GetFinalitySignature { id, responder } => {
                 let mut txn = self.env.begin_ro_txn()?;
                 let maybe_sig = self
@@ -2933,6 +2801,98 @@ impl Storage {
             .expect("could not retrieve value from storage");
         txn.commit().expect("Could not commit transaction");
         res
+    }
+
+    pub fn get_signed_block_by_hash(
+        &self,
+        block_hash: BlockHash,
+        only_from_available_block_range: bool,
+    ) -> Option<SignedBlock> {
+        let mut txn = self
+            .env
+            .begin_ro_txn()
+            .expect("could not create RO transaction");
+
+        let block = self
+            .get_single_block(&mut txn, &block_hash)
+            .expect("could not retrieve block from storage")?;
+        if !(self
+            .should_return_block(block.height(), only_from_available_block_range)
+            .expect("could not check if block should be returned"))
+        {
+            return None;
+        }
+        let block_signatures = self
+            .get_block_signatures(&mut txn, &block_hash)
+            .expect("could not retrieve signatures from storage")
+            .unwrap_or_else(|| BlockSignatures::new(block_hash, block.era_id()));
+        if block_signatures.is_verified().is_err() {
+            error!(?block, "invalid block signatures for block");
+            debug_assert!(block_signatures.is_verified().is_ok());
+            return None;
+        }
+        Some(SignedBlock::new(block, block_signatures))
+    }
+
+    pub fn get_signed_block_by_height(
+        &self,
+        height: u64,
+        only_from_available_block_range: bool,
+    ) -> Option<SignedBlock> {
+        if !(self
+            .should_return_block(height, only_from_available_block_range)
+            .expect("could not check if block should be returned"))
+        {
+            return None;
+        }
+
+        let mut txn = self
+            .env
+            .begin_ro_txn()
+            .expect("could not create RO transaction");
+        let block = self
+            .get_block_by_height(&mut txn, height)
+            .expect("could not retrieve block from storage")?;
+        let hash = block.hash();
+        let block_signatures = self
+            .get_block_signatures(&mut txn, hash)
+            .expect("could not retrieve signatures from storage")
+            .unwrap_or_else(|| BlockSignatures::new(*hash, block.era_id()));
+        if block_signatures.is_verified().is_err() {
+            error!(?block, "invalid block signatures for block");
+            debug_assert!(block_signatures.is_verified().is_ok());
+            return None;
+        }
+        Some(SignedBlock::new(block, block_signatures))
+    }
+
+    pub fn get_highest_signed_block(
+        &self,
+        only_from_available_block_range: bool,
+    ) -> Option<SignedBlock> {
+        let height = if only_from_available_block_range {
+            self.highest_complete_block_height()?
+        } else {
+            self.block_height_index.keys().last().copied()?
+        };
+        self.get_signed_block_by_height(height, only_from_available_block_range)
+    }
+
+    pub fn get_execution_info(&self, transaction_hash: TransactionHash) -> Option<ExecutionInfo> {
+        let mut txn = self
+            .env
+            .begin_ro_txn()
+            .expect("could not create RO transaction");
+        let block_hash_height_and_era = self.transaction_hash_index.get(&transaction_hash)?;
+        let execution_result = self
+            .execution_result_dbs
+            .get(&mut txn, &transaction_hash)
+            .expect("could not retrieve value from storage");
+        Some(ExecutionInfo {
+            block_hash: block_hash_height_and_era.block_hash,
+            block_height: block_hash_height_and_era.block_height,
+            execution_result,
+        })
     }
 }
 
