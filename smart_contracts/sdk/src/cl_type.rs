@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 const BOOL_TYPE_ID: u32 = 0;
 const STRING_TYPE_ID: u32 = 1;
 const UNIT_TYPE_ID: u32 = 2;
@@ -37,11 +39,7 @@ impl CLTyped for u32 {
 }
 
 #[repr(u32)]
-#[derive(Debug)]
-#[cfg_attr(
-    not(target_arch = "wasm32"),
-    derive(serde::Serialize, serde::Deserialize)
-)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum CLType {
     Bool,
     String,

@@ -55,7 +55,6 @@ pub trait Contract {
 }
 
 pub use field::Field;
-pub use schema::{Schema, SchemaData};
 
 #[derive(Debug)]
 pub enum Access {

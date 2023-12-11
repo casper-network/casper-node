@@ -1,5 +1,3 @@
-#![cfg(not(target_arch = "wasm32"))]
-
 pub trait Schema {
     fn schema() -> CasperSchema;
 }
@@ -40,15 +38,13 @@ where
 
 pub mod schema_helper;
 
-#[derive(Debug)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Serialize, Deserialize))]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SchemaArgument {
     pub name: &'static str,
     pub ty: CLType,
 }
 
-#[derive(Debug)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Serialize, Deserialize))]
+#[derive(Debug, Serialize, Deserialize)]
 
 pub struct SchemaEntryPoint {
     pub name: &'static str,
@@ -60,15 +56,13 @@ pub struct SchemaEntryPoint {
     pub flags: EntryPointFlags,
 }
 
-#[derive(Debug)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Serialize, Deserialize))]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SchemaData {
     pub name: &'static str,
     pub ty: CLType,
 }
 
-#[derive(Debug)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Serialize, Deserialize))]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CasperSchema {
     pub name: &'static str,
     pub data: Vec<SchemaData>,

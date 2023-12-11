@@ -38,7 +38,7 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
         });
 
         fields_for_schema.push(quote! {
-            casper_sdk::SchemaData {
+            casper_sdk::schema::SchemaData {
                 name: stringify!(#name),
                 ty: {
                     use casper_sdk::CLTyped;
@@ -77,12 +77,12 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
         }
 
         impl #name {
-            // #[doc(hidden)]
-            // fn __casper_data() -> Vec<casper_sdk::SchemaData> {
-            //     vec! [
-            //         #(#fields_for_schema,)*
-            //     ]
-            // }
+            #[doc(hidden)]
+            fn __casper_data() -> Vec<casper_sdk::schema::SchemaData> {
+                vec! [
+                    #(#fields_for_schema,)*
+                ]
+            }
         }
     };
     f.into()
@@ -95,9 +95,6 @@ enum Attribute {
 
 #[proc_macro_attribute]
 pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
-    // #[casper(foo)]
-    // eprintln!("{attrs:?}");
-
     let mut attrs_iter = attrs.into_iter().peekable();
 
     for attr in &mut attrs_iter {
@@ -574,40 +571,15 @@ pub fn derive_casper_schema(input: TokenStream) -> TokenStream {
     };
 
     let name = &contract.ident;
-    // let fields_for_new = Vec::new();
-    // let mut fields_for_new = Vec::new();
-    let mut fields_for_schema = Vec::new();
 
-    for field in &data_struct.fields {
-        let name = &field.ident;
-        let ty = &field.ty;
-
-        fields_for_schema.push(quote! {
-            casper_sdk::SchemaData {
-                name: stringify!(#name),
-                ty: {
-                    use casper_sdk::CLTyped;
-                    <#ty>::cl_type()
-                },
-            }
-        });
-    }
     quote! {
-
-        impl casper_sdk::Schema for #name {
+        impl casper_sdk::schema::Schema for #name {
             fn schema() -> casper_sdk::schema::CasperSchema {
                 Self::__casper_schema()
             }
         }
 
-        impl #name {
-            #[doc(hidden)]
-            fn __casper_data() -> Vec<casper_sdk::SchemaData> {
-                vec! [
-                    #(#fields_for_schema,)*
-                ]
-            }
-        }
+
     }
     .into()
 }

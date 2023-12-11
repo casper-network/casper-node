@@ -4,6 +4,8 @@
 #[macro_use]
 extern crate alloc;
 
+use core::marker::PhantomData;
+
 use alloc::{
     string::{String, ToString},
     vec::Vec,
@@ -12,10 +14,8 @@ use borsh::{BorshDeserialize, BorshSerialize};
 // use borsh_derive::BorshSerialize;
 use casper_macros::{casper, Contract, Schema};
 use casper_sdk::{
-    host::{self, CreateResult, ResultCode},
-    log, revert,
-    schema::Schema,
-    Field,
+    host::{self, Address, CallError, CreateResult, ResultCode},
+    log, revert, Field,
 };
 
 const INITIAL_GREETING: &str = "This is initial data set from a constructor";
@@ -79,13 +79,59 @@ impl Greeter {
         revert!(Err(CustomError::Bar))
     }
 
-    pub fn emit_revert_without_data(&self) -> Result<(), CustomError> {
-        Ok(())
+    pub fn emit_revert_without_data(&self) -> ! {
+        revert!()
     }
 }
 
 use casper_sdk::Contract;
-use vm_common::flags::ReturnFlags;
+
+struct TypedCall<Args: BorshSerialize, Ret: BorshDeserialize> {
+    address: Address,
+    name: &'static str,
+    _marker: PhantomData<fn(Args) -> Ret>,
+}
+
+struct CallResult<Ret: BorshDeserialize> {
+    data: Option<Vec<u8>>,
+    result_code: ResultCode,
+    _marker: PhantomData<Ret>,
+}
+
+impl<Ret: BorshDeserialize> CallResult<Ret> {
+    fn into_result(self) -> Ret {
+        match self.result_code {
+            ResultCode::Success | ResultCode::CalleeReverted => {
+                borsh::from_slice::<Ret>(&self.data.unwrap()).unwrap()
+            }
+            ResultCode::CalleeTrapped => panic!("CalleeTrapped"),
+            ResultCode::CalleeGasDepleted => panic!("CalleeGasDepleted"),
+            ResultCode::Unknown => panic!("Unknown"),
+        }
+    }
+    fn did_revert(&self) -> bool {
+        self.result_code == ResultCode::CalleeReverted
+    }
+}
+impl<Args: BorshSerialize, Ret: BorshDeserialize> TypedCall<Args, Ret> {
+    fn new(address: Address, name: &'static str) -> Self {
+        Self {
+            address,
+            name,
+            _marker: PhantomData,
+        }
+    }
+    fn call(&self, args: Args) -> CallResult<Ret> {
+        let args_data = borsh::to_vec(&args).unwrap();
+        let (maybe_output_data, result_code) =
+            host::casper_call(&self.address, 0, self.name, &args_data);
+        CallResult::<Ret> {
+            data: maybe_output_data,
+            result_code,
+            _marker: PhantomData,
+        }
+    }
+}
 
 #[casper(export)]
 pub fn call() {
@@ -104,14 +150,18 @@ pub fn call() {
             log!("contract_address: {:?}", contract_address);
             log!("version: {:?}", version);
 
-            let call_0 = "get_greeting";
-            let (maybe_data_0, result_code_0) =
-                host::casper_call(&contract_address, 0, call_0, &[]);
-            log!("{call_0:?} result={result_code_0:?}");
-            assert_eq!(
-                borsh::from_slice::<String>(&maybe_data_0.as_ref().expect("return value")).unwrap(),
-                INITIAL_GREETING.to_string()
-            );
+            // let call_0 = "get_greeting";
+            // let (maybe_data_0, result_code_0) =
+            //     host::casper_call(&contract_address, 0, call_0, &[]);
+            // log!("{call_0:?} result={result_code_0:?}");
+            // assert_eq!(
+            //     borsh::from_slice::<String>(&maybe_data_0.as_ref().expect("return
+            // value")).unwrap(),     INITIAL_GREETING.to_string()
+            // );
+            let get_greeting: TypedCall<(), String> =
+                TypedCall::new(contract_address, "get_greeting");
+            let result = get_greeting.call(()).into_result();
+            assert_eq!(result, INITIAL_GREETING);
 
             let call_1 = "set_greeting";
             let input_data_1: (String,) = ("Foo".into(),);
