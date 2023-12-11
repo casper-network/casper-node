@@ -172,7 +172,6 @@ impl FromBytes for MessagePayload {
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Message {
     /// The identity of the entity that produced the message.
-    #[cfg_attr(feature = "json-schema", schemars(with = "String"))]
     entity_addr: AddressableEntityHash,
     /// The payload of the message.
     message: MessagePayload,
