@@ -9,6 +9,7 @@ use crate::{
 use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
+use alloc::vec::Vec;
 
 /// Header of the binary response.
 #[derive(Debug, PartialEq)]

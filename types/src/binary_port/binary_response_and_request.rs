@@ -1,6 +1,7 @@
 use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
 use super::binary_response::BinaryResponse;
+use alloc::vec::Vec;
 
 /// The binary response along with the original binary request attached.
 pub struct BinaryResponseAndRequest {
