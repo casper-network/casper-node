@@ -13,7 +13,7 @@ use casper_types::{
         non_persistent_data::NonPersistedDataRequest,
         type_wrappers::{
             ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
-            LastProgress, NetworkName, SpeculativeExecutionResult, StoredValues,
+            SpeculativeExecutionResult, StoredValues,
         },
         ErrorCode as BinaryPortError, NodeStatus,
     },
@@ -21,9 +21,8 @@ use casper_types::{
     execution::{ExecutionResult, ExecutionResultV1},
     AvailableBlockRange, BinaryResponse, BinaryResponseAndRequest, BlockBody, BlockBodyV1,
     BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderV1, BlockIdentifier, BlockSignatures,
-    BlockSynchronizerStatus, ChainspecRawBytes, Deploy, Digest, FinalizedApprovals,
-    FinalizedDeployApprovals, Key, KeyTag, NextUpgrade, PayloadType, Peers, ProtocolVersion,
-    PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash, Transfer, Uptime,
+    ChainspecRawBytes, Deploy, Digest, FinalizedApprovals, FinalizedDeployApprovals, Key, KeyTag,
+    PayloadType, Peers, ProtocolVersion, Timestamp, Transaction, TransactionHash, Transfer,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -164,64 +163,11 @@ pub trait NodeClient: Send + Sync {
         parse_response::<Peers>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 
-    async fn read_uptime(&self) -> Result<Duration, Error> {
-        let resp = self.read_from_mem(NonPersistedDataRequest::Uptime).await?;
-        parse_response::<Uptime>(&resp.into())?
-            .map(Duration::from)
-            .ok_or(Error::EmptyEnvelope)
-    }
-
-    async fn read_last_progress(&self) -> Result<Timestamp, Error> {
-        let resp = self
-            .read_from_mem(NonPersistedDataRequest::LastProgress)
-            .await?;
-        parse_response::<LastProgress>(&resp.into())?
-            .map(Timestamp::from)
-            .ok_or(Error::EmptyEnvelope)
-    }
-
-    async fn read_reactor_state(&self) -> Result<ReactorState, Error> {
-        let resp = self
-            .read_from_mem(NonPersistedDataRequest::ReactorState)
-            .await?;
-        parse_response::<ReactorState>(&resp.into())?.ok_or(Error::EmptyEnvelope)
-    }
-
-    async fn read_network_name(&self) -> Result<String, Error> {
-        let resp = self
-            .read_from_mem(NonPersistedDataRequest::NetworkName)
-            .await?;
-        parse_response::<NetworkName>(&resp.into())?
-            .map(String::from)
-            .ok_or(Error::EmptyEnvelope)
-    }
-
-    async fn read_block_sync_status(&self) -> Result<BlockSynchronizerStatus, Error> {
-        let resp = self
-            .read_from_mem(NonPersistedDataRequest::BlockSynchronizerStatus)
-            .await?;
-        parse_response::<BlockSynchronizerStatus>(&resp.into())?.ok_or(Error::EmptyEnvelope)
-    }
-
     async fn read_available_block_range(&self) -> Result<AvailableBlockRange, Error> {
         let resp = self
             .read_from_mem(NonPersistedDataRequest::AvailableBlockRange)
             .await?;
         parse_response::<AvailableBlockRange>(&resp.into())?.ok_or(Error::EmptyEnvelope)
-    }
-
-    async fn read_next_upgrade(&self) -> Result<Option<NextUpgrade>, Error> {
-        let resp = self
-            .read_from_mem(NonPersistedDataRequest::NextUpgrade)
-            .await?;
-        parse_response::<NextUpgrade>(&resp.into())
-    }
-
-    async fn read_consensus_status(&self) -> Result<Option<(PublicKey, Option<TimeDiff>)>, Error> {
-        let resp = self
-            .read_from_mem(NonPersistedDataRequest::ConsensusStatus)
-            .await?;
-        parse_response(&resp.into())
     }
 
     async fn read_chainspec_bytes(&self) -> Result<ChainspecRawBytes, Error> {
@@ -614,36 +560,8 @@ impl PayloadEntity for HighestBlockSequenceCheckResult {
     const PAYLOAD_TYPE: PayloadType = PayloadType::HighestBlockSequenceCheckResult;
 }
 
-impl PayloadEntity for LastProgress {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::LastProgress;
-}
-
-impl PayloadEntity for Uptime {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::Uptime;
-}
-
-impl PayloadEntity for ReactorState {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::ReactorState;
-}
-
-impl PayloadEntity for NetworkName {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::NetworkName;
-}
-
-impl PayloadEntity for BlockSynchronizerStatus {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::BlockSynchronizerStatus;
-}
-
 impl PayloadEntity for AvailableBlockRange {
     const PAYLOAD_TYPE: PayloadType = PayloadType::AvailableBlockRange;
-}
-
-impl PayloadEntity for NextUpgrade {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::NextUpgrade;
-}
-
-impl PayloadEntity for (PublicKey, Option<TimeDiff>) {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::ConsensusStatus;
 }
 
 impl PayloadEntity for ChainspecRawBytes {
