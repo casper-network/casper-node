@@ -1,4 +1,4 @@
-pub trait Schema {
+pub trait Schema: Contract {
     fn schema() -> CasperSchema;
 }
 
@@ -12,7 +12,7 @@ use bitflags::{Bits, Flags};
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 use vm_common::flags::EntryPointFlags;
 
-use crate::cl_type::CLType;
+use crate::{cl_type::CLType, Contract};
 
 pub fn serialize_bits<T, S>(data: &T, serializer: S) -> Result<S::Ok, S::Error>
 where
