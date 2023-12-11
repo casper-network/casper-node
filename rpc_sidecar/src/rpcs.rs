@@ -38,7 +38,7 @@ pub use error_code::ErrorCode;
 
 use crate::{ClientError, NodeClient};
 
-pub const CURRENT_API_VERSION: ApiVersion = ApiVersion(SemVer::new(1, 5, 5));
+pub const CURRENT_API_VERSION: ApiVersion = ApiVersion(SemVer::new(1, 5, 3));
 
 /// This setting causes the server to ignore extra fields in JSON-RPC requests other than the
 /// standard 'id', 'jsonrpc', 'method', and 'params' fields.

@@ -26,9 +26,9 @@ use casper_types::{
     testing::TestRng,
     AccessRights, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2,
     Chainspec, ChainspecRawBytes, Deploy, DeployApprovalsHash, DeployHash, Digest, EraId,
-    ExecutionInfo, FinalitySignature, Key, Key, ProtocolVersion, PublicKey, SecretKey,
+    ExecutionInfo, FinalitySignature, Key, ProtocolVersion, PublicKey, SecretKey,
     SignedBlockHeader, TestBlockBuilder, TestBlockV1Builder, TimeDiff, Transaction,
-    TransactionApprovalsHash, TransactionHash, TransactionV1Hash, TransactionV1Hash, Transfer,
+    TransactionApprovalsHash, TransactionHash, TransactionV1Hash, Transfer,
     URef, U512,
 };
 use tempfile::tempdir;

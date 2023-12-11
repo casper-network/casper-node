@@ -181,7 +181,7 @@ impl Debug for dyn RawDataAccess + 'static {
 }
 
 /// The storage component.
-#[derive(DataSize)]
+#[derive(DataSize, Debug)]
 pub struct Storage {
     /// Storage location.
     root: PathBuf,

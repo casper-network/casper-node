@@ -4,7 +4,7 @@ use once_cell::sync::Lazy;
 use crate::types::InternalEraReport;
 
 pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
-    ProtocolVersion::from_parts(1, 5, 5);
+    ProtocolVersion::from_parts(1, 5, 3);
 
 /// A trait used to generate a static hardcoded example of `Self`.
 pub trait DocExample {

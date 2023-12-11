@@ -62,7 +62,6 @@ fn main() -> anyhow::Result<()> {
 async fn run_all(opts: &Cli) -> anyhow::Result<()> {
     let config = load_config(&opts.config)?;
 
-    // TODO: determine the node port properly
     let (node_client, client_loop) = JulietNodeClient::new(&config.node_client).await;
     let node_client: Arc<dyn NodeClient> = Arc::new(node_client);
 
