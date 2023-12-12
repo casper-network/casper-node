@@ -66,10 +66,7 @@ fn dont_apply_approvals_hashes_when_acquiring_by_id() {
     let approvals_hashes = gen_approvals_hashes(&mut rng, test_transactions.values());
 
     let mut txn_acquisition = TransactionAcquisition::ById(Acquisition::new(
-        test_transactions
-            .values()
-            .map(|txn| get_transaction_id(txn))
-            .collect(),
+        test_transactions.values().map(get_transaction_id).collect(),
         false,
     ));
 

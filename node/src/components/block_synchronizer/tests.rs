@@ -1029,7 +1029,7 @@ async fn registering_header_successfully_triggers_signatures_fetch_for_weak_fina
         mock_reactor.effect_builder(),
         &mut rng,
         Event::BlockHeaderFetched(Ok(FetchedData::FromPeer {
-            item: Box::new(block.clone().take_header().into()),
+            item: Box::new(block.clone_header()),
             peer: peers_asked[0],
         })),
     );
@@ -1088,7 +1088,7 @@ async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1214,7 +1214,7 @@ async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interva
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1343,7 +1343,7 @@ async fn next_action_for_have_weak_finality_is_fetching_block_body() {
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1409,7 +1409,7 @@ async fn registering_block_body_transitions_builder_to_have_block_state() {
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1489,7 +1489,7 @@ async fn fwd_having_block_body_for_block_without_deploys_requires_only_signature
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1553,7 +1553,7 @@ async fn fwd_having_block_body_for_block_with_deploys_requires_approvals_hashes(
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1637,7 +1637,7 @@ async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1714,7 +1714,7 @@ async fn fwd_have_block_body_without_deploys_and_strict_finality_transitions_sta
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1775,7 +1775,7 @@ async fn fwd_have_block_with_strict_finality_requires_creation_of_finalized_bloc
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1846,7 +1846,7 @@ async fn fwd_have_strict_finality_requests_enqueue_when_finalized_block_is_creat
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1940,7 +1940,7 @@ async fn fwd_builder_status_is_executing_when_block_is_enqueued_for_execution() 
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -2015,7 +2015,7 @@ async fn fwd_sync_is_finished_when_block_is_marked_as_executed() {
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -2086,7 +2086,7 @@ async fn historical_sync_announces_meta_block() {
         .as_mut()
         .expect("Historical builder should have been initialized");
     assert!(historical_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -2231,7 +2231,7 @@ async fn synchronizer_halts_if_block_cannot_be_made_executable() {
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     // Register finality signatures to reach weak finality
@@ -2331,7 +2331,7 @@ async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
         .as_mut()
         .expect("Historical builder should have been initialized");
     historical_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .expect("header registration works");
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     register_multiple_signatures(
@@ -2436,7 +2436,7 @@ async fn historical_sync_no_legacy_block() {
         .as_mut()
         .expect("Historical builder should have been initialized");
     historical_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .expect("header registration works");
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     register_multiple_signatures(
@@ -2660,7 +2660,7 @@ async fn historical_sync_legacy_block_strict_finality() {
         .as_mut()
         .expect("Historical builder should have been initialized");
     historical_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .expect("header registration works");
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     register_multiple_signatures(
@@ -2860,7 +2860,7 @@ async fn historical_sync_legacy_block_weak_finality() {
         .as_mut()
         .expect("Historical builder should have been initialized");
     historical_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .expect("header registration works");
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     register_multiple_signatures(
@@ -3073,7 +3073,7 @@ async fn historical_sync_legacy_block_any_finality() {
         .as_mut()
         .expect("Historical builder should have been initialized");
     historical_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .expect("header registration works");
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     register_multiple_signatures(
@@ -3341,7 +3341,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
             mock_reactor.effect_builder(),
             &mut rng,
             Event::BlockHeaderFetched(Ok(FetchedData::FromPeer {
-                item: Box::new(block.clone().take_header().into()),
+                item: Box::new(block.clone_header()),
                 peer: peers_asked[0],
             })),
         );
@@ -3381,7 +3381,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
             mock_reactor.effect_builder(),
             &mut rng,
             Event::BlockHeaderFetched(Ok(FetchedData::FromPeer {
-                item: Box::new(block.clone().take_header().into()),
+                item: Box::new(block.clone_header()),
                 peer: peers_asked[1],
             })),
         );
@@ -3496,7 +3496,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
             mock_reactor.effect_builder(),
             &mut rng,
             Event::BlockFetched(Ok(FetchedData::FromPeer {
-                item: Box::new(block.clone().into()),
+                item: Box::new(block.clone()),
                 peer: peers[0],
             })),
         );
@@ -3529,7 +3529,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
             mock_reactor.effect_builder(),
             &mut rng,
             Event::BlockFetched(Ok(FetchedData::FromPeer {
-                item: Box::new(block.clone().into()),
+                item: Box::new(block.clone()),
                 peer: peers[1],
             })),
         );
@@ -3734,7 +3734,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
     let block = test_env.block();
     let block_v2: BlockV2 = block.clone().try_into().unwrap();
     let first_txn = transactions
-        .get(block_v2.all_transactions().nth(0).unwrap())
+        .get(block_v2.all_transactions().next().unwrap())
         .unwrap();
     let second_txn = transactions
         .get(block_v2.all_transactions().nth(1).unwrap())
@@ -3760,7 +3760,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
         .as_mut()
         .expect("Historical builder should have been initialized");
     historical_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .expect("header registration works");
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     register_multiple_signatures(
@@ -4027,7 +4027,7 @@ async fn historical_sync_latch_should_not_decrement_for_old_execution_results() 
         .as_mut()
         .expect("Historical builder should have been initialized");
     historical_builder
-        .register_block_header(block.clone().take_header().into(), None)
+        .register_block_header(block.clone_header(), None)
         .expect("header registration works");
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     register_multiple_signatures(

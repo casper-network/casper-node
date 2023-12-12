@@ -1258,7 +1258,7 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
     let transaction = Transaction::random(&mut harness.rng);
     let transaction_hash = transaction.hash();
 
-    put_transaction(&mut harness, &mut storage, &transaction.clone());
+    put_transaction(&mut harness, &mut storage, &transaction);
 
     let mut exec_result_1 = HashMap::new();
     exec_result_1.insert(
@@ -1537,12 +1537,12 @@ fn persist_blocks_txns_and_execution_info_across_instantiations() {
     // Create some sample data.
     let transaction = Transaction::random(&mut harness.rng);
     let block: Block = TestBlockBuilder::new()
-        .transactions(Some(&transaction.clone()))
+        .transactions(Some(&transaction))
         .build_versioned(&mut harness.rng);
 
     let block_height = block.height();
     let execution_result = ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
-    put_transaction(&mut harness, &mut storage, &transaction.clone());
+    put_transaction(&mut harness, &mut storage, &transaction);
     put_complete_block(&mut harness, &mut storage, block.clone());
     let mut execution_results = HashMap::new();
     execution_results.insert(transaction.hash(), execution_result.clone());
