@@ -262,7 +262,7 @@ impl JulietNodeClient {
                 .with_max_response_payload_size(config.max_response_size_bytes),
         );
         let io_builder = IoCoreBuilder::new(protocol_builder)
-            .buffer_size(ChannelId::new(0), config.queue_buffer_size);
+            .buffer_size(ChannelId::new(0), config.request_buffer_size);
         let rpc_builder = RpcBuilder::new(io_builder);
 
         let stream = Self::connect_with_retries(config.address, &config.exponential_backoff).await;

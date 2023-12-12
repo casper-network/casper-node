@@ -136,7 +136,8 @@ where
                     Effects::new()
                 }
                 Event::AcceptConnection { stream, peer } => {
-                    tokio::spawn(handle_client(peer, stream, effect_builder));
+                    let config = Arc::clone(&self.config);
+                    tokio::spawn(handle_client(peer, stream, effect_builder, config));
                     Effects::new()
                 }
                 Event::HandleRequest { request, responder } => {
@@ -554,6 +555,7 @@ async fn handle_client<REv>(
     addr: SocketAddr,
     mut client: TcpStream,
     effect_builder: EffectBuilder<REv>,
+    config: Arc<Config>,
 ) where
     REv: From<Event>
         + From<StorageRequest>
@@ -568,7 +570,7 @@ async fn handle_client<REv>(
         + Send,
 {
     let (reader, writer) = client.split();
-    let (client, server) = new_rpc_builder().build(reader, writer);
+    let (client, server) = new_rpc_builder(&config).build(reader, writer);
 
     if let Err(err) = client_loop(server, effect_builder).await {
         // Low severity is used to prevent malicious clients from causing log floods.
@@ -651,13 +653,14 @@ impl Finalize for BinaryPort {
     }
 }
 
-fn new_rpc_builder() -> RpcBuilder<1> {
+fn new_rpc_builder(config: &Config) -> RpcBuilder<1> {
     let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
         ChannelConfiguration::default()
-            .with_request_limit(3)
-            .with_max_request_payload_size(4 * 1024 * 1024)
-            .with_max_response_payload_size(4 * 1024 * 1024),
+            .with_request_limit(config.client_request_limit)
+            .with_max_request_payload_size(config.max_request_size_bytes)
+            .with_max_response_payload_size(config.max_response_size_bytes),
     );
-    let io_builder = IoCoreBuilder::new(protocol_builder).buffer_size(ChannelId::new(0), 16);
+    let io_builder = IoCoreBuilder::new(protocol_builder)
+        .buffer_size(ChannelId::new(0), config.client_request_buffer_size);
     RpcBuilder::new(io_builder)
 }

@@ -54,12 +54,12 @@ impl Default for Config {
 /// Default address to connect to the node.
 // Change this to SocketAddr, once SocketAddr::new is const stable.
 const DEFAULT_NODE_CONNECT_ADDRESS: (IpAddr, u16) = (IpAddr::V4(Ipv4Addr::LOCALHOST), 28104);
-/// Default request limit.
-const DEFAULT_NODE_REQUEST_LIMIT: u16 = 3;
 /// Default maximum payload size.
 const DEFAULT_MAX_NODE_PAYLOAD_SIZE: u32 = 4 * 1024 * 1024;
-/// Default queue buffer size.
-const DEFAULT_CHANNEL_BUFFER_SIZE: usize = 16;
+/// Default request limit.
+const DEFAULT_NODE_REQUEST_LIMIT: u16 = 3;
+/// Default request buffer size.
+const DEFAULT_REQUEST_BUFFER_SIZE: usize = 16;
 /// Default exponential backoff base delay.
 const DEFAULT_EXPONENTIAL_BACKOFF_BASE_MS: u64 = 1000;
 /// Default exponential backoff maximum delay.
@@ -74,14 +74,14 @@ const DEFAULT_EXPONENTIAL_BACKOFF_COEFFICIENT: u64 = 2;
 pub struct NodeClientConfig {
     /// Address of the node.
     pub address: SocketAddr,
-    /// Maximum number of requests to queue.
-    pub request_limit: u16,
     /// Maximum size of a request in bytes.
     pub max_request_size_bytes: u32,
     /// Maximum size of a response in bytes.
     pub max_response_size_bytes: u32,
-    /// Queue buffer size for the Juliet channel.
-    pub queue_buffer_size: usize,
+    /// Maximum number of in-flight node requests.
+    pub request_limit: u16,
+    /// Number of node requests that can be buffered.
+    pub request_buffer_size: usize,
     /// Configuration for exponential backoff to be used for re-connects.
     pub exponential_backoff: ExponentialBackoffConfig,
 }
@@ -94,7 +94,7 @@ impl NodeClientConfig {
             request_limit: DEFAULT_NODE_REQUEST_LIMIT,
             max_request_size_bytes: DEFAULT_MAX_NODE_PAYLOAD_SIZE,
             max_response_size_bytes: DEFAULT_MAX_NODE_PAYLOAD_SIZE,
-            queue_buffer_size: DEFAULT_CHANNEL_BUFFER_SIZE,
+            request_buffer_size: DEFAULT_REQUEST_BUFFER_SIZE,
             exponential_backoff: ExponentialBackoffConfig {
                 initial_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_BASE_MS,
                 max_delay_ms: DEFAULT_EXPONENTIAL_BACKOFF_MAX_MS,

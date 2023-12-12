@@ -302,6 +302,18 @@ allow_request_get_all_values = false
 # Flag that enables the `Trie` gewt request. Disabled by default, because it can potentially be abused to retrieve huge amounts of data and clog the node.
 allow_request_get_trie = false
 
+# Maximum size of a request in bytes.
+max_request_size_bytes = 4_194_304
+
+# Maximum size of a response in bytes.
+max_response_size_bytes = 4_194_304
+
+# Maximum number of in-flight requests per client.
+client_request_limit = 3
+
+# Number of requests that can be buffered per client.
+client_request_buffer_size = 16
+
 # ==============================================
 # Configuration options for the REST HTTP server
 # ==============================================
