@@ -218,6 +218,14 @@
     },
     "BlockHash": {
       "description": "Hex-encoded cryptographic hash of a block.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Digest"
+        }
+      ]
+    },
+    "Digest": {
+      "description": "Hex-encoded hash digest.",
       "type": "string"
     },
     "Block": {
@@ -380,10 +388,6 @@
         }
       }
     },
-    "Digest": {
-      "description": "Hex-encoded hash digest.",
-      "type": "string"
-    },
     "EraEndV1": {
       "description": "Information related to the end of an era, and validator weights for the following era.",
       "type": "object",
@@ -532,9 +536,7 @@
     },
     "Timestamp": {
       "description": "Timestamp formatted as per RFC 3339",
-      "type": "integer",
-      "format": "uint64",
-      "minimum": 0.0
+      "type": "string"
     },
     "EraId": {
       "description": "Era ID newtype.",
@@ -577,7 +579,11 @@
     },
     "DeployHash": {
       "description": "Hex-encoded deploy hash.",
-      "type": "string"
+      "allOf": [
+        {
+          "$ref": "#/definitions/Digest"
+        }
+      ]
     },
     "BlockV2": {
       "description": "A block after execution, with the resulting global state root hash. This is the core component of the Casper linear blockchain. Version 2.",
@@ -970,9 +976,7 @@
     },
     "TimeDiff": {
       "description": "Human-readable duration.",
-      "type": "integer",
-      "format": "uint64",
-      "minimum": 0.0
+      "type": "string"
     },
     "ExecutableDeployItem": {
       "description": "The executable component of a [`Deploy`].",
@@ -993,7 +997,11 @@
               "properties": {
                 "module_bytes": {
                   "description": "Hex-encoded raw Wasm bytes.",
-                  "type": "string"
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/Bytes"
+                    }
+                  ]
                 },
                 "args": {
                   "description": "Runtime arguments.",
@@ -1026,7 +1034,11 @@
               "properties": {
                 "hash": {
                   "description": "Hex-encoded contract hash.",
-                  "type": "string"
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/AddressableEntityHash"
+                    }
+                  ]
                 },
                 "entry_point": {
                   "description": "Name of an entry point.",
@@ -1100,7 +1112,11 @@
               "properties": {
                 "hash": {
                   "description": "Hex-encoded contract package hash.",
-                  "type": "string"
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/PackageHash"
+                    }
+                  ]
                 },
                 "version": {
                   "description": "An optional version of the contract to call. It will default to the highest enabled version if no value is specified.",
@@ -1203,6 +1219,10 @@
           "additionalProperties": false
         }
       ]
+    },
+    "Bytes": {
+      "description": "Hex-encoded bytes.",
+      "type": "string"
     },
     "RuntimeArgs": {
       "description": "Represents a collection of arguments passed to a smart contract.",
@@ -1499,6 +1519,14 @@
           ]
         }
       ]
+    },
+    "AddressableEntityHash": {
+      "description": "The hex-encoded address of the addressable entity.",
+      "type": "string"
+    },
+    "PackageHash": {
+      "description": "The hex-encoded address of the Package.",
+      "type": "string"
     },
     "DeployApproval": {
       "description": "A struct containing a signature of a deploy hash and the public key of the signer.",
@@ -1930,10 +1958,6 @@
           ]
         }
       ]
-    },
-    "Bytes": {
-      "description": "Hex-encoded bytes.",
-      "type": "string"
     },
     "TransactionEntryPoint": {
       "description": "Entry point of a Transaction.",
@@ -3340,7 +3364,11 @@
       "properties": {
         "entity_addr": {
           "description": "The identity of the entity that produced the message.",
-          "type": "string"
+          "allOf": [
+            {
+              "$ref": "#/definitions/AddressableEntityHash"
+            }
+          ]
         },
         "message": {
           "description": "The payload of the message.",

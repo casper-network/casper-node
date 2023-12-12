@@ -2083,6 +2083,14 @@
       },
       "DeployHash": {
         "description": "Hex-encoded deploy hash.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Digest"
+          }
+        ]
+      },
+      "Digest": {
+        "description": "Hex-encoded hash digest.",
         "type": "string"
       },
       "DeployHeader": {
@@ -2150,18 +2158,10 @@
       },
       "Timestamp": {
         "description": "Timestamp formatted as per RFC 3339",
-        "type": "integer",
-        "format": "uint64",
-        "minimum": 0.0
+        "type": "string"
       },
       "TimeDiff": {
         "description": "Human-readable duration.",
-        "type": "integer",
-        "format": "uint64",
-        "minimum": 0.0
-      },
-      "Digest": {
-        "description": "Hex-encoded hash digest.",
         "type": "string"
       },
       "ExecutableDeployItem": {
@@ -2183,7 +2183,11 @@
                 "properties": {
                   "module_bytes": {
                     "description": "Hex-encoded raw Wasm bytes.",
-                    "type": "string"
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Bytes"
+                      }
+                    ]
                   },
                   "args": {
                     "description": "Runtime arguments.",
@@ -2216,7 +2220,11 @@
                 "properties": {
                   "hash": {
                     "description": "Hex-encoded contract hash.",
-                    "type": "string"
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/AddressableEntityHash"
+                      }
+                    ]
                   },
                   "entry_point": {
                     "description": "Name of an entry point.",
@@ -2290,7 +2298,11 @@
                 "properties": {
                   "hash": {
                     "description": "Hex-encoded contract package hash.",
-                    "type": "string"
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/PackageHash"
+                      }
+                    ]
                   },
                   "version": {
                     "description": "An optional version of the contract to call. It will default to the highest enabled version if no value is specified.",
@@ -2393,6 +2405,10 @@
             "additionalProperties": false
           }
         ]
+      },
+      "Bytes": {
+        "description": "Hex-encoded bytes.",
+        "type": "string"
       },
       "RuntimeArgs": {
         "description": "Represents a collection of arguments passed to a smart contract.",
@@ -2689,6 +2705,14 @@
             ]
           }
         ]
+      },
+      "AddressableEntityHash": {
+        "description": "The hex-encoded address of the addressable entity.",
+        "type": "string"
+      },
+      "PackageHash": {
+        "description": "The hex-encoded address of the Package.",
+        "type": "string"
       },
       "DeployApproval": {
         "description": "A struct containing a signature of a deploy hash and the public key of the signer.",
@@ -3160,10 +3184,6 @@
           }
         ]
       },
-      "Bytes": {
-        "description": "Hex-encoded bytes.",
-        "type": "string"
-      },
       "TransactionEntryPoint": {
         "description": "Entry point of a Transaction.",
         "oneOf": [
@@ -3318,7 +3338,11 @@
       },
       "BlockHash": {
         "description": "Hex-encoded cryptographic hash of a block.",
-        "type": "string"
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Digest"
+          }
+        ]
       },
       "ExecutionResult": {
         "description": "The versioned result of executing a single deploy.",
@@ -5466,10 +5490,6 @@
           }
         }
       },
-      "PackageHash": {
-        "description": "The hex-encoded address of the Package.",
-        "type": "string"
-      },
       "ByteCodeHash": {
         "description": "The hash address of the contract wasm",
         "type": "string"
@@ -5615,10 +5635,6 @@
             "minimum": 0.0
           }
         }
-      },
-      "AddressableEntityHash": {
-        "description": "The hex-encoded address of the addressable entity.",
-        "type": "string"
       },
       "PackageStatus": {
         "description": "A enum to determine the lock status of the package.",
