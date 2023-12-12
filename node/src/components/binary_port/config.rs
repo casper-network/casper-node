@@ -9,6 +9,8 @@ const DEFAULT_MAX_PAYLOAD_SIZE: u32 = 4 * 1024 * 1024;
 const DEFAULT_CLIENT_REQUEST_LIMIT: u16 = 3;
 /// Default request buffer size.
 const DEFAULT_CHANNEL_BUFFER_SIZE: usize = 16;
+/// Default maximum number of connections.
+const DEFAULT_MAX_CONNECTIONS: usize = 16;
 
 /// Binary port server configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
@@ -31,6 +33,8 @@ pub struct Config {
     pub client_request_limit: u16,
     /// Number of requests that can be buffered per client.
     pub client_request_buffer_size: usize,
+    /// Maximum number of connections to the server.
+    pub max_connections: usize,
 }
 
 impl Config {
@@ -45,6 +49,7 @@ impl Config {
             max_request_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             max_response_size_bytes: DEFAULT_MAX_PAYLOAD_SIZE,
             client_request_buffer_size: DEFAULT_CHANNEL_BUFFER_SIZE,
+            max_connections: DEFAULT_MAX_CONNECTIONS,
         }
     }
 }

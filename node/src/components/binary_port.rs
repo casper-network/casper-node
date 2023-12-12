@@ -34,6 +34,7 @@ use tokio::{
     io::{AsyncRead, AsyncWrite},
     join,
     net::{TcpListener, TcpStream},
+    sync::{OwnedSemaphorePermit, Semaphore},
 };
 use tracing::{debug, error, info, warn};
 
@@ -68,12 +69,15 @@ pub(crate) struct BinaryPort {
     _metrics: Metrics,
     state: ComponentState,
     config: Arc<Config>,
+    #[data_size(skip)]
+    connection_limit: Arc<Semaphore>,
 }
 
 impl BinaryPort {
     pub(crate) fn new(config: Config, registry: &Registry) -> Result<Self, prometheus::Error> {
         Ok(Self {
             state: ComponentState::Uninitialized,
+            connection_limit: Arc::new(Semaphore::new(config.max_connections)),
             config: Arc::new(config),
             _metrics: Metrics::new(registry)?,
         })
@@ -136,8 +140,15 @@ where
                     Effects::new()
                 }
                 Event::AcceptConnection { stream, peer } => {
-                    let config = Arc::clone(&self.config);
-                    tokio::spawn(handle_client(peer, stream, effect_builder, config));
+                    if let Ok(permit) = Arc::clone(&self.connection_limit).try_acquire_owned() {
+                        let config = Arc::clone(&self.config);
+                        tokio::spawn(handle_client(peer, stream, effect_builder, config, permit));
+                    } else {
+                        warn!(
+                            "connection limit reached, dropping connection from {}",
+                            peer
+                        );
+                    }
                     Effects::new()
                 }
                 Event::HandleRequest { request, responder } => {
@@ -556,6 +567,7 @@ async fn handle_client<REv>(
     mut client: TcpStream,
     effect_builder: EffectBuilder<REv>,
     config: Arc<Config>,
+    permit: OwnedSemaphorePermit,
 ) where
     REv: From<Event>
         + From<StorageRequest>
@@ -580,6 +592,7 @@ async fn handle_client<REv>(
     // We are a server, we won't make any requests of our own, but we need to keep the client
     // around, since dropping the client will trigger a server shutdown.
     drop(client);
+    drop(permit);
 }
 
 // TODO[RC]: Move to Self::
