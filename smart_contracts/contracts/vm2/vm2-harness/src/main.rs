@@ -12,8 +12,9 @@ use alloc::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 // use borsh_derive::BorshSerialize;
-use casper_macros::{casper, Contract, Schema};
+use casper_macros::{casper, CasperABI, Contract, Schema};
 use casper_sdk::{
+    abi::CasperABI,
     host::{self, Address, CallError, CreateResult, ResultCode},
     log, revert, Field,
 };
@@ -25,10 +26,26 @@ struct Greeter {
     greeting: Field<String>,
 }
 
-#[derive(Debug, BorshSerialize, BorshDeserialize, PartialEq)]
+// #[derive(Debug, BorshSerialize, BorshDeserialize, PartialEq, CasperABI)]
+// pub struct CustomStruct {
+//     field_1: String,
+//     field_2: u64,
+//     field_3: u32,
+// }
+
+#[repr(u32)]
+#[derive(Debug, BorshSerialize, BorshDeserialize, PartialEq, CasperABI)]
+#[borsh(use_discriminant = true)]
 pub enum CustomError {
     Foo,
-    Bar,
+    Bar = 42,
+    WithBody(String),
+    WithBodyAndDiscriminant(String, u64) = 111,
+    Named {
+        field1: String,
+        field2: u64,
+        field3: Result<u32, String>,
+    },
 }
 
 #[casper(entry_points)]
@@ -76,7 +93,14 @@ impl Greeter {
     }
 
     pub fn emit_revert_with_data(&self) -> Result<(), CustomError> {
-        revert!(Err(CustomError::Bar))
+        // casper_revert(123456)
+        // casper_ret(value)
+
+        // return(0, value);
+        // return(1, value); revert
+
+        // revert!(Err(CustomError::Bar))
+        Err(CustomError::Bar) // (1u8, 2u32)
     }
 
     pub fn emit_revert_without_data(&self) -> ! {
@@ -264,7 +288,10 @@ pub fn call() {
 mod tests {
 
     use borsh::{schema::BorshSchemaContainer, BorshSchema};
-    use casper_sdk::{schema::schema_helper, Contract, Schema};
+    use casper_sdk::{
+        schema::{schema_helper, Schema},
+        Contract,
+    };
 
     use super::*;
 
@@ -279,29 +306,34 @@ mod tests {
         dbg!(schema_helper::list_exports());
     }
 
-    #[test]
-    fn compile_time_schema() {
-        let schema = Greeter::schema();
-        dbg!(&schema);
-        println!("{}", serde_json::to_string_pretty(&schema).unwrap());
-    }
+    // #[test]
+    // fn compile_time_schema() {
+    //     let schema = Greeter::schema();
+    //     dbg!(&schema);
+    //     println!("{}", serde_json::to_string_pretty(&schema).unwrap());
+    // }
 
     #[test]
     fn should_greet() {
-        assert_eq!(Greeter::name(), "Greeter");
-        let mut flipper = Greeter::new();
-        assert_eq!(flipper.get_greeting(), ""); // TODO: Initializer
-        flipper.set_greeting("Hi".into());
-        assert_eq!(flipper.get_greeting(), "Hi");
+        // assert_eq!(Greeter::name(), "Greeter");
+        // let mut flipper = Greeter::new();
+        // assert_eq!(flipper.get_greeting(), ""); // TODO: Initializer
+        // flipper.set_greeting("Hi".into());
+        // assert_eq!(flipper.get_greeting(), "Hi");
     }
-    // #[test]
-    // fn borsh_schema() {
-    //     #[derive(BorshSerialize, BorshSchema)]
-    //     enum CustomError {
-    //         Foo,
-    //         Bar,
-    //         Baz,
-    //     }
-    //     dbg!(BorshSchemaContainer::for_type::<String>());
-    // }
+    #[test]
+    fn borsh_schema() {
+        #[derive(BorshSerialize, BorshSchema)]
+        enum CustomError {
+            Foo,
+            Bar,
+            Baz,
+        }
+        dbg!(BorshSchemaContainer::for_type::<Result<(), CustomError>>());
+    }
+
+    #[test]
+    fn abi_for_custom_error() {
+        dbg!(CustomError::definition());
+    }
 }

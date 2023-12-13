@@ -4,8 +4,12 @@ use std::collections::BTreeSet;
 
 use darling::{FromAttributes, FromDeriveInput, FromMeta};
 use proc_macro::{Literal, TokenStream};
+use proc_macro2::Span;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, token::Struct, Data, DeriveInput, ItemFn, ItemImpl, Meta, Type};
+use syn::{
+    parse_macro_input, token::Struct, Data, DeriveInput, Error, Fields, ItemEnum, ItemFn, ItemImpl,
+    ItemStruct, ItemUnion, Meta, Path, Type,
+};
 use vm_common::flags::EntryPointFlags;
 
 #[proc_macro_derive(Contract)]
@@ -561,6 +565,11 @@ pub fn entry_point(_attr: TokenStream, item: TokenStream) -> TokenStream {
     gen.into()
 }
 
+const PRIMITIVE_TYPES: &[&str] = &[
+    "u8", "u16", "u32", "u64", "u128", "i8", "i16", "i32", "i64", "i128", "bool", "String", "f32",
+    "f64",
+];
+
 #[proc_macro_derive(Schema)]
 pub fn derive_casper_schema(input: TokenStream) -> TokenStream {
     let contract = parse_macro_input!(input as DeriveInput);
@@ -582,4 +591,150 @@ pub fn derive_casper_schema(input: TokenStream) -> TokenStream {
 
     }
     .into()
+}
+
+#[proc_macro_derive(CasperABI, attributes(casper))]
+pub fn borsh_schema(input: TokenStream) -> TokenStream {
+    // let cratename = match check_attrs_get_cratename(&input) {
+    //     Ok(cratename) => cratename,
+    //     Err(err) => {
+    //         return err.to_compile_error().into();
+    //     }
+    // };
+    let res = if let Ok(input) = syn::parse::<ItemStruct>(input.clone()) {
+        todo!("Struct")
+    } else if let Ok(input) = syn::parse::<ItemEnum>(input.clone()) {
+        // TODO: Check visibility
+        let name = input.ident.clone();
+
+        let mut all_definitions = Vec::new();
+        let mut all_variants = Vec::new();
+
+        all_definitions.push(quote! {
+            casper_sdk::abi::Definition::OneOf {
+                name: stringify!(#name),
+            }
+        });
+
+        let mut current_discriminant = 0;
+
+        for variant in input.variants.iter() {
+            if let Some(discriminant) = &variant.discriminant {
+                match &discriminant.1 {
+                    syn::Expr::Lit(lit) => match &lit.lit {
+                        syn::Lit::Int(int) => {
+                            current_discriminant = int.base10_parse::<u64>().unwrap();
+                        }
+                        _ => todo!(),
+                    },
+                    _ => todo!(),
+                }
+            }
+
+            let variant_name = &variant.ident;
+
+            let variant_definition = match &variant.fields {
+                Fields::Unit => {
+                    // NOTE: Generate an empty struct here for a definition.
+                    quote! {
+                        casper_sdk::abi::Definition::Struct { items: Vec::new() }
+                    }
+                }
+                Fields::Named(named) => {
+                    let mut fields = Vec::new();
+
+                    for field in &named.named {
+                        let field_name = &field.ident;
+                        match &field.ty {
+                            Type::Path(path) => {
+                                // path.typ
+                                // todo!("{}", path.path.segments.to_string());
+                                // for segment in &path.path.segments {
+                                // let type_name = &segment.ident;
+                                fields.push(quote! {
+                                    casper_sdk::abi::StructField {
+                                        name: stringify!(#field_name),
+                                        body: <#path as casper_sdk::abi::CasperABI>::definition()
+                                    }
+                                });
+                                // }
+                            }
+                            other_ty => todo!("Unsupported type {other_ty:?}"),
+                        }
+                    }
+
+                    quote! {
+                        casper_sdk::abi::Definition::Struct {
+                            items: vec![
+                                #(#fields,)*
+                            ],
+                        }
+                    }
+                }
+                Fields::Unnamed(unnamed_fields) => {
+                    let mut fields = Vec::new();
+
+                    for field in &unnamed_fields.unnamed {
+                        match &field.ty {
+                            Type::Path(path) => {
+                                for segment in &path.path.segments {
+                                    let type_name = &segment.ident;
+                                    fields.push(quote! {
+                                        <#type_name as casper_sdk::abi::CasperABI>::definition()
+                                    });
+                                }
+                            }
+                            other_ty => todo!("Unsupported type {other_ty:?}"),
+                        }
+                    }
+
+                    quote! {
+                        casper_sdk::abi::Definition::Tuple {
+                            items: vec![
+                                #(#fields,)*
+                            ],
+                        }
+                    }
+                }
+            };
+
+            all_variants.push(quote! {
+                casper_sdk::abi::EnumVariant {
+                    name: stringify!(#variant_name),
+                    discriminant: #current_discriminant,
+                    body: #variant_definition,
+                }
+            });
+
+            current_discriminant += 1;
+        }
+
+        Ok(quote! {
+            impl casper_sdk::abi::CasperABI for #name {
+                fn declaration() -> casper_sdk::abi::Declaration {
+                    const NAME: &str = stringify!(#name);
+                    casper_sdk::abi::Declaration::Ref(format!("#/$defs/{}", NAME))
+                }
+                fn definition() -> casper_sdk::abi::Definition {
+                    casper_sdk::abi::Definition::Enum {
+                        items: vec![
+                            #(#all_variants,)*
+                        ],
+                    }
+                }
+            }
+        })
+    } else if syn::parse::<ItemUnion>(input).is_ok() {
+        Err(syn::Error::new(
+            Span::call_site(),
+            "Borsh schema does not support unions yet.",
+        ))
+    } else {
+        // Derive macros can only be defined on structs, enums, and unions.
+        unreachable!()
+    };
+    TokenStream::from(match res {
+        Ok(res) => res,
+        Err(err) => err.to_compile_error(),
+    })
 }

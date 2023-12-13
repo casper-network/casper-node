@@ -1,6 +1,8 @@
 // #![feature(wasm_import_memory)]
+
 // #[linkage = "--import-memory"]
 
+pub mod abi;
 pub mod cl_type;
 pub mod field;
 pub mod host;

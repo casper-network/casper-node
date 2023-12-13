@@ -659,6 +659,7 @@ dependencies = [
  "casper-sdk",
  "darling",
  "paste",
+ "proc-macro2 1.0.63",
  "quote 1.0.29",
  "syn 2.0.32",
  "vm-common",
@@ -6615,6 +6616,18 @@ version = "0.1.0"
 dependencies = [
  "bitflags 2.4.1",
  "serde",
+]
+
+[[package]]
+name = "vm2-cep18"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "casper-macros",
+ "casper-sdk",
+ "ctor 0.2.5",
+ "serde_json",
+ "vm-common",
 ]
 
 [[package]]
