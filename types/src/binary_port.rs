@@ -6,18 +6,21 @@ pub(crate) mod binary_response_header;
 pub mod db_id;
 pub mod error_code;
 pub mod get;
-pub mod get_all_values;
-pub mod global_state;
+pub mod get_all_values_result;
+pub mod global_state_query_result;
+mod minimal_block_info;
 #[cfg(any(feature = "std", test))]
 mod node_status;
-pub mod non_persistent_data;
+pub mod non_persistent_data_request;
 pub mod payload_type;
-pub mod speculative_execution;
+pub mod speculative_execution_result;
 pub mod type_wrappers;
 
 pub use error_code::ErrorCode;
 #[cfg(any(feature = "std", test))]
-pub use node_status::{MinimalBlockInfo, NodeStatus};
+pub use minimal_block_info::MinimalBlockInfo;
+#[cfg(any(feature = "std", test))]
+pub use node_status::NodeStatus;
 pub use payload_type::PayloadType;
 pub use type_wrappers::Uptime;
 

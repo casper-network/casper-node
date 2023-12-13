@@ -3,13 +3,16 @@
 use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 use alloc::vec::Vec;
 
+#[cfg(test)]
+use crate::testing::TestRng;
+
 use super::{
     binary_response_header::BinaryResponseHeader, db_id::DbId, payload_type::PayloadType,
     DbRawBytesSpec, ErrorCode,
 };
 
 /// The response use in the binary port protocol.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct BinaryResponse {
     /// Header of the binary response.
     header: BinaryResponseHeader,
@@ -105,6 +108,14 @@ impl BinaryResponse {
     pub fn payload(&self) -> &[u8] {
         self.payload.as_ref()
     }
+
+    #[cfg(test)]
+    pub(crate) fn random(rng: &mut TestRng) -> Self {
+        Self {
+            header: BinaryResponseHeader::random(rng),
+            payload: rng.random_vec(64..128),
+        }
+    }
 }
 
 impl ToBytes for BinaryResponse {
@@ -138,5 +149,19 @@ impl FromBytes for BinaryResponse {
             },
             remainder,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::TestRng;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+
+        let val = BinaryResponse::random(rng);
+        bytesrepr::test_serialization_roundtrip(&val);
     }
 }

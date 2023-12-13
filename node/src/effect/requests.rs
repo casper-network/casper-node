@@ -29,7 +29,7 @@ use casper_types::{
     addressable_entity::AddressableEntity,
     binary_port::{
         db_id::DbId,
-        get_all_values::GetAllValuesResult,
+        get_all_values_result::GetAllValuesResult,
         type_wrappers::{
             ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
             LastProgress, NetworkName, SpeculativeExecutionResult,

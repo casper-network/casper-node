@@ -7,6 +7,12 @@ use derive_more::Display;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+use rand::Rng;
+
+#[cfg(test)]
+use crate::testing::TestRng;
+
 /// The state of the reactor.
 #[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, Display)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -24,6 +30,21 @@ pub enum ReactorState {
     Validate,
     /// Node should be shut down for upgrade.
     ShutdownForUpgrade,
+}
+
+impl ReactorState {
+    #[cfg(test)]
+    pub(crate) fn random(rng: &mut TestRng) -> Self {
+        match rng.gen_range(0..6) {
+            0 => Self::Initialize,
+            1 => Self::CatchUp,
+            2 => Self::Upgrading,
+            3 => Self::KeepUp,
+            4 => Self::Validate,
+            5 => Self::ShutdownForUpgrade,
+            _ => panic!(),
+        }
+    }
 }
 
 const INITIALIZE_TAG: u8 = 0;

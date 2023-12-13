@@ -7,7 +7,9 @@ use std::{
 };
 
 use rand::{
-    self, distributions::uniform::SampleRange, CryptoRng, Error, Rng, RngCore, SeedableRng,
+    self,
+    distributions::{uniform::SampleRange, Distribution, Standard},
+    CryptoRng, Error, Rng, RngCore, SeedableRng,
 };
 use rand_pcg::Pcg64Mcg;
 
@@ -83,6 +85,15 @@ impl TestRng {
         iter::repeat_with(|| self.gen::<char>())
             .take(count)
             .collect()
+    }
+
+    /// Returns a random `Vec` of length within the range specified by `length_range`.
+    pub fn random_vec<R: SampleRange<usize>, T>(&mut self, length_range: R) -> Vec<T>
+    where
+        Standard: Distribution<T>,
+    {
+        let count = self.gen_range(length_range);
+        iter::repeat_with(|| self.gen::<T>()).take(count).collect()
     }
 
     fn set_flag_or_panic() {

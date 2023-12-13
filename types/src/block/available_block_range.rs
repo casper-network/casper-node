@@ -7,6 +7,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::bytesrepr::{self, FromBytes, ToBytes};
 
+#[cfg(test)]
+use rand::Rng;
+
+#[cfg(test)]
+use crate::testing::TestRng;
+
 /// An unbroken, inclusive range of blocks.
 #[derive(Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
@@ -44,6 +50,13 @@ impl AvailableBlockRange {
     /// Returns the high value.
     pub fn high(&self) -> u64 {
         self.high
+    }
+
+    #[cfg(test)]
+    pub(crate) fn random(rng: &mut TestRng) -> Self {
+        let low = rng.gen::<u16>() as u64;
+        let high = low + rng.gen::<u16>() as u64;
+        Self { low, high }
     }
 }
 

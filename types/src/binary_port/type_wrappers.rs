@@ -13,6 +13,29 @@ use crate::{
     EraId, PublicKey, StoredValue, TimeDiff, Timestamp, ValidatorChange,
 };
 
+// `bytesrepr` implementations for type wrappers are repetitive, hence this macro helper. We should
+// get rid of this after we introduce the proper "bytesrepr-derive" proc macro.
+macro_rules! impl_bytesrepr_for_type_wrapper {
+    ($t:ident) => {
+        impl ToBytes for $t {
+            fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+                self.0.to_bytes()
+            }
+
+            fn serialized_length(&self) -> usize {
+                self.0.serialized_length()
+            }
+        }
+
+        impl FromBytes for $t {
+            fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+                let (inner, remainder) = FromBytes::from_bytes(bytes)?;
+                Ok(($t(inner), remainder))
+            }
+        }
+    };
+}
+
 /// Type representing uptime.
 #[derive(Debug, Clone, Copy)]
 pub struct Uptime(pub u64);
@@ -31,23 +54,6 @@ impl TryFrom<Uptime> for TimeDiff {
     }
 }
 
-impl ToBytes for Uptime {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.0.to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
-    }
-}
-
-impl FromBytes for Uptime {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (inner, remainder) = FromBytes::from_bytes(bytes)?;
-        Ok((Uptime(inner), remainder))
-    }
-}
-
 /// Type representing changes in consensus validators.
 #[derive(Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -59,47 +65,13 @@ impl From<ConsensusValidatorChanges> for BTreeMap<PublicKey, Vec<(EraId, Validat
     }
 }
 
-impl ToBytes for ConsensusValidatorChanges {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.0.to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
-    }
-}
-
-impl FromBytes for ConsensusValidatorChanges {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (inner, remainder) = FromBytes::from_bytes(bytes)?;
-        Ok((ConsensusValidatorChanges(inner), remainder))
-    }
-}
-
 /// Type representing network name.
 #[derive(Debug)]
 pub struct NetworkName(pub String);
 
-impl ToBytes for NetworkName {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.0.to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
-    }
-}
-
 impl From<NetworkName> for String {
     fn from(network_name: NetworkName) -> Self {
         network_name.0
-    }
-}
-
-impl FromBytes for NetworkName {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (inner, remainder) = FromBytes::from_bytes(bytes)?;
-        Ok((NetworkName(inner), remainder))
     }
 }
 
@@ -113,44 +85,10 @@ impl From<LastProgress> for Timestamp {
     }
 }
 
-impl ToBytes for LastProgress {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.0.to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
-    }
-}
-
-impl FromBytes for LastProgress {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (inner, remainder) = FromBytes::from_bytes(bytes)?;
-        Ok((LastProgress(inner), remainder))
-    }
-}
-
 /// Type representing results of checking whether a block is in the highest sequence of available
 /// blocks.
 #[derive(Debug)]
 pub struct HighestBlockSequenceCheckResult(pub bool);
-
-impl ToBytes for HighestBlockSequenceCheckResult {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.0.to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
-    }
-}
-
-impl FromBytes for HighestBlockSequenceCheckResult {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (inner, remainder) = FromBytes::from_bytes(bytes)?;
-        Ok((HighestBlockSequenceCheckResult(inner), remainder))
-    }
-}
 
 impl From<HighestBlockSequenceCheckResult> for bool {
     fn from(highest_block_sequence_check_result: HighestBlockSequenceCheckResult) -> Self {
@@ -169,23 +107,6 @@ impl SpeculativeExecutionResult {
     }
 }
 
-impl ToBytes for SpeculativeExecutionResult {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.0.to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
-    }
-}
-
-impl FromBytes for SpeculativeExecutionResult {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (inner, remainder) = FromBytes::from_bytes(bytes)?;
-        Ok((SpeculativeExecutionResult(inner), remainder))
-    }
-}
-
 /// Type representing results of the get full trie request.
 #[derive(Debug)]
 pub struct GetTrieFullResult(pub Option<Bytes>);
@@ -197,25 +118,8 @@ impl GetTrieFullResult {
     }
 }
 
-impl ToBytes for GetTrieFullResult {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.0.to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
-    }
-}
-
-impl FromBytes for GetTrieFullResult {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (inner, remainder) = FromBytes::from_bytes(bytes)?;
-        Ok((GetTrieFullResult(inner), remainder))
-    }
-}
-
 /// Type representing successful result of GetAllValues request.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct StoredValues(pub Vec<StoredValue>);
 
 impl StoredValues {
@@ -225,19 +129,11 @@ impl StoredValues {
     }
 }
 
-impl ToBytes for StoredValues {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.0.to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
-    }
-}
-
-impl FromBytes for StoredValues {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (inner, remainder) = FromBytes::from_bytes(bytes)?;
-        Ok((StoredValues(inner), remainder))
-    }
-}
+impl_bytesrepr_for_type_wrapper!(Uptime);
+impl_bytesrepr_for_type_wrapper!(ConsensusValidatorChanges);
+impl_bytesrepr_for_type_wrapper!(NetworkName);
+impl_bytesrepr_for_type_wrapper!(LastProgress);
+impl_bytesrepr_for_type_wrapper!(HighestBlockSequenceCheckResult);
+impl_bytesrepr_for_type_wrapper!(SpeculativeExecutionResult);
+impl_bytesrepr_for_type_wrapper!(GetTrieFullResult);
+impl_bytesrepr_for_type_wrapper!(StoredValues);

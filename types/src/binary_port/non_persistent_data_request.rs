@@ -2,9 +2,15 @@
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    BlockHash, BlockIdentifier, TransactionHash,
+    BlockIdentifier, TransactionHash,
 };
 use alloc::vec::Vec;
+
+#[cfg(test)]
+use rand::Rng;
+
+#[cfg(test)]
+use crate::testing::TestRng;
 
 const BLOCK_HEIGHT_2_HASH_TAG: u8 = 0;
 const HIGHEST_COMPLETE_BLOCK_TAG: u8 = 1;
@@ -24,7 +30,7 @@ const CHAINSPEC_RAW_BYTES: u8 = 14;
 const STATUS_TAG: u8 = 15;
 
 /// Request for non persistent data
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum NonPersistedDataRequest {
     /// Returns hash for a given height.
     BlockHeight2Hash {
@@ -68,6 +74,35 @@ pub enum NonPersistedDataRequest {
     ChainspecRawBytes,
     /// Returns the status information of the node.
     NodeStatus,
+}
+
+impl NonPersistedDataRequest {
+    #[cfg(test)]
+    pub(crate) fn random(rng: &mut TestRng) -> Self {
+        match rng.gen_range(0..16) {
+            0 => Self::BlockHeight2Hash { height: rng.gen() },
+            1 => Self::HighestCompleteBlock,
+            2 => Self::CompletedBlocksContain {
+                block_identifier: BlockIdentifier::random(rng),
+            },
+            3 => Self::TransactionHash2BlockHashAndHeight {
+                transaction_hash: TransactionHash::random(rng),
+            },
+            4 => Self::Peers,
+            5 => Self::Uptime,
+            6 => Self::LastProgress,
+            7 => Self::ReactorState,
+            8 => Self::NetworkName,
+            9 => Self::ConsensusValidatorChanges,
+            10 => Self::BlockSynchronizerStatus,
+            11 => Self::AvailableBlockRange,
+            12 => Self::NextUpgrade,
+            13 => Self::ConsensusStatus,
+            14 => Self::ChainspecRawBytes,
+            15 => Self::NodeStatus,
+            _ => panic!(),
+        }
+    }
 }
 
 impl ToBytes for NonPersistedDataRequest {
@@ -200,112 +235,16 @@ impl FromBytes for NonPersistedDataRequest {
     }
 }
 
-/// Response to the request for non persistent data.
-#[derive(Debug)]
-pub enum NonPersistedDataResponse {
-    /// Returns hash for a given height.
-    BlockHeight2Hash {
-        /// Block hash.
-        hash: BlockHash,
-    },
-    /// Returns height&hash for the currently highest block.
-    HighestBlock {
-        /// Block hash.
-        hash: BlockHash,
-        /// Block height.
-        height: u64,
-    },
-    /// Returns true if `self.completed_blocks.highest_sequence()` contains the given hash
-    CompletedBlockContains(bool),
-    /// Block height and hash for a given transaction.
-    TransactionHash2BlockHashAndHeight {
-        /// Block hash.
-        hash: BlockHash,
-        /// Block height.
-        height: u64,
-    },
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::TestRng;
 
-impl ToBytes for NonPersistedDataResponse {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
-    }
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
 
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        match self {
-            NonPersistedDataResponse::BlockHeight2Hash { hash } => {
-                BLOCK_HEIGHT_2_HASH_TAG.write_bytes(writer)?;
-                hash.write_bytes(writer)
-            }
-            NonPersistedDataResponse::HighestBlock { hash, height } => {
-                HIGHEST_COMPLETE_BLOCK_TAG.write_bytes(writer)?;
-                hash.write_bytes(writer)?;
-                height.write_bytes(writer)
-            }
-            NonPersistedDataResponse::CompletedBlockContains(val) => {
-                COMPLETED_BLOCK_CONTAINS_TAG.write_bytes(writer)?;
-                val.write_bytes(writer)
-            }
-            NonPersistedDataResponse::TransactionHash2BlockHashAndHeight { hash, height } => {
-                TRANSACTION_HASH_2_BLOCK_HASH_AND_HEIGHT_TAG.write_bytes(writer)?;
-                hash.write_bytes(writer)?;
-                height.write_bytes(writer)
-            }
-        }
-    }
-
-    fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH
-            + match self {
-                NonPersistedDataResponse::BlockHeight2Hash { hash } => hash.serialized_length(),
-                NonPersistedDataResponse::HighestBlock { hash, height } => {
-                    hash.serialized_length() + height.serialized_length()
-                }
-                NonPersistedDataResponse::CompletedBlockContains(val) => val.serialized_length(),
-                NonPersistedDataResponse::TransactionHash2BlockHashAndHeight { hash, height } => {
-                    hash.serialized_length() + height.serialized_length()
-                }
-            }
-    }
-}
-
-impl FromBytes for NonPersistedDataResponse {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = FromBytes::from_bytes(bytes)?;
-        match tag {
-            BLOCK_HEIGHT_2_HASH_TAG => {
-                let (hash, remainder) = FromBytes::from_bytes(remainder)?;
-                Ok((
-                    NonPersistedDataResponse::BlockHeight2Hash { hash },
-                    remainder,
-                ))
-            }
-            HIGHEST_COMPLETE_BLOCK_TAG => {
-                let (hash, remainder) = FromBytes::from_bytes(remainder)?;
-                let (height, remainder) = FromBytes::from_bytes(remainder)?;
-                Ok((
-                    NonPersistedDataResponse::HighestBlock { hash, height },
-                    remainder,
-                ))
-            }
-            COMPLETED_BLOCK_CONTAINS_TAG => {
-                let (val, remainder) = FromBytes::from_bytes(remainder)?;
-                Ok((
-                    NonPersistedDataResponse::CompletedBlockContains(val),
-                    remainder,
-                ))
-            }
-            TRANSACTION_HASH_2_BLOCK_HASH_AND_HEIGHT_TAG => {
-                let (hash, remainder) = FromBytes::from_bytes(remainder)?;
-                let (height, remainder) = FromBytes::from_bytes(remainder)?;
-                Ok((
-                    NonPersistedDataResponse::TransactionHash2BlockHashAndHeight { hash, height },
-                    remainder,
-                ))
-            }
-            _ => Err(bytesrepr::Error::Formatting),
-        }
+        let val = NonPersistedDataRequest::random(rng);
+        bytesrepr::test_serialization_roundtrip(&val);
     }
 }

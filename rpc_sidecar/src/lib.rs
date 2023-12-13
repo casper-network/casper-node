@@ -22,10 +22,9 @@ mod tests {
 
     use crate::rpcs::docs::OPEN_RPC_SCHEMA;
 
-    use crate::rpcs::info::GetStatusResult;
     use crate::rpcs::{
         docs::OpenRpcSchema,
-        info::{GetChainspecResult, GetValidatorChangesResult},
+        info::{GetChainspecResult, GetStatusResult, GetValidatorChangesResult},
     };
     use schemars::schema_for;
 

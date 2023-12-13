@@ -123,7 +123,7 @@ use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     binary_port::{
         db_id::DbId,
-        get_all_values::GetAllValuesResult,
+        get_all_values_result::GetAllValuesResult,
         type_wrappers::{
             ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
             LastProgress, NetworkName, SpeculativeExecutionResult,

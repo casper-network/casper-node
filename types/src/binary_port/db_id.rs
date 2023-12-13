@@ -5,6 +5,12 @@ use serde::Serialize;
 use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 use alloc::vec::Vec;
 
+#[cfg(test)]
+use rand::Rng;
+
+#[cfg(test)]
+use crate::testing::TestRng;
+
 const BLOCK_HEADER_DB_TAG: u8 = 0;
 const BLOCK_METADATA_DB_TAG: u8 = 1;
 const TRANSFER_DB_TAG: u8 = 2;
@@ -37,6 +43,24 @@ pub enum DbId {
     StateStore = 7,
     /// Refers to `FinalizedTransactionApprovals` db.
     FinalizedTransactionApprovals = 8,
+}
+
+impl DbId {
+    #[cfg(test)]
+    pub(crate) fn random(rng: &mut TestRng) -> Self {
+        match rng.gen_range(0..9) {
+            0 => DbId::BlockHeader,
+            1 => DbId::BlockBody,
+            2 => DbId::ApprovalsHashes,
+            3 => DbId::BlockMetadata,
+            4 => DbId::Transaction,
+            5 => DbId::ExecutionResult,
+            6 => DbId::Transfer,
+            7 => DbId::StateStore,
+            8 => DbId::FinalizedTransactionApprovals,
+            _ => panic!(),
+        }
+    }
 }
 
 impl core::fmt::Display for DbId {
@@ -98,5 +122,19 @@ impl FromBytes for DbId {
             _ => return Err(bytesrepr::Error::Formatting),
         };
         Ok((db_id, remainder))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::TestRng;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+
+        let val = DbId::random(rng);
+        bytesrepr::test_serialization_roundtrip(&val);
     }
 }

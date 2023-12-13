@@ -7,8 +7,7 @@ use schemars::JsonSchema;
 use rand::Rng;
 
 use alloc::vec::Vec;
-use core::convert::TryFrom;
-use core::fmt;
+use core::{convert::TryFrom, fmt};
 
 #[cfg(test)]
 use crate::testing::TestRng;
@@ -21,7 +20,7 @@ use crate::{
 
 use super::{
     db_id::DbId,
-    global_state::GlobalStateQueryResult,
+    global_state_query_result::GlobalStateQueryResult,
     type_wrappers::{
         ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
         LastProgress, NetworkName, SpeculativeExecutionResult, StoredValues,

@@ -9,8 +9,8 @@ use casper_types::{
         binary_request::BinaryRequest,
         db_id::DbId,
         get::GetRequest,
-        global_state::GlobalStateQueryResult,
-        non_persistent_data::NonPersistedDataRequest,
+        global_state_query_result::GlobalStateQueryResult,
+        non_persistent_data_request::NonPersistedDataRequest,
         type_wrappers::{
             ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
             SpeculativeExecutionResult, StoredValues,
