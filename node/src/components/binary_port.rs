@@ -15,8 +15,9 @@ use casper_execution_engine::engine_state::{
 use casper_types::{
     binary_port::{
         self, binary_request::BinaryRequest, db_id::DbId, get::GetRequest,
-        get_all_values::GetAllValuesResult, global_state::GlobalStateQueryResult,
-        non_persistent_data::NonPersistedDataRequest, DbRawBytesSpec, NodeStatus,
+        get_all_values_result::GetAllValuesResult,
+        global_state_query_result::GlobalStateQueryResult,
+        non_persistent_data_request::NonPersistedDataRequest, DbRawBytesSpec, NodeStatus,
     },
     bytesrepr::{self, FromBytes, ToBytes},
     BinaryResponse, BinaryResponseAndRequest, BlockHashAndHeight, BlockHeader, Peers, Transaction,

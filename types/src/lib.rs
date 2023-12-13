@@ -105,8 +105,8 @@ pub use block::{
     BlockHeader, BlockHeaderV1, BlockHeaderV2, BlockIdentifier, BlockSignatures,
     BlockSignaturesMergeError, BlockSyncStatus, BlockSynchronizerStatus, BlockV1, BlockV2,
     BlockValidationError, EraEnd, EraEndV1, EraEndV2, EraReport, FinalitySignature,
-    FinalitySignatureId, RewardedSignatures, Rewards, SignedBlock,
-    SignedBlockHeader, SignedBlockHeaderValidationError, SingleBlockRewardedSignatures,
+    FinalitySignatureId, RewardedSignatures, Rewards, SignedBlock, SignedBlockHeader,
+    SignedBlockHeaderValidationError, SingleBlockRewardedSignatures,
 };
 #[cfg(any(feature = "testing", test))]
 pub use block::{TestBlockBuilder, TestBlockV1Builder};

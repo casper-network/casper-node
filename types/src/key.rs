@@ -12,6 +12,9 @@ use core::{
     str::FromStr,
 };
 
+#[cfg(test)]
+use crate::testing::TestRng;
+
 #[cfg(doc)]
 use crate::CLValue;
 use blake2::{
@@ -153,6 +156,35 @@ pub enum KeyTag {
     AddressableEntity = 17,
     ByteCode = 18,
     Message = 19,
+}
+
+impl KeyTag {
+    #[cfg(test)]
+    pub(crate) fn random(rng: &mut TestRng) -> Self {
+        match rng.gen_range(0..20) {
+            0 => KeyTag::Account,
+            1 => KeyTag::Hash,
+            2 => KeyTag::URef,
+            3 => KeyTag::Transfer,
+            4 => KeyTag::DeployInfo,
+            5 => KeyTag::EraInfo,
+            6 => KeyTag::Balance,
+            7 => KeyTag::Bid,
+            8 => KeyTag::Withdraw,
+            9 => KeyTag::Dictionary,
+            10 => KeyTag::SystemContractRegistry,
+            11 => KeyTag::EraSummary,
+            12 => KeyTag::Unbond,
+            13 => KeyTag::ChainspecRegistry,
+            14 => KeyTag::ChecksumRegistry,
+            15 => KeyTag::BidAddr,
+            16 => KeyTag::Package,
+            17 => KeyTag::AddressableEntity,
+            18 => KeyTag::ByteCode,
+            19 => KeyTag::Message,
+            _ => panic!(),
+        }
+    }
 }
 
 impl Display for KeyTag {

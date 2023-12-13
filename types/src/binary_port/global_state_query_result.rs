@@ -6,7 +6,14 @@ use crate::{
 };
 use alloc::{string::String, vec::Vec};
 
+#[cfg(test)]
+use crate::testing::TestRng;
+
+#[cfg(test)]
+use crate::{ByteCode, ByteCodeKind};
+
 /// Carries the successful result of the global state query.
+#[derive(Debug, PartialEq)]
 pub struct GlobalStateQueryResult {
     /// Stored value.
     value: StoredValue,
@@ -26,6 +33,19 @@ impl GlobalStateQueryResult {
     /// Returns the stored value and the merkle proof.
     pub fn into_inner(self) -> (StoredValue, String) {
         (self.value, self.merkle_proof)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn random_invalid(rng: &mut TestRng) -> Self {
+        // Note: This does NOT create a logically-valid struct. Instance created by this function
+        // should be used in `bytesrepr` tests only.
+        Self {
+            value: StoredValue::ByteCode(ByteCode::new(
+                ByteCodeKind::V1CasperWasm,
+                rng.random_vec(10..20),
+            )),
+            merkle_proof: rng.random_string(10..20),
+        }
     }
 }
 
@@ -61,5 +81,19 @@ impl FromBytes for GlobalStateQueryResult {
             },
             remainder,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::TestRng;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+
+        let val = GlobalStateQueryResult::random_invalid(rng);
+        bytesrepr::test_serialization_roundtrip(&val);
     }
 }

@@ -9,8 +9,14 @@ use crate::{
     BlockHash, Digest, DigestError,
 };
 
+#[cfg(test)]
+use rand::Rng;
+
+#[cfg(test)]
+use crate::testing::TestRng;
+
 /// Identifier for possible ways to retrieve a block.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub enum BlockIdentifier {
@@ -18,6 +24,17 @@ pub enum BlockIdentifier {
     Hash(BlockHash),
     /// Identify and retrieve the block with its height.
     Height(u64),
+}
+
+impl BlockIdentifier {
+    #[cfg(test)]
+    pub(crate) fn random(rng: &mut TestRng) -> Self {
+        match rng.gen_range(0..1) {
+            0 => Self::Hash(BlockHash::random(rng)),
+            1 => Self::Height(rng.gen()),
+            _ => panic!(),
+        }
+    }
 }
 
 const HASH_TAG: u8 = 0;

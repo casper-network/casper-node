@@ -28,8 +28,7 @@ use casper_types::{
     Chainspec, ChainspecRawBytes, Deploy, DeployApprovalsHash, DeployHash, Digest, EraId,
     ExecutionInfo, FinalitySignature, Key, ProtocolVersion, PublicKey, SecretKey,
     SignedBlockHeader, TestBlockBuilder, TestBlockV1Builder, TimeDiff, Transaction,
-    TransactionApprovalsHash, TransactionHash, TransactionV1Hash, Transfer,
-    URef, U512,
+    TransactionApprovalsHash, TransactionHash, TransactionV1Hash, Transfer, URef, U512,
 };
 use tempfile::tempdir;
 

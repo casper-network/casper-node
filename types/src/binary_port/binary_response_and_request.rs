@@ -3,7 +3,11 @@ use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 use super::binary_response::BinaryResponse;
 use alloc::vec::Vec;
 
+#[cfg(test)]
+use crate::testing::TestRng;
+
 /// The binary response along with the original binary request attached.
+#[derive(Debug, PartialEq)]
 pub struct BinaryResponseAndRequest {
     /// The original request (as serialized bytes).
     original_request: Vec<u8>,
@@ -28,6 +32,14 @@ impl BinaryResponseAndRequest {
     /// Returns the error code.
     pub fn error_code(&self) -> u8 {
         self.response.error_code()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn random(rng: &mut TestRng) -> Self {
+        Self {
+            original_request: rng.random_vec(64..128),
+            response: BinaryResponse::random(rng),
+        }
     }
 }
 
@@ -72,5 +84,19 @@ impl From<BinaryResponseAndRequest> for BinaryResponse {
     fn from(response_and_request: BinaryResponseAndRequest) -> Self {
         let BinaryResponseAndRequest { response, .. } = response_and_request;
         response
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::TestRng;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+
+        let val = BinaryResponseAndRequest::random(rng);
+        bytesrepr::test_serialization_roundtrip(&val);
     }
 }

@@ -9,6 +9,15 @@ use alloc::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+use core::iter;
+
+#[cfg(test)]
+use rand::Rng;
+
+#[cfg(test)]
+use crate::testing::TestRng;
+
 /// Node peer entry.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
@@ -18,6 +27,16 @@ pub struct PeerEntry {
     pub node_id: String,
     /// Node address.
     pub address: String,
+}
+
+impl PeerEntry {
+    #[cfg(test)]
+    pub(crate) fn random(rng: &mut TestRng) -> Self {
+        Self {
+            node_id: rng.random_string(10..20),
+            address: rng.random_string(10..20),
+        }
+    }
 }
 
 impl ToBytes for PeerEntry {
@@ -55,6 +74,16 @@ impl Peers {
     /// Retrieve collection of `PeerEntry` records.
     pub fn into_inner(self) -> Vec<PeerEntry> {
         self.0
+    }
+
+    #[cfg(test)]
+    pub(crate) fn random(rng: &mut TestRng) -> Self {
+        let count = rng.gen_range(0..10);
+        let peers = iter::repeat(())
+            .map(|_| PeerEntry::random(rng))
+            .take(count)
+            .collect();
+        Self(peers)
     }
 }
 

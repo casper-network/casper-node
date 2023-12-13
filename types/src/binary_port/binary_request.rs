@@ -8,6 +8,12 @@ use alloc::vec::Vec;
 
 use super::get::GetRequest;
 
+#[cfg(test)]
+use rand::Rng;
+
+#[cfg(test)]
+use crate::{testing::TestRng, Block, TestBlockV1Builder};
+
 const GET_TAG: u8 = 0;
 const TRY_ACCEPT_TRANSACTION_TAG: u8 = 1;
 const SPECULATIVE_EXEC_TAG: u8 = 2;
@@ -15,7 +21,7 @@ const SPECULATIVE_EXEC_TAG: u8 = 2;
 /// A request to the binary access interface.
 // TODO[RC] Add version tag, or rather follow the `BinaryRequestV1/V2` scheme.
 // TODO[RC] Remove clone
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum BinaryRequest {
     /// Request to get data from the node
     Get(GetRequest),
@@ -37,6 +43,31 @@ pub enum BinaryRequest {
         /// Block header of block at which we should perform speculative execution.
         speculative_exec_at_block: BlockHeader,
     },
+}
+
+impl BinaryRequest {
+    #[cfg(test)]
+    pub(crate) fn random(rng: &mut TestRng) -> Self {
+        match rng.gen_range(0..3) {
+            0 => Self::Get(GetRequest::random(rng)),
+            1 => Self::TryAcceptTransaction {
+                transaction: Transaction::random(rng),
+            },
+            2 => {
+                let block_v1 = TestBlockV1Builder::new().build(rng);
+                let block = Block::V1(block_v1);
+
+                Self::TrySpeculativeExec {
+                    state_root_hash: Digest::random(rng),
+                    block_time: Timestamp::random(rng),
+                    protocol_version: ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen()),
+                    transaction: Transaction::random(rng),
+                    speculative_exec_at_block: block.take_header(),
+                }
+            }
+            _ => panic!(),
+        }
+    }
 }
 
 impl ToBytes for BinaryRequest {
@@ -131,5 +162,19 @@ impl FromBytes for BinaryRequest {
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::TestRng;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+
+        let val = BinaryRequest::random(rng);
+        bytesrepr::test_serialization_roundtrip(&val);
     }
 }

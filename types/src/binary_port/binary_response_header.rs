@@ -5,11 +5,11 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     ErrorCode, PayloadType,
 };
+use alloc::vec::Vec;
 #[cfg(test)]
 use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
-use alloc::vec::Vec;
 
 /// Header of the binary response.
 #[derive(Debug, PartialEq)]

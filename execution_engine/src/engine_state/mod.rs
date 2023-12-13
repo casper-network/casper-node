@@ -49,7 +49,7 @@ use casper_storage::{
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{AssociatedKeys, MessageTopics, NamedKeys},
-    binary_port::{get_all_values::GetAllValuesResult, type_wrappers::StoredValues},
+    binary_port::{get_all_values_result::GetAllValuesResult, type_wrappers::StoredValues},
     bytesrepr::ToBytes,
     execution::Effects,
     package::{EntityVersions, Groups, PackageKind, PackageKindTag, PackageStatus},

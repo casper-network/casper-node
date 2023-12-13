@@ -11,6 +11,12 @@ use crate::{
     ActivationPoint, ProtocolConfig, ProtocolVersion,
 };
 
+#[cfg(test)]
+use rand::Rng;
+
+#[cfg(test)]
+use crate::testing::TestRng;
+
 /// Information about the next protocol upgrade.
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
@@ -32,6 +38,14 @@ impl NextUpgrade {
     /// Returns the activation point of the next upgrade.
     pub fn activation_point(&self) -> ActivationPoint {
         self.activation_point
+    }
+
+    #[cfg(test)]
+    pub(crate) fn random(rng: &mut TestRng) -> Self {
+        Self {
+            activation_point: ActivationPoint::random(rng),
+            protocol_version: ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen()),
+        }
     }
 }
 

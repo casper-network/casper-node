@@ -5,11 +5,20 @@ use alloc::vec::Vec;
 
 use super::type_wrappers::StoredValues;
 
+#[cfg(test)]
+use rand::Rng;
+
+#[cfg(test)]
+use core::iter;
+
+#[cfg(test)]
+use crate::{testing::TestRng, ByteCode, ByteCodeKind, StoredValue};
+
 const ROOT_NOT_FOUND_TAG: u8 = 0;
 const SUCCESS_TAG: u8 = 1;
 
 /// Represents a result of a `get_all_values` request.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum GetAllValuesResult {
     /// Invalid state root hash.
     RootNotFound,
@@ -18,6 +27,31 @@ pub enum GetAllValuesResult {
         /// Current values.
         values: StoredValues,
     },
+}
+
+impl GetAllValuesResult {
+    #[cfg(test)]
+    pub(crate) fn random(rng: &mut TestRng) -> Self {
+        match rng.gen_range(0..2) {
+            0 => GetAllValuesResult::RootNotFound,
+            1 => {
+                let count = rng.gen_range(10..20);
+                GetAllValuesResult::Success {
+                    values: StoredValues(
+                        iter::repeat_with(|| {
+                            StoredValue::ByteCode(ByteCode::new(
+                                ByteCodeKind::V1CasperWasm,
+                                rng.random_vec(10..20),
+                            ))
+                        })
+                        .take(count)
+                        .collect(),
+                    ),
+                }
+            }
+            _ => panic!(),
+        }
+    }
 }
 
 impl ToBytes for GetAllValuesResult {
@@ -57,5 +91,19 @@ impl FromBytes for GetAllValuesResult {
             ROOT_NOT_FOUND_TAG => Ok((GetAllValuesResult::RootNotFound, remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::TestRng;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+
+        let val = GetAllValuesResult::random(rng);
+        bytesrepr::test_serialization_roundtrip(&val);
     }
 }

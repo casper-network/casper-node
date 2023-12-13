@@ -6,7 +6,13 @@ use crate::{
 };
 use alloc::{string::String, vec::Vec};
 
-use super::{db_id::DbId, non_persistent_data::NonPersistedDataRequest};
+#[cfg(test)]
+use rand::Rng;
+
+#[cfg(test)]
+use crate::testing::TestRng;
+
+use super::{db_id::DbId, non_persistent_data_request::NonPersistedDataRequest};
 
 const DB_TAG: u8 = 0;
 const NON_PERSISTED_DATA_TAG: u8 = 1;
@@ -15,7 +21,7 @@ const ALL_VALUES_TAG: u8 = 3;
 const TRIE_TAG: u8 = 4;
 
 /// The kind of the `Get` operation.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum GetRequest {
     /// Gets data stored under the given key from the given db.
     Db {
@@ -47,6 +53,37 @@ pub enum GetRequest {
         /// A trie key.
         trie_key: Digest,
     },
+}
+
+impl GetRequest {
+    #[cfg(test)]
+    pub(crate) fn random(rng: &mut TestRng) -> Self {
+        match rng.gen_range(0..5) {
+            0 => GetRequest::Db {
+                db: DbId::random(rng),
+                key: rng.random_vec(16..32),
+            },
+            1 => GetRequest::NonPersistedData(NonPersistedDataRequest::random(rng)),
+            2 => {
+                let path_count = rng.gen_range(10..20);
+                GetRequest::State {
+                    state_root_hash: Digest::random(rng),
+                    base_key: rng.gen(),
+                    path: std::iter::repeat_with(|| rng.random_string(32..64))
+                        .take(path_count)
+                        .collect(),
+                }
+            }
+            3 => GetRequest::AllValues {
+                state_root_hash: Digest::random(rng),
+                key_tag: KeyTag::random(rng),
+            },
+            4 => GetRequest::Trie {
+                trie_key: Digest::random(rng),
+            },
+            _ => panic!(),
+        }
+    }
 }
 
 impl ToBytes for GetRequest {
@@ -187,5 +224,19 @@ impl FromBytes for GetRequest {
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::TestRng;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+
+        let val = GetRequest::random(rng);
+        bytesrepr::test_serialization_roundtrip(&val);
     }
 }
