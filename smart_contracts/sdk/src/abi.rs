@@ -101,6 +101,7 @@ impl_abi_for_types!(
     i8, i16, i32, i64,
     f32, f64,
     String => "string",
+    &str => "string",
 );
 
 impl<T: CasperABI, E: CasperABI> CasperABI for Result<T, E> {

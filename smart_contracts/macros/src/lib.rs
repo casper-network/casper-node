@@ -10,7 +10,7 @@ use syn::{
     parse_macro_input, token::Struct, Data, DeriveInput, Error, Fields, ItemEnum, ItemFn, ItemImpl,
     ItemStruct, ItemUnion, Meta, Path, Type,
 };
-use vm_common::flags::EntryPointFlags;
+use vm_common::flags::{self, EntryPointFlags};
 
 #[proc_macro_derive(Contract)]
 pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
@@ -30,8 +30,6 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
     let mut fields = Vec::new();
     let mut fields_for_schema = Vec::new();
 
-    // let fields = data_struct.fields;
-    let mut fields_for_new = Vec::new();
     for field in &data_struct.fields {
         let name = &field.ident;
         let ty = &field.ty;
@@ -46,10 +44,6 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
                 def: <#ty as casper_sdk::abi::CasperABI>::definition(),
             }
         });
-
-        fields_for_new.push(quote! {
-            #name: casper_sdk::Field::new(stringify!(#name), 0)
-        })
     }
 
     let static_metadata = format_ident!("{name}EntryPoint");
@@ -57,11 +51,6 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
     let f = quote! {
 
         impl casper_sdk::Contract for #name {
-            fn new() -> Self {
-                Self {
-                    #(#fields_for_new,)*
-                }
-            }
 
             fn name() -> &'static str {
                 stringify!(#name)
@@ -138,6 +127,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     Meta::Path(path) => {
                                         for seg in &path.segments {
                                             if seg.ident == "constructor" {
+                                                // todo!("{:?}", &func);
                                                 func_attrs.insert(Attribute::Constructor);
                                             } else {
                                                 panic!("Unknown modifier: {:?}", seg)
@@ -173,15 +163,32 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                             let arg_count = arg_names.len();
 
-                            if func_attrs.contains(&Attribute::Constructor) {
+                            let preamble = if func_attrs.contains(&Attribute::Constructor) {
                                 let sig = &func.sig;
-                                match &func.sig.output {
-                                    syn::ReturnType::Default => {}
-                                    syn::ReturnType::Type(_, ty) => {
-                                        panic!("Constructor cannot have return type");
+                                match func.sig.inputs.first() {
+                                    Some(syn::FnArg::Receiver(receiver)) => {
+                                        panic!("Constructor should not take a receiver")
                                     }
+                                    _ => {}
                                 }
-                            }
+                                match &func.sig.output {
+                                    syn::ReturnType::Default => {
+                                        panic!(
+                                            "Constructor should return an instance of the struct"
+                                        );
+                                    }
+                                    syn::ReturnType::Type(_, ty) => match ty.as_ref() {
+                                        Type::Never(_) => {
+                                            panic!("Constructors should return a have return value")
+                                        }
+                                        ty2 => quote! {
+                                            static_assertions::assert_type_eq_all(#struct_name, #ty2);
+                                        },
+                                    },
+                                }
+                            } else {
+                                quote! {}
+                            };
 
                             assert_eq!(arg_names.len(), arg_types.len());
 
@@ -200,22 +207,40 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                             // let wrapper_function_name = format_ident!("")
 
-                            manifest_entry_points_data.push(quote! {
+                            if func_attrs.contains(&Attribute::Constructor) {
+                                manifest_entry_points_data.push(quote! {
 
-                                #[allow(non_upper_case_globals)]
-                                const #name: (&'static str, [casper_sdk::host::Param; #arg_count], extern "C" fn() -> ()) = {
-                                    extern "C" fn #name() {
-                                        casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
-                                            let mut contract_instance = <#struct_name as casper_sdk::Contract>::new();
-                                            let result = contract_instance.#name(#(#arg_names,)*);
-                                            let serialized_result = borsh::to_vec(&result).unwrap();
-                                            casper_sdk::host::casper_return(vm_common::flags::ReturnFlags::empty(), Some(&serialized_result));
-                                        })
-                                    }
-                                    (stringify!(#name), [#(#entrypoint_params,)*], #name)
-                                };
+                                    #[allow(non_upper_case_globals)]
+                                    const #name: (&'static str, [casper_sdk::host::Param; #arg_count], extern "C" fn() -> ()) = {
+                                        extern "C" fn #name() {
+                                            casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
+                                                let mut contract_instance = <#struct_name>::#name(#(#arg_names,)*);
+                                                let serialized_result = borsh::to_vec(&contract_instance).unwrap();
+                                                casper_sdk::host::casper_return(vm_common::flags::ReturnFlags::empty(), Some(&serialized_result));
+                                            })
+                                        }
+                                        (stringify!(#name), [#(#entrypoint_params,)*], #name)
+                                    };
 
-                            });
+                                });
+                            } else {
+                                manifest_entry_points_data.push(quote! {
+
+                                    #[allow(non_upper_case_globals)]
+                                    const #name: (&'static str, [casper_sdk::host::Param; #arg_count], extern "C" fn() -> ()) = {
+                                        extern "C" fn #name() {
+                                            casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
+                                                let mut contract_instance: #struct_name = casper_sdk::host::read_state().unwrap();
+                                                let ret = contract_instance.#name(#(#arg_names,)*);
+                                                casper_sdk::host::write_state(&contract_instance).unwrap();
+                                                ret
+                                            })
+                                        }
+                                        (stringify!(#name), [#(#entrypoint_params,)*], #name)
+                                    };
+
+                                });
+                            }
 
                             for func_attr in func_attrs {
                                 match func_attr {
@@ -604,7 +629,28 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
     //     }
     // };
     let res = if let Ok(input) = syn::parse::<ItemStruct>(input.clone()) {
-        todo!("Struct")
+        let name = input.ident.clone();
+        // // let all_items = Vec::new();
+        // for field in input.fields.iter() {
+        //     match &field.ty {
+        //         Type::Path(path) => {
+        //             for segment in &path.path.segments {
+        //                 let type_name = &segment.ident;
+        //                 let field_name = &field.ident;
+        //                 todo!("{:?} {:?}", type_name, field_name);
+        //             }
+        //         }
+        //         other_ty => todo!("Unsupported type {other_ty:?}"),
+        //     }
+        // }
+
+        Ok(quote! {
+            impl casper_sdk::abi::CasperABI for #name {
+                fn definition() -> casper_sdk::abi::Definition {
+                    todo!()
+                }
+            }
+        })
     } else if let Ok(input) = syn::parse::<ItemEnum>(input.clone()) {
         // TODO: Check visibility
         let name = input.ident.clone();

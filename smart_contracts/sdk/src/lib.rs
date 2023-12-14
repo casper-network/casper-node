@@ -47,7 +47,6 @@ pub fn reserve_vec_space(vec: &mut Vec<u8>, size: usize) -> Option<ptr::NonNull<
 }
 
 pub trait Contract {
-    fn new() -> Self;
     fn name() -> &'static str;
     fn create(
         entry_point: Option<&str>,

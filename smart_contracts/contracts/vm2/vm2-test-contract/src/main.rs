@@ -5,27 +5,9 @@
 extern crate alloc;
 
 use alloc::{string::String, vec::Vec};
+use borsh::BorshDeserialize;
 use casper_macros::{casper, Contract};
 use casper_sdk::{log, Field};
-
-#[derive(Contract)]
-struct Greeter {
-    greeting: Field<String>,
-}
-
-#[casper(entry_points)]
-impl Greeter {
-    pub fn get_greeting(&self) -> String {
-        self.greeting
-            .read()
-            .expect("should read value")
-            .unwrap_or_default()
-    }
-    pub fn set_greeting(&mut self, greeting: String) {
-        log!("Saving greeting {}", greeting);
-        self.greeting.write(greeting).unwrap();
-    }
-}
 
 mod exports {
 
@@ -209,7 +191,7 @@ pub fn foobar() {}
 #[cfg(test)]
 mod tests {
 
-    use casper_sdk::{schema::schema_helper, Contract, Schema};
+    use casper_sdk::{schema::schema_helper, Contract};
 
     use super::*;
 
@@ -223,25 +205,5 @@ mod tests {
     fn exports() {
         dbg!(schema_helper::list_exports());
         // dbg!(schema_helpe)
-    }
-
-    #[test]
-    fn compile_time_schema() {
-        let schema = Greeter::schema();
-        // dbg!(&schema);
-        assert_eq!(schema.name, "Greeter");
-        assert_eq!(schema.entry_points[0].name, "get_greeting");
-        assert_eq!(schema.entry_points[1].name, "set_greeting");
-        // let s = serde_json::to_string_pretty(&schema).expect("foo");
-        // println!("{s}");
-    }
-
-    #[test]
-    fn should_greet() {
-        assert_eq!(Greeter::name(), "Greeter");
-        let mut flipper = Greeter::new();
-        assert_eq!(flipper.get_greeting(), ""); // TODO: Initializer
-        flipper.set_greeting("Hi".into());
-        assert_eq!(flipper.get_greeting(), "Hi");
     }
 }

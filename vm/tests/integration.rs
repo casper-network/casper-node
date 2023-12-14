@@ -239,7 +239,10 @@ fn run_wasm<T: BorshSerialize>(contract_name: &'static [u8], input_data: T) {
         .with_input(input)
         .build();
 
-    let mock_context = Context { storage };
+    let mock_context = Context {
+        address: [0; 32],
+        storage,
+    };
 
     let retrieved_context = {
         let mut instance = vm

@@ -611,10 +611,11 @@ where
         let WasmerInstance { env, store, .. } = self;
         let WasmerEnv { context, .. } = env.as_ref(&store);
 
-        let Context { storage } = context;
+        let Context { storage, address } = context;
 
         Context {
             storage: storage.clone(),
+            address: *address,
         }
     }
 }

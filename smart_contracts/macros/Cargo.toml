@@ -16,3 +16,4 @@ vm-common = { path = "../../vm-common" }
 paste = "1"
 darling = "0.20.3"
 proc-macro2 = "1.0"
+static_assertions = "1.1.0"

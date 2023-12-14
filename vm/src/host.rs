@@ -57,6 +57,9 @@ pub(crate) fn casper_write<S: Storage>(
         .memory_read(key_ptr, key_size.try_into().unwrap())
         .expect("should read key bytes");
 
+    let mut prefixed = caller.context().address.to_vec();
+    prefixed.extend(key);
+
     let value = caller
         .memory_read(value_ptr, value_size.try_into().unwrap())
         .expect("should read value bytes");
@@ -65,7 +68,7 @@ pub(crate) fn casper_write<S: Storage>(
     caller
         .context()
         .storage
-        .write(key_space, &key, value_tag, &value)
+        .write(key_space, &prefixed, value_tag, &value)
         .unwrap();
 
     0
@@ -98,7 +101,10 @@ pub(crate) fn casper_read<S: Storage>(
         .memory_read(key_ptr, key_size.try_into().unwrap())
         .expect("should read key bytes");
 
-    match caller.context().storage.read(key_tag, &key) {
+    let mut prefixed = caller.context().address.to_vec();
+    prefixed.extend(key);
+
+    match caller.context().storage.read(key_tag, &prefixed) {
         Ok(Some(entry)) => {
             let out_ptr: u32 = caller
                 .alloc(cb_alloc, entry.data.len(), cb_ctx)
@@ -276,8 +282,22 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
 
         vec
     };
+    let manifest = storage::Manifest {
+        entrypoints: entrypoints.clone(),
+    };
 
-    if let Some(entry_point_name) = entry_point_name {
+    dbg!(&manifest);
+
+    let storage::CreateResult {
+        package_address,
+        contract_address,
+    } = caller
+        .context()
+        .storage
+        .create_contract(code.clone(), manifest)
+        .unwrap();
+
+    let initial_state = if let Some(entry_point_name) = entry_point_name {
         // Find all entrypoints with a flag set to CONSTRUCTOR
         let mut constructors = entrypoints
             .iter()
@@ -305,7 +325,10 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
                     .try_into_remaining()
                     .expect("should be remaining");
 
-                let new_context = Context { storage };
+                let new_context = Context {
+                    address: contract_address,
+                    storage,
+                };
 
                 let new_config = ConfigBuilder::new()
                     .with_gas_limit(gas_limit)
@@ -357,10 +380,7 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
                 }
 
                 match host_result {
-                    Ok(()) => {
-                        // We don't allow capturing output from a constructor. All constructors are
-                        // expected to have return value of ().
-                    }
+                    Ok(()) => return_data,
                     error @ Err(_) => {
                         dbg!(&error);
                         // If the constructor failed, we have to return the error to the caller.
@@ -372,20 +392,23 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
                 todo!("Constructor not found; raise error")
             }
         }
+    } else {
+        None
+    };
+
+    if let Some(state) = initial_state {
+        eprintln!("Storing initial state after calling constructor {state:?}");
+        caller
+            .context()
+            .storage
+            .write(
+                0, // KEYSPACE_STATE
+                &contract_address,
+                0,
+                &state,
+            )
+            .unwrap();
     }
-
-    let manifest = storage::Manifest { entrypoints };
-
-    dbg!(&manifest);
-
-    let storage::CreateResult {
-        package_address,
-        contract_address,
-    } = caller
-        .context()
-        .storage
-        .create_contract(code, manifest)
-        .unwrap();
 
     let create_result = CreateResult {
         package_address,
@@ -453,7 +476,10 @@ pub(crate) fn casper_call<S: Storage + 'static>(
             let mut vm = VM::new();
             let storage = caller.context().storage.clone();
 
-            let new_context = Context { storage };
+            let new_context = Context {
+                address: address.try_into().unwrap(),
+                storage,
+            };
 
             // let config = ConfigBuilder:
             // caller.self.config()

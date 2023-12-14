@@ -115,6 +115,22 @@ pub use native::{
     casper_write,
 };
 
+use crate::{reserve_vec_space, storage::Keyspace, Contract};
+
+pub fn read_state<T: Default + BorshDeserialize + Contract>() -> Result<T, Error> {
+    let mut vec = Vec::new();
+    let read_info = casper_read(Keyspace::State, |size| reserve_vec_space(&mut vec, size))?;
+    match read_info {
+        Some(_input) => Ok(borsh::from_slice(&vec).unwrap()),
+        None => Ok(T::default()),
+    }
+}
+
+pub fn write_state<T: Contract + BorshSerialize>(state: &T) -> Result<(), Error> {
+    casper_write(Keyspace::State, 0, &borsh::to_vec(state).unwrap())?;
+    Ok(())
+}
+
 /// TODO: Remove once procedural macros are improved, this is just to save the boilerplate when
 /// doing things manually.
 pub fn start<Args: BorshDeserialize, Ret: BorshSerialize>(func: impl Fn(Args) -> Ret) {

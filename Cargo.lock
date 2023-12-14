@@ -661,6 +661,7 @@ dependencies = [
  "paste",
  "proc-macro2 1.0.63",
  "quote 1.0.29",
+ "static_assertions",
  "syn 2.0.32",
  "vm-common",
 ]

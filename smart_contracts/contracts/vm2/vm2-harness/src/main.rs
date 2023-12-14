@@ -10,7 +10,7 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 // use borsh_derive::BorshSerialize;
 use casper_macros::{casper, CasperABI, Contract, Schema};
 use casper_sdk::{
@@ -21,9 +21,9 @@ use casper_sdk::{
 
 const INITIAL_GREETING: &str = "This is initial data set from a constructor";
 
-#[derive(Contract, Schema)]
+#[derive(Contract, Schema, BorshSerialize, BorshDeserialize, CasperABI)]
 struct Greeter {
-    greeting: Field<String>,
+    greeting: String,
 }
 
 #[repr(u32)]
@@ -35,22 +35,32 @@ pub enum CustomError {
     WithBody(String),
 }
 
+impl Default for Greeter {
+    fn default() -> Self {
+        Self {
+            greeting: "Default value".to_string(),
+        }
+    }
+}
+
 #[casper(entry_points)]
 impl Greeter {
     #[constructor]
-    pub fn constructor_with_args(&mut self, who: String) {
+    pub fn constructor_with_args(who: String) -> Self {
         log!("👋 Hello from constructor with args: {who}");
-        self.greeting.write(format!("Hello, {who}!")).unwrap();
+        Self {
+            greeting: format!("Hello, {who}!"),
+        }
     }
 
     #[constructor]
-    pub fn failing_constructor(&mut self, who: String) {
+    pub fn failing_constructor(who: String) -> Self {
         log!("👋 Hello from failing constructor with args: {who}");
         revert!();
     }
 
     #[constructor]
-    pub fn trapping_constructor(&mut self) {
+    pub fn trapping_constructor() -> Self {
         log!("👋 Hello from trapping constructor");
         // TODO: Storage doesn't fork as of yet, need to integrate casper-storage crate and leverage
         // the tracking copy.
@@ -58,21 +68,20 @@ impl Greeter {
     }
 
     #[constructor]
-    pub fn initialize(&mut self) {
+    pub fn initialize() -> Self {
         log!("👋 Hello from constructor");
-        self.greeting.write(INITIAL_GREETING.to_string()).unwrap();
+        Self {
+            greeting: INITIAL_GREETING.to_string(),
+        }
     }
 
     pub fn get_greeting(&self) -> String {
-        self.greeting
-            .read()
-            .expect("should read value")
-            .unwrap_or_default()
+        self.greeting.clone() // TODO: Clone is not needed here, support &str return values
     }
 
     pub fn set_greeting(&mut self, greeting: String) {
         log!("Saving greeting {}", greeting);
-        self.greeting.write(greeting).unwrap();
+        self.greeting = greeting;
     }
 
     pub fn emit_unreachable_trap(&self) -> ! {
@@ -154,14 +163,6 @@ pub fn call() {
             log!("contract_address: {:?}", contract_address);
             log!("version: {:?}", version);
 
-            // let call_0 = "get_greeting";
-            // let (maybe_data_0, result_code_0) =
-            //     host::casper_call(&contract_address, 0, call_0, &[]);
-            // log!("{call_0:?} result={result_code_0:?}");
-            // assert_eq!(
-            //     borsh::from_slice::<String>(&maybe_data_0.as_ref().expect("return
-            // value")).unwrap(),     INITIAL_GREETING.to_string()
-            // );
             let get_greeting: TypedCall<(), String> =
                 TypedCall::new(contract_address, "get_greeting");
             let result = get_greeting.call(()).into_result();
@@ -316,7 +317,8 @@ mod tests {
     }
 
     #[test]
-    fn abi_for_custom_error() {
-        dbg!(CustomError::definition());
+    fn unittest() {
+        let foo = Greeter::initialize();
+        assert_eq!(foo.get_greeting(), INITIAL_GREETING);
     }
 }

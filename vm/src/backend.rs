@@ -4,7 +4,10 @@ use std::{marker::PhantomData, ops::Deref, sync::Arc};
 use thiserror::Error;
 use wasmer_middlewares::Metering;
 
-use crate::{storage::Storage, Config, VMError, VMResult};
+use crate::{
+    storage::{Address, Storage},
+    Config, VMError, VMResult,
+};
 
 #[derive(Debug)]
 pub struct GasUsage {
@@ -15,6 +18,7 @@ pub struct GasUsage {
 
 /// Container that holds all relevant modules necessary to process an execution request.
 pub struct Context<S: Storage + Clone> {
+    pub address: Address,
     pub storage: S,
 }
 
