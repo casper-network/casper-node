@@ -21,7 +21,8 @@ use casper_types::{
         DbRawBytesSpec, NodeStatus,
     },
     bytesrepr::{self, FromBytes, ToBytes},
-    BinaryResponse, BinaryResponseAndRequest, BlockHashAndHeight, BlockHeader, Peers, Transaction,
+    BinaryResponse, BinaryResponseAndRequest, BlockHashAndHeight, BlockHeader, Digest, Peers,
+    ProtocolVersion, Timestamp, Transaction,
 };
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
@@ -228,8 +229,6 @@ where
 {
     // TODO[RC]: clean this up, delegate to specialized functions
     match req {
-        // Related RPC errors:
-        // - ErrorCode::InvalidDeploy -->
         BinaryRequest::TryAcceptTransaction { transaction } => {
             try_accept_transaction(effect_builder, transaction, None).await
         }
@@ -249,34 +248,14 @@ where
             if !response.is_success() {
                 return response;
             }
-
-            let execution_prestate = SpeculativeExecutionState {
+            try_speculative_execution(
+                effect_builder,
                 state_root_hash,
                 block_time,
                 protocol_version,
-            };
-
-            let speculative_execution_result = effect_builder
-                .speculatively_execute(execution_prestate, Box::new(transaction))
-                .await;
-
-            match speculative_execution_result {
-                Ok(result) => BinaryResponse::from_value(result),
-                Err(err) => BinaryResponse::new_error(match err {
-                    EngineStateError::RootNotFound(_) => binary_port::ErrorCode::RootNotFound,
-                    EngineStateError::InvalidDeployItemVariant(_) => {
-                        binary_port::ErrorCode::InvalidDeployItemVariant
-                    }
-                    EngineStateError::WasmPreprocessing(_) => {
-                        binary_port::ErrorCode::WasmPreprocessing
-                    }
-                    EngineStateError::InvalidProtocolVersion(_) => {
-                        binary_port::ErrorCode::InvalidProtocolVersion
-                    }
-                    EngineStateError::Deploy => binary_port::ErrorCode::InvalidDeploy,
-                    _ => binary_port::ErrorCode::InternalError,
-                }),
-            }
+                transaction,
+            )
+            .await
         }
         BinaryRequest::Get(get_req) => match get_req {
             // this workaround is in place because get_block_transfers performs a lazy migration
@@ -509,6 +488,43 @@ where
             | transaction_acceptor::Error::ExpectedTransactionV1 => {
                 binary_port::ErrorCode::InvalidDeploy
             }
+        }),
+    }
+}
+
+async fn try_speculative_execution<REv>(
+    effect_builder: EffectBuilder<REv>,
+    state_root_hash: Digest,
+    block_time: Timestamp,
+    protocol_version: ProtocolVersion,
+    transaction: Transaction,
+) -> BinaryResponse
+where
+    REv: From<Event> + From<ContractRuntimeRequest>,
+{
+    match effect_builder
+        .speculatively_execute(
+            SpeculativeExecutionState {
+                state_root_hash,
+                block_time,
+                protocol_version,
+            },
+            Box::new(transaction),
+        )
+        .await
+    {
+        Ok(result) => BinaryResponse::from_value(result),
+        Err(err) => BinaryResponse::new_error(match err {
+            EngineStateError::RootNotFound(_) => binary_port::ErrorCode::RootNotFound,
+            EngineStateError::InvalidDeployItemVariant(_) => {
+                binary_port::ErrorCode::InvalidDeployItemVariant
+            }
+            EngineStateError::WasmPreprocessing(_) => binary_port::ErrorCode::WasmPreprocessing,
+            EngineStateError::InvalidProtocolVersion(_) => {
+                binary_port::ErrorCode::InvalidProtocolVersion
+            }
+            EngineStateError::Deploy => binary_port::ErrorCode::InvalidDeploy,
+            _ => binary_port::ErrorCode::InternalError,
         }),
     }
 }
