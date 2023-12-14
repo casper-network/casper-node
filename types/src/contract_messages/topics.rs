@@ -22,7 +22,6 @@ use super::error::FromStrError;
 
 /// The length in bytes of a topic name hash.
 pub const TOPIC_NAME_HASH_LENGTH: usize = 32;
-const MESSAGE_TOPIC_NAME_HASH: &str = "topic-name-";
 
 /// The hash of the name of the message topic.
 #[derive(Default, PartialOrd, Ord, PartialEq, Eq, Clone, Copy, Hash)]
@@ -50,20 +49,13 @@ impl TopicNameHash {
 
     /// Formats the [`TopicNameHash`] as a prefixed, hex-encoded string.
     pub fn to_formatted_string(self) -> String {
-        format!(
-            "{}{}",
-            MESSAGE_TOPIC_NAME_HASH,
-            base16::encode_lower(&self.0),
-        )
+        base16::encode_lower(&self.0)
     }
 
     /// Parses a string formatted as per `Self::to_formatted_string()` into a [`TopicNameHash`].
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
-        let remainder = input
-            .strip_prefix(MESSAGE_TOPIC_NAME_HASH)
-            .ok_or(FromStrError::InvalidPrefix)?;
         let bytes =
-            <[u8; TOPIC_NAME_HASH_LENGTH]>::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
+            <[u8; TOPIC_NAME_HASH_LENGTH]>::try_from(checksummed_hex::decode(input)?.as_ref())?;
         Ok(TopicNameHash(bytes))
     }
 }
@@ -250,5 +242,18 @@ mod tests {
 
         let topic_operation = MessageTopicOperation::Add;
         bytesrepr::test_serialization_roundtrip(&topic_operation);
+    }
+
+    #[test]
+    fn json_roundtrip() {
+        let topic_name_hash = TopicNameHash::new([0x4du8; TOPIC_NAME_HASH_LENGTH]);
+        let json_string = serde_json::to_string_pretty(&topic_name_hash).unwrap();
+        let decoded: TopicNameHash = serde_json::from_str(&json_string).unwrap();
+        assert_eq!(decoded, topic_name_hash);
+
+        let topic_summary = MessageTopicSummary::new(10, BlockTime::new(100));
+        let json_string = serde_json::to_string_pretty(&topic_summary).unwrap();
+        let decoded: MessageTopicSummary = serde_json::from_str(&json_string).unwrap();
+        assert_eq!(decoded, topic_summary);
     }
 }
