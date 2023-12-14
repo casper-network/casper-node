@@ -193,7 +193,7 @@ function _setup_asset_node_configs()
         "cfg['network']['known_addresses']=[$(get_network_known_addresses "$NODE_ID")];"
         "cfg['storage']['path']='../../storage';"
         "cfg['rest_server']['address']='0.0.0.0:$(get_node_port_rest "$NODE_ID")';"
-        "cfg['binary_port_server']['address']='0.0.0.0:$(get_node_port_binary "$IDX")';"
+        "cfg['binary_port_server']['address']='0.0.0.0:$(get_node_port_binary "$NODE_ID")';"
         "cfg['event_stream_server']['address']='0.0.0.0:$(get_node_port_sse "$NODE_ID")';"
     )
 
