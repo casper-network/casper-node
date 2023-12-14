@@ -10,7 +10,7 @@ use std::{convert::TryInto, net::SocketAddr, sync::Arc};
 
 use bytes::Bytes;
 use casper_execution_engine::engine_state::{
-    get_all_values::GetAllValuesRequest, Error as EngineStateError, QueryRequest, QueryResult,
+    get_all_values::GetAllValuesRequest, QueryRequest, QueryResult,
 };
 use casper_types::{
     binary_port::{
@@ -58,9 +58,7 @@ use crate::{
 
 use self::{error::Error, metrics::Metrics};
 
-use super::{
-    transaction_acceptor, Component, ComponentState, InitializedComponent, PortBoundComponent,
-};
+use super::{Component, ComponentState, InitializedComponent, PortBoundComponent};
 pub(crate) use config::Config;
 pub(crate) use event::Event;
 
@@ -473,23 +471,13 @@ async fn try_accept_transaction<REv>(
 where
     REv: From<AcceptTransactionRequest>,
 {
-    match effect_builder
+    effect_builder
         .try_accept_transaction(transaction, speculative_exec_at.map(Box::new))
         .await
-    {
-        Ok(_) => BinaryResponse::new_empty(),
-        Err(err) => BinaryResponse::new_error(match err {
-            transaction_acceptor::Error::EmptyBlockchain
-            | transaction_acceptor::Error::InvalidDeployConfiguration(_)
-            | transaction_acceptor::Error::InvalidV1Configuration(_)
-            | transaction_acceptor::Error::Parameters { .. }
-            | transaction_acceptor::Error::Expired { .. }
-            | transaction_acceptor::Error::ExpectedDeploy
-            | transaction_acceptor::Error::ExpectedTransactionV1 => {
-                binary_port::ErrorCode::InvalidDeploy
-            }
-        }),
-    }
+        .map_or_else(
+            |err| BinaryResponse::new_error(err.into()),
+            |_| BinaryResponse::new_empty(),
+        )
 }
 
 async fn try_speculative_execution<REv>(
@@ -502,7 +490,7 @@ async fn try_speculative_execution<REv>(
 where
     REv: From<Event> + From<ContractRuntimeRequest>,
 {
-    match effect_builder
+    effect_builder
         .speculatively_execute(
             SpeculativeExecutionState {
                 state_root_hash,
@@ -512,21 +500,10 @@ where
             Box::new(transaction),
         )
         .await
-    {
-        Ok(result) => BinaryResponse::from_value(result),
-        Err(err) => BinaryResponse::new_error(match err {
-            EngineStateError::RootNotFound(_) => binary_port::ErrorCode::RootNotFound,
-            EngineStateError::InvalidDeployItemVariant(_) => {
-                binary_port::ErrorCode::InvalidDeployItemVariant
-            }
-            EngineStateError::WasmPreprocessing(_) => binary_port::ErrorCode::WasmPreprocessing,
-            EngineStateError::InvalidProtocolVersion(_) => {
-                binary_port::ErrorCode::InvalidProtocolVersion
-            }
-            EngineStateError::Deploy => binary_port::ErrorCode::InvalidDeploy,
-            _ => binary_port::ErrorCode::InternalError,
-        }),
-    }
+        .map_or_else(
+            |err| BinaryResponse::new_error(err.into()),
+            BinaryResponse::from_value,
+        )
 }
 
 async fn client_loop<REv, const N: usize, R, W>(

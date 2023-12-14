@@ -4,8 +4,8 @@ use thiserror::Error;
 
 use casper_storage::global_state::{self, state::CommitError};
 use casper_types::{
-    account::AccountHash, bytesrepr, system::mint, ApiError, Digest, Key, KeyTag, PackageHash,
-    ProtocolVersion,
+    account::AccountHash, binary_port, bytesrepr, system::mint, ApiError, Digest, Key, KeyTag,
+    PackageHash, ProtocolVersion,
 };
 
 use crate::{
@@ -159,6 +159,19 @@ impl From<Box<GenesisError>> for Error {
 impl From<stack::RuntimeStackOverflow> for Error {
     fn from(_: stack::RuntimeStackOverflow) -> Self {
         Self::RuntimeStackOverflow
+    }
+}
+
+impl From<Error> for binary_port::ErrorCode {
+    fn from(err: Error) -> Self {
+        match err {
+            Error::RootNotFound(_) => binary_port::ErrorCode::RootNotFound,
+            Error::InvalidDeployItemVariant(_) => binary_port::ErrorCode::InvalidDeployItemVariant,
+            Error::WasmPreprocessing(_) => binary_port::ErrorCode::WasmPreprocessing,
+            Error::InvalidProtocolVersion(_) => binary_port::ErrorCode::InvalidProtocolVersion,
+            Error::Deploy => binary_port::ErrorCode::InvalidDeploy,
+            _ => binary_port::ErrorCode::InternalError,
+        }
     }
 }
 
