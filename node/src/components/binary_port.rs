@@ -225,7 +225,6 @@ where
         + From<ChainspecRawBytesRequest>
         + Send,
 {
-    // TODO[RC]: clean this up, delegate to specialized functions
     match req {
         BinaryRequest::TryAcceptTransaction { transaction } => {
             try_accept_transaction(effect_builder, transaction, None).await
@@ -255,211 +254,263 @@ where
             )
             .await
         }
-        BinaryRequest::Get(get_req) => match get_req {
-            // this workaround is in place because get_block_transfers performs a lazy migration
-            GetRequest::Db { db, key } if db == DbId::Transfer => {
-                let Ok(block_hash) = bytesrepr::deserialize_from_slice(&key) else {
-                    return BinaryResponse::new_error(binary_port::ErrorCode::BadRequest);
-                };
-                let Some(transfers) = effect_builder
-                    .get_block_transfers_from_storage(block_hash)
-                    .await else {
-                    return BinaryResponse::from_db_raw_bytes(&db, None);
-                };
-                let serialized =
-                    bincode::serialize(&transfers).expect("should serialize transfers to bytes");
-                let bytes = DbRawBytesSpec::new_legacy(&serialized);
-                BinaryResponse::from_db_raw_bytes(&db, Some(bytes))
-            }
-            GetRequest::Db { db, key } => {
-                let maybe_raw_bytes = effect_builder.get_raw_data(db, key).await;
-                BinaryResponse::from_db_raw_bytes(&db, maybe_raw_bytes)
-            }
-            GetRequest::NonPersistedData(req) => match req {
-                NonPersistedDataRequest::BlockHeight2Hash { height } => {
-                    BinaryResponse::from_opt(effect_builder.get_block_hash_for_height(height).await)
-                }
-                NonPersistedDataRequest::HighestCompleteBlock => BinaryResponse::from_opt(
-                    effect_builder
-                        .get_highest_complete_block_header_from_storage()
-                        .await
-                        .map(|block_header| {
-                            BlockHashAndHeight::new(
-                                block_header.block_hash(),
-                                block_header.height(),
-                            )
-                        }),
-                ),
-                NonPersistedDataRequest::CompletedBlocksContain { block_identifier } => {
-                    BinaryResponse::from_value(
-                        effect_builder
-                            .highest_completed_block_sequence_contains(block_identifier)
-                            .await,
-                    )
-                }
-                NonPersistedDataRequest::TransactionHash2BlockHashAndHeight {
-                    transaction_hash,
-                } => BinaryResponse::from_opt(
-                    effect_builder
-                        .get_block_hash_and_height_for_transaction(transaction_hash)
-                        .await,
-                ),
-                NonPersistedDataRequest::Peers => {
-                    BinaryResponse::from_value(Peers::from(effect_builder.network_peers().await))
-                }
-                NonPersistedDataRequest::Uptime => {
-                    BinaryResponse::from_value(effect_builder.get_uptime().await)
-                }
-                NonPersistedDataRequest::LastProgress => {
-                    BinaryResponse::from_value(effect_builder.get_last_progress().await)
-                }
-                NonPersistedDataRequest::ReactorState => {
-                    BinaryResponse::from_value(effect_builder.get_reactor_state().await)
-                }
-                NonPersistedDataRequest::NetworkName => {
-                    BinaryResponse::from_value(effect_builder.get_network_name().await)
-                }
-                NonPersistedDataRequest::ConsensusValidatorChanges => BinaryResponse::from_value(
-                    effect_builder.get_consensus_validator_changes().await,
-                ),
-                NonPersistedDataRequest::BlockSynchronizerStatus => {
-                    BinaryResponse::from_value(effect_builder.get_block_synchronizer_status().await)
-                }
-                NonPersistedDataRequest::AvailableBlockRange => BinaryResponse::from_value(
-                    effect_builder
-                        .get_available_block_range_from_storage()
-                        .await,
-                ),
-                NonPersistedDataRequest::NextUpgrade => {
-                    BinaryResponse::from_opt(effect_builder.get_next_upgrade().await)
-                }
-                NonPersistedDataRequest::ConsensusStatus => {
-                    BinaryResponse::from_opt(effect_builder.consensus_status().await)
-                }
-                NonPersistedDataRequest::ChainspecRawBytes => BinaryResponse::from_value(
-                    (*effect_builder.get_chainspec_raw_bytes().await).clone(),
-                ),
-                NonPersistedDataRequest::NodeStatus => {
-                    let (
-                        node_uptime,
-                        network_name,
-                        last_added_block,
-                        peers,
-                        next_upgrade,
-                        consensus_status,
-                        reactor_state,
-                        last_progress,
-                        available_block_range,
-                        block_sync,
-                    ) = join!(
-                        effect_builder.get_uptime(),
-                        effect_builder.get_network_name(),
-                        effect_builder.get_highest_complete_block_from_storage(),
-                        effect_builder.network_peers(),
-                        effect_builder.get_next_upgrade(),
-                        effect_builder.consensus_status(),
-                        effect_builder.get_reactor_state(),
-                        effect_builder.get_last_progress(),
-                        effect_builder.get_available_block_range_from_storage(),
-                        effect_builder.get_block_synchronizer_status(),
-                    );
-                    let starting_state_root_hash = effect_builder
-                        .get_block_header_at_height_from_storage(available_block_range.low(), true)
-                        .await
-                        .map(|header| *header.state_root_hash())
-                        .unwrap_or_default();
-                    let (our_public_signing_key, round_length) = consensus_status
-                        .map_or((None, None), |ConsensusStatus((pk, rl))| (Some(pk), rl));
+        BinaryRequest::Get(get_req) => handle_get_request(get_req, effect_builder, config).await,
+    }
+}
 
-                    let status = NodeStatus {
-                        peers: Peers::from(peers),
-                        build_version: crate::VERSION_STRING.clone(),
-                        chainspec_name: network_name.into(),
-                        starting_state_root_hash,
-                        last_added_block_info: last_added_block.map(Into::into),
-                        our_public_signing_key,
-                        round_length,
-                        next_upgrade,
-                        uptime: node_uptime
-                            .try_into()
-                            .expect("uptime should fit into TimeDiff"),
-                        reactor_state,
-                        last_progress: last_progress.into(),
-                        available_block_range,
-                        block_sync,
-                    };
-                    BinaryResponse::from_value(status)
-                }
-            },
-            GetRequest::State {
-                state_root_hash,
-                base_key,
-                path,
-            } => {
-                match effect_builder
-                    .query_global_state(QueryRequest::new(state_root_hash, base_key, path))
-                    .await
-                {
-                    Ok(QueryResult::Success { value, proofs }) => match proofs.to_bytes() {
-                        Ok(proofs) => BinaryResponse::from_value(GlobalStateQueryResult::new(
-                            *value,
-                            base16::encode_lower(&proofs),
-                        )),
-                        Err(_) => {
-                            let error_code = binary_port::ErrorCode::InternalError;
-                            BinaryResponse::new_error(error_code)
-                        }
-                    },
-                    Ok(QueryResult::RootNotFound) => {
-                        let error_code = binary_port::ErrorCode::RootNotFound;
-                        BinaryResponse::new_error(error_code)
-                    }
-                    Ok(_) => {
-                        let error_code = binary_port::ErrorCode::NotFound;
-                        BinaryResponse::new_error(error_code)
-                    }
-                    Err(_) => {
-                        let error_code = binary_port::ErrorCode::QueryFailedToExecute;
-                        BinaryResponse::new_error(error_code)
-                    }
-                }
+async fn handle_get_request<REv>(
+    get_req: GetRequest,
+    effect_builder: EffectBuilder<REv>,
+    config: &Config,
+) -> BinaryResponse
+where
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<NetworkInfoRequest>
+        + From<ReactorInfoRequest>
+        + From<ConsensusRequest>
+        + From<BlockSynchronizerRequest>
+        + From<UpgradeWatcherRequest>
+        + From<ChainspecRawBytesRequest>
+        + From<ContractRuntimeRequest>
+        + Send,
+{
+    match get_req {
+        // this workaround is in place because get_block_transfers performs a lazy migration
+        GetRequest::Db { db, key } if db == DbId::Transfer => {
+            let Ok(block_hash) = bytesrepr::deserialize_from_slice(&key) else {
+                return BinaryResponse::new_error(binary_port::ErrorCode::BadRequest);
+            };
+            let Some(transfers) = effect_builder
+                .get_block_transfers_from_storage(block_hash)
+                .await else {
+                return BinaryResponse::from_db_raw_bytes(&db, None);
+            };
+            let serialized =
+                bincode::serialize(&transfers).expect("should serialize transfers to bytes");
+            let bytes = DbRawBytesSpec::new_legacy(&serialized);
+            BinaryResponse::from_db_raw_bytes(&db, Some(bytes))
+        }
+        GetRequest::Db { db, key } => {
+            let maybe_raw_bytes = effect_builder.get_raw_data(db, key).await;
+            BinaryResponse::from_db_raw_bytes(&db, maybe_raw_bytes)
+        }
+        GetRequest::NonPersistedData(req) => {
+            handle_non_persisted_data_request(req, effect_builder).await
+        }
+        GetRequest::State {
+            state_root_hash,
+            base_key,
+            path,
+        } => handle_get_state_request(effect_builder, state_root_hash, base_key, path).await,
+        GetRequest::AllValues {
+            state_root_hash,
+            key_tag,
+        } => {
+            if !config.allow_request_get_all_values {
+                BinaryResponse::new_error(binary_port::ErrorCode::FunctionIsDisabled)
+            } else {
+                handle_get_all_values(state_root_hash, key_tag, effect_builder).await
             }
-            GetRequest::AllValues {
-                state_root_hash,
-                key_tag,
-            } => {
-                if !config.allow_request_get_all_values {
-                    BinaryResponse::new_error(binary_port::ErrorCode::FunctionIsDisabled)
-                } else {
-                    let get_all_values_request = GetAllValuesRequest::new(state_root_hash, key_tag);
-                    match effect_builder.get_all_values(get_all_values_request).await {
-                        Ok(GetAllValuesResult::Success { values }) => {
-                            BinaryResponse::from_value(values)
-                        }
-                        Ok(GetAllValuesResult::RootNotFound) => {
-                            let error_code = binary_port::ErrorCode::RootNotFound;
-                            BinaryResponse::new_error(error_code)
-                        }
-                        Err(_err) => {
-                            BinaryResponse::new_error(binary_port::ErrorCode::InternalError)
-                        }
-                    }
+        }
+        GetRequest::Trie { trie_key } => {
+            let response = if !config.allow_request_get_trie {
+                BinaryResponse::new_error(binary_port::ErrorCode::FunctionIsDisabled)
+            } else {
+                match effect_builder.get_trie_full(trie_key).await {
+                    Ok(result) => BinaryResponse::from_value(result),
+                    Err(_err) => BinaryResponse::new_error(binary_port::ErrorCode::InternalError),
                 }
-            }
-            GetRequest::Trie { trie_key } => {
-                let response = if !config.allow_request_get_trie {
-                    BinaryResponse::new_error(binary_port::ErrorCode::FunctionIsDisabled)
-                } else {
-                    match effect_builder.get_trie_full(trie_key).await {
-                        Ok(result) => BinaryResponse::from_value(result),
-                        Err(_err) => {
-                            BinaryResponse::new_error(binary_port::ErrorCode::InternalError)
-                        }
-                    }
-                };
-                response
+            };
+            response
+        }
+    }
+}
+
+async fn handle_get_all_values<REv>(
+    state_root_hash: Digest,
+    key_tag: casper_types::KeyTag,
+    effect_builder: EffectBuilder<REv>,
+) -> BinaryResponse
+where
+    REv: From<Event> + From<ContractRuntimeRequest>,
+{
+    let get_all_values_request = GetAllValuesRequest::new(state_root_hash, key_tag);
+    match effect_builder.get_all_values(get_all_values_request).await {
+        Ok(GetAllValuesResult::Success { values }) => BinaryResponse::from_value(values),
+        Ok(GetAllValuesResult::RootNotFound) => {
+            let error_code = binary_port::ErrorCode::RootNotFound;
+            BinaryResponse::new_error(error_code)
+        }
+        Err(_err) => BinaryResponse::new_error(binary_port::ErrorCode::InternalError),
+    }
+}
+
+async fn handle_get_state_request<REv>(
+    effect_builder: EffectBuilder<REv>,
+    state_root_hash: Digest,
+    base_key: casper_types::Key,
+    path: Vec<String>,
+) -> BinaryResponse
+where
+    REv: From<Event> + From<ContractRuntimeRequest>,
+{
+    match effect_builder
+        .query_global_state(QueryRequest::new(state_root_hash, base_key, path))
+        .await
+    {
+        Ok(QueryResult::Success { value, proofs }) => match proofs.to_bytes() {
+            Ok(proofs) => BinaryResponse::from_value(GlobalStateQueryResult::new(
+                *value,
+                base16::encode_lower(&proofs),
+            )),
+            Err(_) => {
+                let error_code = binary_port::ErrorCode::InternalError;
+                BinaryResponse::new_error(error_code)
             }
         },
+        Ok(QueryResult::RootNotFound) => {
+            let error_code = binary_port::ErrorCode::RootNotFound;
+            BinaryResponse::new_error(error_code)
+        }
+        Ok(_) => {
+            let error_code = binary_port::ErrorCode::NotFound;
+            BinaryResponse::new_error(error_code)
+        }
+        Err(_) => {
+            let error_code = binary_port::ErrorCode::QueryFailedToExecute;
+            BinaryResponse::new_error(error_code)
+        }
+    }
+}
+
+async fn handle_non_persisted_data_request<REv>(
+    req: NonPersistedDataRequest,
+    effect_builder: EffectBuilder<REv>,
+) -> BinaryResponse
+where
+    REv: From<Event>
+        + From<StorageRequest>
+        + From<NetworkInfoRequest>
+        + From<ReactorInfoRequest>
+        + From<ConsensusRequest>
+        + From<BlockSynchronizerRequest>
+        + From<UpgradeWatcherRequest>
+        + From<ChainspecRawBytesRequest>
+        + Send,
+{
+    match req {
+        NonPersistedDataRequest::BlockHeight2Hash { height } => {
+            BinaryResponse::from_opt(effect_builder.get_block_hash_for_height(height).await)
+        }
+        NonPersistedDataRequest::HighestCompleteBlock => BinaryResponse::from_opt(
+            effect_builder
+                .get_highest_complete_block_header_from_storage()
+                .await
+                .map(|block_header| {
+                    BlockHashAndHeight::new(block_header.block_hash(), block_header.height())
+                }),
+        ),
+        NonPersistedDataRequest::CompletedBlocksContain { block_identifier } => {
+            BinaryResponse::from_value(
+                effect_builder
+                    .highest_completed_block_sequence_contains(block_identifier)
+                    .await,
+            )
+        }
+        NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { transaction_hash } => {
+            BinaryResponse::from_opt(
+                effect_builder
+                    .get_block_hash_and_height_for_transaction(transaction_hash)
+                    .await,
+            )
+        }
+        NonPersistedDataRequest::Peers => {
+            BinaryResponse::from_value(Peers::from(effect_builder.network_peers().await))
+        }
+        NonPersistedDataRequest::Uptime => {
+            BinaryResponse::from_value(effect_builder.get_uptime().await)
+        }
+        NonPersistedDataRequest::LastProgress => {
+            BinaryResponse::from_value(effect_builder.get_last_progress().await)
+        }
+        NonPersistedDataRequest::ReactorState => {
+            BinaryResponse::from_value(effect_builder.get_reactor_state().await)
+        }
+        NonPersistedDataRequest::NetworkName => {
+            BinaryResponse::from_value(effect_builder.get_network_name().await)
+        }
+        NonPersistedDataRequest::ConsensusValidatorChanges => {
+            BinaryResponse::from_value(effect_builder.get_consensus_validator_changes().await)
+        }
+        NonPersistedDataRequest::BlockSynchronizerStatus => {
+            BinaryResponse::from_value(effect_builder.get_block_synchronizer_status().await)
+        }
+        NonPersistedDataRequest::AvailableBlockRange => BinaryResponse::from_value(
+            effect_builder
+                .get_available_block_range_from_storage()
+                .await,
+        ),
+        NonPersistedDataRequest::NextUpgrade => {
+            BinaryResponse::from_opt(effect_builder.get_next_upgrade().await)
+        }
+        NonPersistedDataRequest::ConsensusStatus => {
+            BinaryResponse::from_opt(effect_builder.consensus_status().await)
+        }
+        NonPersistedDataRequest::ChainspecRawBytes => {
+            BinaryResponse::from_value((*effect_builder.get_chainspec_raw_bytes().await).clone())
+        }
+        NonPersistedDataRequest::NodeStatus => {
+            let (
+                node_uptime,
+                network_name,
+                last_added_block,
+                peers,
+                next_upgrade,
+                consensus_status,
+                reactor_state,
+                last_progress,
+                available_block_range,
+                block_sync,
+            ) = join!(
+                effect_builder.get_uptime(),
+                effect_builder.get_network_name(),
+                effect_builder.get_highest_complete_block_from_storage(),
+                effect_builder.network_peers(),
+                effect_builder.get_next_upgrade(),
+                effect_builder.consensus_status(),
+                effect_builder.get_reactor_state(),
+                effect_builder.get_last_progress(),
+                effect_builder.get_available_block_range_from_storage(),
+                effect_builder.get_block_synchronizer_status(),
+            );
+            let starting_state_root_hash = effect_builder
+                .get_block_header_at_height_from_storage(available_block_range.low(), true)
+                .await
+                .map(|header| *header.state_root_hash())
+                .unwrap_or_default();
+            let (our_public_signing_key, round_length) =
+                consensus_status.map_or((None, None), |ConsensusStatus((pk, rl))| (Some(pk), rl));
+
+            let status = NodeStatus {
+                peers: Peers::from(peers),
+                build_version: crate::VERSION_STRING.clone(),
+                chainspec_name: network_name.into(),
+                starting_state_root_hash,
+                last_added_block_info: last_added_block.map(Into::into),
+                our_public_signing_key,
+                round_length,
+                next_upgrade,
+                uptime: node_uptime
+                    .try_into()
+                    .expect("uptime should fit into TimeDiff"),
+                reactor_state,
+                last_progress: last_progress.into(),
+                available_block_range,
+                block_sync,
+            };
+            BinaryResponse::from_value(status)
+        }
     }
 }
 
