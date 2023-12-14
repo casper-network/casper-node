@@ -12,7 +12,7 @@ use bitflags::{Bits, Flags};
 use serde::{self, Deserialize, Deserializer, Serialize, Serializer};
 use vm_common::flags::EntryPointFlags;
 
-use crate::{cl_type::CLType, Contract};
+use crate::{abi, Contract};
 
 pub fn serialize_bits<T, S>(data: &T, serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -41,7 +41,7 @@ pub mod schema_helper;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SchemaArgument {
     pub name: &'static str,
-    pub ty: CLType,
+    pub def: abi::Definition,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -49,6 +49,7 @@ pub struct SchemaArgument {
 pub struct SchemaEntryPoint {
     pub name: &'static str,
     pub arguments: Vec<SchemaArgument>,
+    pub result: abi::Definition,
     #[serde(
         serialize_with = "serialize_bits",
         deserialize_with = "deserialize_bits"
@@ -59,7 +60,7 @@ pub struct SchemaEntryPoint {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SchemaData {
     pub name: &'static str,
-    pub ty: CLType,
+    pub def: abi::Definition,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -74,7 +75,7 @@ pub struct CasperSchema {
 #[derive(Debug)]
 pub struct EntryPoint<'a, F: Fn()> {
     pub name: &'a str,
-    pub params: &'a [(&'a str, CLType)],
+    pub params: &'a [&'a str],
     pub func: F,
 }
 

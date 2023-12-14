@@ -83,12 +83,10 @@ mod exports {
             Param {
                 name_ptr: PARAM_1.as_ptr(),
                 name_len: PARAM_1.len(),
-                ty: 0,
             },
             Param {
                 name_ptr: PARAM_2.as_ptr(),
                 name_len: PARAM_2.len(),
-                ty: 0,
             },
         ];
 
@@ -117,12 +115,10 @@ mod exports {
             Param {
                 name_ptr: param_1.as_ptr(),
                 name_len: param_1.len(),
-                ty: 1,
             },
             Param {
                 name_ptr: param_2.as_ptr(),
                 name_len: param_2.len(),
-                ty: 2,
             },
         ];
 

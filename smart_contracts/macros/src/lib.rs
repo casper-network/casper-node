@@ -35,7 +35,6 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
     for field in &data_struct.fields {
         let name = &field.ident;
         let ty = &field.ty;
-        // fields.push(field.clone());
         fields.push(quote! {
             #[allow(dead_code)]
             #name: casper_sdk::Field<#ty>
@@ -44,10 +43,7 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
         fields_for_schema.push(quote! {
             casper_sdk::schema::SchemaData {
                 name: stringify!(#name),
-                ty: {
-                    use casper_sdk::CLTyped;
-                    <#ty>::cl_type()
-                },
+                def: <#ty as casper_sdk::abi::CasperABI>::definition(),
             }
         });
 
@@ -197,7 +193,6 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                         casper_sdk::host::Param {
                                             name_ptr: stringify!(#name).as_ptr(),
                                             name_len: stringify!(#name).len(),
-                                            ty: <#ty as casper_sdk::CLTyped>::TYPE_ID,
                                         }
                                     }
                                 });
@@ -207,6 +202,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                             manifest_entry_points_data.push(quote! {
 
+                                #[allow(non_upper_case_globals)]
                                 const #name: (&'static str, [casper_sdk::host::Param; #arg_count], extern "C" fn() -> ()) = {
                                     extern "C" fn #name() {
                                         casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
@@ -271,6 +267,14 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                     let func_name = &func.sig.ident;
 
+                    let result = match &func.sig.output {
+                        syn::ReturnType::Default => quote! { casper_sdk::abi::Definition::unit() },
+                        syn::ReturnType::Type(_, ty) => match ty.as_ref() {
+                            Type::Never(_) => quote! { casper_sdk::abi::Definition::unit() },
+                            _ => quote! { <#ty as casper_sdk::abi::CasperABI>::definition() },
+                        },
+                    };
+
                     let mut args = Vec::new();
 
                     for input in &func.sig.inputs {
@@ -303,10 +307,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         args.push(quote! {
                             casper_sdk::schema::SchemaArgument {
                                 name: stringify!(#name),
-                                ty: {
-                                    use casper_sdk::CLTyped;
-                                    <#ty>::cl_type()
-                                },
+                                def: <#ty as casper_sdk::abi::CasperABI>::definition(),
                             }
                         });
                     }
@@ -319,6 +320,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         casper_sdk::schema::SchemaEntryPoint {
                             name: stringify!(#func_name),
                             arguments: vec![ #(#args,)* ],
+                            result: #result,
                             flags: vm_common::flags::EntryPointFlags::from_bits(#bits).unwrap(),
                         }
                     });
@@ -341,7 +343,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                             ];
                             let data = Self::__casper_data();
                             casper_sdk::schema::CasperSchema {
-                                name: stringify!(#struct_name),
+                                name: stringify!(#struct_name).into(),
                                 data,
                                 entry_points,
                             }
@@ -594,7 +596,7 @@ pub fn derive_casper_schema(input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_derive(CasperABI, attributes(casper))]
-pub fn borsh_schema(input: TokenStream) -> TokenStream {
+pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
     // let cratename = match check_attrs_get_cratename(&input) {
     //     Ok(cratename) => cratename,
     //     Err(err) => {
@@ -611,8 +613,8 @@ pub fn borsh_schema(input: TokenStream) -> TokenStream {
         let mut all_variants = Vec::new();
 
         all_definitions.push(quote! {
-            casper_sdk::abi::Definition::OneOf {
-                name: stringify!(#name),
+            casper_sdk::abi::Definition::Enum {
+                name: stringify!(#name).into(),
             }
         });
 
@@ -637,7 +639,7 @@ pub fn borsh_schema(input: TokenStream) -> TokenStream {
                 Fields::Unit => {
                     // NOTE: Generate an empty struct here for a definition.
                     quote! {
-                        casper_sdk::abi::Definition::Struct { items: Vec::new() }
+                        casper_sdk::abi::Definition::unit()
                     }
                 }
                 Fields::Named(named) => {
@@ -653,7 +655,7 @@ pub fn borsh_schema(input: TokenStream) -> TokenStream {
                                 // let type_name = &segment.ident;
                                 fields.push(quote! {
                                     casper_sdk::abi::StructField {
-                                        name: stringify!(#field_name),
+                                        name: stringify!(#field_name).into(),
                                         body: <#path as casper_sdk::abi::CasperABI>::definition()
                                     }
                                 });
@@ -700,7 +702,7 @@ pub fn borsh_schema(input: TokenStream) -> TokenStream {
 
             all_variants.push(quote! {
                 casper_sdk::abi::EnumVariant {
-                    name: stringify!(#variant_name),
+                    name: stringify!(#variant_name).into(),
                     discriminant: #current_discriminant,
                     body: #variant_definition,
                 }
@@ -711,10 +713,6 @@ pub fn borsh_schema(input: TokenStream) -> TokenStream {
 
         Ok(quote! {
             impl casper_sdk::abi::CasperABI for #name {
-                fn declaration() -> casper_sdk::abi::Declaration {
-                    const NAME: &str = stringify!(#name);
-                    casper_sdk::abi::Declaration::Ref(format!("#/$defs/{}", NAME))
-                }
                 fn definition() -> casper_sdk::abi::Definition {
                     casper_sdk::abi::Definition::Enum {
                         items: vec![

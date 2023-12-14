@@ -263,10 +263,7 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
                 let name = caller
                     .memory_read(param.name_ptr, param.name_len as usize)
                     .unwrap();
-                params_vec.push(storage::Param {
-                    name: name.into(),
-                    ty: param.ty,
-                });
+                params_vec.push(storage::Param { name: name.into() });
             }
 
             vec.push(storage::EntryPoint {

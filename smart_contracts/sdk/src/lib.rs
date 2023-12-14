@@ -3,7 +3,6 @@
 // #[linkage = "--import-memory"]
 
 pub mod abi;
-pub mod cl_type;
 pub mod field;
 pub mod host;
 pub mod schema;
@@ -34,7 +33,6 @@ pub fn set_panic_hook() {
     });
 }
 
-pub use cl_type::{CLType, CLTyped};
 use host::{CallError, CreateResult};
 
 use vm_common::flags::EntryPointFlags;

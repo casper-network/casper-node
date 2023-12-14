@@ -27,7 +27,7 @@ impl Slice {
 pub struct Param {
     pub name_ptr: *const u8,
     pub name_len: usize,
-    pub ty: u32,
+    // pub ty: u32,
 }
 
 pub type Address = [u8; 32];

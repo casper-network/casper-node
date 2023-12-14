@@ -3,7 +3,7 @@ use std::{io, marker::PhantomData};
 use borsh::{BorshDeserialize, BorshSerialize};
 
 use crate::{
-    cl_type::{CLType, CLTyped},
+    abi::{CasperABI, Declaration, Definition},
     host, reserve_vec_space,
 };
 
@@ -14,14 +14,14 @@ pub struct Field<T> {
     _marker: PhantomData<T>,
 }
 
-impl<T: CLTyped> CLTyped for Field<T> {
-    const TYPE_ID: u32 = T::TYPE_ID;
-    fn cl_type() -> CLType {
-        T::cl_type()
+impl<T: CasperABI> CasperABI for Field<T> {
+    #[inline]
+    fn definition() -> Definition {
+        T::definition()
     }
 }
 
-impl<T> Field<T> {
+impl<T: BorshSerialize> Field<T> {
     pub fn new(name: &'static str, key_space: u64) -> Self {
         Self {
             name,
@@ -29,9 +29,7 @@ impl<T> Field<T> {
             _marker: PhantomData,
         }
     }
-}
 
-impl<T: BorshSerialize> Field<T> {
     pub fn write(&mut self, value: T) -> io::Result<()> {
         let v = borsh::to_vec(&value)?;
         host::casper_write(self.key_space, self.name.as_bytes(), 0, &v)

@@ -44,7 +44,6 @@ unsafe impl TriviallyTransmutable for Manifest {}
 pub(crate) struct Param {
     pub(crate) name_ptr: u32,
     pub(crate) name_len: u32,
-    pub(crate) ty: u32,
 }
 
 unsafe impl TriviallyTransmutable for Param {}

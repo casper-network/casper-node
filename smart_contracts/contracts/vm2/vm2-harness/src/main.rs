@@ -26,13 +26,6 @@ struct Greeter {
     greeting: Field<String>,
 }
 
-// #[derive(Debug, BorshSerialize, BorshDeserialize, PartialEq, CasperABI)]
-// pub struct CustomStruct {
-//     field_1: String,
-//     field_2: u64,
-//     field_3: u32,
-// }
-
 #[repr(u32)]
 #[derive(Debug, BorshSerialize, BorshDeserialize, PartialEq, CasperABI)]
 #[borsh(use_discriminant = true)]
@@ -40,12 +33,6 @@ pub enum CustomError {
     Foo,
     Bar = 42,
     WithBody(String),
-    WithBodyAndDiscriminant(String, u64) = 111,
-    Named {
-        field1: String,
-        field2: u64,
-        field3: Result<u32, String>,
-    },
 }
 
 #[casper(entry_points)]
@@ -93,14 +80,7 @@ impl Greeter {
     }
 
     pub fn emit_revert_with_data(&self) -> Result<(), CustomError> {
-        // casper_revert(123456)
-        // casper_ret(value)
-
-        // return(0, value);
-        // return(1, value); revert
-
-        // revert!(Err(CustomError::Bar))
-        Err(CustomError::Bar) // (1u8, 2u32)
+        revert!(Err(CustomError::Bar))
     }
 
     pub fn emit_revert_without_data(&self) -> ! {
@@ -306,12 +286,12 @@ mod tests {
         dbg!(schema_helper::list_exports());
     }
 
-    // #[test]
-    // fn compile_time_schema() {
-    //     let schema = Greeter::schema();
-    //     dbg!(&schema);
-    //     println!("{}", serde_json::to_string_pretty(&schema).unwrap());
-    // }
+    #[test]
+    fn compile_time_schema() {
+        let schema = Greeter::schema();
+        dbg!(&schema);
+        println!("{}", serde_json::to_string_pretty(&schema).unwrap());
+    }
 
     #[test]
     fn should_greet() {
@@ -321,6 +301,7 @@ mod tests {
         // flipper.set_greeting("Hi".into());
         // assert_eq!(flipper.get_greeting(), "Hi");
     }
+
     #[test]
     fn borsh_schema() {
         #[derive(BorshSerialize, BorshSchema)]
@@ -330,6 +311,8 @@ mod tests {
             Baz,
         }
         dbg!(BorshSchemaContainer::for_type::<Result<(), CustomError>>());
+        dbg!(BorshSchemaContainer::for_type::<Vec<u64>>());
+        dbg!(BorshSchemaContainer::for_type::<[u64; 32]>());
     }
 
     #[test]

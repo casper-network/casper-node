@@ -27,7 +27,6 @@ pub enum CallOutcome {
 #[derive(Default, Debug, Clone)]
 pub struct Param {
     pub(crate) name: Bytes,
-    pub(crate) ty: u32,
 }
 
 #[derive(Default, Debug, Clone)]
