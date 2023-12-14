@@ -31,9 +31,10 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
-    binary_port::type_wrappers::ConsensusValidatorChanges, AsymmetricType, BlockHash, BlockHeader,
-    Chainspec, ConsensusProtocolName, Digest, DisplayIter, EraId, FinalizedApprovals, PublicKey,
-    RewardedSignatures, TimeDiff, Timestamp, Transaction, TransactionHash, ValidatorChange,
+    binary_port::type_wrappers::{ConsensusStatus, ConsensusValidatorChanges},
+    AsymmetricType, BlockHash, BlockHeader, Chainspec, ConsensusProtocolName, Digest, DisplayIter,
+    EraId, FinalizedApprovals, PublicKey, RewardedSignatures, Timestamp, Transaction,
+    TransactionHash, ValidatorChange,
 };
 
 use crate::{
@@ -1281,17 +1282,16 @@ impl EraSupervisor {
         }
     }
 
-    pub(super) fn status(
-        &self,
-        responder: Responder<Option<(PublicKey, Option<TimeDiff>)>>,
-    ) -> Effects<Event> {
+    pub(super) fn status(&self, responder: Responder<Option<ConsensusStatus>>) -> Effects<Event> {
         let public_key = self.validator_matrix.public_signing_key().clone();
         let round_length = self
             .open_eras
             .values()
             .last()
             .and_then(|era| era.consensus.next_round_length());
-        responder.respond(Some((public_key, round_length))).ignore()
+        responder
+            .respond(Some(ConsensusStatus((public_key, round_length))))
+            .ignore()
     }
 
     /// Get a reference to the era supervisor's open eras.

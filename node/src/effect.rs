@@ -125,8 +125,8 @@ use casper_types::{
         db_id::DbId,
         get_all_values_result::GetAllValuesResult,
         type_wrappers::{
-            ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
-            LastProgress, NetworkName, SpeculativeExecutionResult,
+            ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult,
+            HighestBlockSequenceCheckResult, LastProgress, NetworkName, SpeculativeExecutionResult,
         },
         DbRawBytesSpec,
     },
@@ -136,8 +136,8 @@ use casper_types::{
     AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader,
     BlockIdentifier, BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes,
     DeployHash, DeployHeader, Digest, EraId, FinalitySignature, FinalitySignatureId,
-    FinalizedApprovals, Key, NextUpgrade, PublicKey, ReactorState, TimeDiff, Timestamp,
-    Transaction, TransactionHash, TransactionId, Transfer, Uptime, U512,
+    FinalizedApprovals, Key, NextUpgrade, PublicKey, ReactorState, Timestamp, Transaction,
+    TransactionHash, TransactionId, Transfer, Uptime, U512,
 };
 
 use crate::{
@@ -2136,8 +2136,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Get our public key from consensus, and if we're a validator, the next round length.
-    // TODO[RC]: Turn the return type into `ConsensusStatus`
-    pub(crate) async fn consensus_status(self) -> Option<(PublicKey, Option<TimeDiff>)>
+    pub(crate) async fn consensus_status(self) -> Option<ConsensusStatus>
     where
         REv: From<ConsensusRequest>,
     {

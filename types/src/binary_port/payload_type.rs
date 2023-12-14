@@ -14,16 +14,17 @@ use crate::testing::TestRng;
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    AvailableBlockRange, BlockHash, BlockHashAndHeight, BlockSynchronizerStatus, Peers, PublicKey,
-    ReactorState, TimeDiff, Uptime,
+    AvailableBlockRange, BlockHash, BlockHashAndHeight, BlockSynchronizerStatus, Peers,
+    ReactorState, Uptime,
 };
 
 use super::{
     db_id::DbId,
     global_state_query_result::GlobalStateQueryResult,
     type_wrappers::{
-        ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
-        LastProgress, NetworkName, SpeculativeExecutionResult, StoredValues,
+        ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult,
+        HighestBlockSequenceCheckResult, LastProgress, NetworkName, SpeculativeExecutionResult,
+        StoredValues,
     },
 };
 
@@ -186,6 +187,7 @@ impl TryFrom<u8> for PayloadType {
             }
             x if x == PayloadType::StoredValues as u8 => Ok(PayloadType::StoredValues),
             x if x == PayloadType::GetTrieFullResult as u8 => Ok(PayloadType::GetTrieFullResult),
+            x if x == PayloadType::NodeStatus as u8 => Ok(PayloadType::NodeStatus),
             _ => Err(()),
         }
     }
@@ -301,8 +303,8 @@ impl From<crate::NextUpgrade> for PayloadType {
     }
 }
 
-impl From<(PublicKey, Option<TimeDiff>)> for PayloadType {
-    fn from(_: (PublicKey, Option<TimeDiff>)) -> Self {
+impl From<ConsensusStatus> for PayloadType {
+    fn from(_: ConsensusStatus) -> Self {
         Self::ConsensusStatus
     }
 }

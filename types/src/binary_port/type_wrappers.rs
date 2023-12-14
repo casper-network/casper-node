@@ -129,6 +129,17 @@ impl StoredValues {
     }
 }
 
+/// Describes the consensus status
+#[derive(Debug, PartialEq)]
+pub struct ConsensusStatus(pub (PublicKey, Option<TimeDiff>));
+
+impl ConsensusStatus {
+    /// Returns the inner value.
+    pub fn into_inner(self) -> (PublicKey, Option<TimeDiff>) {
+        self.0
+    }
+}
+
 impl_bytesrepr_for_type_wrapper!(Uptime);
 impl_bytesrepr_for_type_wrapper!(ConsensusValidatorChanges);
 impl_bytesrepr_for_type_wrapper!(NetworkName);
@@ -137,3 +148,4 @@ impl_bytesrepr_for_type_wrapper!(HighestBlockSequenceCheckResult);
 impl_bytesrepr_for_type_wrapper!(SpeculativeExecutionResult);
 impl_bytesrepr_for_type_wrapper!(GetTrieFullResult);
 impl_bytesrepr_for_type_wrapper!(StoredValues);
+impl_bytesrepr_for_type_wrapper!(ConsensusStatus);

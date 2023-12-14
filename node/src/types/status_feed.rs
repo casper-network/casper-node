@@ -9,8 +9,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    ActivationPoint, AvailableBlockRange, Block, BlockHash, BlockSynchronizerStatus, Digest, EraId,
-    NextUpgrade, Peers, ProtocolVersion, PublicKey, ReactorState, TimeDiff, Timestamp,
+    binary_port::type_wrappers::ConsensusStatus, ActivationPoint, AvailableBlockRange, Block,
+    BlockHash, BlockSynchronizerStatus, Digest, EraId, NextUpgrade, Peers, ProtocolVersion,
+    PublicKey, ReactorState, TimeDiff, Timestamp,
 };
 
 use crate::{
@@ -109,7 +110,7 @@ impl StatusFeed {
         last_added_block: Option<Block>,
         peers: BTreeMap<NodeId, String>,
         chainspec_info: ChainspecInfo,
-        consensus_status: Option<(PublicKey, Option<TimeDiff>)>,
+        consensus_status: Option<ConsensusStatus>,
         node_uptime: Duration,
         reactor_state: ReactorState,
         last_progress: Timestamp,
@@ -117,10 +118,8 @@ impl StatusFeed {
         block_sync: BlockSynchronizerStatus,
         starting_state_root_hash: Digest,
     ) -> Self {
-        let (our_public_signing_key, round_length) = match consensus_status {
-            Some((public_key, round_length)) => (Some(public_key), round_length),
-            None => (None, None),
-        };
+        let (our_public_signing_key, round_length) =
+            consensus_status.map_or((None, None), |ConsensusStatus((pk, rl))| (Some(pk), rl));
         StatusFeed {
             last_added_block,
             peers,
