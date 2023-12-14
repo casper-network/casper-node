@@ -213,6 +213,7 @@ pub extern "C" fn call() {
         Some(named_keys),
         Some(PACKAGE_HASH_NAME.to_string()),
         Some(ACCESS_UREF_NAME.to_string()),
+        None,
     );
     runtime::put_key(CONTRACT_HASH_NAME, Key::contract_entity_key(contract_hash));
 }

@@ -46,7 +46,7 @@ pub extern "C" fn contract_ext() {
 
                 entry_points
             };
-            storage::new_contract(entry_points, None, None, None);
+            storage::new_contract(entry_points, None, None, None, None);
         }
     }
 }
@@ -68,7 +68,7 @@ fn store(named_keys: NamedKeys) -> (AddressableEntityHash, EntityVersion) {
 
         entry_points
     };
-    storage::new_contract(entry_points, Some(named_keys), None, None)
+    storage::new_contract(entry_points, Some(named_keys), None, None, None)
 }
 
 fn install() -> AddressableEntityHash {

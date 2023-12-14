@@ -4,7 +4,10 @@
 #[macro_use]
 extern crate alloc;
 
-use alloc::string::{String, ToString};
+use alloc::{
+    collections::BTreeMap,
+    string::{String, ToString},
+};
 use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
@@ -58,8 +61,12 @@ pub extern "C" fn call() {
         .try_into()
         .unwrap_or_revert();
 
-    let (contract_hash, contract_version) =
-        storage::add_contract_version(do_nothing_package_hash, entry_points, NamedKeys::new());
+    let (contract_hash, contract_version) = storage::add_contract_version(
+        do_nothing_package_hash,
+        entry_points,
+        NamedKeys::new(),
+        BTreeMap::new(),
+    );
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
     runtime::put_key(
         "end of upgrade",

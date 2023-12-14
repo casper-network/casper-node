@@ -183,6 +183,7 @@ pub extern "C" fn call() {
         Some(faucet_named_keys),
         Some(format!("{}_{}", faucet::HASH_KEY_NAME, id)),
         Some(format!("{}_{}", faucet::ACCESS_KEY_NAME, id)),
+        None,
     );
 
     // As a convenience, a specific contract version can be referred to either by its contract hash

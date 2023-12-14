@@ -50,6 +50,7 @@ pub extern "C" fn call() {
         None,
         Some(PACKAGE_HASH_KEY_NAME.to_string()),
         Some(ACCESS_KEY_NAME.to_string()),
+        None,
     );
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
     runtime::put_key(

@@ -235,7 +235,7 @@ fn store_function(
 
         entry_points
     };
-    storage::new_contract(entry_points, named_keys, None, None)
+    storage::new_contract(entry_points, named_keys, None, None, None)
 }
 
 #[rustfmt::skip] #[no_mangle] pub extern "C" fn s() { small_function() }
