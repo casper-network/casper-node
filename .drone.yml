@@ -11,7 +11,7 @@ environment:
   CARGO_INCREMENTAL: '0'
 
 __buildenv: &buildenv
-  image: casperlabs/node-build-u2004
+  image: casperlabs/node-build-u1804
   volumes:
   - name: rustup
     path: "/root/.rustup"
@@ -111,7 +111,7 @@ environment:
   CARGO_INCREMENTAL: '0'
 
 __buildenv: &buildenv
-  image: casperlabs/node-build-u2004
+  image: casperlabs/node-build-u1804
   volumes:
   - name: rustup
     path: "/root/.rustup"
@@ -179,7 +179,7 @@ type: docker
 name: package
 
 __buildenv: &buildenv
-  image: casperlabs/node-build-u2004
+  image: casperlabs/node-build-u1804
   volumes:
   - name: rustup
     path: "/root/.rustup"
@@ -191,7 +191,7 @@ __buildenv: &buildenv
     path: "/tmp/nctl_upgrade_stage"
 
 __buildenv_upload: &buildenv_upload
-  image: casperlabs/node-build-u2004
+  image: casperlabs/node-build-u1804
   volumes:
   - name: rustup
     path: "/root/.rustup"
@@ -318,7 +318,7 @@ type: docker
 name: release-by-tag
 
 __buildenv: &buildenv
-  image: casperlabs/node-build-u2004
+  image: casperlabs/node-build-u1804
   volumes:
   - name: rustup
     path: "/root/.rustup"
@@ -330,7 +330,7 @@ __buildenv: &buildenv
     path: "/tmp/nctl_upgrade_stage"
 
 __buildenv_upload: &buildenv_upload
-  image: casperlabs/node-build-u2004
+  image: casperlabs/node-build-u1804
   volumes:
   - name: rustup
     path: "/root/.rustup"
@@ -457,7 +457,7 @@ environment:
   CARGO_INCREMENTAL: '0'
 
 __buildenv: &buildenv
-  image: casperlabs/node-build-u2004
+  image: casperlabs/node-build-u1804
   volumes:
   - name: rustup
     path: "/root/.rustup"
@@ -484,6 +484,7 @@ steps:
 
 - name: nctl-nightly-tests
   <<: *buildenv
+  image: casperlabs/node-build-u2004
   environment:
     AWS_ACCESS_KEY_ID:
       from_secret: put-drone-aws-ak
