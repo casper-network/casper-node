@@ -1,4 +1,4 @@
-use crate::{host::Address, reserve_vec_space};
+use crate::{host::Address, reserve_vec_space, storage::Keyspace};
 use std::{
     ffi::c_void,
     mem::MaybeUninit,
@@ -10,7 +10,10 @@ use borsh::BorshSerialize;
 use vm_common::flags::ReturnFlags;
 
 pub(crate) mod ext {
-    use crate::host::{CreateResult, Manifest};
+    use crate::{
+        host::{CreateResult, Manifest},
+        storage::Keyspace,
+    };
     use std::ffi::c_void;
 
     #[derive(Debug)]
@@ -139,11 +142,14 @@ pub fn casper_return(flags: ReturnFlags, data: Option<&[u8]>) -> ! {
 }
 
 pub fn casper_read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
-    key_space: u64,
-    key: &[u8],
+    key: Keyspace,
     f: F,
 ) -> Result<Option<Entry>, Error> {
-    // let mut info = MaybeUninit::uninit();
+    let (key_space, key_bytes) = match key {
+        Keyspace::State => (0, &[][..]),
+        Keyspace::Context(key_bytes) => (1, key_bytes),
+    };
+
     let mut info = ext::ReadInfo {
         data: ptr::null(),
         size: 0,
@@ -167,8 +173,8 @@ pub fn casper_read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     let ret = unsafe {
         ext::casper_read(
             key_space,
-            key.as_ptr(),
-            key.len(),
+            key_bytes.as_ptr(),
+            key_bytes.len(),
             &mut info as *mut ext::ReadInfo,
             alloc_cb::<F>,
             ctx,
@@ -184,12 +190,16 @@ pub fn casper_read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     }
 }
 
-pub fn casper_write(key_space: u64, key: &[u8], value_tag: u64, value: &[u8]) -> Result<(), Error> {
+pub fn casper_write(key: Keyspace, value_tag: u64, value: &[u8]) -> Result<(), Error> {
+    let (key_space, key_bytes) = match key {
+        Keyspace::State => (0, &[][..]),
+        Keyspace::Context(key_bytes) => (1, key_bytes),
+    };
     let _ret = unsafe {
         ext::casper_write(
             key_space,
-            key.as_ptr(),
-            key.len(),
+            key_bytes.as_ptr(),
+            key_bytes.len(),
             value_tag,
             value.as_ptr(),
             value.len(),

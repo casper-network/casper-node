@@ -6,6 +6,7 @@ pub mod abi;
 pub mod field;
 pub mod host;
 pub mod schema;
+pub mod storage;
 
 use std::{
     cell::RefCell,

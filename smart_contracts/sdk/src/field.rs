@@ -5,6 +5,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use crate::{
     abi::{CasperABI, Declaration, Definition},
     host, reserve_vec_space,
+    storage::Keyspace,
 };
 
 #[derive(Debug)]
@@ -32,7 +33,7 @@ impl<T: BorshSerialize> Field<T> {
 
     pub fn write(&mut self, value: T) -> io::Result<()> {
         let v = borsh::to_vec(&value)?;
-        host::casper_write(self.key_space, self.name.as_bytes(), 0, &v)
+        host::casper_write(Keyspace::Context(self.name.as_bytes()), 0, &v)
             .map_err(|_error| io::Error::new(io::ErrorKind::Other, "todo"))?;
         Ok(())
     }
@@ -40,7 +41,7 @@ impl<T: BorshSerialize> Field<T> {
 impl<T: BorshDeserialize> Field<T> {
     pub fn read(&self) -> io::Result<Option<T>> {
         let mut read = None;
-        host::casper_read(self.key_space, self.name.as_bytes(), |size| {
+        host::casper_read(Keyspace::Context(self.name.as_bytes()), |size| {
             *(&mut read) = Some(Vec::new());
             reserve_vec_space(read.as_mut().unwrap(), size)
         })

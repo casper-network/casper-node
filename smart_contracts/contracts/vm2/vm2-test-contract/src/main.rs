@@ -35,6 +35,7 @@ mod exports {
     use casper_sdk::{
         host::{self, CreateResult, EntryPoint, Manifest, Param},
         reserve_vec_space,
+        storage::Keyspace,
     };
     use core::ptr::NonNull;
     use vm_common::flags::EntryPointFlags;
@@ -54,17 +55,17 @@ mod exports {
 
         let mut read1 = Vec::new();
 
-        let _non_existing_entry = host::casper_read(KEY_SPACE_DEFAULT, b"hello", |size| {
+        let _non_existing_entry = host::casper_read(Keyspace::Context(b"hello"), |size| {
             host::casper_print(&format!("first cb alloc cb with size={size}"));
             reserve_vec_space(&mut read1, size)
         })
         .expect("should read");
         // host::casper_print(&format!("non_existing_entry={:?}", non_existing_entry));
 
-        host::casper_write(KEY_SPACE_DEFAULT, b"hello", TAG_BYTES, b"Hello, world!").unwrap();
+        host::casper_write(Keyspace::Context(b"hello"), TAG_BYTES, b"Hello, world!").unwrap();
 
         let mut read2 = Vec::new();
-        let existing_entry = host::casper_read(KEY_SPACE_DEFAULT, b"hello", |size| {
+        let existing_entry = host::casper_read(Keyspace::Context(b"hello"), |size| {
             host::casper_print(&format!("second cb alloc cb with size={size}"));
             reserve_vec_space(&mut read2, size)
         })
@@ -74,7 +75,7 @@ mod exports {
         let msg = String::from_utf8(read2).unwrap();
         host::casper_print(&format!("existing_entry={:?}", msg));
 
-        host::casper_write(KEY_SPACE_DEFAULT, b"read back", TAG_BYTES, msg.as_bytes()).unwrap();
+        host::casper_write(Keyspace::Context(b"read back"), TAG_BYTES, msg.as_bytes()).unwrap();
 
         const PARAM_1: &str = "param_1";
         const PARAM_2: &str = "param_2";

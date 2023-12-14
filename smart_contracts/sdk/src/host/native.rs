@@ -3,6 +3,8 @@ use std::{cell::RefCell, collections::BTreeMap, ptr};
 use bytes::Bytes;
 use vm_common::flags::ReturnFlags;
 
+use crate::storage::Keyspace;
+
 use super::{Address, CallError, CreateResult, Entry, Error, Manifest, ResultCode};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -40,12 +42,15 @@ pub fn casper_copy_input() -> Vec<u8> {
 pub fn casper_print(msg: &str) {
     println!("💻 {msg}");
 }
-pub fn casper_write(key_space: u64, key: &[u8], value_tag: u64, value: &[u8]) -> Result<(), Error> {
-    // NEW_VM.storage.
+pub fn casper_write(key: Keyspace, value_tag: u64, value: &[u8]) -> Result<(), Error> {
+    let (key_space, key_bytes) = match key {
+        Keyspace::State => (0, &[][..]),
+        Keyspace::Context(key_bytes) => (1, key_bytes),
+    };
 
     DB.with(|db| {
         db.borrow_mut().db.entry(key_space).or_default().insert(
-            Bytes::copy_from_slice(key),
+            Bytes::copy_from_slice(key_bytes),
             TaggedValue {
                 tag: value_tag,
                 value: Bytes::copy_from_slice(value),
@@ -55,11 +60,15 @@ pub fn casper_write(key_space: u64, key: &[u8], value_tag: u64, value: &[u8]) ->
     Ok(())
 }
 pub fn casper_read(
-    key_space: u64,
-    key: &[u8],
+    key: Keyspace,
     func: impl FnOnce(usize) -> Option<ptr::NonNull<u8>>,
 ) -> Result<Option<Entry>, Error> {
-    let value = DB.with(|db| db.borrow().db.get(&key_space)?.get(key).cloned());
+    let (key_space, key_bytes) = match key {
+        Keyspace::State => (0, &[][..]),
+        Keyspace::Context(key_bytes) => (1, key_bytes),
+    };
+
+    let value = DB.with(|db| db.borrow().db.get(&key_space)?.get(key_bytes).cloned());
     match value {
         Some(tagged_value) => {
             let entry = Entry {
