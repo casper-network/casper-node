@@ -56,7 +56,6 @@ impl BinaryResponse {
         }
     }
 
-    // TODO[RC]: Can we prevent V from being an Option here?
     /// Creates a new binary response from a value.
     pub fn from_value<V>(val: V) -> Self
     where
@@ -66,21 +65,6 @@ impl BinaryResponse {
         BinaryResponse {
             payload: ToBytes::to_bytes(&val).unwrap(),
             header: BinaryResponseHeader::new(Some(val.into())),
-        }
-    }
-
-    /// Creates a new binary response from an optional value.
-    pub fn from_opt<V>(val: Option<V>) -> Self
-    where
-        V: ToBytes,
-        V: Into<PayloadType>,
-    {
-        match val {
-            Some(val) => Self::from_value(val),
-            None => BinaryResponse {
-                payload: vec![],
-                header: BinaryResponseHeader::new_error(ErrorCode::NotFound),
-            },
         }
     }
 

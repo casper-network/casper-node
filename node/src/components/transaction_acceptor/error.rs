@@ -3,8 +3,8 @@ use serde::Serialize;
 use thiserror::Error;
 
 use casper_types::{
-    AddressableEntityHash, BlockHash, BlockHeader, DeployConfigFailure, Digest, EntityVersion,
-    InitiatorAddr, PackageHash, Timestamp, TransactionV1ConfigFailure,
+    binary_port, AddressableEntityHash, BlockHash, BlockHeader, DeployConfigFailure, Digest,
+    EntityVersion, InitiatorAddr, PackageHash, Timestamp, TransactionV1ConfigFailure,
 };
 
 // `allow` can be removed once https://github.com/casper-network/casper-node/issues/3063 is fixed.
@@ -64,6 +64,20 @@ impl Error {
             block_hash: block_header.block_hash(),
             block_height: block_header.height(),
             failure,
+        }
+    }
+}
+
+impl From<Error> for binary_port::ErrorCode {
+    fn from(err: Error) -> Self {
+        match err {
+            Error::EmptyBlockchain
+            | Error::InvalidDeployConfiguration(_)
+            | Error::InvalidV1Configuration(_)
+            | Error::Parameters { .. }
+            | Error::Expired { .. }
+            | Error::ExpectedDeploy
+            | Error::ExpectedTransactionV1 => binary_port::ErrorCode::InvalidDeploy,
         }
     }
 }

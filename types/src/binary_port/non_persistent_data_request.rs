@@ -58,7 +58,6 @@ pub enum NonPersistedDataRequest {
     /// Returns current state of the main reactor.
     ReactorState,
     /// Returns current network name.
-    // TODO[RC]: Consider "generic" get chainspec param? Or just "get_chainspec"?
     NetworkName,
     /// Returns consensus validator changes.
     ConsensusValidatorChanges,

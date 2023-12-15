@@ -31,8 +31,8 @@ use casper_types::{
         db_id::DbId,
         get_all_values_result::GetAllValuesResult,
         type_wrappers::{
-            ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
-            LastProgress, NetworkName, SpeculativeExecutionResult,
+            ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult,
+            HighestBlockSequenceCheckResult, LastProgress, NetworkName, SpeculativeExecutionResult,
         },
         DbRawBytesSpec,
     },
@@ -41,8 +41,8 @@ use casper_types::{
     AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockIdentifier,
     BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, DeployHeader,
     Digest, DisplayIter, EraId, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key,
-    NextUpgrade, PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash,
-    TransactionId, Transfer, Uptime, U512,
+    NextUpgrade, PublicKey, ReactorState, Timestamp, Transaction, TransactionHash, TransactionId,
+    Transfer, Uptime, U512,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -820,7 +820,6 @@ pub(crate) enum ContractRuntimeRequest {
         responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
     },
     /// Return all values at a given state root hash and given key tag.
-    // TODO[RC]: Reconsider this - could be attackable.
     GetAllValues {
         /// Get all values request.
         #[serde(skip_serializing)]
@@ -1046,7 +1045,7 @@ type BlockHeight = u64;
 /// Consensus component requests.
 pub(crate) enum ConsensusRequest {
     /// Request for our public key, and if we're a validator, the next round length.
-    Status(Responder<Option<(PublicKey, Option<TimeDiff>)>>),
+    Status(Responder<Option<ConsensusStatus>>),
     /// Request for a list of validator status changes, by public key.
     ValidatorChanges(Responder<ConsensusValidatorChanges>),
 }

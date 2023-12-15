@@ -179,7 +179,6 @@ where
             .map(Into::into))
     }
 
-    // TODO[RC]: Replace returned tuple with proper struct (bool = is_legacy)
     pub(super) fn get_raw(
         &self,
         txn: &RoTransaction,
