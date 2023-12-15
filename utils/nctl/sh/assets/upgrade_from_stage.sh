@@ -76,6 +76,7 @@ function _main()
     local VERBOSE=${3}
     local CHAINSPEC_PATH=${4}
     local CONFIG_PATH=${5}
+    local SIDECAR_CONFIG_PATH=${6}
     local PATH_TO_STAGE
     local PROTOCOL_VERSION
     local COUNT_NODES
@@ -90,6 +91,10 @@ function _main()
 
     if [ -z "$CONFIG_PATH" ]; then
         CONFIG_PATH="$PATH_TO_STAGE/$PROTOCOL_VERSION/config.toml"
+    fi
+
+    if [ -z "$SIDECAR_CONFIG_PATH" ]; then
+        SIDECAR_CONFIG_PATH="$PATH_TO_STAGE/$PROTOCOL_VERSION/sidecar.toml"
     fi
 
     if [ "$PROTOCOL_VERSION" != "" ]; then
@@ -113,6 +118,7 @@ function _main()
         setup_asset_node_configs "$COUNT_NODES" \
                                  "$PROTOCOL_VERSION" \
                                  "$CONFIG_PATH" \
+                                 "$SIDECAR_CONFIG_PATH" \
                                  false
 
         # Protocol version parameter is currently unused
@@ -134,6 +140,7 @@ unset STAGE_ID
 unset VERBOSE
 unset CHAINSPEC_PATH
 unset CONFIG_PATH
+unset SIDECAR_CONFIG_PATH
 
 for ARGUMENT in "$@"
 do
@@ -146,6 +153,7 @@ do
         verbose) VERBOSE=${VALUE} ;;
         chainspec_path) CHAINSPEC_PATH=${VALUE} ;;
         config_path) CONFIG_PATH=${VALUE} ;;
+        sidecar_config_path) SIDECAR_CONFIG_PATH=${VALUE} ;;
         *)
     esac
 done
@@ -162,4 +170,5 @@ _main "${STAGE_ID:-1}" \
       "${ACTIVATION_POINT}" \
       "${VERBOSE:-true}" \
       "${CHAINSPEC_PATH}" \
-      "${CONFIG_PATH}"
+      "${CONFIG_PATH}" \
+      "${SIDECAR_CONFIG_PATH}"

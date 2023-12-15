@@ -65,6 +65,10 @@ stderr_logfile_maxbytes=500MB ;
 stdout_logfile=$PATH_NODE_LOGS/stdout.log ;
 stdout_logfile_backups=5 ;
 stdout_logfile_maxbytes=500MB ;
+EOM
+
+    if [ -f "$PATH_NODE_BIN/$NODE_PROTOCOL_VERSION/casper-rpc-sidecar" ]; then
+        cat >> "$PATH_SUPERVISOR_CONFIG" <<- EOM
 
 [program:casper-net-$NET_ID-sidecar-$NODE_ID]
 autostart=false
@@ -84,6 +88,15 @@ stdout_logfile=$PATH_NODE_LOGS/sidecar-stdout.log ;
 stdout_logfile_backups=5 ;
 stdout_logfile_maxbytes=500MB ;
 EOM
+    else
+        # set up a dummy process when sidecar is not available
+        # TODO: consider replacing this with casper-launcher
+        cat >> "$PATH_SUPERVISOR_CONFIG" <<- EOM
+
+[program:casper-net-$NET_ID-sidecar-$NODE_ID]
+command=/bin/cat
+EOM
+    fi
 done
 
 # ------------------------------------------------------------------------
