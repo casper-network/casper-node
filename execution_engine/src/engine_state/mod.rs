@@ -2232,13 +2232,15 @@ where
             .get_keys(&get_all_values_request.key_tag())
             .map_err(|err| Error::Exec(err.into()))?;
 
-        let values: Vec<_> = keys
-            .iter()
-            // TODO[RC]: Do not ignore errors here?
-            .filter_map(|key| tracking_copy.get(key).ok().flatten())
-            .collect();
+        let mut all_values = vec![];
+        for key in keys {
+            if let Some(value) = tracking_copy.get(&key).map_err(Into::into)? {
+                all_values.push(value);
+            }
+        }
+
         Ok(GetAllValuesResult::Success {
-            values: StoredValues(values),
+            values: StoredValues(all_values),
         })
     }
 
