@@ -19,9 +19,7 @@ const TRY_ACCEPT_TRANSACTION_TAG: u8 = 1;
 const SPECULATIVE_EXEC_TAG: u8 = 2;
 
 /// A request to the binary access interface.
-// TODO[RC] Add version tag, or rather follow the `BinaryRequestV1/V2` scheme.
-// TODO[RC] Remove clone
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum BinaryRequest {
     /// Request to get data from the node
     Get(GetRequest),

@@ -385,7 +385,6 @@ impl Storage {
             Box::new(block_body_dbs),
             Box::new(block_metadata_db),
         ];
-        // x.push(block_body_dbs);
 
         let mut db_mapper: HashMap<DbId, Box<dyn RawDataAccess>> = HashMap::new();
         db_mapper.insert(DbId::Transaction, Box::new(transaction_dbs));

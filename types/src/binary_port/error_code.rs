@@ -13,35 +13,33 @@ pub enum ErrorCode {
     /// This function is disabled.
     #[cfg_attr(feature = "std", error("this function is disabled"))]
     FunctionIsDisabled = 1,
-    //    #[cfg_attr(feature = "std", error("request cannot be decoded"))]
-    //    InvalidRequest = 2, // TODO[RC]: handle this
     /// Data not found.
     #[cfg_attr(feature = "std", error("data not found"))]
-    NotFound = 3,
+    NotFound = 2,
     /// Root not found.
     #[cfg_attr(feature = "std", error("root not found"))]
-    RootNotFound = 4,
+    RootNotFound = 3,
     /// Invalid deploy item variant.
     #[cfg_attr(feature = "std", error("invalid deploy item variant"))]
-    InvalidDeployItemVariant = 5,
+    InvalidDeployItemVariant = 4,
     /// Wasm preprocessing.
     #[cfg_attr(feature = "std", error("wasm preprocessing"))]
-    WasmPreprocessing = 6,
+    WasmPreprocessing = 5,
     /// Invalid protocol version.
     #[cfg_attr(feature = "std", error("invalid protocol version"))]
-    InvalidProtocolVersion = 7,
+    InvalidProtocolVersion = 6,
     /// Invalid deploy.
     #[cfg_attr(feature = "std", error("invalid deploy"))]
-    InvalidDeploy = 8,
+    InvalidDeploy = 7,
     /// Internal error.
     #[cfg_attr(feature = "std", error("internal error"))]
-    InternalError = 9,
+    InternalError = 8,
     /// The query to global state failed.
     #[cfg_attr(feature = "std", error("the query to global state failed"))]
-    QueryFailedToExecute = 10,
+    QueryFailedToExecute = 9,
     /// Bad request.
     #[cfg_attr(feature = "std", error("bad request"))]
-    BadRequest = 11,
+    BadRequest = 10,
 }
 
 impl TryFrom<u8> for ErrorCode {

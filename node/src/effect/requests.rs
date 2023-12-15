@@ -820,7 +820,6 @@ pub(crate) enum ContractRuntimeRequest {
         responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
     },
     /// Return all values at a given state root hash and given key tag.
-    // TODO[RC]: Reconsider this - could be attackable.
     GetAllValues {
         /// Get all values request.
         #[serde(skip_serializing)]

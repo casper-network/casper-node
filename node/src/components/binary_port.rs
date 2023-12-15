@@ -401,9 +401,9 @@ where
 {
     match req {
         NonPersistedDataRequest::BlockHeight2Hash { height } => {
-            BinaryResponse::from_opt(effect_builder.get_block_hash_for_height(height).await)
+            BinaryResponse::from_value(effect_builder.get_block_hash_for_height(height).await)
         }
-        NonPersistedDataRequest::HighestCompleteBlock => BinaryResponse::from_opt(
+        NonPersistedDataRequest::HighestCompleteBlock => BinaryResponse::from_value(
             effect_builder
                 .get_highest_complete_block_header_from_storage()
                 .await
@@ -419,7 +419,7 @@ where
             )
         }
         NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { transaction_hash } => {
-            BinaryResponse::from_opt(
+            BinaryResponse::from_value(
                 effect_builder
                     .get_block_hash_and_height_for_transaction(transaction_hash)
                     .await,
@@ -452,10 +452,10 @@ where
                 .await,
         ),
         NonPersistedDataRequest::NextUpgrade => {
-            BinaryResponse::from_opt(effect_builder.get_next_upgrade().await)
+            BinaryResponse::from_value(effect_builder.get_next_upgrade().await)
         }
         NonPersistedDataRequest::ConsensusStatus => {
-            BinaryResponse::from_opt(effect_builder.consensus_status().await)
+            BinaryResponse::from_value(effect_builder.consensus_status().await)
         }
         NonPersistedDataRequest::ChainspecRawBytes => {
             BinaryResponse::from_value((*effect_builder.get_chainspec_raw_bytes().await).clone())
@@ -641,7 +641,6 @@ async fn handle_client<REv>(
     drop(permit);
 }
 
-// TODO[RC]: Move to Self::
 async fn run_server<REv>(effect_builder: EffectBuilder<REv>, config: Arc<Config>)
 where
     REv: From<Event>
@@ -670,11 +669,11 @@ where
                         .await;
                 }
                 Err(io_err) => {
-                    println!("acceptance failure: {:?}", io_err);
+                    info!(%io_err, "problem accepting binary port connection");
                 }
             }
         },
-        Err(_) => todo!(), // TODO[RC]: Handle this
+        Err(err) => error!(%err, "unable to bind binary port listener"),
     };
 }
 
