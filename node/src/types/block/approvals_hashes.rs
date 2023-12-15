@@ -26,31 +26,37 @@ use crate::{
 const V1_TAG: u8 = 0;
 const V2_TAG: u8 = 1;
 
+#[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct ApprovalsHashesV1 {
+    /// Hash of the block that contains deploys that are relevant to the approvals.
+    block_hash: BlockHash,
+    /// The set of all deploys' finalized approvals' hashes.
+    approvals_hashes: Vec<DeployApprovalsHash>,
+    /// The Merkle proof of the checksum registry containing the checksum of the finalized
+    /// approvals.
+    #[data_size(skip)]
+    merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
+}
+
+#[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct ApprovalsHashesV2 {
+    /// Hash of the block that contains transactions that are relevant to the approvals.
+    block_hash: BlockHash,
+    /// The set of all transactions' finalized approvals' hashes.
+    approvals_hashes: Vec<TransactionApprovalsHash>,
+    /// The Merkle proof of the checksum registry containing the checksum of the finalized
+    /// approvals.
+    #[data_size(skip)]
+    merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
+}
+
 /// The data which is gossiped by validators to non-validators upon creation of a new block.
 #[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum ApprovalsHashes {
     #[serde(rename = "Version1")]
-    V1 {
-        /// Hash of the block that contains deploys that are relevant to the approvals.
-        block_hash: BlockHash,
-        /// The set of all deploys' finalized approvals' hashes.
-        approvals_hashes: Vec<DeployApprovalsHash>,
-        /// The Merkle proof of the checksum registry containing the checksum of the finalized
-        /// approvals.
-        #[data_size(skip)]
-        merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
-    },
+    V1(ApprovalsHashesV1),
     #[serde(rename = "Version2")]
-    V2 {
-        /// Hash of the block that contains transactions that are relevant to the approvals.
-        block_hash: BlockHash,
-        /// The set of all transactions' finalized approvals' hashes.
-        approvals_hashes: Vec<TransactionApprovalsHash>,
-        /// The Merkle proof of the checksum registry containing the checksum of the finalized
-        /// approvals.
-        #[data_size(skip)]
-        merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
-    },
+    V2(ApprovalsHashesV2),
 }
 
 impl ApprovalsHashes {
@@ -59,11 +65,11 @@ impl ApprovalsHashes {
         approvals_hashes: Vec<DeployApprovalsHash>,
         merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
     ) -> Self {
-        Self::V1 {
+        Self::V1(ApprovalsHashesV1 {
             block_hash,
             approvals_hashes,
             merkle_proof_approvals,
-        }
+        })
     }
 
     pub(crate) fn new_v2(
@@ -71,23 +77,23 @@ impl ApprovalsHashes {
         approvals_hashes: Vec<TransactionApprovalsHash>,
         merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
     ) -> Self {
-        Self::V2 {
+        Self::V2(ApprovalsHashesV2 {
             block_hash,
             approvals_hashes,
             merkle_proof_approvals,
-        }
+        })
     }
 
     fn verify(&self, block: &Block) -> Result<(), ApprovalsHashesValidationError> {
         let merkle_proof_approvals = match self {
-            ApprovalsHashes::V1 {
+            ApprovalsHashes::V1(ApprovalsHashesV1 {
                 merkle_proof_approvals,
                 ..
-            } => merkle_proof_approvals,
-            ApprovalsHashes::V2 {
+            }) => merkle_proof_approvals,
+            ApprovalsHashes::V2(ApprovalsHashesV2 {
                 merkle_proof_approvals,
                 ..
-            } => merkle_proof_approvals,
+            }) => merkle_proof_approvals,
         };
         if *merkle_proof_approvals.key() != Key::ChecksumRegistry {
             return Err(ApprovalsHashesValidationError::InvalidKeyType);
@@ -136,9 +142,9 @@ impl ApprovalsHashes {
         v1_block: &BlockV1,
     ) -> Result<Vec<DeployId>, ApprovalsHashesValidationError> {
         let deploy_approvals_hashes = match self {
-            ApprovalsHashes::V1 {
+            ApprovalsHashes::V1(ApprovalsHashesV1 {
                 approvals_hashes, ..
-            } => approvals_hashes,
+            }) => approvals_hashes,
             txn_approvals_hashes => {
                 let mismatch =
                     VariantMismatch(Box::new((txn_approvals_hashes.clone(), v1_block.clone())));
@@ -159,9 +165,9 @@ impl ApprovalsHashes {
         v2_block: &BlockV2,
     ) -> Result<Vec<TransactionId>, ApprovalsHashesValidationError> {
         let txn_approvals_hashes = match self {
-            ApprovalsHashes::V2 {
+            ApprovalsHashes::V2(ApprovalsHashesV2 {
                 approvals_hashes, ..
-            } => approvals_hashes,
+            }) => approvals_hashes,
             deploy_approvals_hashes => {
                 let mismatch = VariantMismatch(Box::new((
                     deploy_approvals_hashes.clone(),
@@ -198,24 +204,24 @@ impl ApprovalsHashes {
 
     pub(crate) fn block_hash(&self) -> &BlockHash {
         match self {
-            ApprovalsHashes::V1 { block_hash, .. } => block_hash,
-            ApprovalsHashes::V2 { block_hash, .. } => block_hash,
+            ApprovalsHashes::V1(ApprovalsHashesV1 { block_hash, .. }) => block_hash,
+            ApprovalsHashes::V2(ApprovalsHashesV2 { block_hash, .. }) => block_hash,
         }
     }
 
     pub(crate) fn approvals_hashes(&self) -> Vec<TransactionApprovalsHash> {
         match self {
-            ApprovalsHashes::V1 {
+            ApprovalsHashes::V1(ApprovalsHashesV1 {
                 approvals_hashes, ..
-            } => approvals_hashes
+            }) => approvals_hashes
                 .iter()
                 .map(|deploy_approvals_hash| {
                     TransactionApprovalsHash::Deploy(*deploy_approvals_hash)
                 })
                 .collect(),
-            ApprovalsHashes::V2 {
+            ApprovalsHashes::V2(ApprovalsHashesV2 {
                 approvals_hashes, ..
-            } => approvals_hashes.clone(),
+            }) => approvals_hashes.clone(),
         }
     }
 }
@@ -245,21 +251,21 @@ impl Display for ApprovalsHashes {
 impl ToBytes for ApprovalsHashes {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            ApprovalsHashes::V1 {
+            ApprovalsHashes::V1(ApprovalsHashesV1 {
                 block_hash,
                 approvals_hashes,
                 merkle_proof_approvals,
-            } => {
+            }) => {
                 V1_TAG.write_bytes(writer)?;
                 block_hash.write_bytes(writer)?;
                 approvals_hashes.write_bytes(writer)?;
                 merkle_proof_approvals.write_bytes(writer)
             }
-            ApprovalsHashes::V2 {
+            ApprovalsHashes::V2(ApprovalsHashesV2 {
                 block_hash,
                 approvals_hashes,
                 merkle_proof_approvals,
-            } => {
+            }) => {
                 V2_TAG.write_bytes(writer)?;
                 block_hash.write_bytes(writer)?;
                 approvals_hashes.write_bytes(writer)?;
@@ -277,20 +283,20 @@ impl ToBytes for ApprovalsHashes {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                ApprovalsHashes::V1 {
+                ApprovalsHashes::V1(ApprovalsHashesV1 {
                     block_hash,
                     approvals_hashes,
                     merkle_proof_approvals,
-                } => {
+                }) => {
                     block_hash.serialized_length()
                         + approvals_hashes.serialized_length()
                         + merkle_proof_approvals.serialized_length()
                 }
-                ApprovalsHashes::V2 {
+                ApprovalsHashes::V2(ApprovalsHashesV2 {
                     block_hash,
                     approvals_hashes,
                     merkle_proof_approvals,
-                } => {
+                }) => {
                     block_hash.serialized_length()
                         + approvals_hashes.serialized_length()
                         + merkle_proof_approvals.serialized_length()
@@ -309,11 +315,11 @@ impl FromBytes for ApprovalsHashes {
                     Vec::<DeployApprovalsHash>::from_bytes(remainder)?;
                 let (merkle_proof_approvals, remainder) =
                     TrieMerkleProof::<Key, StoredValue>::from_bytes(remainder)?;
-                let v1_approvals_hashes = ApprovalsHashes::V1 {
+                let v1_approvals_hashes = ApprovalsHashes::V1(ApprovalsHashesV1 {
                     block_hash,
                     approvals_hashes,
                     merkle_proof_approvals,
-                };
+                });
                 Ok((v1_approvals_hashes, remainder))
             }
             V2_TAG => {
@@ -322,11 +328,11 @@ impl FromBytes for ApprovalsHashes {
                     Vec::<TransactionApprovalsHash>::from_bytes(remainder)?;
                 let (merkle_proof_approvals, remainder) =
                     TrieMerkleProof::<Key, StoredValue>::from_bytes(remainder)?;
-                let v2_approvals_hashes = ApprovalsHashes::V2 {
+                let v2_approvals_hashes = ApprovalsHashes::V2(ApprovalsHashesV2 {
                     block_hash,
                     approvals_hashes,
                     merkle_proof_approvals,
-                };
+                });
                 Ok((v2_approvals_hashes, remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
@@ -393,7 +399,7 @@ mod specimen_support {
     };
     use casper_types::{bytesrepr::Bytes, CLValue, Digest, Key, StoredValue};
 
-    use super::ApprovalsHashes;
+    use super::{ApprovalsHashes, ApprovalsHashesV2};
     use crate::{
         contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},
         utils::specimen::{
@@ -422,11 +428,11 @@ mod specimen_support {
                 // 2^64/2^13 = 2^51, so 51 items:
                 vec_of_largest_specimen(estimator, 51, cache).into(),
             );
-            ApprovalsHashes::V2 {
+            ApprovalsHashes::V2(ApprovalsHashesV2 {
                 block_hash: LargestSpecimen::largest_specimen(estimator, cache),
                 approvals_hashes: vec_prop_specimen(estimator, "approvals_hashes", cache),
                 merkle_proof_approvals,
-            }
+            })
         }
     }
 

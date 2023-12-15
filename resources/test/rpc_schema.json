@@ -6279,7 +6279,7 @@
         "additionalProperties": false
       },
       "MinimalBlockInfo": {
-        "description": "Minimal info of a `Block`.",
+        "description": "Minimal info about a `Block` needed to satisfy the node status request.",
         "type": "object",
         "required": [
           "creator",

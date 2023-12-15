@@ -44,7 +44,7 @@ pub enum PayloadType {
     /// Legacy version of the approvals hashes.
     ApprovalsHashesV1,
     /// Approvals hashes
-    ApprovalsHashes, // TODO[RC]: not existing yet
+    ApprovalsHashes,
     /// Block signatures.
     BlockSignatures,
     /// Deploy.
