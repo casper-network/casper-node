@@ -129,13 +129,24 @@ impl StoredValues {
     }
 }
 
-/// Describes the consensus status
+/// Describes the consensus status.
 #[derive(Debug, PartialEq)]
 pub struct ConsensusStatus(pub (PublicKey, Option<TimeDiff>));
 
 impl ConsensusStatus {
     /// Returns the inner value.
     pub fn into_inner(self) -> (PublicKey, Option<TimeDiff>) {
+        self.0
+    }
+}
+
+/// Type representing bytes from the state store db.
+#[derive(Debug, PartialEq)]
+pub struct StateStoreValue(pub Vec<u8>);
+
+impl StateStoreValue {
+    /// Returns the inner value.
+    pub fn into_inner(self) -> Vec<u8> {
         self.0
     }
 }
@@ -149,3 +160,4 @@ impl_bytesrepr_for_type_wrapper!(SpeculativeExecutionResult);
 impl_bytesrepr_for_type_wrapper!(GetTrieFullResult);
 impl_bytesrepr_for_type_wrapper!(StoredValues);
 impl_bytesrepr_for_type_wrapper!(ConsensusStatus);
+impl_bytesrepr_for_type_wrapper!(StateStoreValue);
