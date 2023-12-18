@@ -11,6 +11,13 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## Unreleased
+
+### Changed
+* Rename `BlockValidator` component to `ProposedBlockValidator`, and corresponding config section `block_validator` to `proposed_block_validator`.
+
+
+
 ## 1.5.5
 
 ### Added
@@ -60,6 +67,8 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Removed
 * There is no more weighted rate limiting on incoming traffic, instead the nodes dynamically adjusts allowed rates from peers based on available resources. This resulted in the removal of the `estimator_weights` configuration option and the `accumulated_incoming_limiter_delay` metric.
+
+
 
 ## 1.5.3
 

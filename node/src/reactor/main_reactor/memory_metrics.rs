@@ -22,7 +22,7 @@ pub(super) struct MemoryMetrics {
     mem_finality_signature_gossiper: RegisteredMetric<IntGauge>,
     mem_block_gossiper: RegisteredMetric<IntGauge>,
     mem_deploy_buffer: RegisteredMetric<IntGauge>,
-    mem_block_validator: RegisteredMetric<IntGauge>,
+    mem_proposed_block_validator: RegisteredMetric<IntGauge>,
     mem_sync_leaper: RegisteredMetric<IntGauge>,
     mem_deploy_acceptor: RegisteredMetric<IntGauge>,
     mem_block_synchronizer: RegisteredMetric<IntGauge>,
@@ -73,9 +73,9 @@ impl MemoryMetrics {
             registry.new_int_gauge("mem_block_gossiper", "block gossiper memory usage in bytes")?;
         let mem_deploy_buffer =
             registry.new_int_gauge("mem_deploy_buffer", "deploy buffer memory usage in bytes")?;
-        let mem_block_validator = registry.new_int_gauge(
+        let mem_proposed_block_validator = registry.new_int_gauge(
             "mem_block_validator",
-            "block validator memory usage in bytes",
+            "proposed block validator memory usage in bytes",
         )?;
         let mem_sync_leaper =
             registry.new_int_gauge("mem_sync_leaper", "sync leaper memory usage in bytes")?;
@@ -121,7 +121,7 @@ impl MemoryMetrics {
             mem_finality_signature_gossiper,
             mem_block_gossiper,
             mem_deploy_buffer,
-            mem_block_validator,
+            mem_proposed_block_validator,
             mem_sync_leaper,
             mem_deploy_acceptor,
             mem_block_synchronizer,
@@ -151,7 +151,7 @@ impl MemoryMetrics {
             reactor.finality_signature_gossiper.estimate_heap_size() as i64;
         let block_gossiper = reactor.block_gossiper.estimate_heap_size() as i64;
         let deploy_buffer = reactor.deploy_buffer.estimate_heap_size() as i64;
-        let block_validator = reactor.block_validator.estimate_heap_size() as i64;
+        let proposed_block_validator = reactor.proposed_block_validator.estimate_heap_size() as i64;
         let sync_leaper = reactor.sync_leaper.estimate_heap_size() as i64;
         let deploy_acceptor = reactor.deploy_acceptor.estimate_heap_size() as i64;
         let block_synchronizer = reactor.block_synchronizer.estimate_heap_size() as i64;
@@ -173,7 +173,7 @@ impl MemoryMetrics {
             + finality_signature_gossiper
             + block_gossiper
             + deploy_buffer
-            + block_validator
+            + proposed_block_validator
             + sync_leaper
             + deploy_acceptor
             + block_synchronizer
@@ -195,7 +195,8 @@ impl MemoryMetrics {
             .set(finality_signature_gossiper);
         self.mem_block_gossiper.set(block_gossiper);
         self.mem_deploy_buffer.set(deploy_buffer);
-        self.mem_block_validator.set(block_validator);
+        self.mem_proposed_block_validator
+            .set(proposed_block_validator);
         self.mem_sync_leaper.set(sync_leaper);
         self.mem_deploy_acceptor.set(deploy_acceptor);
         self.mem_block_synchronizer.set(block_synchronizer);
@@ -225,7 +226,7 @@ impl MemoryMetrics {
                %finality_signature_gossiper,
                %block_gossiper,
                %deploy_buffer,
-               %block_validator,
+               %proposed_block_validator,
                %sync_leaper,
                %deploy_acceptor,
                %block_synchronizer,

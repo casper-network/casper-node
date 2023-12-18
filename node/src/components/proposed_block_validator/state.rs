@@ -80,7 +80,7 @@ impl ApprovalInfo {
     }
 }
 
-/// State of the current process of block validation.
+/// State of the current process of proposed block validation.
 ///
 /// Tracks whether or not there are deploys still missing and who is interested in the final result.
 #[derive(DataSize, Debug)]
@@ -227,7 +227,7 @@ impl BlockValidationState {
                     debug!(
                         block_timestamp = %appendable_block.timestamp(),
                         peer = %entry.key(),
-                        "already registered peer as holder for block validation"
+                        "already registered peer as holder for proposed block validation"
                     );
                 }
                 Entry::Vacant(entry) => {
@@ -353,13 +353,13 @@ impl BlockValidationState {
                             debug!(
                                 block_timestamp = %appendable_block.timestamp(),
                                 missing_deploys_len = missing_deploys.len(),
-                                "still missing deploys - block validation incomplete"
+                                "still missing deploys - proposed block validation incomplete"
                             );
                             return vec![];
                         }
                         debug!(
                             block_timestamp = %appendable_block.timestamp(),
-                            "no further missing deploys - block validation complete"
+                            "no further missing deploys - proposed block validation complete"
                         );
                         let new_state = BlockValidationState::Valid(appendable_block.timestamp());
                         (new_state, mem::take(responders))
