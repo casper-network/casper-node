@@ -4,37 +4,36 @@
 //! is based on a configuration of the Juliet protocol implemented in the `juliet` crate.
 
 use casper_types::TimeDiff;
-use juliet::{rpc::IncomingRequest, ChannelConfiguration};
+use juliet::rpc::IncomingRequest;
 use strum::EnumCount;
 
-use super::Channel;
+use crate::types::chainspec::JulietConfig;
+
+use super::{Channel, PerChannel};
 
 /// Creats a new RPC builder with the currently fixed Juliet configuration.
 ///
 /// The resulting `RpcBuilder` can be reused for multiple connections.
 pub(super) fn create_rpc_builder(
-    maximum_message_size: u32,
-    max_in_flight_demands: u16,
+    juliet_config: PerChannel<JulietConfig>,
+    buffer_size: PerChannel<Option<u16>>,
     ack_timeout: TimeDiff,
 ) -> juliet::rpc::RpcBuilder<{ Channel::COUNT }> {
-    // Note: `maximum_message_size` is a bit misleading, since it is actually the maximum payload
-    //       size. In the future, the chainspec setting should be overhauled and the
-    //       one-size-fits-all limit replaced with a per-channel limit. Similarly,
-    //       `max_in_flight_demands` should be tweaked on a per-channel basis.
+    let protocol = juliet_config.into_iter().fold(
+        juliet::protocol::ProtocolBuilder::new(),
+        |protocol, (channel, juliet_config)| {
+            protocol.channel_config(channel.into_channel_id(), juliet_config.into())
+        },
+    );
 
-    // Since we do not currently configure individual message size limits and make no distinction
-    // between requests and responses, we simply set all limits to the maximum message size.
-    let channel_cfg = ChannelConfiguration::new()
-        .with_request_limit(max_in_flight_demands)
-        .with_max_request_payload_size(maximum_message_size)
-        .with_max_response_payload_size(maximum_message_size);
-
-    let protocol = juliet::protocol::ProtocolBuilder::with_default_channel_config(channel_cfg);
-
-    // TODO: Figure out a good value for buffer sizes, and make configurable individually.
-    let io_core = juliet::io::IoCoreBuilder::with_default_buffer_size(
-        protocol,
-        2 * max_in_flight_demands.max(1) as usize,
+    let io_core = juliet_config.into_iter().zip(buffer_size).fold(
+        juliet::io::IoCoreBuilder::new(protocol),
+        |io_core, ((channel, juliet_config), (_, maybe_buffer_size))| {
+            let buffer_size = maybe_buffer_size
+                .unwrap_or(juliet_config.in_flight_limit)
+                .max(1) as usize;
+            io_core.buffer_size(channel.into_channel_id(), buffer_size)
+        },
     );
 
     juliet::rpc::RpcBuilder::new(io_core)

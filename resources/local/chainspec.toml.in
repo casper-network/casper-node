@@ -20,7 +20,16 @@ activation_point = '${TIMESTAMP}'
 name = 'casper-example'
 # The maximum size of an acceptable networking message in bytes.  Any message larger than this will
 # be rejected at the networking level.
-maximum_net_message_size = 25_165_824
+maximum_handshake_message_size = 1_048_576
+
+[network.networking_config]
+network = { in_flight_limit = 25, maximum_request_payload_size = 25_165_824, maximum_response_payload_size = 0 }
+sync_data_request = { in_flight_limit = 25, maximum_request_payload_size = 25_165_824, maximum_response_payload_size = 0 }
+sync_data_responses = { in_flight_limit = 25, maximum_request_payload_size = 25_165_824, maximum_response_payload_size = 0 }
+data_requests = { in_flight_limit = 25, maximum_request_payload_size = 25_165_824, maximum_response_payload_size = 0 }
+data_responses = { in_flight_limit = 25, maximum_request_payload_size = 25_165_824, maximum_response_payload_size = 0 }
+consensus = { in_flight_limit = 25, maximum_request_payload_size = 25_165_824, maximum_response_payload_size = 0 }
+bulk_gossip = { in_flight_limit = 25, maximum_request_payload_size = 25_165_824, maximum_response_payload_size = 0 }
 
 [core]
 # Era duration.

@@ -37,7 +37,8 @@ use super::{
     error::{ConnectionError, MessageReceiverError, MessageSenderError},
     event::{IncomingConnection, OutgoingConnection},
     message::NodeKeyPair,
-    Channel, Event, FromIncoming, Identity, Message, Metrics, Payload, RpcServer, Transport,
+    Channel, Event, FromIncoming, Identity, Message, Metrics, Payload, PerChannel, RpcServer,
+    Transport,
 };
 
 use crate::{
@@ -196,8 +197,8 @@ where
     /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
     tarpit_chance: f32,
     /// Maximum number of demands allowed to be running at once. If 0, no limit is enforced.
-    #[allow(dead_code)] // TODO: Readd if necessary for backpressure.
-    max_in_flight_demands: usize,
+    #[allow(dead_code)] // TODO: Read if necessary for backpressure.
+    max_in_flight_demands: PerChannel<usize>,
 }
 
 impl<REv> NetworkContext<REv> {
@@ -210,11 +211,13 @@ impl<REv> NetworkContext<REv> {
         net_metrics: &Arc<Metrics>,
     ) -> Self {
         // Set the demand max from configuration, regarding `0` as "unlimited".
-        let max_in_flight_demands = if cfg.max_in_flight_demands == 0 {
-            usize::MAX
-        } else {
-            cfg.max_in_flight_demands as usize
-        };
+        let max_in_flight_demands = chain_info.networking_config.map(|cfg| {
+            if cfg.in_flight_limit == 0 {
+                usize::MAX
+            } else {
+                cfg.in_flight_limit as usize
+            }
+        });
 
         let Identity {
             secret_key,
