@@ -15,7 +15,7 @@ use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
     checksummed_hex, CLType, CLTyped,
 };
-
+pub use jsonrepr::cl_value_to_json;
 mod jsonrepr;
 
 /// Error while converting a [`CLValue`] into a given type.
