@@ -1,7 +1,8 @@
 use assert_matches::assert_matches;
 
 use casper_types::{
-    bytesrepr::ToBytes, execution::ExecutionResultV2, testing::TestRng, TestBlockBuilder,
+    bytesrepr::ToBytes, execution::ExecutionResultV2, testing::TestRng, DeployHash,
+    TestBlockBuilder,
 };
 
 use super::*;
@@ -272,7 +273,7 @@ impl ExecutionResultsAcquisition {
     fn new_complete(
         block_hash: BlockHash,
         checksum: ExecutionResultsChecksum,
-        results: HashMap<DeployHash, ExecutionResult>,
+        results: HashMap<TransactionHash, ExecutionResult>,
     ) -> Self {
         let acq = Self::Complete {
             block_hash,
@@ -349,7 +350,7 @@ fn acquisition_pending_state_has_correct_transitions() {
     assert_matches!(
         acquisition.clone().apply_block_execution_results_or_chunk(
             exec_result,
-            vec![DeployHash::new(Digest::hash([0; 32]))]
+            vec![DeployHash::new(Digest::hash([0; 32])).into()]
         ),
         Ok((
             ExecutionResultsAcquisition::Complete { .. },
@@ -370,9 +371,9 @@ fn acquisition_pending_state_has_correct_transitions() {
         *block.hash(),
         ValueOrChunk::ChunkWithProof(first_chunk.clone()),
     );
-    let deploy_hashes: Vec<DeployHash> = (0..NUM_TEST_EXECUTION_RESULTS)
+    let deploy_hashes: Vec<TransactionHash> = (0..NUM_TEST_EXECUTION_RESULTS)
         .into_iter()
-        .map(|index| DeployHash::new(Digest::hash(index.to_bytes().unwrap())))
+        .map(|index| DeployHash::new(Digest::hash(index.to_bytes().unwrap())).into())
         .collect();
     assert_matches!(
         acquisition.apply_block_execution_results_or_chunk(exec_result, deploy_hashes),
@@ -429,9 +430,9 @@ fn acquisition_acquiring_state_has_correct_transitions() {
         *block.hash(),
         ValueOrChunk::ChunkWithProof(last_chunk.clone()),
     );
-    let deploy_hashes: Vec<DeployHash> = (0..NUM_TEST_EXECUTION_RESULTS)
+    let deploy_hashes: Vec<TransactionHash> = (0..NUM_TEST_EXECUTION_RESULTS)
         .into_iter()
-        .map(|index| DeployHash::new(Digest::hash(index.to_bytes().unwrap())))
+        .map(|index| DeployHash::new(Digest::hash(index.to_bytes().unwrap())).into())
         .collect();
     acquisition = assert_matches!(
         acquisition.apply_block_execution_results_or_chunk(exec_result, deploy_hashes),
@@ -483,7 +484,7 @@ fn acquisition_acquiring_state_gets_overridden_by_value() {
     assert_matches!(
         acquisition.apply_block_execution_results_or_chunk(
             exec_result,
-            vec![DeployHash::new(Digest::hash([0; 32]))]
+            vec![DeployHash::new(Digest::hash([0; 32])).into()]
         ),
         Ok((
             ExecutionResultsAcquisition::Complete { .. },

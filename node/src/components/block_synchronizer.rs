@@ -30,8 +30,8 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state;
 use casper_types::{
-    Block, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy, Digest, FinalitySignature,
-    FinalitySignatureId, Timestamp, Transaction, TransactionId,
+    Block, BlockHash, BlockHeader, BlockSignatures, Chainspec, Digest, FinalitySignature,
+    FinalitySignatureId, Timestamp, Transaction,
 };
 
 use super::network::blocklist::BlocklistJustification;
@@ -58,7 +58,6 @@ use crate::{
         BlockExecutionResultsOrChunk, ExecutableBlock, LegacyDeploy, MetaBlock, MetaBlockState,
         NodeId, SyncLeap, SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix,
     },
-    utils::fetch_id,
     NodeRng,
 };
 
@@ -487,7 +486,10 @@ impl BlockSynchronizer {
                                         effect_builder.announce_meta_block(meta_block).await;
                                     }
                                     None => {
-                                        warn!("should have execution results for {}", block.hash());
+                                        error!(
+                                            "should have execution results for {}",
+                                            block.hash()
+                                        );
                                     }
                                 }
                             })
@@ -659,9 +661,7 @@ impl BlockSynchronizer {
                             })
                     }))
                 }
-                NeedNext::DeployById(block_hash, deploy_id) => {
-                    let (deploy_hash, approvals_hash) = deploy_id.destructure();
-                    let txn_id = TransactionId::new_deploy(deploy_hash, approvals_hash);
+                NeedNext::TransactionById(block_hash, txn_id) => {
                     builder.latch_by(peers.len());
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
@@ -1228,14 +1228,18 @@ impl BlockSynchronizer {
         }
     }
 
-    fn deploy_fetched(&mut self, block_hash: BlockHash, fetched_deploy: FetchedData<Deploy>) {
-        let (deploy, maybe_peer) = match fetched_deploy {
+    fn transaction_fetched(
+        &mut self,
+        block_hash: BlockHash,
+        fetched_txn: FetchedData<Transaction>,
+    ) {
+        let (txn, maybe_peer) = match fetched_txn {
             FetchedData::FromPeer { item, peer } => (item, Some(peer)),
             FetchedData::FromStorage { item } => (item, None),
         };
 
         if let Some(builder) = self.get_builder(block_hash, false) {
-            if let Err(error) = builder.register_deploy(fetch_id(&deploy), maybe_peer) {
+            if let Err(error) = builder.register_deploy(txn.fetch_id(), maybe_peer) {
                 error!(%block_hash, %error, "BlockSynchronizer: failed to apply deploy");
             }
         }
@@ -1597,29 +1601,12 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                         Either::Left(Ok(fetched_legacy_deploy)) => {
                             let deploy_id = fetched_legacy_deploy.id();
                             debug!(%block_hash, ?deploy_id, "BlockSynchronizer: fetched legacy deploy");
-                            self.deploy_fetched(block_hash, fetched_legacy_deploy.convert())
+                            self.transaction_fetched(block_hash, fetched_legacy_deploy.convert())
                         }
                         Either::Right(Ok(fetched_txn)) => {
                             let txn_id = fetched_txn.id();
-                            // This conversion including the panicking code will be removed as part
-                            // of https://github.com/casper-network/roadmap/issues/190.
-                            let fetched_deploy = match fetched_txn {
-                                FetchedData::FromStorage { item } => match *item {
-                                    Transaction::Deploy(deploy) => FetchedData::FromStorage {
-                                        item: Box::new(deploy),
-                                    },
-                                    Transaction::V1(_) => unreachable!(),
-                                },
-                                FetchedData::FromPeer { item, peer } => match *item {
-                                    Transaction::Deploy(deploy) => FetchedData::FromPeer {
-                                        item: Box::new(deploy),
-                                        peer,
-                                    },
-                                    Transaction::V1(_) => unreachable!(),
-                                },
-                            };
-                            debug!(%block_hash, %txn_id, "BlockSynchronizer: fetched deploy");
-                            self.deploy_fetched(block_hash, fetched_deploy)
+                            debug!(%block_hash, %txn_id, "BlockSynchronizer: fetched transaction");
+                            self.transaction_fetched(block_hash, fetched_txn)
                         }
                         Either::Left(Err(error)) => {
                             if let Some(builder) = self.get_builder(block_hash, false) {

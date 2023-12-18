@@ -12,9 +12,9 @@ use datasize::DataSize;
 use tracing::{debug, error, trace, warn};
 
 use casper_types::{
-    execution::ExecutionResult, Block, BlockHash, BlockHeader, BlockSignatures, DeployHash,
-    DeployId, Digest, EraId, FinalitySignature, LegacyRequiredFinality, ProtocolVersion, PublicKey,
-    TimeDiff, Timestamp,
+    execution::ExecutionResult, Block, BlockHash, BlockHeader, BlockSignatures, Digest, EraId,
+    FinalitySignature, LegacyRequiredFinality, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+    TransactionHash, TransactionId,
 };
 
 use super::{
@@ -653,7 +653,7 @@ impl BlockBuilder {
         &mut self,
         maybe_peer: Option<NodeId>,
         block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
-    ) -> Result<Option<HashMap<DeployHash, ExecutionResult>>, Error> {
+    ) -> Result<Option<HashMap<TransactionHash, ExecutionResult>>, Error> {
         debug!(block_hash=%self.block_hash, "register_fetched_execution_results");
         let was_waiting_for_execution_results = self.waiting_for_execution_results();
         match self.acquisition_state.register_execution_results_or_chunk(
@@ -766,14 +766,14 @@ impl BlockBuilder {
 
     pub(super) fn waiting_for_deploys(&self) -> bool {
         match &self.acquisition_state {
-            BlockAcquisitionState::HaveApprovalsHashes(_, _, deploys) => {
-                deploys.needs_deploy().is_some()
+            BlockAcquisitionState::HaveApprovalsHashes(_, _, transactions) => {
+                transactions.needs_transaction()
             }
-            BlockAcquisitionState::HaveAllExecutionResults(_, _, deploys, checksum)
+            BlockAcquisitionState::HaveAllExecutionResults(_, _, transactions, checksum)
                 if self.should_fetch_execution_state =>
             {
                 if !checksum.is_checkable() {
-                    deploys.needs_deploy().is_some()
+                    transactions.needs_transaction()
                 } else {
                     false
                 }
@@ -794,13 +794,13 @@ impl BlockBuilder {
 
     pub(super) fn register_deploy(
         &mut self,
-        deploy_id: DeployId,
+        txn_id: TransactionId,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
         let was_waiting_for_deploys = self.waiting_for_deploys();
         let acceptance = self
             .acquisition_state
-            .register_deploy(deploy_id, self.should_fetch_execution_state);
+            .register_deploy(txn_id, self.should_fetch_execution_state);
         self.handle_acceptance(maybe_peer, acceptance, was_waiting_for_deploys)
     }
 
