@@ -15,7 +15,7 @@ touch  "$PATH_SUPERVISOR_CONFIG"
 # ------------------------------------------------------------------------
 # Set supervisord.conf header.
 # ------------------------------------------------------------------------
-cat >> "$PATH_SUPERVISOR_CONFIG" <<- EOM
+cat > "$PATH_SUPERVISOR_CONFIG" <<- EOM
 [unix_http_server]
 file=$PATH_TO_NET/daemon/socket/supervisord.sock ;
 
@@ -43,8 +43,9 @@ do
     PATH_NODE_LOGS=$(get_path_to_node_logs "$NODE_ID")
 
     local NODE_PROTOCOL_VERSION
+    local USE_LATEST=true
 
-    NODE_PROTOCOL_VERSION=$(get_node_protocol_version_from_fs "$NODE_ID" "_")
+    NODE_PROTOCOL_VERSION=$(get_node_protocol_version_from_fs "$NODE_ID" "_" "$USE_LATEST")
 
     cat >> "$PATH_SUPERVISOR_CONFIG" <<- EOM
 
