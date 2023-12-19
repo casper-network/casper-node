@@ -313,7 +313,9 @@ mod tests {
 
     #[test]
     fn unittest() {
-        let foo = Greeter::initialize();
+        let mut foo = Greeter::initialize();
         assert_eq!(foo.get_greeting(), INITIAL_GREETING);
+        foo.set_greeting("New greeting".to_string());
+        assert_eq!(foo.get_greeting(), "New greeting");
     }
 }

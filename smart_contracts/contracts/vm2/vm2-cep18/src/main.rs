@@ -298,6 +298,11 @@ mod tests {
     }
 
     #[test]
+    fn schema() {
+        dbg!(CEP18::schema());
+    }
+
+    #[test]
     fn it_works() {
         let contract = CEP18::new();
         assert_eq!(contract.name(), "Default name");

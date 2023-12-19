@@ -4,15 +4,12 @@
 #[macro_use]
 extern crate alloc;
 
-use alloc::{string::String, vec::Vec};
-use borsh::BorshDeserialize;
 use casper_macros::{casper, Contract};
 use casper_sdk::log;
 
 mod exports {
 
     use alloc::{string::String, vec::Vec};
-    use borsh::BorshSerialize;
     use casper_macros::casper;
 
     use casper_sdk::{

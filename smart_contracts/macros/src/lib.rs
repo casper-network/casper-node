@@ -629,24 +629,34 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
     // };
     let res = if let Ok(input) = syn::parse::<ItemStruct>(input.clone()) {
         let name = input.ident.clone();
-        // // let all_items = Vec::new();
-        // for field in input.fields.iter() {
-        //     match &field.ty {
-        //         Type::Path(path) => {
-        //             for segment in &path.path.segments {
-        //                 let type_name = &segment.ident;
-        //                 let field_name = &field.ident;
-        //                 todo!("{:?} {:?}", type_name, field_name);
-        //             }
-        //         }
-        //         other_ty => todo!("Unsupported type {other_ty:?}"),
-        //     }
-        // }
+        let mut items = Vec::new();
+        for field in input.fields.iter() {
+            match &field.ty {
+                Type::Path(path) => {
+                    for segment in &path.path.segments {
+                        // let type_name = &segment.ident;
+
+                        let field_name = &field.ident;
+                        items.push(quote! {
+                            casper_sdk::abi::StructField {
+                                name: stringify!(#field_name).into(),
+                                body: <#segment>::definition(),
+                            }
+                        })
+                    }
+                }
+                other_ty => todo!("Unsupported type {other_ty:?}"),
+            }
+        }
 
         Ok(quote! {
             impl casper_sdk::abi::CasperABI for #name {
                 fn definition() -> casper_sdk::abi::Definition {
-                    todo!() // NEXT
+                    casper_sdk::abi::Definition::Struct {
+                        items: vec![
+                            #(#items,)*
+                        ]
+                    }
                 }
             }
         })

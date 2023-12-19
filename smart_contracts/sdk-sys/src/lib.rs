@@ -65,15 +65,10 @@ mod tests {
         use crate::for_each_host_function;
 
         macro_rules! visit_host_function {
-            ( @optional $ty:ty ) => { stringify!($ty) }
-            ( @optional ) => { "()" }
             ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(-> $ret:ty)?;)+) => {
                 $(
                     #[allow(dead_code)]
                     $(#[$cfg])? $vis fn $name($($($arg: $argty,)*)?) $(-> $ret)? {
-                        let name = stringify!($name);
-                        let args = ($($($arg,)*)?);
-                        let ret = stringify!(visit_host_function! { @optional $($ret)? });
                         todo!("Called fn {name}{args:?} -> {ret}");
                     }
                 )*
