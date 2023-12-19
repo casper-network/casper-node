@@ -15,7 +15,7 @@ touch  "$PATH_SUPERVISOR_CONFIG"
 # ------------------------------------------------------------------------
 # Set supervisord.conf header.
 # ------------------------------------------------------------------------
-cat > "$PATH_SUPERVISOR_CONFIG" <<- EOM
+cat >> "$PATH_SUPERVISOR_CONFIG" <<- EOM
 [unix_http_server]
 file=$PATH_TO_NET/daemon/socket/supervisord.sock ;
 
@@ -38,14 +38,14 @@ EOM
 # ------------------------------------------------------------------------
 for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
 do
+    PATH_NODE=$(get_path_to_node "$NODE_ID")
     PATH_NODE_BIN=$(get_path_to_node_bin "$NODE_ID")
     PATH_NODE_CONFIG=$(get_path_to_node_config "$NODE_ID")
     PATH_NODE_LOGS=$(get_path_to_node_logs "$NODE_ID")
 
     local NODE_PROTOCOL_VERSION
-    local USE_LATEST=true
 
-    NODE_PROTOCOL_VERSION=$(get_node_protocol_version_from_fs "$NODE_ID" "_" "$USE_LATEST")
+    NODE_PROTOCOL_VERSION=$(get_node_protocol_version_from_fs "$NODE_ID" "_")
 
     cat >> "$PATH_SUPERVISOR_CONFIG" <<- EOM
 
@@ -66,16 +66,12 @@ stderr_logfile_maxbytes=500MB ;
 stdout_logfile=$PATH_NODE_LOGS/stdout.log ;
 stdout_logfile_backups=5 ;
 stdout_logfile_maxbytes=500MB ;
-EOM
-
-    if [ -f "$PATH_NODE_BIN/$NODE_PROTOCOL_VERSION/casper-rpc-sidecar" ]; then
-        cat >> "$PATH_SUPERVISOR_CONFIG" <<- EOM
 
 [program:casper-net-$NET_ID-sidecar-$NODE_ID]
 autostart=false
 autorestart=false
-command=$PATH_NODE_BIN/$NODE_PROTOCOL_VERSION/casper-rpc-sidecar $PATH_NODE_CONFIG/$NODE_PROTOCOL_VERSION/sidecar.toml
-environment=CASPER_BIN_DIR="$PATH_NODE_BIN",CASPER_CONFIG_DIR="$PATH_NODE_CONFIG"
+command=$NCTL/sh/rpc-sidecar/start-latest.sh node_dir=$PATH_NODE
+environment=NODE_DIR="$PATH_NODE"
 numprocs=1
 numprocs_start=0
 startsecs=0
@@ -89,15 +85,6 @@ stdout_logfile=$PATH_NODE_LOGS/sidecar-stdout.log ;
 stdout_logfile_backups=5 ;
 stdout_logfile_maxbytes=500MB ;
 EOM
-    else
-        # set up a dummy process when sidecar is not available
-        # TODO: consider replacing this with casper-launcher
-        cat >> "$PATH_SUPERVISOR_CONFIG" <<- EOM
-
-[program:casper-net-$NET_ID-sidecar-$NODE_ID]
-command=/bin/cat
-EOM
-    fi
 done
 
 # ------------------------------------------------------------------------

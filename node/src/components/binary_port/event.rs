@@ -17,6 +17,7 @@ pub(crate) enum Event {
     AcceptConnection {
         stream: TcpStream,
         peer: SocketAddr,
+        responder: Responder<()>,
     },
     HandleRequest {
         request: BinaryRequest,

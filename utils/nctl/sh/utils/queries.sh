@@ -143,11 +143,7 @@ function get_node_protocol_version_from_fs()
     local IFS='_'
 
     pushd "$PATH_TO_NODE_BIN" || exit
-    if [ "$USE_LATEST" = true ]; then
-        read -ra SEMVER_CURRENT <<< "$(ls --group-directories-first -td -- * | head -n 1)"
-    else
-        read -ra SEMVER_CURRENT <<< "$(ls --group-directories-first -tdr -- * | head -n 1)"
-    fi
+    read -ra SEMVER_CURRENT <<< "$(ls --group-directories-first -tdr -- * | head -n 1)"
     popd || exit
 
     echo "${SEMVER_CURRENT[0]}$SEPARATOR${SEMVER_CURRENT[1]}$SEPARATOR${SEMVER_CURRENT[2]}"

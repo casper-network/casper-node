@@ -49,7 +49,7 @@ use crate::{
             ConsensusRequest, ContractRuntimeRequest, NetworkInfoRequest, ReactorInfoRequest,
             StorageRequest, UpgradeWatcherRequest,
         },
-        EffectBuilder, EffectExt, Effects, Responder,
+        EffectBuilder, EffectExt, Effects,
     },
     reactor::{main_reactor::MainEvent, Finalize, QueueKind},
     types::NodeRng,
@@ -140,7 +140,11 @@ where
                     );
                     Effects::new()
                 }
-                Event::AcceptConnection { stream, peer } => {
+                Event::AcceptConnection {
+                    stream,
+                    peer,
+                    responder,
+                } => {
                     if let Ok(permit) = Arc::clone(&self.connection_limit).try_acquire_owned() {
                         self.metrics.binary_port_connections_count.inc();
                         let config = Arc::clone(&self.config);
@@ -151,7 +155,7 @@ where
                             peer
                         );
                     }
-                    Effects::new()
+                    responder.respond(()).ignore()
                 }
                 Event::HandleRequest { request, responder } => {
                     let config = Arc::clone(&self.config);
@@ -680,7 +684,11 @@ where
                 Ok((stream, peer)) => {
                     effect_builder
                         .make_request(
-                            |_: Responder<()>| Event::AcceptConnection { stream, peer },
+                            |responder| Event::AcceptConnection {
+                                stream,
+                                peer,
+                                responder,
+                            },
                             QueueKind::Regular,
                         )
                         .await;
