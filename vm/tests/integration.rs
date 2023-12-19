@@ -18,6 +18,7 @@ use vm::{
 // use super::*;
 const VM2_TEST_CONTRACT: &[u8] = include_bytes!("../vm2-test-contract.wasm");
 const VM2_HARNESS: &[u8] = include_bytes!("../vm2-harness.wasm");
+const VM2_CEP18: &[u8] = include_bytes!("../vm2-harness.wasm");
 
 type Blake2b256 = Blake2b<U32>;
 
@@ -205,6 +206,11 @@ fn greeter() {
     run_wasm(VM2_HARNESS, ());
 }
 
+#[test]
+fn cep18() {
+    run_wasm(VM2_CEP18, ());
+}
+
 fn run_wasm<T: BorshSerialize>(contract_name: &'static [u8], input_data: T) {
     let bytecode = Bytes::from_static(contract_name);
 
@@ -240,7 +246,7 @@ fn run_wasm<T: BorshSerialize>(contract_name: &'static [u8], input_data: T) {
         .build();
 
     let mock_context = Context {
-        address: [0; 32],
+        address: [42; 32],
         storage,
     };
 

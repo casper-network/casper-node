@@ -1,43 +1,67 @@
+#![cfg_attr(target_arch = "wasm32", no_main)]
 pub mod error;
 
-use casper_macros::{casper, Contract, Schema};
-use casper_sdk::{host::Address, revert, schema::Schema, Contract};
+use borsh::{BorshDeserialize, BorshSerialize};
+use casper_macros::{casper, CasperABI, Contract, Schema};
+use casper_sdk::{collections::Map, revert, schema::Schema, types::Address, Contract};
 use error::Cep18Error;
 use std::string::String;
 
-#[derive(Contract, Schema)]
+#[derive(Contract, Schema, BorshSerialize, BorshDeserialize, CasperABI)]
 struct CEP18 {
     name: String,
     symbol: String,
     decimals: u8,
     total_supply: u64, // TODO: U256
+    balances: Map<Address, u64>,
+    allowances: Map<(Address, Address), u64>,
+}
+
+impl Default for CEP18 {
+    fn default() -> Self {
+        Self {
+            name: "Default name".to_string(),
+            symbol: "Default symbol".to_string(),
+            decimals: 0,
+            total_supply: 0,
+            balances: Map::new("balances"),
+            allowances: Map::new("allowances"),
+        }
+    }
 }
 
 #[casper(entry_points)]
 impl CEP18 {
-    // fn name(&self) -> String {
-    //     self.name
-    // }
+    #[constructor]
+    pub fn new() -> Self {
+        let mut instance = Self::default();
+        instance.balances.insert(&[2; 32], &1);
+        instance
+    }
 
-    // fn symbol(&self) -> String {
-    //     self.symbol
-    // }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 
-    // fn decimals(&self) -> u8 {
-    //     self.decimals
-    // }
+    pub fn symbol(&self) -> &str {
+        &self.symbol
+    }
 
-    // fn total_supply(&self) -> u64 {
-    //     self.total_supply
-    // }
+    pub fn decimals(&self) -> u8 {
+        self.decimals
+    }
 
-    // fn balance_of(&self, address: Address) -> u64 {
-    //     todo!()
-    // }
+    pub fn total_supply(&self) -> u64 {
+        self.total_supply
+    }
 
-    // fn allowance(&self, spender: Address, owner: Address) {
-    //     todo!()
-    // }
+    pub fn balance_of(&self, address: Address) -> u64 {
+        self.balances.get(&address).unwrap_or_default()
+    }
+
+    fn allowance(&self, spender: Address, owner: Address) {
+        self.allowances.get(&(spender, owner)).unwrap_or_default();
+    }
 
     // fn approve(&self, spender: Address) -> Result<(), Cep18Error> {
     //     revert!(Err(Cep18Error::CannotTargetSelfUser))
@@ -253,44 +277,31 @@ impl CEP18 {
 //         }
 //     }
 // }
+
 #[casper(export)]
-fn call() {}
+pub fn call() {
+    // let result = CEP18::create("new", None).unwrap();
+}
 
 #[cfg(test)]
 mod tests {
-
-    use borsh::{schema::BorshSchemaContainer, BorshSchema};
-    use casper_sdk::{
-        schema::{schema_helper, Schema},
-        Contract,
-    };
-
     use super::*;
 
+    use casper_sdk::abi::CasperABI;
+
+    const ALICE: Address = [1; 32];
+    const BOB: Address = [2; 32];
+
     #[test]
-    fn test() {
-        let args = ();
-        schema_helper::dispatch("call", args);
+    fn abi() {
+        dbg!(CEP18::definition());
     }
 
     #[test]
-    fn exports() {
-        dbg!(schema_helper::list_exports());
-    }
-
-    #[test]
-    fn compile_time_schema() {
-        let schema = Greeter::schema();
-        dbg!(&schema);
-        println!("{}", serde_json::to_string_pretty(&schema).unwrap());
-    }
-
-    #[test]
-    fn should_greet() {
-        assert_eq!(Greeter::name(), "Greeter");
-        let mut flipper = Greeter::new();
-        assert_eq!(flipper.get_greeting(), ""); // TODO: Initializer
-        flipper.set_greeting("Hi".into());
-        assert_eq!(flipper.get_greeting(), "Hi");
+    fn it_works() {
+        let contract = CEP18::new();
+        assert_eq!(contract.name(), "Default name");
+        assert_eq!(contract.balance_of(ALICE), 0);
+        assert_eq!(contract.balance_of(BOB), 1);
     }
 }

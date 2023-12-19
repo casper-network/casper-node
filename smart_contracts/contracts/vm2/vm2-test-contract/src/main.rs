@@ -7,17 +7,19 @@ extern crate alloc;
 use alloc::{string::String, vec::Vec};
 use borsh::BorshDeserialize;
 use casper_macros::{casper, Contract};
-use casper_sdk::{log, Field};
+use casper_sdk::log;
 
 mod exports {
 
     use alloc::{string::String, vec::Vec};
     use borsh::BorshSerialize;
     use casper_macros::casper;
+
     use casper_sdk::{
-        host::{self, CreateResult, EntryPoint, Manifest, Param},
-        reserve_vec_space,
+        host, reserve_vec_space,
         storage::Keyspace,
+        sys::{CreateResult, EntryPoint, Manifest, Param},
+        types::ResultCode,
     };
     use core::ptr::NonNull;
     use vm_common::flags::EntryPointFlags;
@@ -163,7 +165,7 @@ mod exports {
                     host::casper_call(&contract_address, 10, "mangled_entry_point_1", &input_data);
 
                 match result_code {
-                    host::ResultCode::Success => {
+                    ResultCode::Success => {
                         host::casper_print(&format!("✅ Call succeeded. Output: {:?}", data));
                     }
                     error => {

@@ -12,6 +12,7 @@ proc-macro = true
 syn = { version = "2", features = ["full", "extra-traits"] }
 quote = "1"
 casper-sdk = { path = "../sdk" }
+casper-sdk-sys = { path = "../sdk-sys" }
 vm-common = { path = "../../vm-common" }
 paste = "1"
 darling = "0.20.3"

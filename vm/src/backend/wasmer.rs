@@ -506,6 +506,29 @@ where
                 ),
             );
 
+            imports.define(
+                "env",
+                "casper_env_read",
+                Function::new_typed_with_env(
+                    &mut store,
+                    &function_env,
+                    |env: FunctionEnvMut<WasmerEnv<S>>,
+                     env_path,
+                     env_path_size,
+                     cb_alloc: u32,
+                     cb_ctx: u32| {
+                        let wasmer_caller = WasmerCaller { env };
+                        host::casper_env_read(
+                            wasmer_caller,
+                            env_path,
+                            env_path_size,
+                            cb_alloc,
+                            cb_ctx,
+                        )
+                    },
+                ),
+            );
+
             imports
         };
 

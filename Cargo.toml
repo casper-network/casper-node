@@ -15,6 +15,7 @@ members = [
     "vm",
     "vm-common",
     "smart_contracts/sdk",
+    "smart_contracts/sdk-sys",
     "smart_contracts/macros"
 ]
 
@@ -32,6 +33,7 @@ default-members = [
     "vm",
     "vm-common",
     "smart_contracts/sdk",
+    "smart_contracts/sdk-sys",
     "smart_contracts/macros"
 ]
 

@@ -1,4 +1,5 @@
 #[repr(u32)]
+#[derive(Debug)]
 pub enum Keyspace<'a> {
     /// Stores contract's context
     State = 0,

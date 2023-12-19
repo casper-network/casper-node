@@ -657,6 +657,7 @@ name = "casper-macros"
 version = "0.1.0"
 dependencies = [
  "casper-sdk",
+ "casper-sdk-sys",
  "darling",
  "paste",
  "proc-macro2 1.0.63",
@@ -767,12 +768,19 @@ dependencies = [
  "bitflags 2.4.1",
  "borsh",
  "bytes",
+ "casper-sdk-sys",
+ "const-fnv1a-hash",
  "ctor 0.2.5",
+ "impl-trait-for-tuples",
  "once_cell",
  "serde",
  "serde_json",
  "vm-common",
 ]
+
+[[package]]
+name = "casper-sdk-sys"
+version = "0.1.0"
 
 [[package]]
 name = "casper-storage"
@@ -1053,6 +1061,12 @@ name = "colorchoice"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "acbf1af155f9b9ef647e42cdc158db4b64a1b61f743629225fde6f3e0be2a7c7"
+
+[[package]]
+name = "const-fnv1a-hash"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32b13ea120a812beba79e34316b3942a857c86ec1593cb34f27bb28272ce2cca"
 
 [[package]]
 name = "contract-context"
@@ -3516,6 +3530,17 @@ checksum = "e98c1d0ad70fc91b8b9654b1f33db55e59579d3b3de2bffdced0fdb810570cb8"
 dependencies = [
  "ahash 0.8.3",
  "hashbrown 0.12.3",
+]
+
+[[package]]
+name = "impl-trait-for-tuples"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11d7a9f6330b71fea57921c9b61c47ee6e84f72d394754eff6163ae67e7395eb"
+dependencies = [
+ "proc-macro2 1.0.63",
+ "quote 1.0.29",
+ "syn 1.0.109",
 ]
 
 [[package]]

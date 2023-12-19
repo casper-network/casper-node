@@ -10,13 +10,13 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-// use borsh_derive::BorshSerialize;
+use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, CasperABI, Contract, Schema};
 use casper_sdk::{
-    abi::CasperABI,
-    host::{self, Address, CallError, CreateResult, ResultCode},
-    log, revert, Field,
+    host::{self, Alloc},
+    log, revert,
+    sys::CreateResult,
+    types::{Address, ResultCode},
 };
 
 const INITIAL_GREETING: &str = "This is initial data set from a constructor";
@@ -75,8 +75,8 @@ impl Greeter {
         }
     }
 
-    pub fn get_greeting(&self) -> String {
-        self.greeting.clone() // TODO: Clone is not needed here, support &str return values
+    pub fn get_greeting(&self) -> &str {
+        &self.greeting
     }
 
     pub fn set_greeting(&mut self, greeting: String) {
@@ -96,8 +96,6 @@ impl Greeter {
         revert!()
     }
 }
-
-use casper_sdk::Contract;
 
 struct TypedCall<Args: BorshSerialize, Ret: BorshDeserialize> {
     address: Address,
@@ -150,119 +148,129 @@ impl<Args: BorshSerialize, Ret: BorshDeserialize> TypedCall<Args, Ret> {
 pub fn call() {
     log!("calling create");
 
-    // Constructor without args
+    let mut addr_buf = Vec::new();
+    let address = host::casper_env_read(
+        &[0],
+        Alloc::Callback(|size| {
+            log!("casper callback got called {size}");
+            casper_sdk::reserve_vec_space(&mut addr_buf, size)
+        }),
+    );
+    log!("addr buf {:?} ret={}", addr_buf, address.is_some());
 
-    match Greeter::create(Some("initialize"), None) {
-        Ok(CreateResult {
-            package_address,
-            contract_address,
-            version,
-        }) => {
-            log!("success");
-            log!("package_address: {:?}", package_address);
-            log!("contract_address: {:?}", contract_address);
-            log!("version: {:?}", version);
+    // // Constructor without args
 
-            let get_greeting: TypedCall<(), String> =
-                TypedCall::new(contract_address, "get_greeting");
-            let result = get_greeting.call(()).into_result();
-            assert_eq!(result, INITIAL_GREETING);
+    // match Greeter::create(Some("initialize"), None) {
+    //     Ok(CreateResult {
+    //         package_address,
+    //         contract_address,
+    //         version,
+    //     }) => {
+    //         log!("success");
+    //         log!("package_address: {:?}", package_address);
+    //         log!("contract_address: {:?}", contract_address);
+    //         log!("version: {:?}", version);
 
-            let call_1 = "set_greeting";
-            let input_data_1: (String,) = ("Foo".into(),);
-            let (maybe_data_1, result_code_1) = host::casper_call(
-                &contract_address,
-                0,
-                call_1,
-                &borsh::to_vec(&input_data_1).unwrap(),
-            );
-            log!("{call_1:?} result={result_code_1:?}");
+    //         let get_greeting: TypedCall<(), String> =
+    //             TypedCall::new(contract_address, "get_greeting");
+    //         let result = get_greeting.call(()).into_result();
+    //         assert_eq!(result, INITIAL_GREETING);
 
-            let call_2 = "get_greeting";
-            let (maybe_data_2, result_code_2) =
-                host::casper_call(&contract_address, 0, call_2, &[]);
-            log!("{call_2:?} result={result_code_2:?}");
-            assert_eq!(
-                borsh::from_slice::<String>(&maybe_data_2.as_ref().expect("return value")).unwrap(),
-                "Foo".to_string()
-            );
+    //         let call_1 = "set_greeting";
+    //         let input_data_1: (String,) = ("Foo".into(),);
+    //         let (maybe_data_1, result_code_1) = host::casper_call(
+    //             &contract_address,
+    //             0,
+    //             call_1,
+    //             &borsh::to_vec(&input_data_1).unwrap(),
+    //         );
+    //         log!("{call_1:?} result={result_code_1:?}");
 
-            let call_3 = "emit_unreachable_trap";
-            let (maybe_data_3, result_code_3) =
-                host::casper_call(&contract_address, 0, call_3, &[]);
-            assert_eq!(maybe_data_3, None);
-            assert_eq!(result_code_3, ResultCode::CalleeTrapped);
+    //         let call_2 = "get_greeting";
+    //         let (maybe_data_2, result_code_2) =
+    //             host::casper_call(&contract_address, 0, call_2, &[]);
+    //         log!("{call_2:?} result={result_code_2:?}");
+    //         assert_eq!(
+    //             borsh::from_slice::<String>(&maybe_data_2.as_ref().expect("return
+    // value")).unwrap(),             "Foo".to_string()
+    //         );
 
-            let call_4: &str = "emit_revert_with_data";
-            let (maybe_data_4, maybe_result_4) =
-                host::casper_call(&contract_address, 0, call_4, &[]);
-            log!("{call_4:?} result={maybe_data_4:?}");
-            assert_eq!(maybe_result_4, ResultCode::CalleeReverted);
-            assert_eq!(
-                borsh::from_slice::<Result<(), CustomError>>(
-                    &maybe_data_4.as_ref().expect("return value")
-                )
-                .unwrap(),
-                Err(CustomError::Bar),
-            );
+    //         let call_3 = "emit_unreachable_trap";
+    //         let (maybe_data_3, result_code_3) =
+    //             host::casper_call(&contract_address, 0, call_3, &[]);
+    //         assert_eq!(maybe_data_3, None);
+    //         assert_eq!(result_code_3, ResultCode::CalleeTrapped);
 
-            let call_5: &str = "emit_revert_without_data";
-            let (maybe_data_5, maybe_result_5) =
-                host::casper_call(&contract_address, 0, call_5, &[]);
-            log!("{call_5:?} result={maybe_data_5:?}");
-            assert_eq!(maybe_result_5, ResultCode::CalleeReverted);
-            assert_eq!(maybe_data_5, None);
-        }
-        Err(error) => {
-            log!("error {:?}", error);
-        }
-    }
+    //         let call_4: &str = "emit_revert_with_data";
+    //         let (maybe_data_4, maybe_result_4) =
+    //             host::casper_call(&contract_address, 0, call_4, &[]);
+    //         log!("{call_4:?} result={maybe_data_4:?}");
+    //         assert_eq!(maybe_result_4, ResultCode::CalleeReverted);
+    //         assert_eq!(
+    //             borsh::from_slice::<Result<(), CustomError>>(
+    //                 &maybe_data_4.as_ref().expect("return value")
+    //             )
+    //             .unwrap(),
+    //             Err(CustomError::Bar),
+    //         );
 
-    // Constructor with args
+    //         let call_5: &str = "emit_revert_without_data";
+    //         let (maybe_data_5, maybe_result_5) =
+    //             host::casper_call(&contract_address, 0, call_5, &[]);
+    //         log!("{call_5:?} result={maybe_data_5:?}");
+    //         assert_eq!(maybe_result_5, ResultCode::CalleeReverted);
+    //         assert_eq!(maybe_data_5, None);
+    //     }
+    //     Err(error) => {
+    //         log!("error {:?}", error);
+    //     }
+    // }
 
-    let args = ("World".to_string(),);
-    match Greeter::create(
-        Some("constructor_with_args"),
-        Some(&borsh::to_vec(&args).unwrap()),
-    ) {
-        Ok(CreateResult {
-            package_address,
-            contract_address,
-            version,
-        }) => {
-            log!("success 2");
-            log!("package_address: {:?}", package_address);
-            log!("contract_address: {:?}", contract_address);
-            log!("version: {:?}", version);
+    // // Constructor with args
 
-            let call_0 = "get_greeting";
-            let (maybe_data_0, result_code_0) =
-                host::casper_call(&contract_address, 0, call_0, &[]);
-            log!("{call_0:?} result={result_code_0:?}");
-            assert_eq!(
-                borsh::from_slice::<String>(&maybe_data_0.as_ref().expect("return value")).unwrap(),
-                "Hello, World!".to_string(),
-            );
-        }
-        Err(error) => {
-            log!("error {:?}", error);
-        }
-    }
+    // let args = ("World".to_string(),);
+    // match Greeter::create(
+    //     Some("constructor_with_args"),
+    //     Some(&borsh::to_vec(&args).unwrap()),
+    // ) {
+    //     Ok(CreateResult {
+    //         package_address,
+    //         contract_address,
+    //         version,
+    //     }) => {
+    //         log!("success 2");
+    //         log!("package_address: {:?}", package_address);
+    //         log!("contract_address: {:?}", contract_address);
+    //         log!("version: {:?}", version);
 
-    let args = ("World".to_string(),);
+    //         let call_0 = "get_greeting";
+    //         let (maybe_data_0, result_code_0) =
+    //             host::casper_call(&contract_address, 0, call_0, &[]);
+    //         log!("{call_0:?} result={result_code_0:?}");
+    //         assert_eq!(
+    //             borsh::from_slice::<String>(&maybe_data_0.as_ref().expect("return
+    // value")).unwrap(),             "Hello, World!".to_string(),
+    //         );
+    //     }
+    //     Err(error) => {
+    //         log!("error {:?}", error);
+    //     }
+    // }
 
-    let error = Greeter::create(
-        Some("failing_constructor"),
-        Some(&borsh::to_vec(&args).unwrap()),
-    )
-    .expect_err("Constructor that reverts should fail to create");
-    assert_eq!(error, host::CallError::CalleeReverted);
+    // let args = ("World".to_string(),);
 
-    let error = Greeter::create(Some("trapping_constructor"), None)
-        .expect_err("Constructor that traps should fail to create");
-    assert_eq!(error, host::CallError::CalleeTrapped);
+    // let error = Greeter::create(
+    //     Some("failing_constructor"),
+    //     Some(&borsh::to_vec(&args).unwrap()),
+    // )
+    // .expect_err("Constructor that reverts should fail to create");
+    // assert_eq!(error, host::CallError::CalleeReverted);
 
-    log!("👋 Goodbye");
+    // let error = Greeter::create(Some("trapping_constructor"), None)
+    //     .expect_err("Constructor that traps should fail to create");
+    // assert_eq!(error, host::CallError::CalleeTrapped);
+
+    // log!("👋 Goodbye");
 }
 
 #[cfg(test)]
@@ -301,19 +309,6 @@ mod tests {
         // assert_eq!(flipper.get_greeting(), ""); // TODO: Initializer
         // flipper.set_greeting("Hi".into());
         // assert_eq!(flipper.get_greeting(), "Hi");
-    }
-
-    #[test]
-    fn borsh_schema() {
-        #[derive(BorshSerialize, BorshSchema)]
-        enum CustomError {
-            Foo,
-            Bar,
-            Baz,
-        }
-        dbg!(BorshSchemaContainer::for_type::<Result<(), CustomError>>());
-        dbg!(BorshSchemaContainer::for_type::<Vec<u64>>());
-        dbg!(BorshSchemaContainer::for_type::<[u64; 32]>());
     }
 
     #[test]

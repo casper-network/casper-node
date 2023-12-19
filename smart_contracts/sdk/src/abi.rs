@@ -1,3 +1,4 @@
+use impl_trait_for_tuples::impl_for_tuples;
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
@@ -60,7 +61,7 @@ pub enum Definition {
 impl Definition {
     pub fn unit() -> Self {
         // Empty struct should be equivalent to `()` in Rust in other languages.
-        Definition::Struct { items: Vec::new() }
+        Definition::Tuple { items: Vec::new() }
     }
 }
 
@@ -103,6 +104,15 @@ impl_abi_for_types!(
     String => "string",
     &str => "string",
 );
+
+#[impl_for_tuples(1, 12)]
+impl CasperABI for Tuple {
+    fn definition() -> Definition {
+        let items: Vec<Definition> =
+            <[_]>::into_vec(Box::new([for_tuples!( #( Tuple::definition() ),* )]));
+        Definition::Tuple { items }
+    }
+}
 
 impl<T: CasperABI, E: CasperABI> CasperABI for Result<T, E> {
     fn definition() -> Definition {

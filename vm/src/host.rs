@@ -578,3 +578,55 @@ pub(crate) fn casper_call<S: Storage + 'static>(
         None => todo!("not found"),
     }
 }
+
+const CASPER_ENV_CALLER: u64 = 0;
+
+pub(crate) fn casper_env_read<S: Storage>(
+    mut caller: impl Caller<S>,
+    env_path: u32,
+    env_path_length: u32,
+    cb_alloc: u32,
+    alloc_ctx: u32,
+) -> VMResult<u32> {
+    // NOTE: Needs versioning to disallow situtation where a path contains values that may be used
+    // in the future.
+
+    let size: usize = env_path_length.try_into().unwrap();
+    let env_path_bytes = caller
+        .memory_read(env_path, size * 8)
+        .expect("should read name bytes");
+
+    let path = match safe_transmute::transmute_many::<u64, SingleManyGuard>(&env_path_bytes) {
+        Ok(env_path) => env_path,
+        Err(safe_transmute::Error::Unaligned(unaligned_error))
+            if unaligned_error.source.is_empty() =>
+        {
+            &[]
+        }
+        Err(error) => todo!("handle error {:?}", error),
+    };
+
+    let data = if path == &[CASPER_ENV_CALLER] {
+        Some(caller.context().address.to_vec())
+    } else {
+        None
+    };
+
+    if let Some(data) = data {
+        let out_ptr: u32 = if cb_alloc != 0 {
+            caller.alloc(cb_alloc, data.len(), alloc_ctx)?
+        } else {
+            // treats alloc_ctx as data
+            alloc_ctx
+        };
+
+        if out_ptr == 0 {
+            Ok(out_ptr)
+        } else {
+            caller.memory_write(out_ptr, &data).unwrap();
+            Ok(out_ptr + (data.len() as u32))
+        }
+    } else {
+        Ok(0)
+    }
+}

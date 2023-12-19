@@ -3,20 +3,18 @@
 // #[linkage = "--import-memory"]
 
 pub mod abi;
-pub mod field;
+pub mod collections;
 pub mod host;
 pub mod schema;
 pub mod storage;
+pub mod types;
 
-use std::{
-    cell::RefCell,
-    collections::BTreeMap,
-    fmt, io,
-    marker::PhantomData,
-    ptr::{self, NonNull},
-};
+use std::{io, ptr::NonNull};
 
 use borsh::{BorshDeserialize, BorshSerialize};
+pub use casper_sdk_sys as sys;
+use sys::CreateResult;
+use types::CallError;
 
 #[cfg(target_arch = "wasm32")]
 fn hook_impl(info: &std::panic::PanicInfo) {
@@ -34,11 +32,7 @@ pub fn set_panic_hook() {
     });
 }
 
-use host::{CallError, CreateResult};
-
-use vm_common::flags::EntryPointFlags;
-
-pub fn reserve_vec_space(vec: &mut Vec<u8>, size: usize) -> Option<ptr::NonNull<u8>> {
+pub fn reserve_vec_space(vec: &mut Vec<u8>, size: usize) -> Option<NonNull<u8>> {
     *vec = Vec::with_capacity(size);
     unsafe {
         vec.set_len(size);
@@ -53,8 +47,6 @@ pub trait Contract {
         input_data: Option<&[u8]>,
     ) -> Result<CreateResult, CallError>;
 }
-
-pub use field::Field;
 
 #[derive(Debug)]
 pub enum Access {

@@ -60,7 +60,7 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
             //     Self::__casper_schema()
             // }
 
-            fn create(entry_point: Option<&str>, input_data: Option<&[u8]>) -> Result<casper_sdk::host::CreateResult, casper_sdk::host::CallError> {
+            fn create(entry_point: Option<&str>, input_data: Option<&[u8]>) -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
                 Self::__casper_create(entry_point, input_data)
             }
         }
@@ -197,7 +197,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                             for (name, ty) in &arg_names_and_types {
                                 entrypoint_params.push(quote! {
                                     {
-                                        casper_sdk::host::Param {
+                                        casper_sdk::sys::Param {
                                             name_ptr: stringify!(#name).as_ptr(),
                                             name_len: stringify!(#name).len(),
                                         }
@@ -211,7 +211,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 manifest_entry_points_data.push(quote! {
 
                                     #[allow(non_upper_case_globals)]
-                                    const #name: (&'static str, [casper_sdk::host::Param; #arg_count], extern "C" fn() -> ()) = {
+                                    const #name: (&'static str, [casper_sdk::sys::Param; #arg_count], extern "C" fn() -> ()) = {
                                         extern "C" fn #name() {
                                             casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
                                                 <#struct_name>::#name(#(#arg_names,)*)
@@ -225,14 +225,15 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 manifest_entry_points_data.push(quote! {
 
                                     #[allow(non_upper_case_globals)]
-                                    const #name: (&'static str, [casper_sdk::host::Param; #arg_count], extern "C" fn() -> ()) = {
+                                    const #name: (&'static str, [casper_sdk::sys::Param; #arg_count], extern "C" fn() -> ()) = {
                                         extern "C" fn #name() {
-                                            casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
-                                                let mut contract_instance: #struct_name = casper_sdk::host::read_state().unwrap();
-                                                let ret = contract_instance.#name(#(#arg_names,)*);
-                                                casper_sdk::host::write_state(&contract_instance).unwrap();
-                                                ret
-                                            })
+                                            let mut contract_instance: #struct_name = casper_sdk::host::read_state().unwrap();
+                                            let ret = casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
+                                                contract_instance.#name(#(#arg_names,)*)
+                                            });
+                                            casper_sdk::host::write_state(&contract_instance).unwrap();
+                                            ret
+
                                         }
                                         (stringify!(#name), [#(#entrypoint_params,)*], #name)
                                     };
@@ -252,7 +253,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                             manifest_entry_points.push(quote! {
                                 {
-                                    casper_sdk::host::EntryPoint {
+                                    casper_sdk::sys::EntryPoint {
                                         name_ptr: #name.0.as_ptr(),
                                         name_len: #name.0.len(),
                                         params_ptr: #name.1.as_ptr(),
@@ -374,11 +375,11 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                         #[inline(always)]
                         #[doc(hidden)]
-                        fn __casper_create(entry_point: Option<&str>, input_data: Option<&[u8]>) -> Result<casper_sdk::host::CreateResult, casper_sdk::host::CallError> {
+                        fn __casper_create(entry_point: Option<&str>, input_data: Option<&[u8]>) -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
                             #(#manifest_entry_points_data)*;
-                            const ENTRY_POINTS: [casper_sdk::host::EntryPoint; #manifest_entry_points_data_len] = [#(#manifest_entry_points,)*];
+                            const ENTRY_POINTS: [casper_sdk::sys::EntryPoint; #manifest_entry_points_data_len] = [#(#manifest_entry_points,)*];
 
-                            const MANIFEST: casper_sdk::host::Manifest = casper_sdk::host::Manifest {
+                            const MANIFEST: casper_sdk::sys::Manifest = casper_sdk::sys::Manifest {
                                 entry_points: ENTRY_POINTS.as_ptr(),
                                 entry_points_size: ENTRY_POINTS.len(),
                             };
@@ -645,7 +646,7 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
         Ok(quote! {
             impl casper_sdk::abi::CasperABI for #name {
                 fn definition() -> casper_sdk::abi::Definition {
-                    todo!()
+                    todo!() // NEXT
                 }
             }
         })
