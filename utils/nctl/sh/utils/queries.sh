@@ -144,9 +144,9 @@ function get_node_protocol_version_from_fs()
 
     pushd "$PATH_TO_NODE_BIN" || exit
     if [ "$USE_LATEST" = true ]; then
-        read -ra SEMVER_CURRENT <<< "$(gls --group-directories-first -td -- * | head -n 1)"
+        read -ra SEMVER_CURRENT <<< "$(ls --group-directories-first -td -- * | head -n 1)"
     else
-        read -ra SEMVER_CURRENT <<< "$(gls --group-directories-first -tdr -- * | head -n 1)"
+        read -ra SEMVER_CURRENT <<< "$(ls --group-directories-first -tdr -- * | head -n 1)"
     fi
     popd || exit
 
