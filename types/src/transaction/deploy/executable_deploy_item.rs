@@ -65,7 +65,7 @@ pub enum ExecutableDeployItem {
         /// Raw Wasm module bytes with 'call' exported as an entrypoint.
         #[cfg_attr(
             feature = "json-schema",
-            schemars(with = "String", description = "Hex-encoded raw Wasm bytes.")
+            schemars(description = "Hex-encoded raw Wasm bytes.")
         )]
         module_bytes: Bytes,
         /// Runtime arguments.
@@ -78,7 +78,11 @@ pub enum ExecutableDeployItem {
         #[serde(with = "serde_helpers::contract_hash_as_digest")]
         #[cfg_attr(
             feature = "json-schema",
-            schemars(with = "String", description = "Hex-encoded contract hash.")
+            schemars(
+                // this attribute is necessary due to a bug: https://github.com/GREsau/schemars/issues/89
+                with = "AddressableEntityHash",
+                description = "Hex-encoded contract hash."
+            )
         )]
         hash: AddressableEntityHash,
         /// Name of an entry point.
@@ -103,7 +107,11 @@ pub enum ExecutableDeployItem {
         #[serde(with = "serde_helpers::contract_package_hash_as_digest")]
         #[cfg_attr(
             feature = "json-schema",
-            schemars(with = "String", description = "Hex-encoded contract package hash.")
+            schemars(
+                // this attribute is necessary due to a bug: https://github.com/GREsau/schemars/issues/89
+                with = "PackageHash",
+                description = "Hex-encoded contract package hash."
+            )
         )]
         hash: PackageHash,
         /// An optional version of the contract to call. It will default to the highest enabled

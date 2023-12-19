@@ -77,10 +77,10 @@ use casper_types::{
         execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
     },
     AvailableBlockRange, Block, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader,
-    BlockIdentifier, BlockSignatures, BlockV2, DeployApprovalsHash, DeployHash, DeployHeader,
-    Digest, EraId, FinalitySignature, FinalizedApprovals, ProtocolVersion, PublicKey, SignedBlock,
+    BlockIdentifier, BlockSignatures, BlockV2, DeployApprovalsHash, DeployHash, Digest, EraId,
+    FinalitySignature, FinalizedApprovals, ProtocolVersion, PublicKey, SignedBlock,
     SignedBlockHeader, StoredValue, Timestamp, Transaction, TransactionApprovalsHash,
-    TransactionHash, TransactionId, TransactionV1ApprovalsHash, Transfer,
+    TransactionHash, TransactionHeader, TransactionId, TransactionV1ApprovalsHash, Transfer,
 };
 
 use crate::{
@@ -1221,7 +1221,7 @@ impl Storage {
         &mut self,
         block: &Block,
         approvals_hashes: &ApprovalsHashes,
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        execution_results: HashMap<TransactionHash, ExecutionResult>,
     ) -> Result<bool, FatalStorageError> {
         let env = Rc::clone(&self.env);
         let mut txn = env.begin_rw_txn()?;
@@ -1469,12 +1469,9 @@ impl Storage {
         block_hash: &BlockHash,
         block_height: u64,
         era_id: EraId,
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        execution_results: HashMap<TransactionHash, ExecutionResult>,
     ) -> Result<bool, FatalStorageError> {
-        let transaction_hashes = execution_results
-            .keys()
-            .map(|deploy_hash| TransactionHash::Deploy(*deploy_hash))
-            .collect();
+        let transaction_hashes = execution_results.keys().copied().collect();
         Self::insert_to_transaction_index(
             &mut self.transaction_hash_index,
             *block_hash,
@@ -1483,20 +1480,17 @@ impl Storage {
             transaction_hashes,
         )?;
         let mut transfers: Vec<Transfer> = vec![];
-        for (deploy_hash, execution_result) in execution_results.into_iter() {
+        for (transaction_hash, execution_result) in execution_results.into_iter() {
             transfers.extend(successful_transfers(&execution_result));
 
-            let was_written = self.execution_result_dbs.put(
-                txn,
-                &TransactionHash::Deploy(deploy_hash),
-                &execution_result,
-                true,
-            )?;
+            let was_written =
+                self.execution_result_dbs
+                    .put(txn, &transaction_hash, &execution_result, true)?;
 
             if !was_written {
                 error!(
                     ?block_hash,
-                    ?deploy_hash,
+                    ?transaction_hash,
                     "failed to write execution results"
                 );
                 debug_assert!(was_written);
@@ -2527,7 +2521,7 @@ impl Storage {
         &self,
         txn: &mut Tx,
         block_hash: &BlockHash,
-    ) -> Result<Option<Vec<(DeployHash, ExecutionResult)>>, FatalStorageError> {
+    ) -> Result<Option<Vec<(TransactionHash, ExecutionResult)>>, FatalStorageError> {
         let block_header = match self.get_single_block_header(txn, block_hash)? {
             Some(block_header) => block_header,
             None => return Ok(None),
@@ -2542,19 +2536,15 @@ impl Storage {
             return Ok(None);
         };
 
-        let deploy_hashes: Vec<DeployHash> = match block_body {
-            BlockBody::V1(v1) => v1.deploy_and_transfer_hashes().copied().collect(),
-            BlockBody::V2(v2) => v2
-                .all_transactions()
-                .filter_map(|transaction_hash| match transaction_hash {
-                    TransactionHash::Deploy(deploy_hash) => Some(*deploy_hash),
-                    TransactionHash::V1(_) => None,
-                })
+        let transaction_hashes: Vec<TransactionHash> = match block_body {
+            BlockBody::V1(v1) => v1
+                .deploy_and_transfer_hashes()
+                .map(TransactionHash::from)
                 .collect(),
+            BlockBody::V2(v2) => v2.all_transactions().copied().collect(),
         };
         let mut execution_results = vec![];
-        for deploy_hash in deploy_hashes {
-            let transaction_hash = TransactionHash::Deploy(deploy_hash);
+        for transaction_hash in transaction_hashes {
             match self.execution_result_dbs.get(txn, &transaction_hash)? {
                 None => {
                     debug!(
@@ -2565,7 +2555,7 @@ impl Storage {
                     return Ok(None);
                 }
                 Some(execution_result) => {
-                    execution_results.push((deploy_hash, execution_result));
+                    execution_results.push((transaction_hash, execution_result));
                 }
             }
         }
@@ -2576,7 +2566,8 @@ impl Storage {
     fn read_execution_results(
         &self,
         block_hash: &BlockHash,
-    ) -> Result<Option<Vec<(DeployHash, DeployHeader, ExecutionResult)>>, FatalStorageError> {
+    ) -> Result<Option<Vec<(TransactionHash, TransactionHeader, ExecutionResult)>>, FatalStorageError>
+    {
         let mut txn = self.env.begin_ro_txn()?;
         let execution_results = match self.get_execution_results(&mut txn, block_hash)? {
             Some(execution_results) => execution_results,
@@ -2584,23 +2575,26 @@ impl Storage {
         };
 
         let mut ret = Vec::with_capacity(execution_results.len());
-        for (deploy_hash, execution_result) in execution_results {
-            let transaction_hash = TransactionHash::from(deploy_hash);
+        for (transaction_hash, execution_result) in execution_results {
             match self.transaction_dbs.get(&mut txn, &transaction_hash)? {
                 None => {
-                    warn!(
+                    error!(
                         %block_hash,
                         %transaction_hash,
                         "missing transaction"
                     );
                     return Ok(None);
                 }
-                Some(Transaction::Deploy(deploy)) => {
-                    ret.push((deploy_hash, deploy.take_header(), execution_result))
-                }
-                // Note: the `unreachable!` below will be removed when execution results are updated
-                // to handle Transactions.
-                Some(Transaction::V1(_)) => unreachable!(),
+                Some(Transaction::Deploy(deploy)) => ret.push((
+                    transaction_hash,
+                    deploy.take_header().into(),
+                    execution_result,
+                )),
+                Some(Transaction::V1(transaction_v1)) => ret.push((
+                    transaction_hash,
+                    transaction_v1.take_header().into(),
+                    execution_result,
+                )),
             };
         }
         Ok(Some(ret))

@@ -198,7 +198,11 @@
     },
     "BlockHash": {
       "description": "Hex-encoded cryptographic hash of a block.",
-      "type": "string"
+      "allOf": [
+        {
+          "$ref": "#/definitions/Digest"
+        }
+      ]
     },
     "Timestamp": {
       "description": "Timestamp formatted as per RFC 3339",

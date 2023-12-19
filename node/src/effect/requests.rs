@@ -39,10 +39,10 @@ use casper_types::{
     execution::ExecutionResult,
     system::auction::EraValidators,
     AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockIdentifier,
-    BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, DeployHeader,
-    Digest, DisplayIter, EraId, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key,
-    NextUpgrade, PublicKey, ReactorState, Timestamp, Transaction, TransactionHash, TransactionId,
-    Transfer, Uptime, U512,
+    BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest,
+    DisplayIter, EraId, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key,
+    NextUpgrade, PublicKey, ReactorState, Timestamp, Transaction, TransactionHash,
+    TransactionHeader, TransactionId, Transfer, Uptime, U512,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -295,7 +295,7 @@ pub(crate) enum StorageRequest {
         block: Arc<BlockV2>,
         /// Approvals hashes to store.
         approvals_hashes: Box<ApprovalsHashes>,
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        execution_results: HashMap<TransactionHash, ExecutionResult>,
         responder: Responder<bool>,
     },
     /// Retrieve block with given hash.
@@ -414,14 +414,14 @@ pub(crate) enum StorageRequest {
         block_hash: Box<BlockHash>,
         block_height: u64,
         era_id: EraId,
-        /// Mapping of deploys to execution results of the block.
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        /// Mapping of transactions to execution results of the block.
+        execution_results: HashMap<TransactionHash, ExecutionResult>,
         /// Responder to call when done storing.
         responder: Responder<()>,
     },
     GetExecutionResults {
         block_hash: BlockHash,
-        responder: Responder<Option<Vec<(DeployHash, DeployHeader, ExecutionResult)>>>,
+        responder: Responder<Option<Vec<(TransactionHash, TransactionHeader, ExecutionResult)>>>,
     },
     GetBlockExecutionResultsOrChunk {
         /// Request ID.
