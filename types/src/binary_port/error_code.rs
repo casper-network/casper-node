@@ -12,7 +12,7 @@ pub enum ErrorCode {
     NoError = 0,
     /// This function is disabled.
     #[cfg_attr(feature = "std", error("this function is disabled"))]
-    FunctionIsDisabled = 1,
+    FunctionDisabled = 1,
     /// Data not found.
     #[cfg_attr(feature = "std", error("data not found"))]
     NotFound = 2,
@@ -48,7 +48,7 @@ impl TryFrom<u8> for ErrorCode {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(Self::NoError),
-            1 => Ok(Self::FunctionIsDisabled),
+            1 => Ok(Self::FunctionDisabled),
             2 => Ok(Self::NotFound),
             3 => Ok(Self::RootNotFound),
             4 => Ok(Self::InvalidDeployItemVariant),

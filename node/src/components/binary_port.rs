@@ -308,14 +308,14 @@ where
             key_tag,
         } => {
             if !config.allow_request_get_all_values {
-                BinaryResponse::new_error(binary_port::ErrorCode::FunctionIsDisabled)
+                BinaryResponse::new_error(binary_port::ErrorCode::FunctionDisabled)
             } else {
                 handle_get_all_values(state_root_hash, key_tag, effect_builder).await
             }
         }
         GetRequest::Trie { trie_key } => {
             let response = if !config.allow_request_get_trie {
-                BinaryResponse::new_error(binary_port::ErrorCode::FunctionIsDisabled)
+                BinaryResponse::new_error(binary_port::ErrorCode::FunctionDisabled)
             } else {
                 match effect_builder.get_trie_full(trie_key).await {
                     Ok(result) => BinaryResponse::from_value(result),

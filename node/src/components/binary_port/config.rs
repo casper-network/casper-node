@@ -22,6 +22,8 @@ pub struct Config {
     /// Address to bind BinaryPort server to.
     pub address: String,
     /// Flag used to enable/disable the [`AllValues`] request
+    // In case we need "enabled" flag for more than 2 requests we should introduce generic
+    // "function disabled/enabled" mechanism. For now, we can stick to these two booleans.
     pub allow_request_get_all_values: bool,
     /// Flag used to enable/disable the [`Trie`] request
     pub allow_request_get_trie: bool,
