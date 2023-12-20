@@ -18,7 +18,7 @@ use vm::{
 // use super::*;
 const VM2_TEST_CONTRACT: &[u8] = include_bytes!("../vm2-test-contract.wasm");
 const VM2_HARNESS: &[u8] = include_bytes!("../vm2-harness.wasm");
-const VM2_CEP18: &[u8] = include_bytes!("../vm2-harness.wasm");
+const VM2_CEP18: &[u8] = include_bytes!("../vm2-cep18.wasm");
 
 type Blake2b256 = Blake2b<U32>;
 
@@ -202,7 +202,7 @@ fn test_contract() {
 }
 
 #[test]
-fn greeter() {
+fn harness() {
     run_wasm(VM2_HARNESS, ());
 }
 

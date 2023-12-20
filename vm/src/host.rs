@@ -3,6 +3,7 @@ pub(crate) mod abi;
 
 use std::{
     cell::RefCell,
+    cmp,
     io::Cursor,
     mem,
     sync::{Arc, Mutex},
@@ -229,8 +230,6 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
             Err(error) => todo!("handle error {:?}", error),
         };
 
-    dbg!(&entry_points);
-
     let entrypoints = {
         let mut vec = Vec::new();
 
@@ -285,8 +284,6 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
     let manifest = storage::Manifest {
         entrypoints: entrypoints.clone(),
     };
-
-    dbg!(&manifest);
 
     let storage::CreateResult {
         package_address,
@@ -548,7 +545,6 @@ pub(crate) fn casper_call<S: Storage + 'static>(
                 Err(VMError::Trap(_trap)) => (None, Err(HostError::CalleeTrapped)),
                 Err(other_error) => todo!("{other_error:?}"),
             };
-            dbg!(&return_data, &host_result);
 
             // Calculate how much gas was spent during execution of the called contract.
             let gas_spent = gas_usage
@@ -628,5 +624,21 @@ pub(crate) fn casper_env_read<S: Storage>(
         }
     } else {
         Ok(0)
+    }
+}
+
+pub(crate) fn casper_env_caller<S: Storage>(
+    mut caller: impl Caller<S>,
+    dest_ptr: u32,
+    dest_len: u32,
+) -> VMResult<u32> {
+    let mut data = caller.context().address.as_slice();
+    if dest_ptr == 0 {
+        Ok(dest_ptr)
+    } else {
+        let dest_len = dest_len as usize;
+        data = &data[0..cmp::min(32, dest_len as usize)];
+        caller.memory_write(dest_ptr, &data).unwrap();
+        Ok(dest_ptr + (data.len() as u32))
     }
 }

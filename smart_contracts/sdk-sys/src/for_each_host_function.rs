@@ -68,6 +68,7 @@ Example paths:
                 alloc: Option<extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8>, // For capturing output data
                 alloc_ctx: *const core::ffi::c_void,
             ) -> *mut u8;
+            pub fn casper_env_caller(dest: *mut u8, dest_len: usize,) -> *const u8;
         }
     };
 }

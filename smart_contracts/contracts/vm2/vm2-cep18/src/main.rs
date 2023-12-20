@@ -7,7 +7,7 @@ use casper_sdk::{collections::Map, revert, schema::Schema, types::Address, Contr
 use error::Cep18Error;
 use std::string::String;
 
-#[derive(Contract, Schema, BorshSerialize, BorshDeserialize, CasperABI)]
+#[derive(Contract, Schema, BorshSerialize, BorshDeserialize, CasperABI, Debug)]
 struct CEP18 {
     name: String,
     symbol: String,

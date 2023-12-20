@@ -133,6 +133,25 @@ impl<T: CasperABI, E: CasperABI> CasperABI for Result<T, E> {
     }
 }
 
+impl<T: CasperABI> CasperABI for Option<T> {
+    fn definition() -> Definition {
+        Definition::Enum {
+            items: vec![
+                EnumVariant {
+                    name: "None".to_string(),
+                    discriminant: 0,
+                    body: Definition::unit(),
+                },
+                EnumVariant {
+                    name: "Some".to_string(),
+                    discriminant: 1,
+                    body: T::definition(),
+                },
+            ],
+        }
+    }
+}
+
 impl<T: CasperABI> CasperABI for Vec<T> {
     fn definition() -> Definition {
         Definition::Sequence {

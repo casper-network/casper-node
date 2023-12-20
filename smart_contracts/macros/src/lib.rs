@@ -227,13 +227,12 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     #[allow(non_upper_case_globals)]
                                     const #name: (&'static str, [casper_sdk::sys::Param; #arg_count], extern "C" fn() -> ()) = {
                                         extern "C" fn #name() {
-                                            let mut contract_instance: #struct_name = casper_sdk::host::read_state().unwrap();
-                                            let ret = casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
-                                                contract_instance.#name(#(#arg_names,)*)
-                                            });
-                                            casper_sdk::host::write_state(&contract_instance).unwrap();
-                                            ret
-
+                                            let mut instance: #struct_name = casper_sdk::host::read_state().unwrap();
+                                            casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
+                                                let ret = instance.#name(#(#arg_names,)*);
+                                                casper_sdk::host::write_state(&instance).unwrap();
+                                                ret
+                                            })
                                         }
                                         (stringify!(#name), [#(#entrypoint_params,)*], #name)
                                     };

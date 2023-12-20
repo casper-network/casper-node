@@ -29,25 +29,28 @@ pub enum Alloc<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>> {
 
 pub fn casper_env_read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     env_path: &[u64],
-    strategy: Alloc<F>,
+    func: F,
 ) -> Option<NonNull<u8>> {
-    let ret = match strategy {
-        Alloc::Callback(f) => unsafe {
-            casper_sdk_sys::casper_env_read(
-                env_path.as_ptr(),
-                env_path.len(),
-                Some(alloc_callback::<F>),
-                &f as *const _ as *mut c_void,
-            )
-        },
-        Alloc::Static(ptr) => unsafe {
-            casper_sdk_sys::casper_env_read(
-                env_path.as_ptr(),
-                env_path.len(),
-                None,
-                ptr.as_ptr() as *mut c_void,
-            )
-        },
+    let ret = unsafe {
+        casper_sdk_sys::casper_env_read(
+            env_path.as_ptr(),
+            env_path.len(),
+            Some(alloc_callback::<F>),
+            &func as *const _ as *mut c_void,
+        )
+    };
+
+    NonNull::<u8>::new(ret)
+}
+
+pub fn casper_env_read_into(env_path: &[u64], dest: &mut [u8]) -> Option<NonNull<u8>> {
+    let ret = unsafe {
+        casper_sdk_sys::casper_env_read(
+            env_path.as_ptr(),
+            env_path.len(),
+            None,
+            dest.as_mut_ptr() as *mut c_void,
+        )
     };
 
     NonNull::<u8>::new(ret)
@@ -264,6 +267,7 @@ pub fn casper_call(
 
 use borsh::{BorshDeserialize, BorshSerialize};
 
+use casper_sdk_sys::casper_env_caller;
 use vm_common::flags::ReturnFlags;
 
 use crate::{
@@ -302,7 +306,7 @@ pub fn write_state<T: Contract + BorshSerialize>(state: &T) -> Result<(), Error>
 
 /// TODO: Remove once procedural macros are improved, this is just to save the boilerplate when
 /// doing things manually.
-pub fn start<Args: BorshDeserialize, Ret: BorshSerialize>(mut func: impl FnMut(Args) -> Ret) {
+pub fn start<Args: BorshDeserialize, Ret: BorshSerialize>(mut func: impl FnMut(Args) -> Ret) -> ! {
     // Set panic hook (assumes std is enabled etc.)
     #[cfg(target_arch = "wasm32")]
     {
@@ -348,14 +352,21 @@ pub fn call<Args: BorshSerialize, Ret: BorshDeserialize>(
 const CASPER_CALLER: u64 = 0;
 
 pub fn get_caller() -> Address {
-    let addr = MaybeUninit::<Address>::uninit();
+    let mut addr = MaybeUninit::<Address>::uninit();
+    let dest = unsafe { NonNull::new_unchecked(addr.as_mut_ptr() as *mut u8) };
 
-    // let ptr = casper_env_read(&[CASPER_CALLER], Some(|size| {
-    //     if size != mem::size_of::<Address>() {
-    //         panic!("Invalid size for address");
-    //     }
-    //     unsafe { NonNull::new_unchecked(addr.as_ptr() as *mut u8) }
-    // }));
-    // assert!(ptr != 0);
+    // Pointer to the end of written bytes
+    let _out_ptr = unsafe { casper_env_caller(addr.as_mut_ptr() as *mut _, 32) };
+
     unsafe { addr.assume_init() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::start;
+
+    #[test]
+    fn foo() {
+        start(|arg: String| {})
+    }
 }

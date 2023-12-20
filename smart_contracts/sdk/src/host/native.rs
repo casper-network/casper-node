@@ -44,6 +44,7 @@ pub(crate) struct Stub {
     db: Container,
 }
 
+#[allow(unused_variables)]
 unsafe impl HostInterface for Stub {
     fn casper_read(
         &mut self,
@@ -178,6 +179,10 @@ Example paths:
     ) -> *mut u8 {
         todo!()
     }
+
+    fn casper_env_caller(&mut self, dest: *mut u8, dest_size: usize) -> *const u8 {
+        todo!()
+    }
 }
 
 pub(crate) static STUB: Lazy<Mutex<Stub>> = Lazy::new(|| Mutex::new(Stub::default()));
@@ -190,9 +195,9 @@ macro_rules! define_symbols {
         $(
             #[no_mangle]
             $(#[$cfg])? fn $name($($($arg: $argty,)*)?) $(-> $ret)? {
-                let name = stringify!($name);
-                let args = ($($($arg,)*)?);
-                let ret = define_symbols! { @optional $($ret)? };
+                let _name = stringify!($name);
+                let _args = ($($(&$arg,)*)?);
+                let _ret = define_symbols! { @optional $($ret)? };
                 let mut stub = $crate::host::native::STUB.lock().unwrap();
                 stub.$name($($($arg,)*)?)
             }
@@ -209,8 +214,12 @@ mod symbols {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn test() {
-        crate::host::casper_print("foo");
+        let msg = "Hello";
+        let mut stub = STUB.lock().unwrap();
+        stub.casper_print(msg.as_ptr(), msg.len());
     }
 }

@@ -75,11 +75,7 @@ mod exports {
         extern "C" fn mangled_entry_point_wrapper_1() {
             host::start(|(name, value): (String, u32)| {
                 host::casper_print(&format!("Hello, world! Name={:?} value={:?}", name, value));
-            })
-            // let input_bytes = host::casper_copy_input();
-            // // mangled_entry_point(param_1, param_2)
-            // host::casper_print("called inside a mangled entry point 1");
-            // // host::casper_print()
+            });
         }
 
         extern "C" fn mangled_entry_point_wrapper_2() {

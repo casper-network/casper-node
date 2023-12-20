@@ -1,7 +1,5 @@
 pub mod for_each_host_function;
 
-use std::ffi::c_void;
-
 #[repr(C)]
 pub struct Param {
     pub name_ptr: *const u8,
@@ -58,8 +56,23 @@ extern "C" {
     for_each_host_function!(visit_host_function);
 }
 
+macro_rules! visit_host_function_name {
+    ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(-> $ret:ty)?;)+) => {
+        &[
+            $(
+                stringify!($name),
+            )*
+        ]
+    }
+}
+
+pub const HOST_FUNCTIONS: &[&str] = for_each_host_function!(visit_host_function_name);
+
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
+    use crate::HOST_FUNCTIONS;
 
     mod separate_module {
         use crate::for_each_host_function;
@@ -67,9 +80,9 @@ mod tests {
         macro_rules! visit_host_function {
             ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(-> $ret:ty)?;)+) => {
                 $(
-                    #[allow(dead_code)]
+                    #[allow(dead_code, unused_variables)]
                     $(#[$cfg])? $vis fn $name($($($arg: $argty,)*)?) $(-> $ret)? {
-                        todo!("Called fn {name}{args:?} -> {ret}");
+                        todo!("Called fn {}", stringify!($name));
                     }
                 )*
             }
@@ -82,5 +95,11 @@ mod tests {
     fn different_module() {
         const MSG: &str = "foobar";
         separate_module::casper_print(MSG.as_ptr(), MSG.len());
+    }
+
+    #[test]
+    fn all_host_functions() {
+        let host_functions = BTreeSet::from_iter(HOST_FUNCTIONS);
+        assert!(host_functions.contains(&"casper_call"));
     }
 }
