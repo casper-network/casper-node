@@ -14,7 +14,7 @@ mod state;
 mod tests;
 
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     sync::Arc,
 };
 
@@ -107,7 +107,7 @@ pub(crate) struct BlockValidator {
     /// State of validation of a specific block.
     validation_states: HashMap<ProposedBlock<ClContext>, BlockValidationState>,
     /// Requests awaiting storing of a block, keyed by the height of the block being awaited.
-    requests_on_hold: HashMap<u64, Vec<BlockValidationRequest>>,
+    requests_on_hold: BTreeMap<u64, Vec<BlockValidationRequest>>,
 }
 
 impl BlockValidator {
@@ -122,7 +122,7 @@ impl BlockValidator {
             validator_matrix,
             config,
             validation_states: HashMap::new(),
-            requests_on_hold: HashMap::new(),
+            requests_on_hold: BTreeMap::new(),
         }
     }
 
@@ -416,9 +416,16 @@ impl BlockValidator {
             + From<FatalAnnouncement>
             + Send,
     {
-        let Some(pending_requests) = self.requests_on_hold.remove(&stored_block_height) else {
-            return Effects::new();
-        };
+        let mut pending_requests = vec![];
+
+        while self
+            .requests_on_hold
+            .first_key_value()
+            .map_or(false, |(height, _)| *height <= stored_block_height)
+        {
+            // unwrap is safe - we'd break the loop if there were no elements
+            pending_requests.extend(self.requests_on_hold.pop_first().unwrap().1);
+        }
 
         pending_requests
             .into_iter()
