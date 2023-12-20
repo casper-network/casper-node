@@ -124,7 +124,7 @@ impl SingleBlockRewardedSignatures {
     }
 
     /// Calculates the set intersection of two instances of `SingleBlockRewardedSignatures`.
-    pub(crate) fn intersection(mut self, other: &SingleBlockRewardedSignatures) -> Self {
+    pub fn intersection(mut self, other: &SingleBlockRewardedSignatures) -> Self {
         self.0 = self
             .0
             .iter()
@@ -135,7 +135,7 @@ impl SingleBlockRewardedSignatures {
     }
 
     /// Returns `true` if the set contains at least one signature.
-    pub(crate) fn has_some(&self) -> bool {
+    pub fn has_some(&self) -> bool {
         self.0.iter().any(|byte| *byte != 0)
     }
 }

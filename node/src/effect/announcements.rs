@@ -160,6 +160,19 @@ impl Display for UnexecutedBlockAnnouncement {
     }
 }
 
+#[derive(DataSize, Serialize, Debug)]
+pub(crate) struct StoredExecutedBlockAnnouncement(pub(crate) u64);
+
+impl Display for StoredExecutedBlockAnnouncement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "announcement for stored executed block at height {}",
+            self.0,
+        )
+    }
+}
+
 /// Queue dump format with handler.
 #[derive(Serialize)]
 pub(crate) enum QueueDumpFormat {

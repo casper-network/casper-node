@@ -17,7 +17,10 @@ use crate::{
         network::Identity as NetworkIdentity,
         storage::{self, Storage},
     },
-    effect::announcements::{ContractRuntimeAnnouncement, ControlAnnouncement, FatalAnnouncement},
+    effect::announcements::{
+        ContractRuntimeAnnouncement, ControlAnnouncement, FatalAnnouncement,
+        StoredExecutedBlockAnnouncement,
+    },
     protocol::Message,
     reactor::{self, EventQueueHandle, ReactorEvent, Runner},
     testing::{self, network::NetworkedReactor, ConditionCheckReactor},
@@ -70,6 +73,7 @@ impl Unhandled for ControlAnnouncement {}
 impl Unhandled for FatalAnnouncement {}
 impl Unhandled for NetworkRequest<Message> {}
 impl Unhandled for UnexecutedBlockAnnouncement {}
+impl Unhandled for StoredExecutedBlockAnnouncement {}
 
 struct Reactor {
     storage: Storage,

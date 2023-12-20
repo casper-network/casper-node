@@ -60,7 +60,8 @@ use crate::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
             ControlAnnouncement, DeployBufferAnnouncement, FetchedNewBlockAnnouncement,
             FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
-            PeerBehaviorAnnouncement, TransactionAcceptorAnnouncement, UnexecutedBlockAnnouncement,
+            PeerBehaviorAnnouncement, StoredExecutedBlockAnnouncement,
+            TransactionAcceptorAnnouncement, UnexecutedBlockAnnouncement,
             UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
@@ -281,6 +282,16 @@ impl reactor::Reactor for MainReactor {
                     Effects::new()
                 }
             }
+            MainEvent::StoredExecutedBlockAnnouncement(StoredExecutedBlockAnnouncement(
+                block_height,
+            )) => reactor::wrap_effects(
+                MainEvent::BlockValidator,
+                self.block_validator.handle_event(
+                    effect_builder,
+                    rng,
+                    block_validator::Event::BlockStored(block_height),
+                ),
+            ),
 
             // LOCAL I/O BOUND COMPONENTS
             MainEvent::UpgradeWatcher(event) => reactor::wrap_effects(
@@ -1153,7 +1164,11 @@ impl reactor::Reactor for MainReactor {
             validator_matrix.clone(),
             registry,
         )?;
-        let block_validator = BlockValidator::new(Arc::clone(&chainspec), config.block_validator);
+        let block_validator = BlockValidator::new(
+            Arc::clone(&chainspec),
+            validator_matrix.clone(),
+            config.block_validator,
+        );
         let upgrade_watcher =
             UpgradeWatcher::new(chainspec.as_ref(), config.upgrade_watcher, &root_dir)?;
         let transaction_acceptor =

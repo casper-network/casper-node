@@ -30,7 +30,7 @@ use crate::{
         storage::{self, Storage},
     },
     effect::{
-        announcements::ControlAnnouncement,
+        announcements::{ControlAnnouncement, StoredExecutedBlockAnnouncement},
         requests::{ContractRuntimeRequest, MarkBlockCompletedRequest, NetworkRequest},
     },
     protocol::Message,
@@ -67,6 +67,8 @@ fn signatures_for_block(block: &BlockV2, signatures: &Vec<FinalitySignature>) ->
 enum Event {
     #[from]
     Storage(#[serde(skip_serializing)] storage::Event),
+    #[from]
+    StoredExecutedBlockAnnouncement(StoredExecutedBlockAnnouncement),
     #[from]
     BlockAccumulator(#[serde(skip_serializing)] super::Event),
     #[from]
@@ -111,6 +113,9 @@ impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Event::Storage(event) => write!(formatter, "storage: {}", event),
+            Event::StoredExecutedBlockAnnouncement(ann) => {
+                write!(formatter, "stored executed block: {}", ann)
+            }
             Event::BlockAccumulator(event) => write!(formatter, "block accumulator: {}", event),
             Event::ControlAnnouncement(ctrl_ann) => write!(formatter, "control: {}", ctrl_ann),
             Event::FatalAnnouncement(fatal_ann) => write!(formatter, "fatal: {}", fatal_ann),
@@ -214,6 +219,9 @@ impl Reactor for MockReactor {
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
             ),
+            Event::StoredExecutedBlockAnnouncement(ann) => {
+                panic!("unhandled StoredExecutedBlockAnnouncement: {}", ann)
+            }
             Event::StorageRequest(req) => reactor::wrap_effects(
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, req.into()),
