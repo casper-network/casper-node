@@ -104,6 +104,15 @@ impl TestRng {
             *flag.borrow_mut() = true;
         });
     }
+
+    /// Creates a child RNG.
+    ///
+    /// The resulting RNG is seeded from `self` deterministically.
+    pub fn create_child(&mut self) -> Self {
+        let seed = self.gen();
+        let rng = Pcg64Mcg::from_seed(seed);
+        TestRng { seed, rng }
+    }
 }
 
 impl Default for TestRng {
