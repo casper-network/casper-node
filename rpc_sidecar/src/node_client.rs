@@ -11,6 +11,7 @@ use casper_types::{
         get::GetRequest,
         global_state_query_result::GlobalStateQueryResult,
         non_persistent_data_request::NonPersistedDataRequest,
+        payload_type::PayloadEntity,
         type_wrappers::{
             ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
             SpeculativeExecutionResult, StoredValues,
@@ -459,104 +460,4 @@ where
         Some(other) => Err(Error::UnexpectedVariantReceived(other)),
         _ => Ok(None),
     }
-}
-
-trait PayloadEntity {
-    const PAYLOAD_TYPE: PayloadType;
-}
-
-impl PayloadEntity for Transaction {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::Transaction;
-}
-
-impl PayloadEntity for Deploy {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::Deploy;
-}
-
-impl PayloadEntity for BlockHeader {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::BlockHeader;
-}
-
-impl PayloadEntity for BlockHeaderV1 {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::BlockHeaderV1;
-}
-
-impl PayloadEntity for BlockBody {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::BlockBody;
-}
-
-impl PayloadEntity for BlockBodyV1 {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::BlockBodyV1;
-}
-
-impl PayloadEntity for ExecutionResult {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::ExecutionResult;
-}
-
-impl PayloadEntity for FinalizedApprovals {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::FinalizedApprovals;
-}
-
-impl PayloadEntity for FinalizedDeployApprovals {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::FinalizedDeployApprovals;
-}
-
-impl PayloadEntity for BlockHashAndHeight {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::BlockHashAndHeight;
-}
-
-impl PayloadEntity for ExecutionResultV1 {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::ExecutionResultV1;
-}
-
-impl PayloadEntity for Peers {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::Peers;
-}
-
-impl PayloadEntity for BlockSignatures {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::BlockSignatures;
-}
-
-impl PayloadEntity for Vec<Transfer> {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::VecTransfers;
-}
-
-impl PayloadEntity for BlockHash {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::BlockHash;
-}
-
-impl PayloadEntity for HighestBlockSequenceCheckResult {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::HighestBlockSequenceCheckResult;
-}
-
-impl PayloadEntity for AvailableBlockRange {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::AvailableBlockRange;
-}
-
-impl PayloadEntity for ChainspecRawBytes {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::ChainspecRawBytes;
-}
-
-impl PayloadEntity for ConsensusValidatorChanges {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::ConsensusValidatorChanges;
-}
-
-impl PayloadEntity for GlobalStateQueryResult {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::GlobalStateQueryResult;
-}
-
-impl PayloadEntity for StoredValues {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::StoredValues;
-}
-
-impl PayloadEntity for GetTrieFullResult {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::GetTrieFullResult;
-}
-
-impl PayloadEntity for SpeculativeExecutionResult {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::SpeculativeExecutionResult;
-}
-
-impl PayloadEntity for NodeStatus {
-    const PAYLOAD_TYPE: PayloadType = PayloadType::NodeStatus;
 }

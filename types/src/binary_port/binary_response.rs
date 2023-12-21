@@ -7,7 +7,9 @@ use alloc::vec::Vec;
 use crate::testing::TestRng;
 
 use super::{
-    binary_response_header::BinaryResponseHeader, db_id::DbId, payload_type::PayloadType,
+    binary_response_header::BinaryResponseHeader,
+    db_id::DbId,
+    payload_type::{PayloadEntity, PayloadType},
     DbRawBytesSpec, ErrorCode,
 };
 
@@ -78,11 +80,11 @@ impl BinaryResponse {
     pub fn from_value<V>(val: V) -> Self
     where
         V: ToBytes,
-        V: Into<PayloadType>,
+        V: PayloadEntity,
     {
         BinaryResponse {
             payload: ToBytes::to_bytes(&val).unwrap(),
-            header: BinaryResponseHeader::new(Some(val.into())),
+            header: BinaryResponseHeader::new(Some(V::PAYLOAD_TYPE)),
         }
     }
 
@@ -90,7 +92,7 @@ impl BinaryResponse {
     pub fn from_option<V>(opt: Option<V>) -> Self
     where
         V: ToBytes,
-        V: Into<PayloadType>,
+        V: PayloadEntity,
     {
         match opt {
             Some(val) => Self::from_value(val),
