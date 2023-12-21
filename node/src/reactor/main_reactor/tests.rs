@@ -1159,11 +1159,9 @@ async fn empty_block_validation_regression() {
 }
 
 #[tokio::test]
-#[ignore] // Disabled, until the issue with `TestFixture` and multiple `TestRng`s is fixed.
+#[ignore] // Disabled until fixed, after the issue with `TestFixture` and multiple `TestRng`s was fixed.
 async fn all_metrics_from_1_5_are_present() {
     testing::init_logging();
-
-    let mut rng = crate::new_rng();
 
     let mut fixture = TestFixture::new(
         InitialStakes::AllEqual {
@@ -1173,6 +1171,8 @@ async fn all_metrics_from_1_5_are_present() {
         None,
     )
     .await;
+    let mut rng = fixture.rng_mut().create_child();
+
     let net = fixture.network_mut();
 
     net.settle_on_component_state(
