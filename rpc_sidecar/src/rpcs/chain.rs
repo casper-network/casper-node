@@ -401,3 +401,169 @@ async fn get_era_summary_by_block(
     };
     Ok(era_summary)
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::ClientError;
+    use casper_types::{
+        binary_port::{
+            binary_request::BinaryRequest, db_id::DbId, get::GetRequest,
+            non_persistent_data_request::NonPersistedDataRequest,
+            type_wrappers::HighestBlockSequenceCheckResult,
+        },
+        bytesrepr::ToBytes,
+        testing::TestRng,
+        AvailableBlockRange, BinaryResponse, BinaryResponseAndRequest, BlockV1, TestBlockBuilder,
+        TestBlockV1Builder,
+    };
+
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[tokio::test]
+    async fn should_read_block_v2() {
+        pub struct MockNodeClient(Block);
+
+        #[async_trait]
+        impl NodeClient for MockNodeClient {
+            async fn send_request(
+                &self,
+                req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, ClientError> {
+                match req {
+                    BinaryRequest::Get(GetRequest::Db {
+                        db: DbId::BlockBody,
+                        ..
+                    }) => Ok(new_binary_db_response(DbId::BlockBody, self.0.clone_body())),
+                    BinaryRequest::Get(GetRequest::Db {
+                        db: DbId::BlockHeader,
+                        ..
+                    }) => Ok(new_binary_db_response(
+                        DbId::BlockHeader,
+                        self.0.clone_header(),
+                    )),
+                    BinaryRequest::Get(GetRequest::Db {
+                        db: DbId::BlockMetadata,
+                        ..
+                    }) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::new_empty(),
+                        &[],
+                    )),
+                    BinaryRequest::Get(GetRequest::NonPersistedData(
+                        NonPersistedDataRequest::AvailableBlockRange,
+                    )) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0),
+                        &[],
+                    )),
+                    BinaryRequest::Get(GetRequest::NonPersistedData(
+                        NonPersistedDataRequest::CompletedBlocksContain { .. },
+                    )) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(HighestBlockSequenceCheckResult(true)),
+                        &[],
+                    )),
+                    req => unimplemented!("unexpected request: {:?}", req),
+                }
+            }
+        }
+
+        let rng = &mut TestRng::new();
+        let block = Block::V2(TestBlockBuilder::new().build(rng));
+
+        let resp = GetBlock::do_handle_request(
+            Arc::new(MockNodeClient(block.clone())),
+            Some(GetBlockParams {
+                block_identifier: BlockIdentifier::Hash(*block.hash()),
+            }),
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetBlockResult {
+                api_version: CURRENT_API_VERSION,
+                block_with_signatures: Some(JsonBlockWithSignatures::new(block, None)),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn should_read_block_v1() {
+        pub struct MockNodeClient(BlockV1);
+
+        #[async_trait]
+        impl NodeClient for MockNodeClient {
+            async fn send_request(
+                &self,
+                req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, ClientError> {
+                match req {
+                    BinaryRequest::Get(GetRequest::Db {
+                        db: DbId::BlockBody,
+                        ..
+                    }) => Ok(new_legacy_binary_db_response(
+                        DbId::BlockBody,
+                        self.0.body(),
+                    )),
+                    BinaryRequest::Get(GetRequest::Db {
+                        db: DbId::BlockHeader,
+                        ..
+                    }) => Ok(new_legacy_binary_db_response(
+                        DbId::BlockHeader,
+                        self.0.header(),
+                    )),
+                    BinaryRequest::Get(GetRequest::Db {
+                        db: DbId::BlockMetadata,
+                        ..
+                    }) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::new_empty(),
+                        &[],
+                    )),
+                    BinaryRequest::Get(GetRequest::NonPersistedData(
+                        NonPersistedDataRequest::AvailableBlockRange,
+                    )) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0),
+                        &[],
+                    )),
+                    BinaryRequest::Get(GetRequest::NonPersistedData(
+                        NonPersistedDataRequest::CompletedBlocksContain { .. },
+                    )) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(HighestBlockSequenceCheckResult(true)),
+                        &[],
+                    )),
+                    req => unimplemented!("unexpected request: {:?}", req),
+                }
+            }
+        }
+
+        let rng = &mut TestRng::new();
+        let block = TestBlockV1Builder::new().build(rng);
+
+        let resp = GetBlock::do_handle_request(
+            Arc::new(MockNodeClient(block.clone())),
+            Some(GetBlockParams {
+                block_identifier: BlockIdentifier::Hash(*block.hash()),
+            }),
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetBlockResult {
+                api_version: CURRENT_API_VERSION,
+                block_with_signatures: Some(JsonBlockWithSignatures::new(Block::V1(block), None)),
+            }
+        );
+    }
+
+    fn new_binary_db_response<A: ToBytes>(id: DbId, data: A) -> BinaryResponseAndRequest {
+        let resp = BinaryResponse::from_current_db_raw_bytes(id, data.to_bytes().unwrap());
+        BinaryResponseAndRequest::new(resp, &[])
+    }
+
+    fn new_legacy_binary_db_response<A: Serialize>(id: DbId, data: &A) -> BinaryResponseAndRequest {
+        let resp = BinaryResponse::from_legacy_db_raw_bytes(id, bincode::serialize(&data).unwrap());
+        BinaryResponseAndRequest::new(resp, &[])
+    }
+}

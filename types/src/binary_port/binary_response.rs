@@ -38,7 +38,7 @@ impl BinaryResponse {
     }
 
     /// Creates new binary response from raw DB bytes.
-    pub fn from_db_raw_bytes(db_id: &DbId, spec: Option<DbRawBytesSpec>) -> Self {
+    pub fn from_db_raw_bytes(db_id: DbId, spec: Option<DbRawBytesSpec>) -> Self {
         match spec {
             Some(DbRawBytesSpec {
                 is_legacy,
@@ -53,6 +53,24 @@ impl BinaryResponse {
                 header: BinaryResponseHeader::new_error(ErrorCode::NotFound),
                 payload: vec![],
             },
+        }
+    }
+
+    /// Creates new legacy binary response from raw DB bytes.
+    #[cfg(any(feature = "testing", test))]
+    pub fn from_legacy_db_raw_bytes(db_id: DbId, bytes: Vec<u8>) -> Self {
+        BinaryResponse {
+            header: BinaryResponseHeader::new(Some(PayloadType::new_from_db_id(db_id, true))),
+            payload: bytes,
+        }
+    }
+
+    /// Creates new current binary response from raw DB bytes.
+    #[cfg(any(feature = "testing", test))]
+    pub fn from_current_db_raw_bytes(db_id: DbId, bytes: Vec<u8>) -> Self {
+        BinaryResponse {
+            header: BinaryResponseHeader::new(Some(PayloadType::new_from_db_id(db_id, false))),
+            payload: bytes,
         }
     }
 

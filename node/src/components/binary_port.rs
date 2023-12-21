@@ -298,17 +298,17 @@ where
             let Some(transfers) = effect_builder
                 .get_block_transfers_from_storage(block_hash)
                 .await else {
-                return BinaryResponse::from_db_raw_bytes(&db, None);
+                return BinaryResponse::from_db_raw_bytes(db, None);
             };
             let serialized =
                 bincode::serialize(&transfers).expect("should serialize transfers to bytes");
             let bytes = DbRawBytesSpec::new_legacy(&serialized);
-            BinaryResponse::from_db_raw_bytes(&db, Some(bytes))
+            BinaryResponse::from_db_raw_bytes(db, Some(bytes))
         }
         GetRequest::Db { db, key } => {
             metrics.binary_port_get_db_count.inc();
             let maybe_raw_bytes = effect_builder.get_raw_data(db, key).await;
-            BinaryResponse::from_db_raw_bytes(&db, maybe_raw_bytes)
+            BinaryResponse::from_db_raw_bytes(db, maybe_raw_bytes)
         }
         GetRequest::NonPersistedData(req) => {
             metrics.binary_port_get_non_persisted_data_count.inc();

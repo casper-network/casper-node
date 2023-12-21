@@ -1,6 +1,10 @@
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 use alloc::vec::Vec;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -33,6 +37,16 @@ impl FinalizedApprovals {
             Transaction::V1(txn) => Self::V1(FinalizedTransactionV1Approvals::new(
                 txn.approvals().clone(),
             )),
+        }
+    }
+
+    /// Returns a random FinalizedApprovals.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        if rng.gen_bool(0.5) {
+            Self::Deploy(FinalizedDeployApprovals::random(rng))
+        } else {
+            Self::V1(FinalizedTransactionV1Approvals::random(rng))
         }
     }
 }

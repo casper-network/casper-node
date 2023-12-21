@@ -1,7 +1,11 @@
 use alloc::vec::Vec;
 
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -24,6 +28,20 @@ pub enum ExecutionResult {
     /// Version 2 of execution result type.
     #[serde(rename = "Version2")]
     V2(ExecutionResultV2),
+}
+
+impl ExecutionResult {
+    /// Returns a random ExecutionResult.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        use rand::distributions::Distribution;
+
+        if rng.gen_bool(0.5) {
+            Self::V1(rand::distributions::Standard.sample(rng))
+        } else {
+            Self::V2(ExecutionResultV2::random(rng))
+        }
+    }
 }
 
 impl From<ExecutionResultV1> for ExecutionResult {

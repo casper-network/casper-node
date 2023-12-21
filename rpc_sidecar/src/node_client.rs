@@ -41,29 +41,69 @@ use tracing::{error, info, warn};
 
 #[async_trait]
 pub trait NodeClient: Send + Sync {
-    async fn read_from_db(&self, db: DbId, key: &[u8]) -> Result<BinaryResponseAndRequest, Error>;
+    async fn send_request(&self, req: BinaryRequest) -> Result<BinaryResponseAndRequest, Error>;
+
+    async fn read_from_db(&self, db: DbId, key: &[u8]) -> Result<BinaryResponseAndRequest, Error> {
+        let get = GetRequest::Db {
+            db,
+            key: key.to_vec(),
+        };
+        self.send_request(BinaryRequest::Get(get)).await
+    }
 
     async fn read_from_mem(
         &self,
         req: NonPersistedDataRequest,
-    ) -> Result<BinaryResponseAndRequest, Error>;
+    ) -> Result<BinaryResponseAndRequest, Error> {
+        let get = GetRequest::NonPersistedData(req);
+        self.send_request(BinaryRequest::Get(get)).await
+    }
 
-    async fn read_trie_bytes(&self, trie_key: Digest) -> Result<Option<Vec<u8>>, Error>;
+    async fn read_trie_bytes(&self, trie_key: Digest) -> Result<Option<Vec<u8>>, Error> {
+        let get = GetRequest::Trie { trie_key };
+        let resp = self.send_request(BinaryRequest::Get(get)).await?;
+        let res = parse_response::<GetTrieFullResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)?;
+        Ok(res.into_inner().map(<Vec<u8>>::from))
+    }
 
     async fn query_global_state(
         &self,
         state_root_hash: Digest,
         base_key: Key,
         path: Vec<String>,
-    ) -> Result<Option<GlobalStateQueryResult>, Error>;
+    ) -> Result<Option<GlobalStateQueryResult>, Error> {
+        let get = GetRequest::State {
+            state_root_hash,
+            base_key,
+            path,
+        };
+        let resp = self.send_request(BinaryRequest::Get(get)).await?;
+        parse_response::<GlobalStateQueryResult>(&resp.into())
+    }
 
     async fn query_global_state_by_tag(
         &self,
         state_root_hash: Digest,
         tag: KeyTag,
-    ) -> Result<StoredValues, Error>;
+    ) -> Result<StoredValues, Error> {
+        let get = GetRequest::AllValues {
+            state_root_hash,
+            key_tag: tag,
+        };
+        let resp = self.send_request(BinaryRequest::Get(get)).await?;
+        parse_response::<StoredValues>(&resp.into())?.ok_or(Error::EmptyEnvelope)
+    }
 
-    async fn try_accept_transaction(&self, transaction: Transaction) -> Result<(), Error>;
+    async fn try_accept_transaction(&self, transaction: Transaction) -> Result<(), Error> {
+        let request = BinaryRequest::TryAcceptTransaction { transaction };
+        let response = self.send_request(request).await?;
+
+        if response.is_success() {
+            return Ok(());
+        } else {
+            return Err(Error::from_error_code(response.error_code()));
+        }
+    }
 
     async fn exec_speculatively(
         &self,
@@ -72,7 +112,17 @@ pub trait NodeClient: Send + Sync {
         protocol_version: ProtocolVersion,
         transaction: Transaction,
         exec_at_block: BlockHeader,
-    ) -> Result<SpeculativeExecutionResult, Error>;
+    ) -> Result<SpeculativeExecutionResult, Error> {
+        let request = BinaryRequest::TrySpeculativeExec {
+            transaction,
+            state_root_hash,
+            block_time,
+            protocol_version,
+            speculative_exec_at_block: exec_at_block,
+        };
+        let resp = self.send_request(request).await?;
+        parse_response::<SpeculativeExecutionResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)
+    }
 
     async fn read_transaction(&self, hash: TransactionHash) -> Result<Option<Transaction>, Error> {
         let key = hash.to_bytes().expect("should always serialize a digest");
@@ -322,8 +372,11 @@ impl JulietNodeClient {
             }
         }
     }
+}
 
-    async fn dispatch(&self, req: BinaryRequest) -> Result<BinaryResponseAndRequest, Error> {
+#[async_trait]
+impl NodeClient for JulietNodeClient {
+    async fn send_request(&self, req: BinaryRequest) -> Result<BinaryResponseAndRequest, Error> {
         let payload = req.to_bytes().expect("should always serialize a request");
         let request_guard = self
             .client
@@ -340,90 +393,6 @@ impl JulietNodeClient {
             .ok_or(Error::NoResponseBody)?;
         bytesrepr::deserialize_from_slice(&response)
             .map_err(|err| Error::EnvelopeDeserialization(err.to_string()))
-    }
-}
-
-#[async_trait]
-impl NodeClient for JulietNodeClient {
-    async fn read_from_db(&self, db: DbId, key: &[u8]) -> Result<BinaryResponseAndRequest, Error> {
-        let get = GetRequest::Db {
-            db,
-            key: key.to_vec(),
-        };
-        self.dispatch(BinaryRequest::Get(get)).await
-    }
-
-    async fn read_from_mem(
-        &self,
-        req: NonPersistedDataRequest,
-    ) -> Result<BinaryResponseAndRequest, Error> {
-        let get = GetRequest::NonPersistedData(req);
-        self.dispatch(BinaryRequest::Get(get)).await
-    }
-
-    async fn read_trie_bytes(&self, trie_key: Digest) -> Result<Option<Vec<u8>>, Error> {
-        let get = GetRequest::Trie { trie_key };
-        let resp = self.dispatch(BinaryRequest::Get(get)).await?;
-        let res = parse_response::<GetTrieFullResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)?;
-        Ok(res.into_inner().map(<Vec<u8>>::from))
-    }
-
-    async fn query_global_state(
-        &self,
-        state_root_hash: Digest,
-        base_key: Key,
-        path: Vec<String>,
-    ) -> Result<Option<GlobalStateQueryResult>, Error> {
-        let get = GetRequest::State {
-            state_root_hash,
-            base_key,
-            path,
-        };
-        let resp = self.dispatch(BinaryRequest::Get(get)).await?;
-        parse_response::<GlobalStateQueryResult>(&resp.into())
-    }
-
-    async fn query_global_state_by_tag(
-        &self,
-        state_root_hash: Digest,
-        key_tag: KeyTag,
-    ) -> Result<StoredValues, Error> {
-        let get = GetRequest::AllValues {
-            state_root_hash,
-            key_tag,
-        };
-        let resp = self.dispatch(BinaryRequest::Get(get)).await?;
-        parse_response::<StoredValues>(&resp.into())?.ok_or(Error::EmptyEnvelope)
-    }
-
-    async fn try_accept_transaction(&self, transaction: Transaction) -> Result<(), Error> {
-        let request = BinaryRequest::TryAcceptTransaction { transaction };
-        let response = self.dispatch(request).await?;
-
-        if response.is_success() {
-            return Ok(());
-        } else {
-            return Err(Error::from_error_code(response.error_code()));
-        }
-    }
-
-    async fn exec_speculatively(
-        &self,
-        state_root_hash: Digest,
-        block_time: Timestamp,
-        protocol_version: ProtocolVersion,
-        transaction: Transaction,
-        exec_at_block: BlockHeader,
-    ) -> Result<SpeculativeExecutionResult, Error> {
-        let request = BinaryRequest::TrySpeculativeExec {
-            transaction,
-            state_root_hash,
-            block_time,
-            protocol_version,
-            speculative_exec_at_block: exec_at_block,
-        };
-        let resp = self.dispatch(request).await?;
-        parse_response::<SpeculativeExecutionResult>(&resp.into())?.ok_or(Error::EmptyEnvelope)
     }
 }
 
