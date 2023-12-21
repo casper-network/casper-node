@@ -1,5 +1,5 @@
-pub trait Schema: Contract {
-    fn schema() -> CasperSchema;
+pub trait CasperSchema: Contract {
+    fn schema() -> Schema;
 }
 
 use std::{
@@ -64,7 +64,7 @@ pub struct SchemaData {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct CasperSchema {
+pub struct Schema {
     pub name: &'static str,
     pub data: Vec<SchemaData>,
     pub entry_points: Vec<SchemaEntryPoint>,

@@ -359,13 +359,13 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                     impl #struct_name {
                         #[doc(hidden)]
-                        fn __casper_schema() -> casper_sdk::schema::CasperSchema {
+                        fn __casper_schema() -> casper_sdk::schema::Schema {
                             let entry_points = vec![
                                 #(#defs,)*
                                 // EntryPonit
                             ];
                             let data = Self::__casper_data();
-                            casper_sdk::schema::CasperSchema {
+                            casper_sdk::schema::Schema {
                                 name: stringify!(#struct_name).into(),
                                 data,
                                 entry_points,
@@ -595,7 +595,7 @@ const PRIMITIVE_TYPES: &[&str] = &[
     "f64",
 ];
 
-#[proc_macro_derive(Schema)]
+#[proc_macro_derive(CasperSchema)]
 pub fn derive_casper_schema(input: TokenStream) -> TokenStream {
     let contract = parse_macro_input!(input as DeriveInput);
     let data_struct = match &contract.data {
@@ -607,8 +607,8 @@ pub fn derive_casper_schema(input: TokenStream) -> TokenStream {
     let name = &contract.ident;
 
     quote! {
-        impl casper_sdk::schema::Schema for #name {
-            fn schema() -> casper_sdk::schema::CasperSchema {
+        impl casper_sdk::schema::CasperSchema for #name {
+            fn schema() -> casper_sdk::schema::Schema {
                 Self::__casper_schema()
             }
         }

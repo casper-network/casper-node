@@ -2,12 +2,12 @@
 pub mod error;
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use casper_macros::{casper, CasperABI, Contract, Schema};
-use casper_sdk::{collections::Map, host, revert, schema::Schema, types::Address, Contract};
+use casper_macros::{casper, CasperABI, Contract, CasperSchema};
+use casper_sdk::{collections::Map, host, revert, schema::CasperSchema, types::Address, Contract};
 use error::Cep18Error;
 use std::string::String;
 
-#[derive(Contract, Schema, BorshSerialize, BorshDeserialize, CasperABI, Debug)]
+#[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug)]
 struct CEP18 {
     name: String,
     symbol: String,

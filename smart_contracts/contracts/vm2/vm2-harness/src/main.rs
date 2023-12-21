@@ -11,7 +11,7 @@ use alloc::{
     vec::Vec,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use casper_macros::{casper, CasperABI, Contract, Schema};
+use casper_macros::{casper, CasperABI, Contract, CasperSchema};
 use casper_sdk::{
     host::{self, Alloc},
     log, revert,
@@ -22,7 +22,7 @@ use casper_sdk::{
 
 const INITIAL_GREETING: &str = "This is initial data set from a constructor";
 
-#[derive(Contract, Schema, BorshSerialize, BorshDeserialize, CasperABI, Debug)]
+#[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug)]
 struct Greeter {
     greeting: String,
     address_inside_constructor: Option<Address>,
@@ -291,7 +291,7 @@ mod tests {
 
     use borsh::{schema::BorshSchemaContainer, BorshSchema};
     use casper_sdk::{
-        schema::{schema_helper, Schema},
+        schema::{schema_helper, CasperSchema},
         Contract,
     };
 
