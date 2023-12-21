@@ -19,7 +19,7 @@ use crate::{
         consensus::BlockContext,
         fetcher::{self, FetchItem},
     },
-    effect::announcements::{FatalAnnouncement, StoredExecutedBlockAnnouncement},
+    effect::announcements::FatalAnnouncement,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     types::{BlockPayload, ValidatorMatrix},
     utils::{self, Loadable},
@@ -37,8 +37,6 @@ enum ReactorEvent {
     FinalitySigFetcher(FetcherRequest<FinalitySignature>),
     #[from]
     Storage(StorageRequest),
-    #[from]
-    StoredExecutedBlockAnnouncement(StoredExecutedBlockAnnouncement),
     #[from]
     FatalAnnouncement(FatalAnnouncement),
 }

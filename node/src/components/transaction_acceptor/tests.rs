@@ -40,9 +40,7 @@ use crate::{
         storage::{self, Storage},
     },
     effect::{
-        announcements::{
-            ControlAnnouncement, StoredExecutedBlockAnnouncement, TransactionAcceptorAnnouncement,
-        },
+        announcements::{ControlAnnouncement, TransactionAcceptorAnnouncement},
         requests::{
             ContractRuntimeRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest,
             NetworkRequest,
@@ -95,12 +93,6 @@ impl From<MakeBlockExecutableRequest> for Event {
 impl From<MarkBlockCompletedRequest> for Event {
     fn from(request: MarkBlockCompletedRequest) -> Self {
         Event::Storage(storage::Event::MarkBlockCompletedRequest(request))
-    }
-}
-
-impl From<StoredExecutedBlockAnnouncement> for Event {
-    fn from(_: StoredExecutedBlockAnnouncement) -> Self {
-        unimplemented!("the announcement isn't used in transaction acceptor tests")
     }
 }
 

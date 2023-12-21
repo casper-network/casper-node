@@ -36,7 +36,7 @@ use casper_types::testing::TestRng;
 use crate::{
     components::Component,
     effect::{
-        announcements::{ControlAnnouncement, FatalAnnouncement, StoredExecutedBlockAnnouncement},
+        announcements::{ControlAnnouncement, FatalAnnouncement},
         requests::NetworkRequest,
         EffectBuilder, Effects, Responder,
     },
@@ -365,17 +365,13 @@ pub(crate) enum UnitTestEvent {
     /// A network request made by the component under test.
     #[from]
     NetworkRequest(NetworkRequest<Message>),
-    /// An announcement that an executed block was stored, made by the storage component.
-    #[from]
-    StoredExecutedBlockAnnouncement(StoredExecutedBlockAnnouncement),
 }
 
 impl ReactorEvent for UnitTestEvent {
     fn is_control(&self) -> bool {
         match self {
             UnitTestEvent::ControlAnnouncement(_) | UnitTestEvent::FatalAnnouncement(_) => true,
-            UnitTestEvent::NetworkRequest(_)
-            | UnitTestEvent::StoredExecutedBlockAnnouncement(_) => false,
+            UnitTestEvent::NetworkRequest(_) => false,
         }
     }
 
@@ -385,8 +381,7 @@ impl ReactorEvent for UnitTestEvent {
             UnitTestEvent::FatalAnnouncement(FatalAnnouncement { file, line, msg }) => {
                 Some(ControlAnnouncement::FatalError { file, line, msg })
             }
-            UnitTestEvent::NetworkRequest(_)
-            | UnitTestEvent::StoredExecutedBlockAnnouncement(_) => None,
+            UnitTestEvent::NetworkRequest(_) => None,
         }
     }
 }

@@ -164,8 +164,8 @@ use announcements::{
     BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
     ControlAnnouncement, DeployBufferAnnouncement, FatalAnnouncement, FetchedNewBlockAnnouncement,
     FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
-    PeerBehaviorAnnouncement, QueueDumpFormat, StoredExecutedBlockAnnouncement,
-    TransactionAcceptorAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+    PeerBehaviorAnnouncement, QueueDumpFormat, TransactionAcceptorAnnouncement,
+    UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
@@ -1886,19 +1886,6 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 UnexecutedBlockAnnouncement(block_height),
-                QueueKind::Regular,
-            )
-            .await
-    }
-
-    /// Announces that an executed block has been stored.
-    pub(crate) async fn announce_executed_block_stored(self, block_height: u64)
-    where
-        REv: From<StoredExecutedBlockAnnouncement>,
-    {
-        self.event_queue
-            .schedule(
-                StoredExecutedBlockAnnouncement(block_height),
                 QueueKind::Regular,
             )
             .await

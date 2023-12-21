@@ -33,7 +33,7 @@ use crate::{
     effect::{
         announcements::{
             ControlAnnouncement, FatalAnnouncement, GossiperAnnouncement,
-            StoredExecutedBlockAnnouncement, TransactionAcceptorAnnouncement,
+            TransactionAcceptorAnnouncement,
         },
         incoming::{
             ConsensusDemand, ConsensusMessageIncoming, FinalitySignatureIncoming,
@@ -121,7 +121,6 @@ impl Unhandled for TrieRequestIncoming {}
 impl Unhandled for TrieDemand {}
 impl Unhandled for TrieResponseIncoming {}
 impl Unhandled for FinalitySignatureIncoming {}
-impl Unhandled for StoredExecutedBlockAnnouncement {}
 
 /// Error type returned by the test reactor.
 #[derive(Debug, Error)]

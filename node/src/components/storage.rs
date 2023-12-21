@@ -87,7 +87,7 @@ use crate::{
         Component,
     },
     effect::{
-        announcements::{FatalAnnouncement, StoredExecutedBlockAnnouncement},
+        announcements::FatalAnnouncement,
         incoming::{NetRequest, NetRequestIncoming},
         requests::{MarkBlockCompletedRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
@@ -237,10 +237,7 @@ impl Display for HighestOrphanedBlockResult {
 
 impl<REv> Component<REv> for Storage
 where
-    REv: From<FatalAnnouncement>
-        + From<StoredExecutedBlockAnnouncement>
-        + From<NetworkRequest<Message>>
-        + Send,
+    REv: From<FatalAnnouncement> + From<NetworkRequest<Message>> + Send,
 {
     type Event = Event;
 
@@ -251,7 +248,7 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         let result = match event {
-            Event::StorageRequest(req) => self.handle_storage_request::<REv>(effect_builder, *req),
+            Event::StorageRequest(req) => self.handle_storage_request::<REv>(*req),
             Event::NetRequestIncoming(ref incoming) => {
                 match self.handle_net_request_incoming::<REv>(effect_builder, incoming) {
                     Ok(effects) => Ok(effects),
@@ -742,11 +739,10 @@ impl Storage {
     /// Handles a storage request.
     fn handle_storage_request<REv>(
         &mut self,
-        effect_builder: EffectBuilder<REv>,
         req: StorageRequest,
     ) -> Result<Effects<Event>, FatalStorageError>
     where
-        REv: From<StoredExecutedBlockAnnouncement> + Send,
+        REv: Send,
     {
         // Note: Database IO is handled in a blocking fashion on purpose throughout this function.
         // The rationale is that long IO operations are very rare and cache misses frequent, so on
@@ -1165,19 +1161,13 @@ impl Storage {
                 responder,
             } => {
                 let block: Block = (*block).clone().into();
-                let mut effects = responder
+                responder
                     .respond(self.put_executed_block(
                         &block,
                         &approvals_hashes,
                         execution_results,
                     )?)
-                    .ignore();
-                effects.extend(
-                    effect_builder
-                        .announce_executed_block_stored(block.height())
-                        .ignore(),
-                );
-                effects
+                    .ignore()
             }
             StorageRequest::GetKeyBlockHeightForActivationPoint { responder } => {
                 // If we haven't already cached the height, try to retrieve the key block header.

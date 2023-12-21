@@ -383,7 +383,7 @@ impl BlockValidationState {
                 if missing_signatures.is_empty() && missing_deploys.is_empty() {
                     debug!(
                         block_timestamp = %appendable_block.timestamp(),
-                        "no further missing deploys - block validation complete"
+                        "no further missing deploys or signatures - block validation complete"
                     );
                     let new_state = BlockValidationState::Valid(appendable_block.timestamp());
                     (new_state, mem::take(responders))

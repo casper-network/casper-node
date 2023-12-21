@@ -27,8 +27,8 @@ use crate::{
             ControlAnnouncement, DeployBufferAnnouncement, FatalAnnouncement,
             FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement,
             GossiperAnnouncement, MetaBlockAnnouncement, PeerBehaviorAnnouncement,
-            StoredExecutedBlockAnnouncement, TransactionAcceptorAnnouncement,
-            UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+            TransactionAcceptorAnnouncement, UnexecutedBlockAnnouncement,
+            UpgradeWatcherAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -245,8 +245,6 @@ pub(crate) enum MainEvent {
     MetaBlockAnnouncement(MetaBlockAnnouncement),
     #[from]
     UnexecutedBlockAnnouncement(UnexecutedBlockAnnouncement),
-    #[from]
-    StoredExecutedBlockAnnouncement(StoredExecutedBlockAnnouncement),
 
     // Event related to figuring out validators for blocks after upgrades.
     GotBlockAfterUpgradeEraValidators(EraId, EraValidators, EraValidators),
@@ -362,7 +360,6 @@ impl ReactorEvent for MainEvent {
             MainEvent::MakeBlockExecutableRequest(_) => "MakeBlockExecutableRequest",
             MainEvent::MetaBlockAnnouncement(_) => "MetaBlockAnnouncement",
             MainEvent::UnexecutedBlockAnnouncement(_) => "UnexecutedBlockAnnouncement",
-            MainEvent::StoredExecutedBlockAnnouncement(_) => "StoredExecutedBlockAnnouncement",
             MainEvent::GotBlockAfterUpgradeEraValidators(_, _, _) => {
                 "GotImmediateSwitchBlockEraValidators"
             }
@@ -543,7 +540,6 @@ impl Display for MainEvent {
             MainEvent::MakeBlockExecutableRequest(inner) => Display::fmt(inner, f),
             MainEvent::MetaBlockAnnouncement(inner) => Display::fmt(inner, f),
             MainEvent::UnexecutedBlockAnnouncement(inner) => Display::fmt(inner, f),
-            MainEvent::StoredExecutedBlockAnnouncement(inner) => Display::fmt(inner, f),
             MainEvent::GotBlockAfterUpgradeEraValidators(era_id, _, _) => {
                 write!(
                     f,

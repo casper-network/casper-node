@@ -60,8 +60,7 @@ use crate::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
             ControlAnnouncement, DeployBufferAnnouncement, FetchedNewBlockAnnouncement,
             FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
-            PeerBehaviorAnnouncement, StoredExecutedBlockAnnouncement,
-            TransactionAcceptorAnnouncement, UnexecutedBlockAnnouncement,
+            PeerBehaviorAnnouncement, TransactionAcceptorAnnouncement, UnexecutedBlockAnnouncement,
             UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
@@ -282,16 +281,6 @@ impl reactor::Reactor for MainReactor {
                     Effects::new()
                 }
             }
-            MainEvent::StoredExecutedBlockAnnouncement(StoredExecutedBlockAnnouncement(
-                block_height,
-            )) => reactor::wrap_effects(
-                MainEvent::BlockValidator,
-                self.block_validator.handle_event(
-                    effect_builder,
-                    rng,
-                    block_validator::Event::BlockStored(block_height),
-                ),
-            ),
 
             // LOCAL I/O BOUND COMPONENTS
             MainEvent::UpgradeWatcher(event) => reactor::wrap_effects(
@@ -1430,6 +1419,26 @@ impl MainReactor {
                     ));
                 }
             }
+        }
+
+        if meta_block
+            .mut_state()
+            .register_as_validator_notified()
+            .was_updated()
+        {
+            debug!(
+                "MetaBlock: notifying block validator: {} {}",
+                meta_block.height(),
+                meta_block.hash(),
+            );
+            effects.extend(reactor::wrap_effects(
+                MainEvent::BlockValidator,
+                self.block_validator.handle_event(
+                    effect_builder,
+                    rng,
+                    block_validator::Event::BlockStored(meta_block.height()),
+                ),
+            ));
         }
 
         if meta_block

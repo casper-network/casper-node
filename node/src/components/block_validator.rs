@@ -164,11 +164,12 @@ impl BlockValidator {
                     holder,
                     missing_deploys,
                     missing_signatures,
-                } => {
-                    let mut effects = fetch_deploys(effect_builder, holder, missing_deploys);
-                    effects.extend(fetch_signatures(effect_builder, holder, missing_signatures));
-                    effects
-                }
+                } => fetch_deploys_and_signatures(
+                    effect_builder,
+                    holder,
+                    missing_deploys,
+                    missing_signatures,
+                ),
                 MaybeStartFetching::Ongoing => {
                     debug!("ongoing fetches while validating proposed block - noop");
                     Effects::new()
@@ -463,11 +464,12 @@ impl BlockValidator {
                 holder,
                 missing_deploys,
                 missing_signatures,
-            } => {
-                let mut effects = fetch_deploys(effect_builder, holder, missing_deploys);
-                effects.extend(fetch_signatures(effect_builder, holder, missing_signatures));
-                effects
-            }
+            } => fetch_deploys_and_signatures(
+                effect_builder,
+                holder,
+                missing_deploys,
+                missing_signatures,
+            ),
             MaybeStartFetching::ValidationSucceeded => {
                 debug!("no deploys - block validation complete");
                 debug_assert!(maybe_responder.is_some());
@@ -608,16 +610,12 @@ impl BlockValidator {
                                         missing_deploys_len = missing_deploys.len(),
                                         "fetching missing deploys from different peer"
                                     );
-                                    effects.extend(fetch_deploys(
+                                    effects.extend(fetch_deploys_and_signatures(
                                         effect_builder,
                                         holder,
                                         missing_deploys,
-                                    ));
-                                    effects.extend(fetch_signatures(
-                                        effect_builder,
-                                        holder,
                                         missing_signatures,
-                                    ))
+                                    ));
                                 }
                                 MaybeStartFetching::Unable => {
                                     debug!(
@@ -704,16 +702,12 @@ impl BlockValidator {
                                         "fetching missing deploys and signatures from different \
                                         peer"
                                     );
-                                    effects.extend(fetch_deploys(
+                                    effects.extend(fetch_deploys_and_signatures(
                                         effect_builder,
                                         holder,
                                         missing_deploys,
-                                    ));
-                                    effects.extend(fetch_signatures(
-                                        effect_builder,
-                                        holder,
                                         missing_signatures,
-                                    ))
+                                    ));
                                 }
                                 MaybeStartFetching::Unable => {
                                     debug!(
@@ -801,15 +795,19 @@ where
     }
 }
 
-fn fetch_deploys<REv>(
+fn fetch_deploys_and_signatures<REv>(
     effect_builder: EffectBuilder<REv>,
     holder: NodeId,
     missing_deploys: HashMap<DeployOrTransferHash, DeployApprovalsHash>,
+    missing_signatures: HashSet<FinalitySignatureId>,
 ) -> Effects<Event>
 where
-    REv: From<Event> + From<FetcherRequest<Transaction>> + Send,
+    REv: From<Event>
+        + From<FetcherRequest<Transaction>>
+        + From<FetcherRequest<FinalitySignature>>
+        + Send,
 {
-    missing_deploys
+    let mut effects: Effects<Event> = missing_deploys
         .into_iter()
         .flat_map(|(dt_hash, approvals_hash)| {
             let txn_id = TransactionId::Deploy {
@@ -820,32 +818,26 @@ where
                 .fetch::<Transaction>(txn_id, holder, Box::new(EmptyValidationMetadata))
                 .event(move |result| Event::TransactionFetched { dt_hash, result })
         })
-        .collect()
-}
+        .collect();
 
-fn fetch_signatures<REv>(
-    effect_builder: EffectBuilder<REv>,
-    holder: NodeId,
-    missing_signatures: HashSet<FinalitySignatureId>,
-) -> Effects<Event>
-where
-    REv: From<Event> + From<FetcherRequest<FinalitySignature>> + Send,
-{
-    missing_signatures
-        .into_iter()
-        .flat_map(|finality_signature_id| {
-            effect_builder
-                .fetch::<FinalitySignature>(
-                    Box::new(finality_signature_id.clone()),
-                    holder,
-                    Box::new(EmptyValidationMetadata),
-                )
-                .event(move |result| Event::FinalitySignatureFetched {
-                    finality_signature_id: Box::new(finality_signature_id),
-                    result,
-                })
-        })
-        .collect()
+    effects.extend(
+        missing_signatures
+            .into_iter()
+            .flat_map(|finality_signature_id| {
+                effect_builder
+                    .fetch::<FinalitySignature>(
+                        Box::new(finality_signature_id.clone()),
+                        holder,
+                        Box::new(EmptyValidationMetadata),
+                    )
+                    .event(move |result| Event::FinalitySignatureFetched {
+                        finality_signature_id: Box::new(finality_signature_id),
+                        result,
+                    })
+            }),
+    );
+
+    effects
 }
 
 fn respond(

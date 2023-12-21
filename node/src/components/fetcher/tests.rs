@@ -27,10 +27,7 @@ use crate::{
         transaction_acceptor,
     },
     effect::{
-        announcements::{
-            ControlAnnouncement, FatalAnnouncement, StoredExecutedBlockAnnouncement,
-            TransactionAcceptorAnnouncement,
-        },
+        announcements::{ControlAnnouncement, FatalAnnouncement, TransactionAcceptorAnnouncement},
         incoming::{
             ConsensusMessageIncoming, DemandIncoming, FinalitySignatureIncoming, GossiperIncoming,
             NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
@@ -93,8 +90,6 @@ enum Event {
     Network(in_memory_network::Event<Message>),
     #[from]
     Storage(storage::Event),
-    #[from]
-    StoredExecutedBlockAnnouncement(StoredExecutedBlockAnnouncement),
     #[from]
     FakeTransactionAcceptor(transaction_acceptor::Event),
     #[from]
@@ -276,8 +271,7 @@ impl ReactorTrait for Reactor {
             | Event::FetchedNewBlockAnnouncement(_)
             | Event::FetchedNewFinalitySignatureAnnouncement(_)
             | Event::ControlAnnouncement(_)
-            | Event::FatalAnnouncement(_)
-            | Event::StoredExecutedBlockAnnouncement(_) => panic!("unexpected: {}", event),
+            | Event::FatalAnnouncement(_) => panic!("unexpected: {}", event),
         }
     }
 
