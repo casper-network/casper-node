@@ -740,10 +740,7 @@ impl Storage {
     fn handle_storage_request<REv>(
         &mut self,
         req: StorageRequest,
-    ) -> Result<Effects<Event>, FatalStorageError>
-    where
-        REv: Send,
-    {
+    ) -> Result<Effects<Event>, FatalStorageError> {
         // Note: Database IO is handled in a blocking fashion on purpose throughout this function.
         // The rationale is that long IO operations are very rare and cache misses frequent, so on
         // average the actual execution time will be very low.
