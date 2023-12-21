@@ -706,6 +706,72 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn should_reject_transaction_with_inconsistent_data() {
+        pub struct MockNodeClient(
+            Transaction,
+            FinalizedDeployApprovals,
+            ExecutionResult,
+            BlockHash,
+        );
+
+        #[async_trait]
+        impl NodeClient for MockNodeClient {
+            async fn send_request(
+                &self,
+                req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, ClientError> {
+                match req {
+                    BinaryRequest::Get(GetRequest::Db {
+                        db: DbId::Transaction,
+                        ..
+                    }) => Ok(new_binary_db_response(DbId::Transaction, &self.0)),
+                    BinaryRequest::Get(GetRequest::Db {
+                        db: DbId::FinalizedTransactionApprovals,
+                        ..
+                    }) => Ok(new_legacy_binary_db_response(
+                        DbId::FinalizedTransactionApprovals,
+                        &self.1,
+                    )),
+                    BinaryRequest::Get(GetRequest::Db {
+                        db: DbId::ExecutionResult,
+                        ..
+                    }) => Ok(new_binary_db_response(DbId::ExecutionResult, &self.2)),
+                    BinaryRequest::Get(GetRequest::NonPersistedData(
+                        NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { .. },
+                    )) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(BlockHashAndHeight::new(self.3, 0)),
+                        &[],
+                    )),
+                    req => unimplemented!("unexpected request: {:?}", req),
+                }
+            }
+        }
+
+        let rng = &mut TestRng::new();
+        let transaction = Transaction::from(TransactionV1::random(rng));
+        let approvals = FinalizedDeployApprovals::random(rng);
+        let exec_result = ExecutionResult::random(rng);
+        let block_hash = BlockHash::random(rng);
+
+        let err = GetTransaction::do_handle_request(
+            Arc::new(MockNodeClient(
+                transaction.clone(),
+                approvals,
+                exec_result.clone(),
+                block_hash,
+            )),
+            GetTransactionParams {
+                transaction_hash: transaction.hash(),
+                finalized_approvals: true,
+            },
+        )
+        .await
+        .expect_err("should reject request");
+
+        assert_eq!(err.code(), -32015);
+    }
+
     fn new_binary_db_response<A: ToBytes>(id: DbId, data: A) -> BinaryResponseAndRequest {
         let resp = BinaryResponse::from_current_db_raw_bytes(id, data.to_bytes().unwrap());
         BinaryResponseAndRequest::new(resp, &[])
