@@ -215,6 +215,12 @@ impl TestFixture {
         fixture
     }
 
+    /// Access the environments RNG.
+    #[inline(always)]
+    pub fn rng_mut(&mut self) -> &mut TestRng {
+        &mut self.rng
+    }
+
     /// Returns the highest complete block from node 0.
     ///
     /// Panics if there is no such block.
