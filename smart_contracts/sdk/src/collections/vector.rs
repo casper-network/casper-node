@@ -7,7 +7,7 @@ use crate::{
 use borsh::{self, BorshDeserialize, BorshSerialize};
 use const_fnv1a_hash::fnv1a_hash_str_64;
 
-use std::{iter, marker::PhantomData};
+use std::marker::PhantomData;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub struct Vector<T> {

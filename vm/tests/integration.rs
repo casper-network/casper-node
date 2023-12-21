@@ -202,7 +202,7 @@ fn test_contract() {
 }
 
 #[test]
-fn harness() {
+fn greeter() {
     run_wasm(VM2_HARNESS, ());
 }
 

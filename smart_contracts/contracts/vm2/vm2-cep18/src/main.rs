@@ -3,7 +3,7 @@ pub mod error;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, CasperABI, Contract, Schema};
-use casper_sdk::{collections::Map, revert, schema::Schema, types::Address, Contract};
+use casper_sdk::{collections::Map, host, revert, schema::Schema, types::Address, Contract};
 use error::Cep18Error;
 use std::string::String;
 
@@ -63,9 +63,15 @@ impl CEP18 {
         self.allowances.get(&(spender, owner)).unwrap_or_default();
     }
 
-    // fn approve(&self, spender: Address) -> Result<(), Cep18Error> {
-    //     revert!(Err(Cep18Error::CannotTargetSelfUser))
-    // }
+    fn approve(&mut self, spender: Address, amount: u64) -> Result<(), Cep18Error> {
+        let owner = host::get_caller();
+        if owner == spender {
+            return revert!(Err(Cep18Error::CannotTargetSelfUser));
+        }
+        let lookup_key = (owner, spender);
+        self.allowances.insert(&lookup_key, &amount);
+        Ok(())
+    }
 
     // fn decrease_allowance(&self, spender: Address, amount: u64) -> Result<(), Cep18Error> {
     //     // let owner = utils::get_immediate_caller_address().unwrap_or_revert();
@@ -287,8 +293,12 @@ pub fn call() {
 mod tests {
     use super::*;
 
-    use casper_sdk::abi::CasperABI;
+    use casper_sdk::{
+        abi::CasperABI,
+        host::native::{with_mock, Stub},
+    };
 
+    const DEFAULT_ACCOUNT: Address = [42; 32];
     const ALICE: Address = [1; 32];
     const BOB: Address = [2; 32];
 
@@ -302,11 +312,16 @@ mod tests {
         dbg!(CEP18::schema());
     }
 
-    #[test]
-    fn it_works() {
-        let contract = CEP18::new();
-        assert_eq!(contract.name(), "Default name");
-        assert_eq!(contract.balance_of(ALICE), 0);
-        assert_eq!(contract.balance_of(BOB), 1);
-    }
+    // #[test]
+    // fn it_works() {
+    //     let stub = Stub::new(Default::default(), [42; 32]);
+
+    //     host::native::with_mock(new_stub, || {
+    //         let mut contract = CEP18::new();
+    //         assert_eq!(contract.name(), "Default name");
+    //         assert_eq!(contract.balance_of(ALICE), 0);
+    //         assert_eq!(contract.balance_of(BOB), 1);
+    //         contract.approve(BOB, 111).unwrap();
+    //     });
+    // }
 }

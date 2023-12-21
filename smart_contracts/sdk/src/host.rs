@@ -1,7 +1,6 @@
 #[cfg(not(target_arch = "wasm32"))]
 pub mod native;
 
-use core::slice;
 use std::{
     ffi::c_void,
     marker::PhantomData,
@@ -109,7 +108,6 @@ pub fn casper_return(flags: ReturnFlags, data: Option<&[u8]>) -> ! {
         None => (ptr::null(), 0),
     };
     unsafe { casper_sdk_sys::casper_return(flags.bits(), data_ptr, data_len) };
-    unreachable!()
 }
 
 pub fn casper_read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(

@@ -1,46 +1,46 @@
+use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::CasperABI;
 use casper_sdk::abi::CasperABI;
 
 /// While the code consuming this contract needs to define further error variants, it can
 /// return those via the [`Error::User`] variant or equivalently via the [`ApiError::User`]
 /// variant.
-#[repr(u16)]
-#[derive(Clone, Copy, CasperABI)]
+#[derive(Clone, Copy, CasperABI, BorshSerialize, BorshDeserialize, Debug)]
 pub enum Cep18Error {
     /// CEP-18 contract called from within an invalid context.
-    InvalidContext = 60000,
+    InvalidContext,
     /// Spender does not have enough balance.
-    InsufficientBalance = 60001,
+    InsufficientBalance,
     /// Spender does not have enough allowance approved.
-    InsufficientAllowance = 60002,
+    InsufficientAllowance,
     /// Operation would cause an integer overflow.
-    Overflow = 60003,
+    Overflow,
     /// A required package hash was not specified.
-    PackageHashMissing = 60004,
+    PackageHashMissing,
     /// The package hash specified does not represent a package.
-    PackageHashNotPackage = 60005,
+    PackageHashNotPackage,
     /// An invalid event mode was specified.
-    InvalidEventsMode = 60006,
+    InvalidEventsMode,
     /// The event mode required was not specified.
-    MissingEventsMode = 60007,
+    MissingEventsMode,
     /// An unknown error occurred.
-    Phantom = 60008,
+    Phantom,
     /// Failed to read the runtime arguments provided.
-    FailedToGetArgBytes = 60009,
+    FailedToGetArgBytes,
     /// The caller does not have sufficient security access.
-    InsufficientRights = 60010,
+    InsufficientRights,
     /// The list of Admin accounts provided is invalid.
-    InvalidAdminList = 60011,
+    InvalidAdminList,
     /// The list of accounts that can mint tokens is invalid.
-    InvalidMinterList = 60012,
+    InvalidMinterList,
     /// The list of accounts with no access rights is invalid.
-    InvalidNoneList = 60013,
+    InvalidNoneList,
     /// The flag to enable the mint and burn mode is invalid.
-    InvalidEnableMBFlag = 60014,
+    InvalidEnableMBFlag,
     /// This contract instance cannot be initialized again.
-    AlreadyInitialized = 60015,
+    AlreadyInitialized,
     ///  The mint and burn mode is disabled.
-    MintBurnDisabled = 60016,
-    CannotTargetSelfUser = 60017,
-    InvalidBurnTarget = 60018,
+    MintBurnDisabled,
+    CannotTargetSelfUser,
+    InvalidBurnTarget,
 }

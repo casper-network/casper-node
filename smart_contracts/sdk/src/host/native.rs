@@ -10,7 +10,7 @@ use casper_sdk_sys::for_each_host_function;
 use once_cell::sync::Lazy;
 use vm_common::flags::ReturnFlags;
 
-use crate::{storage::Keyspace, types::Entry};
+use crate::types::Address;
 
 macro_rules! define_trait_methods {
     ( @optional $ty:ty ) => { stringify!($ty) };
@@ -27,21 +27,28 @@ pub unsafe trait HostInterface {
     for_each_host_function!(define_trait_methods);
 }
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-struct TaggedValue {
+pub struct TaggedValue {
     tag: u64,
     value: Bytes,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
-struct BorrowedTaggedValue<'a> {
+pub struct BorrowedTaggedValue<'a> {
     tag: u64,
     value: &'a [u8],
 }
 type Container = BTreeMap<u64, BTreeMap<Bytes, TaggedValue>>;
 
 #[derive(Default, Clone, Debug)]
-pub(crate) struct Stub {
+pub struct Stub {
     db: Container,
+    caller: Address,
+}
+
+impl Stub {
+    pub fn new(db: Container, caller: Address) -> Self {
+        Self { db, caller }
+    }
 }
 
 #[allow(unused_variables)]
@@ -181,11 +188,19 @@ Example paths:
     }
 
     fn casper_env_caller(&mut self, dest: *mut u8, dest_size: usize) -> *const u8 {
-        todo!()
+        let dst = unsafe { slice::from_raw_parts_mut(dest, dest_size) };
+        dst.copy_from_slice(&self.caller);
+        unsafe { dest.add(32) }
     }
 }
 
 pub(crate) static STUB: Lazy<Mutex<Stub>> = Lazy::new(|| Mutex::new(Stub::default()));
+
+pub fn with_mock<Ret>(new_stub: Stub, func: impl FnOnce() -> Ret) -> Ret {
+    let mut stub = STUB.lock().unwrap();
+    *stub = new_stub;
+    func()
+}
 
 macro_rules! define_symbols {
     ( @optional $ty:ty ) => { stringify!($ty) };

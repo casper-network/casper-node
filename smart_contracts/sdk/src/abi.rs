@@ -22,12 +22,35 @@ pub struct StructField {
     pub name: String,
     pub body: Definition,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Primitive {
+    Char,
+    U8,
+    I8,
+    U16,
+    I16,
+    U32,
+    I32,
+    U64,
+    I64,
+    U128,
+    I128,
+    F32,
+    F64,
+    Bool,
+}
+
+pub trait Keyable {
+    const PRIMITIVE: Primitive;
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Definition {
     /// Primitive type.
     ///
-    /// Examples: u64, i32, f32, String, bool, etc.
-    Type(String),
+    /// Examples: u64, i32, f32, bool, etc
+    Primitive(Primitive),
     /// A mapping.
     ///
     /// Example Rust types: BTreeMap<K, V>.
@@ -41,7 +64,12 @@ pub enum Definition {
     Sequence {
         /// If length is known, then it specifies that this definition should be be represented as
         /// an array of a fixed size.
-        length: Option<u32>,
+        def: Box<Definition>,
+    },
+    FixedSequence {
+        /// If length is known, then it specifies that this definition should be be represented as
+        /// an array of a fixed size.
+        length: u32, // None -> Vec<T> Some(N) [T; N]
         def: Box<Definition>,
     },
     /// A tuple of multiple values of various types.
@@ -81,11 +109,14 @@ macro_rules! impl_abi_for_types {
        impl_abi_for_types!(@impl $ty => stringify!($ty));
     };
 
-    (@impl $ty:ty => $name:expr ) => {
+    (@impl $ty:ty => $def:expr ) => {
         impl CasperABI for $ty {
             fn definition() -> Definition {
-                Definition::Type($name.into())
+                Definition::Primitive($def)
             }
+        }
+        impl Keyable for $ty {
+            const PRIMITIVE: Primitive = $def;
         }
     };
 }
@@ -97,12 +128,20 @@ impl CasperABI for () {
 }
 
 impl_abi_for_types!(
-    bool,
-    u8, u16, u32, u64,
-    i8, i16, i32, i64,
-    f32, f64,
-    String => "string",
-    &str => "string",
+    char => Primitive::Char,
+    bool => Primitive::Bool,
+    u8 => Primitive::U8,
+    u16 => Primitive::U16,
+    u32 => Primitive::U32,
+    u64 => Primitive::U64,
+    u128 => Primitive::U128,
+    i8 => Primitive::I8,
+    i16 => Primitive::I16,
+    i32 => Primitive::I32,
+    i64 => Primitive::I64,
+    f32 => Primitive::F32,
+    f64 => Primitive::F64,
+    i128 => Primitive::I128,
 );
 
 #[impl_for_tuples(1, 12)]
@@ -155,7 +194,6 @@ impl<T: CasperABI> CasperABI for Option<T> {
 impl<T: CasperABI> CasperABI for Vec<T> {
     fn definition() -> Definition {
         Definition::Sequence {
-            length: None,
             def: Box::new(T::definition()),
         }
     }
@@ -163,8 +201,8 @@ impl<T: CasperABI> CasperABI for Vec<T> {
 
 impl<T: CasperABI, const N: usize> CasperABI for [T; N] {
     fn definition() -> Definition {
-        Definition::Sequence {
-            length: Some(N.try_into().expect("N is too big")),
+        Definition::FixedSequence {
+            length: N.try_into().expect("N is too big"),
             def: Box::new(T::definition()),
         }
     }
@@ -175,6 +213,30 @@ impl<K: CasperABI, V: CasperABI> CasperABI for BTreeMap<K, V> {
         Definition::Mapping {
             key: Box::new(K::definition()),
             value: Box::new(V::definition()),
+        }
+    }
+}
+
+impl CasperABI for String {
+    fn definition() -> Definition {
+        Definition::Sequence {
+            def: Box::new(char::definition()),
+        }
+    }
+}
+
+impl CasperABI for str {
+    fn definition() -> Definition {
+        Definition::Sequence {
+            def: Box::new(char::definition()),
+        }
+    }
+}
+
+impl CasperABI for &str {
+    fn definition() -> Definition {
+        Definition::Sequence {
+            def: Box::new(char::definition()),
         }
     }
 }

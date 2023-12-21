@@ -11,7 +11,6 @@ pub mod types;
 
 use std::{io, ptr::NonNull};
 
-use borsh::{BorshDeserialize, BorshSerialize};
 pub use casper_sdk_sys as sys;
 use sys::CreateResult;
 use types::CallError;

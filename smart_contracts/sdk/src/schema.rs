@@ -68,8 +68,6 @@ pub struct CasperSchema {
     pub name: &'static str,
     pub data: Vec<SchemaData>,
     pub entry_points: Vec<SchemaEntryPoint>,
-    // pub exports: Vec<&'static str>,
-    // pub exports: Vec<SchemaEntryPoint>,
 }
 
 #[derive(Debug)]
