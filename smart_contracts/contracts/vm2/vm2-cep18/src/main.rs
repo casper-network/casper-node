@@ -2,7 +2,7 @@
 pub mod error;
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use casper_macros::{casper, CasperABI, Contract, CasperSchema};
+use casper_macros::{casper, CasperABI, CasperSchema, Contract};
 use casper_sdk::{collections::Map, host, revert, schema::CasperSchema, types::Address, Contract};
 use error::Cep18Error;
 use std::string::String;
@@ -312,16 +312,16 @@ mod tests {
         dbg!(CEP18::schema());
     }
 
-    // #[test]
-    // fn it_works() {
-    //     let stub = Stub::new(Default::default(), [42; 32]);
+    #[test]
+    fn it_works() {
+        let stub = Stub::new(Default::default(), [42; 32]);
 
-    //     host::native::with_mock(new_stub, || {
-    //         let mut contract = CEP18::new();
-    //         assert_eq!(contract.name(), "Default name");
-    //         assert_eq!(contract.balance_of(ALICE), 0);
-    //         assert_eq!(contract.balance_of(BOB), 1);
-    //         contract.approve(BOB, 111).unwrap();
-    //     });
-    // }
+        host::native::with_mock(stub, || {
+            let mut contract = CEP18::new();
+            assert_eq!(contract.name(), "Default name");
+            assert_eq!(contract.balance_of(ALICE), 0);
+            assert_eq!(contract.balance_of(BOB), 1);
+            contract.approve(BOB, 111).unwrap();
+        });
+    }
 }

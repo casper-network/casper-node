@@ -11,7 +11,7 @@ use alloc::{
     vec::Vec,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use casper_macros::{casper, CasperABI, Contract, CasperSchema};
+use casper_macros::{casper, CasperABI, CasperSchema, Contract};
 use casper_sdk::{
     host::{self, Alloc},
     log, revert,

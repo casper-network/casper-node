@@ -1,8 +1,9 @@
 use core::slice;
 use std::{
+    cell::RefCell,
     collections::BTreeMap,
     ptr::{self, NonNull},
-    sync::Mutex,
+    sync::{Arc, Mutex, RwLock},
 };
 
 use bytes::Bytes;
@@ -18,7 +19,7 @@ macro_rules! define_trait_methods {
 
     ( $( $(#[$cfg:meta])? $vis:vis fn $name:ident $(( $($arg:ident: $argty:ty,)* ))? $(-> $ret:ty)?;)+) => {
         $(
-            $(#[$cfg])? fn $name(&mut self $($(,$arg: $argty)*)?) $(-> $ret)?;
+            $(#[$cfg])? fn $name(&self $($(,$arg: $argty)*)?) $(-> $ret)?;
         )*
     }
 }
@@ -41,20 +42,23 @@ type Container = BTreeMap<u64, BTreeMap<Bytes, TaggedValue>>;
 
 #[derive(Default, Clone, Debug)]
 pub struct Stub {
-    db: Container,
+    db: Arc<RwLock<Container>>,
     caller: Address,
 }
 
 impl Stub {
     pub fn new(db: Container, caller: Address) -> Self {
-        Self { db, caller }
+        Self {
+            db: Arc::new(RwLock::new(db)),
+            caller,
+        }
     }
 }
 
 #[allow(unused_variables)]
 unsafe impl HostInterface for Stub {
     fn casper_read(
-        &mut self,
+        &self,
         key_space: u64,
         key_ptr: *const u8,
         key_size: usize,
@@ -64,7 +68,8 @@ unsafe impl HostInterface for Stub {
     ) -> i32 {
         let key_bytes = unsafe { slice::from_raw_parts(key_ptr, key_size) };
 
-        let value = match self.db.get(&key_space) {
+        let mut db = self.db.read().unwrap();
+        let value = match db.get(&key_space) {
             Some(values) => values.get(key_bytes).cloned(),
             None => return 1,
         };
@@ -89,7 +94,7 @@ unsafe impl HostInterface for Stub {
     }
 
     fn casper_write(
-        &mut self,
+        &self,
         key_space: u64,
         key_ptr: *const u8,
         key_size: usize,
@@ -101,7 +106,8 @@ unsafe impl HostInterface for Stub {
 
         let value_bytes = unsafe { slice::from_raw_parts(value_ptr, value_size) };
 
-        self.db.entry(key_space).or_default().insert(
+        let mut db = self.db.write().unwrap();
+        db.entry(key_space).or_default().insert(
             Bytes::copy_from_slice(key_bytes),
             TaggedValue {
                 tag: value_tag,
@@ -111,33 +117,33 @@ unsafe impl HostInterface for Stub {
         0
     }
 
-    fn casper_print(&mut self, msg_ptr: *const u8, msg_size: usize) -> i32 {
+    fn casper_print(&self, msg_ptr: *const u8, msg_size: usize) -> i32 {
         let msg_bytes = unsafe { slice::from_raw_parts(msg_ptr, msg_size) };
         let msg = std::str::from_utf8(msg_bytes).expect("Valid UTF-8 string");
         println!("💻 {msg}");
         0
     }
 
-    fn casper_return(&mut self, flags: u32, data_ptr: *const u8, data_len: usize) -> ! {
+    fn casper_return(&self, flags: u32, data_ptr: *const u8, data_len: usize) -> ! {
         let return_flags = ReturnFlags::from_bits(flags);
         let data = unsafe { slice::from_raw_parts(data_ptr, data_len) };
         panic!("revert with flags={return_flags:?} data={data:?}")
     }
 
     fn casper_copy_input(
-        &mut self,
+        &self,
         alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
         alloc_ctx: *const core::ffi::c_void,
     ) -> *mut u8 {
         todo!()
     }
 
-    fn casper_copy_output(&mut self, output_ptr: *const u8, output_len: usize) {
+    fn casper_copy_output(&self, output_ptr: *const u8, output_len: usize) {
         todo!()
     }
 
     fn casper_create_contract(
-        &mut self,
+        &self,
         code_ptr: *const u8,
         code_size: usize,
         manifest_ptr: *const casper_sdk_sys::Manifest,
@@ -151,7 +157,7 @@ unsafe impl HostInterface for Stub {
     }
 
     fn casper_call(
-        &mut self,
+        &self,
         address_ptr: *const u8,
         address_size: usize,
         value: u64,
@@ -178,7 +184,7 @@ Example paths:
 * `env_read([CASPER_AUTHORIZED_KEYS], 1, nullptr, &authorized_keys)` -> read list of
   authorized keys into `authorized_keys` memory."]
     fn casper_env_read(
-        &mut self,
+        &self,
         env_path: *const u64,
         env_path_size: usize,
         alloc: Option<extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8>,
@@ -187,18 +193,22 @@ Example paths:
         todo!()
     }
 
-    fn casper_env_caller(&mut self, dest: *mut u8, dest_size: usize) -> *const u8 {
+    fn casper_env_caller(&self, dest: *mut u8, dest_size: usize) -> *const u8 {
         let dst = unsafe { slice::from_raw_parts_mut(dest, dest_size) };
         dst.copy_from_slice(&self.caller);
         unsafe { dest.add(32) }
     }
 }
 
-pub(crate) static STUB: Lazy<Mutex<Stub>> = Lazy::new(|| Mutex::new(Stub::default()));
+pub(crate) static LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+pub(crate) static STUB: Lazy<RwLock<Stub>> = Lazy::new(|| RwLock::new(Stub::default()));
 
 pub fn with_mock<Ret>(new_stub: Stub, func: impl FnOnce() -> Ret) -> Ret {
-    let mut stub = STUB.lock().unwrap();
-    *stub = new_stub;
+    let _lock = LOCK.lock().unwrap();
+    {
+        let mut stub = STUB.write().unwrap();
+        *stub = new_stub;
+    }
     func()
 }
 
@@ -213,7 +223,7 @@ macro_rules! define_symbols {
                 let _name = stringify!($name);
                 let _args = ($($(&$arg,)*)?);
                 let _ret = define_symbols! { @optional $($ret)? };
-                let mut stub = $crate::host::native::STUB.lock().unwrap();
+                let mut stub = $crate::host::native::STUB.read().unwrap();
                 stub.$name($($($arg,)*)?)
             }
         )*
@@ -234,7 +244,7 @@ mod tests {
     #[test]
     fn test() {
         let msg = "Hello";
-        let mut stub = STUB.lock().unwrap();
+        let stub = STUB.read().unwrap();
         stub.casper_print(msg.as_ptr(), msg.len());
     }
 }
