@@ -173,7 +173,7 @@ impl RawDataAccess for Database {
     }
 }
 
-impl Debug for dyn RawDataAccess + 'static {
+impl Debug for dyn RawDataAccess + Send + 'static {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "[RawDataAccess]")
     }
@@ -235,7 +235,7 @@ pub struct Storage {
     /// The maximum TTL of a deploy.
     max_ttl: MaxTtl,
     #[data_size(skip)]
-    db_mapper: HashMap<DbId, Box<dyn RawDataAccess>>,
+    db_mapper: HashMap<DbId, Box<dyn RawDataAccess + Send + 'static>>,
 }
 
 pub(crate) enum HighestOrphanedBlockResult {
@@ -379,13 +379,13 @@ impl Storage {
         let approvals_hashes_dbs =
             VersionedDatabases::new(&env, "approvals_hashes", "versioned_approvals_hashes")?;
 
-        let _x: Vec<Box<dyn RawDataAccess>> = vec![
+        let _x: Vec<Box<dyn RawDataAccess + Send + 'static>> = vec![
             Box::new(block_header_dbs),
             Box::new(block_body_dbs),
             Box::new(block_metadata_db),
         ];
 
-        let mut db_mapper: HashMap<DbId, Box<dyn RawDataAccess>> = HashMap::new();
+        let mut db_mapper: HashMap<DbId, Box<dyn RawDataAccess + Send + 'static>> = HashMap::new();
         db_mapper.insert(DbId::Transaction, Box::new(transaction_dbs));
         db_mapper.insert(DbId::ExecutionResult, Box::new(execution_result_dbs));
         db_mapper.insert(

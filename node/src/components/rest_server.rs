@@ -26,9 +26,11 @@ mod http_server;
 mod info;
 
 use std::time::Duration;
+use std::{net::SocketAddr, sync::Arc};
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, join, FutureExt};
+use once_cell::sync::OnceCell;
 use tokio::{sync::oneshot, task::JoinHandle};
 use tracing::{debug, error, info, warn};
 
@@ -96,6 +98,8 @@ pub(crate) struct InnerRestServer {
     /// When the message is sent, it signals the server loop to exit cleanly.
     #[data_size(skip)]
     shutdown_sender: oneshot::Sender<()>,
+    /// The address the server is listening on.
+    local_addr: Arc<OnceCell<SocketAddr>>,
     /// The task handle which will only join once the server loop has exited.
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
@@ -123,6 +127,25 @@ impl RestServer {
             network_name,
             inner_rest: None,
         }
+    }
+
+    /// Returns the binding address.
+    ///
+    /// Only used in testing. If you need to actually retrieve the bind address, add an appropriate
+    /// request or, as a last resort, make this function return `Option<SocketAddr>`.
+    ///
+    /// # Panics
+    ///
+    /// If the bind address is malformed, panics.
+    #[cfg(test)]
+    pub(crate) fn bind_address(&self) -> SocketAddr {
+        self.inner_rest
+            .as_ref()
+            .expect("no inner rest server")
+            .local_addr
+            .get()
+            .expect("missing bind addr")
+            .to_owned()
     }
 }
 
@@ -282,6 +305,7 @@ where
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
         let builder = utils::start_listening(&cfg.address)?;
+        let local_addr: Arc<OnceCell<SocketAddr>> = Default::default();
 
         let server_join_handle = match cfg.cors_origin.as_str() {
             "" => Some(tokio::spawn(http_server::run(
@@ -290,6 +314,7 @@ where
                 self.api_version,
                 shutdown_receiver,
                 cfg.qps_limit,
+                local_addr.clone(),
             ))),
             "*" => Some(tokio::spawn(http_server::run_with_cors(
                 builder,
@@ -297,6 +322,7 @@ where
                 self.api_version,
                 shutdown_receiver,
                 cfg.qps_limit,
+                local_addr.clone(),
                 CorsOrigin::Any,
             ))),
             _ => Some(tokio::spawn(http_server::run_with_cors(
@@ -305,12 +331,14 @@ where
                 self.api_version,
                 shutdown_receiver,
                 cfg.qps_limit,
+                local_addr.clone(),
                 CorsOrigin::Specified(cfg.cors_origin.clone()),
             ))),
         };
 
         let network_name = self.network_name.clone();
         self.inner_rest = Some(InnerRestServer {
+            local_addr,
             shutdown_sender,
             server_join_handle,
             network_name,

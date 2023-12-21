@@ -61,6 +61,8 @@ use tracing::{debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
 #[cfg(test)]
+use crate::components::ComponentState;
+#[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
     Block, BlockHeader, Chainspec, ChainspecRawBytes, FinalitySignature, Transaction,
@@ -76,7 +78,7 @@ use crate::{
         block_accumulator,
         fetcher::{self, FetchItem},
         network::{blocklist::BlocklistJustification, Identity as NetworkIdentity},
-        transaction_acceptor, ComponentState,
+        transaction_acceptor,
     },
     effect::{
         announcements::{ControlAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat},

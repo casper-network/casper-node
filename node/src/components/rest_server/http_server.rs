@@ -1,7 +1,8 @@
-use std::{convert::Infallible, time::Duration};
+use std::{convert::Infallible, net::SocketAddr, sync::Arc, time::Duration};
 
 use futures::{future, TryFutureExt};
 use hyper::server::{conn::AddrIncoming, Builder};
+use once_cell::sync::OnceCell;
 use tokio::sync::oneshot;
 use tower::builder::ServiceBuilder;
 use tracing::{info, warn};
@@ -22,6 +23,7 @@ pub(super) async fn run<REv: ReactorEventT>(
     api_version: ProtocolVersion,
     shutdown_receiver: oneshot::Receiver<()>,
     qps_limit: u64,
+    local_addr: Arc<OnceCell<SocketAddr>>,
 ) {
     // REST filters.
     let rest_status = filters::create_status_filter(effect_builder, api_version);
@@ -46,6 +48,9 @@ pub(super) async fn run<REv: ReactorEventT>(
         .service(make_svc);
 
     let server = builder.serve(rate_limited_service);
+    if let Err(err) = local_addr.set(server.local_addr()) {
+        warn!(%err, "failed to set local addr for reflection");
+    }
     info!(address = %server.local_addr(), "started REST server");
 
     // Shutdown the server gracefully.
@@ -68,6 +73,7 @@ pub(super) async fn run_with_cors<REv: ReactorEventT>(
     api_version: ProtocolVersion,
     shutdown_receiver: oneshot::Receiver<()>,
     qps_limit: u64,
+    local_addr: Arc<OnceCell<SocketAddr>>,
     cors_origin: CorsOrigin,
 ) {
     // REST filters.
@@ -97,6 +103,9 @@ pub(super) async fn run_with_cors<REv: ReactorEventT>(
         .service(make_svc);
 
     let server = builder.serve(rate_limited_service);
+    if let Err(err) = local_addr.set(server.local_addr()) {
+        warn!(%err, "failed to set local addr for reflection");
+    }
     info!(address = %server.local_addr(), "started REST server");
 
     // Shutdown the server gracefully.

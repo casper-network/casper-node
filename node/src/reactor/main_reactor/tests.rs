@@ -33,7 +33,7 @@ use crate::{
         consensus::{
             self, ClContext, ConsensusMessage, HighwayMessage, HighwayVertex, NewBlockPayload,
         },
-        gossiper, network, storage,
+        gossiper, network, storage, ComponentState,
     },
     effect::{
         incoming::ConsensusMessageIncoming,
@@ -659,6 +659,18 @@ impl TestFixture {
                 );
             }
         }
+    }
+
+    #[inline(always)]
+    pub fn network_mut(&mut self) -> &mut TestingNetwork<FilterReactor<MainReactor>> {
+        &mut self.network
+    }
+
+    pub async fn run_until_stopped(
+        self,
+        rng: TestRng,
+    ) -> (TestingNetwork<FilterReactor<MainReactor>>, TestRng) {
+        self.network.crank_until_stopped(rng).await
     }
 }
 
@@ -1728,4 +1740,68 @@ async fn rewards_are_calculated() {
     for reward in switch_block.era_end().unwrap().rewards().values() {
         assert_ne!(reward, &U512::zero());
     }
+}
+
+#[tokio::test]
+async fn binary_port_component() {
+    testing::init_logging();
+
+    let mut fixture = TestFixture::new(
+        InitialStakes::AllEqual {
+            count: 4,
+            stake: 100,
+        },
+        None,
+    )
+    .await;
+    let mut rng = fixture.rng_mut().create_child();
+
+    let net = fixture.network_mut();
+
+    net.settle_on_component_state(
+        &mut rng,
+        "binary_port",
+        &ComponentState::Initialized,
+        Duration::from_secs(59),
+    )
+    .await;
+
+    // Get the node ID.
+    let node_id = *net.nodes().keys().next().unwrap();
+
+    let rest_addr = net.nodes()[&node_id]
+        .main_reactor()
+        .rest_server
+        .bind_address();
+
+    // We let the entire network run in the background, until our request completes.
+    let finish_cranking = fixture.run_until_stopped(rng);
+
+    // let metrics_response = reqwest::Client::builder()
+    //     .build()
+    //     .expect("failed to build client")
+    //     .get(format!("http://localhost:{}/metrics", rest_addr.port()))
+    //     .timeout(Duration::from_secs(2))
+    //     .send()
+    //     .await
+    //     .expect("request failed")
+    //     .error_for_status()
+    //     .expect("error response on metrics request")
+    //     .text()
+    //     .await
+    //     .expect("error retrieving text on metrics request");
+
+    let (_net, _rng) = finish_cranking.await;
+
+    // let actual = extract_metric_names(&metrics_response);
+    // let raw_1_5 = fs::read_to_string(RESOURCES_PATH.join("metrics-1.5.txt"))
+    //     .expect("could not read 1.5 metrics snapshot");
+    // let metrics_1_5 = extract_metric_names(&raw_1_5);
+
+    // let missing: HashSet<_> = metrics_1_5.difference(&actual).collect();
+    // assert!(
+    //     missing.is_empty(),
+    //     "missing 1.5 metrics in current metrics set: {:?}",
+    //     missing
+    // );
 }
