@@ -86,6 +86,18 @@ impl BinaryResponse {
         }
     }
 
+    /// Creates a new binary response from an optional value.
+    pub fn from_option<V>(opt: Option<V>) -> Self
+    where
+        V: ToBytes,
+        V: Into<PayloadType>,
+    {
+        match opt {
+            Some(val) => Self::from_value(val),
+            None => Self::new_empty(),
+        }
+    }
+
     /// Returns true if response is success.
     pub fn is_success(&self) -> bool {
         self.header.is_success()

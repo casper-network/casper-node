@@ -422,9 +422,9 @@ where
 {
     match req {
         NonPersistedDataRequest::BlockHeight2Hash { height } => {
-            BinaryResponse::from_value(effect_builder.get_block_hash_for_height(height).await)
+            BinaryResponse::from_option(effect_builder.get_block_hash_for_height(height).await)
         }
-        NonPersistedDataRequest::HighestCompleteBlock => BinaryResponse::from_value(
+        NonPersistedDataRequest::HighestCompleteBlock => BinaryResponse::from_option(
             effect_builder
                 .get_highest_complete_block_header_from_storage()
                 .await
@@ -440,7 +440,7 @@ where
             )
         }
         NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { transaction_hash } => {
-            BinaryResponse::from_value(
+            BinaryResponse::from_option(
                 effect_builder
                     .get_block_hash_and_height_for_transaction(transaction_hash)
                     .await,
@@ -473,10 +473,10 @@ where
                 .await,
         ),
         NonPersistedDataRequest::NextUpgrade => {
-            BinaryResponse::from_value(effect_builder.get_next_upgrade().await)
+            BinaryResponse::from_option(effect_builder.get_next_upgrade().await)
         }
         NonPersistedDataRequest::ConsensusStatus => {
-            BinaryResponse::from_value(effect_builder.consensus_status().await)
+            BinaryResponse::from_option(effect_builder.consensus_status().await)
         }
         NonPersistedDataRequest::ChainspecRawBytes => {
             BinaryResponse::from_value((*effect_builder.get_chainspec_raw_bytes().await).clone())
