@@ -12,6 +12,15 @@ use syn::{
 };
 use vm_common::flags::{self, EntryPointFlags};
 
+#[derive(Debug, FromAttributes)]
+#[darling(attributes(casper))]
+struct MethodAttribute {
+    #[darling(default)]
+    constructor: bool,
+    #[darling(default)]
+    revert_on_error: bool,
+}
+
 #[proc_macro_derive(Contract)]
 pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
     // Parse the input tokens into a syntax tree
@@ -113,31 +122,15 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                 let mut manifest_entry_point_input_data = Vec::new();
 
                 for entry_point in &mut entry_points.items {
+                    let method_attribute;
                     let mut flag_value = EntryPointFlags::empty();
 
                     let func = match entry_point {
                         syn::ImplItem::Const(_) => todo!(),
                         syn::ImplItem::Fn(ref mut func) => {
                             // TODO: Can we use darling to parse this in a sane way?
-                            let mut func_attrs = BTreeSet::new();
-
-                            for func_attr in &func.attrs {
-                                // todo!("{:?}", func_attr);
-                                match &func_attr.meta {
-                                    Meta::Path(path) => {
-                                        for seg in &path.segments {
-                                            if seg.ident == "constructor" {
-                                                // todo!("{:?}", &func);
-                                                func_attrs.insert(Attribute::Constructor);
-                                            } else {
-                                                panic!("Unknown modifier: {:?}", seg)
-                                            }
-                                        }
-                                    }
-                                    other => todo!("{other:?}"),
-                                }
-                            }
-
+                            method_attribute =
+                                MethodAttribute::from_attributes(&func.attrs).unwrap();
                             func.attrs.clear();
 
                             let name = func.sig.ident.clone();
@@ -163,7 +156,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                             let arg_count = arg_names.len();
 
-                            let preamble = if func_attrs.contains(&Attribute::Constructor) {
+                            let preamble = if method_attribute.constructor {
                                 let sig = &func.sig;
                                 match func.sig.inputs.first() {
                                     Some(syn::FnArg::Receiver(receiver)) => {
@@ -181,9 +174,11 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                         Type::Never(_) => {
                                             panic!("Constructors should return a have return value")
                                         }
-                                        ty2 => quote! {
-                                            static_assertions::assert_type_eq_all(#struct_name, #ty2);
-                                        },
+                                        ty2 => {
+                                            quote! {
+                                                static_assertions::assert_type_eq_all(#struct_name, #ty2);
+                                            }
+                                        }
                                     },
                                 }
                             } else {
@@ -207,7 +202,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                             // let wrapper_function_name = format_ident!("")
 
-                            if func_attrs.contains(&Attribute::Constructor) {
+                            if method_attribute.constructor {
                                 manifest_entry_points_data.push(quote! {
 
                                     #[allow(non_upper_case_globals)]
@@ -240,12 +235,8 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 });
                             }
 
-                            for func_attr in func_attrs {
-                                match func_attr {
-                                    Attribute::Constructor => {
-                                        flag_value |= EntryPointFlags::CONSTRUCTOR;
-                                    }
-                                }
+                            if method_attribute.constructor {
+                                flag_value |= EntryPointFlags::CONSTRUCTOR;
                             }
 
                             let bits = flag_value.bits();
@@ -360,6 +351,8 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                     impl #struct_name {
                         #[doc(hidden)]
                         fn __casper_schema() -> casper_sdk::schema::Schema {
+                            const VERSION: &str = env!("CARGO_PKG_VERSION");
+
                             let entry_points = vec![
                                 #(#defs,)*
                                 // EntryPonit
@@ -367,6 +360,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                             let data = Self::__casper_data();
                             casper_sdk::schema::Schema {
                                 name: stringify!(#struct_name).into(),
+                                version: Some(VERSION.into()),
                                 data,
                                 entry_points,
                             }
@@ -595,7 +589,7 @@ const PRIMITIVE_TYPES: &[&str] = &[
     "f64",
 ];
 
-#[proc_macro_derive(CasperSchema)]
+#[proc_macro_derive(CasperSchema, attributes(casper))]
 pub fn derive_casper_schema(input: TokenStream) -> TokenStream {
     let contract = parse_macro_input!(input as DeriveInput);
     let data_struct = match &contract.data {
@@ -612,8 +606,6 @@ pub fn derive_casper_schema(input: TokenStream) -> TokenStream {
                 Self::__casper_schema()
             }
         }
-
-
     }
     .into()
 }

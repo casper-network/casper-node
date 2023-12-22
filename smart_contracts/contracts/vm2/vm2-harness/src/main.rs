@@ -45,10 +45,11 @@ impl Default for Greeter {
         }
     }
 }
+pub type Result2 = Result<(), CustomError>;
 
 #[casper(entry_points)]
 impl Greeter {
-    #[constructor]
+    #[casper(constructor)]
     pub fn constructor_with_args(who: String) -> Self {
         log!("👋 Hello from constructor with args: {who}");
         Self {
@@ -57,13 +58,13 @@ impl Greeter {
         }
     }
 
-    #[constructor]
+    #[casper(constructor)]
     pub fn failing_constructor(who: String) -> Self {
         log!("👋 Hello from failing constructor with args: {who}");
         revert!();
     }
 
-    #[constructor]
+    #[casper(constructor)]
     pub fn trapping_constructor() -> Self {
         log!("👋 Hello from trapping constructor");
         // TODO: Storage doesn't fork as of yet, need to integrate casper-storage crate and leverage
@@ -71,7 +72,7 @@ impl Greeter {
         panic!("This will revert the execution of this constructor and won't create a new package");
     }
 
-    #[constructor]
+    #[casper(constructor)]
     pub fn initialize() -> Self {
         log!("👋 Hello from constructor");
         Self {
@@ -104,6 +105,11 @@ impl Greeter {
     pub fn get_address_inside_constructor(&self) -> Address {
         self.address_inside_constructor
             .expect("Constructor was expected to be caller")
+    }
+
+    #[casper(revert_on_error)]
+    pub fn should_revert_on_error(&self) -> Result2 {
+        Err(CustomError::WithBody("Reverted".into()))
     }
 }
 
@@ -229,6 +235,15 @@ pub fn call() {
             log!("{call_5:?} result={maybe_data_5:?}");
             assert_eq!(maybe_result_5, ResultCode::CalleeReverted);
             assert_eq!(maybe_data_5, None);
+
+            let get_greeting: TypedCall<(), Result<(), CustomError>> =
+                TypedCall::new(contract_address, "should_revert_on_error");
+            let result = get_greeting.call(());
+            assert!(result.did_revert());
+            assert_eq!(
+                result.into_result(),
+                Err(CustomError::WithBody("Reverted".to_string()))
+            );
         }
         Err(error) => {
             log!("error {:?}", error);
@@ -289,11 +304,13 @@ pub fn call() {
 #[cfg(test)]
 mod tests {
 
+    use alloc::collections::BTreeSet;
     use borsh::{schema::BorshSchemaContainer, BorshSchema};
     use casper_sdk::{
         schema::{schema_helper, CasperSchema},
         Contract,
     };
+    use vm_common::flags::EntryPointFlags;
 
     use super::*;
 
@@ -330,5 +347,28 @@ mod tests {
         assert_eq!(foo.get_greeting(), INITIAL_GREETING);
         foo.set_greeting("New greeting".to_string());
         assert_eq!(foo.get_greeting(), "New greeting");
+    }
+
+    #[test]
+    fn list_of_constructors() {
+        let constructors: BTreeSet<_> = Greeter::schema()
+            .entry_points
+            .into_iter()
+            .filter_map(|e| {
+                if e.flags.contains(EntryPointFlags::CONSTRUCTOR) {
+                    Some(e.name)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let expected = BTreeSet::from_iter([
+            "constructor_with_args",
+            "failing_constructor",
+            "trapping_constructor",
+            "initialize",
+        ]);
+
+        assert_eq!(constructors, expected);
     }
 }

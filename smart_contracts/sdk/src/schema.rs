@@ -66,6 +66,7 @@ pub struct SchemaData {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Schema {
     pub name: &'static str,
+    pub version: Option<String>,
     pub data: Vec<SchemaData>,
     pub entry_points: Vec<SchemaEntryPoint>,
 }

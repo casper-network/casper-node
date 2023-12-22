@@ -3,7 +3,9 @@ pub mod error;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, CasperABI, CasperSchema, Contract};
-use casper_sdk::{collections::Map, host, revert, schema::CasperSchema, types::Address, Contract};
+use casper_sdk::{
+    collections::Map, host, revert, schema::CasperSchema, types::Address, Contract, UnwrapOrRevert,
+};
 use error::Cep18Error;
 use std::string::String;
 
@@ -30,9 +32,44 @@ impl Default for CEP18 {
     }
 }
 
+impl CEP18 {
+    fn transfer_balance(
+        &mut self,
+        sender: &Address,
+        recipient: &Address,
+        amount: u64,
+    ) -> Result<(), Cep18Error> {
+        if amount == 0 {
+            return Ok(());
+        }
+
+        let sender_balance = self.balances.get(&sender).unwrap_or_default();
+
+        let new_sender_balance = {
+            sender_balance
+                .checked_sub(amount)
+                .ok_or(Cep18Error::InsufficientBalance)
+                .unwrap_or_revert()
+        };
+
+        let recipient_balance = self.balances.get(&recipient).unwrap_or_default();
+
+        let new_recipient_balance = {
+            recipient_balance
+                .checked_add(amount)
+                .ok_or(Cep18Error::Overflow)
+                .unwrap_or_revert()
+        };
+
+        self.balances.insert(sender, &new_sender_balance);
+        self.balances.insert(recipient, &new_recipient_balance);
+        Ok(())
+    }
+}
+
 #[casper(entry_points)]
 impl CEP18 {
-    #[constructor]
+    #[casper(constructor)]
     pub fn new() -> Self {
         let mut instance = Self::default();
         instance.balances.insert(&[2; 32], &1);
@@ -73,97 +110,87 @@ impl CEP18 {
         Ok(())
     }
 
-    // fn decrease_allowance(&self, spender: Address, amount: u64) -> Result<(), Cep18Error> {
-    //     // let owner = utils::get_immediate_caller_address().unwrap_or_revert();
-    //     // let spender: Key = runtime::get_named_arg(SPENDER);
-    //     // if spender == owner {
-    //     //     revert(Cep18Error::CannotTargetSelfUser);
-    //     // }
-    //     // let amount: U256 = runtime::get_named_arg(AMOUNT);
-    //     // let allowances_uref = get_allowances_uref();
-    //     // let current_allowance = read_allowance_from(allowances_uref, owner, spender);
-    //     // let new_allowance = current_allowance.saturating_sub(amount);
-    //     // write_allowance_to(allowances_uref, owner, spender, new_allowance);
-    //     // events::record_event_dictionary(Event::DecreaseAllowance(DecreaseAllowance {
-    //     //     owner,
-    //     //     spender,
-    //     //     decr_by: amount,
-    //     //     allowance: new_allowance,
-    //     // }))
-    //     todo!()
-    // }
+    fn decrease_allowance(&mut self, spender: Address, amount: u64) -> Result<(), Cep18Error> {
+        let owner = host::get_caller();
+        if owner == spender {
+            return revert!(Err(Cep18Error::CannotTargetSelfUser));
+        }
+        let lookup_key = (owner, spender);
+        let allowance = self.allowances.get(&lookup_key).unwrap_or_default();
+        let allowance = allowance.saturating_sub(amount);
+        self.allowances.insert(&lookup_key, &allowance);
+        // events::record_event_dictionary(Event::DecreaseAllowance(DecreaseAllowance {
+        //     owner,
+        //     spender,
+        //     decr_by: amount,
+        //     allowance: new_allowance,
+        // }))
+        Ok(())
+    }
 
-    // fn increase_allowance(&self, spender: Address, amount: u64) -> Result<(), Cep18Error> {
-    //     todo!()
-    //     // let owner = utils::get_immediate_caller_address().unwrap_or_revert();
-    //     // let spender: Key = runtime::get_named_arg(SPENDER);
-    //     // if spender == owner {
-    //     //     revert(Cep18Error::CannotTargetSelfUser);
-    //     // }
-    //     // let amount: U256 = runtime::get_named_arg(AMOUNT);
-    //     // let allowances_uref = get_allowances_uref();
-    //     // let current_allowance = read_allowance_from(allowances_uref, owner, spender);
-    //     // let new_allowance = current_allowance.saturating_add(amount);
-    //     // write_allowance_to(allowances_uref, owner, spender, new_allowance);
-    //     // events::record_event_dictionary(Event::IncreaseAllowance(IncreaseAllowance {
-    //     //     owner,
-    //     //     spender,
-    //     //     allowance: new_allowance,
-    //     //     inc_by: amount,
-    //     // }))
-    // }
+    fn increase_allowance(&mut self, spender: Address, amount: u64) -> Result<(), Cep18Error> {
+        let owner = host::get_caller();
+        if owner == spender {
+            return revert!(Err(Cep18Error::CannotTargetSelfUser));
+        }
+        let lookup_key = (owner, spender);
+        let allowance = self.allowances.get(&lookup_key).unwrap_or_default();
+        let allowance = allowance.saturating_add(amount);
+        self.allowances.insert(&lookup_key, &allowance);
+        // events::record_event_dictionary(Event::IncreaseAllowance(IncreaseAllowance {
+        //     owner,
+        //     spender,
+        //     decr_by: amount,
+        //     allowance: new_allowance,
+        // }))
+        Ok(())
+    }
 
-    // fn transfer(&self, recipient: Address, amount: u64) -> Result<(), Cep18Error> {
-    //     todo!()
-    //     // let sender = utils::get_immediate_caller_address().unwrap_or_revert();
-    //     // let recipient: Key = runtime::get_named_arg(RECIPIENT);
-    //     // if sender == recipient {
-    //     //     revert(Cep18Error::CannotTargetSelfUser);
-    //     // }
-    //     // let amount: U256 = runtime::get_named_arg(AMOUNT);
+    fn transfer(&mut self, recipient: Address, amount: u64) -> Result<(), Cep18Error> {
+        let sender = host::get_caller();
+        if sender == recipient {
+            return revert!(Err(Cep18Error::CannotTargetSelfUser));
+        }
 
-    //     // transfer_balance(sender, recipient, amount).unwrap_or_revert();
-    //     // events::record_event_dictionary(Event::Transfer(Transfer {
-    //     //     sender,
-    //     //     recipient,
-    //     //     amount,
-    //     // }))
-    // }
+        // self.transfer_balance(&sender, &recipients, amount)?;
 
-    // fn transfer_from(
-    //     &self,
-    //     owner: Address,
-    //     recipient: Address,
-    //     amount: u64,
-    // ) -> Result<(), Cep18Error> {
-    //     todo!()
-    //     // let spender = utils::get_immediate_caller_address().unwrap_or_revert();
-    //     // let recipient: Key = runtime::get_named_arg(RECIPIENT);
-    //     // let owner: Key = runtime::get_named_arg(OWNER);
-    //     // if owner == recipient {
-    //     //     revert(Cep18Error::CannotTargetSelfUser);
-    //     // }
-    //     // let amount: U256 = runtime::get_named_arg(AMOUNT);
-    //     // if amount.is_zero() {
-    //     //     return;
-    //     // }
+        Ok(())
+    }
 
-    //     // let allowances_uref = get_allowances_uref();
-    //     // let spender_allowance: U256 = read_allowance_from(allowances_uref, owner, spender);
-    //     // let new_spender_allowance = spender_allowance
-    //     //     .checked_sub(amount)
-    //     //     .ok_or(Cep18Error::InsufficientAllowance)
-    //     //     .unwrap_or_revert();
+    fn transfer_from(
+        &self,
+        owner: Address,
+        recipient: Address,
+        amount: u64,
+    ) -> Result<(), Cep18Error> {
+        let spender = host::get_caller();
+        if owner == recipient {
+            return revert!(Err(Cep18Error::CannotTargetSelfUser));
+        }
 
-    //     // transfer_balance(owner, recipient, amount).unwrap_or_revert();
-    //     // write_allowance_to(allowances_uref, owner, spender, new_spender_allowance);
-    //     // events::record_event_dictionary(Event::TransferFrom(TransferFrom {
-    //     //     spender,
-    //     //     owner,
-    //     //     recipient,
-    //     //     amount,
-    //     // }))
-    // }
+        if amount == 0 {
+            return Ok(());
+        }
+
+        let spender_allowance = self.allowances.get(&(owner, spender)).unwrap_or_default();
+        let new_spender_allowance = spender_allowance
+            .checked_sub(amount)
+            .ok_or(Cep18Error::InsufficientAllowance)
+            .unwrap_or_revert();
+
+        // self.transfer_balance(&owner, &recipient, amount)
+        //     .unwrap_or_revert();
+
+        Ok(())
+
+        // write_allowance_to(allowances_uref, owner, spender, new_spender_allowance);
+        // events::record_event_dictionary(Event::TransferFrom(TransferFrom {
+        //     spender,
+        //     owner,
+        //     recipient,
+        //     amount,
+        // }))
+    }
 
     // fn mint(&self, owner: Address, amount: u64) -> Result<(), Cep18Error> {
     //     todo!()

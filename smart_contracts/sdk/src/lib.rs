@@ -11,6 +11,7 @@ pub mod types;
 
 use std::{io, ptr::NonNull};
 
+use borsh::BorshSerialize;
 pub use casper_sdk_sys as sys;
 use sys::CreateResult;
 use types::CallError;
@@ -84,4 +85,25 @@ macro_rules! revert {
         #[allow(unreachable_code)]
         value
     }};
+}
+
+pub trait UnwrapOrRevert<T> {
+    /// Unwraps the value into its inner type or calls [`runtime::revert`] with a
+    /// predetermined error code on failure.
+    fn unwrap_or_revert(self) -> T;
+}
+
+impl<T, E> UnwrapOrRevert<T> for Result<T, E>
+where
+    E: BorshSerialize,
+{
+    fn unwrap_or_revert(self) -> T {
+        self.unwrap_or_else(|error| {
+            let error_data = borsh::to_vec(&error).expect("Revert value should serialize");
+            host::casper_return(
+                vm_common::flags::ReturnFlags::REVERT,
+                Some(error_data.as_slice()),
+            )
+        })
+    }
 }
