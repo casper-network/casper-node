@@ -366,7 +366,6 @@ impl BlockValidator {
                         .clone()
                         .to_validator_set(all_validators.iter().cloned());
                     let block_hash = *block_with_metadata.block.hash();
-                    let era_id = block_with_metadata.block.era_id();
                     missing_sigs.extend(
                         public_keys
                             .into_iter()
