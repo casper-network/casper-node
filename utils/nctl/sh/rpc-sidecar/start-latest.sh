@@ -5,7 +5,7 @@ if [ -z "$NODE_DIR" ]; then
     exit 1
 fi
 
-read SEMVER_CURRENT <<< "$(ls --group-directories-first -td -- $NODE_DIR/bin/* | head -n 1)"
+read SEMVER_CURRENT <<< "$(ls -d $NODE_DIR/bin/*/ | sort -rV | head -n 1)"
 SEMVER_CURRENT=$(basename $SEMVER_CURRENT)
 
 if [ ! -f $NODE_DIR/bin/$SEMVER_CURRENT/casper-rpc-sidecar ]; then
