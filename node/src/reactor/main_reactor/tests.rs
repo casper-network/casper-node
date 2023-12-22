@@ -1769,10 +1769,12 @@ async fn binary_port_component() {
     // Get the node ID.
     let node_id = *net.nodes().keys().next().unwrap();
 
-    let rest_addr = net.nodes()[&node_id]
+    let binary_port_addr = net.nodes()[&node_id]
         .main_reactor()
-        .rest_server
+        .binary_port
         .bind_address();
+
+    dbg!(&binary_port_addr);
 
     // We let the entire network run in the background, until our request completes.
     let finish_cranking = fixture.run_until_stopped(rng);

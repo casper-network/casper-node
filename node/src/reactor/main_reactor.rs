@@ -1243,6 +1243,9 @@ impl reactor::Reactor for MainReactor {
             "rest_server" => Some(<RestServer as InitializedComponent<MainEvent>>::state(
                 &self.rest_server,
             )),
+            "binary_port" => Some(<BinaryPort as InitializedComponent<MainEvent>>::state(
+                &self.binary_port,
+            )),
             _ => None,
         }
     }

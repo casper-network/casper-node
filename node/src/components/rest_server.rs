@@ -25,8 +25,7 @@ mod filters;
 mod http_server;
 mod info;
 
-use std::time::Duration;
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, join, FutureExt};
@@ -127,25 +126,6 @@ impl RestServer {
             network_name,
             inner_rest: None,
         }
-    }
-
-    /// Returns the binding address.
-    ///
-    /// Only used in testing. If you need to actually retrieve the bind address, add an appropriate
-    /// request or, as a last resort, make this function return `Option<SocketAddr>`.
-    ///
-    /// # Panics
-    ///
-    /// If the bind address is malformed, panics.
-    #[cfg(test)]
-    pub(crate) fn bind_address(&self) -> SocketAddr {
-        self.inner_rest
-            .as_ref()
-            .expect("no inner rest server")
-            .local_addr
-            .get()
-            .expect("missing bind addr")
-            .to_owned()
     }
 }
 

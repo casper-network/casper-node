@@ -32,6 +32,7 @@ use juliet::{
     rpc::{JulietRpcServer, RpcBuilder},
     ChannelConfiguration, ChannelId,
 };
+use once_cell::sync::OnceCell;
 use prometheus::Registry;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -72,6 +73,8 @@ pub(crate) struct BinaryPort {
     connection_limit: Arc<Semaphore>,
     #[data_size(skip)]
     metrics: Arc<Metrics>,
+    #[data_size(skip)]
+    local_addr: Arc<OnceCell<SocketAddr>>,
 }
 
 impl BinaryPort {
@@ -81,7 +84,21 @@ impl BinaryPort {
             connection_limit: Arc::new(Semaphore::new(config.max_connections)),
             config: Arc::new(config),
             metrics: Arc::new(Metrics::new(registry)?),
+            local_addr: Arc::new(OnceCell::new()),
         })
+    }
+
+    /// Returns the binding address.
+    ///
+    /// Only used in testing. If you need to actually retrieve the bind address, add an appropriate
+    /// request or, as a last resort, make this function return `Option<SocketAddr>`.
+    ///
+    /// # Panics
+    ///
+    /// If the bind address is malformed, panics.
+    #[cfg(test)]
+    pub(crate) fn bind_address(&self) -> Option<SocketAddr> {
+        self.local_addr.get().cloned()
     }
 }
 
@@ -662,8 +679,11 @@ async fn handle_client<REv>(
     drop(permit);
 }
 
-async fn run_server<REv>(effect_builder: EffectBuilder<REv>, config: Arc<Config>)
-where
+async fn run_server<REv>(
+    local_addr: Arc<OnceCell<SocketAddr>>,
+    effect_builder: EffectBuilder<REv>,
+    config: Arc<Config>,
+) where
     REv: From<Event>
         + From<StorageRequest>
         + From<ContractRuntimeRequest>
@@ -676,30 +696,43 @@ where
         + From<ChainspecRawBytesRequest>
         + Send,
 {
-    let listener = TcpListener::bind(&config.address).await;
-
-    match listener {
-        Ok(listener) => loop {
-            match listener.accept().await {
-                Ok((stream, peer)) => {
-                    effect_builder
-                        .make_request(
-                            |responder| Event::AcceptConnection {
-                                stream,
-                                peer,
-                                responder,
-                            },
-                            QueueKind::Regular,
-                        )
-                        .await;
-                }
-                Err(io_err) => {
-                    info!(%io_err, "problem accepting binary port connection");
-                }
-            }
-        },
-        Err(err) => error!(%err, "unable to bind binary port listener"),
+    let listener = match TcpListener::bind(&config.address).await {
+        Ok(listener) => listener,
+        Err(err) => {
+            error!(%err, "unable to bind binary port listener");
+            return;
+        }
     };
+
+    let bind_address = match listener.local_addr() {
+        Ok(bind_address) => bind_address,
+        Err(err) => {
+            error!(%err, "unable to get local addr of binary port");
+            return;
+        }
+    };
+
+    local_addr.set(bind_address).unwrap();
+
+    loop {
+        match listener.accept().await {
+            Ok((stream, peer)) => {
+                effect_builder
+                    .make_request(
+                        |responder| Event::AcceptConnection {
+                            stream,
+                            peer,
+                            responder,
+                        },
+                        QueueKind::Regular,
+                    )
+                    .await;
+            }
+            Err(io_err) => {
+                info!(%io_err, "problem accepting binary port connection");
+            }
+        }
+    }
 }
 
 impl<REv> PortBoundComponent<REv> for BinaryPort
@@ -723,8 +756,13 @@ where
         &mut self,
         effect_builder: EffectBuilder<REv>,
     ) -> Result<Effects<Self::ComponentEvent>, Self::Error> {
-        let _server_join_handle =
-            tokio::spawn(run_server(effect_builder, Arc::clone(&self.config)));
+        let local_addr = Arc::clone(&self.local_addr);
+        let _server_join_handle = tokio::spawn(run_server(
+            local_addr,
+            effect_builder,
+            Arc::clone(&self.config),
+        ));
+
         Ok(Effects::new())
     }
 }
