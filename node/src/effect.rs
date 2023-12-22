@@ -135,9 +135,9 @@ use casper_types::{
     system::auction::EraValidators,
     AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader,
     BlockIdentifier, BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes,
-    DeployHash, DeployHeader, Digest, EraId, FinalitySignature, FinalitySignatureId,
-    FinalizedApprovals, Key, NextUpgrade, PublicKey, ReactorState, Timestamp, Transaction,
-    TransactionHash, TransactionId, Transfer, Uptime, U512,
+    DeployHash, Digest, EraId, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key,
+    NextUpgrade, PublicKey, ReactorState, Timestamp, Transaction, TransactionHash,
+    TransactionHeader, TransactionId, Transfer, Uptime, U512,
 };
 
 use crate::{
@@ -1137,7 +1137,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         block: Arc<BlockV2>,
         approvals_hashes: Box<ApprovalsHashes>,
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        execution_results: HashMap<TransactionHash, ExecutionResult>,
     ) -> bool
     where
         REv: From<StorageRequest>,
@@ -1288,7 +1288,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_execution_results_from_storage(
         self,
         block_hash: BlockHash,
-    ) -> Option<Vec<(DeployHash, DeployHeader, ExecutionResult)>>
+    ) -> Option<Vec<(TransactionHash, TransactionHeader, ExecutionResult)>>
     where
         REv: From<StorageRequest>,
     {
@@ -1630,7 +1630,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested transaction from storage by DeployId.
+    /// Gets the requested transaction from storage by TransactionId.
     ///
     /// Returns the "original" transaction, which is the first received by the node, along with a
     /// potentially different set of approvals used during execution of the recorded block.
@@ -1672,7 +1672,7 @@ impl<REv> EffectBuilder<REv> {
         block_hash: BlockHash,
         block_height: u64,
         era_id: EraId,
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        execution_results: HashMap<TransactionHash, ExecutionResult>,
     ) where
         REv: From<StorageRequest>,
     {

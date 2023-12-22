@@ -12,11 +12,17 @@ use core::{convert::TryFrom, fmt};
 #[cfg(test)]
 use crate::testing::TestRng;
 
+#[cfg(any(feature = "std", test))]
+use super::NodeStatus;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    AvailableBlockRange, BlockHash, BlockHashAndHeight, BlockSynchronizerStatus, Peers,
-    ReactorState, Uptime,
+    execution::{ExecutionResult, ExecutionResultV1},
+    AvailableBlockRange, BlockBody, BlockBodyV1, BlockHash, BlockHashAndHeight, BlockHeader,
+    BlockHeaderV1, BlockSignatures, BlockSynchronizerStatus, Deploy, FinalizedApprovals,
+    FinalizedDeployApprovals, Peers, ReactorState, Transaction, Transfer, Uptime,
 };
+#[cfg(any(feature = "std", test))]
+use crate::{ChainspecRawBytes, NextUpgrade};
 
 use super::{
     db_id::DbId,
@@ -104,7 +110,7 @@ pub enum PayloadType {
 }
 
 impl PayloadType {
-    pub(crate) fn new_from_db_id(db_id: &DbId, is_legacy: bool) -> Self {
+    pub(crate) fn new_from_db_id(db_id: DbId, is_legacy: bool) -> Self {
         match (is_legacy, db_id) {
             (true, DbId::BlockHeader) => Self::BlockHeaderV1,
             (true, DbId::BlockBody) => Self::BlockBodyV1,
@@ -232,129 +238,6 @@ impl fmt::Display for PayloadType {
             PayloadType::GetTrieFullResult => write!(f, "GetTrieFullResult"),
             PayloadType::NodeStatus => write!(f, "NodeStatus"),
         }
-    }
-}
-
-impl<T> From<Option<T>> for PayloadType {
-    fn from(_: Option<T>) -> Self {
-        panic!("could this be a compile time error?");
-    }
-}
-
-impl From<BlockHashAndHeight> for PayloadType {
-    fn from(_: BlockHashAndHeight) -> Self {
-        Self::BlockHashAndHeight
-    }
-}
-
-impl From<HighestBlockSequenceCheckResult> for PayloadType {
-    fn from(_: HighestBlockSequenceCheckResult) -> Self {
-        Self::HighestBlockSequenceCheckResult
-    }
-}
-
-impl From<BlockHash> for PayloadType {
-    fn from(_: BlockHash) -> Self {
-        Self::BlockHash
-    }
-}
-
-impl From<Peers> for PayloadType {
-    fn from(_: Peers) -> Self {
-        Self::Peers
-    }
-}
-
-impl From<NetworkName> for PayloadType {
-    fn from(_: NetworkName) -> Self {
-        Self::NetworkName
-    }
-}
-
-impl From<ReactorState> for PayloadType {
-    fn from(_: ReactorState) -> Self {
-        Self::ReactorState
-    }
-}
-
-impl From<BlockSynchronizerStatus> for PayloadType {
-    fn from(_: BlockSynchronizerStatus) -> Self {
-        Self::BlockSynchronizerStatus
-    }
-}
-
-impl From<AvailableBlockRange> for PayloadType {
-    fn from(_: AvailableBlockRange) -> Self {
-        Self::AvailableBlockRange
-    }
-}
-
-impl From<ConsensusValidatorChanges> for PayloadType {
-    fn from(_: ConsensusValidatorChanges) -> Self {
-        Self::ConsensusValidatorChanges
-    }
-}
-
-#[cfg(any(feature = "std", test))]
-impl From<crate::NextUpgrade> for PayloadType {
-    fn from(_: crate::NextUpgrade) -> Self {
-        Self::NextUpgrade
-    }
-}
-
-impl From<ConsensusStatus> for PayloadType {
-    fn from(_: ConsensusStatus) -> Self {
-        Self::ConsensusStatus
-    }
-}
-
-#[cfg(any(feature = "std", test))]
-impl From<crate::ChainspecRawBytes> for PayloadType {
-    fn from(_: crate::ChainspecRawBytes) -> Self {
-        Self::ChainspecRawBytes
-    }
-}
-
-impl From<Uptime> for PayloadType {
-    fn from(_: Uptime) -> Self {
-        Self::Uptime
-    }
-}
-
-impl From<LastProgress> for PayloadType {
-    fn from(_: LastProgress) -> Self {
-        Self::LastProgress
-    }
-}
-
-impl From<SpeculativeExecutionResult> for PayloadType {
-    fn from(_: SpeculativeExecutionResult) -> Self {
-        Self::SpeculativeExecutionResult
-    }
-}
-
-impl From<GlobalStateQueryResult> for PayloadType {
-    fn from(_: GlobalStateQueryResult) -> Self {
-        Self::GlobalStateQueryResult
-    }
-}
-
-impl From<StoredValues> for PayloadType {
-    fn from(_: StoredValues) -> Self {
-        Self::StoredValues
-    }
-}
-
-impl From<GetTrieFullResult> for PayloadType {
-    fn from(_: GetTrieFullResult) -> Self {
-        Self::GetTrieFullResult
-    }
-}
-
-#[cfg(any(feature = "std", test))]
-impl From<super::NodeStatus> for PayloadType {
-    fn from(_: super::NodeStatus) -> Self {
-        Self::NodeStatus
     }
 }
 
@@ -487,6 +370,139 @@ impl FromBytes for PayloadType {
         };
         Ok((db_id, remainder))
     }
+}
+
+/// Represents an entity that can be sent as a payload.
+pub trait PayloadEntity {
+    /// Returns the payload type of the entity.
+    const PAYLOAD_TYPE: PayloadType;
+}
+
+impl PayloadEntity for Transaction {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::Transaction;
+}
+
+impl PayloadEntity for Deploy {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::Deploy;
+}
+
+impl PayloadEntity for BlockHeader {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::BlockHeader;
+}
+
+impl PayloadEntity for BlockHeaderV1 {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::BlockHeaderV1;
+}
+
+impl PayloadEntity for BlockBody {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::BlockBody;
+}
+
+impl PayloadEntity for BlockBodyV1 {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::BlockBodyV1;
+}
+
+impl PayloadEntity for ExecutionResult {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::ExecutionResult;
+}
+
+impl PayloadEntity for FinalizedApprovals {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::FinalizedApprovals;
+}
+
+impl PayloadEntity for FinalizedDeployApprovals {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::FinalizedDeployApprovals;
+}
+
+impl PayloadEntity for BlockHashAndHeight {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::BlockHashAndHeight;
+}
+
+impl PayloadEntity for ExecutionResultV1 {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::ExecutionResultV1;
+}
+
+impl PayloadEntity for Peers {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::Peers;
+}
+
+impl PayloadEntity for BlockSignatures {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::BlockSignatures;
+}
+
+impl PayloadEntity for Vec<Transfer> {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::VecTransfers;
+}
+
+impl PayloadEntity for BlockHash {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::BlockHash;
+}
+
+impl PayloadEntity for HighestBlockSequenceCheckResult {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::HighestBlockSequenceCheckResult;
+}
+
+impl PayloadEntity for AvailableBlockRange {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::AvailableBlockRange;
+}
+
+#[cfg(any(feature = "std", test))]
+impl PayloadEntity for ChainspecRawBytes {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::ChainspecRawBytes;
+}
+
+impl PayloadEntity for ConsensusValidatorChanges {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::ConsensusValidatorChanges;
+}
+
+impl PayloadEntity for GlobalStateQueryResult {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::GlobalStateQueryResult;
+}
+
+impl PayloadEntity for StoredValues {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::StoredValues;
+}
+
+impl PayloadEntity for GetTrieFullResult {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::GetTrieFullResult;
+}
+
+impl PayloadEntity for SpeculativeExecutionResult {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::SpeculativeExecutionResult;
+}
+
+#[cfg(any(feature = "std", test))]
+impl PayloadEntity for NodeStatus {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::NodeStatus;
+}
+
+#[cfg(any(feature = "std", test))]
+impl PayloadEntity for NextUpgrade {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::NextUpgrade;
+}
+
+impl PayloadEntity for Uptime {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::Uptime;
+}
+
+impl PayloadEntity for LastProgress {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::LastProgress;
+}
+
+impl PayloadEntity for ReactorState {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::ReactorState;
+}
+
+impl PayloadEntity for NetworkName {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::NetworkName;
+}
+
+impl PayloadEntity for BlockSynchronizerStatus {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::BlockSynchronizerStatus;
+}
+
+impl PayloadEntity for ConsensusStatus {
+    const PAYLOAD_TYPE: PayloadType = PayloadType::ConsensusStatus;
 }
 
 #[cfg(test)]

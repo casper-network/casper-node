@@ -7,7 +7,9 @@ use alloc::vec::Vec;
 use crate::testing::TestRng;
 
 use super::{
-    binary_response_header::BinaryResponseHeader, db_id::DbId, payload_type::PayloadType,
+    binary_response_header::BinaryResponseHeader,
+    db_id::DbId,
+    payload_type::{PayloadEntity, PayloadType},
     DbRawBytesSpec, ErrorCode,
 };
 
@@ -38,7 +40,7 @@ impl BinaryResponse {
     }
 
     /// Creates new binary response from raw DB bytes.
-    pub fn from_db_raw_bytes(db_id: &DbId, spec: Option<DbRawBytesSpec>) -> Self {
+    pub fn from_db_raw_bytes(db_id: DbId, spec: Option<DbRawBytesSpec>) -> Self {
         match spec {
             Some(DbRawBytesSpec {
                 is_legacy,
@@ -56,15 +58,45 @@ impl BinaryResponse {
         }
     }
 
+    /// Creates new legacy binary response from raw DB bytes.
+    #[cfg(any(feature = "testing", test))]
+    pub fn from_legacy_db_raw_bytes(db_id: DbId, bytes: Vec<u8>) -> Self {
+        BinaryResponse {
+            header: BinaryResponseHeader::new(Some(PayloadType::new_from_db_id(db_id, true))),
+            payload: bytes,
+        }
+    }
+
+    /// Creates new current binary response from raw DB bytes.
+    #[cfg(any(feature = "testing", test))]
+    pub fn from_current_db_raw_bytes(db_id: DbId, bytes: Vec<u8>) -> Self {
+        BinaryResponse {
+            header: BinaryResponseHeader::new(Some(PayloadType::new_from_db_id(db_id, false))),
+            payload: bytes,
+        }
+    }
+
     /// Creates a new binary response from a value.
     pub fn from_value<V>(val: V) -> Self
     where
         V: ToBytes,
-        V: Into<PayloadType>,
+        V: PayloadEntity,
     {
         BinaryResponse {
             payload: ToBytes::to_bytes(&val).unwrap(),
-            header: BinaryResponseHeader::new(Some(val.into())),
+            header: BinaryResponseHeader::new(Some(V::PAYLOAD_TYPE)),
+        }
+    }
+
+    /// Creates a new binary response from an optional value.
+    pub fn from_option<V>(opt: Option<V>) -> Self
+    where
+        V: ToBytes,
+        V: PayloadEntity,
+    {
+        match opt {
+            Some(val) => Self::from_value(val),
+            None => Self::new_empty(),
         }
     }
 

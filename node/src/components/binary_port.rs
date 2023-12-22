@@ -49,7 +49,7 @@ use crate::{
             ConsensusRequest, ContractRuntimeRequest, NetworkInfoRequest, ReactorInfoRequest,
             StorageRequest, UpgradeWatcherRequest,
         },
-        EffectBuilder, EffectExt, Effects, Responder,
+        EffectBuilder, EffectExt, Effects,
     },
     reactor::{main_reactor::MainEvent, Finalize, QueueKind},
     types::NodeRng,
@@ -66,12 +66,12 @@ const COMPONENT_NAME: &str = "binary_port";
 
 #[derive(Debug, DataSize)]
 pub(crate) struct BinaryPort {
-    #[data_size(skip)]
-    _metrics: Metrics,
     state: ComponentState,
     config: Arc<Config>,
     #[data_size(skip)]
     connection_limit: Arc<Semaphore>,
+    #[data_size(skip)]
+    metrics: Arc<Metrics>,
 }
 
 impl BinaryPort {
@@ -80,7 +80,7 @@ impl BinaryPort {
             state: ComponentState::Uninitialized,
             connection_limit: Arc::new(Semaphore::new(config.max_connections)),
             config: Arc::new(config),
-            _metrics: Metrics::new(registry)?,
+            metrics: Arc::new(Metrics::new(registry)?),
         })
     }
 }
@@ -140,8 +140,13 @@ where
                     );
                     Effects::new()
                 }
-                Event::AcceptConnection { stream, peer } => {
+                Event::AcceptConnection {
+                    stream,
+                    peer,
+                    responder,
+                } => {
                     if let Ok(permit) = Arc::clone(&self.connection_limit).try_acquire_owned() {
+                        self.metrics.binary_port_connections_count.inc();
                         let config = Arc::clone(&self.config);
                         tokio::spawn(handle_client(peer, stream, effect_builder, config, permit));
                     } else {
@@ -150,12 +155,14 @@ where
                             peer
                         );
                     }
-                    Effects::new()
+                    responder.respond(()).ignore()
                 }
                 Event::HandleRequest { request, responder } => {
                     let config = Arc::clone(&self.config);
+                    let metrics = Arc::clone(&self.metrics);
                     async move {
-                        let response = handle_request(request, effect_builder, &config).await;
+                        let response =
+                            handle_request(request, effect_builder, &config, &metrics).await;
                         responder.respond(response).await
                     }
                     .ignore()
@@ -211,6 +218,7 @@ async fn handle_request<REv>(
     req: BinaryRequest,
     effect_builder: EffectBuilder<REv>,
     config: &Config,
+    metrics: &Metrics,
 ) -> BinaryResponse
 where
     REv: From<Event>
@@ -227,6 +235,7 @@ where
 {
     match req {
         BinaryRequest::TryAcceptTransaction { transaction } => {
+            metrics.binary_port_try_accept_transaction_count.inc();
             try_accept_transaction(effect_builder, transaction, None).await
         }
         BinaryRequest::TrySpeculativeExec {
@@ -236,6 +245,7 @@ where
             protocol_version,
             speculative_exec_at_block,
         } => {
+            metrics.binary_port_try_speculative_exec_count.inc();
             let response = try_accept_transaction(
                 effect_builder,
                 transaction.clone(),
@@ -254,7 +264,9 @@ where
             )
             .await
         }
-        BinaryRequest::Get(get_req) => handle_get_request(get_req, effect_builder, config).await,
+        BinaryRequest::Get(get_req) => {
+            handle_get_request(get_req, effect_builder, config, metrics).await
+        }
     }
 }
 
@@ -262,6 +274,7 @@ async fn handle_get_request<REv>(
     get_req: GetRequest,
     effect_builder: EffectBuilder<REv>,
     config: &Config,
+    metrics: &Metrics,
 ) -> BinaryResponse
 where
     REv: From<Event>
@@ -278,35 +291,42 @@ where
     match get_req {
         // this workaround is in place because get_block_transfers performs a lazy migration
         GetRequest::Db { db, key } if db == DbId::Transfer => {
+            metrics.binary_port_get_db_count.inc();
             let Ok(block_hash) = bytesrepr::deserialize_from_slice(&key) else {
                 return BinaryResponse::new_error(binary_port::ErrorCode::BadRequest);
             };
             let Some(transfers) = effect_builder
                 .get_block_transfers_from_storage(block_hash)
                 .await else {
-                return BinaryResponse::from_db_raw_bytes(&db, None);
+                return BinaryResponse::from_db_raw_bytes(db, None);
             };
             let serialized =
                 bincode::serialize(&transfers).expect("should serialize transfers to bytes");
             let bytes = DbRawBytesSpec::new_legacy(&serialized);
-            BinaryResponse::from_db_raw_bytes(&db, Some(bytes))
+            BinaryResponse::from_db_raw_bytes(db, Some(bytes))
         }
         GetRequest::Db { db, key } => {
+            metrics.binary_port_get_db_count.inc();
             let maybe_raw_bytes = effect_builder.get_raw_data(db, key).await;
-            BinaryResponse::from_db_raw_bytes(&db, maybe_raw_bytes)
+            BinaryResponse::from_db_raw_bytes(db, maybe_raw_bytes)
         }
         GetRequest::NonPersistedData(req) => {
+            metrics.binary_port_get_non_persisted_data_count.inc();
             handle_non_persisted_data_request(req, effect_builder).await
         }
         GetRequest::State {
             state_root_hash,
             base_key,
             path,
-        } => handle_get_state_request(effect_builder, state_root_hash, base_key, path).await,
+        } => {
+            metrics.binary_port_get_state_count.inc();
+            handle_get_state_request(effect_builder, state_root_hash, base_key, path).await
+        }
         GetRequest::AllValues {
             state_root_hash,
             key_tag,
         } => {
+            metrics.binary_port_get_all_values_count.inc();
             if !config.allow_request_get_all_values {
                 BinaryResponse::new_error(binary_port::ErrorCode::FunctionDisabled)
             } else {
@@ -314,6 +334,7 @@ where
             }
         }
         GetRequest::Trie { trie_key } => {
+            metrics.binary_port_get_trie_count.inc();
             let response = if !config.allow_request_get_trie {
                 BinaryResponse::new_error(binary_port::ErrorCode::FunctionDisabled)
             } else {
@@ -401,9 +422,9 @@ where
 {
     match req {
         NonPersistedDataRequest::BlockHeight2Hash { height } => {
-            BinaryResponse::from_value(effect_builder.get_block_hash_for_height(height).await)
+            BinaryResponse::from_option(effect_builder.get_block_hash_for_height(height).await)
         }
-        NonPersistedDataRequest::HighestCompleteBlock => BinaryResponse::from_value(
+        NonPersistedDataRequest::HighestCompleteBlock => BinaryResponse::from_option(
             effect_builder
                 .get_highest_complete_block_header_from_storage()
                 .await
@@ -419,7 +440,7 @@ where
             )
         }
         NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { transaction_hash } => {
-            BinaryResponse::from_value(
+            BinaryResponse::from_option(
                 effect_builder
                     .get_block_hash_and_height_for_transaction(transaction_hash)
                     .await,
@@ -452,10 +473,10 @@ where
                 .await,
         ),
         NonPersistedDataRequest::NextUpgrade => {
-            BinaryResponse::from_value(effect_builder.get_next_upgrade().await)
+            BinaryResponse::from_option(effect_builder.get_next_upgrade().await)
         }
         NonPersistedDataRequest::ConsensusStatus => {
-            BinaryResponse::from_value(effect_builder.consensus_status().await)
+            BinaryResponse::from_option(effect_builder.consensus_status().await)
         }
         NonPersistedDataRequest::ChainspecRawBytes => {
             BinaryResponse::from_value((*effect_builder.get_chainspec_raw_bytes().await).clone())
@@ -663,7 +684,11 @@ where
                 Ok((stream, peer)) => {
                     effect_builder
                         .make_request(
-                            |_: Responder<()>| Event::AcceptConnection { stream, peer },
+                            |responder| Event::AcceptConnection {
+                                stream,
+                                peer,
+                                responder,
+                            },
                             QueueKind::Regular,
                         )
                         .await;

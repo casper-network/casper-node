@@ -3,7 +3,7 @@ use std::fmt::{Display, Formatter};
 use datasize::DataSize;
 use derive_more::From;
 
-use casper_types::{DeployId, Digest};
+use casper_types::{Digest, TransactionHash, TransactionId};
 
 use super::deploy_acquisition;
 
@@ -23,12 +23,14 @@ pub(crate) enum BlockAcquisitionError {
     InvalidAttemptToAcquireExecutionResults,
     #[from]
     InvalidAttemptToApplyApprovalsHashes(deploy_acquisition::Error),
-    InvalidAttemptToApplyDeploy {
-        deploy_id: DeployId,
+    InvalidAttemptToApplyTransaction {
+        txn_id: TransactionId,
     },
+    MissingApprovalsHashes(TransactionHash),
     InvalidAttemptToMarkComplete,
     InvalidAttemptToEnqueueBlockForExecution,
     ExecutionResults(super::execution_results_acquisition::Error),
+    InvalidTransactionType,
 }
 
 impl Display for BlockAcquisitionError {
@@ -67,8 +69,18 @@ impl Display for BlockAcquisitionError {
             BlockAcquisitionError::InvalidAttemptToEnqueueBlockForExecution => {
                 write!(f, "invalid attempt to enqueue block for execution")
             }
-            BlockAcquisitionError::InvalidAttemptToApplyDeploy { deploy_id } => {
-                write!(f, "invalid attempt to apply deploy: {}", deploy_id)
+            BlockAcquisitionError::InvalidAttemptToApplyTransaction { txn_id } => {
+                write!(f, "invalid attempt to apply transaction: {}", txn_id)
+            }
+            BlockAcquisitionError::MissingApprovalsHashes(missing_txn_hash) => {
+                write!(
+                    f,
+                    "missing approvals hashes for transaction {}",
+                    missing_txn_hash
+                )
+            }
+            BlockAcquisitionError::InvalidTransactionType => {
+                write!(f, "invalid transaction identifier",)
             }
         }
     }

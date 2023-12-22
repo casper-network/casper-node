@@ -707,6 +707,7 @@ dependencies = [
  "juliet",
  "num_cpus",
  "once_cell",
+ "pretty_assertions",
  "regex",
  "schemars",
  "serde",

@@ -38,7 +38,7 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{error, warn};
 
-use casper_types::{BlockHeader, Deploy, DeployApprovalsHash, DeployId, Digest};
+use casper_types::BlockHeader;
 
 use crate::types::NodeId;
 pub(crate) use block_signatures::{check_sufficient_block_signatures, BlockSignatureError};
@@ -418,17 +418,6 @@ impl TimeAnchor {
             self.wall_clock_now - self.now.duration_since(then)
         }
     }
-}
-
-// TODO: remove once https://github.com/casper-network/roadmap/issues/190 and
-//       https://github.com/casper-network/casper-node/issues/4340 are complete.
-pub(crate) fn fetch_id(deploy: &Deploy) -> DeployId {
-    let deploy_hash = *deploy.hash();
-    let approvals_hash = deploy.compute_approvals_hash().unwrap_or_else(|error| {
-        tracing::error!(%error, "failed to serialize approvals");
-        DeployApprovalsHash::from(Digest::default())
-    });
-    DeployId::new(deploy_hash, approvals_hash)
 }
 
 #[cfg(test)]
