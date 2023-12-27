@@ -317,6 +317,19 @@ pub fn start<Args: BorshDeserialize, Ret: BorshSerialize>(mut func: impl FnMut(A
     casper_return(ReturnFlags::empty(), Some(serialized_result.as_slice()));
 }
 
+pub fn start_noret<Args: BorshDeserialize, Ret: BorshSerialize>(
+    mut func: impl FnMut(Args) -> Ret,
+) -> Ret {
+    // Set panic hook (assumes std is enabled etc.)
+    #[cfg(target_arch = "wasm32")]
+    {
+        crate::set_panic_hook();
+    }
+    let input = casper_copy_input();
+    let args: Args = BorshDeserialize::try_from_slice(&input).unwrap();
+    func(args)
+}
+
 pub struct CallResult<T: BorshDeserialize> {
     data: Vec<u8>,
     result: ResultCode,

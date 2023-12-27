@@ -108,8 +108,12 @@ impl Greeter {
     }
 
     #[casper(revert_on_error)]
-    pub fn should_revert_on_error(&self) -> Result2 {
-        Err(CustomError::WithBody("Reverted".into()))
+    pub fn should_revert_on_error(&self, flag: bool) -> Result2 {
+        if flag {
+            Err(CustomError::WithBody("Reverted".into()))
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -236,9 +240,13 @@ pub fn call() {
             assert_eq!(maybe_result_5, ResultCode::CalleeReverted);
             assert_eq!(maybe_data_5, None);
 
-            let get_greeting: TypedCall<(), Result<(), CustomError>> =
+            let should_revert_on_error: TypedCall<(bool,), Result<(), CustomError>> =
                 TypedCall::new(contract_address, "should_revert_on_error");
-            let result = get_greeting.call(());
+            let result = should_revert_on_error.call((false,));
+            assert!(!result.did_revert());
+            assert_eq!(result.into_result(), Ok(()));
+
+            let result = should_revert_on_error.call((true,));
             assert!(result.did_revert());
             assert_eq!(
                 result.into_result(),
@@ -371,4 +379,7 @@ mod tests {
 
         assert_eq!(constructors, expected);
     }
+
+    #[test]
+    fn foo() {}
 }
