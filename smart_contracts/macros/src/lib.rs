@@ -228,8 +228,6 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     quote! {}
                                 };
 
-                                // let ret_type = &func.sig.output;
-
                                 manifest_entry_points_data.push(quote! {
 
                                     #[allow(non_upper_case_globals)]
@@ -238,11 +236,10 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                             let mut flags = vm_common::flags::ReturnFlags::empty();
                                             let mut instance: #struct_name = casper_sdk::host::read_state().unwrap();
                                             let _ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
-                                                let ret = instance.#name(#(#arg_names,)*);
-                                                casper_sdk::host::write_state(&instance).unwrap();
-                                                ret
+                                                instance.#name(#(#arg_names,)*)
                                             });
                                             #handle_err;
+                                            casper_sdk::host::write_state(&instance).unwrap();
                                             let ret_bytes = borsh::to_vec(&_ret).unwrap();
                                             casper_sdk::host::casper_return(flags, Some(&ret_bytes));
                                         }
