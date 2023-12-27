@@ -1,13 +1,7 @@
 //! Implementation of all host functions.
 pub(crate) mod abi;
 
-use std::{
-    cell::RefCell,
-    cmp,
-    io::Cursor,
-    mem,
-    sync::{Arc, Mutex},
-};
+use std::{cmp, mem};
 
 use bytes::Bytes;
 use safe_transmute::SingleManyGuard;
@@ -17,7 +11,7 @@ use crate::{
     backend::{Caller, Context, MeteringPoints, WasmInstance},
     host::abi::{CreateResult, EntryPoint, Manifest, Param},
     storage::{self, Contract, Storage},
-    ConfigBuilder, Error, VMError, VMResult, VM,
+    ConfigBuilder, VMError, VMResult, VM,
 };
 
 use self::abi::ReadInfo;
@@ -96,7 +90,7 @@ pub(crate) fn casper_read<S: Storage>(
     key_size: u32,
     info_ptr: u32,
     cb_alloc: u32,
-    cb_ctx: u32,
+    alloc_ctx: u32,
 ) -> Result<i32, VMError> {
     let key = caller
         .memory_read(key_ptr, key_size.try_into().unwrap())
@@ -107,9 +101,12 @@ pub(crate) fn casper_read<S: Storage>(
 
     match caller.context().storage.read(key_tag, &prefixed) {
         Ok(Some(entry)) => {
-            let out_ptr: u32 = caller
-                .alloc(cb_alloc, entry.data.len(), cb_ctx)
-                .unwrap_or_else(|error| panic!("{error:?}"));
+            let out_ptr: u32 = if cb_alloc != 0 {
+                caller.alloc(cb_alloc, entry.data.len(), alloc_ctx)?
+            } else {
+                // treats alloc_ctx as data
+                alloc_ctx
+            };
 
             let read_info = ReadInfo {
                 data: out_ptr,
@@ -119,7 +116,9 @@ pub(crate) fn casper_read<S: Storage>(
 
             let read_info_bytes = safe_transmute::transmute_one_to_bytes(&read_info);
             caller.memory_write(info_ptr, read_info_bytes).unwrap();
-            caller.memory_write(out_ptr, &entry.data).unwrap();
+            if out_ptr != 0 {
+                caller.memory_write(out_ptr, &entry.data).unwrap();
+            }
             Ok(0)
         }
         Ok(None) => Ok(1),

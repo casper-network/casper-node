@@ -276,10 +276,6 @@ use crate::{
 };
 
 pub fn read_vec(key: Keyspace) -> Option<Vec<u8>> {
-    let (key_space, key_bytes) = match key {
-        Keyspace::State => (0, &[][..]),
-        Keyspace::Context(key_bytes) => (1, key_bytes),
-    };
     let mut vec = Vec::new();
     let out = casper_read(key, |size| reserve_vec_space(&mut vec, size)).unwrap();
     match out {
