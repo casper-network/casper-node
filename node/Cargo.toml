@@ -26,7 +26,7 @@ bytes = "1.0.1"
 casper-execution-engine = { version = "7.0.0", path = "../execution_engine" }
 casper-hashing = { version = "3.0.0", path = "../hashing" }
 casper-json-rpc = { version = "1.1.0", path = "../json_rpc" }
-casper-types = { version = "4.0.1", path = "../types", features = ["datasize", "json-schema", "std"] }
+casper-types = { version = "4.0.1", path = "../types", features = ["datasize", "json-schema", "std-fs-io"] }
 datasize = { version = "0.2.11", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
 derive_more = "0.99.7"
 either = { version = "1", features = ["serde"] }
@@ -97,7 +97,7 @@ vergen = { version = "8.2.1", default-features = false, features = ["git", "gito
 [dev-dependencies]
 assert-json-diff = "2.0.1"
 assert_matches = "1.5.0"
-casper-types = { path = "../types", features = ["datasize", "json-schema", "std", "testing"] }
+casper-types = { path = "../types", features = ["datasize", "json-schema", "std-fs-io", "testing"] }
 fake_instant = "0.4.0"
 pnet = "0.28.0"
 pretty_assertions = "0.7.2"
