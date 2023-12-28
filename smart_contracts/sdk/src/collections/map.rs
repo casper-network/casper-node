@@ -1,5 +1,5 @@
 use crate::{
-    abi::{CasperABI, Definition, StructField},
+    abi::{CasperABI, Declaration, Definition, StructField},
     host::{self, read_vec},
     storage::Keyspace,
 };
@@ -55,12 +55,20 @@ where
 }
 
 impl<K: CasperABI, V: CasperABI> CasperABI for Map<K, V> {
+    fn populate_definitions(definitions: &mut crate::abi::Definitions) {
+        definitions.populate_one::<K>();
+        definitions.populate_one::<V>();
+    }
+
+    fn declaration() -> Declaration {
+        format!("Map<{}, {}>", K::declaration(), V::declaration())
+    }
     #[inline]
     fn definition() -> Definition {
         Definition::Struct {
             items: vec![StructField {
                 name: "prefix".into(),
-                body: u64::definition(),
+                decl: u64::declaration(),
             }],
         }
     }

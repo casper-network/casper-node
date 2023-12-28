@@ -241,6 +241,8 @@ pub fn call() {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
 
     use casper_sdk::{
@@ -259,7 +261,8 @@ mod tests {
 
     #[test]
     fn schema() {
-        dbg!(CEP18::schema());
+        let s = serde_json::to_string_pretty(&CEP18::schema()).unwrap();
+        fs::write("/tmp/cep18_schema.json", &s).unwrap();
     }
 
     #[test]

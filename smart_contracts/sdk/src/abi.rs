@@ -3,27 +3,20 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
-pub enum Declaration {
-    /// Referenced by name in the ABI.
-    Ref(String),
-    Type(String),
-}
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct EnumVariant {
     pub name: String,
     pub discriminant: u64,
-    pub body: Definition,
+    pub decl: Declaration,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct StructField {
     pub name: String,
-    pub body: Definition,
+    pub decl: Declaration,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub enum Primitive {
     Char,
     U8,
@@ -45,7 +38,7 @@ pub trait Keyable {
     const PRIMITIVE: Primitive;
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub enum Definition {
     /// Primitive type.
     ///
@@ -55,8 +48,8 @@ pub enum Definition {
     ///
     /// Example Rust types: BTreeMap<K, V>.
     Mapping {
-        key: Box<Definition>,
-        value: Box<Definition>,
+        key: Declaration,
+        value: Declaration,
     },
     /// Arbitrary sequence of values.
     ///
@@ -64,19 +57,19 @@ pub enum Definition {
     Sequence {
         /// If length is known, then it specifies that this definition should be be represented as
         /// an array of a fixed size.
-        def: Box<Definition>,
+        decl: Declaration,
     },
     FixedSequence {
         /// If length is known, then it specifies that this definition should be be represented as
         /// an array of a fixed size.
         length: u32, // None -> Vec<T> Some(N) [T; N]
-        def: Box<Definition>,
+        decl: Declaration,
     },
     /// A tuple of multiple values of various types.
     ///
     /// Can be also used to represent a heterogeneous list.
     Tuple {
-        items: Vec<Definition>,
+        items: Vec<Declaration>,
     },
     Enum {
         items: Vec<EnumVariant>,
@@ -93,8 +86,33 @@ impl Definition {
     }
 }
 
+#[derive(Default, Debug, Serialize, Deserialize)]
+pub struct Definitions(BTreeMap<String, Definition>);
+
+impl Definitions {
+    pub fn populate_one<T: CasperABI>(&mut self) {
+        T::populate_definitions(self);
+
+        let decl = T::declaration();
+        let def = T::definition();
+
+        let previous = self.0.insert(decl.clone(), def.clone());
+        if previous.is_some() && previous != Some(def.clone()) {
+            panic!("Type {decl} has multiple definitions ({previous:?} != {def:?}).");
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &Definition)> {
+        self.0.iter()
+    }
+}
+
+pub type Declaration = String;
+
 pub trait CasperABI {
-    fn definition() -> Definition;
+    fn populate_definitions(definitions: &mut Definitions);
+    fn declaration() -> Declaration; // "String"
+    fn definition() -> Definition; // Sequence { Char }
 }
 
 macro_rules! impl_abi_for_types {
@@ -111,61 +129,98 @@ macro_rules! impl_abi_for_types {
 
     (@impl $ty:ty => $def:expr ) => {
         impl CasperABI for $ty {
+            fn populate_definitions(definitions: &mut Definitions) {
+            }
+
+            fn declaration() -> Declaration {
+                stringify!($def).into()
+            }
+
             fn definition() -> Definition {
-                Definition::Primitive($def)
+                use Primitive::*;
+                const PRIMITIVE: Primitive = $def;
+                Definition::Primitive(PRIMITIVE)
             }
         }
+
         impl Keyable for $ty {
-            const PRIMITIVE: Primitive = $def;
+            const PRIMITIVE: Primitive = {
+                use Primitive::*;
+                $def
+            };
         }
     };
 }
 
 impl CasperABI for () {
+    fn populate_definitions(definitions: &mut Definitions) {}
+
+    fn declaration() -> Declaration {
+        "()".to_string()
+    }
+
     fn definition() -> Definition {
         Definition::unit()
     }
 }
 
 impl_abi_for_types!(
-    char => Primitive::Char,
-    bool => Primitive::Bool,
-    u8 => Primitive::U8,
-    u16 => Primitive::U16,
-    u32 => Primitive::U32,
-    u64 => Primitive::U64,
-    u128 => Primitive::U128,
-    i8 => Primitive::I8,
-    i16 => Primitive::I16,
-    i32 => Primitive::I32,
-    i64 => Primitive::I64,
-    f32 => Primitive::F32,
-    f64 => Primitive::F64,
-    i128 => Primitive::I128,
+    char => Char,
+    bool => Bool,
+    u8 => U8,
+    u16 => U16,
+    u32 => U32,
+    u64 => U64,
+    u128 => U128,
+    i8 => I8,
+    i16 => I16,
+    i32 => I32,
+    i64 => I64,
+    f32 => F32,
+    f64 => F64,
+    i128 => I128,
 );
 
 #[impl_for_tuples(1, 12)]
 impl CasperABI for Tuple {
+    fn populate_definitions(definitions: &mut Definitions) {
+        for_tuples!( #( definitions.populate_one::<Tuple>(); )* )
+    }
+
+    fn declaration() -> Declaration {
+        let items = <[_]>::into_vec(Box::new([for_tuples!( #( Tuple::declaration() ),* )]));
+        format!("({})", items.join(", "))
+    }
     fn definition() -> Definition {
-        let items: Vec<Definition> =
-            <[_]>::into_vec(Box::new([for_tuples!( #( Tuple::definition() ),* )]));
+        let items = <[_]>::into_vec(Box::new([for_tuples!( #( Tuple::declaration() ),* )]));
         Definition::Tuple { items }
     }
 }
 
 impl<T: CasperABI, E: CasperABI> CasperABI for Result<T, E> {
+    fn populate_definitions(definitions: &mut Definitions) {
+        definitions.populate_one::<T>();
+        definitions.populate_one::<E>();
+    }
+
+    fn declaration() -> Declaration {
+        let t_decl = T::declaration();
+        let e_decl = E::declaration();
+        format!("Result<{t_decl}, {e_decl}>")
+    }
+
     fn definition() -> Definition {
         Definition::Enum {
             items: vec![
                 EnumVariant {
                     name: "Ok".to_string(),
                     discriminant: 0,
-                    body: T::definition(),
+                    decl: T::declaration(),
                 },
                 EnumVariant {
                     name: "Err".to_string(),
                     discriminant: 1,
-                    body: E::definition(),
+                    decl: E::declaration(),
                 },
             ],
         }
@@ -173,70 +228,117 @@ impl<T: CasperABI, E: CasperABI> CasperABI for Result<T, E> {
 }
 
 impl<T: CasperABI> CasperABI for Option<T> {
+    fn declaration() -> Declaration {
+        format!("Option<{}>", T::declaration())
+    }
     fn definition() -> Definition {
         Definition::Enum {
             items: vec![
                 EnumVariant {
                     name: "None".to_string(),
                     discriminant: 0,
-                    body: Definition::unit(),
+                    decl: <()>::declaration(),
                 },
                 EnumVariant {
                     name: "Some".to_string(),
                     discriminant: 1,
-                    body: T::definition(),
+                    decl: T::declaration(),
                 },
             ],
         }
     }
+
+    fn populate_definitions(definitions: &mut Definitions) {
+        definitions.populate_one::<()>();
+        definitions.populate_one::<T>();
+    }
 }
 
 impl<T: CasperABI> CasperABI for Vec<T> {
+    fn populate_definitions(definitions: &mut Definitions) {
+        definitions.populate_one::<T>();
+    }
+
+    fn declaration() -> Declaration {
+        format!("Vec<{}>", T::declaration())
+    }
     fn definition() -> Definition {
         Definition::Sequence {
-            def: Box::new(T::definition()),
+            decl: T::declaration(),
         }
     }
 }
 
 impl<T: CasperABI, const N: usize> CasperABI for [T; N] {
+    fn populate_definitions(definitions: &mut Definitions) {
+        definitions.populate_one::<T>();
+    }
+
+    fn declaration() -> Declaration {
+        format!("[{}; {N}]", T::declaration())
+    }
     fn definition() -> Definition {
         Definition::FixedSequence {
             length: N.try_into().expect("N is too big"),
-            def: Box::new(T::definition()),
+            decl: T::declaration(),
         }
     }
 }
 
 impl<K: CasperABI, V: CasperABI> CasperABI for BTreeMap<K, V> {
+    fn populate_definitions(definitions: &mut Definitions) {
+        definitions.populate_one::<K>();
+        definitions.populate_one::<V>();
+    }
+
+    fn declaration() -> Declaration {
+        format!("BTreeMap<{}, {}>", K::declaration(), V::declaration())
+    }
+
     fn definition() -> Definition {
         Definition::Mapping {
-            key: Box::new(K::definition()),
-            value: Box::new(V::definition()),
+            key: K::declaration(),
+            value: V::declaration(),
         }
     }
 }
 
 impl CasperABI for String {
+    fn populate_definitions(definitions: &mut Definitions) {}
+
+    fn declaration() -> Declaration {
+        "String".into()
+    }
     fn definition() -> Definition {
         Definition::Sequence {
-            def: Box::new(char::definition()),
+            decl: char::declaration(),
         }
     }
 }
 
 impl CasperABI for str {
+    fn populate_definitions(definitions: &mut Definitions) {}
+
+    fn declaration() -> Declaration {
+        "String".into()
+    }
     fn definition() -> Definition {
         Definition::Sequence {
-            def: Box::new(char::definition()),
+            decl: char::declaration(),
         }
     }
 }
 
 impl CasperABI for &str {
+    fn populate_definitions(definitions: &mut Definitions) {}
+
+    fn declaration() -> Declaration {
+        "String".into()
+    }
+
     fn definition() -> Definition {
         Definition::Sequence {
-            def: Box::new(char::definition()),
+            decl: char::declaration(),
         }
     }
 }

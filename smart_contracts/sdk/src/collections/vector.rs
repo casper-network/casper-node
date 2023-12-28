@@ -1,9 +1,10 @@
 use crate::{
-    abi::{CasperABI, Definition, StructField},
+    abi::{CasperABI, Declaration, Definition, Definitions, StructField},
     host::{self, read_vec},
     storage::Keyspace,
 };
 
+use bitflags::Flags;
 use borsh::{self, BorshDeserialize, BorshSerialize};
 use const_fnv1a_hash::fnv1a_hash_str_64;
 
@@ -63,17 +64,24 @@ where
 }
 
 impl<T: CasperABI> CasperABI for Vector<T> {
+    fn populate_definitions(definitions: &mut Definitions) {
+        // definitions.insert(T::declaration(), T::)
+    }
+
+    fn declaration() -> Declaration {
+        format!("Vector<{}>", T::declaration())
+    }
     #[inline]
     fn definition() -> Definition {
         Definition::Struct {
             items: vec![
                 StructField {
                     name: "prefix".into(),
-                    body: String::definition(),
+                    decl: String::declaration(),
                 },
                 StructField {
                     name: "length".into(),
-                    body: u64::definition(),
+                    decl: u64::declaration(),
                 },
             ],
         }
