@@ -456,11 +456,11 @@ impl TestFixture {
         &mut self.network
     }
 
-    pub async fn run_until_stopped(
+    pub fn run_until_stopped(
         self,
         rng: TestRng,
-    ) -> (TestingNetwork<FilterReactor<MainReactor>>, TestRng) {
-        self.network.crank_until_stopped(rng).await
+    ) -> impl futures::Future<Output = (TestingNetwork<FilterReactor<MainReactor>>, TestRng)> {
+        self.network.crank_until_stopped(rng)
     }
 }
 
