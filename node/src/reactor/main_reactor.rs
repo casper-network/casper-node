@@ -1153,7 +1153,11 @@ impl reactor::Reactor for MainReactor {
             validator_matrix.clone(),
             registry,
         )?;
-        let block_validator = BlockValidator::new(Arc::clone(&chainspec), config.block_validator);
+        let block_validator = BlockValidator::new(
+            Arc::clone(&chainspec),
+            validator_matrix.clone(),
+            config.block_validator,
+        );
         let upgrade_watcher =
             UpgradeWatcher::new(chainspec.as_ref(), config.upgrade_watcher, &root_dir)?;
         let transaction_acceptor =
@@ -1415,6 +1419,26 @@ impl MainReactor {
                     ));
                 }
             }
+        }
+
+        if meta_block
+            .mut_state()
+            .register_as_validator_notified()
+            .was_updated()
+        {
+            debug!(
+                "MetaBlock: notifying block validator: {} {}",
+                meta_block.height(),
+                meta_block.hash(),
+            );
+            effects.extend(reactor::wrap_effects(
+                MainEvent::BlockValidator,
+                self.block_validator.handle_event(
+                    effect_builder,
+                    rng,
+                    block_validator::Event::BlockStored(meta_block.height()),
+                ),
+            ));
         }
 
         if meta_block

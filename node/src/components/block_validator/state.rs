@@ -1,5 +1,5 @@
 use std::{
-    collections::{hash_map::Entry, BTreeSet, HashMap},
+    collections::{hash_map::Entry, BTreeSet, HashMap, HashSet},
     fmt::{self, Debug, Display, Formatter},
     iter, mem,
 };
@@ -9,7 +9,9 @@ use tracing::{debug, error, warn};
 
 #[cfg(test)]
 use casper_types::DeployHash;
-use casper_types::{Chainspec, DeployApproval, DeployApprovalsHash, DeployFootprint, Timestamp};
+use casper_types::{
+    Chainspec, DeployApproval, DeployApprovalsHash, DeployFootprint, FinalitySignatureId, Timestamp,
+};
 
 use crate::{
     components::consensus::{ClContext, ProposedBlock},
@@ -49,6 +51,7 @@ pub(super) enum MaybeStartFetching {
     Start {
         holder: NodeId,
         missing_deploys: HashMap<DeployOrTransferHash, DeployApprovalsHash>,
+        missing_signatures: HashSet<FinalitySignatureId>,
     },
     /// No new round of fetches should be started as one is already in progress.
     Ongoing,
@@ -87,6 +90,8 @@ pub(super) enum BlockValidationState {
         /// The set of approvals contains approvals from deploys that would be finalized with the
         /// block.
         missing_deploys: HashMap<DeployOrTransferHash, ApprovalInfo>,
+        /// The set of finality signatures for past blocks cited in this block.
+        missing_signatures: HashSet<FinalitySignatureId>,
         /// The set of peers which each claim to hold all the deploys.
         holders: HashMap<NodeId, HolderState>,
         /// A list of responders that are awaiting an answer.
@@ -110,6 +115,7 @@ impl BlockValidationState {
     /// be actioned.
     pub(super) fn new(
         block: &ProposedBlock<ClContext>,
+        missing_signatures: HashSet<FinalitySignatureId>,
         sender: NodeId,
         responder: Responder<bool>,
         chainspec: &Chainspec,
@@ -164,6 +170,7 @@ impl BlockValidationState {
         let state = BlockValidationState::InProgress {
             appendable_block,
             missing_deploys,
+            missing_signatures,
             holders: iter::once((sender, HolderState::Unasked)).collect(),
             responders: vec![responder],
         };
@@ -241,11 +248,15 @@ impl BlockValidationState {
         match self {
             BlockValidationState::InProgress {
                 missing_deploys,
+                missing_signatures,
                 holders,
                 ..
             } => {
-                if missing_deploys.is_empty() {
-                    error!("should always have missing deploys while in state `InProgress`");
+                if missing_deploys.is_empty() && missing_signatures.is_empty() {
+                    error!(
+                        "should always have missing deploys or signatures while in state \
+                        `InProgress`"
+                    );
                     debug_assert!(false, "invalid state");
                     return MaybeStartFetching::ValidationFailed;
                 }
@@ -270,9 +281,11 @@ impl BlockValidationState {
                     .iter()
                     .map(|(dt_hash, infos)| (*dt_hash, infos.approvals_hash))
                     .collect();
+                let missing_signatures = missing_signatures.clone();
                 MaybeStartFetching::Start {
                     holder,
                     missing_deploys,
+                    missing_signatures,
                 }
             }
             BlockValidationState::Valid(_) => MaybeStartFetching::ValidationSucceeded,
@@ -298,6 +311,7 @@ impl BlockValidationState {
             BlockValidationState::InProgress {
                 appendable_block,
                 missing_deploys,
+                missing_signatures,
                 responders,
                 ..
             } => {
@@ -320,19 +334,20 @@ impl BlockValidationState {
                 };
                 match add_result {
                     Ok(()) => {
-                        if !missing_deploys.is_empty() {
+                        if !missing_deploys.is_empty() || !missing_signatures.is_empty() {
                             // The appendable block is still valid, but we still have missing
-                            // deploys - nothing further to do here.
+                            // deploys or signatures - nothing further to do here.
                             debug!(
                                 block_timestamp = %appendable_block.timestamp(),
                                 missing_deploys_len = missing_deploys.len(),
-                                "still missing deploys - block validation incomplete"
+                                missing_signatures_len = missing_signatures.len(),
+                                "still missing deploys or signatures - block validation incomplete"
                             );
                             return vec![];
                         }
                         debug!(
                             block_timestamp = %appendable_block.timestamp(),
-                            "no further missing deploys - block validation complete"
+                            "no further missing deploys or signatures - block validation complete"
                         );
                         let new_state = BlockValidationState::Valid(appendable_block.timestamp());
                         (new_state, mem::take(responders))
@@ -342,6 +357,44 @@ impl BlockValidationState {
                         let new_state = BlockValidationState::Invalid(appendable_block.timestamp());
                         (new_state, mem::take(responders))
                     }
+                }
+            }
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => return vec![],
+        };
+        *self = new_state;
+        responders
+    }
+
+    /// If the current state is `InProgress` and `dt_hash` is present, tries to add the footprint to
+    /// the appendable block to continue validation of the proposed block.
+    pub(super) fn try_add_signature(
+        &mut self,
+        finality_signature_id: &FinalitySignatureId,
+    ) -> Vec<Responder<bool>> {
+        let (new_state, responders) = match self {
+            BlockValidationState::InProgress {
+                appendable_block,
+                missing_deploys,
+                missing_signatures,
+                responders,
+                ..
+            } => {
+                missing_signatures.remove(finality_signature_id);
+                if missing_signatures.is_empty() && missing_deploys.is_empty() {
+                    debug!(
+                        block_timestamp = %appendable_block.timestamp(),
+                        "no further missing deploys or signatures - block validation complete"
+                    );
+                    let new_state = BlockValidationState::Valid(appendable_block.timestamp());
+                    (new_state, mem::take(responders))
+                } else {
+                    debug!(
+                        block_timestamp = %appendable_block.timestamp(),
+                        missing_deploys_len = missing_deploys.len(),
+                        missing_signatures_len = missing_signatures.len(),
+                        "still missing deploys or signatures - block validation incomplete"
+                    );
+                    return vec![];
                 }
             }
             BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => return vec![],
@@ -370,7 +423,31 @@ impl BlockValidationState {
             }
             BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => return vec![],
         };
-        *self = BlockValidationState::Valid(timestamp);
+        *self = BlockValidationState::Invalid(timestamp);
+        responders
+    }
+
+    /// If the current state is `InProgress` and `finality_signature_id` is present, sets the state
+    /// to `Invalid` and returns the responders.
+    pub(super) fn try_mark_invalid_signature(
+        &mut self,
+        finality_signature_id: &FinalitySignatureId,
+    ) -> Vec<Responder<bool>> {
+        let (timestamp, responders) = match self {
+            BlockValidationState::InProgress {
+                appendable_block,
+                missing_signatures,
+                responders,
+                ..
+            } => {
+                if !missing_signatures.contains(finality_signature_id) {
+                    return vec![];
+                }
+                (appendable_block.timestamp(), mem::take(responders))
+            }
+            BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => return vec![],
+        };
+        *self = BlockValidationState::Invalid(timestamp);
         responders
     }
 
@@ -424,14 +501,17 @@ impl Display for BlockValidationState {
             BlockValidationState::InProgress {
                 appendable_block,
                 missing_deploys,
+                missing_signatures,
                 holders,
                 responders,
             } => {
                 write!(
                     formatter,
-                    "BlockValidationState::InProgress({}, {} missing deploys, {} holders, {} responders)",
+                    "BlockValidationState::InProgress({}, {} missing deploys, \
+                    {} missing signatures, {} holders, {} responders)",
                     appendable_block,
                     missing_deploys.len(),
+                    missing_signatures.len(),
                     holders.len(),
                     responders.len()
                 )
@@ -528,6 +608,7 @@ mod tests {
 
             BlockValidationState::new(
                 &proposed_block,
+                HashSet::new(),
                 NodeId::random(&mut self.rng),
                 new_responder(),
                 &self.chainspec,
@@ -608,6 +689,7 @@ mod tests {
 
         let (state, maybe_responder) = BlockValidationState::new(
             &proposed_block,
+            HashSet::new(),
             NodeId::random(&mut fixture.rng),
             new_responder(),
             &fixture.chainspec,
@@ -749,6 +831,7 @@ mod tests {
             MaybeStartFetching::Start {
                 holder,
                 missing_deploys,
+                ..
             } => {
                 assert_eq!(holder, original_holder);
                 assert_eq!(missing_deploys.len(), 4);
