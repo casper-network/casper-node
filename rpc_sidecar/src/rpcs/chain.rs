@@ -408,72 +408,31 @@ mod tests {
     use casper_types::{
         binary_port::{
             binary_request::BinaryRequest, db_id::DbId, get::GetRequest,
+            global_state_query_result::GlobalStateQueryResult,
             non_persistent_data_request::NonPersistedDataRequest,
             type_wrappers::HighestBlockSequenceCheckResult,
         },
-        bytesrepr::ToBytes,
+        system::auction::EraInfo,
         testing::TestRng,
-        AvailableBlockRange, BinaryResponse, BinaryResponseAndRequest, BlockV1, TestBlockBuilder,
-        TestBlockV1Builder,
+        AvailableBlockRange, BinaryResponse, BinaryResponseAndRequest, BlockHashAndHeight, BlockV1,
+        DeployHash, TestBlockBuilder, TestBlockV1Builder,
     };
+    use rand::Rng;
 
     use super::*;
     use pretty_assertions::assert_eq;
 
     #[tokio::test]
     async fn should_read_block_v2() {
-        pub struct MockNodeClient(Block);
-
-        #[async_trait]
-        impl NodeClient for MockNodeClient {
-            async fn send_request(
-                &self,
-                req: BinaryRequest,
-            ) -> Result<BinaryResponseAndRequest, ClientError> {
-                match req {
-                    BinaryRequest::Get(GetRequest::Db {
-                        db: DbId::BlockBody,
-                        ..
-                    }) => Ok(new_binary_db_response(DbId::BlockBody, self.0.clone_body())),
-                    BinaryRequest::Get(GetRequest::Db {
-                        db: DbId::BlockHeader,
-                        ..
-                    }) => Ok(new_binary_db_response(
-                        DbId::BlockHeader,
-                        self.0.clone_header(),
-                    )),
-                    BinaryRequest::Get(GetRequest::Db {
-                        db: DbId::BlockMetadata,
-                        ..
-                    }) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::new_empty(),
-                        &[],
-                    )),
-                    BinaryRequest::Get(GetRequest::NonPersistedData(
-                        NonPersistedDataRequest::AvailableBlockRange,
-                    )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0),
-                        &[],
-                    )),
-                    BinaryRequest::Get(GetRequest::NonPersistedData(
-                        NonPersistedDataRequest::CompletedBlocksContain { .. },
-                    )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(HighestBlockSequenceCheckResult(true)),
-                        &[],
-                    )),
-                    req => unimplemented!("unexpected request: {:?}", req),
-                }
-            }
-        }
-
         let rng = &mut TestRng::new();
         let block = Block::V2(TestBlockBuilder::new().build(rng));
 
         let resp = GetBlock::do_handle_request(
-            Arc::new(MockNodeClient(block.clone())),
-            Some(GetBlockParams {
-                block_identifier: BlockIdentifier::Hash(*block.hash()),
+            Arc::new(ValidBlockV2Mock {
+                block: block.clone(),
+                transfers: vec![],
             }),
+            None,
         )
         .await
         .expect("should handle request");
@@ -489,10 +448,10 @@ mod tests {
 
     #[tokio::test]
     async fn should_read_block_v1() {
-        pub struct MockNodeClient(BlockV1);
+        struct ClientMock(BlockV1);
 
         #[async_trait]
-        impl NodeClient for MockNodeClient {
+        impl NodeClient for ClientMock {
             async fn send_request(
                 &self,
                 req: BinaryRequest,
@@ -501,14 +460,14 @@ mod tests {
                     BinaryRequest::Get(GetRequest::Db {
                         db: DbId::BlockBody,
                         ..
-                    }) => Ok(new_legacy_binary_db_response(
+                    }) => Ok(BinaryResponseAndRequest::new_legacy_test_response(
                         DbId::BlockBody,
                         self.0.body(),
                     )),
                     BinaryRequest::Get(GetRequest::Db {
                         db: DbId::BlockHeader,
                         ..
-                    }) => Ok(new_legacy_binary_db_response(
+                    }) => Ok(BinaryResponseAndRequest::new_legacy_test_response(
                         DbId::BlockHeader,
                         self.0.header(),
                     )),
@@ -531,6 +490,15 @@ mod tests {
                         BinaryResponse::from_value(HighestBlockSequenceCheckResult(true)),
                         &[],
                     )),
+                    BinaryRequest::Get(GetRequest::NonPersistedData(
+                        NonPersistedDataRequest::HighestCompleteBlock,
+                    )) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(BlockHashAndHeight::new(
+                            *self.0.hash(),
+                            self.0.height(),
+                        )),
+                        &[],
+                    )),
                     req => unimplemented!("unexpected request: {:?}", req),
                 }
             }
@@ -539,14 +507,9 @@ mod tests {
         let rng = &mut TestRng::new();
         let block = TestBlockV1Builder::new().build(rng);
 
-        let resp = GetBlock::do_handle_request(
-            Arc::new(MockNodeClient(block.clone())),
-            Some(GetBlockParams {
-                block_identifier: BlockIdentifier::Hash(*block.hash()),
-            }),
-        )
-        .await
-        .expect("should handle request");
+        let resp = GetBlock::do_handle_request(Arc::new(ClientMock(block.clone())), None)
+            .await
+            .expect("should handle request");
 
         assert_eq!(
             resp,
@@ -557,13 +520,225 @@ mod tests {
         );
     }
 
-    fn new_binary_db_response<A: ToBytes>(id: DbId, data: A) -> BinaryResponseAndRequest {
-        let resp = BinaryResponse::from_current_db_raw_bytes(id, data.to_bytes().unwrap());
-        BinaryResponseAndRequest::new(resp, &[])
+    #[tokio::test]
+    async fn should_read_block_transfers() {
+        let rng = &mut TestRng::new();
+        let block = TestBlockBuilder::new().build(rng);
+
+        let mut transfers = vec![];
+        for _ in 0..rng.gen_range(0..10) {
+            transfers.push(Transfer::new(
+                DeployHash::random(rng),
+                rng.gen(),
+                Some(rng.gen()),
+                rng.gen(),
+                rng.gen(),
+                rng.gen(),
+                rng.gen(),
+                Some(rng.gen()),
+            ));
+        }
+
+        let resp = GetBlockTransfers::do_handle_request(
+            Arc::new(ValidBlockV2Mock {
+                block: Block::V2(block.clone()),
+                transfers: transfers.clone(),
+            }),
+            None,
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetBlockTransfersResult {
+                api_version: CURRENT_API_VERSION,
+                block_hash: Some(*block.hash()),
+                transfers: Some(transfers),
+            }
+        );
     }
 
-    fn new_legacy_binary_db_response<A: Serialize>(id: DbId, data: &A) -> BinaryResponseAndRequest {
-        let resp = BinaryResponse::from_legacy_db_raw_bytes(id, bincode::serialize(&data).unwrap());
-        BinaryResponseAndRequest::new(resp, &[])
+    #[tokio::test]
+    async fn should_read_block_state_root_hash() {
+        let rng = &mut TestRng::new();
+        let block = TestBlockBuilder::new().build(rng);
+
+        let resp = GetStateRootHash::do_handle_request(
+            Arc::new(ValidBlockV2Mock {
+                block: Block::V2(block.clone()),
+                transfers: vec![],
+            }),
+            None,
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetStateRootHashResult {
+                api_version: CURRENT_API_VERSION,
+                state_root_hash: Some(*block.state_root_hash()),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn should_read_block_era_summary() {
+        let rng = &mut TestRng::new();
+        let block = TestBlockBuilder::new().build(rng);
+
+        let resp = GetEraSummary::do_handle_request(
+            Arc::new(ValidBlockV2Mock {
+                block: Block::V2(block.clone()),
+                transfers: vec![],
+            }),
+            None,
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetEraSummaryResult {
+                api_version: CURRENT_API_VERSION,
+                era_summary: EraSummary {
+                    block_hash: *block.hash(),
+                    era_id: block.era_id(),
+                    stored_value: StoredValue::EraInfo(EraInfo::new()),
+                    state_root_hash: *block.state_root_hash(),
+                    merkle_proof: String::new(),
+                }
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn should_read_block_era_info_by_switch_block() {
+        let rng = &mut TestRng::new();
+        let block = TestBlockBuilder::new().switch_block(true).build(rng);
+
+        let resp = GetEraInfoBySwitchBlock::do_handle_request(
+            Arc::new(ValidBlockV2Mock {
+                block: Block::V2(block.clone()),
+                transfers: vec![],
+            }),
+            None,
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetEraInfoResult {
+                api_version: CURRENT_API_VERSION,
+                era_summary: Some(EraSummary {
+                    block_hash: *block.hash(),
+                    era_id: block.era_id(),
+                    stored_value: StoredValue::EraInfo(EraInfo::new()),
+                    state_root_hash: *block.state_root_hash(),
+                    merkle_proof: String::new(),
+                })
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn should_read_none_block_era_info_by_switch_block_for_non_switch() {
+        let rng = &mut TestRng::new();
+        let block = TestBlockBuilder::new().switch_block(false).build(rng);
+
+        let resp = GetEraInfoBySwitchBlock::do_handle_request(
+            Arc::new(ValidBlockV2Mock {
+                block: Block::V2(block.clone()),
+                transfers: vec![],
+            }),
+            None,
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetEraInfoResult {
+                api_version: CURRENT_API_VERSION,
+                era_summary: None
+            }
+        );
+    }
+
+    struct ValidBlockV2Mock {
+        block: Block,
+        transfers: Vec<Transfer>,
+    }
+
+    #[async_trait]
+    impl NodeClient for ValidBlockV2Mock {
+        async fn send_request(
+            &self,
+            req: BinaryRequest,
+        ) -> Result<BinaryResponseAndRequest, ClientError> {
+            match req {
+                BinaryRequest::Get(GetRequest::Db {
+                    db: DbId::BlockBody,
+                    ..
+                }) => Ok(BinaryResponseAndRequest::new_test_response(
+                    DbId::BlockBody,
+                    &self.block.clone_body(),
+                )),
+                BinaryRequest::Get(GetRequest::Db {
+                    db: DbId::BlockHeader,
+                    ..
+                }) => Ok(BinaryResponseAndRequest::new_test_response(
+                    DbId::BlockHeader,
+                    &self.block.clone_header(),
+                )),
+                BinaryRequest::Get(GetRequest::Db {
+                    db: DbId::Transfer, ..
+                }) => Ok(BinaryResponseAndRequest::new_legacy_test_response(
+                    DbId::Transfer,
+                    &self.transfers,
+                )),
+                BinaryRequest::Get(GetRequest::Db {
+                    db: DbId::BlockMetadata,
+                    ..
+                }) => Ok(BinaryResponseAndRequest::new(
+                    BinaryResponse::new_empty(),
+                    &[],
+                )),
+                BinaryRequest::Get(GetRequest::NonPersistedData(
+                    NonPersistedDataRequest::AvailableBlockRange,
+                )) => Ok(BinaryResponseAndRequest::new(
+                    BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0),
+                    &[],
+                )),
+                BinaryRequest::Get(GetRequest::NonPersistedData(
+                    NonPersistedDataRequest::CompletedBlocksContain { .. },
+                )) => Ok(BinaryResponseAndRequest::new(
+                    BinaryResponse::from_value(HighestBlockSequenceCheckResult(true)),
+                    &[],
+                )),
+                BinaryRequest::Get(GetRequest::NonPersistedData(
+                    NonPersistedDataRequest::HighestCompleteBlock,
+                )) => Ok(BinaryResponseAndRequest::new(
+                    BinaryResponse::from_value(BlockHashAndHeight::new(
+                        *self.block.hash(),
+                        self.block.height(),
+                    )),
+                    &[],
+                )),
+                BinaryRequest::Get(GetRequest::State {
+                    base_key: Key::EraSummary,
+                    ..
+                }) => Ok(BinaryResponseAndRequest::new(
+                    BinaryResponse::from_value(GlobalStateQueryResult::new(
+                        StoredValue::EraInfo(EraInfo::new()),
+                        String::new(),
+                    )),
+                    &[],
+                )),
+                req => unimplemented!("unexpected request: {:?}", req),
+            }
+        }
     }
 }

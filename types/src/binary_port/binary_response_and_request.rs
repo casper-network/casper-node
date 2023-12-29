@@ -1,8 +1,10 @@
 use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
-use super::binary_response::BinaryResponse;
+use super::{binary_response::BinaryResponse, payload_type::PayloadEntity};
 use alloc::vec::Vec;
 
+#[cfg(any(feature = "testing", test))]
+use super::db_id::DbId;
 #[cfg(test)]
 use crate::testing::TestRng;
 
@@ -22,6 +24,38 @@ impl BinaryResponseAndRequest {
             original_request: original_request.to_vec(),
             response: data,
         }
+    }
+
+    /// Returns a new binary response with specified data and no original request.
+    #[cfg(any(feature = "testing", test))]
+    pub fn new_test_response<A: PayloadEntity + ToBytes>(
+        db_id: DbId,
+        data: &A,
+    ) -> BinaryResponseAndRequest {
+        use super::DbRawBytesSpec;
+
+        let response = BinaryResponse::from_db_raw_bytes(
+            db_id,
+            Some(DbRawBytesSpec::new_current(&data.to_bytes().unwrap())),
+        );
+        Self::new(response, &[])
+    }
+
+    /// Returns a new binary response with specified legacy data and no original request.
+    #[cfg(any(feature = "testing", test))]
+    pub fn new_legacy_test_response<A: PayloadEntity + serde::Serialize>(
+        db_id: DbId,
+        data: &A,
+    ) -> BinaryResponseAndRequest {
+        use super::DbRawBytesSpec;
+
+        let response = BinaryResponse::from_db_raw_bytes(
+            db_id,
+            Some(DbRawBytesSpec::new_legacy(
+                &bincode::serialize(data).unwrap(),
+            )),
+        );
+        Self::new(response, &[])
     }
 
     /// Returns true if response is success.

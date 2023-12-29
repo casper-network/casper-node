@@ -58,24 +58,6 @@ impl BinaryResponse {
         }
     }
 
-    /// Creates new legacy binary response from raw DB bytes.
-    #[cfg(any(feature = "testing", test))]
-    pub fn from_legacy_db_raw_bytes(db_id: DbId, bytes: Vec<u8>) -> Self {
-        BinaryResponse {
-            header: BinaryResponseHeader::new(Some(PayloadType::new_from_db_id(db_id, true))),
-            payload: bytes,
-        }
-    }
-
-    /// Creates new current binary response from raw DB bytes.
-    #[cfg(any(feature = "testing", test))]
-    pub fn from_current_db_raw_bytes(db_id: DbId, bytes: Vec<u8>) -> Self {
-        BinaryResponse {
-            header: BinaryResponseHeader::new(Some(PayloadType::new_from_db_id(db_id, false))),
-            payload: bytes,
-        }
-    }
-
     /// Creates a new binary response from a value.
     pub fn from_value<V>(val: V) -> Self
     where

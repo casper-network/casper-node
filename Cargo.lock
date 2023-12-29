@@ -708,6 +708,7 @@ dependencies = [
  "num_cpus",
  "once_cell",
  "pretty_assertions",
+ "rand",
  "regex",
  "schemars",
  "serde",
