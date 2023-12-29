@@ -405,7 +405,7 @@ where
     /// # Panics
     ///
     /// Panics if any reactor returns `None` on its [`Reactor::get_component_state()`] call.
-    pub(crate) async fn settle_on_component_state(
+    pub(crate) async fn _settle_on_component_state(
         &mut self,
         rng: &mut TestRng,
         name: &str,
