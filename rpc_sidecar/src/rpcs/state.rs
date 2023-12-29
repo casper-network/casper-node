@@ -1330,7 +1330,7 @@ mod tests {
         let resp = QueryBalance::do_handle_request(
             Arc::new(ClientMock {
                 block: block.clone(),
-                entity_hash: entity_hash,
+                entity_hash,
                 entity: entity.clone(),
                 balance,
             }),
