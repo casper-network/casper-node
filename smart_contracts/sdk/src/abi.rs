@@ -1,22 +1,22 @@
 use impl_trait_for_tuples::impl_for_tuples;
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub struct EnumVariant {
     pub name: String,
     pub discriminant: u64,
     pub decl: Declaration,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub struct StructField {
     pub name: String,
     pub decl: Declaration,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub enum Primitive {
     Char,
     U8,
@@ -34,11 +34,36 @@ pub enum Primitive {
     Bool,
 }
 
+impl FromStr for Primitive {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        use Primitive::*;
+        match s {
+            "Char" => Ok(Char),
+            "U8" => Ok(U8),
+            "I8" => Ok(I8),
+            "U16" => Ok(U16),
+            "I16" => Ok(I16),
+            "U32" => Ok(U32),
+            "I32" => Ok(I32),
+            "U64" => Ok(U64),
+            "I64" => Ok(I64),
+            "U128" => Ok(U128),
+            "I128" => Ok(I128),
+            "F32" => Ok(F32),
+            "F64" => Ok(F64),
+            "Bool" => Ok(Bool),
+            _ => Err("Unknown primitive type"),
+        }
+    }
+}
+
 pub trait Keyable {
     const PRIMITIVE: Primitive;
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub enum Definition {
     /// Primitive type.
     ///
@@ -86,8 +111,8 @@ impl Definition {
     }
 }
 
-#[derive(Default, Debug, Serialize, Deserialize)]
-pub struct Definitions(BTreeMap<String, Definition>);
+#[derive(Default, Debug, Serialize, Deserialize, Clone)]
+pub struct Definitions(BTreeMap<Declaration, Definition>);
 
 impl Definitions {
     pub fn populate_one<T: CasperABI>(&mut self) {
@@ -96,14 +121,35 @@ impl Definitions {
         let decl = T::declaration();
         let def = T::definition();
 
+        self.populate_custom(decl, def);
+    }
+
+    pub fn populate_custom(&mut self, decl: Declaration, def: Definition) {
         let previous = self.0.insert(decl.clone(), def.clone());
         if previous.is_some() && previous != Some(def.clone()) {
             panic!("Type {decl} has multiple definitions ({previous:?} != {def:?}).");
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &Definition)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&Declaration, &Definition)> {
         self.0.iter()
+    }
+
+    pub fn get(&self, decl: &Declaration) -> Option<&Definition> {
+        self.0.get(decl)
+    }
+
+    pub fn first(&self) -> Option<(&Declaration, &Definition)> {
+        self.0.iter().next()
+    }
+}
+
+impl IntoIterator for Definitions {
+    type Item = (Declaration, Definition);
+    type IntoIter = std::collections::btree_map::IntoIter<Declaration, Definition>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }
 

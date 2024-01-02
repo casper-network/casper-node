@@ -715,6 +715,8 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
                 Fields::Named(named) => {
                     let mut fields = Vec::new();
 
+                    let variant_name = format_ident!("{name}_{variant_name}");
+
                     for field in &named.named {
                         let field_name = &field.ident;
                         match &field.ty {
@@ -734,16 +736,24 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
                         }
                     }
 
+                    populate_definitions.push(quote! {
+                        definitions.populate_custom(
+                            stringify!(#variant_name).into(),
+                            casper_sdk::abi::Definition::Struct {
+                                items: vec![
+                                    #(#fields,)*
+                                ],
+                            });
+                    });
+
                     quote! {
-                        casper_sdk::abi::Definition::Struct {
-                            items: vec![
-                                #(#fields,)*
-                            ],
-                        }
+                        stringify!(#variant_name).into()
                     }
                 }
                 Fields::Unnamed(unnamed_fields) => {
                     let mut fields = Vec::new();
+
+                    let variant_name = format_ident!("{name}_{variant_name}");
 
                     for field in &unnamed_fields.unnamed {
                         match &field.ty {
@@ -755,7 +765,7 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
                                     });
 
                                     fields.push(quote! {
-                                        <#type_name as casper_sdk::abi::CasperABI>::definition()
+                                        <#type_name as casper_sdk::abi::CasperABI>::declaration()
                                     });
                                 }
                             }
@@ -763,12 +773,18 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
                         }
                     }
 
+                    populate_definitions.push(quote! {
+                        definitions.populate_custom(
+                            stringify!(#variant_name).into(),
+                            casper_sdk::abi::Definition::Tuple {
+                                items: vec![
+                                    #(#fields,)*
+                                ],
+                            });
+                    });
+
                     quote! {
-                        casper_sdk::abi::Definition::Tuple {
-                            items: vec![
-                                #(#fields,)*
-                            ],
-                        }
+                        stringify!(#variant_name).into()
                     }
                 }
             };

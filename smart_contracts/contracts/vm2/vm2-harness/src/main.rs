@@ -35,6 +35,7 @@ pub enum CustomError {
     Foo,
     Bar = 42,
     WithBody(String),
+    Named { name: String, age: u64 },
 }
 
 impl Default for Greeter {
