@@ -2,13 +2,12 @@ use casper_sdk::{
     abi::{Declaration, Definition, Primitive},
     schema::Schema,
 };
-use codegen::{Field, Scope, Type, Variant};
+use codegen::{Field, Scope, Type};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, VecDeque},
-    convert::Infallible,
-    iter, primitive,
+    iter,
     str::FromStr,
 };
 
@@ -393,11 +392,26 @@ impl Codegen {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
 
     #[test]
-    fn it_works() {
+    fn it_works() -> Result<(), std::io::Error> {
         let mut schema = Codegen::from_file("/tmp/cep18_schema.json").unwrap();
-        eprintln!("{}", schema.gen());
+        let mut code = schema.gen();
+        code.insert_str(
+            0,
+            "#![allow(dead_code, unused_variables, non_camel_case_types)]",
+        );
+
+        code += r#"fn main() {}"#;
+
+        fs::write("/tmp/test.rs", &code)?;
+
+        let t = trybuild::TestCases::new();
+        t.pass("/tmp/test.rs");
+        // eprintln!("")
+        Ok(())
     }
 }
