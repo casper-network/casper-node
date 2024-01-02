@@ -24,7 +24,10 @@ use crate::{
     types::{Chainspec, NodeId},
     utils::{
         opt_display::OptDisplay,
-        specimen::{Cache, LargestSpecimen, SizeEstimator},
+        specimen::{
+            largest_get_sync_request, largest_get_sync_response, largest_get_unsync_request,
+            largest_get_unsync_response, Cache, LargestSpecimen, SizeEstimator,
+        },
     },
 };
 
@@ -512,15 +515,50 @@ impl<'a> NetworkMessageEstimator<'a> {
 }
 
 /// Creates a serialized specimen of the largest possible networking message.
-pub(crate) fn generate_largest_message(chainspec: &Chainspec) -> Message<protocol::Message> {
+pub(crate) fn generate_largest_message(
+    chainspec: &Chainspec,
+    channel: Channel,
+) -> Message<protocol::Message> {
+    use protocol::Message::*;
+
     let estimator = &NetworkMessageEstimator::new(chainspec);
     let cache = &mut Cache::default();
 
-    Message::largest_specimen(estimator, cache)
+    Message::Payload(match channel {
+        // Dummy value because the channel isn't used at the moment:
+        Channel::Network => GetResponse {
+            tag: crate::components::fetcher::Tag::Deploy,
+            serialized_item: Arc::new([]),
+        },
+        Channel::SyncDataRequests => largest_get_sync_request(estimator, cache),
+        Channel::SyncDataResponses => largest_get_sync_response(estimator, cache),
+        Channel::DataRequests => largest_get_unsync_request(estimator, cache),
+        Channel::DataResponses => largest_get_unsync_response(estimator, cache),
+        Channel::Consensus => [
+            Consensus(LargestSpecimen::largest_specimen(estimator, cache)),
+            ConsensusRequest(LargestSpecimen::largest_specimen(estimator, cache)),
+            FinalitySignature(LargestSpecimen::largest_specimen(estimator, cache)),
+        ]
+        .into_iter()
+        .max_by_key(|msg| estimator.estimate(msg))
+        .unwrap(),
+        Channel::BulkGossip => [
+            DeployGossiper(LargestSpecimen::largest_specimen(estimator, cache)),
+            AddressGossiper(LargestSpecimen::largest_specimen(estimator, cache)),
+            BlockGossiper(LargestSpecimen::largest_specimen(estimator, cache)),
+            FinalitySignatureGossiper(LargestSpecimen::largest_specimen(estimator, cache)),
+        ]
+        .into_iter()
+        .max_by_key(|msg| estimator.estimate(msg))
+        .unwrap(),
+    })
 }
 
-pub(crate) fn generate_largest_serialized_message(chainspec: &Chainspec) -> Vec<u8> {
-    serialize_network_message(&generate_largest_message(chainspec))
+pub(crate) fn generate_largest_serialized_message(
+    chainspec: &Chainspec,
+    channel: Channel,
+) -> Vec<u8> {
+    serialize_network_message(&generate_largest_message(chainspec, channel))
         .expect("did not expect serialization to fail") // it would fail in `SizeEstimator` before failing here
         .into()
 }
@@ -879,14 +917,41 @@ mod tests {
     }
 
     #[test]
-    fn assert_the_largest_specimen_type_and_size() {
+    fn assert_the_largest_specimen_type_and_size_for_channel_network() {
         let (chainspec, _) = crate::utils::Loadable::from_resources("production");
-        let specimen = generate_largest_message(&chainspec);
+        let _specimen = generate_largest_message(&chainspec, Channel::Network);
+        //Fill the test when the channel is used.
+    }
+
+    #[test]
+    fn assert_the_largest_specimen_type_and_size_for_channel_sync_data_requests() {
+        let (chainspec, _) = crate::utils::Loadable::from_resources("production");
+        let specimen = generate_largest_message(&chainspec, Channel::SyncDataRequests);
+
+        assert_matches!(
+            specimen,
+            Message::Payload(protocol::Message::GetRequest { .. }),
+            "the type of the largest possible network SyncDataRequests based on the production chainspec has changed"
+        );
+
+        let serialized = serialize_network_message(&specimen).expect("serialization failed");
+
+        assert_eq!(
+            serialized.len(),
+            52,
+            "the size of the largest possible SyncDataRequests message based on the production chainspec has changed"
+        );
+    }
+
+    #[test]
+    fn assert_the_largest_specimen_type_and_size_for_channel_sync_data_responses() {
+        let (chainspec, _) = crate::utils::Loadable::from_resources("production");
+        let specimen = generate_largest_message(&chainspec, Channel::SyncDataResponses);
 
         assert_matches!(
             specimen,
             Message::Payload(protocol::Message::GetResponse { .. }),
-            "the type of the largest possible network message based on the production chainspec has changed"
+            "the type of the largest possible SyncDataResponses message based on the production chainspec has changed"
         );
 
         let serialized = serialize_network_message(&specimen).expect("serialization failed");
@@ -894,7 +959,87 @@ mod tests {
         assert_eq!(
             serialized.len(),
             8_388_736,
-            "the size of the largest possible network message based on the production chainspec has changed"
+            "the size of the largest possible SyncDataResponses message based on the production chainspec has changed"
+        );
+    }
+
+    #[test]
+    fn assert_the_largest_specimen_type_and_size_for_channel_data_request() {
+        let (chainspec, _) = crate::utils::Loadable::from_resources("production");
+        let specimen = generate_largest_message(&chainspec, Channel::DataRequests);
+
+        assert_matches!(
+            specimen,
+            Message::Payload(protocol::Message::GetRequest { .. }),
+            "the type of the largest possible DataRequests message based on the production chainspec has changed"
+        );
+
+        let serialized = serialize_network_message(&specimen).expect("serialization failed");
+
+        assert_eq!(
+            serialized.len(),
+            97,
+            "the size of the largest possible DataRequests message based on the production chainspec has changed"
+        );
+    }
+
+    #[test]
+    fn assert_the_largest_specimen_type_and_size_for_channel_data_responses() {
+        let (chainspec, _) = crate::utils::Loadable::from_resources("production");
+        let specimen = generate_largest_message(&chainspec, Channel::DataResponses);
+
+        assert_matches!(
+            specimen,
+            Message::Payload(protocol::Message::GetResponse { .. }),
+            "the type of the largest possible DataResponses message based on the production chainspec has changed"
+        );
+
+        let serialized = serialize_network_message(&specimen).expect("serialization failed");
+
+        assert_eq!(
+            serialized.len(),
+            1_048_977,
+            "the size of the largest possible DataResponses message based on the production chainspec has changed"
+        );
+    }
+
+    #[test]
+    fn assert_the_largest_specimen_type_and_size_for_channel_consensus() {
+        let (chainspec, _) = crate::utils::Loadable::from_resources("production");
+        let specimen = generate_largest_message(&chainspec, Channel::Consensus);
+
+        assert_matches!(
+            specimen,
+            Message::Payload(protocol::Message::Consensus { .. }),
+            "the type of the largest possible Consensus message based on the production chainspec has changed"
+        );
+
+        let serialized = serialize_network_message(&specimen).expect("serialization failed");
+
+        assert_eq!(
+            serialized.len(),
+            907_737,
+            "the size of the largest possible Consensus message based on the production chainspec has changed"
+        );
+    }
+
+    #[test]
+    fn assert_the_largest_specimen_type_and_size_for_channel_bulk_gossip() {
+        let (chainspec, _) = crate::utils::Loadable::from_resources("production");
+        let specimen = generate_largest_message(&chainspec, Channel::BulkGossip);
+
+        assert_matches!(
+            specimen,
+            Message::Payload(protocol::Message::DeployGossiper { .. }),
+            "the type of the largest possible BulkGossip message based on the production chainspec has changed"
+        );
+
+        let serialized = serialize_network_message(&specimen).expect("serialization failed");
+
+        assert_eq!(
+            serialized.len(),
+            1_048_883,
+            "the size of the largest possible BulkGossip message based on the production chainspec has changed"
         );
     }
 }

@@ -214,10 +214,11 @@ impl Debug for Message {
         }
     }
 }
+
 mod specimen_support {
     use crate::utils::specimen::{
-        largest_get_request, largest_get_response, largest_variant, Cache, LargestSpecimen,
-        SizeEstimator,
+        largest_get_sync_request, largest_get_sync_response, largest_get_unsync_request,
+        largest_get_unsync_response, largest_variant, Cache, LargestSpecimen, SizeEstimator,
     };
 
     use super::{Message, MessageDiscriminants};
@@ -247,8 +248,20 @@ mod specimen_support {
                     MessageDiscriminants::AddressGossiper => Message::AddressGossiper(
                         LargestSpecimen::largest_specimen(estimator, cache),
                     ),
-                    MessageDiscriminants::GetRequest => largest_get_request(estimator, cache),
-                    MessageDiscriminants::GetResponse => largest_get_response(estimator, cache),
+                    MessageDiscriminants::GetRequest => [
+                        largest_get_sync_request(estimator, cache),
+                        largest_get_unsync_request(estimator, cache),
+                    ]
+                    .into_iter()
+                    .max_by_key(|msg| estimator.estimate(msg))
+                    .unwrap(),
+                    MessageDiscriminants::GetResponse => [
+                        largest_get_sync_response(estimator, cache),
+                        largest_get_unsync_response(estimator, cache),
+                    ]
+                    .into_iter()
+                    .max_by_key(|msg| estimator.estimate(msg))
+                    .unwrap(),
                     MessageDiscriminants::FinalitySignature => Message::FinalitySignature(
                         LargestSpecimen::largest_specimen(estimator, cache),
                     ),

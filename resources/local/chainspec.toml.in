@@ -23,13 +23,13 @@ name = 'casper-example'
 maximum_handshake_message_size = 1_048_576
 
 [network.networking_config]
-network = { in_flight_limit = 25, maximum_request_payload_size = 25_165_824, maximum_response_payload_size = 0 }
-sync_data_request = { in_flight_limit = 25, maximum_request_payload_size = 25_165_824, maximum_response_payload_size = 0 }
-sync_data_responses = { in_flight_limit = 25, maximum_request_payload_size = 25_165_824, maximum_response_payload_size = 0 }
-data_requests = { in_flight_limit = 25, maximum_request_payload_size = 25_165_824, maximum_response_payload_size = 0 }
-data_responses = { in_flight_limit = 25, maximum_request_payload_size = 25_165_824, maximum_response_payload_size = 0 }
-consensus = { in_flight_limit = 25, maximum_request_payload_size = 25_165_824, maximum_response_payload_size = 0 }
-bulk_gossip = { in_flight_limit = 25, maximum_request_payload_size = 25_165_824, maximum_response_payload_size = 0 }
+network = { in_flight_limit = 25, maximum_request_payload_size = 512, maximum_response_payload_size = 0 }
+sync_data_request = { in_flight_limit = 25, maximum_request_payload_size = 308, maximum_response_payload_size = 0 }
+sync_data_responses = { in_flight_limit = 25, maximum_request_payload_size = 8_388_992, maximum_response_payload_size = 0 }
+data_requests = { in_flight_limit = 25, maximum_request_payload_size = 353, maximum_response_payload_size = 0 }
+data_responses = { in_flight_limit = 25, maximum_request_payload_size = 1_049_233, maximum_response_payload_size = 0 }
+consensus = { in_flight_limit = 25, maximum_request_payload_size = 907_993, maximum_response_payload_size = 0 }
+bulk_gossip = { in_flight_limit = 25, maximum_request_payload_size = 1_049_139, maximum_response_payload_size = 0 }
 
 [core]
 # Era duration.

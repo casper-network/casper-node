@@ -94,22 +94,29 @@ impl Chainspec {
     #[tracing::instrument(ret, level = "info", skip(self), fields(hash=%self.hash()))]
     pub fn is_valid(&self) -> bool {
         info!("begin chainspec validation");
+
         // Ensure the size of the largest message generated under these chainspec settings does not
         // exceed the configured message size limit.
-        let _serialized = generate_largest_serialized_message(self);
-        let _ = CHAINSPEC_NETWORK_MESSAGE_SAFETY_MARGIN;
+        for (
+            channel,
+            JulietConfig {
+                maximum_request_payload_size,
+                ..
+            },
+        ) in self.network_config.networking_config
+        {
+            let serialized = generate_largest_serialized_message(self, channel);
 
-        //TODO: in a next ticket, generate a maximum message size for each channel:
-        //if serialized.len() + CHAINSPEC_NETWORK_MESSAGE_SAFETY_MARGIN
-        //    > self.network_config.maximum_net_message_size as usize
-        //{
-        //    warn!(calculated_length=serialized.len(),
-        //        configured_maximum=self.network_config.maximum_net_message_size,
-        //        "config value [network][maximum_net_message_size] is too small to"
-        //        "accomodate the maximum message size",
-        //    );
-        //    return false;
-        //}
+            if serialized.len() + CHAINSPEC_NETWORK_MESSAGE_SAFETY_MARGIN
+                > maximum_request_payload_size as usize
+            {
+                warn!(calculated_length=serialized.len(),
+                    configured_maximum=maximum_request_payload_size,
+                    "config value [network][maximum_net_message_size] is too small to accomodate the maximum message size",
+                );
+                return false;
+            }
+        }
 
         if self.core_config.unbonding_delay <= self.core_config.auction_delay {
             warn!(

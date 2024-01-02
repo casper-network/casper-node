@@ -25,10 +25,7 @@ use serde::Serialize;
 use strum::{EnumIter, IntoEnumIterator};
 
 use crate::{
-    components::{
-        consensus::{max_rounds_per_era, utils::ValidatorMap, EraReport},
-        fetcher::Tag,
-    },
+    components::consensus::{max_rounds_per_era, utils::ValidatorMap, EraReport},
     protocol::Message,
     types::{
         ApprovalsHash, ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash,
@@ -740,35 +737,69 @@ impl<T: LargestSpecimen> LargestSpecimen for ValidatorMap<T> {
     }
 }
 
-/// Returns the largest `Message::GetRequest`.
-pub(crate) fn largest_get_request<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Message {
-    largest_variant::<Message, Tag, _, _>(estimator, |variant| {
+#[derive(EnumIter)]
+enum SyncDataTag {
+    LegacyDeploy,
+    Block,
+    BlockHeader,
+    TrieOrChunk,
+    SyncLeap,
+    ApprovalsHashes,
+    BlockExecutionResults,
+}
+
+#[derive(EnumIter)]
+enum UnsyncDataTag {
+    Deploy,
+    FinalitySignature,
+}
+
+/// Returns the largest `Message::GetRequest` using a sync channel.
+pub(crate) fn largest_get_sync_request<E: SizeEstimator>(
+    estimator: &E,
+    cache: &mut Cache,
+) -> Message {
+    largest_variant(estimator, |variant| {
         match variant {
-            Tag::Deploy => Message::new_get_request::<Deploy>(&LargestSpecimen::largest_specimen(
-                estimator, cache,
-            )),
-            Tag::LegacyDeploy => Message::new_get_request::<LegacyDeploy>(
+            SyncDataTag::LegacyDeploy => Message::new_get_request::<LegacyDeploy>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
-            Tag::Block => Message::new_get_request::<Block>(&LargestSpecimen::largest_specimen(
-                estimator, cache,
-            )),
-            Tag::BlockHeader => Message::new_get_request::<BlockHeader>(
+            SyncDataTag::Block => Message::new_get_request::<Block>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
-            Tag::TrieOrChunk => Message::new_get_request::<TrieOrChunk>(
+            SyncDataTag::BlockHeader => Message::new_get_request::<BlockHeader>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
-            Tag::FinalitySignature => Message::new_get_request::<FinalitySignature>(
+            SyncDataTag::TrieOrChunk => Message::new_get_request::<TrieOrChunk>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
-            Tag::SyncLeap => Message::new_get_request::<SyncLeap>(
+            SyncDataTag::SyncLeap => Message::new_get_request::<SyncLeap>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
-            Tag::ApprovalsHashes => Message::new_get_request::<ApprovalsHashes>(
+            SyncDataTag::ApprovalsHashes => Message::new_get_request::<ApprovalsHashes>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
-            Tag::BlockExecutionResults => Message::new_get_request::<BlockExecutionResultsOrChunk>(
+            SyncDataTag::BlockExecutionResults => {
+                Message::new_get_request::<BlockExecutionResultsOrChunk>(
+                    &LargestSpecimen::largest_specimen(estimator, cache),
+                )
+            }
+        }
+        .expect("did not expect new_get_request from largest deploy to fail")
+    })
+}
+
+/// Returns the largest `Message::GetRequest` using a sync channel.
+pub(crate) fn largest_get_unsync_request<E: SizeEstimator>(
+    estimator: &E,
+    cache: &mut Cache,
+) -> Message {
+    largest_variant(estimator, |variant| {
+        match variant {
+            UnsyncDataTag::Deploy => Message::new_get_request::<Deploy>(
+                &LargestSpecimen::largest_specimen(estimator, cache),
+            ),
+            UnsyncDataTag::FinalitySignature => Message::new_get_request::<FinalitySignature>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
         }
@@ -777,38 +808,53 @@ pub(crate) fn largest_get_request<E: SizeEstimator>(estimator: &E, cache: &mut C
 }
 
 /// Returns the largest `Message::GetResponse`.
-pub(crate) fn largest_get_response<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Message {
-    largest_variant::<Message, Tag, _, _>(estimator, |variant| {
+pub(crate) fn largest_get_sync_response<E: SizeEstimator>(
+    estimator: &E,
+    cache: &mut Cache,
+) -> Message {
+    largest_variant(estimator, |variant| {
         match variant {
-            Tag::Deploy => Message::new_get_response::<Deploy>(&LargestSpecimen::largest_specimen(
-                estimator, cache,
-            )),
-            Tag::LegacyDeploy => Message::new_get_response::<LegacyDeploy>(
+            SyncDataTag::LegacyDeploy => Message::new_get_response::<LegacyDeploy>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
-            Tag::Block => Message::new_get_response::<Block>(&LargestSpecimen::largest_specimen(
-                estimator, cache,
-            )),
-            Tag::BlockHeader => Message::new_get_response::<BlockHeader>(
+            SyncDataTag::Block => Message::new_get_response::<Block>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
-            Tag::TrieOrChunk => Message::new_get_response::<TrieOrChunk>(
+            SyncDataTag::BlockHeader => Message::new_get_response::<BlockHeader>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
-            Tag::FinalitySignature => Message::new_get_response::<FinalitySignature>(
+            SyncDataTag::TrieOrChunk => Message::new_get_response::<TrieOrChunk>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
-            Tag::SyncLeap => Message::new_get_response::<SyncLeap>(
+            SyncDataTag::SyncLeap => Message::new_get_response::<SyncLeap>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
-            Tag::ApprovalsHashes => Message::new_get_response::<ApprovalsHashes>(
+            SyncDataTag::ApprovalsHashes => Message::new_get_response::<ApprovalsHashes>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
-            Tag::BlockExecutionResults => {
+            SyncDataTag::BlockExecutionResults => {
                 Message::new_get_response::<BlockExecutionResultsOrChunk>(
                     &LargestSpecimen::largest_specimen(estimator, cache),
                 )
             }
+        }
+        .expect("did not expect new_get_response from largest deploy to fail")
+    })
+}
+
+/// Returns the largest `Message::GetResponse`.
+pub(crate) fn largest_get_unsync_response<E: SizeEstimator>(
+    estimator: &E,
+    cache: &mut Cache,
+) -> Message {
+    largest_variant(estimator, |variant| {
+        match variant {
+            UnsyncDataTag::Deploy => Message::new_get_response::<Deploy>(
+                &LargestSpecimen::largest_specimen(estimator, cache),
+            ),
+            UnsyncDataTag::FinalitySignature => Message::new_get_response::<FinalitySignature>(
+                &LargestSpecimen::largest_specimen(estimator, cache),
+            ),
         }
         .expect("did not expect new_get_response from largest deploy to fail")
     })
