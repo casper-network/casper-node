@@ -10,3 +10,4 @@ casper-sdk = {path = "../sdk" }
 codegen = "0.2.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+indexmap = "2.1.0"
