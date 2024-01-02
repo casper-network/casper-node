@@ -31,6 +31,11 @@ impl Codegen {
         Ok(Self::new(schema))
     }
 
+    pub fn from_str(s: &str) -> Result<Self, serde_json::Error> {
+        let schema: Schema = serde_json::from_str(s)?;
+        Ok(Self::new(schema))
+    }
+
     pub fn gen(&mut self) -> String {
         let mut scope = Scope::new();
 
@@ -387,31 +392,5 @@ impl Codegen {
         decl: &Declaration,
         def: &Definition,
     ) {
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::fs;
-
-    use super::*;
-
-    #[test]
-    fn it_works() -> Result<(), std::io::Error> {
-        let mut schema = Codegen::from_file("/tmp/cep18_schema.json").unwrap();
-        let mut code = schema.gen();
-        code.insert_str(
-            0,
-            "#![allow(dead_code, unused_variables, non_camel_case_types)]",
-        );
-
-        code += r#"fn main() {}"#;
-
-        fs::write("/tmp/test.rs", &code)?;
-
-        let t = trybuild::TestCases::new();
-        t.pass("/tmp/test.rs");
-        // eprintln!("")
-        Ok(())
     }
 }

@@ -796,6 +796,7 @@ dependencies = [
  "indexmap 2.1.0",
  "serde",
  "serde_json",
+ "tempfile",
  "trybuild",
 ]
 
