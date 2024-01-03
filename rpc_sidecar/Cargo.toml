@@ -23,7 +23,7 @@ http = "0.2.1"
 hyper = "0.14.26"
 num_cpus = "1"
 once_cell = "1"
-schemars = { version = "0.8.12", features = ["preserve_order", "impl_json_schema"] }
+schemars = { version = "0.8.16", features = ["preserve_order", "impl_json_schema"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 structopt = "0.3.14"
