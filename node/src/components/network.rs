@@ -949,7 +949,7 @@ where
                 if self.outgoing_manager.record_pong(peer_id, pong) {
                     // Note: We no longer block peers here with a `PongLimitExceeded` for failed
                     //       pongs, merely warn.
-                    warn!(
+                    info!(
                         "peer {} exceeded failed pong limit, or allowed number of pongs",
                         peer_id // Redundant information due to span, but better safe than sorry.
                     );
