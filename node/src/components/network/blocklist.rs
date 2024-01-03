@@ -38,6 +38,7 @@ pub(crate) enum BlocklistJustification {
         era: EraId,
     },
     /// Too many unasked or expired pongs were sent by the peer.
+    #[allow(dead_code)] // Disabled as per 1.5.5 for stability reasons.
     PongLimitExceeded,
     /// Peer misbehaved during consensus and is blocked for it.
     BadConsensusBehavior,
