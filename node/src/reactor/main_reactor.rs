@@ -190,6 +190,7 @@ pub(crate) struct MainReactor {
     upgrade_timeout: TimeDiff,
     sync_to_genesis: bool,
     signature_gossip_tracker: SignatureGossipTracker,
+    prevent_validator_shutdown: bool,
 }
 
 impl reactor::Reactor for MainReactor {
@@ -215,7 +216,7 @@ impl reactor::Reactor for MainReactor {
             ),
 
             MainEvent::FatalAnnouncement(fatal_ann) => {
-                if self.consensus.is_active_validator() {
+                if self.consensus.is_active_validator() && self.prevent_validator_shutdown {
                     warn!(%fatal_ann, "consensus is active, not shutting down");
                     Effects::new()
                 } else {
@@ -1000,6 +1001,7 @@ impl reactor::Reactor for MainReactor {
         let event_queue_metrics = EventQueueMetrics::new(registry.clone(), event_queue)?;
 
         let protocol_version = chainspec.protocol_config.version;
+        let prevent_validator_shutdown = config.value().node.prevent_validator_shutdown;
 
         let trusted_hash = config.value().node.trusted_hash;
         let (root_dir, config) = config.into_parts();
@@ -1194,6 +1196,7 @@ impl reactor::Reactor for MainReactor {
             shutdown_for_upgrade_timeout: config.node.shutdown_for_upgrade_timeout,
             switched_to_shutdown_for_upgrade: Timestamp::from(0),
             upgrade_timeout: config.node.upgrade_timeout,
+            prevent_validator_shutdown,
         };
         info!("MainReactor: instantiated");
         let effects = effect_builder
