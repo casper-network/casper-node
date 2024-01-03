@@ -5,7 +5,7 @@ mod metrics;
 mod tests;
 
 use std::{
-    collections::{btree_map, BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{btree_map, hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet},
     convert::TryInto,
     iter::FromIterator,
     mem,
@@ -18,6 +18,7 @@ use prometheus::Registry;
 use smallvec::smallvec;
 use tracing::{debug, error, info, warn};
 
+use casper_hashing::Digest;
 use casper_types::Timestamp;
 
 use crate::{
@@ -332,7 +333,48 @@ impl DeployBuffer {
         let mut holds = HashSet::new();
         let mut have_hit_transfer_limit = false;
         let mut have_hit_deploy_limit = false;
-        for (with_approvals, footprint) in self.proposable() {
+
+        let proposable = self.proposable();
+
+        let mut buckets: HashMap<Digest, Vec<(DeployHashWithApprovals, DeployFootprint)>> =
+            HashMap::new();
+
+        for (with_approvals, footprint) in proposable {
+            let body_hash = *footprint.header.body_hash();
+            buckets
+                .entry(body_hash)
+                .and_modify(|vec| vec.push((with_approvals.clone(), footprint.clone())))
+                .or_insert(vec![(with_approvals, footprint)]);
+        }
+
+        let indexer = buckets.keys().cloned().collect_vec();
+        let mut idx = 0;
+
+        loop {
+            if buckets.is_empty() {
+                break;
+            }
+            let body_hash = match indexer.get(idx) {
+                None => {
+                    idx = 0; // reset outer loop
+                    continue;
+                }
+                Some(body_hash) => {
+                    idx += 1;
+                    body_hash
+                }
+            };
+            let (with_approvals, footprint) = match buckets.entry(*body_hash) {
+                Entry::Vacant(_) => continue,
+                Entry::Occupied(entry) => {
+                    let deploys = entry.into_mut();
+                    if deploys.is_empty() {
+                        buckets.remove(body_hash);
+                        continue;
+                    }
+                    deploys.remove(0)
+                }
+            };
             if footprint.is_transfer && have_hit_transfer_limit {
                 continue;
             }
