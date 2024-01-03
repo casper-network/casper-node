@@ -39,6 +39,10 @@ impl Codegen {
     pub fn gen(&mut self) -> String {
         let mut scope = Scope::new();
 
+        scope.import("borsh", "self");
+        scope.import("borsh", "BorshSerialize");
+        scope.import("borsh", "BorshDeserialize");
+
         let head = self
             .schema
             .definitions
@@ -265,7 +269,9 @@ impl Codegen {
 
                         let r#struct = scope
                             .new_struct(&struct_name)
-                            .doc(&format!("Declared as {decl}"));
+                            .doc(&format!("Declared as {decl}"))
+                            .derive("BorshSerialize")
+                            .derive("BorshDeserialize");
 
                         if items.is_empty() {
                             r#struct.tuple_field(Type::new("()"));
@@ -285,14 +291,13 @@ impl Codegen {
                     Definition::Enum { items } => {
                         println!("Processing enum type {decl} {items:?}");
 
-                        // let path = decl.split("::");
-                        // let enum_name = path.last().expect("Name");
                         let enum_name = format!("Enum{}", counter.next().unwrap());
 
-                        // let type_name = format!("{}", enum_name);
                         let r#enum = scope
                             .new_enum(&enum_name)
-                            .doc(&format!("Declared as {decl}"));
+                            .doc(&format!("Declared as {decl}"))
+                            .derive("BorshSerialize")
+                            .derive("BorshDeserialize");
 
                         for item in &items {
                             let variant = r#enum.new_variant(&item.name);
@@ -302,20 +307,19 @@ impl Codegen {
                             });
 
                             variant.tuple(def);
-                            // Where discriminant?
                         }
 
                         self.type_mapping
                             .insert(decl.to_string(), enum_name.to_owned());
-
-                        // todo!()
-                        // .push_variant()
-                        // .push_variant("Baz", "u8");
                     }
                     Definition::Struct { items } => {
                         // println!("Processing struct type {items:?}");
                         let type_name = format!("Struct{}", counter.next().unwrap());
-                        let r#struct = scope.new_struct(&type_name);
+                        let r#struct = scope
+                            .new_struct(&type_name)
+                            .derive("BorshSerialize")
+                            .derive("BorshDeserialize");
+
                         for item in items {
                             let mapped_type =
                                 self.type_mapping.get(&item.decl).unwrap_or_else(|| {
@@ -333,54 +337,80 @@ impl Codegen {
             }
         }
 
-        // for (def_index, (decl, def)) in defs.into_iter().enumerate()     {
-        //     match def {
-        //         Definition::Primitive(primitive) => {
-        //             let (from, to) = match primitive {
-        //                 Primitive::Char => ("Char", "char"),
-        //                 Primitive::U8 => ("U8", "u8"),
-        //                 Primitive::I8 => ("I8", "i8"),
-        //                 Primitive::U16 => ("U16", "u16"),
-        //                 Primitive::I16 => ("I16", "i16"),
-        //                 Primitive::U32 => ("U32", "u32"),
-        //                 Primitive::I32 => ("I32", "i32"),
-        //                 Primitive::U64 => ("U64", "u64"),
-        //                 Primitive::I64 => ("I64", "i64"),
-        //                 Primitive::U128 => ("U128", "u128"),
-        //                 Primitive::I128 => ("I128", "i128"),
-        //                 Primitive::Bool => ("Bool", "bool"),
-        //                 Primitive::F32 => ("F32", "f32"),
-        //                 Primitive::F64 => ("F64", "f64"),
-        //             };
+        let struct_name = format!("{}Client", self.schema.name);
+        let client = scope.new_struct(&struct_name);
 
-        //             scope.new_type_alias(from, to);
-        //             self.type_mapping.insert(decl.to_owned(), from.to_string());
-        //         },
-        //         Definition::Mapping { key, value } => {
-        //             todo!()
-        //         }
-        //         Definition::Sequence { decl: seq_decl } => {
-        //             if decl == "String" && seq_decl == "Char" {
-        //                 // Do nothing as Rust has a native string type.
-        //             } else {
-        //                 // type_mapping.contains_key(key)
-        //                 todo!()
-        //             }
-        //         },
-        //         Definition::FixedSequence { length, decl } => {
-        //             // self.type_mapping.get(decl).unwrap_or_else(|| panic!("Missing type mapping
-        // for {}", decl));             todo!()
-        //         },
-        //         Definition::Tuple { items } => {
-        //             for item in items {
+        client.push_field(Field::new("address", Type::new("[u8; 32]")));
+        // client.push_field(Field::new("last_result", Type::new("Option<ResultCode>")));
 
-        //                 // todo!("handle {mapped_type_name}")
-        //             }
-        //         }
-        //         Definition::Enum { items } => todo!(),
-        //         Definition::Struct { items } => todo!(),
-        //     }
-        // }
+        let client_impl = scope.new_impl(&struct_name);
+
+        for entry_point in &self.schema.entry_points {
+            let func = client_impl.new_fn(&entry_point.name);
+            func.vis("pub");
+
+            let result_type = self
+                .type_mapping
+                .get(&entry_point.result)
+                .unwrap_or_else(|| panic!("Missing type mapping for {}", entry_point.result));
+
+            func.ret(Type::new(format!(
+                "Result<casper_sdk::host::CallResult<{result_type}>, casper_sdk::types::CallError>"
+            )));
+
+            func.arg_self();
+
+            for arg in &entry_point.arguments {
+                let mapped_type = self
+                    .type_mapping
+                    .get(&arg.decl)
+                    .unwrap_or_else(|| panic!("Missing type mapping for {}", arg.decl));
+
+                let arg_ty = Type::new(mapped_type);
+
+                func.arg(&arg.name, arg_ty);
+
+                // let call_4: &str = "emit_revert_with_data";
+                // let (maybe_data_4, maybe_result_4) =
+                //     host::casper_call(&contract_address, 0, call_4, &[]);
+                // log!("{call_4:?} result={maybe_data_4:?}");
+                // assert_eq!(maybe_result_4, ResultCode::CalleeReverted);
+                // assert_eq!(
+                //     borsh::from_slice::<Result<(), CustomError>>(
+                //         &maybe_data_4.as_ref().expect("return value")
+                //     )
+                //     .unwrap(),
+                //     Err(CustomError::Bar),
+                // );
+            }
+
+            // func.line(format!(r#"const NAME: &str = "{name}";"#, name=&entry_point.name));
+            func.line("let value = 0; // TODO: Transferring values");
+
+            if entry_point.arguments.is_empty() {
+                func.line(format!(r#"let input_args = ();"#));
+            } else if entry_point.arguments.len() == 1 {
+                func.line(format!(
+                    r#"let input_args = ({arg0},);"#,
+                    arg0 = entry_point.arguments[0].name
+                ));
+            } else {
+                let input_args = entry_point
+                    .arguments
+                    .iter()
+                    .map(|arg| arg.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                func.line(format!(r#"let input_args = ({input_args});"#));
+            }
+
+            func.line(r#"let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");"#);
+
+            func.line(format!(
+                r#"casper_sdk::host::call(&self.address, value, "{name}", &input_data)"#,
+                name = &entry_point.name
+            ));
+        }
 
         scope.to_string()
     }

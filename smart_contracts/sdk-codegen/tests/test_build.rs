@@ -1,4 +1,8 @@
-use std::{fs, io::Write};
+use std::{
+    fs,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 use casper_sdk_codegen::Codegen;
 
@@ -20,6 +24,12 @@ fn it_works() -> Result<(), std::io::Error> {
         .suffix(".rs")
         .tempfile()?;
     tmp.write_all(&code.as_bytes())?;
+
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("cep18_schema.rs");
+    fs::write(&path, &code.as_bytes())?;
     tmp.flush()?;
     let t = trybuild::TestCases::new();
     t.pass(tmp.path());
