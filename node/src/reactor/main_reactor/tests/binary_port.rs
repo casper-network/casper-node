@@ -4,10 +4,12 @@ use casper_types::{
     binary_port::{
         binary_request::BinaryRequest, get::GetRequest,
         non_persistent_data_request::NonPersistedDataRequest,
+        type_wrappers::HighestBlockSequenceCheckResult,
     },
     bytesrepr::{FromBytes, ToBytes},
     testing::TestRng,
-    BinaryResponse, BinaryResponseAndRequest, BlockHash, BlockHashAndHeight, PayloadType,
+    BinaryResponse, BinaryResponseAndRequest, BlockHash, BlockHashAndHeight, BlockIdentifier,
+    PayloadType,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -28,7 +30,7 @@ use crate::{
 
 use super::{InitialStakes, TestFixture};
 
-const MINIMUM_BLOCK_HEIGHT: u64 = 2;
+const GUARANTEED_BLOCK_HEIGHT: u64 = 2;
 
 fn network_produced_blocks(
     nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<FilterReactor<MainReactor>>>>,
@@ -62,7 +64,7 @@ async fn setup() -> (
 
     net.settle_on(
         &mut rng,
-        |nodes| network_produced_blocks(nodes, MINIMUM_BLOCK_HEIGHT),
+        |nodes| network_produced_blocks(nodes, GUARANTEED_BLOCK_HEIGHT),
         Duration::from_secs(59),
     )
     .await;
@@ -136,10 +138,9 @@ where
 }
 
 #[tokio::test]
-async fn binary_port_component_success() {
+async fn binary_port_component() {
     testing::init_logging();
 
-    // CompletedBlocksContain,
     // TransactionHash2BlockHashAndHeight
     // Peers,
     // Uptime,
@@ -158,7 +159,7 @@ async fn binary_port_component_success() {
         TestCase {
             request: BinaryRequest::Get(GetRequest::NonPersistedData(
                 NonPersistedDataRequest::BlockHeight2Hash {
-                    height: MINIMUM_BLOCK_HEIGHT - 1,
+                    height: GUARANTEED_BLOCK_HEIGHT - 1,
                 },
             )),
             asserter: Box::new(|response| {
@@ -173,7 +174,35 @@ async fn binary_port_component_success() {
                 assert_response::<BlockHashAndHeight, _>(
                     response,
                     PayloadType::BlockHashAndHeight,
-                    |data| data.block_height() >= MINIMUM_BLOCK_HEIGHT,
+                    |data| data.block_height() >= GUARANTEED_BLOCK_HEIGHT,
+                )
+            }),
+        },
+        TestCase {
+            request: BinaryRequest::Get(GetRequest::NonPersistedData(
+                NonPersistedDataRequest::CompletedBlocksContain {
+                    block_identifier: BlockIdentifier::Height(GUARANTEED_BLOCK_HEIGHT - 1),
+                },
+            )),
+            asserter: Box::new(|response| {
+                assert_response::<HighestBlockSequenceCheckResult, _>(
+                    response,
+                    PayloadType::HighestBlockSequenceCheckResult,
+                    |HighestBlockSequenceCheckResult(result)| result,
+                )
+            }),
+        },
+        TestCase {
+            request: BinaryRequest::Get(GetRequest::NonPersistedData(
+                NonPersistedDataRequest::CompletedBlocksContain {
+                    block_identifier: BlockIdentifier::Height(GUARANTEED_BLOCK_HEIGHT + 1000),
+                },
+            )),
+            asserter: Box::new(|response| {
+                assert_response::<HighestBlockSequenceCheckResult, _>(
+                    response,
+                    PayloadType::HighestBlockSequenceCheckResult,
+                    |HighestBlockSequenceCheckResult(result)| !result,
                 )
             }),
         },
@@ -204,9 +233,4 @@ async fn binary_port_component_success() {
     }
 
     let (_net, _rng) = finish_cranking.await;
-}
-
-#[tokio::test]
-async fn binary_port_component_errors() {
-    todo!()
 }
