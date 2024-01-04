@@ -327,13 +327,7 @@ impl DeployBuffer {
             .collect()
     }
 
-    /// Returns a right-sized payload of deploys that can be proposed.
-    fn appendable_block(&mut self, timestamp: Timestamp) -> AppendableBlock {
-        let mut ret = AppendableBlock::new(self.deploy_config, timestamp);
-        let mut holds = HashSet::new();
-        let mut have_hit_transfer_limit = false;
-        let mut have_hit_deploy_limit = false;
-
+    fn buckets(&mut self) -> HashMap<Digest, Vec<(DeployHashWithApprovals, DeployFootprint)>> {
         let proposable = self.proposable();
 
         let mut buckets: HashMap<Digest, Vec<(DeployHashWithApprovals, DeployFootprint)>> =
@@ -346,14 +340,21 @@ impl DeployBuffer {
                 .and_modify(|vec| vec.push((with_approvals.clone(), footprint.clone())))
                 .or_insert(vec![(with_approvals, footprint)]);
         }
+        buckets
+    }
 
+    /// Returns a right-sized payload of deploys that can be proposed.
+    fn appendable_block(&mut self, timestamp: Timestamp) -> AppendableBlock {
+        let mut ret = AppendableBlock::new(self.deploy_config, timestamp);
+        let mut holds = HashSet::new();
+        let mut have_hit_transfer_limit = false;
+        let mut have_hit_deploy_limit = false;
+
+        let mut buckets = self.buckets();
         let indexer = buckets.keys().cloned().collect_vec();
         let mut idx = 0;
 
-        loop {
-            if buckets.is_empty() {
-                break;
-            }
+        while !buckets.is_empty() {
             let body_hash = match indexer.get(idx) {
                 None => {
                     idx = 0; // reset outer loop
@@ -368,11 +369,13 @@ impl DeployBuffer {
                 Entry::Vacant(_) => continue,
                 Entry::Occupied(entry) => {
                     let deploys = entry.into_mut();
-                    if deploys.is_empty() {
-                        buckets.remove(body_hash);
-                        continue;
+                    match deploys.pop() {
+                        None => {
+                            buckets.remove(body_hash);
+                            continue;
+                        }
+                        Some(deploy) => deploy,
                     }
-                    deploys.remove(0)
                 }
             };
             if footprint.is_transfer && have_hit_transfer_limit {
