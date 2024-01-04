@@ -105,7 +105,7 @@ async fn setup() -> (
 
 struct TestCase {
     request: BinaryRequest,
-    validator: Box<dyn Fn(&BinaryResponse) -> bool>,
+    asserter: Box<dyn Fn(&BinaryResponse) -> bool>,
 }
 
 fn validate_metadata(response: &BinaryResponse, expected_payload_type: PayloadType) -> bool {
@@ -124,6 +124,15 @@ where
             assert!(remainder.is_empty());
             data
         })
+}
+
+fn assert_response<T, F>(response: &BinaryResponse, payload_type: PayloadType, validator: F) -> bool
+where
+    T: FromBytes,
+    F: FnOnce(T) -> bool,
+{
+    validate_metadata(response, payload_type)
+        && validate_deserialization::<T>(response).map_or(false, validator)
 }
 
 #[tokio::test]
@@ -152,26 +161,27 @@ async fn binary_port_component_success() {
                     height: MINIMUM_BLOCK_HEIGHT - 1,
                 },
             )),
-            validator: Box::new(|response| {
-                validate_metadata(response, PayloadType::BlockHash)
-                    && validate_deserialization::<BlockHash>(response).is_some()
+            asserter: Box::new(|response| {
+                assert_response::<BlockHash, _>(response, PayloadType::BlockHash, |_| true)
             }),
         },
         TestCase {
             request: BinaryRequest::Get(GetRequest::NonPersistedData(
                 NonPersistedDataRequest::HighestCompleteBlock,
             )),
-            validator: Box::new(|response| {
-                validate_metadata(response, PayloadType::BlockHashAndHeight)
-                    && validate_deserialization::<BlockHashAndHeight>(response)
-                        .map_or(false, |data| data.block_height() >= MINIMUM_BLOCK_HEIGHT)
+            asserter: Box::new(|response| {
+                assert_response::<BlockHashAndHeight, _>(
+                    response,
+                    PayloadType::BlockHashAndHeight,
+                    |data| data.block_height() >= MINIMUM_BLOCK_HEIGHT,
+                )
             }),
         },
     ];
 
     let (client, finish_cranking) = setup().await;
 
-    for TestCase { request, validator } in test_cases {
+    for TestCase { request, asserter } in test_cases {
         let original_request_bytes = ToBytes::to_bytes(&request).expect("should serialize");
 
         let request_guard = client
@@ -190,7 +200,7 @@ async fn binary_port_component_success() {
 
         let mirrored_request_bytes = binary_response_and_request.original_request();
         assert_eq!(mirrored_request_bytes, original_request_bytes.as_slice());
-        assert!(validator(binary_response_and_request.response()));
+        assert!(asserter(binary_response_and_request.response()));
     }
 
     let (_net, _rng) = finish_cranking.await;
