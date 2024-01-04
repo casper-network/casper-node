@@ -9,7 +9,7 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     testing::TestRng,
     BinaryResponse, BinaryResponseAndRequest, BlockHash, BlockHashAndHeight, BlockIdentifier,
-    PayloadType,
+    PayloadType, TransactionHash,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -49,7 +49,10 @@ fn network_produced_blocks(
 
 async fn setup() -> (
     JulietRpcClient<1>,
-    impl futures::Future<Output = (TestingNetwork<FilterReactor<MainReactor>>, TestRng)>,
+    (
+        impl futures::Future<Output = (TestingNetwork<FilterReactor<MainReactor>>, TestRng)>,
+        TestRng,
+    ),
 ) {
     let mut fixture = TestFixture::new(
         InitialStakes::AllEqual {
@@ -77,7 +80,7 @@ async fn setup() -> (
         .expect("should be bound");
 
     // We let the entire network run in the background, until our request completes.
-    let finish_cranking = fixture.run_until_stopped(rng);
+    let finish_cranking = fixture.run_until_stopped(rng.create_child());
 
     // Set-up juliet client.
     let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
@@ -102,7 +105,7 @@ async fn setup() -> (
         }
     });
 
-    (client, finish_cranking)
+    (client, (finish_cranking, rng))
 }
 
 struct TestCase {
@@ -110,10 +113,13 @@ struct TestCase {
     asserter: Box<dyn Fn(&BinaryResponse) -> bool>,
 }
 
-fn validate_metadata(response: &BinaryResponse, expected_payload_type: PayloadType) -> bool {
+fn validate_metadata(
+    response: &BinaryResponse,
+    expected_payload_type: Option<PayloadType>,
+) -> bool {
     response.is_success()
-        && !response.payload().is_empty()
-        && response.returned_data_type() == Some(expected_payload_type)
+        && response.returned_data_type() == expected_payload_type
+        && expected_payload_type.map_or(true, |_| !response.payload().is_empty())
 }
 
 fn validate_deserialization<T>(response: &BinaryResponse) -> Option<T>
@@ -128,20 +134,25 @@ where
         })
 }
 
-fn assert_response<T, F>(response: &BinaryResponse, payload_type: PayloadType, validator: F) -> bool
+fn assert_response<T, F>(
+    response: &BinaryResponse,
+    payload_type: Option<PayloadType>,
+    validator: F,
+) -> bool
 where
     T: FromBytes,
     F: FnOnce(T) -> bool,
 {
     validate_metadata(response, payload_type)
-        && validate_deserialization::<T>(response).map_or(false, validator)
+        && payload_type.map_or(true, |_| {
+            validate_deserialization::<T>(response).map_or(false, validator)
+        })
 }
 
 #[tokio::test]
 async fn binary_port_component() {
     testing::init_logging();
 
-    // TransactionHash2BlockHashAndHeight
     // Peers,
     // Uptime,
     // LastProgress,
@@ -155,6 +166,8 @@ async fn binary_port_component() {
     // ChainspecRawBytes,
     // NodeStatus,
 
+    let (client, (finish_cranking, mut rng)) = setup().await;
+
     let test_cases = &[
         TestCase {
             request: BinaryRequest::Get(GetRequest::NonPersistedData(
@@ -163,7 +176,7 @@ async fn binary_port_component() {
                 },
             )),
             asserter: Box::new(|response| {
-                assert_response::<BlockHash, _>(response, PayloadType::BlockHash, |_| true)
+                assert_response::<BlockHash, _>(response, Some(PayloadType::BlockHash), |_| true)
             }),
         },
         TestCase {
@@ -173,7 +186,7 @@ async fn binary_port_component() {
             asserter: Box::new(|response| {
                 assert_response::<BlockHashAndHeight, _>(
                     response,
-                    PayloadType::BlockHashAndHeight,
+                    Some(PayloadType::BlockHashAndHeight),
                     |data| data.block_height() >= GUARANTEED_BLOCK_HEIGHT,
                 )
             }),
@@ -187,7 +200,7 @@ async fn binary_port_component() {
             asserter: Box::new(|response| {
                 assert_response::<HighestBlockSequenceCheckResult, _>(
                     response,
-                    PayloadType::HighestBlockSequenceCheckResult,
+                    Some(PayloadType::HighestBlockSequenceCheckResult),
                     |HighestBlockSequenceCheckResult(result)| result,
                 )
             }),
@@ -201,14 +214,23 @@ async fn binary_port_component() {
             asserter: Box::new(|response| {
                 assert_response::<HighestBlockSequenceCheckResult, _>(
                     response,
-                    PayloadType::HighestBlockSequenceCheckResult,
+                    Some(PayloadType::HighestBlockSequenceCheckResult),
                     |HighestBlockSequenceCheckResult(result)| !result,
                 )
             }),
         },
+        TestCase {
+            request: BinaryRequest::Get(GetRequest::NonPersistedData(
+                NonPersistedDataRequest::TransactionHash2BlockHashAndHeight {
+                    // TODO: Add similar test case but with an existing transaction
+                    transaction_hash: TransactionHash::random(&mut rng),
+                },
+            )),
+            asserter: Box::new(|response| {
+                assert_response::<Option<BlockHashAndHeight>, _>(response, None, |_| true)
+            }),
+        },
     ];
-
-    let (client, finish_cranking) = setup().await;
 
     for TestCase { request, asserter } in test_cases {
         let original_request_bytes = ToBytes::to_bytes(&request).expect("should serialize");
