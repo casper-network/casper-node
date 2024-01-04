@@ -1,5 +1,5 @@
-# rpc-sidecar protocol
-The specification of the protocol used to communicate between the RPC sidecar and casper-node.
+# Binary port protocol
+The specification of the protocol used to communicate between the RPC sidecar and binary port casper-node.
 
 ## Synopsis
 This is a binary protocol which follows a simple request-response model built on top of [Juliet](https://github.com/casper-network/juliet). The protocol consists of one party (the client) sending requests to another party (the server) and the server sending responses back to the client. Both requests and responses are wrapped in envelopes containing a version and a payload type tag. The versioning scheme is based on [SemVer](https://semver.org/), see [versioning](#versioning) for more details. The payload type tags are used to interpret the contents of the payloads.
