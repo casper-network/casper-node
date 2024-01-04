@@ -7,6 +7,7 @@
 1. The [casper-node repository](https://github.com/casper-network/casper-node) cloned into YOUR_WORKING_DIRECTORY.
 1. The [casper-client-rs repository](https://github.com/casper-ecosystem/casper-client-rs) cloned into YOUR_WORKING_DIRECTORY.
 1. The [casper-node-launcher repository](https://github.com/casper-network/casper-node-launcher) cloned into YOUR_WORKING_DIRECTORY.
+1. The [event-sidecar](https://github.com/CasperLabs/event-sidecar) cloned into YOUR_WORKING_DIRECTORY.
 
 ### NOTE
 

@@ -19,6 +19,10 @@ export NCTL_CASPER_CLIENT_HOME="$NCTL_CASPER_CLIENT_ROOT"/casper-client-rs
 NCTL_CASPER_NODE_LAUNCHER_ROOT=${NCTL_CASPER_NODE_LAUNCHER_ROOT:-$( cd "$( dirname "${NCTL_CASPER_HOME[0]}" )" && pwd )}
 export NCTL_CASPER_NODE_LAUNCHER_HOME="$NCTL_CASPER_NODE_LAUNCHER_ROOT"/casper-node-launcher
 
+# Set sidecar root.
+NCTL_CASPER_SIDECAR_ROOT=${NCTL_CASPER_SIDECAR_ROOT:-$( cd "$( dirname "${NCTL_CASPER_HOME[0]}" )" && pwd )}
+export NCTL_CASPER_SIDECAR_HOME="$NCTL_CASPER_SIDECAR_ROOT"/event-sidecar
+
 # ###############################################################
 # UTILS
 # ###############################################################
@@ -42,6 +46,7 @@ alias nctl-compile='source $NCTL/sh/assets/compile.sh'
 alias nctl-compile-client='source $NCTL/sh/assets/compile_client.sh'
 alias nctl-compile-node='source $NCTL/sh/assets/compile_node.sh'
 alias nctl-compile-node-launcher='source $NCTL/sh/assets/compile_node_launcher.sh'
+alias nctl-compile-sidecar='source $NCTL/sh/assets/compile_sidecar.sh'
 
 # Staging.
 alias nctl-stage-build='source $NCTL/sh/staging/build.sh'

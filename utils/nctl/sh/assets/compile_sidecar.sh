@@ -1,34 +1,38 @@
 #!/usr/bin/env bash
 #
 #######################################
-# Compiles node software.
+# Compiles the sidecar.
 # Globals:
 #   NCTL - path to nctl home directory.
 #   NCTL_CASPER_HOME - path to casper node repo.
+#   NCTL_CASPER_SIDECAR_HOME - path to casper sidecar repo.
 #   NCTL_COMPILE_TARGET - flag indicating whether software compilation target is release | debug.
 ########################################
 
+# Import utils.
 source "$NCTL"/sh/utils/main.sh
-
-pushd "$NCTL_CASPER_HOME" || exit
 
 unset OPTIND #clean OPTIND envvar, otherwise getopts can break.
 COMPILE_MODE="release" #default compile mode to release.
 
-while getopts 'd' opt; do
+# Build client utility.
+pushd "$NCTL_CASPER_SIDECAR_HOME" || \
+    { echo "Could not find the casper sidecar repo - have you cloned it into your working directory?"; exit; }
+
+while getopts 'd' opt; do 
     case $opt in
         d ) 
-            COMPILE_MODE="debug"
-            ;;
-        * ) 
-            ;; #ignore other cl flags
+            echo "-d client"
+            COMPILE_MODE="debug" ;;
+        * ) ;; #ignore other cl flags
+
     esac
-done
+done 
 
 if [ "$NCTL_COMPILE_TARGET" = "debug" ] || [ "$COMPILE_MODE" = "debug" ]; then
-    cargo build --package casper-node
+    cargo build
 else
-    cargo build --release --package casper-node
+    cargo build --release
 fi
 
 unset OPTIND

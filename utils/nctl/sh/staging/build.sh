@@ -140,8 +140,8 @@ function set_stage_files_from_repo()
        "$PATH_TO_STAGE"
 
     # Stage sidecar config.
-    cp "$PATH_TO_NODE_SOURCE/resources/local/sidecar.toml" \
-       "$PATH_TO_STAGE"
+    cp "${NCTL_CASPER_SIDECAR_HOME}/EXAMPLE_NCTL_CONFIG.toml" \
+       "$PATH_TO_STAGE/sidecar.toml"
 }
 
 # ----------------------------------------------------------------
