@@ -891,7 +891,7 @@ mod tests {
         let balance_value: U512 = rng.gen();
         let merkle_proof = rng.random_string(10..20);
         let result = GlobalStateQueryResult::new(
-            StoredValue::CLValue(CLValue::from_t(balance_value.clone()).unwrap()),
+            StoredValue::CLValue(CLValue::from_t(balance_value).unwrap()),
             merkle_proof.clone(),
         );
 

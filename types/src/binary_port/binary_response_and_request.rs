@@ -1,6 +1,8 @@
 use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
-use super::{binary_response::BinaryResponse, payload_type::PayloadEntity};
+use super::binary_response::BinaryResponse;
+#[cfg(any(feature = "testing", test))]
+use super::payload_type::PayloadEntity;
 use alloc::vec::Vec;
 
 #[cfg(any(feature = "testing", test))]
