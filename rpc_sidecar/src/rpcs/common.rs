@@ -98,10 +98,10 @@ pub async fn get_signed_block(
     Ok(SignedBlock::new(block, signatures))
 }
 
-pub async fn resolve_state_root_hash(
+pub async fn resolve_state_root_hash_by_block(
     node_client: &dyn NodeClient,
-    identifier: Option<GlobalStateIdentifier>,
-) -> Result<(Digest, Option<BlockHeader>), Error> {
+    identifier: Option<BlockIdentifier>,
+) -> Result<(Digest, BlockHeader), Error> {
     let available_block_range = node_client
         .read_available_block_range()
         .await
@@ -113,13 +113,12 @@ pub async fn resolve_state_root_hash(
             .map_err(|err| Error::NodeRequest("highest completed block", err))?
             .ok_or(Error::NoHighestBlock(available_block_range))?
             .block_hash(),
-        Some(GlobalStateIdentifier::BlockHash(hash)) => hash,
-        Some(GlobalStateIdentifier::BlockHeight(height)) => node_client
+        Some(BlockIdentifier::Hash(hash)) => hash,
+        Some(BlockIdentifier::Height(height)) => node_client
             .read_block_hash_from_height(height)
             .await
             .map_err(|err| Error::NodeRequest("block hash from height", err))?
             .ok_or(Error::NoBlockAtHeight(height, available_block_range))?,
-        Some(GlobalStateIdentifier::StateRootHash(hash)) => return Ok((hash, None)),
     };
     let header = node_client
         .read_block_header(hash)
@@ -127,7 +126,21 @@ pub async fn resolve_state_root_hash(
         .map_err(|err| Error::NodeRequest("block header", err))?
         .ok_or(Error::NoBlockWithHash(hash, available_block_range))?;
 
-    Ok((*header.state_root_hash(), Some(header)))
+    Ok((*header.state_root_hash(), header))
+}
+
+pub async fn resolve_state_root_hash(
+    node_client: &dyn NodeClient,
+    identifier: Option<GlobalStateIdentifier>,
+) -> Result<(Digest, Option<BlockHeader>), Error> {
+    let block = match identifier {
+        Some(GlobalStateIdentifier::StateRootHash(hash)) => return Ok((hash, None)),
+        Some(GlobalStateIdentifier::BlockHash(hash)) => Some(BlockIdentifier::Hash(hash)),
+        Some(GlobalStateIdentifier::BlockHeight(height)) => Some(BlockIdentifier::Height(height)),
+        None => None,
+    };
+    let (state_root_hash, header) = resolve_state_root_hash_by_block(node_client, block).await?;
+    Ok((state_root_hash, Some(header)))
 }
 
 pub async fn get_transaction_with_approvals(

@@ -13,7 +13,7 @@ use crate::testing::TestRng;
 use crate::{ByteCode, ByteCodeKind};
 
 /// Carries the successful result of the global state query.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct GlobalStateQueryResult {
     /// Stored value.
     value: StoredValue,

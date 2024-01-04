@@ -447,6 +447,7 @@ impl FromBytes for TransformEntry {
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", schemars(rename = "TransformV1"))]
 #[serde(deny_unknown_fields)]
 pub enum Transform {
     /// A transform having no effect.
@@ -737,6 +738,7 @@ impl Distribution<Transform> for Standard {
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", schemars(rename = "ExecutionResultNamedKey"))]
 #[serde(deny_unknown_fields)]
 pub struct NamedKey {
     /// The name of the entry.

@@ -292,8 +292,8 @@ impl RpcWithOptionalParams for GetAuctionInfo {
         maybe_params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, RpcError> {
         let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-        let signed_block = common::get_signed_block(&*node_client, maybe_block_id).await?;
-        let state_root_hash = *signed_block.block().state_root_hash();
+        let (state_root_hash, header) =
+            common::resolve_state_root_hash_by_block(&*node_client, maybe_block_id).await?;
 
         let bid_stored_values = node_client
             .query_global_state_by_tag(state_root_hash, KeyTag::Bid)
@@ -336,8 +336,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .map_err(|_| Error::InvalidAuctionValidators)?;
 
         let validators = era_validators_from_snapshot(snapshot);
-        let height = signed_block.block().height();
-        let auction_state = AuctionState::new(state_root_hash, height, validators, bids);
+        let auction_state = AuctionState::new(state_root_hash, header.height(), validators, bids);
 
         Ok(Self::ResponseResult {
             api_version: CURRENT_API_VERSION,
@@ -405,8 +404,9 @@ impl RpcWithParams for GetAccountInfo {
         node_client: Arc<dyn NodeClient>,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, RpcError> {
-        let signed_block = common::get_signed_block(&*node_client, params.block_identifier).await?;
-        let state_root_hash = *signed_block.block().state_root_hash();
+        let (state_root_hash, _) =
+            common::resolve_state_root_hash_by_block(&*node_client, params.block_identifier)
+                .await?;
         let base_key = {
             let account_hash = match params.account_identifier {
                 AccountIdentifier::PublicKey(public_key) => public_key.to_account_hash(),
@@ -608,6 +608,17 @@ pub enum GlobalStateIdentifier {
     BlockHeight(u64),
     /// Query using the state root hash.
     StateRootHash(Digest),
+}
+
+impl From<BlockIdentifier> for GlobalStateIdentifier {
+    fn from(block_identifier: BlockIdentifier) -> Self {
+        match block_identifier {
+            BlockIdentifier::Hash(block_hash) => GlobalStateIdentifier::BlockHash(block_hash),
+            BlockIdentifier::Height(block_height) => {
+                GlobalStateIdentifier::BlockHeight(block_height)
+            }
+        }
+    }
 }
 
 /// Params for "query_global_state" RPC
@@ -822,4 +833,583 @@ fn era_validators_from_snapshot(snapshot: SeigniorageRecipientsSnapshot) -> EraV
             (era_id, validator_weights)
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::iter;
+
+    use crate::ClientError;
+    use casper_types::{
+        addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, NamedKeys},
+        binary_port::{
+            binary_request::BinaryRequest, db_id::DbId, get::GetRequest,
+            global_state_query_result::GlobalStateQueryResult,
+            non_persistent_data_request::NonPersistedDataRequest, type_wrappers::StoredValues,
+        },
+        system::auction::BidKind,
+        testing::TestRng,
+        AccessRights, AddressableEntity, AvailableBlockRange, BinaryResponse,
+        BinaryResponseAndRequest, Block, BlockHashAndHeight, ByteCodeHash, EntryPoints,
+        PackageHash, ProtocolVersion, TestBlockBuilder,
+    };
+    use rand::Rng;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn should_read_state_item() {
+        let rng = &mut TestRng::new();
+        let stored_value = StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap());
+        let merkle_proof = rng.random_string(10..20);
+        let expected = GlobalStateQueryResult::new(stored_value.clone(), merkle_proof.clone());
+
+        let resp = GetItem::do_handle_request(
+            Arc::new(ValidGlobalStateResultMock(expected.clone())),
+            GetItemParams {
+                state_root_hash: rng.gen(),
+                key: rng.gen(),
+                path: vec![],
+            },
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetItemResult {
+                api_version: CURRENT_API_VERSION,
+                stored_value,
+                merkle_proof,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn should_read_balance() {
+        let rng = &mut TestRng::new();
+        let balance_value: U512 = rng.gen();
+        let merkle_proof = rng.random_string(10..20);
+        let result = GlobalStateQueryResult::new(
+            StoredValue::CLValue(CLValue::from_t(balance_value.clone()).unwrap()),
+            merkle_proof.clone(),
+        );
+
+        let resp = GetBalance::do_handle_request(
+            Arc::new(ValidGlobalStateResultMock(result.clone())),
+            GetBalanceParams {
+                state_root_hash: rng.gen(),
+                purse_uref: URef::new(rng.gen(), AccessRights::empty()).to_formatted_string(),
+            },
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetBalanceResult {
+                api_version: CURRENT_API_VERSION,
+                balance_value,
+                merkle_proof,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn should_read_auction_info() {
+        struct ClientMock {
+            block: Block,
+            bids: Vec<BidKind>,
+            contract_hash: AddressableEntityHash,
+            snapshot: SeigniorageRecipientsSnapshot,
+        }
+
+        #[async_trait]
+        impl NodeClient for ClientMock {
+            async fn send_request(
+                &self,
+                req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, ClientError> {
+                match req {
+                    BinaryRequest::Get(GetRequest::NonPersistedData(
+                        NonPersistedDataRequest::AvailableBlockRange,
+                    )) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0),
+                        &[],
+                    )),
+                    BinaryRequest::Get(GetRequest::NonPersistedData(
+                        NonPersistedDataRequest::HighestCompleteBlock,
+                    )) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(BlockHashAndHeight::new(
+                            *self.block.hash(),
+                            self.block.height(),
+                        )),
+                        &[],
+                    )),
+                    BinaryRequest::Get(GetRequest::Db {
+                        db: DbId::BlockHeader,
+                        ..
+                    }) => Ok(BinaryResponseAndRequest::new_test_response(
+                        DbId::BlockHeader,
+                        &self.block.clone_header(),
+                    )),
+                    BinaryRequest::Get(GetRequest::AllValues {
+                        key_tag: KeyTag::Bid,
+                        ..
+                    }) => {
+                        let bids = self
+                            .bids
+                            .iter()
+                            .cloned()
+                            .map(StoredValue::BidKind)
+                            .collect();
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(StoredValues(bids)),
+                            &[],
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::State {
+                        base_key: Key::SystemContractRegistry,
+                        ..
+                    }) => {
+                        let system_contracts =
+                            iter::once((AUCTION.to_string(), self.contract_hash))
+                                .collect::<BTreeMap<_, _>>();
+                        let result = GlobalStateQueryResult::new(
+                            StoredValue::CLValue(CLValue::from_t(system_contracts).unwrap()),
+                            String::default(),
+                        );
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(result),
+                            &[],
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::State {
+                        base_key: Key::AddressableEntity(_, _),
+                        ..
+                    }) => {
+                        let result = GlobalStateQueryResult::new(
+                            StoredValue::CLValue(CLValue::from_t(self.snapshot.clone()).unwrap()),
+                            String::default(),
+                        );
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(result),
+                            &[],
+                        ))
+                    }
+                    req => unimplemented!("unexpected request: {:?}", req),
+                }
+            }
+        }
+
+        let rng = &mut TestRng::new();
+        let block = TestBlockBuilder::new().build(rng);
+
+        let resp = GetAuctionInfo::do_handle_request(
+            Arc::new(ClientMock {
+                block: Block::V2(block.clone()),
+                bids: Default::default(),
+                contract_hash: rng.gen(),
+                snapshot: Default::default(),
+            }),
+            None,
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetAuctionInfoResult {
+                api_version: CURRENT_API_VERSION,
+                auction_state: AuctionState::new(
+                    *block.state_root_hash(),
+                    block.height(),
+                    Default::default(),
+                    Default::default()
+                ),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn should_read_dictionary_item() {
+        let rng = &mut TestRng::new();
+        let stored_value = StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap());
+        let merkle_proof = rng.random_string(10..20);
+        let expected = GlobalStateQueryResult::new(stored_value.clone(), merkle_proof.clone());
+
+        let uref = URef::new(rng.gen(), AccessRights::empty());
+        let item_key = rng.random_string(5..10);
+
+        let resp = GetDictionaryItem::do_handle_request(
+            Arc::new(ValidGlobalStateResultMock(expected.clone())),
+            GetDictionaryItemParams {
+                state_root_hash: rng.gen(),
+                dictionary_identifier: DictionaryIdentifier::URef {
+                    seed_uref: uref.to_formatted_string(),
+                    dictionary_item_key: item_key.clone(),
+                },
+            },
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            GetDictionaryItemResult {
+                api_version: CURRENT_API_VERSION,
+                dictionary_key: Key::dictionary(uref, item_key.as_bytes()).to_formatted_string(),
+                stored_value,
+                merkle_proof,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn should_read_query_global_state_result() {
+        let rng = &mut TestRng::new();
+        let block = Block::V2(TestBlockBuilder::new().build(rng));
+        let stored_value = StoredValue::CLValue(CLValue::from_t(rng.gen::<i32>()).unwrap());
+        let merkle_proof = rng.random_string(10..20);
+        let expected = GlobalStateQueryResult::new(stored_value.clone(), merkle_proof.clone());
+
+        let resp = QueryGlobalState::do_handle_request(
+            Arc::new(ValidGlobalStateResultWithBlockMock {
+                block: block.clone(),
+                result: expected.clone(),
+            }),
+            QueryGlobalStateParams {
+                state_identifier: None,
+                key: rng.gen(),
+                path: vec![],
+            },
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            QueryGlobalStateResult {
+                api_version: CURRENT_API_VERSION,
+                block_header: Some(block.take_header()),
+                stored_value,
+                merkle_proof,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn should_read_query_balance_by_uref_result() {
+        let rng = &mut TestRng::new();
+        let block = Block::V2(TestBlockBuilder::new().build(rng));
+        let balance = rng.gen::<U512>();
+        let stored_value = StoredValue::CLValue(CLValue::from_t(balance).unwrap());
+        let expected = GlobalStateQueryResult::new(stored_value.clone(), rng.random_string(10..20));
+
+        let resp = QueryBalance::do_handle_request(
+            Arc::new(ValidGlobalStateResultWithBlockMock {
+                block: block.clone(),
+                result: expected.clone(),
+            }),
+            QueryBalanceParams {
+                state_identifier: None,
+                purse_identifier: PurseIdentifier::PurseUref(URef::new(
+                    rng.gen(),
+                    AccessRights::empty(),
+                )),
+            },
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            QueryBalanceResult {
+                api_version: CURRENT_API_VERSION,
+                balance
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn should_read_query_balance_by_account_result() {
+        use casper_types::account::{ActionThresholds, AssociatedKeys};
+
+        struct ClientMock {
+            block: Block,
+            account: Account,
+            balance: U512,
+        }
+
+        #[async_trait]
+        impl NodeClient for ClientMock {
+            async fn send_request(
+                &self,
+                req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, ClientError> {
+                match req {
+                    BinaryRequest::Get(GetRequest::NonPersistedData(
+                        NonPersistedDataRequest::AvailableBlockRange,
+                    )) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0),
+                        &[],
+                    )),
+                    BinaryRequest::Get(GetRequest::NonPersistedData(
+                        NonPersistedDataRequest::HighestCompleteBlock,
+                    )) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(BlockHashAndHeight::new(
+                            *self.block.hash(),
+                            self.block.height(),
+                        )),
+                        &[],
+                    )),
+                    BinaryRequest::Get(GetRequest::Db {
+                        db: DbId::BlockHeader,
+                        ..
+                    }) => Ok(BinaryResponseAndRequest::new_test_response(
+                        DbId::BlockHeader,
+                        &self.block.clone_header(),
+                    )),
+                    BinaryRequest::Get(GetRequest::State {
+                        base_key: Key::Account(_),
+                        ..
+                    }) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(GlobalStateQueryResult::new(
+                            StoredValue::Account(self.account.clone()),
+                            String::default(),
+                        )),
+                        &[],
+                    )),
+                    BinaryRequest::Get(GetRequest::State {
+                        base_key: Key::Balance(_),
+                        ..
+                    }) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(GlobalStateQueryResult::new(
+                            StoredValue::CLValue(CLValue::from_t(self.balance).unwrap()),
+                            String::default(),
+                        )),
+                        &[],
+                    )),
+                    req => unimplemented!("unexpected request: {:?}", req),
+                }
+            }
+        }
+
+        let rng = &mut TestRng::new();
+        let block = Block::V2(TestBlockBuilder::new().build(rng));
+        let account = Account::new(
+            rng.gen(),
+            NamedKeys::default(),
+            rng.gen(),
+            AssociatedKeys::default(),
+            ActionThresholds::default(),
+        );
+
+        let balance = rng.gen::<U512>();
+
+        let resp = QueryBalance::do_handle_request(
+            Arc::new(ClientMock {
+                block: block.clone(),
+                account: account.clone(),
+                balance,
+            }),
+            QueryBalanceParams {
+                state_identifier: None,
+                purse_identifier: PurseIdentifier::MainPurseUnderAccountHash(
+                    account.account_hash(),
+                ),
+            },
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            QueryBalanceResult {
+                api_version: CURRENT_API_VERSION,
+                balance
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn should_read_query_balance_by_addressable_entity_result() {
+        struct ClientMock {
+            block: Block,
+            entity_hash: AddressableEntityHash,
+            entity: AddressableEntity,
+            balance: U512,
+        }
+
+        #[async_trait]
+        impl NodeClient for ClientMock {
+            async fn send_request(
+                &self,
+                req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, ClientError> {
+                match req {
+                    BinaryRequest::Get(GetRequest::NonPersistedData(
+                        NonPersistedDataRequest::AvailableBlockRange,
+                    )) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0),
+                        &[],
+                    )),
+                    BinaryRequest::Get(GetRequest::NonPersistedData(
+                        NonPersistedDataRequest::HighestCompleteBlock,
+                    )) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(BlockHashAndHeight::new(
+                            *self.block.hash(),
+                            self.block.height(),
+                        )),
+                        &[],
+                    )),
+                    BinaryRequest::Get(GetRequest::Db {
+                        db: DbId::BlockHeader,
+                        ..
+                    }) => Ok(BinaryResponseAndRequest::new_test_response(
+                        DbId::BlockHeader,
+                        &self.block.clone_header(),
+                    )),
+                    BinaryRequest::Get(GetRequest::State {
+                        base_key: Key::Account(_),
+                        ..
+                    }) => {
+                        let key =
+                            Key::addressable_entity_key(PackageKindTag::Account, self.entity_hash);
+                        let value = CLValue::from_t(key).unwrap();
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::from_value(GlobalStateQueryResult::new(
+                                StoredValue::CLValue(value),
+                                String::default(),
+                            )),
+                            &[],
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::State {
+                        base_key: Key::AddressableEntity(_, _),
+                        ..
+                    }) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(GlobalStateQueryResult::new(
+                            StoredValue::AddressableEntity(self.entity.clone()),
+                            String::default(),
+                        )),
+                        &[],
+                    )),
+                    BinaryRequest::Get(GetRequest::State {
+                        base_key: Key::Balance(_),
+                        ..
+                    }) => Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::from_value(GlobalStateQueryResult::new(
+                            StoredValue::CLValue(CLValue::from_t(self.balance).unwrap()),
+                            String::default(),
+                        )),
+                        &[],
+                    )),
+                    req => unimplemented!("unexpected request: {:?}", req),
+                }
+            }
+        }
+
+        let rng = &mut TestRng::new();
+        let block = Block::V2(TestBlockBuilder::new().build(rng));
+        let entity = AddressableEntity::new(
+            PackageHash::new(rng.gen()),
+            ByteCodeHash::new(rng.gen()),
+            NamedKeys::default(),
+            EntryPoints::default(),
+            ProtocolVersion::V1_0_0,
+            rng.gen(),
+            AssociatedKeys::default(),
+            ActionThresholds::default(),
+            MessageTopics::default(),
+        );
+
+        let balance: U512 = rng.gen();
+        let entity_hash: AddressableEntityHash = rng.gen();
+
+        let resp = QueryBalance::do_handle_request(
+            Arc::new(ClientMock {
+                block: block.clone(),
+                entity_hash,
+                entity: entity.clone(),
+                balance,
+            }),
+            QueryBalanceParams {
+                state_identifier: None,
+                purse_identifier: PurseIdentifier::MainPurseUnderAccountHash(rng.gen()),
+            },
+        )
+        .await
+        .expect("should handle request");
+
+        assert_eq!(
+            resp,
+            QueryBalanceResult {
+                api_version: CURRENT_API_VERSION,
+                balance
+            }
+        );
+    }
+
+    struct ValidGlobalStateResultMock(GlobalStateQueryResult);
+
+    #[async_trait]
+    impl NodeClient for ValidGlobalStateResultMock {
+        async fn send_request(
+            &self,
+            req: BinaryRequest,
+        ) -> Result<BinaryResponseAndRequest, ClientError> {
+            match req {
+                BinaryRequest::Get(GetRequest::State { .. }) => Ok(BinaryResponseAndRequest::new(
+                    BinaryResponse::from_value(self.0.clone()),
+                    &[],
+                )),
+                req => unimplemented!("unexpected request: {:?}", req),
+            }
+        }
+    }
+
+    struct ValidGlobalStateResultWithBlockMock {
+        block: Block,
+        result: GlobalStateQueryResult,
+    }
+
+    #[async_trait]
+    #[async_trait]
+    impl NodeClient for ValidGlobalStateResultWithBlockMock {
+        async fn send_request(
+            &self,
+            req: BinaryRequest,
+        ) -> Result<BinaryResponseAndRequest, ClientError> {
+            match req {
+                BinaryRequest::Get(GetRequest::NonPersistedData(
+                    NonPersistedDataRequest::AvailableBlockRange,
+                )) => Ok(BinaryResponseAndRequest::new(
+                    BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0),
+                    &[],
+                )),
+                BinaryRequest::Get(GetRequest::NonPersistedData(
+                    NonPersistedDataRequest::HighestCompleteBlock,
+                )) => Ok(BinaryResponseAndRequest::new(
+                    BinaryResponse::from_value(BlockHashAndHeight::new(
+                        *self.block.hash(),
+                        self.block.height(),
+                    )),
+                    &[],
+                )),
+                BinaryRequest::Get(GetRequest::Db {
+                    db: DbId::BlockHeader,
+                    ..
+                }) => Ok(BinaryResponseAndRequest::new_test_response(
+                    DbId::BlockHeader,
+                    &self.block.clone_header(),
+                )),
+                BinaryRequest::Get(GetRequest::State { .. }) => Ok(BinaryResponseAndRequest::new(
+                    BinaryResponse::from_value(self.result.clone()),
+                    &[],
+                )),
+                req => unimplemented!("unexpected request: {:?}", req),
+            }
+        }
+    }
 }

@@ -1,5 +1,5 @@
 use crate::node_client::Error as NodeClientError;
-use casper_json_rpc::Error as RpcError;
+use casper_json_rpc::{Error as RpcError, ReservedErrorCode};
 use casper_types::{
     AvailableBlockRange, BlockHash, DeployHash, Digest, KeyFromStrError, KeyTag, TransactionHash,
     URefFromStrError,
@@ -113,10 +113,16 @@ impl Error {
 impl From<Error> for RpcError {
     fn from(value: Error) -> Self {
         match value {
+            Error::NoHighestBlock(available_block_range) => RpcError::new(
+                ReservedErrorCode::InternalError,
+                ErrorData::MissingBlockOrStateRoot {
+                    message: value.to_string(),
+                    available_block_range,
+                },
+            ),
             Error::NoBlockWithHash(_, available_block_range)
             | Error::NoBlockBodyWithHash(_, available_block_range)
-            | Error::NoBlockAtHeight(_, available_block_range)
-            | Error::NoHighestBlock(available_block_range) => RpcError::new(
+            | Error::NoBlockAtHeight(_, available_block_range) => RpcError::new(
                 value.code(),
                 ErrorData::MissingBlockOrStateRoot {
                     message: value.to_string(),

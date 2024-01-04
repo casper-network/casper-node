@@ -16,6 +16,7 @@ use crate::{
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[cfg_attr(feature = "json-schema", schemars(rename = "TransformV2"))]
 #[serde(deny_unknown_fields)]
 pub struct Transform {
     key: Key,

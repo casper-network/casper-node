@@ -547,13 +547,12 @@ fn version_string() -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::ClientError;
+    use crate::{rpcs::ErrorCode, ClientError};
     use casper_types::{
         binary_port::{
             binary_request::BinaryRequest, db_id::DbId, get::GetRequest,
             non_persistent_data_request::NonPersistedDataRequest,
         },
-        bytesrepr::ToBytes,
         testing::TestRng,
         BinaryResponse, BinaryResponseAndRequest, BlockHash, BlockHashAndHeight,
         FinalizedDeployApprovals, TransactionV1,
@@ -564,10 +563,15 @@ mod tests {
 
     #[tokio::test]
     async fn should_read_transaction() {
-        pub struct MockNodeClient(Transaction, FinalizedApprovals, ExecutionResult, BlockHash);
+        struct ClientMock {
+            transaction: Transaction,
+            approvals: FinalizedApprovals,
+            exec_result: ExecutionResult,
+            block_hash: BlockHash,
+        }
 
         #[async_trait]
-        impl NodeClient for MockNodeClient {
+        impl NodeClient for ClientMock {
             async fn send_request(
                 &self,
                 req: BinaryRequest,
@@ -576,22 +580,28 @@ mod tests {
                     BinaryRequest::Get(GetRequest::Db {
                         db: DbId::Transaction,
                         ..
-                    }) => Ok(new_binary_db_response(DbId::Transaction, &self.0)),
+                    }) => Ok(BinaryResponseAndRequest::new_test_response(
+                        DbId::Transaction,
+                        &self.transaction,
+                    )),
                     BinaryRequest::Get(GetRequest::Db {
                         db: DbId::FinalizedTransactionApprovals,
                         ..
-                    }) => Ok(new_binary_db_response(
+                    }) => Ok(BinaryResponseAndRequest::new_test_response(
                         DbId::FinalizedTransactionApprovals,
-                        &self.1,
+                        &self.approvals,
                     )),
                     BinaryRequest::Get(GetRequest::Db {
                         db: DbId::ExecutionResult,
                         ..
-                    }) => Ok(new_binary_db_response(DbId::ExecutionResult, &self.2)),
+                    }) => Ok(BinaryResponseAndRequest::new_test_response(
+                        DbId::ExecutionResult,
+                        &self.exec_result,
+                    )),
                     BinaryRequest::Get(GetRequest::NonPersistedData(
                         NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { .. },
                     )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(BlockHashAndHeight::new(self.3, 0)),
+                        BinaryResponse::from_value(BlockHashAndHeight::new(self.block_hash, 0)),
                         &[],
                     )),
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -606,12 +616,12 @@ mod tests {
         let block_hash = BlockHash::random(rng);
 
         let resp = GetTransaction::do_handle_request(
-            Arc::new(MockNodeClient(
-                transaction.clone(),
-                approvals,
-                exec_result.clone(),
+            Arc::new(ClientMock {
+                transaction: transaction.clone(),
+                approvals: approvals.clone(),
+                exec_result: exec_result.clone(),
                 block_hash,
-            )),
+            }),
             GetTransactionParams {
                 transaction_hash: transaction.hash(),
                 finalized_approvals: true,
@@ -636,10 +646,15 @@ mod tests {
 
     #[tokio::test]
     async fn should_read_deploy() {
-        pub struct MockNodeClient(Deploy, FinalizedDeployApprovals, ExecutionResult, BlockHash);
+        struct ClientMock {
+            deploy: Deploy,
+            approvals: FinalizedDeployApprovals,
+            exec_result: ExecutionResult,
+            block_hash: BlockHash,
+        }
 
         #[async_trait]
-        impl NodeClient for MockNodeClient {
+        impl NodeClient for ClientMock {
             async fn send_request(
                 &self,
                 req: BinaryRequest,
@@ -648,22 +663,28 @@ mod tests {
                     BinaryRequest::Get(GetRequest::Db {
                         db: DbId::Transaction,
                         ..
-                    }) => Ok(new_legacy_binary_db_response(DbId::Transaction, &self.0)),
+                    }) => Ok(BinaryResponseAndRequest::new_legacy_test_response(
+                        DbId::Transaction,
+                        &self.deploy,
+                    )),
                     BinaryRequest::Get(GetRequest::Db {
                         db: DbId::FinalizedTransactionApprovals,
                         ..
-                    }) => Ok(new_legacy_binary_db_response(
+                    }) => Ok(BinaryResponseAndRequest::new_legacy_test_response(
                         DbId::FinalizedTransactionApprovals,
-                        &self.1,
+                        &self.approvals,
                     )),
                     BinaryRequest::Get(GetRequest::Db {
                         db: DbId::ExecutionResult,
                         ..
-                    }) => Ok(new_binary_db_response(DbId::ExecutionResult, &self.2)),
+                    }) => Ok(BinaryResponseAndRequest::new_test_response(
+                        DbId::ExecutionResult,
+                        &self.exec_result,
+                    )),
                     BinaryRequest::Get(GetRequest::NonPersistedData(
                         NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { .. },
                     )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(BlockHashAndHeight::new(self.3, 0)),
+                        BinaryResponse::from_value(BlockHashAndHeight::new(self.block_hash, 0)),
                         &[],
                     )),
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -678,12 +699,12 @@ mod tests {
         let block_hash = BlockHash::random(rng);
 
         let resp = GetTransaction::do_handle_request(
-            Arc::new(MockNodeClient(
-                deploy.clone(),
-                approvals,
-                exec_result.clone(),
+            Arc::new(ClientMock {
+                deploy: deploy.clone(),
+                approvals: approvals.clone(),
+                exec_result: exec_result.clone(),
                 block_hash,
-            )),
+            }),
             GetTransactionParams {
                 transaction_hash: deploy.hash().into(),
                 finalized_approvals: true,
@@ -708,15 +729,15 @@ mod tests {
 
     #[tokio::test]
     async fn should_reject_transaction_with_inconsistent_data() {
-        pub struct MockNodeClient(
-            Transaction,
-            FinalizedDeployApprovals,
-            ExecutionResult,
-            BlockHash,
-        );
+        struct ClientMock {
+            transaction: Transaction,
+            approvals: FinalizedDeployApprovals,
+            exec_result: ExecutionResult,
+            block_hash: BlockHash,
+        }
 
         #[async_trait]
-        impl NodeClient for MockNodeClient {
+        impl NodeClient for ClientMock {
             async fn send_request(
                 &self,
                 req: BinaryRequest,
@@ -725,22 +746,28 @@ mod tests {
                     BinaryRequest::Get(GetRequest::Db {
                         db: DbId::Transaction,
                         ..
-                    }) => Ok(new_binary_db_response(DbId::Transaction, &self.0)),
+                    }) => Ok(BinaryResponseAndRequest::new_test_response(
+                        DbId::Transaction,
+                        &self.transaction,
+                    )),
                     BinaryRequest::Get(GetRequest::Db {
                         db: DbId::FinalizedTransactionApprovals,
                         ..
-                    }) => Ok(new_legacy_binary_db_response(
+                    }) => Ok(BinaryResponseAndRequest::new_legacy_test_response(
                         DbId::FinalizedTransactionApprovals,
-                        &self.1,
+                        &self.approvals,
                     )),
                     BinaryRequest::Get(GetRequest::Db {
                         db: DbId::ExecutionResult,
                         ..
-                    }) => Ok(new_binary_db_response(DbId::ExecutionResult, &self.2)),
+                    }) => Ok(BinaryResponseAndRequest::new_test_response(
+                        DbId::ExecutionResult,
+                        &self.exec_result,
+                    )),
                     BinaryRequest::Get(GetRequest::NonPersistedData(
                         NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { .. },
                     )) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::from_value(BlockHashAndHeight::new(self.3, 0)),
+                        BinaryResponse::from_value(BlockHashAndHeight::new(self.block_hash, 0)),
                         &[],
                     )),
                     req => unimplemented!("unexpected request: {:?}", req),
@@ -755,12 +782,12 @@ mod tests {
         let block_hash = BlockHash::random(rng);
 
         let err = GetTransaction::do_handle_request(
-            Arc::new(MockNodeClient(
-                transaction.clone(),
-                approvals,
-                exec_result.clone(),
+            Arc::new(ClientMock {
+                transaction: transaction.clone(),
+                approvals: approvals.clone(),
+                exec_result: exec_result.clone(),
                 block_hash,
-            )),
+            }),
             GetTransactionParams {
                 transaction_hash: transaction.hash(),
                 finalized_approvals: true,
@@ -769,16 +796,6 @@ mod tests {
         .await
         .expect_err("should reject request");
 
-        assert_eq!(err.code(), -32015);
-    }
-
-    fn new_binary_db_response<A: ToBytes>(id: DbId, data: A) -> BinaryResponseAndRequest {
-        let resp = BinaryResponse::from_current_db_raw_bytes(id, data.to_bytes().unwrap());
-        BinaryResponseAndRequest::new(resp, &[])
-    }
-
-    fn new_legacy_binary_db_response<A: Serialize>(id: DbId, data: &A) -> BinaryResponseAndRequest {
-        let resp = BinaryResponse::from_legacy_db_raw_bytes(id, bincode::serialize(&data).unwrap());
-        BinaryResponseAndRequest::new(resp, &[])
+        assert_eq!(err.code(), ErrorCode::VariantMismatch as i64);
     }
 }
