@@ -12,8 +12,8 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     testing::TestRng,
     AvailableBlockRange, BinaryResponse, BinaryResponseAndRequest, BlockHash, BlockHashAndHeight,
-    BlockIdentifier, BlockSynchronizerStatus, PayloadType, Peers, ReactorState, TransactionHash,
-    Uptime,
+    BlockIdentifier, BlockSynchronizerStatus, NextUpgrade, PayloadType, Peers, ReactorState,
+    TransactionHash, Uptime,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -157,7 +157,6 @@ where
 async fn binary_port_component() {
     testing::init_logging();
 
-    // NextUpgrade,
     // ConsensusStatus,
     // ChainspecRawBytes,
     // NodeStatus,
@@ -316,6 +315,14 @@ async fn binary_port_component() {
                     Some(PayloadType::AvailableBlockRange),
                     |abr| abr.low() == 0 && abr.high() >= GUARANTEED_BLOCK_HEIGHT,
                 )
+            }),
+        },
+        TestCase {
+            request: BinaryRequest::Get(GetRequest::NonPersistedData(
+                NonPersistedDataRequest::NextUpgrade,
+            )),
+            asserter: Box::new(|response| {
+                assert_response::<NextUpgrade, _>(response, None, |_| true)
             }),
         },
     ];
