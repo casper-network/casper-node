@@ -254,7 +254,7 @@ impl EraSupervisor {
                 result.entry(pub_key).or_default().push((*era_id, change));
             }
         }
-        ConsensusValidatorChanges(result)
+        ConsensusValidatorChanges::new(result)
     }
 
     fn era_seed(booking_block_hash: BlockHash, key_block_seed: Digest) -> u64 {

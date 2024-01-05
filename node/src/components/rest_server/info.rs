@@ -63,7 +63,7 @@ pub struct GetValidatorChangesResult {
 impl GetValidatorChangesResult {
     pub(crate) fn new(api_version: ProtocolVersion, changes: ConsensusValidatorChanges) -> Self {
         let changes = changes
-            .0
+            .into_inner()
             .into_iter()
             .map(|(public_key, mut validator_changes)| {
                 validator_changes.sort();

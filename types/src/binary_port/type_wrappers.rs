@@ -73,7 +73,19 @@ impl TryFrom<Uptime> for TimeDiff {
 /// Type representing changes in consensus validators.
 #[derive(Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-pub struct ConsensusValidatorChanges(pub BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>);
+pub struct ConsensusValidatorChanges(BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>);
+
+impl ConsensusValidatorChanges {
+    /// Constructs new consensus validator changes.
+    pub fn new(value: BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>) -> Self {
+        Self(value)
+    }
+
+    /// Retrieve the inner value.
+    pub fn into_inner(self) -> BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>> {
+        self.0
+    }
+}
 
 impl From<ConsensusValidatorChanges> for BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>> {
     fn from(consensus_validator_changes: ConsensusValidatorChanges) -> Self {
