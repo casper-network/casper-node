@@ -1290,7 +1290,7 @@ impl EraSupervisor {
             .last()
             .and_then(|era| era.consensus.next_round_length());
         responder
-            .respond(Some(ConsensusStatus((public_key, round_length))))
+            .respond(Some(ConsensusStatus::new((public_key, round_length))))
             .ignore()
     }
 

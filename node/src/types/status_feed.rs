@@ -119,7 +119,10 @@ impl StatusFeed {
         starting_state_root_hash: Digest,
     ) -> Self {
         let (our_public_signing_key, round_length) =
-            consensus_status.map_or((None, None), |ConsensusStatus((pk, rl))| (Some(pk), rl));
+            consensus_status.map_or((None, None), |consensus_status| {
+                let (pk, rl) = consensus_status.into_inner();
+                (Some(pk), rl)
+            });
         StatusFeed {
             last_added_block,
             peers,

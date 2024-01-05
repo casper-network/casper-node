@@ -6,7 +6,8 @@ use casper_types::{
         get::GetRequest,
         non_persistent_data_request::NonPersistedDataRequest,
         type_wrappers::{
-            ConsensusValidatorChanges, HighestBlockSequenceCheckResult, LastProgress, NetworkName,
+            ConsensusStatus, ConsensusValidatorChanges, HighestBlockSequenceCheckResult,
+            LastProgress, NetworkName,
         },
     },
     bytesrepr::{FromBytes, ToBytes},
@@ -76,7 +77,7 @@ async fn setup() -> (
     )
     .await;
 
-    // Get the binary port address..
+    // Get the binary port address.
     let binary_port_addr = net.nodes()[net.nodes().keys().next().unwrap()]
         .main_reactor()
         .binary_port
@@ -157,7 +158,6 @@ where
 async fn binary_port_component() {
     testing::init_logging();
 
-    // ConsensusStatus,
     // ChainspecRawBytes,
     // NodeStatus,
 
@@ -323,6 +323,18 @@ async fn binary_port_component() {
             )),
             asserter: Box::new(|response| {
                 assert_response::<NextUpgrade, _>(response, None, |_| true)
+            }),
+        },
+        TestCase {
+            request: BinaryRequest::Get(GetRequest::NonPersistedData(
+                NonPersistedDataRequest::ConsensusStatus,
+            )),
+            asserter: Box::new(|response| {
+                assert_response::<ConsensusStatus, _>(
+                    response,
+                    Some(PayloadType::ConsensusStatus),
+                    |_| true,
+                )
             }),
         },
     ];

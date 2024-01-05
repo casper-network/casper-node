@@ -17,8 +17,7 @@ use casper_types::{
         self, binary_request::BinaryRequest, db_id::DbId, get::GetRequest,
         get_all_values_result::GetAllValuesResult,
         global_state_query_result::GlobalStateQueryResult,
-        non_persistent_data_request::NonPersistedDataRequest, type_wrappers::ConsensusStatus,
-        DbRawBytesSpec, NodeStatus,
+        non_persistent_data_request::NonPersistedDataRequest, DbRawBytesSpec, NodeStatus,
     },
     bytesrepr::{self, FromBytes, ToBytes},
     BinaryResponse, BinaryResponseAndRequest, BlockHashAndHeight, BlockHeader, Digest, Peers,
@@ -528,7 +527,10 @@ where
                 .map(|header| *header.state_root_hash())
                 .unwrap_or_default();
             let (our_public_signing_key, round_length) =
-                consensus_status.map_or((None, None), |ConsensusStatus((pk, rl))| (Some(pk), rl));
+                consensus_status.map_or((None, None), |consensus_status| {
+                    let (pk, rl) = consensus_status.into_inner();
+                    (Some(pk), rl)
+                });
 
             let status = NodeStatus {
                 peers: Peers::from(peers),

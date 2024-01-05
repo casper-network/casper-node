@@ -183,9 +183,14 @@ impl StoredValues {
 
 /// Describes the consensus status.
 #[derive(Debug, PartialEq)]
-pub struct ConsensusStatus(pub (PublicKey, Option<TimeDiff>));
+pub struct ConsensusStatus((PublicKey, Option<TimeDiff>));
 
 impl ConsensusStatus {
+    /// Constructs new consensus status.
+    pub fn new(value: (PublicKey, Option<TimeDiff>)) -> Self {
+        Self(value)
+    }
+
     /// Returns the inner value.
     pub fn into_inner(self) -> (PublicKey, Option<TimeDiff>) {
         self.0
