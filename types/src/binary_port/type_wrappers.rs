@@ -2,7 +2,11 @@
 
 use core::{convert::TryFrom, num::TryFromIntError, time::Duration};
 
-use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use alloc::{
+    collections::BTreeMap,
+    string::{String, ToString},
+    vec::Vec,
+};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 
@@ -79,7 +83,19 @@ impl From<ConsensusValidatorChanges> for BTreeMap<PublicKey, Vec<(EraId, Validat
 
 /// Type representing network name.
 #[derive(Debug)]
-pub struct NetworkName(pub String);
+pub struct NetworkName(String);
+
+impl NetworkName {
+    /// Constructs new network name.
+    pub fn new(value: impl ToString) -> Self {
+        Self(value.to_string())
+    }
+
+    /// Retrieve the inner value.
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
 
 impl From<NetworkName> for String {
     fn from(network_name: NetworkName) -> Self {

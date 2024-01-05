@@ -254,7 +254,7 @@ impl reactor::Reactor for MainReactor {
                     .respond(Uptime::new(self.node_startup_instant.elapsed().as_secs()))
                     .ignore(),
                 ReactorInfoRequest::NetworkName { responder } => responder
-                    .respond(NetworkName(self.chainspec.network_config.name.clone()))
+                    .respond(NetworkName::new(self.chainspec.network_config.name.clone()))
                     .ignore(),
             },
             MainEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(meta_block)) => {

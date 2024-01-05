@@ -5,7 +5,7 @@ use casper_types::{
         binary_request::BinaryRequest,
         get::GetRequest,
         non_persistent_data_request::NonPersistedDataRequest,
-        type_wrappers::{HighestBlockSequenceCheckResult, LastProgress},
+        type_wrappers::{HighestBlockSequenceCheckResult, LastProgress, NetworkName},
     },
     bytesrepr::{FromBytes, ToBytes},
     testing::TestRng,
@@ -154,7 +154,6 @@ where
 async fn binary_port_component() {
     testing::init_logging();
 
-    // NetworkName,
     // ConsensusValidatorChanges,
     // BlockSynchronizerStatus,
     // AvailableBlockRange,
@@ -268,6 +267,18 @@ async fn binary_port_component() {
                     response,
                     Some(PayloadType::ReactorState),
                     |reactor_state| matches!(reactor_state, ReactorState::Validate),
+                )
+            }),
+        },
+        TestCase {
+            request: BinaryRequest::Get(GetRequest::NonPersistedData(
+                NonPersistedDataRequest::NetworkName,
+            )),
+            asserter: Box::new(|response| {
+                assert_response::<NetworkName, _>(
+                    response,
+                    Some(PayloadType::NetworkName),
+                    |network_name| &network_name.into_inner() == "casper-example",
                 )
             }),
         },
