@@ -10,5 +10,5 @@ fn foo() {
     // CEP18::create(Some("new"), None).unwrap();
     let client = bindings::CEP18Client::new::<CEP18>().expect("Constructor should work");
     // let client = bindings::CEP18Client { address: [42; 32] };
-    client.transfer([0;32], 42);
+    client.transfer([0; 32], 42);
 }

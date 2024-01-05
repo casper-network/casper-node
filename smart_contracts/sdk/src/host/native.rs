@@ -1,15 +1,15 @@
+use bytes::Bytes;
+use casper_sdk_sys::{for_each_host_function, Param};
 use core::slice;
+use once_cell::sync::Lazy;
+use rand::Rng;
 use std::{
     cell::RefCell,
     collections::BTreeMap,
     ptr::{self, NonNull},
     sync::{Arc, Mutex, RwLock},
 };
-use rand::Rng;
-use bytes::Bytes;
-use casper_sdk_sys::{for_each_host_function, Param};
-use once_cell::sync::Lazy;
-use vm_common::flags::{ReturnFlags, EntryPointFlags};
+use vm_common::flags::{EntryPointFlags, ReturnFlags};
 
 use crate::types::Address;
 
@@ -50,16 +50,14 @@ pub struct BorrowedTaggedValue<'a> {
 }
 type Container = BTreeMap<u64, BTreeMap<Bytes, TaggedValue>>;
 
-
 #[derive(Clone, Debug)]
 pub struct NativeParam(String);
 
 impl Into<NativeParam> for &casper_sdk_sys::Param {
     fn into(self) -> NativeParam {
-        let name = String::from_utf8_lossy(unsafe {
-            slice::from_raw_parts(self.name_ptr, self.name_len)
-        })
-        .into_owned();
+        let name =
+            String::from_utf8_lossy(unsafe { slice::from_raw_parts(self.name_ptr, self.name_len) })
+                .into_owned();
         NativeParam(name)
     }
 }
@@ -67,29 +65,35 @@ impl Into<NativeParam> for &casper_sdk_sys::Param {
 #[derive(Clone)]
 pub struct NativeEntryPoint {
     pub name: String,
-    pub params:Vec<NativeParam>,
+    pub params: Vec<NativeParam>,
     pub fptr: Arc<dyn Fn() -> () + Send + Sync>,
     pub flags: EntryPointFlags,
 }
 
 impl std::fmt::Debug for NativeEntryPoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NativeEntryPoint").field("name", &self.name).field("params", &self.params).field("fptr", &"<fptr>").field("flags", &self.flags).finish()
+        f.debug_struct("NativeEntryPoint")
+            .field("name", &self.name)
+            .field("params", &self.params)
+            .field("fptr", &"<fptr>")
+            .field("flags", &self.flags)
+            .finish()
     }
 }
 
 impl Into<NativeEntryPoint> for &casper_sdk_sys::EntryPoint {
     fn into(self) -> NativeEntryPoint {
-        let name = String::from_utf8_lossy(unsafe {
-            slice::from_raw_parts(self.name_ptr, self.name_len)
-        })
-        .into_owned();
+        let name =
+            String::from_utf8_lossy(unsafe { slice::from_raw_parts(self.name_ptr, self.name_len) })
+                .into_owned();
         let params = unsafe { slice::from_raw_parts(self.params_ptr, self.params_size) }
             .iter()
             .map(|param| param.into())
             .collect();
         let ptr = self.fptr;
-        let fptr = Arc::new(move || { ptr(); });
+        let fptr = Arc::new(move || {
+            ptr();
+        });
         let flags = EntryPointFlags::from_bits(self.flags).expect("Valid flags");
         NativeEntryPoint {
             name,
@@ -106,17 +110,15 @@ pub struct NativeManifest {
     pub entry_points: Vec<NativeEntryPoint>,
 }
 
-
 impl Into<NativeManifest> for NonNull<casper_sdk_sys::Manifest> {
     fn into(self) -> NativeManifest {
         let manifest = unsafe { self.as_ref() };
-        let entry_points = unsafe { slice::from_raw_parts(manifest.entry_points, manifest.entry_points_size) }
-            .iter()
-            .map(|entry_point| entry_point.into())
-            .collect();
-        NativeManifest {
-            entry_points,
-        }
+        let entry_points =
+            unsafe { slice::from_raw_parts(manifest.entry_points, manifest.entry_points_size) }
+                .iter()
+                .map(|entry_point| entry_point.into())
+                .collect();
+        NativeManifest { entry_points }
     }
 }
 
@@ -207,10 +209,18 @@ impl Stub {
         Ok(0)
     }
 
-    fn casper_return(&self, flags: u32, data_ptr: *const u8, data_len: usize) -> Result<Never, NativeTrap> {
+    fn casper_return(
+        &self,
+        flags: u32,
+        data_ptr: *const u8,
+        data_len: usize,
+    ) -> Result<Never, NativeTrap> {
         let return_flags = ReturnFlags::from_bits_truncate(flags);
         let data = unsafe { slice::from_raw_parts(data_ptr, data_len) };
-        Err(NativeTrap::Revert(return_flags, Bytes::copy_from_slice(data)))
+        Err(NativeTrap::Revert(
+            return_flags,
+            Bytes::copy_from_slice(data),
+        ))
     }
 
     fn casper_copy_input(
@@ -224,18 +234,18 @@ impl Stub {
 
         if let Some(ptr) = ptr {
             unsafe {
-                ptr::copy_nonoverlapping(
-                    input_data.as_ptr(),
-                    ptr.as_ptr(),
-                    input_data.len(),
-                );
+                ptr::copy_nonoverlapping(input_data.as_ptr(), ptr.as_ptr(), input_data.len());
             }
         }
 
         Ok(ptr.map(|ptr| ptr.as_ptr()).unwrap_or(ptr::null_mut()))
     }
 
-    fn casper_copy_output(&self, output_ptr: *const u8, output_len: usize) -> Result<(), NativeTrap> {
+    fn casper_copy_output(
+        &self,
+        output_ptr: *const u8,
+        output_len: usize,
+    ) -> Result<(), NativeTrap> {
         todo!()
     }
 
@@ -250,7 +260,8 @@ impl Stub {
         input_size: usize,
         result_ptr: *mut casper_sdk_sys::CreateResult,
     ) -> Result<u32, NativeTrap> {
-        let manifest = NonNull::new(manifest_ptr as *mut casper_sdk_sys::Manifest).expect("Manifest instance");
+        let manifest =
+            NonNull::new(manifest_ptr as *mut casper_sdk_sys::Manifest).expect("Manifest instance");
         let code = if code_ptr.is_null() {
             None
         } else {
@@ -264,7 +275,12 @@ impl Stub {
         let entry_point: Option<&str> = if entry_point_ptr.is_null() {
             None
         } else {
-            Some(unsafe { std::str::from_utf8_unchecked(slice::from_raw_parts(entry_point_ptr, entry_point_size)) })
+            Some(unsafe {
+                std::str::from_utf8_unchecked(slice::from_raw_parts(
+                    entry_point_ptr,
+                    entry_point_size,
+                ))
+            })
         };
 
         let input_data = if input_ptr.is_null() {
@@ -272,7 +288,6 @@ impl Stub {
         } else {
             Some(unsafe { slice::from_raw_parts(input_ptr, input_size) })
         };
-
 
         let mut rng = rand::thread_rng();
         let contract_address = rng.gen();
@@ -287,10 +302,13 @@ impl Stub {
         let mut manifests = self.manifests.write().unwrap();
         manifests.insert(contract_address, manifest.into());
 
-
         if let Some(entry_point_name) = entry_point {
             let manifest = manifests.get(&contract_address).expect("Manifest exists");
-            let entry_point = manifest.entry_points.iter().find(|entry_point| entry_point.name == entry_point_name).expect("Entry point exists");
+            let entry_point = manifest
+                .entry_points
+                .iter()
+                .find(|entry_point| entry_point.name == entry_point_name)
+                .expect("Entry point exists");
             if let Some(input_data) = input_data {
                 let mut data = self.input_data.write().unwrap();
                 data.replace(Bytes::copy_from_slice(input_data));
@@ -377,15 +395,12 @@ macro_rules! define_symbols {
     }
 }
 
-
 mod symbols {
     // use super::HostInterface;
     use casper_sdk_sys::for_each_host_function;
-    for_each_host_function!(define_symbols);
+    // for_each_host_function!(define_symbols);
     // for_each_host_function!(define_symbols);
 }
-
-
 
 #[cfg(test)]
 mod tests {

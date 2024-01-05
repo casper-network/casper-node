@@ -5,12 +5,12 @@ use casper_sdk::{
 use codegen::{Field, Scope, Type};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use vm_common::flags::EntryPointFlags;
 use std::{
     collections::{BTreeMap, VecDeque},
     iter,
     str::FromStr,
 };
+use vm_common::flags::EntryPointFlags;
 
 #[derive(Deserialize, Serialize)]
 pub struct Codegen {
@@ -347,11 +347,9 @@ impl Codegen {
 
         client.push_field(field);
 
-
         let client_impl = scope.new_impl(&struct_name);
 
         for entry_point in &self.schema.entry_points {
-
             let func = client_impl.new_fn(&entry_point.name);
             func.vis("pub");
 
@@ -362,11 +360,12 @@ impl Codegen {
 
             if entry_point.flags.contains(EntryPointFlags::CONSTRUCTOR) {
                 func.ret(Type::new(format!(
-                    "Result<{}, casper_sdk::types::CallError>", &struct_name
-                ))).generic("C")
-                    .bound("C", "casper_sdk::Contract");
-            }
-            else {
+                    "Result<{}, casper_sdk::types::CallError>",
+                    &struct_name
+                )))
+                .generic("C")
+                .bound("C", "casper_sdk::Contract");
+            } else {
                 func.ret(Type::new(format!(
                     "Result<casper_sdk::host::CallResult<{result_type}>, casper_sdk::types::CallError>"
                 )));
@@ -411,8 +410,7 @@ impl Codegen {
                         r#"let create_result = C::create(Some("{name}"), Some(&input_data))?;"#,
                         name = &entry_point.name
                     ));
-                }
-                else {
+                } else {
                     func.line(format!(
                         r#"let create_result = C::create(Some("{name}"), None)?;"#,
                         name = &entry_point.name
@@ -425,8 +423,7 @@ impl Codegen {
                 ));
                 func.line(format!(r#"Ok(result)"#));
                 continue;
-            }
-            else {
+            } else {
                 func.line(r#"let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");"#);
 
                 func.line(format!(

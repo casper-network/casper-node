@@ -16,19 +16,17 @@ pub enum Error {
 
 macro_rules! dispatch {
     ($name:ident, $($arg:expr),*) => {{
-        #[cfg(target_arch = "wasm32"))]
+        #[cfg(target_arch = "wasm32")]
         {
             unsafe { casper_sdk_sys::$name($($arg),*) }
         }
+
         #[cfg(not(target_arch = "wasm32"))]
         {
-            STUB.with(|stub| {
-                
-            })::$name($($arg),*)
+            todo!()
         }
     }};
 }
-
 
 pub fn casper_print(msg: &str) {
     // let _res = unsafe { casper_sdk_sys::casper_print(msg.as_ptr(), msg.len()) };

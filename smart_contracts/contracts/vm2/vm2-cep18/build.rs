@@ -1,4 +1,4 @@
-use std::{env, path::Path, fs};
+use std::{env, fs, path::Path};
 
 use casper_sdk_codegen::Codegen;
 
