@@ -9,7 +9,7 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     testing::TestRng,
     BinaryResponse, BinaryResponseAndRequest, BlockHash, BlockHashAndHeight, BlockIdentifier,
-    PayloadType, TransactionHash,
+    PayloadType, Peers, TransactionHash,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -153,7 +153,6 @@ where
 async fn binary_port_component() {
     testing::init_logging();
 
-    // Peers,
     // Uptime,
     // LastProgress,
     // ReactorState,
@@ -187,7 +186,7 @@ async fn binary_port_component() {
                 assert_response::<BlockHashAndHeight, _>(
                     response,
                     Some(PayloadType::BlockHashAndHeight),
-                    |data| data.block_height() >= GUARANTEED_BLOCK_HEIGHT,
+                    |block_data| block_data.block_height() >= GUARANTEED_BLOCK_HEIGHT,
                 )
             }),
         },
@@ -228,6 +227,16 @@ async fn binary_port_component() {
             )),
             asserter: Box::new(|response| {
                 assert_response::<Option<BlockHashAndHeight>, _>(response, None, |_| true)
+            }),
+        },
+        TestCase {
+            request: BinaryRequest::Get(GetRequest::NonPersistedData(
+                NonPersistedDataRequest::Peers,
+            )),
+            asserter: Box::new(|response| {
+                assert_response::<Peers, _>(response, Some(PayloadType::Peers), |peers| {
+                    !peers.into_inner().is_empty()
+                })
             }),
         },
     ];
