@@ -223,7 +223,7 @@ where
                             consensus_status,
                             node_uptime,
                             reactor_state,
-                            last_progress.0,
+                            last_progress.into_inner(),
                             available_block_range,
                             block_sync,
                             starting_state_root_hash,

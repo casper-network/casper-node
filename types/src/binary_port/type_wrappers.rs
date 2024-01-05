@@ -45,6 +45,7 @@ impl Uptime {
     pub fn new(value: u64) -> Self {
         Self(value)
     }
+
     /// Retrieve the inner value.
     pub fn into_inner(self) -> u64 {
         self.0
@@ -88,7 +89,19 @@ impl From<NetworkName> for String {
 
 /// Type representing last progress of the sync process.
 #[derive(Debug)]
-pub struct LastProgress(pub Timestamp);
+pub struct LastProgress(Timestamp);
+
+impl LastProgress {
+    /// Constructs new last progress.
+    pub fn new(value: Timestamp) -> Self {
+        Self(value)
+    }
+
+    /// Retrieve the inner value.
+    pub fn into_inner(self) -> Timestamp {
+        self.0
+    }
+}
 
 impl From<LastProgress> for Timestamp {
     fn from(last_progress: LastProgress) -> Self {

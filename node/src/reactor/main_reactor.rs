@@ -247,9 +247,9 @@ impl reactor::Reactor for MainReactor {
                 ReactorInfoRequest::ReactorState { responder } => {
                     responder.respond(self.state).ignore()
                 }
-                ReactorInfoRequest::LastProgress { responder } => {
-                    responder.respond(LastProgress(self.last_progress)).ignore()
-                }
+                ReactorInfoRequest::LastProgress { responder } => responder
+                    .respond(LastProgress::new(self.last_progress))
+                    .ignore(),
                 ReactorInfoRequest::Uptime { responder } => responder
                     .respond(Uptime::new(self.node_startup_instant.elapsed().as_secs()))
                     .ignore(),

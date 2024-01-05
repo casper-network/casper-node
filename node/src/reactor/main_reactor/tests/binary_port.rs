@@ -2,9 +2,10 @@ use std::{collections::HashMap, time::Duration};
 
 use casper_types::{
     binary_port::{
-        binary_request::BinaryRequest, get::GetRequest,
+        binary_request::BinaryRequest,
+        get::GetRequest,
         non_persistent_data_request::NonPersistedDataRequest,
-        type_wrappers::HighestBlockSequenceCheckResult,
+        type_wrappers::{HighestBlockSequenceCheckResult, LastProgress},
     },
     bytesrepr::{FromBytes, ToBytes},
     testing::TestRng,
@@ -153,7 +154,6 @@ where
 async fn binary_port_component() {
     testing::init_logging();
 
-    // LastProgress,
     // ReactorState,
     // NetworkName,
     // ConsensusValidatorChanges,
@@ -246,6 +246,18 @@ async fn binary_port_component() {
                 assert_response::<Uptime, _>(response, Some(PayloadType::Uptime), |uptime| {
                     uptime.into_inner() > 0
                 })
+            }),
+        },
+        TestCase {
+            request: BinaryRequest::Get(GetRequest::NonPersistedData(
+                NonPersistedDataRequest::LastProgress,
+            )),
+            asserter: Box::new(|response| {
+                assert_response::<LastProgress, _>(
+                    response,
+                    Some(PayloadType::LastProgress),
+                    |last_progress| last_progress.into_inner().millis() > 0,
+                )
             }),
         },
     ];
