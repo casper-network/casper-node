@@ -152,6 +152,18 @@ impl BlockSynchronizerStatus {
             forward,
         }
     }
+
+    /// Returns status of the historical block sync.
+    #[cfg(any(feature = "testing", test))]
+    pub fn historical(&self) -> &Option<BlockSyncStatus> {
+        &self.historical
+    }
+
+    /// Returns status of the forward block sync.
+    #[cfg(any(feature = "testing", test))]
+    pub fn forward(&self) -> &Option<BlockSyncStatus> {
+        &self.forward
+    }
 }
 
 impl ToBytes for BlockSynchronizerStatus {
