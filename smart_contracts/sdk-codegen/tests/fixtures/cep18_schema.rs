@@ -1,13 +1,13 @@
 #![allow(dead_code, unused_variables, non_camel_case_types)]use borsh::{self, BorshSerialize, BorshDeserialize};
 
-type U8 = u8;
+pub type U8 = u8;
 type FixedSequence0_32_U8 = [U8; 32];
 /// Declared as ([U8; 32], [U8; 32])
 #[derive(BorshSerialize, BorshDeserialize)]
 struct Tuple1(FixedSequence0_32_U8, FixedSequence0_32_U8);
 
-type Bool = bool;
-type U64 = u64;
+pub type Bool = bool;
+pub type U64 = u64;
 #[derive(BorshSerialize, BorshDeserialize)]
 struct Struct2 {
     /// Declared as U64
@@ -28,7 +28,7 @@ struct Struct4 {
 
 /// Declared as vm2_cep18::error::Cep18Error
 #[derive(BorshSerialize, BorshDeserialize)]
-enum Enum5 {
+pub enum Enum5 {
     InvalidContext(()),
     InsufficientBalance(()),
     InsufficientAllowance(()),
@@ -52,12 +52,12 @@ enum Enum5 {
 
 /// Declared as Result<(), vm2_cep18::error::Cep18Error>
 #[derive(BorshSerialize, BorshDeserialize)]
-enum Enum6 {
+pub enum Enum6 {
     Ok(()),
     Err(Enum5),
 }
 
-type Char = char;
+pub type Char = char;
 #[derive(BorshSerialize, BorshDeserialize)]
 struct Struct7 {
     /// Declared as String
@@ -80,109 +80,113 @@ struct Struct7 {
 
 /// Declared as vm2_cep18::security_badge::SecurityBadge
 #[derive(BorshSerialize, BorshDeserialize)]
-enum Enum8 {
+pub enum Enum8 {
     Admin(()),
     Minter(()),
     None(()),
 }
 
-struct CEP18Client {
-    address: [u8; 32],
+pub struct CEP18Client {
+    pub address: [u8; 32],
 }
 
 impl CEP18Client {
-    pub fn new(self) -> Result<casper_sdk::host::CallResult<Struct7>, casper_sdk::types::CallError> {
+    pub fn new<C>() -> Result<CEP18Client, casper_sdk::types::CallError>
+    where C: casper_sdk::Contract,
+    {
         let value = 0; // TODO: Transferring values
         let input_args = ();
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
-        casper_sdk::host::call(&self.address, value, "new", &input_data)
+        let create_result = C::create(Some("new"), None)?;
+        let result = CEP18Client { address: create_result.contract_address };
+        Ok(result)
     }
 
-    pub fn name(self) -> Result<casper_sdk::host::CallResult<String>, casper_sdk::types::CallError> {
+    pub fn name(&self) -> Result<casper_sdk::host::CallResult<String>, casper_sdk::types::CallError> {
         let value = 0; // TODO: Transferring values
         let input_args = ();
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
         casper_sdk::host::call(&self.address, value, "name", &input_data)
     }
 
-    pub fn symbol(self) -> Result<casper_sdk::host::CallResult<String>, casper_sdk::types::CallError> {
+    pub fn symbol(&self) -> Result<casper_sdk::host::CallResult<String>, casper_sdk::types::CallError> {
         let value = 0; // TODO: Transferring values
         let input_args = ();
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
         casper_sdk::host::call(&self.address, value, "symbol", &input_data)
     }
 
-    pub fn decimals(self) -> Result<casper_sdk::host::CallResult<U8>, casper_sdk::types::CallError> {
+    pub fn decimals(&self) -> Result<casper_sdk::host::CallResult<U8>, casper_sdk::types::CallError> {
         let value = 0; // TODO: Transferring values
         let input_args = ();
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
         casper_sdk::host::call(&self.address, value, "decimals", &input_data)
     }
 
-    pub fn total_supply(self) -> Result<casper_sdk::host::CallResult<U64>, casper_sdk::types::CallError> {
+    pub fn total_supply(&self) -> Result<casper_sdk::host::CallResult<U64>, casper_sdk::types::CallError> {
         let value = 0; // TODO: Transferring values
         let input_args = ();
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
         casper_sdk::host::call(&self.address, value, "total_supply", &input_data)
     }
 
-    pub fn balance_of(self, address: FixedSequence0_32_U8) -> Result<casper_sdk::host::CallResult<U64>, casper_sdk::types::CallError> {
+    pub fn balance_of(&self, address: FixedSequence0_32_U8) -> Result<casper_sdk::host::CallResult<U64>, casper_sdk::types::CallError> {
         let value = 0; // TODO: Transferring values
         let input_args = (address,);
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
         casper_sdk::host::call(&self.address, value, "balance_of", &input_data)
     }
 
-    pub fn allowance(self, spender: FixedSequence0_32_U8, owner: FixedSequence0_32_U8) -> Result<casper_sdk::host::CallResult<()>, casper_sdk::types::CallError> {
+    pub fn allowance(&self, spender: FixedSequence0_32_U8, owner: FixedSequence0_32_U8) -> Result<casper_sdk::host::CallResult<()>, casper_sdk::types::CallError> {
         let value = 0; // TODO: Transferring values
         let input_args = (spender, owner);
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
         casper_sdk::host::call(&self.address, value, "allowance", &input_data)
     }
 
-    pub fn approve(self, spender: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Enum6>, casper_sdk::types::CallError> {
+    pub fn approve(&self, spender: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Enum6>, casper_sdk::types::CallError> {
         let value = 0; // TODO: Transferring values
         let input_args = (spender, amount);
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
         casper_sdk::host::call(&self.address, value, "approve", &input_data)
     }
 
-    pub fn decrease_allowance(self, spender: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Enum6>, casper_sdk::types::CallError> {
+    pub fn decrease_allowance(&self, spender: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Enum6>, casper_sdk::types::CallError> {
         let value = 0; // TODO: Transferring values
         let input_args = (spender, amount);
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
         casper_sdk::host::call(&self.address, value, "decrease_allowance", &input_data)
     }
 
-    pub fn increase_allowance(self, spender: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Enum6>, casper_sdk::types::CallError> {
+    pub fn increase_allowance(&self, spender: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Enum6>, casper_sdk::types::CallError> {
         let value = 0; // TODO: Transferring values
         let input_args = (spender, amount);
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
         casper_sdk::host::call(&self.address, value, "increase_allowance", &input_data)
     }
 
-    pub fn transfer(self, recipient: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Enum6>, casper_sdk::types::CallError> {
+    pub fn transfer(&self, recipient: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Enum6>, casper_sdk::types::CallError> {
         let value = 0; // TODO: Transferring values
         let input_args = (recipient, amount);
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
         casper_sdk::host::call(&self.address, value, "transfer", &input_data)
     }
 
-    pub fn transfer_from(self, owner: FixedSequence0_32_U8, recipient: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Enum6>, casper_sdk::types::CallError> {
+    pub fn transfer_from(&self, owner: FixedSequence0_32_U8, recipient: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Enum6>, casper_sdk::types::CallError> {
         let value = 0; // TODO: Transferring values
         let input_args = (owner, recipient, amount);
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
         casper_sdk::host::call(&self.address, value, "transfer_from", &input_data)
     }
 
-    pub fn mint(self, owner: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Enum6>, casper_sdk::types::CallError> {
+    pub fn mint(&self, owner: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Enum6>, casper_sdk::types::CallError> {
         let value = 0; // TODO: Transferring values
         let input_args = (owner, amount);
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
         casper_sdk::host::call(&self.address, value, "mint", &input_data)
     }
 
-    pub fn burn(self, owner: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Enum6>, casper_sdk::types::CallError> {
+    pub fn burn(&self, owner: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Enum6>, casper_sdk::types::CallError> {
         let value = 0; // TODO: Transferring values
         let input_args = (owner, amount);
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");

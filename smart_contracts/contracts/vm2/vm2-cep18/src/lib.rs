@@ -1,4 +1,3 @@
-#![cfg_attr(target_arch = "wasm32", no_main)]
 pub mod error;
 pub mod security_badge;
 
@@ -16,7 +15,7 @@ use security_badge::SecurityBadge;
 use std::string::String;
 
 #[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug)]
-struct CEP18 {
+pub struct CEP18 {
     name: String,
     symbol: String,
     decimals: u8,
@@ -291,4 +290,9 @@ mod tests {
             );
         });
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn main() {
+    panic!("This executable should not be used in a non-WASM environment.");
 }

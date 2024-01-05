@@ -13,8 +13,26 @@ pub enum Error {
     Foo,
     Bar,
 }
+
+macro_rules! dispatch {
+    ($name:ident, $($arg:expr),*) => {{
+        #[cfg(target_arch = "wasm32"))]
+        {
+            unsafe { casper_sdk_sys::$name($($arg),*) }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            STUB.with(|stub| {
+                
+            })::$name($($arg),*)
+        }
+    }};
+}
+
+
 pub fn casper_print(msg: &str) {
-    let _res = unsafe { casper_sdk_sys::casper_print(msg.as_ptr(), msg.len()) };
+    // let _res = unsafe { casper_sdk_sys::casper_print(msg.as_ptr(), msg.len()) };
+    let _res = dispatch!(casper_print, msg.as_ptr(), msg.len());
 }
 
 pub fn capser_return(flags: u32, data: &[u8]) -> ! {

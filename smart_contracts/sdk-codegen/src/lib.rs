@@ -5,6 +5,7 @@ use casper_sdk::{
 use codegen::{Field, Scope, Type};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use vm_common::flags::EntryPointFlags;
 use std::{
     collections::{BTreeMap, VecDeque},
     iter,
@@ -216,7 +217,7 @@ impl Codegen {
                             Primitive::F64 => ("F64", "f64"),
                         };
 
-                        scope.new_type_alias(from, to);
+                        scope.new_type_alias(from, to).vis("pub");
                         self.type_mapping.insert(decl.to_string(), from.to_string());
                     }
                     Definition::Mapping { key, value } => {
@@ -295,6 +296,7 @@ impl Codegen {
 
                         let r#enum = scope
                             .new_enum(&enum_name)
+                            .vis("pub")
                             .doc(&format!("Declared as {decl}"))
                             .derive("BorshSerialize")
                             .derive("BorshDeserialize");
@@ -338,14 +340,18 @@ impl Codegen {
         }
 
         let struct_name = format!("{}Client", self.schema.name);
-        let client = scope.new_struct(&struct_name);
+        let client = scope.new_struct(&struct_name).vis("pub");
 
-        client.push_field(Field::new("address", Type::new("[u8; 32]")));
-        // client.push_field(Field::new("last_result", Type::new("Option<ResultCode>")));
+        let mut field = Field::new("address", Type::new("[u8; 32]"));
+        field.vis("pub");
+
+        client.push_field(field);
+
 
         let client_impl = scope.new_impl(&struct_name);
 
         for entry_point in &self.schema.entry_points {
+
             let func = client_impl.new_fn(&entry_point.name);
             func.vis("pub");
 
@@ -354,34 +360,26 @@ impl Codegen {
                 .get(&entry_point.result)
                 .unwrap_or_else(|| panic!("Missing type mapping for {}", entry_point.result));
 
-            func.ret(Type::new(format!(
-                "Result<casper_sdk::host::CallResult<{result_type}>, casper_sdk::types::CallError>"
-            )));
-
-            func.arg_self();
+            if entry_point.flags.contains(EntryPointFlags::CONSTRUCTOR) {
+                func.ret(Type::new(format!(
+                    "Result<{}, casper_sdk::types::CallError>", &struct_name
+                ))).generic("C")
+                    .bound("C", "casper_sdk::Contract");
+            }
+            else {
+                func.ret(Type::new(format!(
+                    "Result<casper_sdk::host::CallResult<{result_type}>, casper_sdk::types::CallError>"
+                )));
+                func.arg_ref_self();
+            }
 
             for arg in &entry_point.arguments {
                 let mapped_type = self
                     .type_mapping
                     .get(&arg.decl)
                     .unwrap_or_else(|| panic!("Missing type mapping for {}", arg.decl));
-
                 let arg_ty = Type::new(mapped_type);
-
                 func.arg(&arg.name, arg_ty);
-
-                // let call_4: &str = "emit_revert_with_data";
-                // let (maybe_data_4, maybe_result_4) =
-                //     host::casper_call(&contract_address, 0, call_4, &[]);
-                // log!("{call_4:?} result={maybe_data_4:?}");
-                // assert_eq!(maybe_result_4, ResultCode::CalleeReverted);
-                // assert_eq!(
-                //     borsh::from_slice::<Result<(), CustomError>>(
-                //         &maybe_data_4.as_ref().expect("return value")
-                //     )
-                //     .unwrap(),
-                //     Err(CustomError::Bar),
-                // );
             }
 
             // func.line(format!(r#"const NAME: &str = "{name}";"#, name=&entry_point.name));
@@ -404,12 +402,38 @@ impl Codegen {
                 func.line(format!(r#"let input_args = ({input_args});"#));
             }
 
-            func.line(r#"let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");"#);
+            if entry_point.flags.contains(EntryPointFlags::CONSTRUCTOR) {
+                func.line(format!(
+                    r#"let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");"#
+                ));
+                if !entry_point.arguments.is_empty() {
+                    func.line(format!(
+                        r#"let create_result = C::create(Some("{name}"), Some(&input_data))?;"#,
+                        name = &entry_point.name
+                    ));
+                }
+                else {
+                    func.line(format!(
+                        r#"let create_result = C::create(Some("{name}"), None)?;"#,
+                        name = &entry_point.name
+                    ));
+                }
 
-            func.line(format!(
-                r#"casper_sdk::host::call(&self.address, value, "{name}", &input_data)"#,
-                name = &entry_point.name
-            ));
+                func.line(format!(
+                    r#"let result = {struct_name} {{ address: create_result.contract_address }};"#,
+                    struct_name = &struct_name
+                ));
+                func.line(format!(r#"Ok(result)"#));
+                continue;
+            }
+            else {
+                func.line(r#"let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");"#);
+
+                func.line(format!(
+                    r#"casper_sdk::host::call(&self.address, value, "{name}", &input_data)"#,
+                    name = &entry_point.name
+                ));
+            }
         }
 
         scope.to_string()

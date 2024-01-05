@@ -360,12 +360,13 @@ mod tests {
 
     #[test]
     fn list_of_constructors() {
-        let constructors: BTreeSet<_> = Greeter::schema()
+        let schema = Greeter::schema();
+        let constructors: BTreeSet<_> = schema
             .entry_points
-            .into_iter()
+            .iter()
             .filter_map(|e| {
                 if e.flags.contains(EntryPointFlags::CONSTRUCTOR) {
-                    Some(e.name)
+                    Some(e.name.as_str())
                 } else {
                     None
                 }
@@ -380,7 +381,4 @@ mod tests {
 
         assert_eq!(constructors, expected);
     }
-
-    #[test]
-    fn foo() {}
 }

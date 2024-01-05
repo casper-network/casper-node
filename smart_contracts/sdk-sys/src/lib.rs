@@ -26,6 +26,7 @@ pub struct Manifest {
     pub entry_points: *const EntryPoint,
     pub entry_points_size: usize,
 }
+
 #[derive(Debug)]
 #[repr(C)]
 pub struct ReadInfo {

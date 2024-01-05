@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 casper-sdk = {path = "../sdk" }
+vm-common = { path = "../../vm-common" }
 codegen = "0.2.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }

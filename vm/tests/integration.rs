@@ -259,8 +259,4 @@ fn run_wasm<T: BorshSerialize>(contract_name: &'static [u8], input_data: T) {
         eprintln!("{result:?} {gas_summary:?}");
         instance.teardown()
     };
-
-    // // dbg!(&res);
-    // dbg!(&retrieved_context.storage);
-    // // retrieved_context.storage
 }

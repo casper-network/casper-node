@@ -782,6 +782,7 @@ dependencies = [
  "ctor 0.2.5",
  "impl-trait-for-tuples",
  "once_cell",
+ "rand 0.8.5",
  "serde",
  "serde_json",
  "vm-common",
@@ -799,6 +800,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "trybuild",
+ "vm-common",
 ]
 
 [[package]]
@@ -6704,6 +6706,7 @@ dependencies = [
  "borsh",
  "casper-macros",
  "casper-sdk",
+ "casper-sdk-codegen",
  "ctor 0.2.5",
  "serde_json",
  "vm-common",
