@@ -9,7 +9,7 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     testing::TestRng,
     BinaryResponse, BinaryResponseAndRequest, BlockHash, BlockHashAndHeight, BlockIdentifier,
-    PayloadType, Peers, TransactionHash,
+    PayloadType, Peers, TransactionHash, Uptime,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -153,7 +153,6 @@ where
 async fn binary_port_component() {
     testing::init_logging();
 
-    // Uptime,
     // LastProgress,
     // ReactorState,
     // NetworkName,
@@ -236,6 +235,16 @@ async fn binary_port_component() {
             asserter: Box::new(|response| {
                 assert_response::<Peers, _>(response, Some(PayloadType::Peers), |peers| {
                     !peers.into_inner().is_empty()
+                })
+            }),
+        },
+        TestCase {
+            request: BinaryRequest::Get(GetRequest::NonPersistedData(
+                NonPersistedDataRequest::Uptime,
+            )),
+            asserter: Box::new(|response| {
+                assert_response::<Uptime, _>(response, Some(PayloadType::Uptime), |uptime| {
+                    uptime.into_inner() > 0
                 })
             }),
         },

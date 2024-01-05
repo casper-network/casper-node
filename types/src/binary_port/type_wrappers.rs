@@ -38,7 +38,18 @@ macro_rules! impl_bytesrepr_for_type_wrapper {
 
 /// Type representing uptime.
 #[derive(Debug, Clone, Copy)]
-pub struct Uptime(pub u64);
+pub struct Uptime(u64);
+
+impl Uptime {
+    /// Constructs new uptime.
+    pub fn new(value: u64) -> Self {
+        Self(value)
+    }
+    /// Retrieve the inner value.
+    pub fn into_inner(self) -> u64 {
+        self.0
+    }
+}
 
 impl From<Uptime> for Duration {
     fn from(uptime: Uptime) -> Self {

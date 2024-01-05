@@ -251,7 +251,7 @@ impl reactor::Reactor for MainReactor {
                     responder.respond(LastProgress(self.last_progress)).ignore()
                 }
                 ReactorInfoRequest::Uptime { responder } => responder
-                    .respond(Uptime(self.node_startup_instant.elapsed().as_secs()))
+                    .respond(Uptime::new(self.node_startup_instant.elapsed().as_secs()))
                     .ignore(),
                 ReactorInfoRequest::NetworkName { responder } => responder
                     .respond(NetworkName(self.chainspec.network_config.name.clone()))
