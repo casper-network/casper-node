@@ -111,6 +111,8 @@ pub(crate) fn resolve_address(address: &str) -> Result<SocketAddr, ResolveAddres
             address: address.to_string(),
             kind: ResolveAddressErrorKind::ErrorResolving(err),
         })?
+        /// Filter for IPv4 addresses
+        .filter(|addr| addr.is_ipv4())
         .next()
         .ok_or_else(|| ResolveAddressError {
             address: address.to_string(),
