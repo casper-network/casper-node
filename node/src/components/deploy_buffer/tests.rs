@@ -521,8 +521,8 @@ fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
         }
         accounts
     };
-    let contract_names = vec!["a", "b", "c", "d", "e"];
-    let contract_entry_points = vec!["foo", "bar"];
+    let contract_names = ["a", "b", "c", "d", "e"];
+    let contract_entry_points = ["foo", "bar"];
 
     let mut last_timestamp = Timestamp::now();
     fn timestamp(rng: &mut TestRng, last_timestamp: Timestamp) -> Timestamp {
