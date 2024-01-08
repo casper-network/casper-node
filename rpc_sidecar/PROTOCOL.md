@@ -29,7 +29,7 @@ Every version of the protocol follows a standard SemVer MAJOR.MINOR.PATCH scheme
 The protocol supports **backwards-compatible** changes to some parts of the request/response model. These are allowed to change between **MINOR** versions and they're listed below:
 - addition of new [`RequestTag`](#request-format) with it's own payload
 - addition of new [`PayloadTypeTag`](#response-format) with it's own payload
-- addition of new [`DbId`]()
+- addition of new [`DbId`](#request-model-details)
 - addition of new [`ErrorCode`](#response-format)
 
 Implementations of the protocol can handle requests/responses with a  different **MINOR** version than their own. It is possible that they receive a payload they don't support if their version is lower. In that case they should respond with an error code indicating the lack of support for the given payload.
