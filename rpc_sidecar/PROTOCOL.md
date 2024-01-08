@@ -9,18 +9,19 @@ This is a binary protocol which follows a simple request-response model built on
 |---------------|-----------------|---------------------------------------------------------|
 | 12            | ProtocolVersion | Protocol version as a u32 triplet (major, minor, patch) |
 | 1             | RequestTag      | Tag identifying the request                             |
-| ...           | RequestPayload  | Payload to be interpreted according to `RequestTag`      |
+| ...           | RequestPayload  | Payload to be interpreted according to `RequestTag`     |
 
 ### Response format
-| Size in bytes   | Field           | Description                                                     |
-|-----------------|-----------------|-----------------------------------------------------------------|
-| 4               | LengthOfRequest | Length of the request being responded to                        |
+| Size in bytes   | Field           | Description                                                             |
+|-----------------|-----------------|-------------------------------------------------------------------------|
+| 4               | LengthOfRequest | Length of the request being responded to                                | 
 | LengthOfRequest | RequestBytes    | The request being responded to encoded as bytes                         |
-| 12              | ProtocolVersion | Protocol version as a u32 triplet (major, minor, patch)         |
-| 1               | ErrorCode       | Error code, where 0 indicates success                                                      |
+| 12              | ProtocolVersion | Protocol version as a u32 triplet (major, minor, patch)                 |
+| 1               | ErrorCode       | Error code, where 0 indicates success                                   |
 | 1-2             | PayloadTag      | Optional payload type tag (first byte being 1 indicates that it exists) |
-| ..              | Payload         | Payload to be interpreted according to `PayloadTypeTag`           |
+| ...             | Payload         | Payload to be interpreted according to `PayloadTypeTag`                 |
 
+**Note:** `...` means that the payload size is variable in size and depends on the tag.
 
 ## Versioning
 Every version of the protocol follows a standard SemVer MAJOR.MINOR.PATCH scheme.
