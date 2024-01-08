@@ -921,6 +921,62 @@ impl Deploy {
         Self::random_transfer_with_session(rng, session)
     }
 
+    /// Returns a random deploy with custom session specified as a stored versioned contract by
+    /// name.
+    pub(crate) fn random_contract_by_name(
+        rng: &mut TestRng,
+        maybe_secret_key: Option<SecretKey>,
+        maybe_contract_name: Option<String>,
+        maybe_entry_point_name: Option<String>,
+        maybe_timestamp: Option<Timestamp>,
+        maybe_ttl: Option<TimeDiff>,
+    ) -> Self {
+        let payment_args = runtime_args! {
+            "amount" => U512::from(10),
+        };
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: payment_args,
+        };
+        let contract_name = match maybe_contract_name {
+            None => "Test".to_string(),
+            Some(contract_name) => contract_name,
+        };
+        let entry_point_name = match maybe_entry_point_name {
+            None => "Test".to_string(),
+            Some(entry_point_name) => entry_point_name,
+        };
+        let session = ExecutableDeployItem::StoredVersionedContractByName {
+            name: contract_name,
+            version: None,
+            entry_point: entry_point_name,
+            args: Default::default(),
+        };
+        let secret_key = match maybe_secret_key {
+            None => SecretKey::random(rng),
+            Some(secret_key) => secret_key,
+        };
+        let timestamp = match maybe_timestamp {
+            None => Timestamp::now(),
+            Some(timestamp) => timestamp,
+        };
+        let ttl = match maybe_ttl {
+            None => TimeDiff::from_seconds(rng.gen_range(60..3600)),
+            Some(ttl) => ttl,
+        };
+        Deploy::new(
+            timestamp,
+            ttl,
+            1,
+            vec![],
+            "test_chain".to_string(),
+            payment,
+            session,
+            &secret_key,
+            None,
+        )
+    }
+
     /// Returns a random invalid deploy with custom session specified as a stored versioned contract
     /// by hash, but missing the runtime args.
     pub(crate) fn random_with_missing_session_package_by_hash(rng: &mut TestRng) -> Self {

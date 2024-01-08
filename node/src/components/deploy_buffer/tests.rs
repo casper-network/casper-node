@@ -5,7 +5,7 @@ use crate::{
     types::{Block, FinalizedBlock},
     utils,
 };
-use casper_types::{testing::TestRng, EraId, TimeDiff};
+use casper_types::{testing::TestRng, EraId, SecretKey, TimeDiff};
 use prometheus::Registry;
 use rand::Rng;
 
@@ -391,6 +391,216 @@ fn register_deploys_and_blocks() {
         block_deploys.len() + valid_deploys.len() + block.deploy_and_transfer_hashes().count(),
         block_deploys.len() + block.deploy_and_transfer_hashes().count(),
         0,
+    );
+}
+
+#[test]
+fn should_have_one_bucket_per_distinct_body_hash() {
+    let mut rng = TestRng::new();
+    let max_deploy_count = 2;
+    let max_transfer_count = 0;
+    let deploy_config = DeployConfig {
+        block_max_deploy_count: max_deploy_count,
+        block_max_transfer_count: max_transfer_count,
+        block_max_approval_count: max_deploy_count + max_transfer_count,
+        ..Default::default()
+    };
+    let mut deploy_buffer =
+        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
+
+    let secret_key1 = SecretKey::random(&mut rng);
+    let ttl = TimeDiff::from_seconds(30);
+    let deploy1 = Deploy::random_contract_by_name(
+        &mut rng,
+        Some(secret_key1),
+        None,
+        None,
+        Some(Timestamp::now()),
+        Some(ttl),
+    );
+    let deploy1_body_hash = *deploy1.header().body_hash();
+    deploy_buffer.register_deploy(deploy1);
+
+    let secret_key2 = SecretKey::random(&mut rng); // different signer
+    let deploy2 = Deploy::random_contract_by_name(
+        &mut rng,
+        Some(
+            SecretKey::from_pem(secret_key2.to_pem().expect("should pemify"))
+                .expect("should un-pemify"),
+        ),
+        None,
+        None,
+        Some(Timestamp::now()), // different timestamp
+        Some(ttl),
+    );
+    assert_eq!(
+        &deploy1_body_hash,
+        deploy2.header().body_hash(),
+        "1 & 2 should have same body hashes"
+    );
+    deploy_buffer.register_deploy(deploy2);
+
+    let buckets = deploy_buffer.buckets();
+    assert!(buckets.len() == 1, "should be 1 bucket");
+
+    let deploy3 = Deploy::random_contract_by_name(
+        &mut rng,
+        Some(
+            SecretKey::from_pem(secret_key2.to_pem().expect("should pemify"))
+                .expect("should un-pemify"),
+        ),
+        None,
+        None,
+        Some(Timestamp::now()), // different timestamp
+        Some(ttl),
+    );
+    assert_eq!(
+        &deploy1_body_hash,
+        deploy3.header().body_hash(),
+        "1 & 3 should have same body hashes"
+    );
+    deploy_buffer.register_deploy(deploy3);
+    let buckets = deploy_buffer.buckets();
+    assert!(buckets.len() == 1, "should still be 1 bucket");
+
+    let deploy4 = Deploy::random_contract_by_name(
+        &mut rng,
+        Some(
+            SecretKey::from_pem(secret_key2.to_pem().expect("should pemify"))
+                .expect("should un-pemify"),
+        ),
+        Some("some other contract name".to_string()),
+        None,
+        Some(Timestamp::now()), // different timestamp
+        Some(ttl),
+    );
+    assert_ne!(
+        &deploy1_body_hash,
+        deploy4.header().body_hash(),
+        "1 & 4 should have different body hashes"
+    );
+    deploy_buffer.register_deploy(deploy4);
+    let buckets = deploy_buffer.buckets();
+    assert!(buckets.len() == 2, "should be 2 buckets");
+
+    let transfer5 = Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
+        &mut rng,
+        Timestamp::now(),
+        ttl,
+    );
+    assert_ne!(
+        &deploy1_body_hash,
+        transfer5.header().body_hash(),
+        "1 & 5 should have different body hashes"
+    );
+    deploy_buffer.register_deploy(transfer5);
+    let buckets = deploy_buffer.buckets();
+    assert!(buckets.len() == 3, "should be 3 buckets");
+}
+
+#[test]
+fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
+    let mut rng = TestRng::new();
+    let max_deploy_count = 50;
+    let max_transfer_count = 5;
+    let deploy_config = DeployConfig {
+        block_max_deploy_count: max_deploy_count,
+        block_max_transfer_count: max_transfer_count,
+        block_max_approval_count: max_deploy_count + max_transfer_count,
+        ..Default::default()
+    };
+    let mut deploy_buffer =
+        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
+
+    let cap = (max_deploy_count * 20) as usize;
+
+    let secret_keys = {
+        let mut accounts = vec![];
+        for _ in 0..10 {
+            accounts.push(SecretKey::random(&mut rng));
+        }
+        accounts
+    };
+    let contract_names = ["a", "b", "c", "d", "e"];
+    let contract_entry_points = ["foo", "bar"];
+
+    let mut last_timestamp = Timestamp::now();
+    fn timestamp(rng: &mut TestRng, last_timestamp: Timestamp) -> Timestamp {
+        if rng.gen_range(0..=1) == 1 {
+            return Timestamp::now();
+        }
+        last_timestamp
+    }
+
+    fn ttl(rng: &mut TestRng) -> TimeDiff {
+        TimeDiff::from_seconds(rng.gen_range(60..3600))
+    }
+
+    for _ in 0..cap {
+        last_timestamp = timestamp(&mut rng, last_timestamp);
+        let ttl = ttl(&mut rng);
+        let secret_key = Some(
+            SecretKey::from_pem(
+                secret_keys[rng.gen_range(0..secret_keys.len())]
+                    .to_pem()
+                    .expect("should pemify"),
+            )
+            .expect("should un-pemify"),
+        );
+        let contract_name = Some(contract_names[rng.gen_range(0..contract_names.len())].into());
+        let contract_entry_point =
+            Some(contract_entry_points[rng.gen_range(0..contract_entry_points.len())].into());
+        let deploy = Deploy::random_contract_by_name(
+            &mut rng,
+            secret_key,
+            contract_name,
+            contract_entry_point,
+            Some(last_timestamp),
+            Some(ttl),
+        );
+        deploy_buffer.register_deploy(deploy)
+    }
+
+    for _ in 0..max_transfer_count {
+        last_timestamp = timestamp(&mut rng, last_timestamp);
+        let ttl = ttl(&mut rng);
+        deploy_buffer.register_deploy(Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
+            &mut rng,
+            last_timestamp,
+            ttl,
+        ));
+    }
+
+    let expected_count = cap + (max_transfer_count as usize);
+    assert_container_sizes(&deploy_buffer, expected_count, 0, 0);
+
+    let buckets1 = deploy_buffer.buckets();
+    assert!(
+        buckets1.len() > 1,
+        "should be multiple buckets with this much state"
+    );
+    let buckets2 = deploy_buffer.buckets();
+    assert_eq!(
+        buckets1, buckets2,
+        "with same state should get same buckets every time"
+    );
+
+    // while it is not impossible to get identical appendable blocks over an unchanged buffer
+    // using this strategy, it should be very unlikely...the below brute forces a check for this
+    let expected_eq_tolerance = 1;
+    let mut actual_eq_count = 0;
+    for _ in 0..10 {
+        let appendable1 = deploy_buffer.appendable_block(last_timestamp);
+        let appendable2 = deploy_buffer.appendable_block(last_timestamp);
+        if appendable1 == appendable2 {
+            actual_eq_count += 1;
+        }
+    }
+    assert!(
+        actual_eq_count <= expected_eq_tolerance,
+        "{} matches exceeded tolerance of {}",
+        actual_eq_count,
+        expected_eq_tolerance
     );
 }
 
