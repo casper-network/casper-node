@@ -13,8 +13,8 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     testing::TestRng,
     AvailableBlockRange, BinaryResponse, BinaryResponseAndRequest, BlockHash, BlockHashAndHeight,
-    BlockIdentifier, BlockSynchronizerStatus, NextUpgrade, PayloadType, Peers, ReactorState,
-    TransactionHash, Uptime,
+    BlockIdentifier, BlockSynchronizerStatus, ChainspecRawBytes, NextUpgrade, PayloadType, Peers,
+    ReactorState, TransactionHash, Uptime,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -57,6 +57,7 @@ async fn setup() -> (
     (
         impl futures::Future<Output = (TestingNetwork<FilterReactor<MainReactor>>, TestRng)>,
         TestRng,
+        ChainspecRawBytes,
     ),
 ) {
     let mut fixture = TestFixture::new(
@@ -67,6 +68,7 @@ async fn setup() -> (
         None,
     )
     .await;
+    let chainspec_raw_bytes = ChainspecRawBytes::clone(&fixture.chainspec_raw_bytes);
     let mut rng = fixture.rng_mut().create_child();
     let net = fixture.network_mut();
 
@@ -91,8 +93,8 @@ async fn setup() -> (
     let protocol_builder = ProtocolBuilder::<1>::with_default_channel_config(
         ChannelConfiguration::default()
             .with_request_limit(10)
-            .with_max_request_payload_size(8192)
-            .with_max_response_payload_size(8192),
+            .with_max_request_payload_size(1024 * 1024 * 8)
+            .with_max_response_payload_size(1024 * 1024 * 8),
     );
     let io_builder = IoCoreBuilder::new(protocol_builder).buffer_size(ChannelId::new(0), 4096);
     let rpc_builder = RpcBuilder::new(io_builder);
@@ -110,7 +112,7 @@ async fn setup() -> (
         }
     });
 
-    (client, (finish_cranking, rng))
+    (client, (finish_cranking, rng, chainspec_raw_bytes))
 }
 
 struct TestCase {
@@ -158,10 +160,9 @@ where
 async fn binary_port_component() {
     testing::init_logging();
 
-    // ChainspecRawBytes,
     // NodeStatus,
 
-    let (client, (finish_cranking, mut rng)) = setup().await;
+    let (client, (finish_cranking, mut rng, network_chainspec_raw_bytes)) = setup().await;
 
     let test_cases = &[
         TestCase {
@@ -334,6 +335,18 @@ async fn binary_port_component() {
                     response,
                     Some(PayloadType::ConsensusStatus),
                     |_| true,
+                )
+            }),
+        },
+        TestCase {
+            request: BinaryRequest::Get(GetRequest::NonPersistedData(
+                NonPersistedDataRequest::ChainspecRawBytes,
+            )),
+            asserter: Box::new(move |response| {
+                assert_response::<ChainspecRawBytes, _>(
+                    response,
+                    Some(PayloadType::ChainspecRawBytes),
+                    |crb| crb == network_chainspec_raw_bytes,
                 )
             }),
         },
