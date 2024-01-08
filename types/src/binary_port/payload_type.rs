@@ -198,6 +198,12 @@ impl TryFrom<u8> for PayloadType {
     }
 }
 
+impl From<PayloadType> for u8 {
+    fn from(value: PayloadType) -> Self {
+        value as u8
+    }
+}
+
 impl fmt::Display for PayloadType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

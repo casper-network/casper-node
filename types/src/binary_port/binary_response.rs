@@ -1,6 +1,9 @@
 //! The binary response.
 
-use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes};
+use crate::{
+    bytesrepr::{self, Bytes, FromBytes, ToBytes},
+    SemVer,
+};
 use alloc::vec::Vec;
 
 #[cfg(test)]
@@ -61,8 +64,7 @@ impl BinaryResponse {
     /// Creates a new binary response from a value.
     pub fn from_value<V>(val: V) -> Self
     where
-        V: ToBytes,
-        V: PayloadEntity,
+        V: ToBytes + PayloadEntity,
     {
         BinaryResponse {
             payload: ToBytes::to_bytes(&val).unwrap(),
@@ -73,12 +75,23 @@ impl BinaryResponse {
     /// Creates a new binary response from an optional value.
     pub fn from_option<V>(opt: Option<V>) -> Self
     where
-        V: ToBytes,
-        V: PayloadEntity,
+        V: ToBytes + PayloadEntity,
     {
         match opt {
             Some(val) => Self::from_value(val),
             None => Self::new_empty(),
+        }
+    }
+
+    /// Creates a binary response with specified value and protocol version.
+    #[cfg(any(feature = "testing", test))]
+    pub fn from_value_with_protocol_version<V>(val: V, ver: SemVer) -> Self
+    where
+        V: ToBytes + PayloadEntity,
+    {
+        Self {
+            header: BinaryResponseHeader::new_with_protocol_version(Some(V::PAYLOAD_TYPE), ver),
+            payload: ToBytes::to_bytes(&val).unwrap(),
         }
     }
 
@@ -93,8 +106,8 @@ impl BinaryResponse {
     }
 
     /// Returns the payload type of the response.
-    pub fn returned_data_type(&self) -> Option<PayloadType> {
-        self.header.returned_data_type()
+    pub fn returned_data_type_tag(&self) -> Option<u8> {
+        self.header.returned_data_type_tag()
     }
 
     /// Returns true if the response means that data has not been found.
@@ -105,6 +118,11 @@ impl BinaryResponse {
     /// Returns the payload.
     pub fn payload(&self) -> &[u8] {
         self.payload.as_ref()
+    }
+
+    /// Returns the protocol version.
+    pub fn protocol_version(&self) -> SemVer {
+        self.header.protocol_version()
     }
 
     #[cfg(test)]

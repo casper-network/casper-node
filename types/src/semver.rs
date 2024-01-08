@@ -44,6 +44,17 @@ impl SemVer {
             patch,
         }
     }
+
+    /// Return `true` if the two versions have compatible major numbers.
+    pub fn is_major_compatible(self, other: SemVer) -> bool {
+        if self.major == 0 || other.major == 0 {
+            // SEMVER requires that major version 0 be considered unstable,
+            // so a precise version match is required.
+            self == other
+        } else {
+            self.major == other.major
+        }
+    }
 }
 
 impl ToBytes for SemVer {

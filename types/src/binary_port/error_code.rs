@@ -27,7 +27,7 @@ pub enum ErrorCode {
     WasmPreprocessing = 5,
     /// Invalid protocol version.
     #[cfg_attr(feature = "std", error("invalid protocol version"))]
-    InvalidProtocolVersion = 6,
+    UnsupportedProtocolVersion = 6,
     /// Invalid deploy.
     #[cfg_attr(feature = "std", error("invalid deploy"))]
     InvalidDeploy = 7,
@@ -40,6 +40,9 @@ pub enum ErrorCode {
     /// Bad request.
     #[cfg_attr(feature = "std", error("bad request"))]
     BadRequest = 10,
+    /// Received an unsupported type of request.
+    #[cfg_attr(feature = "std", error("unsupported request"))]
+    UnsupportedRequest = 11,
 }
 
 impl TryFrom<u8> for ErrorCode {
@@ -53,7 +56,7 @@ impl TryFrom<u8> for ErrorCode {
             3 => Ok(Self::RootNotFound),
             4 => Ok(Self::InvalidDeployItemVariant),
             5 => Ok(Self::WasmPreprocessing),
-            6 => Ok(Self::InvalidProtocolVersion),
+            6 => Ok(Self::UnsupportedProtocolVersion),
             7 => Ok(Self::InvalidDeploy),
             8 => Ok(Self::InternalError),
             9 => Ok(Self::QueryFailedToExecute),

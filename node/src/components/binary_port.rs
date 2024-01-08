@@ -6,7 +6,11 @@ mod metrics;
 #[cfg(test)]
 mod tests;
 
-use std::{convert::TryInto, net::SocketAddr, sync::Arc};
+use std::{
+    convert::{TryFrom, TryInto},
+    net::SocketAddr,
+    sync::Arc,
+};
 
 use bytes::Bytes;
 use casper_execution_engine::engine_state::{
@@ -14,10 +18,14 @@ use casper_execution_engine::engine_state::{
 };
 use casper_types::{
     binary_port::{
-        self, binary_request::BinaryRequest, db_id::DbId, get::GetRequest,
+        self,
+        binary_request::{BinaryRequest, BinaryRequestHeader, BinaryRequestTag},
+        db_id::DbId,
+        get::GetRequest,
         get_all_values_result::GetAllValuesResult,
         global_state_query_result::GlobalStateQueryResult,
-        non_persistent_data_request::NonPersistedDataRequest, DbRawBytesSpec, NodeStatus,
+        non_persistent_data_request::NonPersistedDataRequest,
+        DbRawBytesSpec, NodeStatus, BINARY_PROTOCOL_VERSION,
     },
     bytesrepr::{self, FromBytes, ToBytes},
     BinaryResponse, BinaryResponseAndRequest, BlockHashAndHeight, BlockHeader, Digest, Peers,
@@ -306,7 +314,7 @@ where
 {
     match get_req {
         // this workaround is in place because get_block_transfers performs a lazy migration
-        GetRequest::Db { db, key } if db == DbId::Transfer => {
+        GetRequest::Db { db_tag, key } if db_tag == u8::from(DbId::Transfer) => {
             metrics.binary_port_get_db_count.inc();
             let Ok(block_hash) = bytesrepr::deserialize_from_slice(&key) else {
                 return BinaryResponse::new_error(binary_port::ErrorCode::BadRequest);
@@ -314,17 +322,22 @@ where
             let Some(transfers) = effect_builder
                 .get_block_transfers_from_storage(block_hash)
                 .await else {
-                return BinaryResponse::from_db_raw_bytes(db, None);
+                return BinaryResponse::new_empty();
             };
             let serialized =
                 bincode::serialize(&transfers).expect("should serialize transfers to bytes");
             let bytes = DbRawBytesSpec::new_legacy(&serialized);
-            BinaryResponse::from_db_raw_bytes(db, Some(bytes))
+            BinaryResponse::from_db_raw_bytes(DbId::Transaction, Some(bytes))
         }
-        GetRequest::Db { db, key } => {
+        GetRequest::Db { db_tag, key } => {
             metrics.binary_port_get_db_count.inc();
-            let maybe_raw_bytes = effect_builder.get_raw_data(db, key).await;
-            BinaryResponse::from_db_raw_bytes(db, maybe_raw_bytes)
+            match DbId::try_from(db_tag) {
+                Ok(db_id) => {
+                    let maybe_raw_bytes = effect_builder.get_raw_data(db_id, key).await;
+                    BinaryResponse::from_db_raw_bytes(db_id, maybe_raw_bytes)
+                }
+                Err(_) => BinaryResponse::new_error(binary_port::ErrorCode::UnsupportedRequest),
+            }
         }
         GetRequest::NonPersistedData(req) => {
             metrics.binary_port_get_non_persisted_data_count.inc();
@@ -626,26 +639,46 @@ where
             return Err(Error::NoPayload);
         };
 
-        match BinaryRequest::from_bytes(payload.as_ref())? {
-            (_, reminder) if !reminder.is_empty() => {
-                return Err(bytesrepr::Error::LeftOverBytes.into());
-            }
-            (req, _) => {
-                let response = effect_builder
-                    .make_request(
-                        |responder| Event::HandleRequest {
-                            request: req,
-                            responder,
-                        },
-                        QueueKind::Regular,
-                    )
-                    .await;
-
-                let response = BinaryResponseAndRequest::new(response, payload.as_ref());
-                incoming_request.respond(Some(Bytes::from(ToBytes::to_bytes(&response)?)))
-            }
-        }
+        let resp = handle_payload(effect_builder, payload).await?;
+        let resp_and_payload = BinaryResponseAndRequest::new(resp, payload);
+        incoming_request.respond(Some(Bytes::from(ToBytes::to_bytes(&resp_and_payload)?)))
     }
+}
+
+async fn handle_payload<REv>(
+    effect_builder: EffectBuilder<REv>,
+    payload: &[u8],
+) -> Result<BinaryResponse, Error>
+where
+    REv: From<Event>,
+{
+    let (header, remainder) = BinaryRequestHeader::from_bytes(payload)?;
+
+    if !header
+        .protocol_version()
+        .is_major_compatible(BINARY_PROTOCOL_VERSION)
+    {
+        return Ok(BinaryResponse::new_error(
+            binary_port::ErrorCode::UnsupportedProtocolVersion,
+        ));
+    }
+
+    // we might receive a request added in a minor version if we're behind
+    let (tag, _) = u8::from_bytes(remainder)?;
+    if BinaryRequestTag::try_from(tag).is_err() {
+        return Ok(BinaryResponse::new_error(
+            binary_port::ErrorCode::UnsupportedRequest,
+        ));
+    }
+
+    let request = bytesrepr::deserialize_from_slice(remainder)?;
+    let resp = effect_builder
+        .make_request(
+            |responder| Event::HandleRequest { request, responder },
+            QueueKind::Regular,
+        )
+        .await;
+    Ok(resp)
 }
 
 async fn handle_client<REv>(

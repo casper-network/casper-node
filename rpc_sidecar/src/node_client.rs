@@ -6,7 +6,7 @@ use serde::de::DeserializeOwned;
 use crate::{config::ExponentialBackoffConfig, NodeClientConfig};
 use casper_types::{
     binary_port::{
-        binary_request::BinaryRequest,
+        binary_request::{BinaryRequest, BinaryRequestHeader},
         db_id::DbId,
         get::GetRequest,
         global_state_query_result::GlobalStateQueryResult,
@@ -16,14 +16,14 @@ use casper_types::{
             ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
             SpeculativeExecutionResult, StoredValues,
         },
-        ErrorCode as BinaryPortError, NodeStatus,
+        ErrorCode as BinaryPortError, NodeStatus, BINARY_PROTOCOL_VERSION,
     },
     bytesrepr::{self, FromBytes, ToBytes},
     execution::{ExecutionResult, ExecutionResultV1},
     AvailableBlockRange, BinaryResponse, BinaryResponseAndRequest, BlockBody, BlockBodyV1,
     BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderV1, BlockIdentifier, BlockSignatures,
     ChainspecRawBytes, Deploy, Digest, FinalizedApprovals, FinalizedDeployApprovals, Key, KeyTag,
-    PayloadType, Peers, ProtocolVersion, Timestamp, Transaction, TransactionHash, Transfer,
+    Peers, ProtocolVersion, SemVer, Timestamp, Transaction, TransactionHash, Transfer,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -46,7 +46,7 @@ pub trait NodeClient: Send + Sync {
 
     async fn read_from_db(&self, db: DbId, key: &[u8]) -> Result<BinaryResponseAndRequest, Error> {
         let get = GetRequest::Db {
-            db,
+            db_tag: db as u8,
             key: key.to_vec(),
         };
         self.send_request(BinaryRequest::Get(get)).await
@@ -243,7 +243,7 @@ pub trait NodeClient: Send + Sync {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
     #[error("request error: {0}")]
     RequestFailed(String),
@@ -257,8 +257,8 @@ pub enum Error {
     NoResponseBody,
     #[error("unexpectedly received an empty envelope")]
     EmptyEnvelope,
-    #[error("unexpected variant received in the response: {0}")]
-    UnexpectedVariantReceived(PayloadType),
+    #[error("unexpected payload variant received in the response: {0}")]
+    UnexpectedVariantReceived(u8),
     #[error("attempted to use a function that's disabled on the node")]
     FunctionIsDisabled,
     #[error("could not find the provided state root hash")]
@@ -269,6 +269,8 @@ pub enum Error {
     InvalidDeploy,
     #[error("speculative execution has failed: {0}")]
     SpecExecutionFailed(String),
+    #[error("received a response with an unsupported protocol version: {0}")]
+    UnsupportedProtocolVersion(SemVer),
     #[error("received an unexpected node error: {message} ({code})")]
     UnexpectedNodeError { message: String, code: u8 },
 }
@@ -282,7 +284,6 @@ impl Error {
             Ok(BinaryPortError::QueryFailedToExecute) => Self::QueryFailedToExecute,
             Ok(
                 err @ (BinaryPortError::WasmPreprocessing
-                | BinaryPortError::InvalidProtocolVersion
                 | BinaryPortError::InvalidDeployItemVariant),
             ) => Self::SpecExecutionFailed(err.to_string()),
             Ok(err) => Self::UnexpectedNodeError {
@@ -378,7 +379,7 @@ impl JulietNodeClient {
 #[async_trait]
 impl NodeClient for JulietNodeClient {
     async fn send_request(&self, req: BinaryRequest) -> Result<BinaryResponseAndRequest, Error> {
-        let payload = req.to_bytes().expect("should always serialize a request");
+        let payload = encode_request(&req).expect("should always serialize a request");
         let request_guard = self
             .client
             .read()
@@ -397,6 +398,14 @@ impl NodeClient for JulietNodeClient {
     }
 }
 
+fn encode_request(req: &BinaryRequest) -> Result<Vec<u8>, bytesrepr::Error> {
+    let header = BinaryRequestHeader::new(BINARY_PROTOCOL_VERSION);
+    let mut bytes = Vec::with_capacity(header.serialized_length() + req.serialized_length());
+    header.write_bytes(&mut bytes)?;
+    req.write_bytes(&mut bytes)?;
+    Ok(bytes)
+}
+
 fn parse_response<A>(resp: &BinaryResponse) -> Result<Option<A>, Error>
 where
     A: FromBytes + PayloadEntity,
@@ -404,11 +413,9 @@ where
     if resp.is_not_found() {
         return Ok(None);
     }
-    if !resp.is_success() {
-        return Err(Error::from_error_code(resp.error_code()));
-    }
-    match resp.returned_data_type() {
-        Some(found) if found == A::PAYLOAD_TYPE => {
+    validate_response(resp)?;
+    match resp.returned_data_type_tag() {
+        Some(found) if found == u8::from(A::PAYLOAD_TYPE) => {
             bytesrepr::deserialize_from_slice(resp.payload())
                 .map(Some)
                 .map_err(|err| Error::Deserialization(err.to_string()))
@@ -426,14 +433,12 @@ where
     if resp.is_not_found() {
         return Ok(None);
     }
-    if !resp.is_success() {
-        return Err(Error::from_error_code(resp.error_code()));
-    }
-    match resp.returned_data_type() {
-        Some(found) if found == V1::PAYLOAD_TYPE => bincode::deserialize(resp.payload())
+    validate_response(resp)?;
+    match resp.returned_data_type_tag() {
+        Some(found) if found == u8::from(V1::PAYLOAD_TYPE) => bincode::deserialize(resp.payload())
             .map(|val| Some(V2::from(val)))
             .map_err(|err| Error::Deserialization(err.to_string())),
-        Some(found) if found == V2::PAYLOAD_TYPE => {
+        Some(found) if found == u8::from(V2::PAYLOAD_TYPE) => {
             bytesrepr::deserialize_from_slice(resp.payload())
                 .map(Some)
                 .map_err(|err| Error::Deserialization(err.to_string()))
@@ -450,14 +455,111 @@ where
     if resp.is_not_found() {
         return Ok(None);
     }
-    if !resp.is_success() {
-        return Err(Error::from_error_code(resp.error_code()));
-    }
-    match resp.returned_data_type() {
-        Some(found) if found == A::PAYLOAD_TYPE => bincode::deserialize(resp.payload())
+    validate_response(resp)?;
+    match resp.returned_data_type_tag() {
+        Some(found) if found == u8::from(A::PAYLOAD_TYPE) => bincode::deserialize(resp.payload())
             .map(Some)
             .map_err(|err| Error::Deserialization(err.to_string())),
         Some(other) => Err(Error::UnexpectedVariantReceived(other)),
         _ => Ok(None),
+    }
+}
+
+fn validate_response(resp: &BinaryResponse) -> Result<(), Error> {
+    if !resp
+        .protocol_version()
+        .is_major_compatible(BINARY_PROTOCOL_VERSION)
+    {
+        return Err(Error::UnsupportedProtocolVersion(resp.protocol_version()));
+    }
+    if !resp.is_success() {
+        return Err(Error::from_error_code(resp.error_code()));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn should_reject_bad_major_version() {
+        struct ClientMock;
+
+        #[async_trait]
+        impl NodeClient for ClientMock {
+            async fn send_request(
+                &self,
+                _req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, Error> {
+                Ok(BinaryResponseAndRequest::new(
+                    BinaryResponse::from_value_with_protocol_version(
+                        AvailableBlockRange::RANGE_0_0,
+                        SemVer::new(10, 0, 0),
+                    ),
+                    &[],
+                ))
+            }
+        }
+
+        let result = ClientMock.read_available_block_range().await;
+        assert_eq!(
+            result,
+            Err(Error::UnsupportedProtocolVersion(SemVer::new(10, 0, 0)))
+        );
+    }
+
+    #[tokio::test]
+    async fn should_accept_different_minor_version() {
+        struct ClientMock;
+
+        #[async_trait]
+        impl NodeClient for ClientMock {
+            async fn send_request(
+                &self,
+                _req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, Error> {
+                Ok(BinaryResponseAndRequest::new(
+                    BinaryResponse::from_value_with_protocol_version(
+                        AvailableBlockRange::RANGE_0_0,
+                        SemVer {
+                            minor: BINARY_PROTOCOL_VERSION.minor + 1,
+                            ..BINARY_PROTOCOL_VERSION
+                        },
+                    ),
+                    &[],
+                ))
+            }
+        }
+
+        let result = ClientMock.read_available_block_range().await;
+        assert_eq!(result, Ok(AvailableBlockRange::RANGE_0_0));
+    }
+
+    #[tokio::test]
+    async fn should_accept_different_patch_version() {
+        struct ClientMock;
+
+        #[async_trait]
+        impl NodeClient for ClientMock {
+            async fn send_request(
+                &self,
+                _req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, Error> {
+                Ok(BinaryResponseAndRequest::new(
+                    BinaryResponse::from_value_with_protocol_version(
+                        AvailableBlockRange::RANGE_0_0,
+                        SemVer {
+                            patch: BINARY_PROTOCOL_VERSION.patch + 1,
+                            ..BINARY_PROTOCOL_VERSION
+                        },
+                    ),
+                    &[],
+                ))
+            }
+        }
+
+        let result = ClientMock.read_available_block_range().await;
+        assert_eq!(result, Ok(AvailableBlockRange::RANGE_0_0));
     }
 }

@@ -946,13 +946,14 @@ mod tests {
                         )),
                         &[],
                     )),
-                    BinaryRequest::Get(GetRequest::Db {
-                        db: DbId::BlockHeader,
-                        ..
-                    }) => Ok(BinaryResponseAndRequest::new_test_response(
-                        DbId::BlockHeader,
-                        &self.block.clone_header(),
-                    )),
+                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                        if db_tag == u8::from(DbId::BlockHeader) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new_test_response(
+                            DbId::BlockHeader,
+                            &self.block.clone_header(),
+                        ))
+                    }
                     BinaryRequest::Get(GetRequest::AllValues {
                         key_tag: KeyTag::Bid,
                         ..
@@ -1163,13 +1164,14 @@ mod tests {
                         )),
                         &[],
                     )),
-                    BinaryRequest::Get(GetRequest::Db {
-                        db: DbId::BlockHeader,
-                        ..
-                    }) => Ok(BinaryResponseAndRequest::new_test_response(
-                        DbId::BlockHeader,
-                        &self.block.clone_header(),
-                    )),
+                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                        if db_tag == u8::from(DbId::BlockHeader) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new_test_response(
+                            DbId::BlockHeader,
+                            &self.block.clone_header(),
+                        ))
+                    }
                     BinaryRequest::Get(GetRequest::State {
                         base_key: Key::Account(_),
                         ..
@@ -1263,13 +1265,14 @@ mod tests {
                         )),
                         &[],
                     )),
-                    BinaryRequest::Get(GetRequest::Db {
-                        db: DbId::BlockHeader,
-                        ..
-                    }) => Ok(BinaryResponseAndRequest::new_test_response(
-                        DbId::BlockHeader,
-                        &self.block.clone_header(),
-                    )),
+                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                        if db_tag == u8::from(DbId::BlockHeader) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new_test_response(
+                            DbId::BlockHeader,
+                            &self.block.clone_header(),
+                        ))
+                    }
                     BinaryRequest::Get(GetRequest::State {
                         base_key: Key::Account(_),
                         ..
@@ -1397,13 +1400,14 @@ mod tests {
                     )),
                     &[],
                 )),
-                BinaryRequest::Get(GetRequest::Db {
-                    db: DbId::BlockHeader,
-                    ..
-                }) => Ok(BinaryResponseAndRequest::new_test_response(
-                    DbId::BlockHeader,
-                    &self.block.clone_header(),
-                )),
+                BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                    if db_tag == u8::from(DbId::BlockHeader) =>
+                {
+                    Ok(BinaryResponseAndRequest::new_test_response(
+                        DbId::BlockHeader,
+                        &self.block.clone_header(),
+                    ))
+                }
                 BinaryRequest::Get(GetRequest::State { .. }) => Ok(BinaryResponseAndRequest::new(
                     BinaryResponse::from_value(self.result.clone()),
                     &[],
