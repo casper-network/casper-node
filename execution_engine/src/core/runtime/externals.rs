@@ -16,7 +16,7 @@ use casper_types::{
 use super::{args::Args, Error, Runtime};
 use crate::{
     core::resolvers::v1_function_index::FunctionIndex,
-    shared::host_function_costs::{Cost, HostFunction, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY},
+    shared::host_function_costs::{Cost, HostFunction},
     storage::global_state::StateReader,
 };
 
@@ -955,8 +955,8 @@ where
                 let (output_size_ptr,): (u32,) = Args::parse(args)?;
 
                 self.charge_host_function_call(
-                    &DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
-                    [output_size_ptr],
+                    &host_function_costs.new_uref,
+                    [0, 0, output_size_ptr],
                 )?;
                 let ret = self.new_dictionary(output_size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
