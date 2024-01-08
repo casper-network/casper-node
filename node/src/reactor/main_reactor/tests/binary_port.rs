@@ -9,6 +9,7 @@ use casper_types::{
             ConsensusStatus, ConsensusValidatorChanges, HighestBlockSequenceCheckResult,
             LastProgress, NetworkName,
         },
+        NodeStatus,
     },
     bytesrepr::{FromBytes, ToBytes},
     testing::TestRng,
@@ -159,8 +160,6 @@ where
 #[tokio::test]
 async fn binary_port_component() {
     testing::init_logging();
-
-    // NodeStatus,
 
     let (client, (finish_cranking, mut rng, network_chainspec_raw_bytes)) = setup().await;
 
@@ -347,6 +346,27 @@ async fn binary_port_component() {
                     response,
                     Some(PayloadType::ChainspecRawBytes),
                     |crb| crb == network_chainspec_raw_bytes,
+                )
+            }),
+        },
+        TestCase {
+            request: BinaryRequest::Get(GetRequest::NonPersistedData(
+                NonPersistedDataRequest::NodeStatus,
+            )),
+            asserter: Box::new(move |response| {
+                assert_response::<NodeStatus, _>(
+                    response,
+                    Some(PayloadType::NodeStatus),
+                    |node_status| {
+                        !node_status.peers.into_inner().is_empty()
+                            && node_status.chainspec_name == "casper-example"
+                            && node_status.last_added_block_info.is_some()
+                            && node_status.our_public_signing_key.is_some()
+                            && node_status.round_length.is_some()
+                            && node_status.block_sync.historical().is_none()
+                            && node_status.block_sync.forward().is_none()
+                            && matches!(node_status.reactor_state, ReactorState::Validate)
+                    },
                 )
             }),
         },
