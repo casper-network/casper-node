@@ -629,7 +629,7 @@ dependencies = [
  "humantime",
  "hyper",
  "itertools 0.10.5",
- "juliet",
+ "juliet 0.2.0",
  "libc",
  "linked-hash-map",
  "lmdb-rkv",
@@ -704,7 +704,7 @@ dependencies = [
  "datasize",
  "http",
  "hyper",
- "juliet",
+ "juliet 0.1.2",
  "num_cpus",
  "once_cell",
  "pretty_assertions",
@@ -3481,6 +3481,23 @@ dependencies = [
  "bytes",
  "futures",
  "hex_fmt",
+ "once_cell",
+ "strum 0.25.0",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "juliet"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f4800e6c04db91d3a80a9b84da77f73ce21bdd60f064b2e1a3a55680aacd88c"
+dependencies = [
+ "array-init",
+ "bimap",
+ "bytemuck",
+ "bytes",
+ "futures",
  "once_cell",
  "strum 0.25.0",
  "thiserror",
