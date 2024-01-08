@@ -577,27 +577,30 @@ mod tests {
                 req: BinaryRequest,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::Get(GetRequest::Db {
-                        db: DbId::Transaction,
-                        ..
-                    }) => Ok(BinaryResponseAndRequest::new_test_response(
-                        DbId::Transaction,
-                        &self.transaction,
-                    )),
-                    BinaryRequest::Get(GetRequest::Db {
-                        db: DbId::FinalizedTransactionApprovals,
-                        ..
-                    }) => Ok(BinaryResponseAndRequest::new_test_response(
-                        DbId::FinalizedTransactionApprovals,
-                        &self.approvals,
-                    )),
-                    BinaryRequest::Get(GetRequest::Db {
-                        db: DbId::ExecutionResult,
-                        ..
-                    }) => Ok(BinaryResponseAndRequest::new_test_response(
-                        DbId::ExecutionResult,
-                        &self.exec_result,
-                    )),
+                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                        if db_tag == u8::from(DbId::Transaction) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new_test_response(
+                            DbId::Transaction,
+                            &self.transaction,
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                        if db_tag == u8::from(DbId::FinalizedTransactionApprovals) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new_test_response(
+                            DbId::FinalizedTransactionApprovals,
+                            &self.approvals,
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                        if db_tag == u8::from(DbId::ExecutionResult) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new_test_response(
+                            DbId::ExecutionResult,
+                            &self.exec_result,
+                        ))
+                    }
                     BinaryRequest::Get(GetRequest::NonPersistedData(
                         NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { .. },
                     )) => Ok(BinaryResponseAndRequest::new(
@@ -660,27 +663,30 @@ mod tests {
                 req: BinaryRequest,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::Get(GetRequest::Db {
-                        db: DbId::Transaction,
-                        ..
-                    }) => Ok(BinaryResponseAndRequest::new_legacy_test_response(
-                        DbId::Transaction,
-                        &self.deploy,
-                    )),
-                    BinaryRequest::Get(GetRequest::Db {
-                        db: DbId::FinalizedTransactionApprovals,
-                        ..
-                    }) => Ok(BinaryResponseAndRequest::new_legacy_test_response(
-                        DbId::FinalizedTransactionApprovals,
-                        &self.approvals,
-                    )),
-                    BinaryRequest::Get(GetRequest::Db {
-                        db: DbId::ExecutionResult,
-                        ..
-                    }) => Ok(BinaryResponseAndRequest::new_test_response(
-                        DbId::ExecutionResult,
-                        &self.exec_result,
-                    )),
+                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                        if db_tag == u8::from(DbId::Transaction) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new_legacy_test_response(
+                            DbId::Transaction,
+                            &self.deploy,
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                        if db_tag == u8::from(DbId::FinalizedTransactionApprovals) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new_legacy_test_response(
+                            DbId::FinalizedTransactionApprovals,
+                            &self.approvals,
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                        if db_tag == u8::from(DbId::ExecutionResult) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new_test_response(
+                            DbId::ExecutionResult,
+                            &self.exec_result,
+                        ))
+                    }
                     BinaryRequest::Get(GetRequest::NonPersistedData(
                         NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { .. },
                     )) => Ok(BinaryResponseAndRequest::new(
@@ -743,27 +749,30 @@ mod tests {
                 req: BinaryRequest,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::Get(GetRequest::Db {
-                        db: DbId::Transaction,
-                        ..
-                    }) => Ok(BinaryResponseAndRequest::new_test_response(
-                        DbId::Transaction,
-                        &self.transaction,
-                    )),
-                    BinaryRequest::Get(GetRequest::Db {
-                        db: DbId::FinalizedTransactionApprovals,
-                        ..
-                    }) => Ok(BinaryResponseAndRequest::new_legacy_test_response(
-                        DbId::FinalizedTransactionApprovals,
-                        &self.approvals,
-                    )),
-                    BinaryRequest::Get(GetRequest::Db {
-                        db: DbId::ExecutionResult,
-                        ..
-                    }) => Ok(BinaryResponseAndRequest::new_test_response(
-                        DbId::ExecutionResult,
-                        &self.exec_result,
-                    )),
+                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                        if db_tag == u8::from(DbId::Transaction) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new_test_response(
+                            DbId::Transaction,
+                            &self.transaction,
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                        if db_tag == u8::from(DbId::FinalizedTransactionApprovals) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new_legacy_test_response(
+                            DbId::FinalizedTransactionApprovals,
+                            &self.approvals,
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                        if db_tag == u8::from(DbId::ExecutionResult) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new_test_response(
+                            DbId::ExecutionResult,
+                            &self.exec_result,
+                        ))
+                    }
                     BinaryRequest::Get(GetRequest::NonPersistedData(
                         NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { .. },
                     )) => Ok(BinaryResponseAndRequest::new(

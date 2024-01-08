@@ -12,7 +12,7 @@ use rand::Rng;
 #[cfg(test)]
 use crate::testing::TestRng;
 
-use super::{db_id::DbId, non_persistent_data_request::NonPersistedDataRequest};
+use super::non_persistent_data_request::NonPersistedDataRequest;
 
 const DB_TAG: u8 = 0;
 const NON_PERSISTED_DATA_TAG: u8 = 1;
@@ -25,8 +25,8 @@ const TRIE_TAG: u8 = 4;
 pub enum GetRequest {
     /// Gets data stored under the given key from the given db.
     Db {
-        /// Id of the database.
-        db: DbId,
+        /// Id tag of the database.
+        db_tag: u8,
         /// Key.
         key: Vec<u8>,
     },
@@ -60,7 +60,7 @@ impl GetRequest {
     pub(crate) fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..5) {
             0 => GetRequest::Db {
-                db: DbId::random(rng),
+                db_tag: rng.gen(),
                 key: rng.random_vec(16..32),
             },
             1 => GetRequest::NonPersistedData(NonPersistedDataRequest::random(rng)),
@@ -95,7 +95,7 @@ impl ToBytes for GetRequest {
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            GetRequest::Db { db, key } => {
+            GetRequest::Db { db_tag: db, key } => {
                 DB_TAG.write_bytes(writer)?;
                 db.write_bytes(writer)?;
                 key.write_bytes(writer)
@@ -132,7 +132,9 @@ impl ToBytes for GetRequest {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                GetRequest::Db { db, key } => db.serialized_length() + key.serialized_length(),
+                GetRequest::Db { db_tag: db, key } => {
+                    db.serialized_length() + key.serialized_length()
+                }
                 GetRequest::NonPersistedData(inner) => inner.serialized_length(),
                 GetRequest::State {
                     state_root_hash,
@@ -161,7 +163,7 @@ impl FromBytes for GetRequest {
                 let (key, remainder) = Bytes::from_bytes(remainder)?;
                 Ok((
                     GetRequest::Db {
-                        db,
+                        db_tag: db,
                         key: key.into(),
                     },
                     remainder,

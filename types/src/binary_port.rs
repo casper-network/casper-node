@@ -26,7 +26,10 @@ pub use type_wrappers::Uptime;
 
 use alloc::vec::Vec;
 
-const PROTOCOL_VERSION: u8 = 0;
+use crate::SemVer;
+
+/// The current version of the binary port protocol.
+pub const BINARY_PROTOCOL_VERSION: SemVer = SemVer::V1_0_0;
 
 /// Stores raw bytes from the DB along with the flag indicating whether data come from legacy or
 /// current version of the DB.

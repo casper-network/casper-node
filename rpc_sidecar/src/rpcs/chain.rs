@@ -457,27 +457,30 @@ mod tests {
                 req: BinaryRequest,
             ) -> Result<BinaryResponseAndRequest, ClientError> {
                 match req {
-                    BinaryRequest::Get(GetRequest::Db {
-                        db: DbId::BlockBody,
-                        ..
-                    }) => Ok(BinaryResponseAndRequest::new_legacy_test_response(
-                        DbId::BlockBody,
-                        self.0.body(),
-                    )),
-                    BinaryRequest::Get(GetRequest::Db {
-                        db: DbId::BlockHeader,
-                        ..
-                    }) => Ok(BinaryResponseAndRequest::new_legacy_test_response(
-                        DbId::BlockHeader,
-                        self.0.header(),
-                    )),
-                    BinaryRequest::Get(GetRequest::Db {
-                        db: DbId::BlockMetadata,
-                        ..
-                    }) => Ok(BinaryResponseAndRequest::new(
-                        BinaryResponse::new_empty(),
-                        &[],
-                    )),
+                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                        if db_tag == u8::from(DbId::BlockBody) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new_legacy_test_response(
+                            DbId::BlockBody,
+                            self.0.body(),
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                        if db_tag == u8::from(DbId::BlockHeader) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new_legacy_test_response(
+                            DbId::BlockHeader,
+                            self.0.header(),
+                        ))
+                    }
+                    BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                        if db_tag == u8::from(DbId::BlockMetadata) =>
+                    {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::new_empty(),
+                            &[],
+                        ))
+                    }
                     BinaryRequest::Get(GetRequest::NonPersistedData(
                         NonPersistedDataRequest::AvailableBlockRange,
                     )) => Ok(BinaryResponseAndRequest::new(
@@ -679,33 +682,38 @@ mod tests {
             req: BinaryRequest,
         ) -> Result<BinaryResponseAndRequest, ClientError> {
             match req {
-                BinaryRequest::Get(GetRequest::Db {
-                    db: DbId::BlockBody,
-                    ..
-                }) => Ok(BinaryResponseAndRequest::new_test_response(
-                    DbId::BlockBody,
-                    &self.block.clone_body(),
-                )),
-                BinaryRequest::Get(GetRequest::Db {
-                    db: DbId::BlockHeader,
-                    ..
-                }) => Ok(BinaryResponseAndRequest::new_test_response(
-                    DbId::BlockHeader,
-                    &self.block.clone_header(),
-                )),
-                BinaryRequest::Get(GetRequest::Db {
-                    db: DbId::Transfer, ..
-                }) => Ok(BinaryResponseAndRequest::new_legacy_test_response(
-                    DbId::Transfer,
-                    &self.transfers,
-                )),
-                BinaryRequest::Get(GetRequest::Db {
-                    db: DbId::BlockMetadata,
-                    ..
-                }) => Ok(BinaryResponseAndRequest::new(
-                    BinaryResponse::new_empty(),
-                    &[],
-                )),
+                BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                    if db_tag == u8::from(DbId::BlockBody) =>
+                {
+                    Ok(BinaryResponseAndRequest::new_test_response(
+                        DbId::BlockBody,
+                        &self.block.clone_body(),
+                    ))
+                }
+                BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                    if db_tag == u8::from(DbId::BlockHeader) =>
+                {
+                    Ok(BinaryResponseAndRequest::new_test_response(
+                        DbId::BlockHeader,
+                        &self.block.clone_header(),
+                    ))
+                }
+                BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                    if db_tag == u8::from(DbId::Transfer) =>
+                {
+                    Ok(BinaryResponseAndRequest::new_legacy_test_response(
+                        DbId::Transfer,
+                        &self.transfers,
+                    ))
+                }
+                BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                    if db_tag == u8::from(DbId::BlockMetadata) =>
+                {
+                    Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::new_empty(),
+                        &[],
+                    ))
+                }
                 BinaryRequest::Get(GetRequest::NonPersistedData(
                     NonPersistedDataRequest::AvailableBlockRange,
                 )) => Ok(BinaryResponseAndRequest::new(

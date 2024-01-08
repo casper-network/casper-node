@@ -168,7 +168,7 @@ impl From<Error> for binary_port::ErrorCode {
             Error::RootNotFound(_) => binary_port::ErrorCode::RootNotFound,
             Error::InvalidDeployItemVariant(_) => binary_port::ErrorCode::InvalidDeployItemVariant,
             Error::WasmPreprocessing(_) => binary_port::ErrorCode::WasmPreprocessing,
-            Error::InvalidProtocolVersion(_) => binary_port::ErrorCode::InvalidProtocolVersion,
+            Error::InvalidProtocolVersion(_) => binary_port::ErrorCode::UnsupportedProtocolVersion,
             Error::Deploy => binary_port::ErrorCode::InvalidDeploy,
             _ => binary_port::ErrorCode::InternalError,
         }
