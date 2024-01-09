@@ -212,6 +212,11 @@ impl UpgradeWatcher {
         })
     }
 
+    pub(crate) fn next_upgrade_activation_point(&self) -> Option<EraId> {
+        self.next_upgrade
+            .map(|next_upgrade| next_upgrade.activation_point.era_id())
+    }
+
     fn start_checking_for_upgrades<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
