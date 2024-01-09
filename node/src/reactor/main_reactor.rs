@@ -291,18 +291,21 @@ impl reactor::Reactor for MainReactor {
                 self.upgrade_watcher
                     .handle_event(effect_builder, rng, req.into()),
             ),
-            MainEvent::UpgradeWatcherAnnouncement(
-                UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
-            ) => {
+            MainEvent::UpgradeWatcherAnnouncement(UpgradeWatcherAnnouncement(
+                maybe_next_upgrade,
+            )) => {
                 // register activation point of upgrade w/ block accumulator
-                self.block_accumulator
-                    .register_activation_point(next_upgrade.activation_point());
+                self.block_accumulator.register_activation_point(
+                    maybe_next_upgrade
+                        .as_ref()
+                        .map(|next_upgrade| next_upgrade.activation_point()),
+                );
                 reactor::wrap_effects(
                     MainEvent::UpgradeWatcher,
                     self.upgrade_watcher.handle_event(
                         effect_builder,
                         rng,
-                        upgrade_watcher::Event::GotNextUpgrade(next_upgrade),
+                        upgrade_watcher::Event::GotNextUpgrade(maybe_next_upgrade),
                     ),
                 )
             }
@@ -1205,9 +1208,21 @@ impl reactor::Reactor for MainReactor {
             prevent_validator_shutdown,
         };
         info!("MainReactor: instantiated");
-        let effects = effect_builder
-            .immediately()
-            .event(|()| MainEvent::ReactorCrank);
+
+        // If there's an upgrade staged with the same activation point as the current one, we must
+        // shut down immediately for upgrade.
+        let should_upgrade_immediately = reactor.upgrade_watcher.next_upgrade_activation_point()
+            == Some(reactor.chainspec.protocol_config.activation_point.era_id());
+        let effects = if should_upgrade_immediately {
+            info!("MainReactor: immediate shutdown for upgrade");
+            effect_builder
+                .immediately()
+                .event(|()| MainEvent::ControlAnnouncement(ControlAnnouncement::ShutdownForUpgrade))
+        } else {
+            effect_builder
+                .immediately()
+                .event(|()| MainEvent::ReactorCrank)
+        };
         Ok((reactor, effects))
     }
 

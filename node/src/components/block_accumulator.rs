@@ -170,9 +170,12 @@ impl BlockAccumulator {
         }
     }
 
-    /// Register activation point from next protocol version chainspec.
-    pub(crate) fn register_activation_point(&mut self, activation_point: ActivationPoint) {
-        self.activation_point = Some(activation_point);
+    /// Register activation point from next protocol version chainspec, if any.
+    pub(crate) fn register_activation_point(
+        &mut self,
+        maybe_activation_point: Option<ActivationPoint>,
+    ) {
+        self.activation_point = maybe_activation_point;
     }
 
     /// Drops all old block acceptors and tracks new local block height;
