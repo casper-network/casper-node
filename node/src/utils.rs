@@ -108,6 +108,8 @@ impl<T, E> FlattenResult for Result<Result<T, E>, E> {
 }
 
 /// Parses a network address from a string, with DNS resolution.
+///
+/// Only resolves to IPv4 addresses, IPv6 addresses are filtered out.
 pub(crate) fn resolve_address(address: &str) -> Result<SocketAddr, ResolveAddressError> {
     address
         .to_socket_addrs()
@@ -115,7 +117,7 @@ pub(crate) fn resolve_address(address: &str) -> Result<SocketAddr, ResolveAddres
             address: address.to_string(),
             kind: ResolveAddressErrorKind::ErrorResolving(err),
         })?
-        .next()
+        .find(SocketAddr::is_ipv4)
         .ok_or_else(|| ResolveAddressError {
             address: address.to_string(),
             kind: ResolveAddressErrorKind::NoAddressFound,

@@ -53,6 +53,7 @@ All notable changes to this project will be documented in this file.  The format
     - `ttl` - node will attempt to acquire all block data to comply with time to live enforcement
     - `nosync` - node will only acquire blocks moving forward
 * Make the `network.estimator_weights` section of the node config more fine-grained to provide more precise throttling of non-validator traffic.
+* Any IPv6 address resolved for the node's own public IP will now be ignored, resulting in fewer connectivity issues on nodes misconfigured due to using an older installation script.
 
 ### Removed
 * The section `consensus.highway.round_success_meter` has been removed from the config file as no longer relevant with the introduction of a new method of determining the round exponent in Highway.
