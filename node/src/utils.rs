@@ -612,7 +612,7 @@ mod tests {
 
     #[test]
     fn resolve_address_rejects_ipv6() {
-        let raw = "::1:12345";
+        let raw = "2b02:c307:2042:360::1:0";
         assert!(resolve_address(raw).is_err());
     }
 }
