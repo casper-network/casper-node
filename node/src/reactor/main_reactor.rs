@@ -291,18 +291,21 @@ impl reactor::Reactor for MainReactor {
                 self.upgrade_watcher
                     .handle_event(effect_builder, rng, req.into()),
             ),
-            MainEvent::UpgradeWatcherAnnouncement(
-                UpgradeWatcherAnnouncement::UpgradeActivationPointRead(next_upgrade),
-            ) => {
+            MainEvent::UpgradeWatcherAnnouncement(UpgradeWatcherAnnouncement(
+                maybe_next_upgrade,
+            )) => {
                 // register activation point of upgrade w/ block accumulator
-                self.block_accumulator
-                    .register_activation_point(next_upgrade.activation_point());
+                self.block_accumulator.register_activation_point(
+                    maybe_next_upgrade
+                        .as_ref()
+                        .map(|next_upgrade| next_upgrade.activation_point()),
+                );
                 reactor::wrap_effects(
                     MainEvent::UpgradeWatcher,
                     self.upgrade_watcher.handle_event(
                         effect_builder,
                         rng,
-                        upgrade_watcher::Event::GotNextUpgrade(next_upgrade),
+                        upgrade_watcher::Event::GotNextUpgrade(maybe_next_upgrade),
                     ),
                 )
             }
