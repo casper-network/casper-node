@@ -1161,11 +1161,6 @@ impl reactor::Reactor for MainReactor {
         let deploy_buffer =
             DeployBuffer::new(chainspec.deploy_config, config.deploy_buffer, registry)?;
 
-        // If there's an upgrade staged with the same activation point as the current one, we must
-        // shut down immediately for upgrade.
-        let should_upgrade_immediately = upgrade_watcher.next_upgrade_activation_point()
-            == Some(chainspec.protocol_config.activation_point.era_id());
-
         let reactor = MainReactor {
             chainspec,
             chainspec_raw_bytes,
@@ -1214,6 +1209,10 @@ impl reactor::Reactor for MainReactor {
         };
         info!("MainReactor: instantiated");
 
+        // If there's an upgrade staged with the same activation point as the current one, we must
+        // shut down immediately for upgrade.
+        let should_upgrade_immediately = reactor.upgrade_watcher.next_upgrade_activation_point()
+            == Some(reactor.chainspec.protocol_config.activation_point.era_id());
         let effects = if should_upgrade_immediately {
             info!("MainReactor: immediate shutdown for upgrade");
             effect_builder
