@@ -485,6 +485,8 @@ mod tests {
 
     use prometheus::IntGauge;
 
+    use crate::utils::resolve_address;
+
     use super::{wait_for_arc_drop, xor, TokenizedCount};
 
     /// Extracts the names of all metrics contained in a prometheus-formatted metrics snapshot.
@@ -606,5 +608,11 @@ mod tests {
         expected.insert("contract_runtime_apply_commit_bucket");
 
         assert_eq!(extracted, expected);
+    }
+
+    #[test]
+    fn resolve_address_rejects_ipv6() {
+        let raw = "::1:12345";
+        assert!(resolve_address(raw).is_err());
     }
 }
