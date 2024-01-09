@@ -481,7 +481,7 @@ impl<A, B, F, G> Peel for Either<(A, G), (B, F)> {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashSet, sync::Arc, time::Duration};
+    use std::{collections::HashSet, net::SocketAddr, sync::Arc, time::Duration};
 
     use prometheus::IntGauge;
 
@@ -614,5 +614,14 @@ mod tests {
     fn resolve_address_rejects_ipv6() {
         let raw = "2b02:c307:2042:360::1:0";
         assert!(resolve_address(raw).is_err());
+    }
+
+    #[test]
+    fn resolve_address_accepts_ipv4() {
+        let raw = "1.2.3.4:567";
+        assert_eq!(
+            resolve_address(raw).expect("failed to resolve ipv4"),
+            SocketAddr::from(([1, 2, 3, 4], 567))
+        );
     }
 }
