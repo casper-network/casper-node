@@ -9,7 +9,11 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Fixed:      any bug fixes)
 [comment]: <> (Security:   in case of vulnerabilities)
 
+## 7.0.1
 
+### Changed
+* Increased the `gas_per_byte` cost from `630_000` to `1_117_587`
+* Changed the host function cost of `new_dictionary` to properly use the weight of the arguments
 
 
 ## 7.0.0
