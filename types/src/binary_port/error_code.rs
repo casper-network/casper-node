@@ -50,17 +50,18 @@ impl TryFrom<u8> for ErrorCode {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0 => Ok(Self::NoError),
-            1 => Ok(Self::FunctionIsDisabled),
-            3 => Ok(Self::NotFound),
-            4 => Ok(Self::RootNotFound),
-            5 => Ok(Self::InvalidDeployItemVariant),
-            6 => Ok(Self::WasmPreprocessing),
-            7 => Ok(Self::UnsupportedProtocolVersion),
-            8 => Ok(Self::InvalidDeploy),
-            9 => Ok(Self::InternalError),
-            10 => Ok(Self::QueryFailedToExecute),
-            11 => Ok(Self::BadRequest),
+            0 => Ok(ErrorCode::NoError),
+            1 => Ok(ErrorCode::FunctionIsDisabled),
+            2 => Ok(ErrorCode::NotFound),
+            3 => Ok(ErrorCode::RootNotFound),
+            4 => Ok(ErrorCode::InvalidDeployItemVariant),
+            5 => Ok(ErrorCode::WasmPreprocessing),
+            6 => Ok(ErrorCode::UnsupportedProtocolVersion),
+            7 => Ok(ErrorCode::InvalidDeploy),
+            8 => Ok(ErrorCode::InternalError),
+            9 => Ok(ErrorCode::QueryFailedToExecute),
+            10 => Ok(ErrorCode::BadRequest),
+            11 => Ok(ErrorCode::UnsupportedRequest),
             _ => Err(UnknownErrorCode),
         }
     }
