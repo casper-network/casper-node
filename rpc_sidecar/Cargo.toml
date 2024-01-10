@@ -34,7 +34,7 @@ tower = { version = "0.4.6", features = ["limit"] }
 tracing = "0.1.18"
 tracing-subscriber = { version = "0.3.15", features = ["env-filter", "fmt", "json"] }
 warp = { version = "0.3.6", features = ["compression"] }
-juliet = "0.1"
+juliet = "0.2"
 
 [dev-dependencies]
 casper-types = { path = "../types", features = ["datasize", "json-schema", "std", "testing"] }
