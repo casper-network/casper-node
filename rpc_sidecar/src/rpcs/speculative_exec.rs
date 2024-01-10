@@ -155,3 +155,142 @@ async fn handle_request(
         messages,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use casper_types::{
+        binary_port::{
+            binary_request::BinaryRequest,
+            db_id::DbId,
+            get::GetRequest,
+            non_persistent_data_request::NonPersistedDataRequest,
+            type_wrappers::{HighestBlockSequenceCheckResult, SpeculativeExecutionResult},
+        },
+        testing::TestRng,
+        AvailableBlockRange, BinaryResponse, BinaryResponseAndRequest, Block, TestBlockBuilder,
+    };
+
+    use crate::ClientError;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn should_spec_exec() {
+        let rng = &mut TestRng::new();
+        let deploy = Deploy::random(rng);
+        let block = Block::V2(TestBlockBuilder::new().build(rng));
+        let execution_result = ExecutionResultV2::random(rng);
+
+        let res = SpeculativeExec::do_handle_request(
+            Arc::new(ValidSpecExecMock {
+                block: block.clone(),
+                execution_result: execution_result.clone(),
+            }),
+            SpeculativeExecParams {
+                block_identifier: Some(BlockIdentifier::Hash(*block.hash())),
+                deploy,
+            },
+        )
+        .await
+        .expect("should handle request");
+        assert_eq!(
+            res,
+            SpeculativeExecTxnResult {
+                block_hash: *block.hash(),
+                execution_result,
+                messages: Messages::new(),
+                api_version: CURRENT_API_VERSION,
+            }
+        )
+    }
+
+    #[tokio::test]
+    async fn should_spec_exec_txn() {
+        let rng = &mut TestRng::new();
+        let transaction = Transaction::random(rng);
+        let block = Block::V2(TestBlockBuilder::new().build(rng));
+        let execution_result = ExecutionResultV2::random(rng);
+
+        let res = SpeculativeExecTxn::do_handle_request(
+            Arc::new(ValidSpecExecMock {
+                block: block.clone(),
+                execution_result: execution_result.clone(),
+            }),
+            SpeculativeExecTxnParams {
+                block_identifier: Some(BlockIdentifier::Hash(*block.hash())),
+                transaction,
+            },
+        )
+        .await
+        .expect("should handle request");
+        assert_eq!(
+            res,
+            SpeculativeExecTxnResult {
+                block_hash: *block.hash(),
+                execution_result,
+                messages: Messages::new(),
+                api_version: CURRENT_API_VERSION,
+            }
+        )
+    }
+
+    struct ValidSpecExecMock {
+        block: Block,
+        execution_result: ExecutionResultV2,
+    }
+
+    #[async_trait]
+    impl NodeClient for ValidSpecExecMock {
+        async fn send_request(
+            &self,
+            req: BinaryRequest,
+        ) -> Result<BinaryResponseAndRequest, ClientError> {
+            match req {
+                BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                    if db_tag == u8::from(DbId::BlockBody) =>
+                {
+                    Ok(BinaryResponseAndRequest::new_test_response(
+                        DbId::BlockBody,
+                        &self.block.clone_body(),
+                    ))
+                }
+                BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                    if db_tag == u8::from(DbId::BlockHeader) =>
+                {
+                    Ok(BinaryResponseAndRequest::new_test_response(
+                        DbId::BlockHeader,
+                        &self.block.clone_header(),
+                    ))
+                }
+                BinaryRequest::Get(GetRequest::Db { db_tag, .. })
+                    if db_tag == u8::from(DbId::BlockMetadata) =>
+                {
+                    Ok(BinaryResponseAndRequest::new(
+                        BinaryResponse::new_empty(),
+                        &[],
+                    ))
+                }
+                BinaryRequest::Get(GetRequest::NonPersistedData(
+                    NonPersistedDataRequest::AvailableBlockRange,
+                )) => Ok(BinaryResponseAndRequest::new(
+                    BinaryResponse::from_value(AvailableBlockRange::RANGE_0_0),
+                    &[],
+                )),
+                BinaryRequest::Get(GetRequest::NonPersistedData(
+                    NonPersistedDataRequest::CompletedBlocksContain { .. },
+                )) => Ok(BinaryResponseAndRequest::new(
+                    BinaryResponse::from_value(HighestBlockSequenceCheckResult(true)),
+                    &[],
+                )),
+                BinaryRequest::TrySpeculativeExec { .. } => Ok(BinaryResponseAndRequest::new(
+                    BinaryResponse::from_value(SpeculativeExecutionResult(Some((
+                        self.execution_result.clone(),
+                        Messages::new(),
+                    )))),
+                    &[],
+                )),
+                _ => unimplemented!(),
+            }
+        }
+    }
+}

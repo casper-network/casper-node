@@ -5111,13 +5111,13 @@
             "description": "The weight assigned to the public key.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/AccountWeight"
+                "$ref": "#/components/schemas/AccountAssociatedKeyWeight"
               }
             ]
           }
         }
       },
-      "AccountWeight": {
+      "AccountAssociatedKeyWeight": {
         "description": "The weight associated with public keys in an account's associated keys.",
         "type": "integer",
         "format": "uint8",
@@ -5135,7 +5135,7 @@
             "description": "Threshold for deploy execution.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/AccountWeight"
+                "$ref": "#/components/schemas/AccountAssociatedKeyWeight"
               }
             ]
           },
@@ -5143,7 +5143,7 @@
             "description": "Threshold for managing action threshold.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/AccountWeight"
+                "$ref": "#/components/schemas/AccountAssociatedKeyWeight"
               }
             ]
           }
@@ -5494,10 +5494,10 @@
             "$ref": "#/components/schemas/URef"
           },
           "associated_keys": {
-            "$ref": "#/components/schemas/AssociatedKeys"
+            "$ref": "#/components/schemas/EntityAssociatedKeys"
           },
           "action_thresholds": {
-            "$ref": "#/components/schemas/ActionThresholds"
+            "$ref": "#/components/schemas/EntityActionThresholds"
           },
           "message_topics": {
             "$ref": "#/components/schemas/Array_of_MessageTopic"
@@ -5508,7 +5508,7 @@
         "description": "The hash address of the contract wasm",
         "type": "string"
       },
-      "AssociatedKeys": {
+      "EntityAssociatedKeys": {
         "description": "A collection of weighted public keys (represented as account hashes) associated with an account.",
         "allOf": [
           {
@@ -5516,7 +5516,7 @@
           }
         ]
       },
-      "ActionThresholds": {
+      "EntityActionThresholds": {
         "description": "Thresholds that have to be met when executing an action of a certain type.",
         "type": "object",
         "required": [
@@ -5529,7 +5529,7 @@
             "description": "Threshold for deploy execution.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/Weight"
+                "$ref": "#/components/schemas/EntityAssociatedKeyWeight"
               }
             ]
           },
@@ -5537,7 +5537,7 @@
             "description": "Threshold for upgrading contracts.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/Weight"
+                "$ref": "#/components/schemas/EntityAssociatedKeyWeight"
               }
             ]
           },
@@ -5545,13 +5545,13 @@
             "description": "Threshold for managing action threshold.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/Weight"
+                "$ref": "#/components/schemas/EntityAssociatedKeyWeight"
               }
             ]
           }
         }
       },
-      "Weight": {
+      "EntityAssociatedKeyWeight": {
         "description": "The weight associated with public keys in an account's associated keys.",
         "type": "integer",
         "format": "uint8",

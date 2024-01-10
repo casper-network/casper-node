@@ -148,3 +148,127 @@ impl RpcWithParams for PutTransaction {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use casper_types::{
+        binary_port::binary_request::BinaryRequest, testing::TestRng, BinaryResponse,
+        BinaryResponseAndRequest, ErrorCode as BinaryPortErrorCode,
+    };
+
+    use crate::rpcs::ErrorCode;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn should_put_deploy() {
+        struct ClientMock;
+
+        #[async_trait]
+        impl NodeClient for ClientMock {
+            async fn send_request(
+                &self,
+                req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, ClientError> {
+                match req {
+                    BinaryRequest::TryAcceptTransaction { .. } => Ok(
+                        BinaryResponseAndRequest::new(BinaryResponse::new_empty(), &[]),
+                    ),
+                    _ => unimplemented!(),
+                }
+            }
+        }
+
+        let rng = &mut TestRng::new();
+        let deploy = Deploy::random(rng);
+        let res = PutDeploy::do_handle_request(
+            Arc::new(ClientMock),
+            PutDeployParams {
+                deploy: deploy.clone(),
+            },
+        )
+        .await
+        .expect("should handle request");
+        assert_eq!(
+            res,
+            PutDeployResult {
+                api_version: CURRENT_API_VERSION,
+                deploy_hash: *deploy.hash(),
+            }
+        )
+    }
+
+    #[tokio::test]
+    async fn should_put_transaction() {
+        struct ClientMock;
+
+        #[async_trait]
+        impl NodeClient for ClientMock {
+            async fn send_request(
+                &self,
+                req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, ClientError> {
+                match req {
+                    BinaryRequest::TryAcceptTransaction { .. } => Ok(
+                        BinaryResponseAndRequest::new(BinaryResponse::new_empty(), &[]),
+                    ),
+                    _ => unimplemented!(),
+                }
+            }
+        }
+
+        let rng = &mut TestRng::new();
+        let transaction = Transaction::random(rng);
+        let res = PutTransaction::do_handle_request(
+            Arc::new(ClientMock),
+            PutTransactionParams {
+                transaction: transaction.clone(),
+            },
+        )
+        .await
+        .expect("should handle request");
+        assert_eq!(
+            res,
+            PutTransactionResult {
+                api_version: CURRENT_API_VERSION,
+                transaction_hash: transaction.hash(),
+            }
+        )
+    }
+
+    #[tokio::test]
+    async fn should_handle_transaction_error() {
+        struct ClientMock;
+
+        #[async_trait]
+        impl NodeClient for ClientMock {
+            async fn send_request(
+                &self,
+                req: BinaryRequest,
+            ) -> Result<BinaryResponseAndRequest, ClientError> {
+                match req {
+                    BinaryRequest::TryAcceptTransaction { .. } => {
+                        Ok(BinaryResponseAndRequest::new(
+                            BinaryResponse::new_error(BinaryPortErrorCode::InvalidDeploy),
+                            &[],
+                        ))
+                    }
+                    _ => unimplemented!(),
+                }
+            }
+        }
+
+        let rng = &mut TestRng::new();
+        let transaction = Transaction::random(rng);
+        let err = PutTransaction::do_handle_request(
+            Arc::new(ClientMock),
+            PutTransactionParams {
+                transaction: transaction.clone(),
+            },
+        )
+        .await
+        .expect_err("should reject request");
+
+        assert_eq!(err.code(), ErrorCode::InvalidTransaction as i64,)
+    }
+}
