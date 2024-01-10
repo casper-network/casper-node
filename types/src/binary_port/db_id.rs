@@ -13,16 +13,6 @@ use rand::Rng;
 #[cfg(test)]
 use crate::testing::TestRng;
 
-const BLOCK_HEADER_DB_TAG: u8 = 0;
-const BLOCK_METADATA_DB_TAG: u8 = 1;
-const TRANSFER_DB_TAG: u8 = 2;
-const STATE_STORE_DB_TAG: u8 = 3;
-const BLOCK_BODY_DB_TAG: u8 = 4;
-const FINALIZED_TRANSACTION_APPROVALS_DB_TAG: u8 = 5;
-const APPROVALS_HASHES_DB_TAG: u8 = 6;
-const TRANSACTION_DB_TAG: u8 = 7;
-const EXECUTION_RESULT_DB_TAG: u8 = 8;
-
 /// Allows to indicate to which database the binary request refers to.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Serialize)]
 #[repr(u8)]
@@ -107,18 +97,7 @@ impl ToBytes for DbId {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        match self {
-            DbId::BlockHeader => BLOCK_HEADER_DB_TAG,
-            DbId::BlockMetadata => BLOCK_METADATA_DB_TAG,
-            DbId::Transfer => TRANSFER_DB_TAG,
-            DbId::StateStore => STATE_STORE_DB_TAG,
-            DbId::BlockBody => BLOCK_BODY_DB_TAG,
-            DbId::FinalizedTransactionApprovals => FINALIZED_TRANSACTION_APPROVALS_DB_TAG,
-            DbId::ApprovalsHashes => APPROVALS_HASHES_DB_TAG,
-            DbId::Transaction => TRANSACTION_DB_TAG,
-            DbId::ExecutionResult => EXECUTION_RESULT_DB_TAG,
-        }
-        .write_bytes(writer)
+        u8::from(*self).write_bytes(writer)
     }
 
     fn serialized_length(&self) -> usize {
