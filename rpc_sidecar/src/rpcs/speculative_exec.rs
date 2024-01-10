@@ -158,17 +158,17 @@ async fn handle_request(
 
 #[cfg(test)]
 mod tests {
-    use casper_types::binary_port::db_id::DbId;
-    use casper_types::binary_port::get::GetRequest;
-    use casper_types::binary_port::non_persistent_data_request::NonPersistedDataRequest;
-    use casper_types::binary_port::type_wrappers::{
-        HighestBlockSequenceCheckResult, SpeculativeExecutionResult,
-    };
     use casper_types::{
-        binary_port::binary_request::BinaryRequest, testing::TestRng, BinaryResponse,
-        BinaryResponseAndRequest,
+        binary_port::{
+            binary_request::BinaryRequest,
+            db_id::DbId,
+            get::GetRequest,
+            non_persistent_data_request::NonPersistedDataRequest,
+            type_wrappers::{HighestBlockSequenceCheckResult, SpeculativeExecutionResult},
+        },
+        testing::TestRng,
+        AvailableBlockRange, BinaryResponse, BinaryResponseAndRequest, Block, TestBlockBuilder,
     };
-    use casper_types::{AvailableBlockRange, Block, TestBlockBuilder};
 
     use crate::ClientError;
 

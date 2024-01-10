@@ -77,6 +77,16 @@ impl BinaryResponseAndRequest {
             response: BinaryResponse::random(rng),
         }
     }
+
+    /// Returns serialized bytes representing the original request.
+    pub fn original_request(&self) -> &[u8] {
+        self.original_request.as_ref()
+    }
+
+    /// Returns the inner binary response.
+    pub fn response(&self) -> &BinaryResponse {
+        &self.response
+    }
 }
 
 impl ToBytes for BinaryResponseAndRequest {

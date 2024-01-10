@@ -2,7 +2,11 @@
 
 use core::{convert::TryFrom, num::TryFromIntError, time::Duration};
 
-use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use alloc::{
+    collections::BTreeMap,
+    string::{String, ToString},
+    vec::Vec,
+};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 
@@ -38,7 +42,19 @@ macro_rules! impl_bytesrepr_for_type_wrapper {
 
 /// Type representing uptime.
 #[derive(Debug, Clone, Copy)]
-pub struct Uptime(pub u64);
+pub struct Uptime(u64);
+
+impl Uptime {
+    /// Constructs new uptime.
+    pub fn new(value: u64) -> Self {
+        Self(value)
+    }
+
+    /// Retrieve the inner value.
+    pub fn into_inner(self) -> u64 {
+        self.0
+    }
+}
 
 impl From<Uptime> for Duration {
     fn from(uptime: Uptime) -> Self {
@@ -57,7 +73,19 @@ impl TryFrom<Uptime> for TimeDiff {
 /// Type representing changes in consensus validators.
 #[derive(Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-pub struct ConsensusValidatorChanges(pub BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>);
+pub struct ConsensusValidatorChanges(BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>);
+
+impl ConsensusValidatorChanges {
+    /// Constructs new consensus validator changes.
+    pub fn new(value: BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>>) -> Self {
+        Self(value)
+    }
+
+    /// Retrieve the inner value.
+    pub fn into_inner(self) -> BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>> {
+        self.0
+    }
+}
 
 impl From<ConsensusValidatorChanges> for BTreeMap<PublicKey, Vec<(EraId, ValidatorChange)>> {
     fn from(consensus_validator_changes: ConsensusValidatorChanges) -> Self {
@@ -67,7 +95,19 @@ impl From<ConsensusValidatorChanges> for BTreeMap<PublicKey, Vec<(EraId, Validat
 
 /// Type representing network name.
 #[derive(Debug)]
-pub struct NetworkName(pub String);
+pub struct NetworkName(String);
+
+impl NetworkName {
+    /// Constructs new network name.
+    pub fn new(value: impl ToString) -> Self {
+        Self(value.to_string())
+    }
+
+    /// Retrieve the inner value.
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
 
 impl From<NetworkName> for String {
     fn from(network_name: NetworkName) -> Self {
@@ -77,7 +117,19 @@ impl From<NetworkName> for String {
 
 /// Type representing last progress of the sync process.
 #[derive(Debug)]
-pub struct LastProgress(pub Timestamp);
+pub struct LastProgress(Timestamp);
+
+impl LastProgress {
+    /// Constructs new last progress.
+    pub fn new(value: Timestamp) -> Self {
+        Self(value)
+    }
+
+    /// Retrieve the inner value.
+    pub fn into_inner(self) -> Timestamp {
+        self.0
+    }
+}
 
 impl From<LastProgress> for Timestamp {
     fn from(last_progress: LastProgress) -> Self {
@@ -131,9 +183,14 @@ impl StoredValues {
 
 /// Describes the consensus status.
 #[derive(Debug, PartialEq)]
-pub struct ConsensusStatus(pub (PublicKey, Option<TimeDiff>));
+pub struct ConsensusStatus((PublicKey, Option<TimeDiff>));
 
 impl ConsensusStatus {
+    /// Constructs new consensus status.
+    pub fn new(value: (PublicKey, Option<TimeDiff>)) -> Self {
+        Self(value)
+    }
+
     /// Returns the inner value.
     pub fn into_inner(self) -> (PublicKey, Option<TimeDiff>) {
         self.0

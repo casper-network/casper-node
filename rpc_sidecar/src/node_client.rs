@@ -278,7 +278,7 @@ pub enum Error {
 impl Error {
     fn from_error_code(code: u8) -> Self {
         match BinaryPortError::try_from(code) {
-            Ok(BinaryPortError::FunctionIsDisabled) => Self::FunctionIsDisabled,
+            Ok(BinaryPortError::FunctionDisabled) => Self::FunctionIsDisabled,
             Ok(BinaryPortError::InvalidDeploy) => Self::InvalidDeploy,
             Ok(BinaryPortError::RootNotFound) => Self::UnknownStateRootHash,
             Ok(BinaryPortError::QueryFailedToExecute) => Self::QueryFailedToExecute,

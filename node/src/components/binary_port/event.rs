@@ -33,7 +33,7 @@ impl Display for Event {
             Event::HandleRequest { request, .. } => match request {
                 BinaryRequest::Get(request) => match request {
                     GetRequest::Db { db_tag, key } => {
-                        write!(f, "get from db with tag {} ({})", db, key.len())
+                        write!(f, "get from db with tag {} ({})", db_tag, key.len())
                     }
                     GetRequest::NonPersistedData(_) => write!(f, "get non-persisted data"),
                     GetRequest::State { base_key, .. } => {

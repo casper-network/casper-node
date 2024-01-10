@@ -31,8 +31,6 @@ use casper_types::{
     TransactionId, Uptime, U512,
 };
 
-#[cfg(test)]
-use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
         binary_port::BinaryPort,
@@ -81,6 +79,11 @@ use crate::{
     },
     utils::{Source, WithDir},
     NodeRng,
+};
+#[cfg(test)]
+use crate::{
+    components::{ComponentState, InitializedComponent},
+    testing::network::NetworkedReactor,
 };
 pub use config::Config;
 pub(crate) use error::Error;
@@ -244,14 +247,14 @@ impl reactor::Reactor for MainReactor {
                 ReactorInfoRequest::ReactorState { responder } => {
                     responder.respond(self.state).ignore()
                 }
-                ReactorInfoRequest::LastProgress { responder } => {
-                    responder.respond(LastProgress(self.last_progress)).ignore()
-                }
+                ReactorInfoRequest::LastProgress { responder } => responder
+                    .respond(LastProgress::new(self.last_progress))
+                    .ignore(),
                 ReactorInfoRequest::Uptime { responder } => responder
-                    .respond(Uptime(self.node_startup_instant.elapsed().as_secs()))
+                    .respond(Uptime::new(self.node_startup_instant.elapsed().as_secs()))
                     .ignore(),
                 ReactorInfoRequest::NetworkName { responder } => responder
-                    .respond(NetworkName(self.chainspec.network_config.name.clone()))
+                    .respond(NetworkName::new(self.chainspec.network_config.name.clone()))
                     .ignore(),
             },
             MainEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(meta_block)) => {
@@ -1231,6 +1234,19 @@ impl reactor::Reactor for MainReactor {
                 &mut self.consensus,
                 activation,
             );
+        }
+    }
+
+    #[cfg(test)]
+    fn get_component_state(&self, name: &str) -> Option<&ComponentState> {
+        match name {
+            "rest_server" => Some(<RestServer as InitializedComponent<MainEvent>>::state(
+                &self.rest_server,
+            )),
+            "binary_port" => Some(<BinaryPort as InitializedComponent<MainEvent>>::state(
+                &self.binary_port,
+            )),
+            _ => None,
         }
     }
 }

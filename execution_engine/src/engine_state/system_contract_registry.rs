@@ -88,7 +88,7 @@ mod tests {
         let serialized =
             ToBytes::to_bytes(&system_contract_registry).expect("Unable to serialize data");
         let deserialized: BTreeMap<String, AddressableEntityHash> =
-            bytesrepr::deserialize_from_slice(&serialized).expect("Unable to deserialize data");
+            bytesrepr::deserialize_from_slice(serialized).expect("Unable to deserialize data");
         assert_eq!(
             system_contract_registry,
             SystemContractRegistry(deserialized)

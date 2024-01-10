@@ -1,3 +1,5 @@
+mod binary_port;
+
 use std::{
     collections::BTreeMap, convert::TryFrom, iter, net::SocketAddr, str::FromStr, sync::Arc,
     time::Duration,
@@ -215,6 +217,12 @@ impl TestFixture {
             .await;
 
         fixture
+    }
+
+    /// Access the environments RNG.
+    #[inline(always)]
+    pub fn rng_mut(&mut self) -> &mut TestRng {
+        &mut self.rng
     }
 
     /// Returns the highest complete block from node 0.
@@ -653,6 +661,18 @@ impl TestFixture {
                 );
             }
         }
+    }
+
+    #[inline(always)]
+    pub fn network_mut(&mut self) -> &mut TestingNetwork<FilterReactor<MainReactor>> {
+        &mut self.network
+    }
+
+    pub fn run_until_stopped(
+        self,
+        rng: TestRng,
+    ) -> impl futures::Future<Output = (TestingNetwork<FilterReactor<MainReactor>>, TestRng)> {
+        self.network.crank_until_stopped(rng)
     }
 }
 

@@ -61,6 +61,8 @@ use tracing::{debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
 #[cfg(test)]
+use crate::components::ComponentState;
+#[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
     Block, BlockHeader, Chainspec, ChainspecRawBytes, FinalitySignature, Transaction,
@@ -306,6 +308,15 @@ pub(crate) trait Reactor: Sized {
     fn activate_failpoint(&mut self, _activation: &FailpointActivation) {
         // Default is to ignore the failpoint. If failpoint support is enabled for a reactor, route
         // the activation to the respective components here.
+    }
+
+    /// Returns the state of a named components.
+    ///
+    /// May return `None` if the component cannot be found, or if the reactor does not support
+    /// querying component states.
+    #[cfg(test)]
+    fn get_component_state(&self, _name: &str) -> Option<&ComponentState> {
+        None
     }
 }
 
