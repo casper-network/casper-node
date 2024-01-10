@@ -44,7 +44,7 @@ There are currently 3 supported types of requests, but the request model can be 
     - `Db` request asking for a database item with an [**extensible**](#versioning) `DbId` tag and a key
     - `NonPersistedData` request asking for a transient piece of data with a `NonPersistedData` query
     - `State` request asking for an item from the global state by a key, a state root hash and a path
-    - `AllValues` request asking for all values in the global state under a given key tag and a state root hash
-    - `Trie` request asking for a trie with a hash
+    - `AllValues` request asking for all values in the global state under a given key tag and a state root hash (disabled by default in the node config)
+    - `Trie` request asking for a trie with a hash (disabled by default in the node config)
 - `TryAcceptTransaction` request a transaction to be accepted and executed
 - `TrySpeculativeExec` request a transaction to be speculatively executed
