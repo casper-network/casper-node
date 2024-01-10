@@ -7,6 +7,10 @@
         "casper-node-launcher": {
             "github_repo_url": "https://github.com/casper-network/casper-node-launcher.git",
             "branch": "main"
+        },
+        "event-sidecar": {
+            "github_repo_url": "https://github.com/zajko/event-sidecar",
+            "branch": "moving_sidecar_rpc_to_sidecar"
         }
     },
     "nctl_upgrade_tests": {
