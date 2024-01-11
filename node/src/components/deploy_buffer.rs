@@ -595,6 +595,7 @@ where
                 }
                 Event::Request(DeployBufferRequest::GetAppendableBlock {
                     timestamp,
+                    request_expiry: _, // TODO: use that to limit the time it takes to respond
                     responder,
                 }) => responder.respond(self.appendable_block(timestamp)).ignore(),
                 Event::BlockFinalized(finalized_block) => {

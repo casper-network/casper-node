@@ -251,8 +251,8 @@ impl<C: Context + 'static> HighwayProtocol<C> {
                     TIMER_ID_ACTIVE_VALIDATOR,
                 )]
             }
-            AvEffect::RequestNewBlock(block_context) => {
-                vec![ProtocolOutcome::CreateNewBlock(block_context)]
+            AvEffect::RequestNewBlock(block_context, expiry) => {
+                vec![ProtocolOutcome::CreateNewBlock(block_context, expiry)]
             }
             AvEffect::WeAreFaulty(fault) => {
                 error!("this validator is faulty: {:?}", fault);

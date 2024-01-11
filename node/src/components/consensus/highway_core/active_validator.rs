@@ -35,7 +35,9 @@ pub(crate) enum Effect<C: Context> {
     ScheduleTimer(Timestamp),
     /// `propose` needs to be called with a value for a new block with the specified block context
     /// and parent value.
-    RequestNewBlock(BlockContext<C>),
+    /// The timestamp is the time at which the witness unit will be sent, which will invalidate the
+    /// proposal - so any response to this request has to be received before that time.
+    RequestNewBlock(BlockContext<C>, Timestamp),
     /// This validator is faulty.
     ///
     /// When this is returned, the validator automatically deactivates.
@@ -192,7 +194,8 @@ impl<C: Context> ActiveValidator<C> {
         // Only create new units if enough validators are online.
         if !self.paused && self.enough_validators_online(state, timestamp) {
             if timestamp == r_id && state.leader(r_id) == self.vidx {
-                effects.extend(self.request_new_block(state, instance_id, timestamp));
+                let expiry = r_id.saturating_add(self.witness_offset(r_len));
+                effects.extend(self.request_new_block(state, instance_id, timestamp, expiry));
                 return effects;
             } else if timestamp == r_id.saturating_add(self.witness_offset(r_len)) {
                 let panorama = self.panorama_at(state, timestamp);
@@ -309,6 +312,7 @@ impl<C: Context> ActiveValidator<C> {
         state: &State<C>,
         instance_id: C::InstanceId,
         timestamp: Timestamp,
+        expiry: Timestamp,
     ) -> Option<Effect<C>> {
         if let Some((prop_context, _)) = self.next_proposal.take() {
             warn!(?prop_context, "no proposal received; requesting new one");
@@ -331,7 +335,7 @@ impl<C: Context> ActiveValidator<C> {
         };
         let block_context = BlockContext::new(timestamp, ancestor_values);
         self.next_proposal = Some((block_context.clone(), panorama));
-        Some(Effect::RequestNewBlock(block_context))
+        Some(Effect::RequestNewBlock(block_context, expiry))
     }
 
     /// Proposes a new block with the given consensus value.
@@ -913,8 +917,8 @@ mod tests {
         // 416, and the first witness tick 426.
         // Alice wants to propose a block, and also make her witness unit at 426.
         let bctx = match &*test.handle_timer(ALICE, 416.into()) {
-            [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock(bctx)]
-                if *timestamp == 426.into() =>
+            [Eff::ScheduleTimer(timestamp), Eff::RequestNewBlock(bctx, expiry)]
+                if *timestamp == 426.into() && *expiry == 426.into() =>
             {
                 bctx.clone()
             }
@@ -1065,7 +1069,7 @@ mod tests {
         // After synchronizing the protocol state up until `last_own_unit`, Alice can now propose a
         // new block.
         let bctx = match &*alice.handle_timer(next_proposal_timer, &state, instance_id) {
-            [Eff::ScheduleTimer(_), Eff::RequestNewBlock(bctx)] => bctx.clone(),
+            [Eff::ScheduleTimer(_), Eff::RequestNewBlock(bctx, _)] => bctx.clone(),
             effects => panic!("unexpected effects {:?}", effects),
         };
 
@@ -1096,7 +1100,7 @@ mod tests {
     ) -> Timestamp {
         let (witness_timestamp, bctx) =
             match &*validator.handle_timer(proposal_timer, state, instance_id) {
-                [Eff::ScheduleTimer(witness_timestamp), Eff::RequestNewBlock(bctx)] => {
+                [Eff::ScheduleTimer(witness_timestamp), Eff::RequestNewBlock(bctx, _)] => {
                     (*witness_timestamp, bctx.clone())
                 }
                 effects => panic!("unexpected effects {:?}", effects),

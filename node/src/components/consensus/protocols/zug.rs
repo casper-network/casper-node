@@ -1426,7 +1426,7 @@ impl<C: Context + 'static> Zug<C> {
                             | ProtocolOutcome::CreatedRequestToRandomPeer(_)
                             | ProtocolOutcome::ScheduleTimer(_, _)
                             | ProtocolOutcome::QueueAction(_)
-                            | ProtocolOutcome::CreateNewBlock(_)
+                            | ProtocolOutcome::CreateNewBlock(_, _)
                             | ProtocolOutcome::DoppelgangerDetected
                             | ProtocolOutcome::Disconnect(_) => false,
                         }));
@@ -1890,7 +1890,10 @@ impl<C: Context + 'static> Zug<C> {
             self.current_round,
             maybe_parent_round_id,
         ));
-        vec![ProtocolOutcome::CreateNewBlock(block_context)]
+        vec![ProtocolOutcome::CreateNewBlock(
+            block_context,
+            now.saturating_add(TimeDiff::from_millis(self.proposal_timeout_millis as u64)),
+        )]
     }
 
     /// Creates a new proposal message in the current round, and a corresponding signed echo,
