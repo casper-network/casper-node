@@ -3,11 +3,9 @@ name = "regression_20240105"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-casper-contract = {version = "1.4.3", features = ["test-support"]}
-casper-types = "1.4.5"
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }
 
 [[bin]]
 name = "regression_20240105"

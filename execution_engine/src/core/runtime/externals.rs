@@ -954,10 +954,9 @@ where
                 // args(0) = pointer to output size (output param)
                 let (output_size_ptr,): (u32,) = Args::parse(args)?;
 
-                self.charge_host_function_call(
-                    &host_function_costs.new_uref,
-                    [0, 0, output_size_ptr],
-                )?;
+                // TODO - dynamically calculate the size of the new data.  Currently using
+                //        hard-coded 33 which is correct as of now.
+                self.charge_host_function_call(&host_function_costs.new_uref, [0, 0, 33])?;
                 let ret = self.new_dictionary(output_size_ptr)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
