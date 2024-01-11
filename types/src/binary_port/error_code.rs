@@ -26,7 +26,7 @@ pub enum ErrorCode {
     #[cfg_attr(feature = "std", error("wasm preprocessing"))]
     WasmPreprocessing = 5,
     /// Invalid protocol version.
-    #[cfg_attr(feature = "std", error("invalid protocol version"))]
+    #[cfg_attr(feature = "std", error("unsupported protocol version"))]
     UnsupportedProtocolVersion = 6,
     /// Invalid deploy.
     #[cfg_attr(feature = "std", error("invalid deploy"))]
