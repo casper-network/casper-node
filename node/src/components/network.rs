@@ -252,7 +252,7 @@ where
 
         let rpc_builder = transport::create_rpc_builder(
             chain_info.networking_config,
-            cfg.buffer_size,
+            cfg.send_buffer_size,
             cfg.ack_timeout,
         );
 

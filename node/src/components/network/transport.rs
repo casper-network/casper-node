@@ -16,7 +16,7 @@ use super::{Channel, PerChannel};
 /// The resulting `RpcBuilder` can be reused for multiple connections.
 pub(super) fn create_rpc_builder(
     juliet_config: PerChannel<JulietConfig>,
-    buffer_size: PerChannel<Option<u16>>,
+    buffer_size: PerChannel<Option<usize>>,
     ack_timeout: TimeDiff,
 ) -> juliet::rpc::RpcBuilder<{ Channel::COUNT }> {
     let protocol = juliet_config.into_iter().fold(
@@ -26,12 +26,14 @@ pub(super) fn create_rpc_builder(
         },
     );
 
-    let io_core = juliet_config.into_iter().zip(buffer_size).fold(
+    // If buffer_size is not specified, `in_flight_limit * 2` is used:
+    let buffer_size = buffer_size.map(|channel, maybe_buffer_size| {
+        maybe_buffer_size.unwrap_or((2 * juliet_config.get(channel).in_flight_limit).into())
+    });
+
+    let io_core = buffer_size.into_iter().fold(
         juliet::io::IoCoreBuilder::new(protocol),
-        |io_core, ((channel, juliet_config), (_, maybe_buffer_size))| {
-            let buffer_size = maybe_buffer_size
-                .unwrap_or(juliet_config.in_flight_limit)
-                .max(1) as usize;
+        |io_core, (channel, buffer_size)| {
             io_core.buffer_size(channel.into_channel_id(), buffer_size)
         },
     );

@@ -24,7 +24,7 @@ pub(crate) struct ChainInfo {
     /// Name of the network we participate in. We only remain connected to peers with the same
     /// network name as us.
     pub(super) network_name: String,
-    /// The maximum message size for a network message, as supplied from the chainspec.
+    /// The maximum handshake message size, as supplied from the chainspec.
     pub(super) maximum_handshake_message_size: u32,
     /// The protocol version.
     pub(super) protocol_version: ProtocolVersion,

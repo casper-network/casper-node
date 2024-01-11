@@ -49,7 +49,7 @@ impl Default for Config {
             tarpit_version_threshold: None,
             tarpit_duration: TimeDiff::from_seconds(600),
             tarpit_chance: 0.2,
-            buffer_size: PerChannel::all(None), // TODO: Adjust after testing.
+            send_buffer_size: PerChannel::init_with(|_| None), // TODO: Adjust after testing.
             ack_timeout: TimeDiff::from_seconds(30),
             blocklist_retain_duration: TimeDiff::from_seconds(600),
             identity: None,
@@ -96,7 +96,7 @@ pub struct Config {
     /// Maximum allowed time for handshake completion.
     pub handshake_timeout: TimeDiff,
     /// Maximum number of incoming connections per unique peer. Unlimited if `0`.
-    pub max_incoming_peer_connections: u16, //remove?
+    pub max_incoming_peer_connections: u16,
     /// Maximum number of bytes per second allowed for non-validating peers. Unlimited if 0.
     pub max_outgoing_byte_rate_non_validators: u32,
     /// The protocol version at which (or under) tarpitting is enabled.
@@ -105,8 +105,11 @@ pub struct Config {
     pub tarpit_duration: TimeDiff,
     /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
     pub tarpit_chance: f32,
-    /// An optional buffer size for each Juliet channel, allowing to replace the default value.
-    pub buffer_size: PerChannel<Option<u16>>,
+    /// An optional buffer size for each Juliet channel, allowing to setup how many messages
+    /// we can keep in a memory buffer before blocking at call site.
+    ///
+    /// If it is not specified, `in_flight_limit * 2` is used as a default.
+    pub send_buffer_size: PerChannel<Option<usize>>,
     /// Timeout for completing handling of a message before closing a connection to a peer.
     pub ack_timeout: TimeDiff,
     /// Duration peers are kept on the block list, before being redeemed.

@@ -31,17 +31,17 @@ pub struct NetworkConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, DataSize, Serialize, Deserialize)]
 pub struct JulietConfig {
     /// Sets a limit for channels.
-    pub in_flight_limit: u16, // 10-50
-    /// The maximum size of an accepted network message, in bytes.
-    pub maximum_request_payload_size: u32, //
-    /// The maximum size of an accepted network message, in bytes.
+    pub in_flight_limit: u16, // order of magnitude: 10-50
+    /// The maximum size of a request payload on this channel.
+    pub maximum_request_payload_size: u32,
+    /// The maximum size of a response payload on this channel.
     pub maximum_response_payload_size: u32,
 }
 
 impl Default for PerChannel<JulietConfig> {
     fn default() -> Self {
         //TODO figure out the right values:
-        PerChannel::all(JulietConfig {
+        PerChannel::init_with(|_| JulietConfig {
             in_flight_limit: 25,
             maximum_request_payload_size: 24 * 1024 * 1024,
             maximum_response_payload_size: 0,
@@ -56,7 +56,7 @@ impl NetworkConfig {
         let name = rng.gen::<char>().to_string();
         let maximum_handshake_message_size = 4 + rng.gen_range(0..4);
         let accounts_config = AccountsConfig::random(rng);
-        let networking_config = PerChannel::all_with(|| JulietConfig::random(rng));
+        let networking_config = PerChannel::init_with(|_| JulietConfig::random(rng));
 
         NetworkConfig {
             name,

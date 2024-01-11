@@ -1,3 +1,9 @@
+//! `PerChannel` allows to hold some configuration for every channel. It has
+//! convenience methods allowing to cover common operations.
+//!
+//! For example, `buffer_size: PerChannel<usize>` allows to associate a buffer
+//! size of type `usize` to every channel.
+
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
@@ -17,6 +23,7 @@ pub struct PerChannel<T> {
 }
 
 impl<T> PerChannel<T> {
+    /// Returns tbuffer_sizehe value stored for the given channel.
     #[inline(always)]
     pub const fn get(&self, channel: Channel) -> &T {
         match channel {
@@ -30,43 +37,29 @@ impl<T> PerChannel<T> {
         }
     }
 
-    pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> PerChannel<U> {
+    /// Creates a new `PerChannel` from the original one by applying the given function.
+    pub fn map<U>(self, mut f: impl FnMut(Channel, T) -> U) -> PerChannel<U> {
         PerChannel {
-            network: f(self.network),
-            sync_data_request: f(self.sync_data_request),
-            sync_data_responses: f(self.sync_data_responses),
-            data_requests: f(self.data_requests),
-            data_responses: f(self.data_responses),
-            consensus: f(self.consensus),
-            bulk_gossip: f(self.bulk_gossip),
+            network: f(Channel::Network, self.network),
+            sync_data_request: f(Channel::SyncDataRequests, self.sync_data_request),
+            sync_data_responses: f(Channel::SyncDataResponses, self.sync_data_responses),
+            data_requests: f(Channel::DataRequests, self.data_requests),
+            data_responses: f(Channel::DataResponses, self.data_responses),
+            consensus: f(Channel::Consensus, self.consensus),
+            bulk_gossip: f(Channel::BulkGossip, self.bulk_gossip),
         }
     }
 
     /// Fill the fields for all the channels with a value generated from the given closure.
-    pub fn all_with(mut getter: impl FnMut() -> T) -> Self {
+    pub fn init_with(mut initializer: impl FnMut(Channel) -> T) -> Self {
         PerChannel {
-            network: getter(),
-            sync_data_request: getter(),
-            sync_data_responses: getter(),
-            data_requests: getter(),
-            data_responses: getter(),
-            consensus: getter(),
-            bulk_gossip: getter(),
-        }
-    }
-}
-
-impl<T: Clone> PerChannel<T> {
-    /// Fill the fields for all the channels with the given value.
-    pub fn all(value: T) -> Self {
-        PerChannel {
-            network: value.clone(),
-            sync_data_request: value.clone(),
-            sync_data_responses: value.clone(),
-            data_requests: value.clone(),
-            data_responses: value.clone(),
-            consensus: value.clone(),
-            bulk_gossip: value,
+            network: initializer(Channel::Network),
+            sync_data_request: initializer(Channel::SyncDataRequests),
+            sync_data_responses: initializer(Channel::SyncDataResponses),
+            data_requests: initializer(Channel::DataRequests),
+            data_responses: initializer(Channel::DataResponses),
+            consensus: initializer(Channel::Consensus),
+            bulk_gossip: initializer(Channel::BulkGossip),
         }
     }
 }
