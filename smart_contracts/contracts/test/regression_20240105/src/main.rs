@@ -7,27 +7,79 @@ use alloc::{
     string::{String, ToString},
     vec,
 };
+use core::mem::MaybeUninit;
 
-use casper_contract::contract_api::{runtime, storage};
-use casper_types::{EraId, Key};
+use casper_contract::{
+    contract_api::{runtime, storage},
+    ext_ffi,
+};
+use casper_types::{bytesrepr::ToBytes, ApiError, EraId, Key, U512};
 
 #[no_mangle]
 pub extern "C" fn call() {
     let fn_arg: String = runtime::get_named_arg("fn");
     match fn_arg.as_str() {
         "write" => {
+            let len: u32 = runtime::get_named_arg("len");
+            let uref = storage::new_uref(());
             for _i in 0..u64::MAX {
-                todo!()
+                storage::write(uref, vec![u64::MAX; len as usize])
             }
         }
         "read" => {
+            let len: Option<u32> = runtime::get_named_arg("len");
+            let key = match len {
+                Some(len) => {
+                    let key = Key::URef(storage::new_uref(()));
+                    let uref = storage::new_uref(());
+                    storage::write(uref, vec![u64::MAX; len as usize]);
+                    key
+                }
+                None => Key::Hash([0; 32]),
+            };
+            let key_bytes = key.into_bytes().unwrap();
+            let key_ptr = key_bytes.as_ptr();
+            let key_size = key_bytes.len();
+            let mut buffer = vec![0; len.unwrap_or_default() as usize];
             for _i in 0..u64::MAX {
-                todo!()
+                let mut value_size = MaybeUninit::uninit();
+                let ret = unsafe {
+                    ext_ffi::casper_read_value(key_ptr, key_size, value_size.as_mut_ptr())
+                };
+                // If we actually read a value, we need to clear the host buffer before trying to
+                // read another value.
+                if len.is_some() {
+                    assert_eq!(ret, 0);
+                } else {
+                    assert_eq!(ret, u32::from(ApiError::ValueNotFound) as i32);
+                    continue;
+                }
+                unsafe {
+                    value_size.assume_init();
+                }
+                let mut bytes_written = MaybeUninit::uninit();
+                let ret = unsafe {
+                    ext_ffi::casper_read_host_buffer(
+                        buffer.as_mut_ptr(),
+                        buffer.len(),
+                        bytes_written.as_mut_ptr(),
+                    )
+                };
+                assert_eq!(ret, 0);
             }
         }
         "add" => {
-            for _i in 0..u64::MAX {
-                todo!()
+            let large: bool = runtime::get_named_arg("large");
+            if large {
+                let uref = storage::new_uref(U512::zero());
+                for _i in 0..u64::MAX {
+                    storage::add(uref, U512::MAX)
+                }
+            } else {
+                let uref = storage::new_uref(0_i32);
+                for _i in 0..u64::MAX {
+                    storage::add(uref, 1_i32)
+                }
             }
         }
         "new" => {

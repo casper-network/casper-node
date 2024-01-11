@@ -59,6 +59,76 @@ mod repeated_ffi_call_should_gas_out_quickly {
 
     #[ignore]
     #[test]
+    fn write_small() {
+        let session_args = runtime_args! {
+            "fn" => "write",
+            "len" => 1_u32,
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn write_large() {
+        let session_args = runtime_args! {
+            "fn" => "write",
+            "len" => 1_000_u32,
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn read_missing() {
+        let session_args = runtime_args! {
+            "fn" => "read",
+            "len" => Option::<u32>::None,
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn read_small() {
+        let session_args = runtime_args! {
+            "fn" => "read",
+            "len" => Some(1_u32),
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn read_large() {
+        let session_args = runtime_args! {
+            "fn" => "read",
+            "len" => Some(50_000_u32),
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn add_small() {
+        let session_args = runtime_args! {
+            "fn" => "add",
+            "large" => false
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn add_large() {
+        let session_args = runtime_args! {
+            "fn" => "add",
+            "large" => true
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
     fn new_uref() {
         let session_args = runtime_args! { "fn" => "new" };
         execute_with_timeout(session_args)
