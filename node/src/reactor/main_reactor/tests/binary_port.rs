@@ -1,4 +1,4 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use casper_types::{
     binary_port::{
@@ -17,8 +17,8 @@ use casper_types::{
     testing::TestRng,
     AvailableBlockRange, BinaryResponse, BinaryResponseAndRequest, BlockHash, BlockHashAndHeight,
     BlockHeader, BlockIdentifier, BlockSynchronizerStatus, ChainspecRawBytes, Digest, ErrorCode,
-    Key, KeyTag, NextUpgrade, PayloadType, Peers, ReactorState, SemVer, SignedBlock, StoredValue,
-    Transaction, TransactionHash, TransactionV1Builder, Transfer, Uptime,
+    Key, KeyTag, NextUpgrade, PayloadType, Peers, ReactorState, SecretKey, SemVer, SignedBlock,
+    StoredValue, Transaction, TransactionHash, TransactionV1Builder, Transfer, Uptime,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -63,6 +63,7 @@ async fn setup() -> (
         TestRng,
         ChainspecRawBytes,
         SignedBlock,
+        Arc<SecretKey>,
     ),
 ) {
     let mut fixture = TestFixture::new(
@@ -82,7 +83,18 @@ async fn setup() -> (
         Duration::from_secs(59),
     )
     .await;
-
+    let (_, first_node) = net
+        .nodes()
+        .iter()
+        .next()
+        .expect("should have at least one node");
+    let secret_signing_key = first_node
+        .reactor()
+        .inner()
+        .inner()
+        .validator_matrix
+        .secret_signing_key()
+        .clone();
     let highest_block = net
         .nodes()
         .iter()
@@ -131,7 +143,13 @@ async fn setup() -> (
 
     (
         client,
-        (finish_cranking, rng, chainspec_raw_bytes, highest_block),
+        (
+            finish_cranking,
+            rng,
+            chainspec_raw_bytes,
+            highest_block,
+            secret_signing_key,
+        ),
     )
 }
 
@@ -182,8 +200,10 @@ where
 async fn binary_port_component() {
     testing::init_logging();
 
-    let (client, (finish_cranking, mut rng, network_chainspec_raw_bytes, highest_block)) =
-        setup().await;
+    let (
+        client,
+        (finish_cranking, mut rng, network_chainspec_raw_bytes, highest_block, secret_key),
+    ) = setup().await;
 
     let test_cases = &[
         block_hash_2_height(),
@@ -208,6 +228,7 @@ async fn binary_port_component() {
         get_era_summary(*highest_block.block().state_root_hash()),
         get_all_bids(*highest_block.block().state_root_hash()),
         get_trie(*highest_block.block().state_root_hash()),
+        try_accept_transaction(&secret_key),
         try_accept_transaction_invalid(&mut rng),
         try_spec_exec_invalid(&mut rng, highest_block.block().clone_header()),
     ];
@@ -588,7 +609,6 @@ fn get_all_bids(state_root_hash: Digest) -> TestCase {
         }),
         asserter: Box::new(|response| {
             assert_response::<StoredValues, _>(response, Some(PayloadType::StoredValues), |res| {
-                dbg!(&res);
                 res.into_inner()
                     .iter()
                     .all(|v| matches!(v, StoredValue::BidKind(_)))
@@ -608,6 +628,21 @@ fn get_trie(digest: Digest) -> TestCase {
                 |res| matches!(res.into_inner(), Some(_)),
             )
         }),
+    }
+}
+
+fn try_accept_transaction(key: &SecretKey) -> TestCase {
+    let transaction = Transaction::V1(
+        TransactionV1Builder::new_targeting_invocable_entity_via_alias("Test", "call")
+            .with_secret_key(key)
+            .with_chain_name("casper-example")
+            .build()
+            .unwrap(),
+    );
+    TestCase {
+        name: "try_accept_transaction",
+        request: BinaryRequest::TryAcceptTransaction { transaction },
+        asserter: Box::new(|response| response.error_code() == ErrorCode::NoError as u8),
     }
 }
 
