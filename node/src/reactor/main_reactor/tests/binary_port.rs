@@ -8,8 +8,8 @@ use casper_types::{
         global_state_query_result::GlobalStateQueryResult,
         non_persistent_data_request::NonPersistedDataRequest,
         type_wrappers::{
-            ConsensusStatus, ConsensusValidatorChanges, HighestBlockSequenceCheckResult,
-            LastProgress, NetworkName,
+            ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult,
+            HighestBlockSequenceCheckResult, LastProgress, NetworkName, StoredValues,
         },
         NodeStatus,
     },
@@ -18,7 +18,7 @@ use casper_types::{
     AvailableBlockRange, BinaryResponse, BinaryResponseAndRequest, BlockHash, BlockHashAndHeight,
     BlockHeader, BlockIdentifier, BlockSynchronizerStatus, ChainspecRawBytes, Digest, ErrorCode,
     Key, KeyTag, NextUpgrade, PayloadType, Peers, ReactorState, SemVer, SignedBlock, StoredValue,
-    Transaction, TransactionHash, TransactionV1Builder, Uptime,
+    Transaction, TransactionHash, TransactionV1Builder, Transfer, Uptime,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -204,6 +204,7 @@ async fn binary_port_component() {
         chainspec_raw_bytes(network_chainspec_raw_bytes),
         node_status(),
         get_block_header(highest_block.block().clone_header()),
+        get_block_transfers(highest_block.block().clone_header()),
         get_era_summary(*highest_block.block().state_root_hash()),
         get_all_bids(*highest_block.block().state_root_hash()),
         get_trie(*highest_block.block().state_root_hash()),
@@ -543,6 +544,20 @@ fn get_block_header(expected: BlockHeader) -> TestCase {
     }
 }
 
+fn get_block_transfers(expected: BlockHeader) -> TestCase {
+    TestCase {
+        name: "get_block_transfers",
+        request: BinaryRequest::Get(GetRequest::Db {
+            db_tag: DbId::Transfer.into(),
+            key: expected.block_hash().to_bytes().unwrap(),
+        }),
+        asserter: Box::new(move |response| {
+            validate_metadata(response, Some(PayloadType::VecTransfers))
+                && bincode::deserialize::<Vec<Transfer>>(response.payload()).is_ok()
+        }),
+    }
+}
+
 fn get_era_summary(state_root_hash: Digest) -> TestCase {
     TestCase {
         name: "get_era_summary",
@@ -572,14 +587,12 @@ fn get_all_bids(state_root_hash: Digest) -> TestCase {
             key_tag: KeyTag::Bid,
         }),
         asserter: Box::new(|response| {
-            response.error_code() == ErrorCode::FunctionDisabled as u8
-            // TODO: might want to enable the request for the test
-            // assert_response::<StoredValues, _>(response, Some(PayloadType::StoredValues), |res| {
-            //     dbg!(&res);
-            //     res.into_inner()
-            //         .iter()
-            //         .all(|v| matches!(v, StoredValue::BidKind(_)))
-            // })
+            assert_response::<StoredValues, _>(response, Some(PayloadType::StoredValues), |res| {
+                dbg!(&res);
+                res.into_inner()
+                    .iter()
+                    .all(|v| matches!(v, StoredValue::BidKind(_)))
+            })
         }),
     }
 }
@@ -589,11 +602,11 @@ fn get_trie(digest: Digest) -> TestCase {
         name: "get_trie",
         request: BinaryRequest::Get(GetRequest::Trie { trie_key: digest }),
         asserter: Box::new(|response| {
-            response.error_code() == ErrorCode::FunctionDisabled as u8
-            // TODO: might want to enable the request for the test
-            // assert_response::<GetTrieFullResult, _>(response, Some(PayloadType::GetTrieFullResult), |res| {
-            //     matches(res.into_inner(), Some(_))
-            // })
+            assert_response::<GetTrieFullResult, _>(
+                response,
+                Some(PayloadType::GetTrieFullResult),
+                |res| matches!(res.into_inner(), Some(_)),
+            )
         }),
     }
 }

@@ -286,6 +286,11 @@ impl TestFixture {
         let mut cfg = Config {
             network: network_cfg,
             gossip: gossiper::Config::new_with_small_timeouts(),
+            binary_port_server: crate::BinaryPortConfig {
+                allow_request_get_all_values: true,
+                allow_request_get_trie: true,
+                ..Default::default()
+            },
             ..Default::default()
         };
 
