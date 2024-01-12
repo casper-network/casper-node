@@ -378,13 +378,21 @@ impl Default for HostFunctionCosts {
                 ],
             ),
             create_contract_package_at_hash: HostFunction::default(),
-            create_contract_user_group: HostFunction::new(
-                200,
-                [NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED, DEFAULT_ARG_CHARGE]
-            ),
+            create_contract_user_group: HostFunction::default(),
             add_contract_version: HostFunction::new(
                 200,
-                [NOT_USED, NOT_USED, NOT_USED, NOT_USED, DEFAULT_ARG_CHARGE, NOT_USED, NOT_USED, NOT_USED, NOT_USED, NOT_USED]
+                [
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    DEFAULT_ARG_CHARGE,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                ],
             ),
             disable_contract_version: HostFunction::default(),
             call_contract: HostFunction::new(
@@ -416,16 +424,20 @@ impl Default for HostFunctionCosts {
             get_named_arg_size: HostFunction::default(),
             get_named_arg: HostFunction::new(
                 200,
-                [NOT_USED, DEFAULT_ARG_CHARGE, NOT_USED, DEFAULT_ARG_CHARGE]
+                [NOT_USED, DEFAULT_ARG_CHARGE, NOT_USED, DEFAULT_ARG_CHARGE],
             ),
             remove_contract_user_group: HostFunction::default(),
-            provision_contract_user_group_uref: HostFunction::new(
-                200,
-                [NOT_USED,NOT_USED,NOT_USED,NOT_USED, DEFAULT_ARG_CHARGE]
-            ),
+            provision_contract_user_group_uref: HostFunction::default(),
             remove_contract_user_group_urefs: HostFunction::new(
                 200,
-                [NOT_USED, NOT_USED,NOT_USED,NOT_USED,NOT_USED, DEFAULT_ARG_CHARGE]
+                [
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    DEFAULT_ARG_CHARGE,
+                ],
             ),
             print: HostFunction::new(
                 DEFAULT_PRINT_COST,

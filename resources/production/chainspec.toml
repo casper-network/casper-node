@@ -158,7 +158,6 @@ max_stack_height = 500
 [wasm.storage_costs]
 # Gas charged per byte stored in the global state.
 gas_per_byte = 1_117_587
-############ = 1_200_000
 
 [wasm.opcode_costs]
 # Bit operations multiplier.

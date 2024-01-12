@@ -690,8 +690,6 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
 
     let gas_cost_3 = builder.last_exec_gas_cost();
 
-    println!("{gas_cost_3}");
-
     assert!(gas_cost_3 > gas_cost_1, "{} <= {}", gas_cost_3, gas_cost_1);
     assert!(gas_cost_3 > gas_cost_2);
 
