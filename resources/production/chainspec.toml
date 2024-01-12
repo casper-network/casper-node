@@ -216,10 +216,10 @@ size_multiplier = 100
 [wasm.host_function_costs]
 add = { cost = 5_800, arguments = [0, 0, 0, 0] }
 add_associated_key = { cost = 9_000, arguments = [0, 0, 0] }
-add_contract_version = { cost = 200, arguments = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }
-blake2b = { cost = 200, arguments = [0, 0, 0, 0] }
-call_contract = { cost = 4_500, arguments = [0, 0, 0, 0, 0, 420, 0] }
-call_versioned_contract = { cost = 4_500, arguments = [0, 0, 0, 0, 0, 0, 0, 420, 0] }
+add_contract_version = { cost = 200, arguments = [0, 0, 0, 0, 120_000, 0, 0, 0, 0, 0] }
+blake2b = { cost = 200, arguments = [0, 120_000, 0, 0] }
+call_contract = { cost = 4_500, arguments = [0, 0, 0, 120_000, 0, 420, 0] }
+call_versioned_contract = { cost = 4_500, arguments = [0, 0, 0, 0, 0, 120_000, 0, 420, 0] }
 create_contract_package_at_hash = { cost = 200, arguments = [0, 0] }
 create_contract_user_group = { cost = 200, arguments = [0, 0, 0, 0, 0, 0, 0, 0] }
 create_purse = { cost = 2_500_000_000, arguments = [0, 0] }
@@ -229,7 +229,7 @@ get_blocktime = { cost = 330, arguments = [0] }
 get_caller = { cost = 380, arguments = [0] }
 get_key = { cost = 2_000, arguments = [0, 440, 0, 0, 0] }
 get_main_purse = { cost = 1_300, arguments = [0] }
-get_named_arg = { cost = 200, arguments = [0, 0, 0, 0] }
+get_named_arg = { cost = 200, arguments = [0, 120_000, 0, 120_000] }
 get_named_arg_size = { cost = 200, arguments = [0, 0, 0] }
 get_phase = { cost = 710, arguments = [0] }
 get_system_contract = { cost = 1_100, arguments = [0, 0, 0] }
@@ -246,7 +246,7 @@ read_value = { cost = 6_000, arguments = [0, 0, 0] }
 read_value_local = { cost = 5_500, arguments = [0, 590, 0] }
 remove_associated_key = { cost = 4_200, arguments = [0, 0] }
 remove_contract_user_group = { cost = 200, arguments = [0, 0, 0, 0] }
-remove_contract_user_group_urefs = { cost = 200, arguments = [0, 0, 0, 0, 0, 0] }
+remove_contract_user_group_urefs = { cost = 200, arguments = [0, 0, 0, 0, 0, 120_000] }
 remove_key = { cost = 61_000, arguments = [0, 3_200] }
 ret = { cost = 23_000, arguments = [0, 420_000] }
 revert = { cost = 500, arguments = [0] }

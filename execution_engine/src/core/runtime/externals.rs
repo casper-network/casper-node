@@ -562,6 +562,9 @@ where
                     existing_urefs_size,
                     output_size_ptr,
                 ) = Args::parse(args)?;
+
+                // TODO - use `num_new_urefs` * costs for unit uref, assuming these aren't
+                // already charged.
                 self.charge_host_function_call(
                     &host_function_costs.create_contract_user_group,
                     [
@@ -837,6 +840,7 @@ where
                 // args(4) = output of size value of host bytes data
                 let (package_ptr, package_size, label_ptr, label_size, value_size_ptr) =
                     Args::parse(args)?;
+                // TODO - add cost for 1x unit uref, assuming this isn't already charged
                 self.charge_host_function_call(
                     &host_function_costs.provision_contract_user_group_uref,
                     [

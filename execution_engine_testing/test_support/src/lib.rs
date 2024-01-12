@@ -129,7 +129,7 @@ pub static DEFAULT_ACCOUNTS: Lazy<Vec<GenesisAccount>> = Lazy::new(|| {
 /// Default [`ProtocolVersion`].
 pub static DEFAULT_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| ProtocolVersion::V1_0_0);
 /// Default payment.
-pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(1_500_000_000_000u64));
+pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(2_500_000_000_000u64));
 /// Default [`WasmConfig`].
 pub static DEFAULT_WASM_CONFIG: Lazy<WasmConfig> = Lazy::new(WasmConfig::default);
 /// Default [`SystemConfig`].
