@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-casper-contract = { path = "../../../contract" }
+casper-contract = { path = "../../../contract", features = ["test-support"] }
 casper-types = { path = "../../../../types" }
 
 [[bin]]

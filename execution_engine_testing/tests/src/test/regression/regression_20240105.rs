@@ -129,8 +129,42 @@ mod repeated_ffi_call_should_gas_out_quickly {
 
     #[ignore]
     #[test]
-    fn new_uref() {
-        let session_args = runtime_args! { "fn" => "new" };
+    fn new_uref_small() {
+        let session_args = runtime_args! {
+            "fn" => "new",
+            "len" => 1_u32,
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn new_uref_large() {
+        let session_args = runtime_args! {
+            "fn" => "new",
+            "len" => 1_000_u32,
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn call_contract_small_runtime_args() {
+        let session_args = runtime_args! {
+            "fn" => "call_contract",
+            "args_len" => 1_u32
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn call_contract_large_runtime_args() {
+        // TODO - use production chainspec value for `[deploy.session_args_max_length]`.
+        let session_args = runtime_args! {
+            "fn" => "call_contract",
+            "args_len" => 1_024_u32
+        };
         execute_with_timeout(session_args)
     }
 

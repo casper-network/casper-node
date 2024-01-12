@@ -13,7 +13,10 @@ use casper_contract::{
     contract_api::{runtime, storage},
     ext_ffi,
 };
-use casper_types::{bytesrepr::ToBytes, ApiError, EraId, Key, U512};
+use casper_types::{
+    bytesrepr::ToBytes, runtime_args, ApiError, CLType, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints, EraId, Key, RuntimeArgs, U512,
+};
 
 #[no_mangle]
 pub extern "C" fn call() {
@@ -83,18 +86,26 @@ pub extern "C" fn call() {
             }
         }
         "new" => {
+            let len: u32 = runtime::get_named_arg("len");
             for _i in 0..u64::MAX {
-                let _n = storage::new_uref(()); // 0:03
-            }
-        }
-        "ret" => {
-            for _i in 0..u64::MAX {
-                todo!()
+                let _n = storage::new_uref(vec![u32::MAX; len as usize]);
             }
         }
         "call_contract" => {
+            let noop = "noop";
+            let mut entry_points = EntryPoints::new();
+            entry_points.add_entry_point(EntryPoint::new(
+                noop,
+                vec![],
+                CLType::Unit,
+                EntryPointAccess::Public,
+                EntryPointType::Contract,
+            ));
+            let (contract_hash, _version) = storage::new_contract(entry_points, None, None, None);
+            let args_len: u32 = runtime::get_named_arg("args_len");
+            let args = runtime_args! { "a" => vec![u8::MAX; args_len as usize] };
             for _i in 0..u64::MAX {
-                todo!()
+                runtime::call_contract::<()>(contract_hash, noop, args.clone());
             }
         }
         "get_key" => {
@@ -319,3 +330,6 @@ pub extern "C" fn call() {
         _ => panic!(),
     }
 }
+
+#[no_mangle]
+pub extern "C" fn noop() {}
