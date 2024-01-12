@@ -170,41 +170,205 @@ mod repeated_ffi_call_should_gas_out_quickly {
 
     #[ignore]
     #[test]
-    fn has_key_missing() {
+    fn get_key_small_name_missing_key() {
+        let session_args = runtime_args! {
+            "fn" => "get_key",
+            "large_name" => false,
+            "large_key" => Option::<bool>::None
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn get_key_small_name_small_key() {
+        let session_args = runtime_args! {
+            "fn" => "get_key",
+            "large_name" => false,
+            "large_key" => Some(false)
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn get_key_small_name_large_key() {
+        let session_args = runtime_args! {
+            "fn" => "get_key",
+            "large_name" => false,
+            "large_key" => Some(true)
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn get_key_large_name_small_key() {
+        let session_args = runtime_args! {
+            "fn" => "get_key",
+            "large_name" => true,
+            "large_key" => Some(false)
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn get_key_large_name_large_key() {
+        let session_args = runtime_args! {
+            "fn" => "get_key",
+            "large_name" => true,
+            "large_key" => Some(true)
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn has_key_small_name_missing_key() {
         let session_args = runtime_args! {
             "fn" => "has_key",
-            "exists" => false
+            "large_name" => false,
+            "key_exists" => false
         };
         execute_with_timeout(session_args)
     }
 
     #[ignore]
     #[test]
-    fn has_key_existing() {
+    fn has_key_small_name_existing_key() {
         let session_args = runtime_args! {
             "fn" => "has_key",
-            "exists" => true
+            "large_name" => false,
+            "key_exists" => true
         };
         execute_with_timeout(session_args)
     }
 
     #[ignore]
     #[test]
-    fn put_key_small() {
+    fn has_key_large_name_missing_key() {
         let session_args = runtime_args! {
-            "fn" => "put_key",
-            "large" => false
+            "fn" => "has_key",
+            "large_name" => true,
+            "key_exists" => false
         };
         execute_with_timeout(session_args)
     }
 
     #[ignore]
     #[test]
-    fn put_key_large() {
+    fn has_key_large_name_existing_key() {
+        let session_args = runtime_args! {
+            "fn" => "has_key",
+            "large_name" => true,
+            "key_exists" => true
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn put_key_small_name_small_key() {
         let session_args = runtime_args! {
             "fn" => "put_key",
-            "large" => true
+            "large_name" => false,
+            "large_key" => false
         };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn put_key_small_name_large_key() {
+        let session_args = runtime_args! {
+            "fn" => "put_key",
+            "large_name" => false,
+            "large_key" => true
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn put_key_large_name_small_key() {
+        let session_args = runtime_args! {
+            "fn" => "put_key",
+            "large_name" => true,
+            "large_key" => false
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn put_key_large_name_large_key() {
+        let session_args = runtime_args! {
+            "fn" => "put_key",
+            "large_name" => true,
+            "large_key" => true
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn is_valid_uref_for_invalid() {
+        let session_args = runtime_args! {
+            "fn" => "is_valid_uref",
+            "valid" => false
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn is_valid_uref_for_valid() {
+        let session_args = runtime_args! {
+            "fn" => "is_valid_uref",
+            "valid" => true
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn add_and_remove_associated_key() {
+        let session_args = runtime_args! {
+            "fn" => "add_associated_key",
+            "remove_after_adding" => true,
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn add_associated_key_duplicated() {
+        let session_args = runtime_args! {
+            "fn" => "add_associated_key",
+            "remove_after_adding" => false,
+        };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn remove_associated_key_non_existent() {
+        let session_args = runtime_args! { "fn" => "remove_associated_key" };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn get_caller() {
+        let session_args = runtime_args! { "fn" => "get_caller" };
+        execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn get_blocktime() {
+        let session_args = runtime_args! { "fn" => "get_blocktime" };
         execute_with_timeout(session_args)
     }
 
