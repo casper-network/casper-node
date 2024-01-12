@@ -20,10 +20,10 @@ mod repeated_ffi_call_should_gas_out_quickly {
     const PAYMENT_AMOUNT: u64 = 1_000_000_000_000_u64;
 
     fn execute_with_timeout(session_args: RuntimeArgs) {
-        if cfg!(debug_assertions) {
-            println!("not testing in debug mode");
-            return;
-        }
+        // if cfg!(debug_assertions) {
+        //     println!("not testing in debug mode");
+        //     return;
+        // }
         let (tx, rx) = mpsc::channel();
         let _ = thread::spawn(move || {
             let payment_args = runtime_args! { "amount" => U512::from(PAYMENT_AMOUNT) };
@@ -72,7 +72,7 @@ mod repeated_ffi_call_should_gas_out_quickly {
     fn write_large() {
         let session_args = runtime_args! {
             "fn" => "write",
-            "len" => 1_000_u32,
+            "len" => 100_000_u32,
         };
         execute_with_timeout(session_args)
     }
@@ -102,7 +102,7 @@ mod repeated_ffi_call_should_gas_out_quickly {
     fn read_large() {
         let session_args = runtime_args! {
             "fn" => "read",
-            "len" => Some(50_000_u32),
+            "len" => Some(100_000_u32),
         };
         execute_with_timeout(session_args)
     }

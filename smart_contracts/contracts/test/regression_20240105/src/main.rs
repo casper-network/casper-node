@@ -6,17 +6,44 @@ extern crate alloc;
 use alloc::{
     string::{String, ToString},
     vec,
+    vec::Vec,
 };
 use core::mem::MaybeUninit;
 
 use casper_contract::{
     contract_api::{runtime, storage},
     ext_ffi,
+    unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    bytesrepr::ToBytes, runtime_args, ApiError, CLType, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, EraId, Key, RuntimeArgs, U512,
+    api_error, bytesrepr::ToBytes, runtime_args, ApiError, CLType, CLValue, ContractHash,
+    EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Key, RuntimeArgs, U512,
 };
+
+const NOOP: &str = "noop";
+
+fn to_ptr<T: ToBytes>(t: &T) -> (*const u8, usize, Vec<u8>) {
+    let bytes = t.to_bytes().unwrap_or_revert();
+    let ptr = bytes.as_ptr();
+    let size = bytes.len();
+    (ptr, size, bytes)
+}
+
+#[no_mangle]
+pub extern "C" fn noop() {}
+
+fn store_noop_contract() -> ContractHash {
+    let mut entry_points = EntryPoints::new();
+    entry_points.add_entry_point(EntryPoint::new(
+        NOOP,
+        vec![],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    ));
+    let (contract_hash, _version) = storage::new_contract(entry_points, None, None, None);
+    contract_hash
+}
 
 #[no_mangle]
 pub extern "C" fn call() {
@@ -25,8 +52,15 @@ pub extern "C" fn call() {
         "write" => {
             let len: u32 = runtime::get_named_arg("len");
             let uref = storage::new_uref(());
+            let key = Key::from(uref);
+            let (key_ptr, key_size, _bytes1) = to_ptr(&key);
+            let value = vec![u8::MAX; len as usize];
+            let cl_value = CLValue::from_t(value).unwrap_or_revert();
+            let (cl_value_ptr, cl_value_size, _bytes2) = to_ptr(&cl_value);
             for _i in 0..u64::MAX {
-                storage::write(uref, vec![u64::MAX; len as usize])
+                unsafe {
+                    ext_ffi::casper_write(key_ptr, key_size, cl_value_ptr, cl_value_size);
+                }
             }
         }
         "read" => {
@@ -35,7 +69,7 @@ pub extern "C" fn call() {
                 Some(len) => {
                     let key = Key::URef(storage::new_uref(()));
                     let uref = storage::new_uref(());
-                    storage::write(uref, vec![u64::MAX; len as usize]);
+                    storage::write(uref, vec![u8::MAX; len as usize]);
                     key
                 }
                 None => Key::Hash([0; 32]),
@@ -92,20 +126,26 @@ pub extern "C" fn call() {
             }
         }
         "call_contract" => {
-            let noop = "noop";
-            let mut entry_points = EntryPoints::new();
-            entry_points.add_entry_point(EntryPoint::new(
-                noop,
-                vec![],
-                CLType::Unit,
-                EntryPointAccess::Public,
-                EntryPointType::Contract,
-            ));
-            let (contract_hash, _version) = storage::new_contract(entry_points, None, None, None);
             let args_len: u32 = runtime::get_named_arg("args_len");
             let args = runtime_args! { "a" => vec![u8::MAX; args_len as usize] };
+            let contract_hash = store_noop_contract();
+            let (contract_hash_ptr, contract_hash_size, _bytes1) = to_ptr(&contract_hash);
+            let (entry_point_name_ptr, entry_point_name_size, _bytes2) = to_ptr(&NOOP);
+            let (runtime_args_ptr, runtime_args_size, _bytes3) = to_ptr(&args);
             for _i in 0..u64::MAX {
-                runtime::call_contract::<()>(contract_hash, noop, args.clone());
+                let mut bytes_written = MaybeUninit::uninit();
+                let ret = unsafe {
+                    ext_ffi::casper_call_contract(
+                        contract_hash_ptr,
+                        contract_hash_size,
+                        entry_point_name_ptr,
+                        entry_point_name_size,
+                        runtime_args_ptr,
+                        runtime_args_size,
+                        bytes_written.as_mut_ptr(),
+                    )
+                };
+                api_error::result_from(ret).unwrap_or_revert();
             }
         }
         "get_key" => {
@@ -282,7 +322,6 @@ pub extern "C" fn call() {
         "blake2b" => {
             let len: u32 = runtime::get_named_arg("len");
             let data = vec![1; len as usize];
-            // 1_000_000 -> 72:00,  10_000 -> 1:28,  1 -> 0:07
             for _i in 0..u64::MAX {
                 let _hash = runtime::blake2b(&data);
             }
@@ -330,6 +369,3 @@ pub extern "C" fn call() {
         _ => panic!(),
     }
 }
-
-#[no_mangle]
-pub extern "C" fn noop() {}
