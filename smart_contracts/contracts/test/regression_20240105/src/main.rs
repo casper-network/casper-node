@@ -12,16 +12,17 @@ use alloc::{
 use core::{iter, mem::MaybeUninit};
 
 use casper_contract::{
-    contract_api::{account, runtime, storage},
+    contract_api::{account, runtime, storage, system},
     ext_ffi,
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    account::{AccountHash, Weight},
+    account::{AccountHash, ActionType, Weight},
     api_error,
     bytesrepr::ToBytes,
     runtime_args, AccessRights, ApiError, CLType, CLValue, ContractHash, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, EraId, Key, RuntimeArgs, URef, U512,
+    EntryPointAccess, EntryPointType, EntryPoints, EraId, Key, RuntimeArgs, TransferredTo, URef,
+    U512,
 };
 
 const NOOP: &str = "noop";
@@ -207,7 +208,9 @@ pub extern "C" fn call() {
             } else {
                 Key::EraInfo(EraId::new(0))
             };
-            for i in 0..u64::MAX {
+            let maybe_num_keys: Option<u32> = runtime::get_named_arg("num_keys");
+            let num_keys = maybe_num_keys.unwrap_or(u32::MAX);
+            for i in 0..num_keys {
                 runtime::put_key(format!("{base_name}{i}").as_str(), key);
             }
         }
@@ -243,23 +246,44 @@ pub extern "C" fn call() {
             }
         }
         "update_associated_key" => {
-            for _i in 0..u64::MAX {
-                todo!()
+            let exists: bool = runtime::get_named_arg("exists");
+            let account_hash = AccountHash::new([1; 32]);
+            if exists {
+                account::add_associated_key(account_hash, Weight::new(1)).unwrap_or_revert();
+                for i in 0..u64::MAX {
+                    account::update_associated_key(account_hash, Weight::new(i as u8))
+                        .unwrap_or_revert();
+                }
+            } else {
+                for i in 0..u64::MAX {
+                    account::update_associated_key(account_hash, Weight::new(i as u8)).unwrap_err();
+                }
             }
         }
         "set_action_threshold" => {
             for _i in 0..u64::MAX {
-                todo!()
+                account::set_action_threshold(ActionType::Deployment, Weight::new(1))
+                    .unwrap_or_revert();
             }
         }
         "load_named_keys" => {
+            let num_keys: u32 = runtime::get_named_arg("num_keys");
+            if num_keys == 0 {
+                for _i in 0..u64::MAX {
+                    assert!(runtime::list_named_keys().is_empty());
+                }
+                return;
+            }
+            // Where `num_keys` > 0, we should have put the required number of named keys in a
+            // previous execution via the `put_key` flow of this contract.
             for _i in 0..u64::MAX {
-                todo!()
+                assert_eq!(runtime::list_named_keys().len() as u32, num_keys);
             }
         }
         "remove_key" => {
+            let name = get_name();
             for _i in 0..u64::MAX {
-                todo!()
+                runtime::remove_key(&name)
             }
         }
         "get_caller" => {
@@ -274,42 +298,95 @@ pub extern "C" fn call() {
         }
         "create_purse" => {
             for _i in 0..u64::MAX {
-                todo!()
+                let _u = system::create_purse();
             }
         }
         "transfer_to_account" => {
-            for _i in 0..u64::MAX {
-                todo!()
+            let account_exists: bool = runtime::get_named_arg("account_exists");
+            let amount = U512::one();
+            let id = Some(u64::MAX);
+            if account_exists {
+                let target = AccountHash::new([1; 32]);
+                let to = system::transfer_to_account(target, amount, id).unwrap_or_revert();
+                assert_eq!(to, TransferredTo::NewAccount);
+                for _i in 0..u64::MAX {
+                    let to = system::transfer_to_account(target, amount, id).unwrap_or_revert();
+                    assert_eq!(to, TransferredTo::ExistingAccount);
+                }
+            } else {
+                let mut array = [0_u8; 32];
+                for index in 0..32 {
+                    for i in 1..=u8::MAX {
+                        array[index] = i;
+                        let target = AccountHash::new(array);
+                        let to = system::transfer_to_account(target, amount, id).unwrap_or_revert();
+                        assert_eq!(to, TransferredTo::NewAccount);
+                    }
+                }
             }
         }
         "transfer_from_purse_to_account" => {
-            for _i in 0..u64::MAX {
-                todo!()
+            let account_exists: bool = runtime::get_named_arg("account_exists");
+            let source = account::get_main_purse();
+            let amount = U512::one();
+            let id = Some(u64::MAX);
+            if account_exists {
+                let target = AccountHash::new([1; 32]);
+                let to = system::transfer_to_account(target, amount, id).unwrap_or_revert();
+                assert_eq!(to, TransferredTo::NewAccount);
+                for _i in 0..u64::MAX {
+                    let to = system::transfer_from_purse_to_account(source, target, amount, id)
+                        .unwrap_or_revert();
+                    assert_eq!(to, TransferredTo::ExistingAccount);
+                }
+            } else {
+                let mut array = [0_u8; 32];
+                for index in 0..32 {
+                    for i in 1..=u8::MAX {
+                        array[index] = i;
+                        let target = AccountHash::new(array);
+                        let to = system::transfer_from_purse_to_account(source, target, amount, id)
+                            .unwrap_or_revert();
+                        assert_eq!(to, TransferredTo::NewAccount);
+                    }
+                }
             }
         }
         "transfer_from_purse_to_purse" => {
+            let source = account::get_main_purse();
+            let target = system::create_purse();
+            let amount = U512::one();
+            let id = Some(u64::MAX);
+            system::transfer_from_purse_to_purse(source, target, amount, id).unwrap_or_revert();
             for _i in 0..u64::MAX {
-                todo!()
+                system::transfer_from_purse_to_purse(source, target, amount, id).unwrap_or_revert();
             }
         }
         "get_balance" => {
+            let purse_exists: bool = runtime::get_named_arg("purse_exists");
+            let uref = if purse_exists {
+                account::get_main_purse()
+            } else {
+                URef::new([1; 32], AccessRights::empty())
+            };
             for _i in 0..u64::MAX {
-                todo!()
+                let maybe_balance = system::get_purse_balance(uref);
+                assert_eq!(maybe_balance.is_some(), purse_exists);
             }
         }
         "get_phase" => {
             for _i in 0..u64::MAX {
-                todo!()
+                let _p = runtime::get_phase();
             }
         }
         "get_system_contract" => {
             for _i in 0..u64::MAX {
-                todo!()
+                let _h = system::get_mint();
             }
         }
         "get_main_purse" => {
             for _i in 0..u64::MAX {
-                todo!()
+                let _u = account::get_main_purse();
             }
         }
         "read_host_buffer" => {
@@ -406,7 +483,7 @@ pub extern "C" fn call() {
         }
         "random_bytes" => {
             for _i in 0..u64::MAX {
-                let _n = runtime::random_bytes(); // 0:05
+                let _n = runtime::random_bytes();
             }
         }
         "dictionary_read" => {

@@ -40,9 +40,8 @@ use casper_execution_engine::{
 use casper_hashing::Digest;
 use casper_types::{account::AccountHash, Motes, ProtocolVersion, PublicKey, SecretKey, U512};
 
-use crate::chainspec_config::PRODUCTION_PATH;
 pub use additive_map_diff::AdditiveMapDiff;
-pub use chainspec_config::ChainspecConfig;
+pub use chainspec_config::{ChainspecConfig, PRODUCTION_CHAINSPEC_PATH};
 pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
 pub use step_request_builder::StepRequestBuilder;
@@ -192,7 +191,7 @@ pub static PRODUCTION_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|
 });
 /// Round seigniorage rate from the production chainspec.
 pub static PRODUCTION_ROUND_SEIGNIORAGE_RATE: Lazy<Ratio<u64>> = Lazy::new(|| {
-    let chainspec = ChainspecConfig::from_chainspec_path(&*PRODUCTION_PATH)
+    let chainspec = ChainspecConfig::from_chainspec_path(&*PRODUCTION_CHAINSPEC_PATH)
         .expect("must create chainspec_config");
     chainspec.core_config.round_seigniorage_rate
 });
@@ -205,7 +204,7 @@ mod tests {
 
     #[test]
     fn defaults_should_match_production_chainspec_values() {
-        let production = ChainspecConfig::from_chainspec_path(&*PRODUCTION_PATH).unwrap();
+        let production = ChainspecConfig::from_chainspec_path(&*PRODUCTION_CHAINSPEC_PATH).unwrap();
         // No need to test `CoreConfig::validator_slots`.
         assert_eq!(production.core_config.auction_delay, DEFAULT_AUCTION_DELAY);
         assert_eq!(
