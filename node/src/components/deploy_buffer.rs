@@ -351,7 +351,7 @@ impl DeployBuffer {
         let mut have_hit_deploy_limit = false;
 
         let mut buckets = self.buckets();
-        let indexer = buckets.keys().cloned().collect_vec();
+        let mut indexer = buckets.keys().cloned().collect_vec();
         let mut idx = 0;
 
         while !buckets.is_empty() {
@@ -372,6 +372,7 @@ impl DeployBuffer {
                     match deploys.pop() {
                         None => {
                             buckets.remove(body_hash);
+                            indexer.remove(idx - 1);
                             continue;
                         }
                         Some(deploy) => deploy,
