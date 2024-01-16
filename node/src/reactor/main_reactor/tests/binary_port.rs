@@ -649,7 +649,7 @@ fn try_accept_transaction(key: &SecretKey) -> TestCase {
 fn try_accept_transaction_invalid(rng: &mut TestRng) -> TestCase {
     let transaction = Transaction::V1(TransactionV1Builder::new_random(rng).build().unwrap());
     TestCase {
-        name: "try_accept_transaction",
+        name: "try_accept_transaction_invalid",
         request: BinaryRequest::TryAcceptTransaction { transaction },
         asserter: Box::new(|response| response.error_code() == ErrorCode::InvalidDeploy as u8),
     }
@@ -658,7 +658,7 @@ fn try_accept_transaction_invalid(rng: &mut TestRng) -> TestCase {
 fn try_spec_exec_invalid(rng: &mut TestRng, header: BlockHeader) -> TestCase {
     let transaction = Transaction::V1(TransactionV1Builder::new_random(rng).build().unwrap());
     TestCase {
-        name: "try_spec_exec",
+        name: "try_spec_exec_invalid",
         request: BinaryRequest::TrySpeculativeExec {
             state_root_hash: *header.state_root_hash(),
             block_time: header.timestamp(),
