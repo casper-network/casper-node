@@ -11,17 +11,21 @@ This is a binary protocol which follows a simple request-response model built on
 | 1             | RequestTag      | Tag identifying the request                             |
 | ...           | RequestPayload  | Payload to be interpreted according to `RequestTag`     |
 
+Request bytes can be constructed from bytesrepr-serialized `BinaryRequestHeader` followed by bytesrepr-serialized `BinaryRequest`
+
 ### Response format
 | Size in bytes   | Field           | Description                                                             |
 |-----------------|-----------------|-------------------------------------------------------------------------|
-| 4               | LengthOfRequest | Length of the request being responded to                                | 
+| 4               | LengthOfRequest | Length of the request being responded to                                |
 | LengthOfRequest | RequestBytes    | The request being responded to encoded as bytes                         |
 | 12              | ProtocolVersion | Protocol version as a u32 triplet (major, minor, patch)                 |
 | 1               | ErrorCode       | Error code, where 0 indicates success                                   |
 | 1-2             | PayloadTag      | Optional payload type tag (first byte being 1 indicates that it exists) |
-| ...             | Payload         | Payload to be interpreted according to `PayloadTypeTag`                 |
+| ...             | Payload         | Payload to be interpreted according to `PayloadTag`                     |
 
-**Note:** `...` means that the payload size is variable in size and depends on the tag.
+`BinaryResponseAndRequest` object can be bytesrepr-deserialized from these bytes.
+
+**Notes:** `...` means that the payload size is variable in size and depends on the tag.
 
 ## Versioning
 Every version of the protocol follows a standard SemVer MAJOR.MINOR.PATCH scheme.
@@ -32,11 +36,11 @@ The protocol supports **backwards-compatible** changes to some parts of the requ
 - addition of new [`DbId`](#request-model-details)
 - addition of new [`ErrorCode`](#response-format)
 
-Implementations of the protocol can handle requests/responses with a  different **MINOR** version than their own. It is possible that they receive a payload they don't support if their version is lower. In that case they should respond with an error code indicating the lack of support for the given payload.
+Implementations of the protocol can handle requests/responses with a different **MINOR** version than their own. It is possible that they receive a payload they don't support if their version is lower. In that case they should respond with an error code indicating the lack of support for the given payload (`ErrorCode::UnsupportedRequest`).
 
-Other changes to the protocol such as changes to the format of existing requests/responses or removal of existing requests/responses are only allowed between **MAJOR** versions. Implementations of the protocol should not handle requests/responses with a different **MAJOR** version than their own and immediately respond with an error code indicating the lack of support for the given version.
+Other changes to the protocol such as changes to the format of existing requests/responses or removal of existing requests/responses are only allowed between **MAJOR** versions. Implementations of the protocol should not handle requests/responses with a different **MAJOR** version than their own and immediately respond with an error code indicating the lack of support for the given version (`ErrorCode::UnsupportedRequest`).
 
-Changes to the envelopes (the request/response headers) are not allowed. 
+Changes to the envelopes (the request/response headers) are not allowed.
 
 ## Request model details
 There are currently 3 supported types of requests, but the request model can be extended with new variants according to the [versioning](#versioning) rules. The request types are:
