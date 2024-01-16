@@ -196,6 +196,11 @@ impl ChainspecConfig {
             protocol_version,
         )
     }
+
+    /// Returns the `max_associated_keys` setting from the core config.
+    pub fn max_associated_keys(&self) -> u32 {
+        self.core_config.max_associated_keys
+    }
 }
 
 impl From<ChainspecConfig> for EngineConfig {
