@@ -20,7 +20,7 @@ const NOT_USED: Cost = 0;
 const DEFAULT_FIXED_COST: Cost = 200;
 
 const DEFAULT_ADD_COST: u32 = 5_800;
-const DEFAULT_ADD_ASSOCIATED_KEY_COST: u32 = 9_000;
+const DEFAULT_ADD_ASSOCIATED_KEY_COST: u32 = 1_200_000;
 
 const DEFAULT_CALL_CONTRACT_COST: u32 = 4_500;
 const DEFAULT_CALL_CONTRACT_ARGS_SIZE_WEIGHT: u32 = 420;
@@ -401,7 +401,7 @@ impl Default for HostFunctionCosts {
                     NOT_USED,
                     NOT_USED,
                     NOT_USED,
-                    NOT_USED,
+                    DEFAULT_ARG_CHARGE,
                     NOT_USED,
                     DEFAULT_CALL_CONTRACT_ARGS_SIZE_WEIGHT,
                     NOT_USED,
