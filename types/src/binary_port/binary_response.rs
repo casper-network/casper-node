@@ -66,10 +66,13 @@ impl BinaryResponse {
     where
         V: ToBytes + PayloadEntity,
     {
-        BinaryResponse {
-            payload: ToBytes::to_bytes(&val).unwrap(),
-            header: BinaryResponseHeader::new(Some(V::PAYLOAD_TYPE)),
-        }
+        ToBytes::to_bytes(&val).map_or(
+            BinaryResponse::new_error(ErrorCode::InternalError),
+            |payload| BinaryResponse {
+                payload,
+                header: BinaryResponseHeader::new(Some(V::PAYLOAD_TYPE)),
+            },
+        )
     }
 
     /// Creates a new binary response from an optional value.

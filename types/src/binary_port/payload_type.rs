@@ -142,7 +142,6 @@ impl PayloadType {
 impl TryFrom<u8> for PayloadType {
     type Error = ();
 
-    // TODO: replace with macro or find better option
     fn try_from(v: u8) -> Result<Self, Self::Error> {
         match v {
             x if x == PayloadType::BlockHeaderV1 as u8 => Ok(PayloadType::BlockHeaderV1),

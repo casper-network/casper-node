@@ -43,9 +43,6 @@ const GET_ERA_VALIDATORS_NAME: &str = "contract_runtime_get_era_validators";
 const GET_ERA_VALIDATORS_HELP: &str =
     "time in seconds to get validators for a given era from global state";
 
-const GET_BIDS_NAME: &str = "contract_runtime_get_bids";
-const GET_BIDS_HELP: &str = "time in seconds to get bids from global state";
-
 const GET_ALL_VALUES_NAME: &str = "contract_runtime_get_all_values";
 const GET_ALL_VALUES_NAME_HELP: &str =
     "time in seconds to get all values under a give key from global state";
@@ -78,7 +75,6 @@ pub struct Metrics {
     pub(super) get_total_supply: Histogram,
     pub(super) get_round_seigniorage_rate: Histogram,
     pub(super) get_era_validators: Histogram,
-    pub(super) get_bids: Histogram, // TODO[RC]: Remove as `GetBids` request has been removed.
     pub(super) get_all_values: Histogram,
     pub(super) put_trie: Histogram,
     pub(super) get_trie: Histogram,
@@ -164,12 +160,6 @@ impl Metrics {
                 GET_ERA_VALIDATORS_HELP,
                 common_buckets.clone(),
             )?,
-            get_bids: utils::register_histogram_metric(
-                registry,
-                GET_BIDS_NAME,
-                GET_BIDS_HELP,
-                common_buckets.clone(),
-            )?,
             get_all_values: utils::register_histogram_metric(
                 registry,
                 GET_ALL_VALUES_NAME,
@@ -210,7 +200,6 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.commit_step);
         unregister_metric!(self.registry, self.get_balance);
         unregister_metric!(self.registry, self.get_era_validators);
-        unregister_metric!(self.registry, self.get_bids);
         unregister_metric!(self.registry, self.put_trie);
         unregister_metric!(self.registry, self.get_trie);
         unregister_metric!(self.registry, self.exec_block);
