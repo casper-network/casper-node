@@ -5,7 +5,7 @@ mod metrics;
 mod tests;
 
 use std::{
-    collections::{btree_map, hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{btree_map, hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     convert::TryInto,
     iter::FromIterator,
     mem,
@@ -351,8 +351,7 @@ impl DeployBuffer {
         let mut have_hit_deploy_limit = false;
 
         let mut buckets = self.buckets();
-        let mut indexer = buckets.keys().cloned().collect_vec();
-        let mut idx = 0;
+        let mut indexer: VecDeque<_> = buckets.keys().cloned().collect();
 
         #[cfg(test)]
         let mut iter_counter = 0;
@@ -369,30 +368,29 @@ impl DeployBuffer {
                 );
             }
 
-            let body_hash = match indexer.get(idx) {
+            let body_hash = match indexer.pop_front() {
                 None => {
-                    idx = 0; // reset outer loop
-                    continue;
+                    // nothing more to process
+                    break;
                 }
-                Some(body_hash) => {
-                    idx += 1;
-                    body_hash
-                }
+                Some(body_hash) => body_hash,
             };
-            let (with_approvals, footprint) = match buckets.entry(*body_hash) {
+            let (with_approvals, footprint) = match buckets.entry(body_hash) {
                 Entry::Vacant(_) => continue,
                 Entry::Occupied(entry) => {
                     let deploys = entry.into_mut();
                     match deploys.pop() {
                         None => {
-                            buckets.remove(body_hash);
-                            indexer.remove(idx - 1);
+                            buckets.remove(&body_hash);
                             continue;
                         }
                         Some(deploy) => deploy,
                     }
                 }
             };
+            // bucket wasn't empty - push the hash back into the queue to be processed again on the
+            // next pass
+            indexer.push_back(body_hash);
             if footprint.is_transfer && have_hit_transfer_limit {
                 continue;
             }
