@@ -401,7 +401,7 @@ impl Default for HostFunctionCosts {
                     NOT_USED,
                     NOT_USED,
                     NOT_USED,
-                    DEFAULT_ARG_CHARGE,
+                    NOT_USED,
                     NOT_USED,
                     DEFAULT_CALL_CONTRACT_ARGS_SIZE_WEIGHT,
                     NOT_USED,
