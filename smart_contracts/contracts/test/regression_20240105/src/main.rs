@@ -4,19 +4,60 @@
 extern crate alloc;
 
 use alloc::{
+    format,
     string::{String, ToString},
     vec,
+    vec::Vec,
 };
-use core::mem::MaybeUninit;
+use core::{iter, mem::MaybeUninit};
 
 use casper_contract::{
-    contract_api::{runtime, storage},
+    contract_api::{account, runtime, storage, system},
     ext_ffi,
+    unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    bytesrepr::ToBytes, runtime_args, ApiError, CLType, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, EraId, Key, RuntimeArgs, U512,
+    account::{AccountHash, ActionType, Weight},
+    api_error,
+    bytesrepr::ToBytes,
+    runtime_args, AccessRights, ApiError, CLType, CLValue, ContractHash, EntryPoint,
+    EntryPointAccess, EntryPointType, EntryPoints, EraId, Key, RuntimeArgs, TransferredTo, URef,
+    U512,
 };
+
+const NOOP: &str = "noop";
+
+fn to_ptr<T: ToBytes>(t: &T) -> (*const u8, usize, Vec<u8>) {
+    let bytes = t.to_bytes().unwrap_or_revert();
+    let ptr = bytes.as_ptr();
+    let size = bytes.len();
+    (ptr, size, bytes)
+}
+
+#[no_mangle]
+pub extern "C" fn noop() {}
+
+fn store_noop_contract() -> ContractHash {
+    let mut entry_points = EntryPoints::new();
+    entry_points.add_entry_point(EntryPoint::new(
+        NOOP,
+        vec![],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    ));
+    let (contract_hash, _version) = storage::new_contract(entry_points, None, None, None);
+    contract_hash
+}
+
+fn get_name() -> String {
+    let large_name: bool = runtime::get_named_arg("large_name");
+    if large_name {
+        iter::repeat('a').take(10_000).collect()
+    } else {
+        "a".to_string()
+    }
+}
 
 #[no_mangle]
 pub extern "C" fn call() {
@@ -25,8 +66,15 @@ pub extern "C" fn call() {
         "write" => {
             let len: u32 = runtime::get_named_arg("len");
             let uref = storage::new_uref(());
+            let key = Key::from(uref);
+            let (key_ptr, key_size, _bytes1) = to_ptr(&key);
+            let value = vec![u8::MAX; len as usize];
+            let cl_value = CLValue::from_t(value).unwrap_or_revert();
+            let (cl_value_ptr, cl_value_size, _bytes2) = to_ptr(&cl_value);
             for _i in 0..u64::MAX {
-                storage::write(uref, vec![u64::MAX; len as usize])
+                unsafe {
+                    ext_ffi::casper_write(key_ptr, key_size, cl_value_ptr, cl_value_size);
+                }
             }
         }
         "read" => {
@@ -35,7 +83,7 @@ pub extern "C" fn call() {
                 Some(len) => {
                     let key = Key::URef(storage::new_uref(()));
                     let uref = storage::new_uref(());
-                    storage::write(uref, vec![u64::MAX; len as usize]);
+                    storage::write(uref, vec![u8::MAX; len as usize]);
                     key
                 }
                 None => Key::Hash([0; 32]),
@@ -92,131 +140,253 @@ pub extern "C" fn call() {
             }
         }
         "call_contract" => {
-            let noop = "noop";
-            let mut entry_points = EntryPoints::new();
-            entry_points.add_entry_point(EntryPoint::new(
-                noop,
-                vec![],
-                CLType::Unit,
-                EntryPointAccess::Public,
-                EntryPointType::Contract,
-            ));
-            let (contract_hash, _version) = storage::new_contract(entry_points, None, None, None);
             let args_len: u32 = runtime::get_named_arg("args_len");
             let args = runtime_args! { "a" => vec![u8::MAX; args_len as usize] };
+            let contract_hash = store_noop_contract();
+            let (contract_hash_ptr, contract_hash_size, _bytes1) = to_ptr(&contract_hash);
+            let (entry_point_name_ptr, entry_point_name_size, _bytes2) = to_ptr(&NOOP);
+            let (runtime_args_ptr, runtime_args_size, _bytes3) = to_ptr(&args);
             for _i in 0..u64::MAX {
-                runtime::call_contract::<()>(contract_hash, noop, args.clone());
+                let mut bytes_written = MaybeUninit::uninit();
+                let ret = unsafe {
+                    ext_ffi::casper_call_contract(
+                        contract_hash_ptr,
+                        contract_hash_size,
+                        entry_point_name_ptr,
+                        entry_point_name_size,
+                        runtime_args_ptr,
+                        runtime_args_size,
+                        bytes_written.as_mut_ptr(),
+                    )
+                };
+                api_error::result_from(ret).unwrap_or_revert();
             }
         }
         "get_key" => {
-            for _i in 0..u64::MAX {
-                todo!()
+            let maybe_large_key: Option<bool> = runtime::get_named_arg("large_key");
+            match maybe_large_key {
+                Some(large_key) => {
+                    let name = get_name();
+                    let key = if large_key {
+                        let uref = storage::new_uref(());
+                        Key::URef(uref)
+                    } else {
+                        Key::EraInfo(EraId::new(0))
+                    };
+                    runtime::put_key(&name, key);
+                    for _i in 0..u64::MAX {
+                        let _k = runtime::get_key(&name);
+                    }
+                }
+                None => {
+                    for i in 0..u64::MAX {
+                        let _k = runtime::get_key(i.to_string().as_str());
+                    }
+                }
             }
         }
         "has_key" => {
-            let exists: bool = runtime::get_named_arg("exists");
+            let exists: bool = runtime::get_named_arg("key_exists");
             if exists {
-                runtime::put_key("k", Key::EraInfo(EraId::new(0)));
-            }
-            for _i in 0..u64::MAX {
-                let _b = runtime::has_key("k");
+                let name = get_name();
+                runtime::put_key(&name, Key::EraInfo(EraId::new(0)));
+                for _i in 0..u64::MAX {
+                    let _b = runtime::has_key(&name);
+                }
+            } else {
+                for i in 0..u64::MAX {
+                    let _b = runtime::has_key(i.to_string().as_str());
+                }
             }
         }
         "put_key" => {
-            let large: bool = runtime::get_named_arg("large");
-            let key = if large {
+            let base_name = get_name();
+            let large_key: bool = runtime::get_named_arg("large_key");
+            let key = if large_key {
                 let uref = storage::new_uref(());
                 Key::URef(uref)
             } else {
                 Key::EraInfo(EraId::new(0))
             };
-            for i in 0..u64::MAX {
-                runtime::put_key(&i.to_string(), key); // 11:25
+            let maybe_num_keys: Option<u32> = runtime::get_named_arg("num_keys");
+            let num_keys = maybe_num_keys.unwrap_or(u32::MAX);
+            for i in 0..num_keys {
+                runtime::put_key(format!("{base_name}{i}").as_str(), key);
             }
         }
         "is_valid_uref" => {
+            let valid: bool = runtime::get_named_arg("valid");
+            let uref = if valid {
+                storage::new_uref(())
+            } else {
+                URef::new([1; 32], AccessRights::default())
+            };
             for _i in 0..u64::MAX {
-                todo!()
+                let is_valid = runtime::is_valid_uref(uref);
+                assert_eq!(valid, is_valid);
             }
         }
         "add_associated_key" => {
+            let remove_after_adding: bool = runtime::get_named_arg("remove_after_adding");
+            let account_hash = AccountHash::new([1; 32]);
+            let weight = Weight::new(1);
             for _i in 0..u64::MAX {
-                todo!()
+                if remove_after_adding {
+                    account::add_associated_key(account_hash, weight).unwrap_or_revert();
+                    // Remove to avoid getting a duplicate key error on next iteration.
+                    account::remove_associated_key(account_hash).unwrap_or_revert();
+                } else {
+                    let _e = account::add_associated_key(account_hash, weight);
+                }
             }
         }
         "remove_associated_key" => {
             for _i in 0..u64::MAX {
-                todo!()
+                account::remove_associated_key(AccountHash::new([1; 32])).unwrap_err();
             }
         }
         "update_associated_key" => {
-            for _i in 0..u64::MAX {
-                todo!()
+            let exists: bool = runtime::get_named_arg("exists");
+            let account_hash = AccountHash::new([1; 32]);
+            if exists {
+                account::add_associated_key(account_hash, Weight::new(1)).unwrap_or_revert();
+                for i in 0..u64::MAX {
+                    account::update_associated_key(account_hash, Weight::new(i as u8))
+                        .unwrap_or_revert();
+                }
+            } else {
+                for i in 0..u64::MAX {
+                    account::update_associated_key(account_hash, Weight::new(i as u8)).unwrap_err();
+                }
             }
         }
         "set_action_threshold" => {
             for _i in 0..u64::MAX {
-                todo!()
+                account::set_action_threshold(ActionType::Deployment, Weight::new(1))
+                    .unwrap_or_revert();
             }
         }
         "load_named_keys" => {
+            let num_keys: u32 = runtime::get_named_arg("num_keys");
+            if num_keys == 0 {
+                for _i in 0..u64::MAX {
+                    assert!(runtime::list_named_keys().is_empty());
+                }
+                return;
+            }
+            // Where `num_keys` > 0, we should have put the required number of named keys in a
+            // previous execution via the `put_key` flow of this contract.
             for _i in 0..u64::MAX {
-                todo!()
+                assert_eq!(runtime::list_named_keys().len() as u32, num_keys);
             }
         }
         "remove_key" => {
+            let name = get_name();
             for _i in 0..u64::MAX {
-                todo!()
+                runtime::remove_key(&name)
             }
         }
         "get_caller" => {
             for _i in 0..u64::MAX {
-                todo!()
+                let _c = runtime::get_caller();
             }
         }
         "get_blocktime" => {
             for _i in 0..u64::MAX {
-                todo!()
+                let _b = runtime::get_blocktime();
             }
         }
         "create_purse" => {
             for _i in 0..u64::MAX {
-                todo!()
+                let _u = system::create_purse();
             }
         }
         "transfer_to_account" => {
-            for _i in 0..u64::MAX {
-                todo!()
+            let account_exists: bool = runtime::get_named_arg("account_exists");
+            let amount = U512::one();
+            let id = Some(u64::MAX);
+            if account_exists {
+                let target = AccountHash::new([1; 32]);
+                let to = system::transfer_to_account(target, amount, id).unwrap_or_revert();
+                assert_eq!(to, TransferredTo::NewAccount);
+                for _i in 0..u64::MAX {
+                    let to = system::transfer_to_account(target, amount, id).unwrap_or_revert();
+                    assert_eq!(to, TransferredTo::ExistingAccount);
+                }
+            } else {
+                let mut array = [0_u8; 32];
+                for index in 0..32 {
+                    for i in 1..=u8::MAX {
+                        array[index] = i;
+                        let target = AccountHash::new(array);
+                        let to = system::transfer_to_account(target, amount, id).unwrap_or_revert();
+                        assert_eq!(to, TransferredTo::NewAccount);
+                    }
+                }
             }
         }
         "transfer_from_purse_to_account" => {
-            for _i in 0..u64::MAX {
-                todo!()
+            let account_exists: bool = runtime::get_named_arg("account_exists");
+            let source = account::get_main_purse();
+            let amount = U512::one();
+            let id = Some(u64::MAX);
+            if account_exists {
+                let target = AccountHash::new([1; 32]);
+                let to = system::transfer_to_account(target, amount, id).unwrap_or_revert();
+                assert_eq!(to, TransferredTo::NewAccount);
+                for _i in 0..u64::MAX {
+                    let to = system::transfer_from_purse_to_account(source, target, amount, id)
+                        .unwrap_or_revert();
+                    assert_eq!(to, TransferredTo::ExistingAccount);
+                }
+            } else {
+                let mut array = [0_u8; 32];
+                for index in 0..32 {
+                    for i in 1..=u8::MAX {
+                        array[index] = i;
+                        let target = AccountHash::new(array);
+                        let to = system::transfer_from_purse_to_account(source, target, amount, id)
+                            .unwrap_or_revert();
+                        assert_eq!(to, TransferredTo::NewAccount);
+                    }
+                }
             }
         }
         "transfer_from_purse_to_purse" => {
+            let source = account::get_main_purse();
+            let target = system::create_purse();
+            let amount = U512::one();
+            let id = Some(u64::MAX);
+            system::transfer_from_purse_to_purse(source, target, amount, id).unwrap_or_revert();
             for _i in 0..u64::MAX {
-                todo!()
+                system::transfer_from_purse_to_purse(source, target, amount, id).unwrap_or_revert();
             }
         }
         "get_balance" => {
+            let purse_exists: bool = runtime::get_named_arg("purse_exists");
+            let uref = if purse_exists {
+                account::get_main_purse()
+            } else {
+                URef::new([1; 32], AccessRights::empty())
+            };
             for _i in 0..u64::MAX {
-                todo!()
+                let maybe_balance = system::get_purse_balance(uref);
+                assert_eq!(maybe_balance.is_some(), purse_exists);
             }
         }
         "get_phase" => {
             for _i in 0..u64::MAX {
-                todo!()
+                let _p = runtime::get_phase();
             }
         }
-        "get_systemcontract" => {
+        "get_system_contract" => {
             for _i in 0..u64::MAX {
-                todo!()
+                let _h = system::get_mint();
             }
         }
         "get_main_purse" => {
             for _i in 0..u64::MAX {
-                todo!()
+                let _u = account::get_main_purse();
             }
         }
         "read_host_buffer" => {
@@ -282,7 +452,6 @@ pub extern "C" fn call() {
         "blake2b" => {
             let len: u32 = runtime::get_named_arg("len");
             let data = vec![1; len as usize];
-            // 1_000_000 -> 72:00,  10_000 -> 1:28,  1 -> 0:07
             for _i in 0..u64::MAX {
                 let _hash = runtime::blake2b(&data);
             }
@@ -314,7 +483,7 @@ pub extern "C" fn call() {
         }
         "random_bytes" => {
             for _i in 0..u64::MAX {
-                let _n = runtime::random_bytes(); // 0:05
+                let _n = runtime::random_bytes();
             }
         }
         "dictionary_read" => {
@@ -330,6 +499,3 @@ pub extern "C" fn call() {
         _ => panic!(),
     }
 }
-
-#[no_mangle]
-pub extern "C" fn noop() {}
