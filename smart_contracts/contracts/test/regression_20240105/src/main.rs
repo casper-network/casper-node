@@ -559,28 +559,86 @@ pub extern "C" fn call() {
             }
         }
         "new_dictionary" => {
-            for i in 0..u64::MAX {
-                let _uref = storage::new_dictionary(&i.to_string()).unwrap(); // 1:40
+            let mut buffer = vec![0_u8; 33]; // bytesrepr-serialized length of URef
+            for _i in 0..u64::MAX {
+                let mut value_size = MaybeUninit::uninit();
+                let ret = unsafe { ext_ffi::casper_new_dictionary(value_size.as_mut_ptr()) };
+                api_error::result_from(ret).unwrap_or_revert();
+                assert_eq!(buffer.len(), unsafe { value_size.assume_init() });
+                let mut bytes_written = MaybeUninit::uninit();
+                let ret = unsafe {
+                    ext_ffi::casper_read_host_buffer(
+                        buffer.as_mut_ptr(),
+                        buffer.len(),
+                        bytes_written.as_mut_ptr(),
+                    )
+                };
+                assert_eq!(ret, 0);
             }
         }
         "dictionary_get" => {
+            let name_len: u32 = runtime::get_named_arg("name_len");
+            let name: String = iter::repeat('a').take(name_len as usize).collect();
+            let value_len: u32 = runtime::get_named_arg("value_len");
+            let value = vec![u8::MAX; value_len as usize];
+            let uref = storage::new_dictionary("a").unwrap_or_revert();
+            storage::dictionary_put(uref, &name, value);
+
             for _i in 0..u64::MAX {
-                todo!()
+                let read_value: Vec<u8> = storage::dictionary_get(uref, &name)
+                    .unwrap_or_revert()
+                    .unwrap_or_revert();
+                assert_eq!(read_value.len(), value_len as usize);
             }
         }
         "dictionary_put" => {
+            let name_len: u32 = runtime::get_named_arg("name_len");
+            let name: String = iter::repeat('a').take(name_len as usize).collect();
+
+            let value_len: u32 = runtime::get_named_arg("value_len");
+            let value = vec![u8::MAX; value_len as usize];
+
+            let uref = storage::new_dictionary("a").unwrap_or_revert();
+            let (uref_ptr, uref_size, _bytes1) = to_ptr(&uref);
+
+            let (item_name_ptr, item_name_size, _bytes2) = to_ptr(&name);
+
+            let cl_value = CLValue::from_t(value).unwrap_or_revert();
+            let (cl_value_ptr, cl_value_size, _bytes3) = to_ptr(&cl_value);
+
             for _i in 0..u64::MAX {
-                todo!()
+                let ret = unsafe {
+                    ext_ffi::casper_dictionary_put(
+                        uref_ptr,
+                        uref_size,
+                        item_name_ptr,
+                        item_name_size,
+                        cl_value_ptr,
+                        cl_value_size,
+                    )
+                };
+                api_error::result_from(ret).unwrap_or_revert();
             }
         }
         "load_call_stack" => {
             for _i in 0..u64::MAX {
-                todo!()
+                let call_stack = runtime::get_call_stack();
+                assert_eq!(call_stack.len(), 1);
             }
         }
         "load_authorization_keys" => {
-            for _i in 0..u64::MAX {
-                todo!()
+            let setup: bool = runtime::get_named_arg("setup");
+            if setup {
+                let weight = Weight::new(1);
+                for i in 1..100 {
+                    let account_hash = AccountHash::new([i; 32]);
+                    account::add_associated_key(account_hash, weight).unwrap_or_revert();
+                }
+            } else {
+                for _i in 0..u64::MAX {
+                    let _k = runtime::list_authorization_keys();
+                    runtime::print(&format!("len: {}", _k.len()));
+                }
             }
         }
         "random_bytes" => {
@@ -589,13 +647,31 @@ pub extern "C" fn call() {
             }
         }
         "dictionary_read" => {
+            let name_len: u32 = runtime::get_named_arg("name_len");
+            let name: String = iter::repeat('a').take(name_len as usize).collect();
+            let value_len: u32 = runtime::get_named_arg("value_len");
+            let value = vec![u8::MAX; value_len as usize];
+            let uref = storage::new_dictionary("a").unwrap_or_revert();
+            storage::dictionary_put(uref, &name, value);
+            let key = Key::dictionary(uref, name.as_bytes());
+
             for _i in 0..u64::MAX {
-                todo!()
+                let read_value: Vec<u8> = storage::dictionary_read(key)
+                    .unwrap_or_revert()
+                    .unwrap_or_revert();
+                assert_eq!(read_value.len(), value_len as usize);
             }
         }
         "enable_contract_version" => {
+            let (contract_pkg_hash, _uref) = storage::create_contract_package_at_hash();
+            let (contract_hash, _version) = storage::add_contract_version(
+                contract_pkg_hash,
+                EntryPoints::new(),
+                BTreeMap::new(),
+            );
             for _i in 0..u64::MAX {
-                todo!()
+                storage::enable_contract_version(contract_pkg_hash, contract_hash)
+                    .unwrap_or_revert();
             }
         }
         _ => panic!(),
