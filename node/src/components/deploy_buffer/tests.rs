@@ -710,3 +710,101 @@ async fn expire_deploys_and_check_announcement() {
     // the valid deploys should still be in the buffer
     assert_container_sizes(&deploy_buffer, deploys.len(), 0, 0);
 }
+
+fn register_random_deploys_unique_hashes(
+    deploy_buffer: &mut DeployBuffer,
+    num_deploys: usize,
+    rng: &mut TestRng,
+) {
+    let deploys = std::iter::repeat_with(|| {
+        let name = format!("{}", rng.gen::<u64>());
+        let call = format!("{}", rng.gen::<u64>());
+        Deploy::random_contract_by_name(
+            rng,
+            None,
+            Some(name),
+            Some(call),
+            Some(Timestamp::now()), // different timestamp
+            None,
+        )
+    })
+    .take(num_deploys);
+    for deploy in deploys {
+        deploy_buffer.register_deploy(deploy);
+    }
+}
+
+fn register_random_deploys_same_hash(
+    deploy_buffer: &mut DeployBuffer,
+    num_deploys: usize,
+    rng: &mut TestRng,
+) {
+    let deploys = std::iter::repeat_with(|| {
+        let name = "test".to_owned();
+        let call = "test".to_owned();
+        Deploy::random_contract_by_name(
+            rng,
+            None,
+            Some(name),
+            Some(call),
+            Some(Timestamp::now()), // different timestamp
+            None,
+        )
+    })
+    .take(num_deploys);
+    for deploy in deploys {
+        deploy_buffer.register_deploy(deploy);
+    }
+}
+
+#[test]
+fn test_buckets_single_hash() {
+    let mut rng = TestRng::new();
+    let deploy_config = DeployConfig {
+        block_max_transfer_count: 1000,
+        block_max_deploy_count: 100,
+        block_max_approval_count: 1100,
+        ..Default::default()
+    };
+    let mut deploy_buffer =
+        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
+
+    register_random_deploys_same_hash(&mut deploy_buffer, 64000, &mut rng);
+
+    let _block = deploy_buffer.appendable_block(Timestamp::now());
+}
+
+#[test]
+fn test_buckets_unique_hashes() {
+    let mut rng = TestRng::new();
+    let deploy_config = DeployConfig {
+        block_max_transfer_count: 1000,
+        block_max_deploy_count: 100,
+        block_max_approval_count: 1100,
+        ..Default::default()
+    };
+    let mut deploy_buffer =
+        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
+
+    register_random_deploys_unique_hashes(&mut deploy_buffer, 64000, &mut rng);
+
+    let _block = deploy_buffer.appendable_block(Timestamp::now());
+}
+
+#[test]
+fn test_buckets_mixed_load() {
+    let mut rng = TestRng::new();
+    let deploy_config = DeployConfig {
+        block_max_transfer_count: 1000,
+        block_max_deploy_count: 100,
+        block_max_approval_count: 1100,
+        ..Default::default()
+    };
+    let mut deploy_buffer =
+        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
+
+    register_random_deploys_unique_hashes(&mut deploy_buffer, 60000, &mut rng);
+    register_random_deploys_same_hash(&mut deploy_buffer, 4000, &mut rng);
+
+    let _block = deploy_buffer.appendable_block(Timestamp::now());
+}
