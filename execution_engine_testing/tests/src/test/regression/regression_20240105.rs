@@ -217,7 +217,6 @@ mod repeated_ffi_call_should_gas_out_quickly {
     #[ignore]
     #[test]
     fn call_contract_large_runtime_args() {
-        // TODO - use production chainspec value for `[deploy.session_args_max_length]`.
         let session_args = runtime_args! {
             "fn" => "call_contract",
             "args_len" => 1_024_u32
@@ -671,6 +670,192 @@ mod repeated_ffi_call_should_gas_out_quickly {
 
     #[ignore]
     #[test]
+    fn read_host_buffer_empty() {
+        let session_args = runtime_args! { "fn" => "read_host_buffer" };
+        Fixture::new().execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn create_contract_package_at_hash() {
+        let session_args = runtime_args! { "fn" => "create_contract_package_at_hash" };
+        Fixture::new().execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn add_contract_version_no_entry_points_no_named_keys() {
+        let session_args = runtime_args! {
+            "fn" => "add_contract_version",
+            "entry_points_len" => 0_u32,
+            "named_keys_len" => 0_u32,
+        };
+        Fixture::new().execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn add_contract_version_small_entry_points_small_named_keys() {
+        let session_args = runtime_args! {
+            "fn" => "add_contract_version",
+            "entry_points_len" => 1_u32,
+            "named_keys_len" => 1_u32,
+        };
+        Fixture::new().execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn add_contract_version_small_entry_points_large_named_keys() {
+        let session_args = runtime_args! {
+            "fn" => "add_contract_version",
+            "entry_points_len" => 1_u32,
+            "named_keys_len" => 100_u32,
+        };
+        Fixture::new().execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn add_contract_version_large_entry_points_small_named_keys() {
+        let session_args = runtime_args! {
+            "fn" => "add_contract_version",
+            "entry_points_len" => 100_u32,
+            "named_keys_len" => 1_u32,
+        };
+        Fixture::new().execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn add_contract_version_large_entry_points_large_named_keys() {
+        let session_args = runtime_args! {
+            "fn" => "add_contract_version",
+            "entry_points_len" => 100_u32,
+            "named_keys_len" => 100_u32,
+        };
+        Fixture::new().execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn disable_contract_version() {
+        let session_args = runtime_args! { "fn" => "disable_contract_version" };
+        Fixture::new().execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn call_versioned_contract_small_runtime_args() {
+        let session_args = runtime_args! {
+            "fn" => "call_versioned_contract",
+            "args_len" => 1_u32
+        };
+        Fixture::new().execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn call_versioned_contract_large_runtime_args() {
+        let session_args = runtime_args! {
+            "fn" => "call_versioned_contract",
+            "args_len" => 1_024_u32
+        };
+        Fixture::new().execute_with_timeout(session_args)
+    }
+
+    // #[ignore]
+    // #[test]
+    // fn create_contract_user_group() {
+    //     // small/big label
+    //     // no/small/big new urefs
+    //     // no/small/big existing urefs
+    //     let session_args = runtime_args! { "fn" => "create_contract_user_group" };
+    //     Fixture::new().execute_with_timeout(session_args)
+    // }
+
+    #[ignore]
+    #[test]
+    fn print_small() {
+        let session_args = runtime_args! {
+            "fn" => "print",
+            "num_chars" => 1_u32
+        };
+        Fixture::new().execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn print_large() {
+        let session_args = runtime_args! {
+            "fn" => "print",
+            "num_chars" => 1_000_000_u32
+        };
+        Fixture::new().execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn get_runtime_arg_size_zero() {
+        let session_args = runtime_args! {
+            "fn" => "get_runtime_arg_size",
+            "arg" => ()
+        };
+        Fixture::new().execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn get_runtime_arg_size_small() {
+        let session_args = runtime_args! {
+            "fn" => "get_runtime_arg_size",
+            "arg" => 1_u8
+        };
+        Fixture::new().execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn get_runtime_arg_size_large() {
+        let session_args = runtime_args! {
+            "fn" => "get_runtime_arg_size",
+            "arg" => [1_u8; 1_000_000]
+        };
+        Fixture::new().execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn get_runtime_arg_zero_size() {
+        let session_args = runtime_args! {
+            "fn" => "get_runtime_arg",
+            "arg" => ()
+        };
+        Fixture::new().execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn get_runtime_arg_small_size() {
+        let session_args = runtime_args! {
+            "fn" => "get_runtime_arg",
+            "arg" => 1_u8
+        };
+        Fixture::new().execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
+    fn get_runtime_arg_large_size() {
+        let session_args = runtime_args! {
+            "fn" => "get_runtime_arg",
+            "arg" => [1_u8; 1_000_000]
+        };
+        Fixture::new().execute_with_timeout(session_args)
+    }
+
+    #[ignore]
+    #[test]
     fn blake2b_small() {
         let session_args = runtime_args! {
             "fn" => "blake2b",
@@ -694,6 +879,9 @@ mod repeated_ffi_call_should_gas_out_quickly {
         todo!("disable run in debug mode");
         todo!("add release run in Makefile");
         todo!("remove runtime::prints");
-        todo!("how to ensure at least one iteration completed? - write counter to named key?");
+        todo!(
+            "ensure at least one iteration completed - metrics in externals.rs or write counter to \
+            named key?"
+        );
     }
 }

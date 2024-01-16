@@ -4,6 +4,7 @@
 extern crate alloc;
 
 use alloc::{
+    collections::BTreeMap,
     format,
     string::{String, ToString},
     vec,
@@ -12,6 +13,7 @@ use alloc::{
 use core::{iter, mem::MaybeUninit};
 
 use casper_contract::{
+    contract_api,
     contract_api::{account, runtime, storage, system},
     ext_ffi,
     unwrap_or_revert::UnwrapOrRevert,
@@ -20,9 +22,9 @@ use casper_types::{
     account::{AccountHash, ActionType, Weight},
     api_error,
     bytesrepr::ToBytes,
-    runtime_args, AccessRights, ApiError, CLType, CLValue, ContractHash, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, EraId, Key, RuntimeArgs, TransferredTo, URef,
-    U512,
+    runtime_args, AccessRights, ApiError, CLType, CLValue, ContractHash, ContractPackageHash,
+    EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Key, Parameter, RuntimeArgs,
+    TransferredTo, URef, U512,
 };
 
 const NOOP: &str = "noop";
@@ -35,9 +37,9 @@ fn to_ptr<T: ToBytes>(t: &T) -> (*const u8, usize, Vec<u8>) {
 }
 
 #[no_mangle]
-pub extern "C" fn noop() {}
+extern "C" fn noop() {}
 
-fn store_noop_contract() -> ContractHash {
+fn store_noop_contract(maybe_contract_pkg_hash: Option<ContractPackageHash>) -> ContractHash {
     let mut entry_points = EntryPoints::new();
     entry_points.add_entry_point(EntryPoint::new(
         NOOP,
@@ -46,8 +48,17 @@ fn store_noop_contract() -> ContractHash {
         EntryPointAccess::Public,
         EntryPointType::Contract,
     ));
-    let (contract_hash, _version) = storage::new_contract(entry_points, None, None, None);
-    contract_hash
+    match maybe_contract_pkg_hash {
+        Some(contract_pkg_hash) => {
+            let (contract_hash, _version) =
+                storage::add_contract_version(contract_pkg_hash, entry_points, BTreeMap::new());
+            contract_hash
+        }
+        None => {
+            let (contract_hash, _version) = storage::new_contract(entry_points, None, None, None);
+            contract_hash
+        }
+    }
 }
 
 fn get_name() -> String {
@@ -57,6 +68,19 @@ fn get_name() -> String {
     } else {
         "a".to_string()
     }
+}
+
+fn get_named_arg_size(name: &str) -> usize {
+    let mut arg_size: usize = 0;
+    let ret = unsafe {
+        ext_ffi::casper_get_named_arg_size(
+            name.as_bytes().as_ptr(),
+            name.len(),
+            &mut arg_size as *mut usize,
+        )
+    };
+    api_error::result_from(ret).unwrap_or_revert();
+    arg_size
 }
 
 #[no_mangle]
@@ -142,12 +166,12 @@ pub extern "C" fn call() {
         "call_contract" => {
             let args_len: u32 = runtime::get_named_arg("args_len");
             let args = runtime_args! { "a" => vec![u8::MAX; args_len as usize] };
-            let contract_hash = store_noop_contract();
+            let contract_hash = store_noop_contract(None);
             let (contract_hash_ptr, contract_hash_size, _bytes1) = to_ptr(&contract_hash);
             let (entry_point_name_ptr, entry_point_name_size, _bytes2) = to_ptr(&NOOP);
             let (runtime_args_ptr, runtime_args_size, _bytes3) = to_ptr(&args);
+            let mut bytes_written = MaybeUninit::uninit();
             for _i in 0..u64::MAX {
-                let mut bytes_written = MaybeUninit::uninit();
                 let ret = unsafe {
                     ext_ffi::casper_call_contract(
                         contract_hash_ptr,
@@ -390,28 +414,92 @@ pub extern "C" fn call() {
             }
         }
         "read_host_buffer" => {
+            // The case where the host buffer is repeatedly filled is covered in the `read`
+            // branch above.  All we do here is check repeatedly where `read_host_buffer` returns
+            // `HostBufferEmpty`.
+            let mut buffer = vec![0; 1];
+            let mut bytes_written = MaybeUninit::uninit();
             for _i in 0..u64::MAX {
-                todo!()
+                let ret = unsafe {
+                    ext_ffi::casper_read_host_buffer(
+                        buffer.as_mut_ptr(),
+                        buffer.len(),
+                        bytes_written.as_mut_ptr(),
+                    )
+                };
+                assert_eq!(ret, u32::from(ApiError::HostBufferEmpty) as i32);
             }
         }
         "create_contract_package_at_hash" => {
             for _i in 0..u64::MAX {
-                todo!()
+                let _h = storage::create_contract_package_at_hash();
             }
         }
         "add_contract_version" => {
-            for _i in 0..u64::MAX {
-                todo!()
+            let entry_points_len: u32 = runtime::get_named_arg("entry_points_len");
+            let mut entry_points = EntryPoints::new();
+            for entry_point_index in 0..entry_points_len {
+                entry_points.add_entry_point(EntryPoint::new(
+                    format!("function_{entry_point_index}"),
+                    vec![Parameter::new("a", CLType::PublicKey); 10],
+                    CLType::Unit,
+                    EntryPointAccess::Public,
+                    EntryPointType::Contract,
+                ));
+            }
+            let named_keys_len: u32 = runtime::get_named_arg("named_keys_len");
+            let mut named_keys = BTreeMap::new();
+            for named_key_index in 0..named_keys_len {
+                let _ = named_keys.insert(named_key_index.to_string(), Key::Hash([1; 32]));
+            }
+            let (contract_pkg_hash, _uref) = storage::create_contract_package_at_hash();
+            for i in 1..u64::MAX {
+                let (_h, version) = storage::add_contract_version(
+                    contract_pkg_hash,
+                    entry_points.clone(),
+                    named_keys.clone(),
+                );
+                assert_eq!(version, i as u32);
             }
         }
         "disable_contract_version" => {
+            let (contract_pkg_hash, _uref) = storage::create_contract_package_at_hash();
+            let (contract_hash, _version) = storage::add_contract_version(
+                contract_pkg_hash,
+                EntryPoints::new(),
+                BTreeMap::new(),
+            );
             for _i in 0..u64::MAX {
-                todo!()
+                storage::disable_contract_version(contract_pkg_hash, contract_hash)
+                    .unwrap_or_revert();
             }
         }
         "call_versioned_contract" => {
+            let args_len: u32 = runtime::get_named_arg("args_len");
+            let args = runtime_args! { "a" => vec![u8::MAX; args_len as usize] };
+            let (contract_pkg_hash, _uref) = storage::create_contract_package_at_hash();
+            let _ = store_noop_contract(Some(contract_pkg_hash));
+            let (contract_pkg_hash_ptr, contract_pkg_hash_size, _bytes1) =
+                to_ptr(&contract_pkg_hash);
+            let (contract_version_ptr, contract_version_size, _bytes2) = to_ptr(&Some(1_u32));
+            let (entry_point_name_ptr, entry_point_name_size, _bytes3) = to_ptr(&NOOP);
+            let (runtime_args_ptr, runtime_args_size, _bytes4) = to_ptr(&args);
+            let mut bytes_written = MaybeUninit::uninit();
             for _i in 0..u64::MAX {
-                todo!()
+                let ret = unsafe {
+                    ext_ffi::casper_call_versioned_contract(
+                        contract_pkg_hash_ptr,
+                        contract_pkg_hash_size,
+                        contract_version_ptr,
+                        contract_version_size,
+                        entry_point_name_ptr,
+                        entry_point_name_size,
+                        runtime_args_ptr,
+                        runtime_args_size,
+                        bytes_written.as_mut_ptr(),
+                    )
+                };
+                api_error::result_from(ret).unwrap_or_revert();
             }
         }
         "create_contract_user_group" => {
@@ -420,18 +508,32 @@ pub extern "C" fn call() {
             }
         }
         "print" => {
+            let num_chars: u32 = runtime::get_named_arg("num_chars");
+            let value: String = iter::repeat('a').take(num_chars as usize).collect();
             for _i in 0..u64::MAX {
-                todo!()
+                runtime::print(&value);
             }
         }
         "get_runtime_arg_size" => {
+            let name = "arg";
             for _i in 0..u64::MAX {
-                todo!()
+                let _s = get_named_arg_size(&name);
             }
         }
         "get_runtime_arg" => {
+            let name = "arg";
+            let arg_size = get_named_arg_size(&name);
+            let data_non_null_ptr = contract_api::alloc_bytes(arg_size);
             for _i in 0..u64::MAX {
-                todo!()
+                let ret = unsafe {
+                    ext_ffi::casper_get_named_arg(
+                        name.as_bytes().as_ptr(),
+                        name.len(),
+                        data_non_null_ptr.as_ptr(),
+                        arg_size,
+                    )
+                };
+                api_error::result_from(ret).unwrap_or_revert();
             }
         }
         "remove_contract_user_group" => {
@@ -499,3 +601,204 @@ pub extern "C" fn call() {
         _ => panic!(),
     }
 }
+
+#[no_mangle]
+extern "C" fn function_0() {}
+#[no_mangle]
+extern "C" fn function_1() {}
+#[no_mangle]
+extern "C" fn function_2() {}
+#[no_mangle]
+extern "C" fn function_3() {}
+#[no_mangle]
+extern "C" fn function_4() {}
+#[no_mangle]
+extern "C" fn function_5() {}
+#[no_mangle]
+extern "C" fn function_6() {}
+#[no_mangle]
+extern "C" fn function_7() {}
+#[no_mangle]
+extern "C" fn function_8() {}
+#[no_mangle]
+extern "C" fn function_9() {}
+#[no_mangle]
+extern "C" fn function_10() {}
+#[no_mangle]
+extern "C" fn function_11() {}
+#[no_mangle]
+extern "C" fn function_12() {}
+#[no_mangle]
+extern "C" fn function_13() {}
+#[no_mangle]
+extern "C" fn function_14() {}
+#[no_mangle]
+extern "C" fn function_15() {}
+#[no_mangle]
+extern "C" fn function_16() {}
+#[no_mangle]
+extern "C" fn function_17() {}
+#[no_mangle]
+extern "C" fn function_18() {}
+#[no_mangle]
+extern "C" fn function_19() {}
+#[no_mangle]
+extern "C" fn function_20() {}
+#[no_mangle]
+extern "C" fn function_21() {}
+#[no_mangle]
+extern "C" fn function_22() {}
+#[no_mangle]
+extern "C" fn function_23() {}
+#[no_mangle]
+extern "C" fn function_24() {}
+#[no_mangle]
+extern "C" fn function_25() {}
+#[no_mangle]
+extern "C" fn function_26() {}
+#[no_mangle]
+extern "C" fn function_27() {}
+#[no_mangle]
+extern "C" fn function_28() {}
+#[no_mangle]
+extern "C" fn function_29() {}
+#[no_mangle]
+extern "C" fn function_30() {}
+#[no_mangle]
+extern "C" fn function_31() {}
+#[no_mangle]
+extern "C" fn function_32() {}
+#[no_mangle]
+extern "C" fn function_33() {}
+#[no_mangle]
+extern "C" fn function_34() {}
+#[no_mangle]
+extern "C" fn function_35() {}
+#[no_mangle]
+extern "C" fn function_36() {}
+#[no_mangle]
+extern "C" fn function_37() {}
+#[no_mangle]
+extern "C" fn function_38() {}
+#[no_mangle]
+extern "C" fn function_39() {}
+#[no_mangle]
+extern "C" fn function_40() {}
+#[no_mangle]
+extern "C" fn function_41() {}
+#[no_mangle]
+extern "C" fn function_42() {}
+#[no_mangle]
+extern "C" fn function_43() {}
+#[no_mangle]
+extern "C" fn function_44() {}
+#[no_mangle]
+extern "C" fn function_45() {}
+#[no_mangle]
+extern "C" fn function_46() {}
+#[no_mangle]
+extern "C" fn function_47() {}
+#[no_mangle]
+extern "C" fn function_48() {}
+#[no_mangle]
+extern "C" fn function_49() {}
+#[no_mangle]
+extern "C" fn function_50() {}
+#[no_mangle]
+extern "C" fn function_51() {}
+#[no_mangle]
+extern "C" fn function_52() {}
+#[no_mangle]
+extern "C" fn function_53() {}
+#[no_mangle]
+extern "C" fn function_54() {}
+#[no_mangle]
+extern "C" fn function_55() {}
+#[no_mangle]
+extern "C" fn function_56() {}
+#[no_mangle]
+extern "C" fn function_57() {}
+#[no_mangle]
+extern "C" fn function_58() {}
+#[no_mangle]
+extern "C" fn function_59() {}
+#[no_mangle]
+extern "C" fn function_60() {}
+#[no_mangle]
+extern "C" fn function_61() {}
+#[no_mangle]
+extern "C" fn function_62() {}
+#[no_mangle]
+extern "C" fn function_63() {}
+#[no_mangle]
+extern "C" fn function_64() {}
+#[no_mangle]
+extern "C" fn function_65() {}
+#[no_mangle]
+extern "C" fn function_66() {}
+#[no_mangle]
+extern "C" fn function_67() {}
+#[no_mangle]
+extern "C" fn function_68() {}
+#[no_mangle]
+extern "C" fn function_69() {}
+#[no_mangle]
+extern "C" fn function_70() {}
+#[no_mangle]
+extern "C" fn function_71() {}
+#[no_mangle]
+extern "C" fn function_72() {}
+#[no_mangle]
+extern "C" fn function_73() {}
+#[no_mangle]
+extern "C" fn function_74() {}
+#[no_mangle]
+extern "C" fn function_75() {}
+#[no_mangle]
+extern "C" fn function_76() {}
+#[no_mangle]
+extern "C" fn function_77() {}
+#[no_mangle]
+extern "C" fn function_78() {}
+#[no_mangle]
+extern "C" fn function_79() {}
+#[no_mangle]
+extern "C" fn function_80() {}
+#[no_mangle]
+extern "C" fn function_81() {}
+#[no_mangle]
+extern "C" fn function_82() {}
+#[no_mangle]
+extern "C" fn function_83() {}
+#[no_mangle]
+extern "C" fn function_84() {}
+#[no_mangle]
+extern "C" fn function_85() {}
+#[no_mangle]
+extern "C" fn function_86() {}
+#[no_mangle]
+extern "C" fn function_87() {}
+#[no_mangle]
+extern "C" fn function_88() {}
+#[no_mangle]
+extern "C" fn function_89() {}
+#[no_mangle]
+extern "C" fn function_90() {}
+#[no_mangle]
+extern "C" fn function_91() {}
+#[no_mangle]
+extern "C" fn function_92() {}
+#[no_mangle]
+extern "C" fn function_93() {}
+#[no_mangle]
+extern "C" fn function_94() {}
+#[no_mangle]
+extern "C" fn function_95() {}
+#[no_mangle]
+extern "C" fn function_96() {}
+#[no_mangle]
+extern "C" fn function_97() {}
+#[no_mangle]
+extern "C" fn function_98() {}
+#[no_mangle]
+extern "C" fn function_99() {}
