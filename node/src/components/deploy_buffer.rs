@@ -354,7 +354,21 @@ impl DeployBuffer {
         let mut indexer = buckets.keys().cloned().collect_vec();
         let mut idx = 0;
 
+        #[cfg(test)]
+        let mut iter_counter = 0;
+        #[cfg(test)]
+        let iter_limit = self.buffer.len() * 4;
+
         while !buckets.is_empty() {
+            #[cfg(test)]
+            {
+                iter_counter += 1;
+                assert!(
+                    iter_counter < iter_limit,
+                    "the number of iterations shouldn't be too large"
+                );
+            }
+
             let body_hash = match indexer.get(idx) {
                 None => {
                     idx = 0; // reset outer loop

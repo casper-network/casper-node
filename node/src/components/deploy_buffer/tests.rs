@@ -771,14 +771,7 @@ fn test_buckets_single_hash() {
 
     register_random_deploys_same_hash(&mut deploy_buffer, 64000, &mut rng);
 
-    println!("appendable block start");
-    let start = std::time::Instant::now();
     let _block = deploy_buffer.appendable_block(Timestamp::now());
-    let time = start.elapsed().as_nanos();
-    println!("appendable block end: {} ns", time);
-
-    // Executed in <0.2s in tests - 1s should be plenty even on slower machines.
-    assert!(time < 1_000_000_000);
 }
 
 #[test]
@@ -795,14 +788,7 @@ fn test_buckets_unique_hashes() {
 
     register_random_deploys_unique_hashes(&mut deploy_buffer, 64000, &mut rng);
 
-    println!("appendable block start");
-    let start = std::time::Instant::now();
     let _block = deploy_buffer.appendable_block(Timestamp::now());
-    let time = start.elapsed().as_nanos();
-    println!("appendable block end: {} ns", time);
-
-    // Executed in <0.2s in tests - 1s should be plenty even on slower machines.
-    assert!(time < 1_000_000_000);
 }
 
 #[test]
@@ -820,12 +806,5 @@ fn test_buckets_mixed_load() {
     register_random_deploys_unique_hashes(&mut deploy_buffer, 60000, &mut rng);
     register_random_deploys_same_hash(&mut deploy_buffer, 4000, &mut rng);
 
-    println!("appendable block start");
-    let start = std::time::Instant::now();
     let _block = deploy_buffer.appendable_block(Timestamp::now());
-    let time = start.elapsed().as_nanos();
-    println!("appendable block end: {} ns", time);
-
-    // Executed in <0.8s in tests - 3s should be plenty even on slower machines.
-    assert!(time < 3_000_000_000);
 }
