@@ -1,11 +1,12 @@
+use crate::bytesrepr::{self, FromBytes, ToBytes};
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 use alloc::vec::Vec;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 /// A change to a validator's status between two eras.
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -22,6 +23,23 @@ pub enum ValidatorChange {
     CannotPropose,
     /// We saw the validator misbehave in this era.
     SeenAsFaulty,
+}
+
+impl ValidatorChange {
+    /// Returns a random `ValidatorChange`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        use rand::Rng;
+
+        match rng.gen_range(0..5) {
+            ADDED_TAG => ValidatorChange::Added,
+            REMOVED_TAG => ValidatorChange::Removed,
+            BANNED_TAG => ValidatorChange::Banned,
+            CANNOT_PROPOSE_TAG => ValidatorChange::CannotPropose,
+            SEEN_AS_FAULTY_TAG => ValidatorChange::SeenAsFaulty,
+            _ => unreachable!(),
+        }
+    }
 }
 
 const ADDED_TAG: u8 = 0;
@@ -65,5 +83,19 @@ impl FromBytes for ValidatorChange {
             _ => return Err(bytesrepr::Error::NotRepresentable),
         };
         Ok((id, remainder))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::TestRng;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+
+        let val = ValidatorChange::random(rng);
+        bytesrepr::test_serialization_roundtrip(&val);
     }
 }

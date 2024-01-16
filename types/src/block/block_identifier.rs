@@ -124,3 +124,17 @@ pub enum ParseBlockIdentifierError {
     #[cfg_attr(feature = "std", error("Unable to parse digest from string. {0}"))]
     FromHexError(DigestError),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::TestRng;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+
+        let val = BlockIdentifier::random(rng);
+        bytesrepr::test_serialization_roundtrip(&val);
+    }
+}

@@ -196,3 +196,17 @@ impl FromBytes for BlockSynchronizerStatus {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::TestRng;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+
+        let val = BlockSyncStatus::random(rng);
+        bytesrepr::test_serialization_roundtrip(&val);
+    }
+}
