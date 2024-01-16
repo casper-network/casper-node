@@ -122,3 +122,17 @@ impl FromBytes for Peers {
         Ok((Peers(inner), remainder))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::TestRng;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+
+        let val = Peers::random(rng);
+        bytesrepr::test_serialization_roundtrip(&val);
+    }
+}

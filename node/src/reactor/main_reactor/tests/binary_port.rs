@@ -1,21 +1,24 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use casper_types::{
     binary_port::{
         binary_request::{BinaryRequest, BinaryRequestHeader},
+        db_id::DbId,
         get::GetRequest,
+        global_state_query_result::GlobalStateQueryResult,
         non_persistent_data_request::NonPersistedDataRequest,
         type_wrappers::{
-            ConsensusStatus, ConsensusValidatorChanges, HighestBlockSequenceCheckResult,
-            LastProgress, NetworkName,
+            ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult,
+            HighestBlockSequenceCheckResult, LastProgress, NetworkName, StoredValues,
         },
         NodeStatus,
     },
     bytesrepr::{FromBytes, ToBytes},
     testing::TestRng,
     AvailableBlockRange, BinaryResponse, BinaryResponseAndRequest, BlockHash, BlockHashAndHeight,
-    BlockIdentifier, BlockSynchronizerStatus, ChainspecRawBytes, NextUpgrade, PayloadType, Peers,
-    ReactorState, SemVer, TransactionHash, Uptime,
+    BlockHeader, BlockIdentifier, BlockSynchronizerStatus, ChainspecRawBytes, Digest, ErrorCode,
+    Key, KeyTag, NextUpgrade, PayloadType, Peers, ReactorState, SecretKey, SemVer, SignedBlock,
+    StoredValue, Transaction, TransactionHash, TransactionV1Builder, Transfer, Uptime,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -59,6 +62,8 @@ async fn setup() -> (
         impl futures::Future<Output = (TestingNetwork<FilterReactor<MainReactor>>, TestRng)>,
         TestRng,
         ChainspecRawBytes,
+        SignedBlock,
+        Arc<SecretKey>,
     ),
 ) {
     let mut fixture = TestFixture::new(
@@ -72,13 +77,36 @@ async fn setup() -> (
     let chainspec_raw_bytes = ChainspecRawBytes::clone(&fixture.chainspec_raw_bytes);
     let mut rng = fixture.rng_mut().create_child();
     let net = fixture.network_mut();
-
     net.settle_on(
         &mut rng,
         |nodes| network_produced_blocks(nodes, GUARANTEED_BLOCK_HEIGHT),
         Duration::from_secs(59),
     )
     .await;
+    let (_, first_node) = net
+        .nodes()
+        .iter()
+        .next()
+        .expect("should have at least one node");
+    let secret_signing_key = first_node
+        .reactor()
+        .inner()
+        .inner()
+        .validator_matrix
+        .secret_signing_key()
+        .clone();
+    let highest_block = net
+        .nodes()
+        .iter()
+        .find_map(|(_, runner)| {
+            runner
+                .reactor()
+                .inner()
+                .inner()
+                .storage()
+                .get_highest_signed_block(true)
+        })
+        .expect("should have highest block");
 
     // Get the binary port address.
     let binary_port_addr = net.nodes()[net.nodes().keys().next().unwrap()]
@@ -113,7 +141,16 @@ async fn setup() -> (
         }
     });
 
-    (client, (finish_cranking, rng, chainspec_raw_bytes))
+    (
+        client,
+        (
+            finish_cranking,
+            rng,
+            chainspec_raw_bytes,
+            highest_block,
+            secret_signing_key,
+        ),
+    )
 }
 
 struct TestCase {
@@ -163,7 +200,10 @@ where
 async fn binary_port_component() {
     testing::init_logging();
 
-    let (client, (finish_cranking, mut rng, network_chainspec_raw_bytes)) = setup().await;
+    let (
+        client,
+        (finish_cranking, mut rng, network_chainspec_raw_bytes, highest_block, secret_key),
+    ) = setup().await;
 
     let test_cases = &[
         block_hash_2_height(),
@@ -183,6 +223,14 @@ async fn binary_port_component() {
         consensus_status(),
         chainspec_raw_bytes(network_chainspec_raw_bytes),
         node_status(),
+        get_block_header(highest_block.block().clone_header()),
+        get_block_transfers(highest_block.block().clone_header()),
+        get_era_summary(*highest_block.block().state_root_hash()),
+        get_all_bids(*highest_block.block().state_root_hash()),
+        get_trie(*highest_block.block().state_root_hash()),
+        try_accept_transaction(&secret_key),
+        try_accept_transaction_invalid(&mut rng),
+        try_spec_exec_invalid(&mut rng, highest_block.block().clone_header()),
     ];
 
     let header = BinaryRequestHeader::new(SemVer::V1_0_0);
@@ -499,5 +547,125 @@ fn node_status() -> TestCase {
                 },
             )
         }),
+    }
+}
+
+fn get_block_header(expected: BlockHeader) -> TestCase {
+    TestCase {
+        name: "get_block_header",
+        request: BinaryRequest::Get(GetRequest::Db {
+            db_tag: DbId::BlockHeader.into(),
+            key: expected.block_hash().to_bytes().unwrap(),
+        }),
+        asserter: Box::new(move |response| {
+            assert_response::<BlockHeader, _>(response, Some(PayloadType::BlockHeader), |header| {
+                header == expected
+            })
+        }),
+    }
+}
+
+fn get_block_transfers(expected: BlockHeader) -> TestCase {
+    TestCase {
+        name: "get_block_transfers",
+        request: BinaryRequest::Get(GetRequest::Db {
+            db_tag: DbId::Transfer.into(),
+            key: expected.block_hash().to_bytes().unwrap(),
+        }),
+        asserter: Box::new(move |response| {
+            validate_metadata(response, Some(PayloadType::VecTransfers))
+                && bincode::deserialize::<Vec<Transfer>>(response.payload()).is_ok()
+        }),
+    }
+}
+
+fn get_era_summary(state_root_hash: Digest) -> TestCase {
+    TestCase {
+        name: "get_era_summary",
+        request: BinaryRequest::Get(GetRequest::State {
+            state_root_hash,
+            base_key: Key::EraSummary,
+            path: vec![],
+        }),
+        asserter: Box::new(|response| {
+            assert_response::<GlobalStateQueryResult, _>(
+                response,
+                Some(PayloadType::GlobalStateQueryResult),
+                |res| {
+                    let (value, _) = res.into_inner();
+                    matches!(value, StoredValue::EraInfo(_))
+                },
+            )
+        }),
+    }
+}
+
+fn get_all_bids(state_root_hash: Digest) -> TestCase {
+    TestCase {
+        name: "get_all_bids",
+        request: BinaryRequest::Get(GetRequest::AllValues {
+            state_root_hash,
+            key_tag: KeyTag::Bid,
+        }),
+        asserter: Box::new(|response| {
+            assert_response::<StoredValues, _>(response, Some(PayloadType::StoredValues), |res| {
+                res.into_inner()
+                    .iter()
+                    .all(|v| matches!(v, StoredValue::BidKind(_)))
+            })
+        }),
+    }
+}
+
+fn get_trie(digest: Digest) -> TestCase {
+    TestCase {
+        name: "get_trie",
+        request: BinaryRequest::Get(GetRequest::Trie { trie_key: digest }),
+        asserter: Box::new(|response| {
+            assert_response::<GetTrieFullResult, _>(
+                response,
+                Some(PayloadType::GetTrieFullResult),
+                |res| matches!(res.into_inner(), Some(_)),
+            )
+        }),
+    }
+}
+
+fn try_accept_transaction(key: &SecretKey) -> TestCase {
+    let transaction = Transaction::V1(
+        TransactionV1Builder::new_targeting_invocable_entity_via_alias("Test", "call")
+            .with_secret_key(key)
+            .with_chain_name("casper-example")
+            .build()
+            .unwrap(),
+    );
+    TestCase {
+        name: "try_accept_transaction",
+        request: BinaryRequest::TryAcceptTransaction { transaction },
+        asserter: Box::new(|response| response.error_code() == ErrorCode::NoError as u8),
+    }
+}
+
+fn try_accept_transaction_invalid(rng: &mut TestRng) -> TestCase {
+    let transaction = Transaction::V1(TransactionV1Builder::new_random(rng).build().unwrap());
+    TestCase {
+        name: "try_accept_transaction_invalid",
+        request: BinaryRequest::TryAcceptTransaction { transaction },
+        asserter: Box::new(|response| response.error_code() == ErrorCode::InvalidDeploy as u8),
+    }
+}
+
+fn try_spec_exec_invalid(rng: &mut TestRng, header: BlockHeader) -> TestCase {
+    let transaction = Transaction::V1(TransactionV1Builder::new_random(rng).build().unwrap());
+    TestCase {
+        name: "try_spec_exec_invalid",
+        request: BinaryRequest::TrySpeculativeExec {
+            state_root_hash: *header.state_root_hash(),
+            block_time: header.timestamp(),
+            protocol_version: header.protocol_version(),
+            transaction,
+            speculative_exec_at_block: header,
+        },
+        asserter: Box::new(|response| response.error_code() == ErrorCode::InvalidDeploy as u8),
     }
 }

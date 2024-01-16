@@ -327,7 +327,7 @@ where
             let serialized =
                 bincode::serialize(&transfers).expect("should serialize transfers to bytes");
             let bytes = DbRawBytesSpec::new_legacy(&serialized);
-            BinaryResponse::from_db_raw_bytes(DbId::Transaction, Some(bytes))
+            BinaryResponse::from_db_raw_bytes(DbId::Transfer, Some(bytes))
         }
         GetRequest::Db { db_tag, key } => {
             metrics.binary_port_get_db_count.inc();

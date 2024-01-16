@@ -1,12 +1,13 @@
 use core::fmt::{self, Debug, Display, Formatter};
 
+use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes};
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
 /// The raw bytes of the chainspec.toml, genesis accounts.toml, and global_state.toml files.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,6 +54,25 @@ impl ChainspecRawBytes {
         match self.maybe_global_state_bytes.as_ref() {
             Some(bytes) => Some(bytes.as_slice()),
             None => None,
+        }
+    }
+
+    /// Returns a random `ChainspecRawBytes`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        use rand::Rng;
+
+        let chainspec_bytes = Bytes::from(rng.random_vec(0..1024));
+        let maybe_genesis_accounts_bytes = rng
+            .gen::<bool>()
+            .then(|| Bytes::from(rng.random_vec(0..1024)));
+        let maybe_global_state_bytes = rng
+            .gen::<bool>()
+            .then(|| Bytes::from(rng.random_vec(0..1024)));
+        ChainspecRawBytes {
+            chainspec_bytes,
+            maybe_genesis_accounts_bytes,
+            maybe_global_state_bytes,
         }
     }
 }
@@ -158,5 +178,19 @@ impl FromBytes for ChainspecRawBytes {
             },
             remainder,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::TestRng;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+
+        let val = ChainspecRawBytes::random(rng);
+        bytesrepr::test_serialization_roundtrip(&val);
     }
 }
