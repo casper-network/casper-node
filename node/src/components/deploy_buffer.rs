@@ -358,10 +358,24 @@ impl DeployBuffer {
         let mut have_hit_deploy_limit = false;
 
         let mut buckets = self.buckets();
-        let indexer = buckets.keys().cloned().collect_vec();
+        let mut indexer = buckets.keys().cloned().collect_vec();
         let mut idx = 0;
 
+        #[cfg(test)]
+        let mut iter_counter = 0;
+        #[cfg(test)]
+        let iter_limit = self.buffer.len() * 4;
+
         while Timestamp::now() < request_expiry && !buckets.is_empty() {
+            #[cfg(test)]
+            {
+                iter_counter += 1;
+                assert!(
+                    iter_counter < iter_limit,
+                    "the number of iterations shouldn't be too large"
+                );
+            }
+
             let body_hash = match indexer.get(idx) {
                 None => {
                     idx = 0; // reset outer loop
@@ -379,6 +393,7 @@ impl DeployBuffer {
                     match deploys.pop() {
                         None => {
                             buckets.remove(body_hash);
+                            indexer.remove(idx - 1);
                             continue;
                         }
                         Some(deploy) => deploy,
@@ -602,7 +617,7 @@ where
                 }
                 Event::Request(DeployBufferRequest::GetAppendableBlock {
                     timestamp,
-                    request_expiry, // TODO: use that to limit the time it takes to respond
+                    request_expiry,
                     responder,
                 }) => responder
                     .respond(self.appendable_block(timestamp, request_expiry))
