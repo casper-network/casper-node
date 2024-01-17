@@ -13,8 +13,14 @@ All notable changes to this project will be documented in this file.  The format
 
 ## Unreleased (2.0.0)
 
+### Added
+* Add `BinaryPort` interface along with the relevant config entries.
+
 ### Changed
 * All SSE events are emitted via the `<IP:Port>/events` endpoint. None of the previous ones (`/events/main`, `/events/deploys`, and `/events/sigs`) is available any longer.
+
+### Removed
+* Remove the RPC interface.
 
 
 
