@@ -194,7 +194,7 @@ impl<C: Context> ActiveValidator<C> {
         // Only create new units if enough validators are online.
         if !self.paused && self.enough_validators_online(state, timestamp) {
             if timestamp == r_id && state.leader(r_id) == self.vidx {
-                let expiry = r_id.saturating_add(self.witness_offset(r_len));
+                let expiry = r_id.saturating_add(self.proposal_request_expiry(r_len));
                 effects.extend(self.request_new_block(state, instance_id, timestamp, expiry));
                 return effects;
             } else if timestamp == r_id.saturating_add(self.witness_offset(r_len)) {
@@ -537,6 +537,17 @@ impl<C: Context> ActiveValidator<C> {
     #[allow(clippy::arithmetic_side_effects)] // Round length will never be large enough to overflow.
     fn witness_offset(&self, round_len: TimeDiff) -> TimeDiff {
         round_len * 2 / 3
+    }
+
+    /// Returns the duration after the beginning of a round during which a response to a proposal
+    /// request has to be returned.
+    #[allow(clippy::arithmetic_side_effects)] // Round length will never be large enough to overflow.
+    fn proposal_request_expiry(&self, round_len: TimeDiff) -> TimeDiff {
+        // The time window is 1/6 of the round length - but no shorter than 500 ms, unless that's
+        // longer than the witness offset, in which case it's just the witness offset.
+        (round_len / 6)
+            .max(TimeDiff::from_millis(500))
+            .min(self.witness_offset(round_len))
     }
 
     /// The round length of the round containing `timestamp`.
