@@ -71,10 +71,10 @@ mod repeated_ffi_call_should_gas_out_quickly {
         /// Calls regression_20240105.wasm with expectation of execution failure due to running out
         /// of gas within the duration specified in `TIMEOUT`.
         fn execute_with_timeout(self, session_args: RuntimeArgs, extra_auth_keys: u8) {
-            // if cfg!(debug_assertions) {
-            //     println!("not testing in debug mode");
-            //     return;
-            // }
+            if cfg!(debug_assertions) {
+                println!("not testing in debug mode");
+                return;
+            }
             let (tx, rx) = mpsc::channel();
             let Fixture {
                 builder,
@@ -780,15 +780,265 @@ mod repeated_ffi_call_should_gas_out_quickly {
         Fixture::new().execute_with_timeout(session_args, 0)
     }
 
-    // #[ignore]
-    // #[test]
-    // fn create_contract_user_group() {
-    //     // small/big label
-    //     // no/small/big new urefs
-    //     // no/small/big existing urefs
-    //     let session_args = runtime_args! { "fn" => "create_contract_user_group" };
-    //     Fixture::new().execute_with_timeout(session_args, 0)
-    // }
+    #[ignore]
+    #[test]
+    fn create_contract_user_group_small_label_no_new_urefs_no_existing_urefs() {
+        let session_args = runtime_args! {
+            "fn" => "create_contract_user_group",
+            "label_len" => 1_u32,
+            "num_new_urefs" => 0_u8,
+            "num_existing_urefs" => 0_u8,
+            "allow_exceeding_max_groups" => false
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn create_contract_user_group_small_label_no_new_urefs_few_existing_urefs() {
+        let session_args = runtime_args! {
+            "fn" => "create_contract_user_group",
+            "label_len" => 1_u32,
+            "num_new_urefs" => 0_u8,
+            "num_existing_urefs" => 1_u8,
+            "allow_exceeding_max_groups" => false
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn create_contract_user_group_small_label_no_new_urefs_many_existing_urefs() {
+        let session_args = runtime_args! {
+            "fn" => "create_contract_user_group",
+            "label_len" => 1_u32,
+            "num_new_urefs" => 0_u8,
+            "num_existing_urefs" => 10_u8,
+            "allow_exceeding_max_groups" => false
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn create_contract_user_group_small_label_few_new_urefs_no_existing_urefs() {
+        let session_args = runtime_args! {
+            "fn" => "create_contract_user_group",
+            "label_len" => 1_u32,
+            "num_new_urefs" => 1_u8,
+            "num_existing_urefs" => 0_u8,
+            "allow_exceeding_max_groups" => false
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn create_contract_user_group_small_label_few_new_urefs_few_existing_urefs() {
+        let session_args = runtime_args! {
+            "fn" => "create_contract_user_group",
+            "label_len" => 1_u32,
+            "num_new_urefs" => 1_u8,
+            "num_existing_urefs" => 1_u8,
+            "allow_exceeding_max_groups" => false
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn create_contract_user_group_small_label_few_new_urefs_many_existing_urefs() {
+        let session_args = runtime_args! {
+            "fn" => "create_contract_user_group",
+            "label_len" => 1_u32,
+            "num_new_urefs" => 1_u8,
+            "num_existing_urefs" => 5_u8,
+            "allow_exceeding_max_groups" => false
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn create_contract_user_group_small_label_many_new_urefs_no_existing_urefs() {
+        let session_args = runtime_args! {
+            "fn" => "create_contract_user_group",
+            "label_len" => 1_u32,
+            "num_new_urefs" => 5_u8,
+            "num_existing_urefs" => 0_u8,
+            "allow_exceeding_max_groups" => false
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn create_contract_user_group_small_label_many_new_urefs_few_existing_urefs() {
+        let session_args = runtime_args! {
+            "fn" => "create_contract_user_group",
+            "label_len" => 1_u32,
+            "num_new_urefs" => 5_u8,
+            "num_existing_urefs" => 1_u8,
+            "allow_exceeding_max_groups" => false
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn create_contract_user_group_small_label_many_new_urefs_many_existing_urefs() {
+        let session_args = runtime_args! {
+            "fn" => "create_contract_user_group",
+            "label_len" => 1_u32,
+            "num_new_urefs" => 5_u8,
+            "num_existing_urefs" => 5_u8,
+            "allow_exceeding_max_groups" => false
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn create_contract_user_group_large_label_no_new_urefs_no_existing_urefs() {
+        let session_args = runtime_args! {
+            "fn" => "create_contract_user_group",
+            "label_len" => 1_000_000_u32,
+            "num_new_urefs" => 0_u8,
+            "num_existing_urefs" => 0_u8,
+            "allow_exceeding_max_groups" => false
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn create_contract_user_group_large_label_no_new_urefs_few_existing_urefs() {
+        let session_args = runtime_args! {
+            "fn" => "create_contract_user_group",
+            "label_len" => 1_000_000_u32,
+            "num_new_urefs" => 0_u8,
+            "num_existing_urefs" => 1_u8,
+            "allow_exceeding_max_groups" => false
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn create_contract_user_group_large_label_no_new_urefs_many_existing_urefs() {
+        let session_args = runtime_args! {
+            "fn" => "create_contract_user_group",
+            "label_len" => 1_000_000_u32,
+            "num_new_urefs" => 0_u8,
+            "num_existing_urefs" => 10_u8,
+            "allow_exceeding_max_groups" => false
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn create_contract_user_group_large_label_few_new_urefs_no_existing_urefs() {
+        let session_args = runtime_args! {
+            "fn" => "create_contract_user_group",
+            "label_len" => 1_000_000_u32,
+            "num_new_urefs" => 1_u8,
+            "num_existing_urefs" => 0_u8,
+            "allow_exceeding_max_groups" => false
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn create_contract_user_group_large_label_few_new_urefs_few_existing_urefs() {
+        let session_args = runtime_args! {
+            "fn" => "create_contract_user_group",
+            "label_len" => 1_000_000_u32,
+            "num_new_urefs" => 1_u8,
+            "num_existing_urefs" => 1_u8,
+            "allow_exceeding_max_groups" => false
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn create_contract_user_group_large_label_few_new_urefs_many_existing_urefs() {
+        let session_args = runtime_args! {
+            "fn" => "create_contract_user_group",
+            "label_len" => 1_000_000_u32,
+            "num_new_urefs" => 1_u8,
+            "num_existing_urefs" => 5_u8,
+            "allow_exceeding_max_groups" => false
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn create_contract_user_group_large_label_many_new_urefs_no_existing_urefs() {
+        let session_args = runtime_args! {
+            "fn" => "create_contract_user_group",
+            "label_len" => 1_000_000_u32,
+            "num_new_urefs" => 5_u8,
+            "num_existing_urefs" => 0_u8,
+            "allow_exceeding_max_groups" => false
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn create_contract_user_group_large_label_many_new_urefs_few_existing_urefs() {
+        let session_args = runtime_args! {
+            "fn" => "create_contract_user_group",
+            "label_len" => 1_000_000_u32,
+            "num_new_urefs" => 5_u8,
+            "num_existing_urefs" => 1_u8,
+            "allow_exceeding_max_groups" => false
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn create_contract_user_group_large_label_many_new_urefs_many_existing_urefs() {
+        let session_args = runtime_args! {
+            "fn" => "create_contract_user_group",
+            "label_len" => 1_000_000_u32,
+            "num_new_urefs" => 5_u8,
+            "num_existing_urefs" => 5_u8,
+            "allow_exceeding_max_groups" => false
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn create_contract_user_group_failure_max_urefs_exceeded() {
+        let session_args = runtime_args! {
+            "fn" => "create_contract_user_group",
+            "label_len" => 1_u32,
+            "num_new_urefs" => u8::MAX,
+            "num_existing_urefs" => 0_u8,
+            "allow_exceeding_max_groups" => false
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn create_contract_user_group_failure_max_groups_exceeded() {
+        let session_args = runtime_args! {
+            "fn" => "create_contract_user_group",
+            "label_len" => 1_u32,
+            "num_new_urefs" => 0_u8,
+            "num_existing_urefs" => 0_u8,
+            "allow_exceeding_max_groups" => true
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
 
     // #[ignore]
     // #[test]
@@ -867,6 +1117,40 @@ mod repeated_ffi_call_should_gas_out_quickly {
             "fn" => "get_runtime_arg",
             "arg" => [1_u8; 1_000_000]
         };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn remove_contract_user_group() {
+        let session_args = runtime_args! { "fn" => "remove_contract_user_group" };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn extend_contract_user_group_urefs_and_remove_as_required() {
+        let session_args = runtime_args! {
+            "fn" => "extend_contract_user_group_urefs",
+            "allow_exceeding_max_urefs" => false
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn extend_contract_user_group_urefs_failure_max_urefs_exceeded() {
+        let session_args = runtime_args! {
+            "fn" => "extend_contract_user_group_urefs",
+            "allow_exceeding_max_urefs" => true
+        };
+        Fixture::new().execute_with_timeout(session_args, 0)
+    }
+
+    #[ignore]
+    #[test]
+    fn remove_contract_user_group_urefs() {
+        let session_args = runtime_args! { "fn" => "remove_contract_user_group_urefs" };
         Fixture::new().execute_with_timeout(session_args, 0)
     }
 
@@ -1078,9 +1362,7 @@ mod repeated_ffi_call_should_gas_out_quickly {
 
     #[test]
     fn todo() {
-        todo!("disable run in debug mode");
         todo!("add release run in Makefile");
-        todo!("remove runtime::prints");
         todo!(
             "ensure at least one iteration completed - metrics in externals.rs or write counter to \
             named key?"
