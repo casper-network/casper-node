@@ -1359,13 +1359,4 @@ mod repeated_ffi_call_should_gas_out_quickly {
         let session_args = runtime_args! { "fn" => "enable_contract_version" };
         Fixture::new().execute_with_timeout(session_args, 0)
     }
-
-    #[test]
-    fn todo() {
-        todo!("add release run in Makefile");
-        todo!(
-            "ensure at least one iteration completed - metrics in externals.rs or write counter to \
-            named key?"
-        );
-    }
 }
