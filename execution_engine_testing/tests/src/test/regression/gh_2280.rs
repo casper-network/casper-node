@@ -656,7 +656,7 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
             .with_address(account_hash)
             .with_session_code(session_file, faucet_args_3)
             .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => U512::from(3_000_000_000u64)
+                ARG_AMOUNT => U512::from(4_000_000_000u64)
             })
             .with_authorization_keys(&[account_hash])
             .with_deploy_hash(deploy_hash)
