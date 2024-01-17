@@ -832,7 +832,10 @@ fn test_buckets_single_hash() {
 
     register_random_deploys_same_hash(&mut deploy_buffer, 64000, &mut rng);
 
-    let _block = deploy_buffer.appendable_block(Timestamp::now());
+    let _block = deploy_buffer.appendable_block(
+        Timestamp::now(),
+        Timestamp::now() + TimeDiff::from_millis(16384 / 6),
+    );
 }
 
 #[test]
@@ -849,7 +852,10 @@ fn test_buckets_unique_hashes() {
 
     register_random_deploys_unique_hashes(&mut deploy_buffer, 64000, &mut rng);
 
-    let _block = deploy_buffer.appendable_block(Timestamp::now());
+    let _block = deploy_buffer.appendable_block(
+        Timestamp::now(),
+        Timestamp::now() + TimeDiff::from_millis(16384 / 6),
+    );
 }
 
 #[test]
@@ -867,5 +873,8 @@ fn test_buckets_mixed_load() {
     register_random_deploys_unique_hashes(&mut deploy_buffer, 60000, &mut rng);
     register_random_deploys_same_hash(&mut deploy_buffer, 4000, &mut rng);
 
-    let _block = deploy_buffer.appendable_block(Timestamp::now());
+    let _block = deploy_buffer.appendable_block(
+        Timestamp::now(),
+        Timestamp::now() + TimeDiff::from_millis(16384 / 6),
+    );
 }
