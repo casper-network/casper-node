@@ -92,6 +92,7 @@ test: test-rs-no-default-features test-rs test-as
 .PHONY: test-contracts-rs
 test-contracts-rs: build-contracts-rs
 	$(DISABLE_LOGGING) $(CARGO) test $(CARGO_FLAGS) -p casper-engine-tests -- --ignored
+	$(DISABLE_LOGGING) $(CARGO) test --release $(CARGO_FLAGS) -p casper-engine-tests -- --ignored repeated_ffi_call_should_gas_out_quickly
 
 .PHONY: test-contracts-as
 test-contracts-as: build-contracts-rs build-contracts-as

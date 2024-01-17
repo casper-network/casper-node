@@ -4,7 +4,7 @@
 extern crate alloc;
 
 use alloc::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     format,
     string::{String, ToString},
     vec,
@@ -22,6 +22,7 @@ use casper_types::{
     account::{AccountHash, ActionType, Weight},
     api_error,
     bytesrepr::ToBytes,
+    contracts::MAX_GROUPS,
     runtime_args, AccessRights, ApiError, CLType, CLValue, ContractHash, ContractPackageHash,
     EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Key, Parameter, RuntimeArgs,
     TransferredTo, URef, U512,
@@ -503,8 +504,63 @@ pub extern "C" fn call() {
             }
         }
         "create_contract_user_group" => {
-            for _i in 0..u64::MAX {
-                todo!()
+            let label_len: u32 = runtime::get_named_arg("label_len");
+            assert!(label_len > 0);
+            let label_prefix: String = iter::repeat('a').take(label_len as usize - 1).collect();
+            let num_new_urefs: u8 = runtime::get_named_arg("num_new_urefs");
+            let num_existing_urefs: u8 = runtime::get_named_arg("num_existing_urefs");
+            let mut existing_urefs = BTreeSet::new();
+            for _ in 0..num_existing_urefs {
+                existing_urefs.insert(storage::new_uref(()));
+            }
+            let (existing_urefs_ptr, existing_urefs_size, _bytes1) = to_ptr(&existing_urefs);
+            let (contract_pkg_hash, _uref) = storage::create_contract_package_at_hash();
+            let (contract_pkg_hash_ptr, contract_pkg_hash_size, _bytes2) =
+                to_ptr(&contract_pkg_hash);
+            let mut index = 0_u8;
+            let mut label = String::new();
+            let allow_exceeding_max_groups: bool =
+                runtime::get_named_arg("allow_exceeding_max_groups");
+            let expect_failure = num_new_urefs == u8::MAX || allow_exceeding_max_groups;
+            let mut buffer = vec![0_u8; 5_000];
+            let mut output_size = MaybeUninit::uninit();
+            let mut bytes_written = MaybeUninit::uninit();
+            loop {
+                if index == MAX_GROUPS && !allow_exceeding_max_groups {
+                    // We need to remove the group to avoid hitting the `contracts::MAX_GROUPS`
+                    // limit (currently 10).
+                    let result = storage::remove_contract_user_group(contract_pkg_hash, &label);
+                    if !expect_failure {
+                        result.unwrap_or_revert();
+                    }
+                } else {
+                    label = format!("{label_prefix}{index}");
+                    index += 1;
+                }
+                let (label_ptr, label_size, _bytes3) = to_ptr(&label);
+                let ret = unsafe {
+                    ext_ffi::casper_create_contract_user_group(
+                        contract_pkg_hash_ptr,
+                        contract_pkg_hash_size,
+                        label_ptr,
+                        label_size,
+                        num_new_urefs,
+                        existing_urefs_ptr,
+                        existing_urefs_size,
+                        output_size.as_mut_ptr(),
+                    )
+                };
+                if !expect_failure {
+                    api_error::result_from(ret).unwrap_or_revert();
+                    let ret = unsafe {
+                        ext_ffi::casper_read_host_buffer(
+                            buffer.as_mut_ptr(),
+                            buffer.len(),
+                            bytes_written.as_mut_ptr(),
+                        )
+                    };
+                    api_error::result_from(ret).unwrap_or_revert();
+                }
             }
         }
         "print" => {
@@ -537,18 +593,41 @@ pub extern "C" fn call() {
             }
         }
         "remove_contract_user_group" => {
+            let (contract_pkg_hash, _uref) = storage::create_contract_package_at_hash();
             for _i in 0..u64::MAX {
-                todo!()
+                storage::remove_contract_user_group(contract_pkg_hash, "a").unwrap_err();
             }
         }
         "extend_contract_user_group_urefs" => {
+            let allow_exceeding_max_urefs: bool =
+                runtime::get_named_arg("allow_exceeding_max_urefs");
+            let (contract_pkg_hash, _uref) = storage::create_contract_package_at_hash();
+            let label = "a";
+            let _ =
+                storage::create_contract_user_group(contract_pkg_hash, label, 0, BTreeSet::new())
+                    .unwrap_or_revert();
             for _i in 0..u64::MAX {
-                todo!()
+                if allow_exceeding_max_urefs {
+                    let _r = storage::provision_contract_user_group_uref(contract_pkg_hash, label);
+                } else {
+                    let uref =
+                        storage::provision_contract_user_group_uref(contract_pkg_hash, label)
+                            .unwrap_or_revert();
+                    storage::remove_contract_user_group_urefs(
+                        contract_pkg_hash,
+                        label,
+                        BTreeSet::from_iter(Some(uref)),
+                    )
+                    .unwrap_or_revert();
+                }
             }
         }
         "remove_contract_user_group_urefs" => {
+            // The success case is covered in `create_contract_user_group` above.  We only test
+            // for unknown user groups here.
+            let (contract_pkg_hash, _uref) = storage::create_contract_package_at_hash();
             for _i in 0..u64::MAX {
-                todo!()
+                storage::remove_contract_user_group(contract_pkg_hash, "a").unwrap_err();
             }
         }
         "blake2b" => {
@@ -637,7 +716,6 @@ pub extern "C" fn call() {
             } else {
                 for _i in 0..u64::MAX {
                     let _k = runtime::list_authorization_keys();
-                    runtime::print(&format!("len: {}", _k.len()));
                 }
             }
         }
