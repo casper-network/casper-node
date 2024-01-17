@@ -10,7 +10,7 @@ use alloc::{
     vec,
     vec::Vec,
 };
-use core::{iter, mem::MaybeUninit};
+use core::mem::MaybeUninit;
 
 use casper_contract::{
     contract_api,
@@ -65,7 +65,7 @@ fn store_noop_contract(maybe_contract_pkg_hash: Option<ContractPackageHash>) -> 
 fn get_name() -> String {
     let large_name: bool = runtime::get_named_arg("large_name");
     if large_name {
-        iter::repeat('a').take(10_000).collect()
+        "a".repeat(10_000)
     } else {
         "a".to_string()
     }
@@ -506,7 +506,7 @@ pub extern "C" fn call() {
         "create_contract_user_group" => {
             let label_len: u32 = runtime::get_named_arg("label_len");
             assert!(label_len > 0);
-            let label_prefix: String = iter::repeat('a').take(label_len as usize - 1).collect();
+            let label_prefix: String = "a".repeat(label_len as usize - 1);
             let num_new_urefs: u8 = runtime::get_named_arg("num_new_urefs");
             let num_existing_urefs: u8 = runtime::get_named_arg("num_existing_urefs");
             let mut existing_urefs = BTreeSet::new();
@@ -565,7 +565,7 @@ pub extern "C" fn call() {
         }
         "print" => {
             let num_chars: u32 = runtime::get_named_arg("num_chars");
-            let value: String = iter::repeat('a').take(num_chars as usize).collect();
+            let value: String = "a".repeat(num_chars as usize);
             for _i in 0..u64::MAX {
                 runtime::print(&value);
             }
@@ -573,12 +573,12 @@ pub extern "C" fn call() {
         "get_runtime_arg_size" => {
             let name = "arg";
             for _i in 0..u64::MAX {
-                let _s = get_named_arg_size(&name);
+                let _s = get_named_arg_size(name);
             }
         }
         "get_runtime_arg" => {
             let name = "arg";
-            let arg_size = get_named_arg_size(&name);
+            let arg_size = get_named_arg_size(name);
             let data_non_null_ptr = contract_api::alloc_bytes(arg_size);
             for _i in 0..u64::MAX {
                 let ret = unsafe {
@@ -657,7 +657,7 @@ pub extern "C" fn call() {
         }
         "dictionary_get" => {
             let name_len: u32 = runtime::get_named_arg("name_len");
-            let name: String = iter::repeat('a').take(name_len as usize).collect();
+            let name: String = "a".repeat(name_len as usize);
             let value_len: u32 = runtime::get_named_arg("value_len");
             let value = vec![u8::MAX; value_len as usize];
             let uref = storage::new_dictionary("a").unwrap_or_revert();
@@ -672,7 +672,7 @@ pub extern "C" fn call() {
         }
         "dictionary_put" => {
             let name_len: u32 = runtime::get_named_arg("name_len");
-            let name: String = iter::repeat('a').take(name_len as usize).collect();
+            let name: String = "a".repeat(name_len as usize);
 
             let value_len: u32 = runtime::get_named_arg("value_len");
             let value = vec![u8::MAX; value_len as usize];
@@ -726,7 +726,7 @@ pub extern "C" fn call() {
         }
         "dictionary_read" => {
             let name_len: u32 = runtime::get_named_arg("name_len");
-            let name: String = iter::repeat('a').take(name_len as usize).collect();
+            let name: String = "a".repeat(name_len as usize);
             let value_len: u32 = runtime::get_named_arg("value_len");
             let value = vec![u8::MAX; value_len as usize];
             let uref = storage::new_dictionary("a").unwrap_or_revert();

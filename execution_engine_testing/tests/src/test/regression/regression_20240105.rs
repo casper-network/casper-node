@@ -13,9 +13,9 @@ mod repeated_ffi_call_should_gas_out_quickly {
         ChainspecConfig, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
         DEFAULT_ACCOUNT_ADDR, PRODUCTION_CHAINSPEC_PATH, PRODUCTION_RUN_GENESIS_REQUEST,
     };
-    use casper_execution_engine::{
-        core::engine_state::{EngineConfig, Error},
-        core::execution::Error as ExecError,
+    use casper_execution_engine::core::{
+        engine_state::{EngineConfig, Error},
+        execution::Error as ExecError,
     };
     use casper_types::{
         account::AccountHash, runtime_args, testing::TestRng, RuntimeArgs,
