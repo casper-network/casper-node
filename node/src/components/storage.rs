@@ -379,12 +379,6 @@ impl Storage {
         let approvals_hashes_dbs =
             VersionedDatabases::new(&env, "approvals_hashes", "versioned_approvals_hashes")?;
 
-        let _x: Vec<Box<dyn RawDataAccess + Send + 'static>> = vec![
-            Box::new(block_header_dbs),
-            Box::new(block_body_dbs),
-            Box::new(block_metadata_db),
-        ];
-
         let mut db_mapper: HashMap<DbId, Box<dyn RawDataAccess + Send + 'static>> = HashMap::new();
         db_mapper.insert(DbId::Transaction, Box::new(transaction_dbs));
         db_mapper.insert(DbId::ExecutionResult, Box::new(execution_result_dbs));
