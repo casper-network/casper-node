@@ -25,7 +25,7 @@ mod filters;
 mod http_server;
 mod info;
 
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc};
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, join, FutureExt};
@@ -184,7 +184,6 @@ where
                     Effects::new()
                 }
                 Event::RestRequest(RestRequest::Status { responder }) => {
-                    let node_uptime = Duration::from_secs(10);
                     let network_name = self.network_name.clone();
                     async move {
                         let (
@@ -194,7 +193,7 @@ where
                             consensus_status,
                             reactor_state,
                             last_progress,
-                            _duration,
+                            node_uptime,
                             available_block_range,
                             block_sync,
                         ) = join!(
@@ -221,7 +220,7 @@ where
                             peers,
                             ChainspecInfo::new(network_name, next_upgrade),
                             consensus_status,
-                            node_uptime,
+                            node_uptime.into(),
                             reactor_state,
                             last_progress.into_inner(),
                             available_block_range,
@@ -348,5 +347,49 @@ impl Finalize for RestServer {
             }
         }
         .boxed()
+    }
+}
+
+#[cfg(test)]
+mod schema_tests {
+    use crate::{testing::assert_schema, types::GetStatusResult};
+    use schemars::schema_for;
+
+    use super::{GetChainspecResult, GetValidatorChangesResult};
+
+    #[test]
+    fn json_schema_status_check() {
+        let schema_path = format!(
+            "{}/../resources/test/rest_schema_status.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        assert_schema(
+            schema_path,
+            serde_json::to_string_pretty(&schema_for!(GetStatusResult)).unwrap(),
+        );
+    }
+
+    #[test]
+    fn json_schema_validator_changes_check() {
+        let schema_path = format!(
+            "{}/../resources/test/rest_schema_validator_changes.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        assert_schema(
+            schema_path,
+            serde_json::to_string_pretty(&schema_for!(GetValidatorChangesResult)).unwrap(),
+        );
+    }
+
+    #[test]
+    fn json_schema_chainspec_bytes_check() {
+        let schema_path = format!(
+            "{}/../resources/test/rest_schema_chainspec_bytes.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        assert_schema(
+            schema_path,
+            serde_json::to_string_pretty(&schema_for!(GetChainspecResult)).unwrap(),
+        );
     }
 }

@@ -1,0 +1,146 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GetValidatorChangesResult",
+  "description": "Result for the \"info_get_validator_changes\" RPC.",
+  "type": "object",
+  "required": [
+    "api_version",
+    "changes"
+  ],
+  "properties": {
+    "api_version": {
+      "description": "The RPC API version.",
+      "type": "string"
+    },
+    "changes": {
+      "description": "The validators' status changes.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/JsonValidatorChanges"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "JsonValidatorChanges": {
+      "description": "The changes in a validator's status.",
+      "type": "object",
+      "required": [
+        "public_key",
+        "status_changes"
+      ],
+      "properties": {
+        "public_key": {
+          "description": "The public key of the validator.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "status_changes": {
+          "description": "The set of changes to the validator's status.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/JsonValidatorStatusChange"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "PublicKey": {
+      "description": "Hex-encoded cryptographic public key, including the algorithm tag prefix.",
+      "examples": [
+        {
+          "name": "SystemPublicKey",
+          "description": "A pseudo public key, used for example when the system proposes an immediate switch block after a network upgrade rather than a specific validator. Its hex-encoded value is always '00', as is the corresponding pseudo signature's",
+          "value": "00"
+        },
+        {
+          "name": "Ed25519PublicKey",
+          "description": "An Ed25519 public key. Its hex-encoded value begins '01' and is followed by 64 characters",
+          "value": "018a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+        },
+        {
+          "name": "Secp256k1PublicKey",
+          "description": "A secp256k1 public key. Its hex-encoded value begins '02' and is followed by 66 characters",
+          "value": "0203408e9526316fd1f8def480dd45b2cc72ffd732771c9ceb5d92ffa4051e6ee084"
+        }
+      ],
+      "type": "string"
+    },
+    "JsonValidatorStatusChange": {
+      "description": "A single change to a validator's status in the given era.",
+      "type": "object",
+      "required": [
+        "era_id",
+        "validator_change"
+      ],
+      "properties": {
+        "era_id": {
+          "description": "The era in which the change occurred.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EraId"
+            }
+          ]
+        },
+        "validator_change": {
+          "description": "The change in validator status.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ValidatorChange"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "EraId": {
+      "description": "Era ID newtype.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "ValidatorChange": {
+      "description": "A change to a validator's status between two eras.",
+      "oneOf": [
+        {
+          "description": "The validator got newly added to the validator set.",
+          "type": "string",
+          "enum": [
+            "Added"
+          ]
+        },
+        {
+          "description": "The validator was removed from the validator set.",
+          "type": "string",
+          "enum": [
+            "Removed"
+          ]
+        },
+        {
+          "description": "The validator was banned from this era.",
+          "type": "string",
+          "enum": [
+            "Banned"
+          ]
+        },
+        {
+          "description": "The validator was excluded from proposing new blocks in this era.",
+          "type": "string",
+          "enum": [
+            "CannotPropose"
+          ]
+        },
+        {
+          "description": "We saw the validator misbehave in this era.",
+          "type": "string",
+          "enum": [
+            "SeenAsFaulty"
+          ]
+        }
+      ]
+    }
+  }
+}
