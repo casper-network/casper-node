@@ -25,7 +25,7 @@ mod filters;
 mod http_server;
 mod info;
 
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc};
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, join, FutureExt};
@@ -184,7 +184,6 @@ where
                     Effects::new()
                 }
                 Event::RestRequest(RestRequest::Status { responder }) => {
-                    let node_uptime = Duration::from_secs(10);
                     let network_name = self.network_name.clone();
                     async move {
                         let (
@@ -194,7 +193,7 @@ where
                             consensus_status,
                             reactor_state,
                             last_progress,
-                            _duration,
+                            node_uptime,
                             available_block_range,
                             block_sync,
                         ) = join!(
@@ -221,7 +220,7 @@ where
                             peers,
                             ChainspecInfo::new(network_name, next_upgrade),
                             consensus_status,
-                            node_uptime,
+                            node_uptime.into(),
                             reactor_state,
                             last_progress.into_inner(),
                             available_block_range,
