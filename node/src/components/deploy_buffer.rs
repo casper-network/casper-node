@@ -366,7 +366,7 @@ impl DeployBuffer {
         let iter_limit = self.buffer.len() * 4;
 
         while let Some(body_hash) = body_hashes_queue.pop_front() {
-	    if Timestamp::now() > request_expiry {
+            if Timestamp::now() > request_expiry {
                 break;
             }
             #[cfg(test)]
