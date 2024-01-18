@@ -1,0 +1,415 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GetStatusResult",
+  "description": "Result for \"info_get_status\" RPC response.",
+  "type": "object",
+  "required": [
+    "api_version",
+    "available_block_range",
+    "block_sync",
+    "build_version",
+    "chainspec_name",
+    "last_progress",
+    "peers",
+    "reactor_state",
+    "starting_state_root_hash",
+    "uptime"
+  ],
+  "properties": {
+    "peers": {
+      "description": "The node ID and network address of each connected peer.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Peers"
+        }
+      ]
+    },
+    "api_version": {
+      "description": "The RPC API version.",
+      "type": "string"
+    },
+    "build_version": {
+      "description": "The compiled node version.",
+      "type": "string"
+    },
+    "chainspec_name": {
+      "description": "The chainspec name.",
+      "type": "string"
+    },
+    "starting_state_root_hash": {
+      "description": "The state root hash of the lowest block in the available block range.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Digest"
+        }
+      ]
+    },
+    "last_added_block_info": {
+      "description": "The minimal info of the last block from the linear chain.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/MinimalBlockInfo"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "our_public_signing_key": {
+      "description": "Our public signing key.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/PublicKey"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "round_length": {
+      "description": "The next round length if this node is a validator.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/TimeDiff"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "next_upgrade": {
+      "description": "Information about the next scheduled upgrade.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/NextUpgrade"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "uptime": {
+      "description": "Time that passed since the node has started.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/TimeDiff"
+        }
+      ]
+    },
+    "reactor_state": {
+      "description": "The current state of node reactor.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/ReactorState"
+        }
+      ]
+    },
+    "last_progress": {
+      "description": "Timestamp of the last recorded progress in the reactor.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Timestamp"
+        }
+      ]
+    },
+    "available_block_range": {
+      "description": "The available block range in storage.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/AvailableBlockRange"
+        }
+      ]
+    },
+    "block_sync": {
+      "description": "The status of the block synchronizer builders.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/BlockSynchronizerStatus"
+        }
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "Peers": {
+      "description": "Map of peer IDs to network addresses.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/PeerEntry"
+      }
+    },
+    "PeerEntry": {
+      "description": "Node peer entry.",
+      "type": "object",
+      "required": [
+        "address",
+        "node_id"
+      ],
+      "properties": {
+        "node_id": {
+          "description": "Node id.",
+          "type": "string"
+        },
+        "address": {
+          "description": "Node address.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Digest": {
+      "description": "Hex-encoded hash digest.",
+      "type": "string"
+    },
+    "MinimalBlockInfo": {
+      "description": "Minimal info of a `Block`.",
+      "type": "object",
+      "required": [
+        "creator",
+        "era_id",
+        "hash",
+        "height",
+        "state_root_hash",
+        "timestamp"
+      ],
+      "properties": {
+        "hash": {
+          "$ref": "#/definitions/BlockHash"
+        },
+        "timestamp": {
+          "$ref": "#/definitions/Timestamp"
+        },
+        "era_id": {
+          "$ref": "#/definitions/EraId"
+        },
+        "height": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "state_root_hash": {
+          "$ref": "#/definitions/Digest"
+        },
+        "creator": {
+          "$ref": "#/definitions/PublicKey"
+        }
+      },
+      "additionalProperties": false
+    },
+    "BlockHash": {
+      "description": "Hex-encoded cryptographic hash of a block.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Digest"
+        }
+      ]
+    },
+    "Timestamp": {
+      "description": "Timestamp formatted as per RFC 3339",
+      "type": "string"
+    },
+    "EraId": {
+      "description": "Era ID newtype.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "PublicKey": {
+      "description": "Hex-encoded cryptographic public key, including the algorithm tag prefix.",
+      "examples": [
+        {
+          "name": "SystemPublicKey",
+          "description": "A pseudo public key, used for example when the system proposes an immediate switch block after a network upgrade rather than a specific validator. Its hex-encoded value is always '00', as is the corresponding pseudo signature's",
+          "value": "00"
+        },
+        {
+          "name": "Ed25519PublicKey",
+          "description": "An Ed25519 public key. Its hex-encoded value begins '01' and is followed by 64 characters",
+          "value": "018a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+        },
+        {
+          "name": "Secp256k1PublicKey",
+          "description": "A secp256k1 public key. Its hex-encoded value begins '02' and is followed by 66 characters",
+          "value": "0203408e9526316fd1f8def480dd45b2cc72ffd732771c9ceb5d92ffa4051e6ee084"
+        }
+      ],
+      "type": "string"
+    },
+    "TimeDiff": {
+      "description": "Human-readable duration.",
+      "type": "string"
+    },
+    "NextUpgrade": {
+      "description": "Information about the next protocol upgrade.",
+      "type": "object",
+      "required": [
+        "activation_point",
+        "protocol_version"
+      ],
+      "properties": {
+        "activation_point": {
+          "$ref": "#/definitions/ActivationPoint"
+        },
+        "protocol_version": {
+          "$ref": "#/definitions/ProtocolVersion"
+        }
+      }
+    },
+    "ActivationPoint": {
+      "description": "The first era to which the associated protocol version applies.",
+      "anyOf": [
+        {
+          "description": "Era id.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/EraId"
+            }
+          ]
+        },
+        {
+          "description": "Genesis timestamp.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Timestamp"
+            }
+          ]
+        }
+      ]
+    },
+    "ProtocolVersion": {
+      "description": "Casper Platform protocol version",
+      "type": "string"
+    },
+    "ReactorState": {
+      "description": "The state of the reactor.",
+      "oneOf": [
+        {
+          "description": "Get all components and reactor state set up on start.",
+          "type": "string",
+          "enum": [
+            "Initialize"
+          ]
+        },
+        {
+          "description": "Orient to the network and attempt to catch up to tip.",
+          "type": "string",
+          "enum": [
+            "CatchUp"
+          ]
+        },
+        {
+          "description": "Running commit upgrade and creating immediate switch block.",
+          "type": "string",
+          "enum": [
+            "Upgrading"
+          ]
+        },
+        {
+          "description": "Stay caught up with tip.",
+          "type": "string",
+          "enum": [
+            "KeepUp"
+          ]
+        },
+        {
+          "description": "Node is currently caught up and is an active validator.",
+          "type": "string",
+          "enum": [
+            "Validate"
+          ]
+        },
+        {
+          "description": "Node should be shut down for upgrade.",
+          "type": "string",
+          "enum": [
+            "ShutdownForUpgrade"
+          ]
+        }
+      ]
+    },
+    "AvailableBlockRange": {
+      "description": "An unbroken, inclusive range of blocks.",
+      "type": "object",
+      "required": [
+        "high",
+        "low"
+      ],
+      "properties": {
+        "low": {
+          "description": "The inclusive lower bound of the range.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "high": {
+          "description": "The inclusive upper bound of the range.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "BlockSynchronizerStatus": {
+      "description": "The status of the block synchronizer.",
+      "type": "object",
+      "properties": {
+        "historical": {
+          "description": "The status of syncing a historical block, if any.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/BlockSyncStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "forward": {
+          "description": "The status of syncing a forward block, if any.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/BlockSyncStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "BlockSyncStatus": {
+      "description": "The status of syncing an individual block.",
+      "type": "object",
+      "required": [
+        "acquisition_state",
+        "block_hash"
+      ],
+      "properties": {
+        "block_hash": {
+          "description": "The block hash.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockHash"
+            }
+          ]
+        },
+        "block_height": {
+          "description": "The height of the block, if known.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "acquisition_state": {
+          "description": "The state of acquisition of the data associated with the block.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
