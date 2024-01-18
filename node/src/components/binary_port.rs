@@ -39,13 +39,13 @@ use juliet::{
     rpc::{JulietRpcServer, RpcBuilder},
     ChannelConfiguration, ChannelId,
 };
-use once_cell::{race::OnceBool, sync::OnceCell};
+use once_cell::sync::OnceCell;
 use prometheus::Registry;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     join,
     net::{TcpListener, TcpStream},
-    sync::{OwnedSemaphorePermit, Semaphore},
+    sync::{Notify, OwnedSemaphorePermit, Semaphore},
 };
 use tracing::{debug, error, info, warn};
 
@@ -83,7 +83,7 @@ pub(crate) struct BinaryPort {
     #[data_size(skip)]
     local_addr: Arc<OnceCell<SocketAddr>>,
     #[data_size(skip)]
-    shutdown_trigger: Arc<OnceBool>,
+    shutdown_trigger: Arc<Notify>,
     #[data_size(skip)]
     server_join_handle: OnceCell<tokio::task::JoinHandle<()>>,
 }
@@ -96,7 +96,7 @@ impl BinaryPort {
             config: Arc::new(config),
             metrics: Arc::new(Metrics::new(registry)?),
             local_addr: Arc::new(OnceCell::new()),
-            shutdown_trigger: Arc::new(OnceBool::new()),
+            shutdown_trigger: Arc::new(Notify::new()),
             server_join_handle: OnceCell::new(),
         })
     }
@@ -724,7 +724,7 @@ async fn run_server<REv>(
     local_addr: Arc<OnceCell<SocketAddr>>,
     effect_builder: EffectBuilder<REv>,
     config: Arc<Config>,
-    shutdown_triggered: Arc<OnceBool>,
+    shutdown_trigger: Arc<Notify>,
 ) where
     REv: From<Event>
         + From<StorageRequest>
@@ -757,24 +757,26 @@ async fn run_server<REv>(
     local_addr.set(bind_address).unwrap();
 
     loop {
-        if shutdown_triggered.get().is_some() {
-            break;
-        }
-        match listener.accept().await {
-            Ok((stream, peer)) => {
-                effect_builder
-                    .make_request(
-                        |responder| Event::AcceptConnection {
-                            stream,
-                            peer,
-                            responder,
-                        },
-                        QueueKind::Regular,
-                    )
-                    .await;
+        tokio::select! {
+            _ = shutdown_trigger.notified() => {
+                break;
             }
-            Err(io_err) => {
-                info!(%io_err, "problem accepting binary port connection");
+            result = listener.accept() => match result {
+                Ok((stream, peer)) => {
+                    effect_builder
+                        .make_request(
+                            |responder| Event::AcceptConnection {
+                                stream,
+                                peer,
+                                responder,
+                            },
+                            QueueKind::Regular,
+                        )
+                        .await;
+                }
+                Err(io_err) => {
+                    info!(%io_err, "problem accepting binary port connection");
+                }
             }
         }
     }
@@ -818,7 +820,7 @@ where
 
 impl Finalize for BinaryPort {
     fn finalize(mut self) -> BoxFuture<'static, ()> {
-        self.shutdown_trigger.set(true).ok();
+        self.shutdown_trigger.notify_one();
         async move {
             if let Some(handle) = self.server_join_handle.take() {
                 handle.await.ok();
