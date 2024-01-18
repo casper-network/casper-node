@@ -39,7 +39,7 @@ use juliet::{
     rpc::{JulietRpcServer, RpcBuilder},
     ChannelConfiguration, ChannelId,
 };
-use once_cell::sync::OnceCell;
+use once_cell::{race::OnceBool, sync::OnceCell};
 use prometheus::Registry;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -82,6 +82,10 @@ pub(crate) struct BinaryPort {
     metrics: Arc<Metrics>,
     #[data_size(skip)]
     local_addr: Arc<OnceCell<SocketAddr>>,
+    #[data_size(skip)]
+    shutdown_trigger: Arc<OnceBool>,
+    #[data_size(skip)]
+    server_join_handle: OnceCell<tokio::task::JoinHandle<()>>,
 }
 
 impl BinaryPort {
@@ -92,6 +96,8 @@ impl BinaryPort {
             config: Arc::new(config),
             metrics: Arc::new(Metrics::new(registry)?),
             local_addr: Arc::new(OnceCell::new()),
+            shutdown_trigger: Arc::new(OnceBool::new()),
+            server_join_handle: OnceCell::new(),
         })
     }
 
@@ -718,6 +724,7 @@ async fn run_server<REv>(
     local_addr: Arc<OnceCell<SocketAddr>>,
     effect_builder: EffectBuilder<REv>,
     config: Arc<Config>,
+    shutdown_triggered: Arc<OnceBool>,
 ) where
     REv: From<Event>
         + From<StorageRequest>
@@ -750,6 +757,9 @@ async fn run_server<REv>(
     local_addr.set(bind_address).unwrap();
 
     loop {
+        if shutdown_triggered.get().is_some() {
+            break;
+        }
         match listener.accept().await {
             Ok((stream, peer)) => {
                 effect_builder
@@ -792,20 +802,29 @@ where
         effect_builder: EffectBuilder<REv>,
     ) -> Result<Effects<Self::ComponentEvent>, Self::Error> {
         let local_addr = Arc::clone(&self.local_addr);
-        let _server_join_handle = tokio::spawn(run_server(
+        let server_join_handle = tokio::spawn(run_server(
             local_addr,
             effect_builder,
             Arc::clone(&self.config),
+            Arc::clone(&self.shutdown_trigger),
         ));
+        self.server_join_handle
+            .set(server_join_handle)
+            .expect("server join handle should not be set elsewhere");
 
         Ok(Effects::new())
     }
 }
 
 impl Finalize for BinaryPort {
-    fn finalize(self) -> BoxFuture<'static, ()> {
-        // TODO: Shutdown juliet server here
-        async move {}.boxed()
+    fn finalize(mut self) -> BoxFuture<'static, ()> {
+        self.shutdown_trigger.set(true).ok();
+        async move {
+            if let Some(handle) = self.server_join_handle.take() {
+                handle.await.ok();
+            }
+        }
+        .boxed()
     }
 }
 
