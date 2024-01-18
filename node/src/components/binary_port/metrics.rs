@@ -49,7 +49,7 @@ pub(super) struct Metrics {
     pub(super) binary_port_get_all_values_count: IntCounter,
     /// Number of `Get::Trie` queries received.
     pub(super) binary_port_get_trie_count: IntCounter,
-    /// Number of `Get::Trie` queries received.
+    /// Number of distinct connections to binary port.
     pub(super) binary_port_connections_count: IntCounter,
 
     registry: Registry,
