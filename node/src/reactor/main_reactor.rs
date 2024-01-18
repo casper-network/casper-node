@@ -256,6 +256,9 @@ impl reactor::Reactor for MainReactor {
                 ReactorInfoRequest::NetworkName { responder } => responder
                     .respond(NetworkName::new(self.chainspec.network_config.name.clone()))
                     .ignore(),
+                ReactorInfoRequest::ProtocolVersion { responder } => responder
+                    .respond(self.chainspec.protocol_version())
+                    .ignore(),
             },
             MainEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(meta_block)) => {
                 self.handle_meta_block(effect_builder, rng, meta_block)

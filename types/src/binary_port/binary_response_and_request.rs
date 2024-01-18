@@ -7,6 +7,9 @@ use alloc::vec::Vec;
 
 #[cfg(any(feature = "testing", test))]
 use super::db_id::DbId;
+#[cfg(any(feature = "testing", test))]
+use crate::ProtocolVersion;
+
 #[cfg(test)]
 use crate::testing::TestRng;
 
@@ -33,12 +36,14 @@ impl BinaryResponseAndRequest {
     pub fn new_test_response<A: PayloadEntity + ToBytes>(
         db_id: DbId,
         data: &A,
+        protocol_version: ProtocolVersion,
     ) -> BinaryResponseAndRequest {
         use super::DbRawBytesSpec;
 
         let response = BinaryResponse::from_db_raw_bytes(
             db_id,
             Some(DbRawBytesSpec::new_current(&data.to_bytes().unwrap())),
+            protocol_version,
         );
         Self::new(response, &[])
     }
@@ -48,6 +53,7 @@ impl BinaryResponseAndRequest {
     pub fn new_legacy_test_response<A: PayloadEntity + serde::Serialize>(
         db_id: DbId,
         data: &A,
+        protocol_version: ProtocolVersion,
     ) -> BinaryResponseAndRequest {
         use super::DbRawBytesSpec;
 
@@ -56,6 +62,7 @@ impl BinaryResponseAndRequest {
             Some(DbRawBytesSpec::new_legacy(
                 &bincode::serialize(data).unwrap(),
             )),
+            protocol_version,
         );
         Self::new(response, &[])
     }

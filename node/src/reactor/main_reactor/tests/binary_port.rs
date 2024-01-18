@@ -17,8 +17,8 @@ use casper_types::{
     testing::TestRng,
     AvailableBlockRange, BinaryResponse, BinaryResponseAndRequest, BlockHash, BlockHashAndHeight,
     BlockHeader, BlockIdentifier, BlockSynchronizerStatus, ChainspecRawBytes, Digest, ErrorCode,
-    Key, KeyTag, NextUpgrade, PayloadType, Peers, ReactorState, SecretKey, SemVer, SignedBlock,
-    StoredValue, Transaction, TransactionHash, TransactionV1Builder, Transfer, Uptime,
+    Key, KeyTag, NextUpgrade, PayloadType, Peers, ProtocolVersion, ReactorState, SecretKey,
+    SignedBlock, StoredValue, Transaction, TransactionHash, TransactionV1Builder, Transfer, Uptime,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -233,7 +233,7 @@ async fn binary_port_component() {
         try_spec_exec_invalid(&mut rng, highest_block.block().clone_header()),
     ];
 
-    let header = BinaryRequestHeader::new(SemVer::V1_0_0);
+    let header = BinaryRequestHeader::new(ProtocolVersion::V1_0_0);
     let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");
 
     for TestCase {

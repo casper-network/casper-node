@@ -28,9 +28,7 @@ Request bytes can be constructed from bytesrepr-serialized `BinaryRequestHeader`
 **Notes:** `...` means that the payload size is variable in size and depends on the tag.
 
 ## Versioning
-Every version of the protocol follows a standard SemVer MAJOR.MINOR.PATCH scheme.
-
-The protocol supports **backwards-compatible** changes to some parts of the request/response model. These are allowed to change between **MINOR** versions and they're listed below:
+Versioning is based on the protocol version of the Casper Platform and the request/response model was designed to support **backwards-compatible** changes to some parts of it. These are allowed to change between **MINOR** versions:
 - addition of new [`RequestTag`](#request-format) with it's own payload
 - addition of new [`PayloadTypeTag`](#response-format) with it's own payload
 - addition of new [`DbId`](#request-model-details)

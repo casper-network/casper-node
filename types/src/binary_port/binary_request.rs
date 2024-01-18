@@ -4,7 +4,7 @@ use core::convert::TryFrom;
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    BlockHeader, Digest, ProtocolVersion, SemVer, Timestamp, Transaction,
+    BlockHeader, Digest, ProtocolVersion, Timestamp, Transaction,
 };
 use alloc::vec::Vec;
 
@@ -19,24 +19,24 @@ use crate::{testing::TestRng, Block, TestBlockV1Builder};
 /// The header of a binary request.
 #[derive(Debug, PartialEq)]
 pub struct BinaryRequestHeader {
-    protocol_version: SemVer,
+    protocol_version: ProtocolVersion,
 }
 
 impl BinaryRequestHeader {
     /// Creates new binary request header.
-    pub fn new(protocol_version: SemVer) -> Self {
+    pub fn new(protocol_version: ProtocolVersion) -> Self {
         Self { protocol_version }
     }
 
     /// Returns the protocol version of the request.
-    pub fn protocol_version(&self) -> SemVer {
+    pub fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_version
     }
 
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
         Self {
-            protocol_version: SemVer::new(rng.gen(), rng.gen(), rng.gen()),
+            protocol_version: ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen()),
         }
     }
 }
