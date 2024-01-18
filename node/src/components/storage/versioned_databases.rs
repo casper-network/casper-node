@@ -117,11 +117,11 @@ pub(super) struct VersionedDatabases<K, V> {
     /// Legacy form of the data, with the key as `K::Legacy` type (converted to bytes using
     /// `AsRef<[u8]>`) and the value bincode-encoded.
     #[data_size(skip)]
-    pub(crate) legacy: Database,
+    pub legacy: Database,
     /// Current form of the data, with the key as `K` bytesrepr-encoded and the value as `V` also
     /// bytesrepr-encoded.
     #[data_size(skip)]
-    pub(crate) current: Database,
+    pub current: Database,
     _phantom: PhantomData<(K, V)>,
 }
 
