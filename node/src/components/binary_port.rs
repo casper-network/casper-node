@@ -45,7 +45,7 @@ use tokio::{
     io::{AsyncRead, AsyncWrite},
     join,
     net::{TcpListener, TcpStream},
-    sync::{OwnedSemaphorePermit, Semaphore},
+    sync::{Notify, OwnedSemaphorePermit, Semaphore},
 };
 use tracing::{debug, error, info, warn};
 
@@ -82,6 +82,10 @@ pub(crate) struct BinaryPort {
     metrics: Arc<Metrics>,
     #[data_size(skip)]
     local_addr: Arc<OnceCell<SocketAddr>>,
+    #[data_size(skip)]
+    shutdown_trigger: Arc<Notify>,
+    #[data_size(skip)]
+    server_join_handle: OnceCell<tokio::task::JoinHandle<()>>,
 }
 
 impl BinaryPort {
@@ -92,6 +96,8 @@ impl BinaryPort {
             config: Arc::new(config),
             metrics: Arc::new(Metrics::new(registry)?),
             local_addr: Arc::new(OnceCell::new()),
+            shutdown_trigger: Arc::new(Notify::new()),
+            server_join_handle: OnceCell::new(),
         })
     }
 
@@ -718,6 +724,7 @@ async fn run_server<REv>(
     local_addr: Arc<OnceCell<SocketAddr>>,
     effect_builder: EffectBuilder<REv>,
     config: Arc<Config>,
+    shutdown_trigger: Arc<Notify>,
 ) where
     REv: From<Event>
         + From<StorageRequest>
@@ -750,21 +757,26 @@ async fn run_server<REv>(
     local_addr.set(bind_address).unwrap();
 
     loop {
-        match listener.accept().await {
-            Ok((stream, peer)) => {
-                effect_builder
-                    .make_request(
-                        |responder| Event::AcceptConnection {
-                            stream,
-                            peer,
-                            responder,
-                        },
-                        QueueKind::Regular,
-                    )
-                    .await;
+        tokio::select! {
+            _ = shutdown_trigger.notified() => {
+                break;
             }
-            Err(io_err) => {
-                info!(%io_err, "problem accepting binary port connection");
+            result = listener.accept() => match result {
+                Ok((stream, peer)) => {
+                    effect_builder
+                        .make_request(
+                            |responder| Event::AcceptConnection {
+                                stream,
+                                peer,
+                                responder,
+                            },
+                            QueueKind::Regular,
+                        )
+                        .await;
+                }
+                Err(io_err) => {
+                    info!(%io_err, "problem accepting binary port connection");
+                }
             }
         }
     }
@@ -792,20 +804,29 @@ where
         effect_builder: EffectBuilder<REv>,
     ) -> Result<Effects<Self::ComponentEvent>, Self::Error> {
         let local_addr = Arc::clone(&self.local_addr);
-        let _server_join_handle = tokio::spawn(run_server(
+        let server_join_handle = tokio::spawn(run_server(
             local_addr,
             effect_builder,
             Arc::clone(&self.config),
+            Arc::clone(&self.shutdown_trigger),
         ));
+        self.server_join_handle
+            .set(server_join_handle)
+            .expect("server join handle should not be set elsewhere");
 
         Ok(Effects::new())
     }
 }
 
 impl Finalize for BinaryPort {
-    fn finalize(self) -> BoxFuture<'static, ()> {
-        // TODO: Shutdown juliet server here
-        async move {}.boxed()
+    fn finalize(mut self) -> BoxFuture<'static, ()> {
+        self.shutdown_trigger.notify_one();
+        async move {
+            if let Some(handle) = self.server_join_handle.take() {
+                handle.await.ok();
+            }
+        }
+        .boxed()
     }
 }
 
