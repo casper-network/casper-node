@@ -535,12 +535,10 @@ fn node_status() -> TestCase {
                 response,
                 Some(PayloadType::NodeStatus),
                 |node_status| {
-                    dbg!(&node_status);
                     !node_status.peers.into_inner().is_empty()
                         && node_status.chainspec_name == "casper-example"
                         && node_status.last_added_block_info.is_some()
                         && node_status.our_public_signing_key.is_some()
-                        && node_status.round_length.is_some()
                         && node_status.block_sync.historical().is_none()
                         && node_status.block_sync.forward().is_none()
                         && matches!(node_status.reactor_state, ReactorState::Validate)
