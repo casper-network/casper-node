@@ -1,9 +1,8 @@
-use super::BINARY_PROTOCOL_VERSION;
 #[cfg(test)]
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    ErrorCode, PayloadType, SemVer,
+    ErrorCode, PayloadType, ProtocolVersion,
 };
 use alloc::vec::Vec;
 #[cfg(test)]
@@ -12,40 +11,27 @@ use rand::Rng;
 /// Header of the binary response.
 #[derive(Debug, PartialEq)]
 pub struct BinaryResponseHeader {
-    protocol_version: SemVer,
+    protocol_version: ProtocolVersion,
     error: u8,
     returned_data_type_tag: Option<u8>,
 }
 
 impl BinaryResponseHeader {
     /// Creates new binary response header representing success.
-    pub fn new(returned_data_type: Option<PayloadType>) -> Self {
+    pub fn new(returned_data_type: Option<PayloadType>, protocol_version: ProtocolVersion) -> Self {
         Self {
-            protocol_version: BINARY_PROTOCOL_VERSION,
+            protocol_version,
             error: ErrorCode::NoError as u8,
             returned_data_type_tag: returned_data_type.map(|ty| ty as u8),
         }
     }
 
     /// Creates new binary response header representing error.
-    pub fn new_error(error: ErrorCode) -> Self {
-        Self {
-            protocol_version: BINARY_PROTOCOL_VERSION,
-            error: error as u8,
-            returned_data_type_tag: None,
-        }
-    }
-
-    /// Creates an binary response header with specified protocol version.
-    #[cfg(any(feature = "testing", test))]
-    pub fn new_with_protocol_version(
-        returned_data_type: Option<PayloadType>,
-        protocol_version: SemVer,
-    ) -> Self {
+    pub fn new_error(error: ErrorCode, protocol_version: ProtocolVersion) -> Self {
         Self {
             protocol_version,
-            error: ErrorCode::NoError as u8,
-            returned_data_type_tag: returned_data_type.map(|ty| ty as u8),
+            error: error as u8,
+            returned_data_type_tag: None,
         }
     }
 
@@ -70,13 +56,13 @@ impl BinaryResponseHeader {
     }
 
     /// Returns the protocol version.
-    pub fn protocol_version(&self) -> SemVer {
+    pub fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_version
     }
 
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        let protocol_version = SemVer::new(rng.gen(), rng.gen(), rng.gen());
+        let protocol_version = ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen());
         let error = rng.gen();
         let returned_data_type_tag = if rng.gen() { None } else { Some(rng.gen()) };
 

@@ -41,7 +41,7 @@ use casper_types::{
     AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockIdentifier,
     BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest,
     DisplayIter, EraId, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key,
-    NextUpgrade, PublicKey, ReactorState, Timestamp, Transaction, TransactionHash,
+    NextUpgrade, ProtocolVersion, PublicKey, ReactorState, Timestamp, Transaction, TransactionHash,
     TransactionHeader, TransactionId, Transfer, Uptime, U512,
 };
 
@@ -1080,10 +1080,21 @@ impl Display for UpgradeWatcherRequest {
 
 #[derive(Debug, Serialize)]
 pub(crate) enum ReactorInfoRequest {
-    ReactorState { responder: Responder<ReactorState> },
-    LastProgress { responder: Responder<LastProgress> },
-    Uptime { responder: Responder<Uptime> },
-    NetworkName { responder: Responder<NetworkName> },
+    ReactorState {
+        responder: Responder<ReactorState>,
+    },
+    LastProgress {
+        responder: Responder<LastProgress>,
+    },
+    Uptime {
+        responder: Responder<Uptime>,
+    },
+    NetworkName {
+        responder: Responder<NetworkName>,
+    },
+    ProtocolVersion {
+        responder: Responder<ProtocolVersion>,
+    },
 }
 
 impl Display for ReactorInfoRequest {
@@ -1096,6 +1107,7 @@ impl Display for ReactorInfoRequest {
                 ReactorInfoRequest::LastProgress { .. } => "LastProgress",
                 ReactorInfoRequest::Uptime { .. } => "Uptime",
                 ReactorInfoRequest::NetworkName { .. } => "NetworkName",
+                ReactorInfoRequest::ProtocolVersion { .. } => "ProtocolVersion",
             }
         )
     }

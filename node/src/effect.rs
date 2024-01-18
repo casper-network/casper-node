@@ -136,7 +136,7 @@ use casper_types::{
     AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader,
     BlockIdentifier, BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes,
     DeployHash, Digest, EraId, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key,
-    NextUpgrade, PublicKey, ReactorState, Timestamp, Transaction, TransactionHash,
+    NextUpgrade, ProtocolVersion, PublicKey, ReactorState, Timestamp, Transaction, TransactionHash,
     TransactionHeader, TransactionId, Transfer, Uptime, U512,
 };
 
@@ -1520,6 +1520,17 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ReactorInfoRequest::NetworkName { responder },
+            QueueKind::Regular,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_protocol_version(self) -> ProtocolVersion
+    where
+        REv: From<ReactorInfoRequest>,
+    {
+        self.make_request(
+            |responder| ReactorInfoRequest::ProtocolVersion { responder },
             QueueKind::Regular,
         )
         .await

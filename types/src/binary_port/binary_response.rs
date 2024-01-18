@@ -2,7 +2,7 @@
 
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    SemVer,
+    ProtocolVersion,
 };
 use alloc::vec::Vec;
 
@@ -27,74 +27,67 @@ pub struct BinaryResponse {
 
 impl BinaryResponse {
     /// Creates new empty binary response.
-    pub fn new_empty() -> Self {
+    pub fn new_empty(protocol_version: ProtocolVersion) -> Self {
         Self {
-            header: BinaryResponseHeader::new(None),
+            header: BinaryResponseHeader::new(None, protocol_version),
             payload: vec![],
         }
     }
 
     /// Creates new binary response with error code.
-    pub fn new_error(error: ErrorCode) -> Self {
+    pub fn new_error(error: ErrorCode, protocol_version: ProtocolVersion) -> Self {
         BinaryResponse {
-            header: BinaryResponseHeader::new_error(error),
+            header: BinaryResponseHeader::new_error(error, protocol_version),
             payload: vec![],
         }
     }
 
     /// Creates new binary response from raw DB bytes.
-    pub fn from_db_raw_bytes(db_id: DbId, spec: Option<DbRawBytesSpec>) -> Self {
+    pub fn from_db_raw_bytes(
+        db_id: DbId,
+        spec: Option<DbRawBytesSpec>,
+        protocol_version: ProtocolVersion,
+    ) -> Self {
         match spec {
             Some(DbRawBytesSpec {
                 is_legacy,
                 raw_bytes,
             }) => BinaryResponse {
-                header: BinaryResponseHeader::new(Some(PayloadType::new_from_db_id(
-                    db_id, is_legacy,
-                ))),
+                header: BinaryResponseHeader::new(
+                    Some(PayloadType::new_from_db_id(db_id, is_legacy)),
+                    protocol_version,
+                ),
                 payload: raw_bytes,
             },
             None => BinaryResponse {
-                header: BinaryResponseHeader::new_error(ErrorCode::NotFound),
+                header: BinaryResponseHeader::new_error(ErrorCode::NotFound, protocol_version),
                 payload: vec![],
             },
         }
     }
 
     /// Creates a new binary response from a value.
-    pub fn from_value<V>(val: V) -> Self
+    pub fn from_value<V>(val: V, protocol_version: ProtocolVersion) -> Self
     where
         V: ToBytes + PayloadEntity,
     {
         ToBytes::to_bytes(&val).map_or(
-            BinaryResponse::new_error(ErrorCode::InternalError),
+            BinaryResponse::new_error(ErrorCode::InternalError, protocol_version),
             |payload| BinaryResponse {
                 payload,
-                header: BinaryResponseHeader::new(Some(V::PAYLOAD_TYPE)),
+                header: BinaryResponseHeader::new(Some(V::PAYLOAD_TYPE), protocol_version),
             },
         )
     }
 
     /// Creates a new binary response from an optional value.
-    pub fn from_option<V>(opt: Option<V>) -> Self
+    pub fn from_option<V>(opt: Option<V>, protocol_version: ProtocolVersion) -> Self
     where
         V: ToBytes + PayloadEntity,
     {
         match opt {
-            Some(val) => Self::from_value(val),
-            None => Self::new_empty(),
-        }
-    }
-
-    /// Creates a binary response with specified value and protocol version.
-    #[cfg(any(feature = "testing", test))]
-    pub fn from_value_with_protocol_version<V>(val: V, ver: SemVer) -> Self
-    where
-        V: ToBytes + PayloadEntity,
-    {
-        Self {
-            header: BinaryResponseHeader::new_with_protocol_version(Some(V::PAYLOAD_TYPE), ver),
-            payload: ToBytes::to_bytes(&val).unwrap(),
+            Some(val) => Self::from_value(val, protocol_version),
+            None => Self::new_empty(protocol_version),
         }
     }
 
@@ -124,7 +117,7 @@ impl BinaryResponse {
     }
 
     /// Returns the protocol version.
-    pub fn protocol_version(&self) -> SemVer {
+    pub fn protocol_version(&self) -> ProtocolVersion {
         self.header.protocol_version()
     }
 

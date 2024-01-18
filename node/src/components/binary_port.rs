@@ -25,7 +25,7 @@ use casper_types::{
         get_all_values_result::GetAllValuesResult,
         global_state_query_result::GlobalStateQueryResult,
         non_persistent_data_request::NonPersistedDataRequest,
-        DbRawBytesSpec, NodeStatus, BINARY_PROTOCOL_VERSION,
+        DbRawBytesSpec, NodeStatus,
     },
     bytesrepr::{self, FromBytes, ToBytes},
     BinaryResponse, BinaryResponseAndRequest, BlockHashAndHeight, BlockHeader, Digest, Peers,
@@ -257,10 +257,11 @@ where
         + From<ChainspecRawBytesRequest>
         + Send,
 {
+    let version = effect_builder.get_protocol_version().await;
     match req {
         BinaryRequest::TryAcceptTransaction { transaction } => {
             metrics.binary_port_try_accept_transaction_count.inc();
-            try_accept_transaction(effect_builder, transaction, None).await
+            try_accept_transaction(effect_builder, transaction, None, version).await
         }
         BinaryRequest::TrySpeculativeExec {
             transaction,
@@ -274,6 +275,7 @@ where
                 effect_builder,
                 transaction.clone(),
                 Some(speculative_exec_at_block),
+                version,
             )
             .await;
             if !response.is_success() {
@@ -289,7 +291,7 @@ where
             .await
         }
         BinaryRequest::Get(get_req) => {
-            handle_get_request(get_req, effect_builder, config, metrics).await
+            handle_get_request(get_req, effect_builder, config, metrics, version).await
         }
     }
 }
@@ -299,6 +301,7 @@ async fn handle_get_request<REv>(
     effect_builder: EffectBuilder<REv>,
     config: &Config,
     metrics: &Metrics,
+    protocol_version: ProtocolVersion,
 ) -> BinaryResponse
 where
     REv: From<Event>
@@ -317,31 +320,34 @@ where
         GetRequest::Db { db_tag, key } if db_tag == u8::from(DbId::Transfer) => {
             metrics.binary_port_get_db_count.inc();
             let Ok(block_hash) = bytesrepr::deserialize_from_slice(&key) else {
-                return BinaryResponse::new_error(binary_port::ErrorCode::BadRequest);
+                return BinaryResponse::new_error(binary_port::ErrorCode::BadRequest, protocol_version);
             };
             let Some(transfers) = effect_builder
                 .get_block_transfers_from_storage(block_hash)
                 .await else {
-                return BinaryResponse::new_empty();
+                return BinaryResponse::new_empty(protocol_version);
             };
             let serialized =
                 bincode::serialize(&transfers).expect("should serialize transfers to bytes");
             let bytes = DbRawBytesSpec::new_legacy(&serialized);
-            BinaryResponse::from_db_raw_bytes(DbId::Transfer, Some(bytes))
+            BinaryResponse::from_db_raw_bytes(DbId::Transfer, Some(bytes), protocol_version)
         }
         GetRequest::Db { db_tag, key } => {
             metrics.binary_port_get_db_count.inc();
             match DbId::try_from(db_tag) {
                 Ok(db_id) => {
                     let maybe_raw_bytes = effect_builder.get_raw_data(db_id, key).await;
-                    BinaryResponse::from_db_raw_bytes(db_id, maybe_raw_bytes)
+                    BinaryResponse::from_db_raw_bytes(db_id, maybe_raw_bytes, protocol_version)
                 }
-                Err(_) => BinaryResponse::new_error(binary_port::ErrorCode::UnsupportedRequest),
+                Err(_) => BinaryResponse::new_error(
+                    binary_port::ErrorCode::UnsupportedRequest,
+                    protocol_version,
+                ),
             }
         }
         GetRequest::NonPersistedData(req) => {
             metrics.binary_port_get_non_persisted_data_count.inc();
-            handle_non_persisted_data_request(req, effect_builder).await
+            handle_non_persisted_data_request(req, effect_builder, protocol_version).await
         }
         GetRequest::State {
             state_root_hash,
@@ -349,7 +355,14 @@ where
             path,
         } => {
             metrics.binary_port_get_state_count.inc();
-            handle_get_state_request(effect_builder, state_root_hash, base_key, path).await
+            handle_get_state_request(
+                effect_builder,
+                state_root_hash,
+                base_key,
+                path,
+                protocol_version,
+            )
+            .await
         }
         GetRequest::AllValues {
             state_root_hash,
@@ -357,19 +370,29 @@ where
         } => {
             metrics.binary_port_get_all_values_count.inc();
             if !config.allow_request_get_all_values {
-                BinaryResponse::new_error(binary_port::ErrorCode::FunctionDisabled)
+                BinaryResponse::new_error(
+                    binary_port::ErrorCode::FunctionDisabled,
+                    protocol_version,
+                )
             } else {
-                handle_get_all_values(state_root_hash, key_tag, effect_builder).await
+                handle_get_all_values(state_root_hash, key_tag, effect_builder, protocol_version)
+                    .await
             }
         }
         GetRequest::Trie { trie_key } => {
             metrics.binary_port_get_trie_count.inc();
             let response = if !config.allow_request_get_trie {
-                BinaryResponse::new_error(binary_port::ErrorCode::FunctionDisabled)
+                BinaryResponse::new_error(
+                    binary_port::ErrorCode::FunctionDisabled,
+                    protocol_version,
+                )
             } else {
                 match effect_builder.get_trie_full(trie_key).await {
-                    Ok(result) => BinaryResponse::from_value(result),
-                    Err(_err) => BinaryResponse::new_error(binary_port::ErrorCode::InternalError),
+                    Ok(result) => BinaryResponse::from_value(result, protocol_version),
+                    Err(_err) => BinaryResponse::new_error(
+                        binary_port::ErrorCode::InternalError,
+                        protocol_version,
+                    ),
                 }
             };
             response
@@ -381,18 +404,23 @@ async fn handle_get_all_values<REv>(
     state_root_hash: Digest,
     key_tag: casper_types::KeyTag,
     effect_builder: EffectBuilder<REv>,
+    protocol_version: ProtocolVersion,
 ) -> BinaryResponse
 where
     REv: From<Event> + From<ContractRuntimeRequest>,
 {
     let get_all_values_request = GetAllValuesRequest::new(state_root_hash, key_tag);
     match effect_builder.get_all_values(get_all_values_request).await {
-        Ok(GetAllValuesResult::Success { values }) => BinaryResponse::from_value(values),
+        Ok(GetAllValuesResult::Success { values }) => {
+            BinaryResponse::from_value(values, protocol_version)
+        }
         Ok(GetAllValuesResult::RootNotFound) => {
             let error_code = binary_port::ErrorCode::RootNotFound;
-            BinaryResponse::new_error(error_code)
+            BinaryResponse::new_error(error_code, protocol_version)
         }
-        Err(_err) => BinaryResponse::new_error(binary_port::ErrorCode::InternalError),
+        Err(_err) => {
+            BinaryResponse::new_error(binary_port::ErrorCode::InternalError, protocol_version)
+        }
     }
 }
 
@@ -401,6 +429,7 @@ async fn handle_get_state_request<REv>(
     state_root_hash: Digest,
     base_key: casper_types::Key,
     path: Vec<String>,
+    protocol_version: ProtocolVersion,
 ) -> BinaryResponse
 where
     REv: From<Event> + From<ContractRuntimeRequest>,
@@ -410,26 +439,26 @@ where
         .await
     {
         Ok(QueryResult::Success { value, proofs }) => match proofs.to_bytes() {
-            Ok(proofs) => BinaryResponse::from_value(GlobalStateQueryResult::new(
-                *value,
-                base16::encode_lower(&proofs),
-            )),
+            Ok(proofs) => BinaryResponse::from_value(
+                GlobalStateQueryResult::new(*value, base16::encode_lower(&proofs)),
+                protocol_version,
+            ),
             Err(_) => {
                 let error_code = binary_port::ErrorCode::InternalError;
-                BinaryResponse::new_error(error_code)
+                BinaryResponse::new_error(error_code, protocol_version)
             }
         },
         Ok(QueryResult::RootNotFound) => {
             let error_code = binary_port::ErrorCode::RootNotFound;
-            BinaryResponse::new_error(error_code)
+            BinaryResponse::new_error(error_code, protocol_version)
         }
         Ok(_) => {
             let error_code = binary_port::ErrorCode::NotFound;
-            BinaryResponse::new_error(error_code)
+            BinaryResponse::new_error(error_code, protocol_version)
         }
         Err(_) => {
             let error_code = binary_port::ErrorCode::QueryFailedToExecute;
-            BinaryResponse::new_error(error_code)
+            BinaryResponse::new_error(error_code, protocol_version)
         }
     }
 }
@@ -437,6 +466,7 @@ where
 async fn handle_non_persisted_data_request<REv>(
     req: NonPersistedDataRequest,
     effect_builder: EffectBuilder<REv>,
+    protocol_version: ProtocolVersion,
 ) -> BinaryResponse
 where
     REv: From<Event>
@@ -450,9 +480,10 @@ where
         + Send,
 {
     match req {
-        NonPersistedDataRequest::BlockHeight2Hash { height } => {
-            BinaryResponse::from_option(effect_builder.get_block_hash_for_height(height).await)
-        }
+        NonPersistedDataRequest::BlockHeight2Hash { height } => BinaryResponse::from_option(
+            effect_builder.get_block_hash_for_height(height).await,
+            protocol_version,
+        ),
         NonPersistedDataRequest::HighestCompleteBlock => BinaryResponse::from_option(
             effect_builder
                 .get_highest_complete_block_header_from_storage()
@@ -460,12 +491,14 @@ where
                 .map(|block_header| {
                     BlockHashAndHeight::new(block_header.block_hash(), block_header.height())
                 }),
+            protocol_version,
         ),
         NonPersistedDataRequest::CompletedBlocksContain { block_identifier } => {
             BinaryResponse::from_value(
                 effect_builder
                     .highest_completed_block_sequence_contains(block_identifier)
                     .await,
+                protocol_version,
             )
         }
         NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { transaction_hash } => {
@@ -473,43 +506,49 @@ where
                 effect_builder
                     .get_block_hash_and_height_for_transaction(transaction_hash)
                     .await,
+                protocol_version,
             )
         }
-        NonPersistedDataRequest::Peers => {
-            BinaryResponse::from_value(Peers::from(effect_builder.network_peers().await))
-        }
+        NonPersistedDataRequest::Peers => BinaryResponse::from_value(
+            Peers::from(effect_builder.network_peers().await),
+            protocol_version,
+        ),
         NonPersistedDataRequest::Uptime => {
-            BinaryResponse::from_value(effect_builder.get_uptime().await)
+            BinaryResponse::from_value(effect_builder.get_uptime().await, protocol_version)
         }
         NonPersistedDataRequest::LastProgress => {
-            BinaryResponse::from_value(effect_builder.get_last_progress().await)
+            BinaryResponse::from_value(effect_builder.get_last_progress().await, protocol_version)
         }
         NonPersistedDataRequest::ReactorState => {
-            BinaryResponse::from_value(effect_builder.get_reactor_state().await)
+            BinaryResponse::from_value(effect_builder.get_reactor_state().await, protocol_version)
         }
         NonPersistedDataRequest::NetworkName => {
-            BinaryResponse::from_value(effect_builder.get_network_name().await)
+            BinaryResponse::from_value(effect_builder.get_network_name().await, protocol_version)
         }
-        NonPersistedDataRequest::ConsensusValidatorChanges => {
-            BinaryResponse::from_value(effect_builder.get_consensus_validator_changes().await)
-        }
-        NonPersistedDataRequest::BlockSynchronizerStatus => {
-            BinaryResponse::from_value(effect_builder.get_block_synchronizer_status().await)
-        }
+        NonPersistedDataRequest::ConsensusValidatorChanges => BinaryResponse::from_value(
+            effect_builder.get_consensus_validator_changes().await,
+            protocol_version,
+        ),
+        NonPersistedDataRequest::BlockSynchronizerStatus => BinaryResponse::from_value(
+            effect_builder.get_block_synchronizer_status().await,
+            protocol_version,
+        ),
         NonPersistedDataRequest::AvailableBlockRange => BinaryResponse::from_value(
             effect_builder
                 .get_available_block_range_from_storage()
                 .await,
+            protocol_version,
         ),
         NonPersistedDataRequest::NextUpgrade => {
-            BinaryResponse::from_option(effect_builder.get_next_upgrade().await)
+            BinaryResponse::from_option(effect_builder.get_next_upgrade().await, protocol_version)
         }
         NonPersistedDataRequest::ConsensusStatus => {
-            BinaryResponse::from_option(effect_builder.consensus_status().await)
+            BinaryResponse::from_option(effect_builder.consensus_status().await, protocol_version)
         }
-        NonPersistedDataRequest::ChainspecRawBytes => {
-            BinaryResponse::from_value((*effect_builder.get_chainspec_raw_bytes().await).clone())
-        }
+        NonPersistedDataRequest::ChainspecRawBytes => BinaryResponse::from_value(
+            (*effect_builder.get_chainspec_raw_bytes().await).clone(),
+            protocol_version,
+        ),
         NonPersistedDataRequest::NodeStatus => {
             let (
                 node_uptime,
@@ -562,7 +601,7 @@ where
                 available_block_range,
                 block_sync,
             };
-            BinaryResponse::from_value(status)
+            BinaryResponse::from_value(status, protocol_version)
         }
     }
 }
@@ -571,6 +610,7 @@ async fn try_accept_transaction<REv>(
     effect_builder: EffectBuilder<REv>,
     transaction: Transaction,
     speculative_exec_at: Option<BlockHeader>,
+    protocol_version: ProtocolVersion,
 ) -> BinaryResponse
 where
     REv: From<AcceptTransactionRequest>,
@@ -579,8 +619,8 @@ where
         .try_accept_transaction(transaction, speculative_exec_at.map(Box::new))
         .await
         .map_or_else(
-            |err| BinaryResponse::new_error(err.into()),
-            |_| BinaryResponse::new_empty(),
+            |err| BinaryResponse::new_error(err.into(), protocol_version),
+            |_| BinaryResponse::new_empty(protocol_version),
         )
 }
 
@@ -605,8 +645,8 @@ where
         )
         .await
         .map_or_else(
-            |err| BinaryResponse::new_error(err.into()),
-            BinaryResponse::from_value,
+            |err| BinaryResponse::new_error(err.into(), protocol_version),
+            |val| BinaryResponse::from_value(val, protocol_version),
         )
 }
 
@@ -629,6 +669,7 @@ where
         + From<ChainspecRawBytesRequest>
         + Send,
 {
+    let version = effect_builder.get_protocol_version().await;
     loop {
         let Some(incoming_request) = server.next_request().await? else {
             debug!("remote party closed the connection");
@@ -639,7 +680,7 @@ where
             return Err(Error::NoPayload);
         };
 
-        let resp = handle_payload(effect_builder, payload).await?;
+        let resp = handle_payload(effect_builder, payload, version).await?;
         let resp_and_payload = BinaryResponseAndRequest::new(resp, payload);
         incoming_request.respond(Some(Bytes::from(ToBytes::to_bytes(&resp_and_payload)?)))
     }
@@ -648,6 +689,7 @@ where
 async fn handle_payload<REv>(
     effect_builder: EffectBuilder<REv>,
     payload: &[u8],
+    protocol_version: ProtocolVersion,
 ) -> Result<BinaryResponse, Error>
 where
     REv: From<Event>,
@@ -656,10 +698,11 @@ where
 
     if !header
         .protocol_version()
-        .is_major_compatible(BINARY_PROTOCOL_VERSION)
+        .is_compatible_with(&protocol_version)
     {
         return Ok(BinaryResponse::new_error(
             binary_port::ErrorCode::UnsupportedProtocolVersion,
+            protocol_version,
         ));
     }
 
@@ -668,6 +711,7 @@ where
     if BinaryRequestTag::try_from(tag).is_err() {
         return Ok(BinaryResponse::new_error(
             binary_port::ErrorCode::UnsupportedRequest,
+            protocol_version,
         ));
     }
 
