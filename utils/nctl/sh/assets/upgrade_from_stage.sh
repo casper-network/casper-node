@@ -108,7 +108,7 @@ function _main()
                              "$NCTL_CASPER_CLIENT_HOME/target/$NCTL_COMPILE_TARGET/casper-client" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-node" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-node-launcher" \
-                             "$NCTL_CASPER_SIDECAR_HOME/target/$NCTL_COMPILE_TARGET/casper-rpc-sidecar" \
+                             "$NCTL_CASPER_SIDECAR_HOME/target/$NCTL_COMPILE_TARGET/casper-sidecar" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION"
         setup_asset_chainspec "$COUNT_NODES" \
                               "$(get_protocol_version_for_chainspec "$PROTOCOL_VERSION")" \

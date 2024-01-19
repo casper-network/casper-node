@@ -215,9 +215,9 @@ function _setup_asset_node_configs()
 
             SCRIPT+=(
             "cfg=toml.load('$PATH_TO_SIDECAR_CONFIG_FILE');"
-            "cfg['rpc_server']['address']='0.0.0.0:$(get_node_port_rpc "$NODE_ID")';"
-            "cfg['speculative_exec_server']['address']='0.0.0.0:$(get_node_port_speculative_exec "$NODE_ID")';"
-            "cfg['node_client']['address']='0.0.0.0:$(get_node_port_binary "$NODE_ID")';"
+            "cfg['rpc_server']['main_server']['address']='0.0.0.0:$(get_node_port_rpc "$NODE_ID")';"
+            "cfg['rpc_server']['speculative_exec_server']['address']='0.0.0.0:$(get_node_port_speculative_exec "$NODE_ID")';"
+            "cfg['rpc_server']['node_client']['address']='0.0.0.0:$(get_node_port_binary "$NODE_ID")';"
             "toml.dump(cfg, open('$PATH_TO_SIDECAR_CONFIG_FILE', 'w'));"
         )
     fi
@@ -392,7 +392,7 @@ function _main()
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-client" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-node" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-node-launcher" \
-                             "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-rpc-sidecar" \
+                             "$PATH_TO_STAGE/$PROTOCOL_VERSION/casper-sidecar" \
                              "$PATH_TO_STAGE/$PROTOCOL_VERSION"
         _setup_asset_chainspec "$(get_protocol_version_for_chainspec "$PROTOCOL_VERSION")" \
                               "$ACTIVATION_POINT" \
