@@ -1,5 +1,4 @@
 mod functions_disabled;
-mod functions_enabled;
 
 use std::fmt::{self, Display, Formatter};
 
@@ -36,6 +35,8 @@ enum Event {
     ControlAnnouncement(ControlAnnouncement),
     #[from]
     ContractRuntimeRequest(ContractRuntimeRequest),
+    #[from]
+    ReactorInfoRequest(ReactorInfoRequest),
 }
 
 impl From<ChainspecRawBytesRequest> for Event {
@@ -58,12 +59,6 @@ impl From<BlockSynchronizerRequest> for Event {
 
 impl From<ConsensusRequest> for Event {
     fn from(_request: ConsensusRequest) -> Self {
-        unreachable!()
-    }
-}
-
-impl From<ReactorInfoRequest> for Event {
-    fn from(_request: ReactorInfoRequest) -> Self {
         unreachable!()
     }
 }
@@ -93,6 +88,9 @@ impl Display for Event {
             Event::BinaryPort(request) => write!(formatter, "binary port request: {:?}", request),
             Event::ContractRuntimeRequest(request) => {
                 write!(formatter, "contract runtime request: {:?}", request)
+            }
+            Event::ReactorInfoRequest(request) => {
+                write!(formatter, "reactor info request: {:?}", request)
             }
         }
     }
