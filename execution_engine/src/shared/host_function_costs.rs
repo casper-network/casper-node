@@ -20,13 +20,12 @@ const NOT_USED: Cost = 0;
 const DEFAULT_FIXED_COST: Cost = 200;
 
 const DEFAULT_ADD_COST: u32 = 5_800;
-const DEFAULT_ADD_ASSOCIATED_KEY_COST: u32 = 9_000;
+const DEFAULT_ADD_ASSOCIATED_KEY_COST: u32 = 1_200_000;
 
-const DEFAULT_CALL_CONTRACT_COST: u32 = 4_500;
-const DEFAULT_CALL_CONTRACT_ARGS_SIZE_WEIGHT: u32 = 420;
+const DEFAULT_CALL_CONTRACT_COST: u32 = 300_000_000;
 
 const DEFAULT_CREATE_PURSE_COST: u32 = 2_500_000_000;
-const DEFAULT_GET_BALANCE_COST: u32 = 3_800;
+const DEFAULT_GET_BALANCE_COST: u32 = 3_000_000;
 const DEFAULT_GET_BLOCKTIME_COST: u32 = 330;
 const DEFAULT_GET_CALLER_COST: u32 = 380;
 const DEFAULT_GET_KEY_COST: u32 = 2_000;
@@ -44,13 +43,13 @@ const DEFAULT_NEW_UREF_VALUE_SIZE_WEIGHT: u32 = 590;
 const DEFAULT_PRINT_COST: u32 = 20_000;
 const DEFAULT_PRINT_TEXT_SIZE_WEIGHT: u32 = 4_600;
 
-const DEFAULT_PUT_KEY_COST: u32 = 38_000;
-const DEFAULT_PUT_KEY_NAME_SIZE_WEIGHT: u32 = 1_100;
+const DEFAULT_PUT_KEY_COST: u32 = 100_000_000;
+const DEFAULT_PUT_KEY_NAME_SIZE_WEIGHT: u32 = 120_000;
 
 const DEFAULT_READ_HOST_BUFFER_COST: u32 = 3_500;
 const DEFAULT_READ_HOST_BUFFER_DEST_SIZE_WEIGHT: u32 = 310;
 
-const DEFAULT_READ_VALUE_COST: u32 = 6_000;
+const DEFAULT_READ_VALUE_COST: u32 = 60_000;
 const DEFAULT_DICTIONARY_GET_COST: u32 = 5_500;
 const DEFAULT_DICTIONARY_GET_KEY_SIZE_WEIGHT: u32 = 590;
 
@@ -65,21 +64,19 @@ const DEFAULT_RET_VALUE_SIZE_WEIGHT: u32 = 420_000;
 const DEFAULT_REVERT_COST: u32 = 500;
 const DEFAULT_SET_ACTION_THRESHOLD_COST: u32 = 74_000;
 const DEFAULT_TRANSFER_FROM_PURSE_TO_ACCOUNT_COST: u32 = 2_500_000_000;
-const DEFAULT_TRANSFER_FROM_PURSE_TO_PURSE_COST: u32 = 82_000;
+const DEFAULT_TRANSFER_FROM_PURSE_TO_PURSE_COST: u32 = 82_000_000;
 const DEFAULT_TRANSFER_TO_ACCOUNT_COST: u32 = 2_500_000_000;
 const DEFAULT_UPDATE_ASSOCIATED_KEY_COST: u32 = 4_200;
 
 const DEFAULT_WRITE_COST: u32 = 14_000;
 const DEFAULT_WRITE_VALUE_SIZE_WEIGHT: u32 = 980;
 
+const DEFAULT_ARG_CHARGE: u32 = 120_000;
+
 const DEFAULT_DICTIONARY_PUT_COST: u32 = 9_500;
 const DEFAULT_DICTIONARY_PUT_KEY_BYTES_SIZE_WEIGHT: u32 = 1_800;
 const DEFAULT_DICTIONARY_PUT_VALUE_SIZE_WEIGHT: u32 = 520;
-
-const DEFAULT_NEW_DICTIONARY_COST: u32 = DEFAULT_NEW_UREF_COST;
-
-pub(crate) const DEFAULT_HOST_FUNCTION_NEW_DICTIONARY: HostFunction<[Cost; 1]> =
-    HostFunction::new(DEFAULT_NEW_DICTIONARY_COST, [NOT_USED]);
+const DEFAULT_BLAKE2B_COST: u32 = 1_200_000;
 
 /// Representation of a host function cost.
 ///
@@ -295,7 +292,10 @@ pub struct HostFunctionCosts {
 impl Default for HostFunctionCosts {
     fn default() -> Self {
         Self {
-            read_value: HostFunction::fixed(DEFAULT_READ_VALUE_COST),
+            read_value: HostFunction::new(
+                DEFAULT_READ_VALUE_COST,
+                [NOT_USED, DEFAULT_ARG_CHARGE, NOT_USED],
+            ),
             dictionary_get: HostFunction::new(
                 DEFAULT_DICTIONARY_GET_COST,
                 [NOT_USED, DEFAULT_DICTIONARY_GET_KEY_SIZE_WEIGHT, NOT_USED],
@@ -345,7 +345,7 @@ impl Default for HostFunctionCosts {
                     NOT_USED,
                     DEFAULT_PUT_KEY_NAME_SIZE_WEIGHT,
                     NOT_USED,
-                    NOT_USED,
+                    DEFAULT_ARG_CHARGE,
                 ],
             ),
             remove_key: HostFunction::new(
@@ -382,7 +382,21 @@ impl Default for HostFunctionCosts {
             ),
             create_contract_package_at_hash: HostFunction::default(),
             create_contract_user_group: HostFunction::default(),
-            add_contract_version: HostFunction::default(),
+            add_contract_version: HostFunction::new(
+                200,
+                [
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    DEFAULT_ARG_CHARGE,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                ],
+            ),
             disable_contract_version: HostFunction::default(),
             call_contract: HostFunction::new(
                 DEFAULT_CALL_CONTRACT_COST,
@@ -390,9 +404,9 @@ impl Default for HostFunctionCosts {
                     NOT_USED,
                     NOT_USED,
                     NOT_USED,
+                    DEFAULT_ARG_CHARGE,
                     NOT_USED,
-                    NOT_USED,
-                    DEFAULT_CALL_CONTRACT_ARGS_SIZE_WEIGHT,
+                    DEFAULT_ARG_CHARGE,
                     NOT_USED,
                 ],
             ),
@@ -404,22 +418,38 @@ impl Default for HostFunctionCosts {
                     NOT_USED,
                     NOT_USED,
                     NOT_USED,
+                    DEFAULT_ARG_CHARGE,
                     NOT_USED,
-                    NOT_USED,
-                    DEFAULT_CALL_CONTRACT_ARGS_SIZE_WEIGHT,
+                    DEFAULT_ARG_CHARGE,
                     NOT_USED,
                 ],
             ),
             get_named_arg_size: HostFunction::default(),
-            get_named_arg: HostFunction::default(),
+            get_named_arg: HostFunction::new(
+                200,
+                [NOT_USED, DEFAULT_ARG_CHARGE, NOT_USED, DEFAULT_ARG_CHARGE],
+            ),
             remove_contract_user_group: HostFunction::default(),
             provision_contract_user_group_uref: HostFunction::default(),
-            remove_contract_user_group_urefs: HostFunction::default(),
+            remove_contract_user_group_urefs: HostFunction::new(
+                200,
+                [
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    NOT_USED,
+                    DEFAULT_ARG_CHARGE,
+                ],
+            ),
             print: HostFunction::new(
                 DEFAULT_PRINT_COST,
                 [NOT_USED, DEFAULT_PRINT_TEXT_SIZE_WEIGHT],
             ),
-            blake2b: HostFunction::default(),
+            blake2b: HostFunction::new(
+                DEFAULT_BLAKE2B_COST,
+                [NOT_USED, DEFAULT_ARG_CHARGE, NOT_USED, NOT_USED],
+            ),
             random_bytes: HostFunction::default(),
             enable_contract_version: HostFunction::default(),
         }

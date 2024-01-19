@@ -9,7 +9,21 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Fixed:      any bug fixes)
 [comment]: <> (Security:   in case of vulnerabilities)
 
+## 7.0.1
 
+### Changed
+* Increased the `gas_per_byte` cost from `630_000` to `1_117_587`
+* Changed the cost of the host function `add_associated_key` to `1_200_000` from `9_000`.
+* Changed the cost weight of argument `entry_point_size` for `add_contract_version` from `0` to `120_000`
+* Changed the cost of the host function `blake2b` to `1_200_000` and the argument `in_size` to `120_000`
+* Changed the cost of the host function `call_contract` and the arguments `entry_point_name_size`, `args_size` to `120_000`
+* Changed the cost of the host function `call_versioned_contract` and the arguments `entry_point_name_size`, `args_size` to `120_000`
+* Changed the cost of the host function `get_balance` to `3_000_000`
+* Changed the cost weight of arguments `name_size` and  `dest_size` for `get_named_arg` to `120_000`
+* Changed the cost of the host function `put_key` to `100_000_000` and the arguments `name_size` and `key_size` to `120_000`
+* Changed the cost of the host function `read_value` to `60_000` and the argument `key_size` to `120_000`
+* Changed the weight of the argument `label_size` for the host function `remove_contract_user_group_urefs` to `120_000`
+* Changed the cost of the host function `transfer_from_purse_to_purse` to `82_000_000`
 
 
 ## 7.0.0

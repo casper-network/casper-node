@@ -74,7 +74,7 @@ use casper_types::{
 };
 
 use crate::{
-    chainspec_config::{ChainspecConfig, CoreConfig, PRODUCTION_PATH},
+    chainspec_config::{ChainspecConfig, CoreConfig, PRODUCTION_CHAINSPEC_PATH},
     utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_GAS_PRICE, DEFAULT_PROPOSER_ADDR,
     DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
@@ -130,7 +130,7 @@ impl<S> WasmTestBuilder<S> {
 
 impl Default for InMemoryWasmTestBuilder {
     fn default() -> Self {
-        Self::new_with_chainspec(&*PRODUCTION_PATH, None)
+        Self::new_with_chainspec(&*PRODUCTION_CHAINSPEC_PATH, None)
     }
 }
 
@@ -352,35 +352,13 @@ impl LmdbWasmTestBuilder {
     ) -> Self {
         let chainspec_config = ChainspecConfig::from_chainspec_path(chainspec_path)
             .expect("must build chainspec configuration");
-
-        let engine_config = EngineConfigBuilder::new()
-            .with_max_query_depth(DEFAULT_MAX_QUERY_DEPTH)
-            .with_max_associated_keys(chainspec_config.core_config.max_associated_keys)
-            .with_max_runtime_call_stack_height(
-                chainspec_config.core_config.max_runtime_call_stack_height,
-            )
-            .with_minimum_delegation_amount(chainspec_config.core_config.minimum_delegation_amount)
-            .with_strict_argument_checking(chainspec_config.core_config.strict_argument_checking)
-            .with_vesting_schedule_period_millis(
-                chainspec_config
-                    .core_config
-                    .vesting_schedule_period
-                    .millis(),
-            )
-            .with_max_delegators_per_validator(
-                chainspec_config.core_config.max_delegators_per_validator,
-            )
-            .with_wasm_config(chainspec_config.wasm_config)
-            .with_system_config(chainspec_config.system_costs_config)
-            .build();
-
-        Self::new_with_config(data_dir, engine_config)
+        Self::new_with_config(data_dir, EngineConfig::from(chainspec_config))
     }
 
     /// Returns an [`LmdbWasmTestBuilder`] with configuration and values from
     /// the production chainspec.
     pub fn new_with_production_chainspec<T: AsRef<OsStr> + ?Sized>(data_dir: &T) -> Self {
-        Self::new_with_chainspec(data_dir, &*PRODUCTION_PATH)
+        Self::new_with_chainspec(data_dir, &*PRODUCTION_CHAINSPEC_PATH)
     }
 
     /// Flushes the LMDB environment to disk.
@@ -734,33 +712,30 @@ where
     }
 
     /// Runs an [`ExecuteRequest`].
-    pub fn exec(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
+    pub fn exec(&mut self, exec_request: ExecuteRequest) -> &mut Self {
+        self.try_exec(exec_request).expect("should execute")
+    }
+
+    /// Tries to run an [`ExecuteRequest`].
+    pub fn try_exec(&mut self, mut exec_request: ExecuteRequest) -> Result<&mut Self, Error> {
         let exec_request = {
             let hash = self.post_state_hash.expect("expected post_state_hash");
             exec_request.parent_state_hash = hash;
             exec_request
         };
 
-        let maybe_exec_results = self
+        let execution_results = self
             .engine_state
-            .run_execute(CorrelationId::new(), exec_request);
-        assert!(maybe_exec_results.is_ok());
-        // Parse deploy results
-        let execution_results = maybe_exec_results.as_ref().unwrap();
+            .run_execute(CorrelationId::new(), exec_request)?;
         // Cache transformations
         self.transforms.extend(
             execution_results
                 .iter()
                 .map(|res| res.execution_journal().clone()),
         );
-        self.exec_results.push(
-            maybe_exec_results
-                .unwrap()
-                .into_iter()
-                .map(Rc::new)
-                .collect(),
-        );
-        self
+        self.exec_results
+            .push(execution_results.into_iter().map(Rc::new).collect());
+        Ok(self)
     }
 
     /// Commit effects of previous exec call on the latest post-state hash.
