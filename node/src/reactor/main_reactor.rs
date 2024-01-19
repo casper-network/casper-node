@@ -832,11 +832,13 @@ impl reactor::Reactor for MainReactor {
             MainEvent::DeployBufferAnnouncement(DeployBufferAnnouncement::DeploysExpired(
                 hashes,
             )) => {
-                let reactor_event =
-                    MainEvent::EventStreamServer(event_stream_server::Event::TransactionsExpired(
-                        hashes.into_iter().map(TransactionHash::Deploy).collect(),
-                    ));
-                self.dispatch_event(effect_builder, rng, reactor_event)
+                // TODO[RC]: Temporary refactor boundary between DeployBuffer and EventStreamServer
+                todo!()
+                // let reactor_event =
+                //     MainEvent::EventStreamServer(event_stream_server::Event::TransactionsExpired(
+                //         hashes.into_iter().map(TransactionHash::Deploy).collect(),
+                //     ));
+                // self.dispatch_event(effect_builder, rng, reactor_event)
             }
 
             // CONTRACT RUNTIME & GLOBAL STATE

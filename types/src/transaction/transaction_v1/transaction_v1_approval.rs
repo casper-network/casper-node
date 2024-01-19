@@ -12,8 +12,34 @@ use super::TransactionV1Hash;
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, PublicKey, SecretKey, Signature,
+    crypto, DeployApproval, PublicKey, SecretKey, Signature,
 };
+
+// TODO[RC]: To separate file
+/// A struct containing a signature of a transaction hash and the public key of the signer.
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub enum TransactionApproval {
+    /// A deploy.
+    Deploy(DeployApproval),
+    /// A version 1 transaction.
+    #[cfg_attr(any(feature = "std", test), serde(rename = "Version1"))]
+    V1(TransactionV1Approval),
+}
+
+impl From<&DeployApproval> for TransactionApproval {
+    fn from(value: &DeployApproval) -> Self {
+        Self::Deploy(value.clone())
+    }
+}
+
+impl From<&TransactionV1Approval> for TransactionApproval {
+    fn from(value: &TransactionV1Approval) -> Self {
+        Self::V1(value.clone())
+    }
+}
 
 /// A struct containing a signature of a transaction hash and the public key of the signer.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]

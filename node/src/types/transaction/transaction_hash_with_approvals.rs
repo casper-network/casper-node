@@ -4,8 +4,8 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    DeployApproval, DeployHash, Transaction, TransactionHash, TransactionV1Approval,
-    TransactionV1Hash,
+    DeployApproval, DeployHash, Transaction, TransactionApproval, TransactionHash,
+    TransactionV1Approval, TransactionV1Hash,
 };
 
 use super::{FinalizedApprovals, FinalizedDeployApprovals, FinalizedTransactionV1Approvals};
@@ -41,6 +41,38 @@ impl TransactionHashWithApprovals {
         }
     }
 
+    // TODO[RC]: Rework so the panics are impossible
+    pub(crate) fn new_from_hash_and_approvals(
+        hash: &TransactionHash,
+        approvals: &BTreeSet<TransactionApproval>,
+    ) -> Self {
+        match hash {
+            TransactionHash::Deploy(deploy_hash) => {
+                let approvals: BTreeSet<_> = approvals
+                    .iter()
+                    .map(|approval| match approval {
+                        TransactionApproval::Deploy(approval) => approval.clone(),
+                        TransactionApproval::V1(_) => panic!("Unexpected Deploy with V1 approval"),
+                    })
+                    .collect();
+                Self::new_deploy(*deploy_hash, approvals)
+            }
+            TransactionHash::V1(v1_hash) => {
+                let approvals: BTreeSet<_> = approvals
+                    .iter()
+                    .map(|approval| match approval {
+                        TransactionApproval::Deploy(_) => {
+                            panic!("Unexpected Transaction with Deploy approval")
+                        }
+                        TransactionApproval::V1(approval) => approval.clone(),
+                    })
+                    .collect();
+
+                Self::new_v1(*v1_hash, approvals.clone())
+            }
+        }
+    }
+
     pub(crate) fn transaction_hash(&self) -> TransactionHash {
         match self {
             TransactionHashWithApprovals::Deploy { deploy_hash, .. } => {
@@ -72,6 +104,13 @@ impl TransactionHashWithApprovals {
                     FinalizedApprovals::V1(FinalizedTransactionV1Approvals::new(approvals));
                 (hash, approvals)
             }
+        }
+    }
+
+    pub(crate) fn approvals_count(&self) -> usize {
+        match self {
+            TransactionHashWithApprovals::Deploy { approvals, .. } => approvals.len(),
+            TransactionHashWithApprovals::V1 { approvals, .. } => approvals.len(),
         }
     }
 }

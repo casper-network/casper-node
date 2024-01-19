@@ -40,6 +40,12 @@ impl From<&DeployHash> for TransactionHash {
     }
 }
 
+impl From<&DeployHash> for &TransactionHash {
+    fn from(hash: &DeployHash) -> Self {
+        todo!()
+    }
+}
+
 impl From<TransactionV1Hash> for TransactionHash {
     fn from(hash: TransactionV1Hash) -> Self {
         Self::V1(hash)

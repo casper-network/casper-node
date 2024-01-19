@@ -69,14 +69,16 @@ impl AppendableBlock {
     /// Attempts to add any kind of deploy (transfer or other kind).
     pub(crate) fn add(
         &mut self,
-        deploy_hash_with_approvals: DeployHashWithApprovals,
+        deploy_hash_with_approvals: TransactionHashWithApprovals,
         footprint: &DeployFootprint,
     ) -> Result<(), AddError> {
-        if footprint.is_transfer {
-            self.add_transfer(deploy_hash_with_approvals, footprint)
-        } else {
-            self.add_deploy(deploy_hash_with_approvals, footprint)
-        }
+        // TODO[RC]: Temporary refactor boundary between DeployBuffer and AppendableBlock
+        todo!();
+        // if footprint.is_transfer {
+        // self.add_transfer(deploy_hash_with_approvals, footprint)
+        // } else {
+        // self.add_deploy(deploy_hash_with_approvals, footprint)
+        // }
     }
 
     /// Attempts to add a transfer to the block; returns an error if that would violate a validity

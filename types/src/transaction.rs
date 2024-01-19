@@ -67,9 +67,9 @@ pub use transaction_scheduling::TransactionScheduling;
 pub use transaction_session_kind::TransactionSessionKind;
 pub use transaction_target::TransactionTarget;
 pub use transaction_v1::{
-    TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash, TransactionV1Body,
-    TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError, TransactionV1Error,
-    TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
+    TransactionApproval, TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash,
+    TransactionV1Body, TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError,
+    TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1::{TransactionV1Builder, TransactionV1BuilderError};
@@ -125,6 +125,31 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => TransactionHash::from(*deploy.hash()),
             Transaction::V1(txn) => TransactionHash::from(*txn.hash()),
+        }
+    }
+
+    // TODO[RC]
+    pub fn is_valid(&self) -> Result<(), DeployConfigFailure> {
+        match self {
+            Transaction::Deploy(deploy) => deploy.is_valid(),
+            Transaction::V1(_) => todo!(),
+        }
+    }
+
+    // TODO[RC]
+    pub fn footprint(&self) -> Result<DeployFootprint, DeployError> {
+        match self {
+            Transaction::Deploy(deploy) => deploy.footprint(),
+            Transaction::V1(_) => todo!(),
+        }
+    }
+
+    // TODO[RC] - check for unnecessary clones (previously the return type was &)
+    // This causes another possibly unnecessary conversion in TransactionHashWithApprovals::new_from_hash_and_approvals()
+    pub fn approvals(&self) -> BTreeSet<TransactionApproval> {
+        match self {
+            Transaction::Deploy(deploy) => deploy.approvals().iter().map(Into::into).collect(),
+            Transaction::V1(v1) => v1.approvals().iter().map(Into::into).collect(),
         }
     }
 

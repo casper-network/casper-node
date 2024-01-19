@@ -15,8 +15,8 @@ use itertools::Itertools;
 use serde::Serialize;
 
 use casper_types::{
-    execution::Effects, Block, DeployHash, EraId, FinalitySignature, PublicKey, Timestamp,
-    Transaction, U512,
+    execution::Effects, Block, EraId, FinalitySignature, PublicKey, Timestamp, Transaction,
+    TransactionHash, U512,
 };
 
 use crate::{
@@ -231,7 +231,7 @@ impl Display for TransactionAcceptorAnnouncement {
 #[derive(Debug, Serialize)]
 pub(crate) enum DeployBufferAnnouncement {
     /// Hashes of the deploys that expired.
-    DeploysExpired(Vec<DeployHash>),
+    DeploysExpired(Vec<TransactionHash>),
 }
 
 impl Display for DeployBufferAnnouncement {

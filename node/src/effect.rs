@@ -803,7 +803,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces which deploys have expired.
-    pub(crate) async fn announce_expired_deploys(self, hashes: Vec<DeployHash>)
+    pub(crate) async fn announce_expired_deploys(self, hashes: Vec<TransactionHash>)
     where
         REv: From<DeployBufferAnnouncement>,
     {
