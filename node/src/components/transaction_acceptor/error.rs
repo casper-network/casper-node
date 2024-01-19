@@ -77,7 +77,7 @@ impl From<Error> for binary_port::ErrorCode {
             | Error::Parameters { .. }
             | Error::Expired { .. }
             | Error::ExpectedDeploy
-            | Error::ExpectedTransactionV1 => binary_port::ErrorCode::InvalidDeploy,
+            | Error::ExpectedTransactionV1 => binary_port::ErrorCode::InvalidTransaction,
         }
     }
 }

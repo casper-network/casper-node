@@ -103,12 +103,7 @@ impl BinaryPort {
 
     /// Returns the binding address.
     ///
-    /// Only used in testing. If you need to actually retrieve the bind address, add an appropriate
-    /// request or, as a last resort, make this function return `Option<SocketAddr>`.
-    ///
-    /// # Panics
-    ///
-    /// If the bind address is malformed, panics.
+    /// Only used in testing.
     #[cfg(test)]
     pub(crate) fn bind_address(&self) -> Option<SocketAddr> {
         self.local_addr.get().cloned()
@@ -586,8 +581,8 @@ where
                 .unwrap_or_default();
             let (our_public_signing_key, round_length) =
                 consensus_status.map_or((None, None), |consensus_status| {
-                    let (pk, rl) = consensus_status.into_inner();
-                    (Some(pk), rl)
+                    let (pub_key, round_len) = consensus_status.into_inner();
+                    (Some(pub_key), round_len)
                 });
 
             let status = NodeStatus {

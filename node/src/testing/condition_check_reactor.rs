@@ -10,7 +10,7 @@ use casper_types::{Chainspec, ChainspecRawBytes};
 
 use super::network::NetworkedReactor;
 use crate::{
-    components::network::Identity as NetworkIdentity,
+    components::{network::Identity as NetworkIdentity, ComponentState},
     effect::{EffectBuilder, Effects},
     reactor::{EventQueueHandle, Finalize, Reactor},
     types::NodeId,
@@ -106,7 +106,7 @@ impl<R: Reactor> Reactor for ConditionCheckReactor<R> {
         self.reactor.dispatch_event(effect_builder, rng, event)
     }
 
-    fn get_component_state(&self, name: &str) -> Option<&crate::components::ComponentState> {
+    fn get_component_state(&self, name: &str) -> Option<&ComponentState> {
         self.inner().get_component_state(name)
     }
 }

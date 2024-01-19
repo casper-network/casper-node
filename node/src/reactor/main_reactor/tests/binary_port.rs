@@ -649,7 +649,7 @@ fn try_accept_transaction_invalid(rng: &mut TestRng) -> TestCase {
     TestCase {
         name: "try_accept_transaction_invalid",
         request: BinaryRequest::TryAcceptTransaction { transaction },
-        asserter: Box::new(|response| response.error_code() == ErrorCode::InvalidDeploy as u8),
+        asserter: Box::new(|response| response.error_code() == ErrorCode::InvalidTransaction as u8),
     }
 }
 
@@ -664,6 +664,6 @@ fn try_spec_exec_invalid(rng: &mut TestRng, header: BlockHeader) -> TestCase {
             transaction,
             speculative_exec_at_block: header,
         },
-        asserter: Box::new(|response| response.error_code() == ErrorCode::InvalidDeploy as u8),
+        asserter: Box::new(|response| response.error_code() == ErrorCode::InvalidTransaction as u8),
     }
 }

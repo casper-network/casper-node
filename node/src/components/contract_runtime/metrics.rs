@@ -199,7 +199,10 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.run_query);
         unregister_metric!(self.registry, self.commit_step);
         unregister_metric!(self.registry, self.get_balance);
+        unregister_metric!(self.registry, self.get_total_supply);
+        unregister_metric!(self.registry, self.get_round_seigniorage_rate);
         unregister_metric!(self.registry, self.get_era_validators);
+        unregister_metric!(self.registry, self.get_all_values);
         unregister_metric!(self.registry, self.put_trie);
         unregister_metric!(self.registry, self.get_trie);
         unregister_metric!(self.registry, self.exec_block);

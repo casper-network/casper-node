@@ -120,8 +120,8 @@ impl StatusFeed {
     ) -> Self {
         let (our_public_signing_key, round_length) =
             consensus_status.map_or((None, None), |consensus_status| {
-                let (pk, rl) = consensus_status.into_inner();
-                (Some(pk), rl)
+                let (pub_key, round_len) = consensus_status.into_inner();
+                (Some(pub_key), round_len)
             });
         StatusFeed {
             last_added_block,

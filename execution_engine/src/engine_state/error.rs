@@ -169,7 +169,7 @@ impl From<Error> for binary_port::ErrorCode {
             Error::InvalidDeployItemVariant(_) => binary_port::ErrorCode::InvalidDeployItemVariant,
             Error::WasmPreprocessing(_) => binary_port::ErrorCode::WasmPreprocessing,
             Error::InvalidProtocolVersion(_) => binary_port::ErrorCode::UnsupportedProtocolVersion,
-            Error::Deploy => binary_port::ErrorCode::InvalidDeploy,
+            Error::Deploy => binary_port::ErrorCode::InvalidTransaction,
             _ => binary_port::ErrorCode::InternalError,
         }
     }
