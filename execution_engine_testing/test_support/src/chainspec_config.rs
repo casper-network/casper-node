@@ -11,7 +11,9 @@ use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::{
     core::engine_state::{
-        engine_config::{FeeHandling, RefundHandling},
+        engine_config::{
+            EngineConfig, EngineConfigBuilder, FeeHandling, RefundHandling, DEFAULT_MAX_QUERY_DEPTH,
+        },
         genesis::ExecConfigBuilder,
         run_genesis_request::RunGenesisRequest,
         ExecConfig, GenesisAccount,
@@ -29,7 +31,7 @@ use crate::{
 pub const CHAINSPEC_NAME: &str = "chainspec.toml";
 
 /// Path to the production chainspec used in the Casper mainnet.
-pub static PRODUCTION_PATH: Lazy<PathBuf> = Lazy::new(|| {
+pub static PRODUCTION_CHAINSPEC_PATH: Lazy<PathBuf> = Lazy::new(|| {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("resources/")
         .join(CHAINSPEC_NAME)
@@ -114,7 +116,8 @@ impl ChainspecConfig {
         ChainspecConfig::from_bytes(&bytes)
     }
 
-    pub(crate) fn from_chainspec_path<P: AsRef<Path>>(filename: P) -> Result<Self, Error> {
+    /// Returns a new `ChainspecConfig` parsed from the TOML-encoded chainspec file at `filename`.
+    pub fn from_chainspec_path<P: AsRef<Path>>(filename: P) -> Result<Self, Error> {
         Self::from_path(filename)
     }
 
@@ -188,10 +191,40 @@ impl ChainspecConfig {
         protocol_version: ProtocolVersion,
     ) -> Result<RunGenesisRequest, Error> {
         Self::create_genesis_request_from_chainspec(
-            &*PRODUCTION_PATH,
+            &*PRODUCTION_CHAINSPEC_PATH,
             genesis_accounts,
             protocol_version,
         )
+    }
+
+    /// Returns the `max_associated_keys` setting from the core config.
+    pub fn max_associated_keys(&self) -> u32 {
+        self.core_config.max_associated_keys
+    }
+}
+
+impl From<ChainspecConfig> for EngineConfig {
+    fn from(chainspec_config: ChainspecConfig) -> Self {
+        EngineConfigBuilder::new()
+            .with_max_query_depth(DEFAULT_MAX_QUERY_DEPTH)
+            .with_max_associated_keys(chainspec_config.core_config.max_associated_keys)
+            .with_max_runtime_call_stack_height(
+                chainspec_config.core_config.max_runtime_call_stack_height,
+            )
+            .with_minimum_delegation_amount(chainspec_config.core_config.minimum_delegation_amount)
+            .with_strict_argument_checking(chainspec_config.core_config.strict_argument_checking)
+            .with_vesting_schedule_period_millis(
+                chainspec_config
+                    .core_config
+                    .vesting_schedule_period
+                    .millis(),
+            )
+            .with_max_delegators_per_validator(
+                chainspec_config.core_config.max_delegators_per_validator,
+            )
+            .with_wasm_config(chainspec_config.wasm_config)
+            .with_system_config(chainspec_config.system_costs_config)
+            .build()
     }
 }
 
