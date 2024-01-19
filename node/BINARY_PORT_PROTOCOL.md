@@ -29,8 +29,8 @@ Request bytes can be constructed from bytesrepr-serialized `BinaryRequestHeader`
 
 ## Versioning
 Versioning is based on the protocol version of the Casper Platform and the request/response model was designed to support **backwards-compatible** changes to some parts of it. These are allowed to change between **MINOR** versions:
-- addition of new [`RequestTag`](#request-format) with it's own payload
-- addition of new [`PayloadTypeTag`](#response-format) with it's own payload
+- addition of new [`RequestTag`](#request-format) with its own payload
+- addition of new [`PayloadTypeTag`](#response-format) with its own payload
 - addition of new [`DbId`](#request-model-details)
 - addition of new [`ErrorCode`](#response-format)
 
@@ -42,7 +42,7 @@ Changes to the envelopes (the request/response headers) are not allowed.
 
 ## Request model details
 There are currently 3 supported types of requests, but the request model can be extended with new variants according to the [versioning](#versioning) rules. The request types are:
-- `Get` request, which is either one of:
+- `Get` request, which is one of:
     - `Db` request asking for a database item with an [**extensible**](#versioning) `DbId` tag and a key
     - `NonPersistedData` request asking for a transient piece of data with a `NonPersistedData` query
     - `State` request asking for an item from the global state by a key, a state root hash and a path

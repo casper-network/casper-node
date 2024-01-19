@@ -1,12 +1,14 @@
 use core::fmt::{self, Display, Formatter};
 
 use crate::{Block, BlockSignatures};
+#[cfg(any(feature = "std", feature = "json-schema", test))]
+use serde::{Deserialize, Serialize};
 
 /// A block and signatures for that block.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(
     any(feature = "std", feature = "json-schema", test),
-    derive(serde::Serialize, serde::Deserialize)
+    derive(Serialize, Deserialize)
 )]
 pub struct SignedBlock {
     /// Block.

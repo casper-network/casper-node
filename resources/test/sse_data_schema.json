@@ -4585,7 +4585,7 @@
           ],
           "properties": {
             "Serialization": {
-              "$ref": "#/definitions/SerializationError"
+              "$ref": "#/definitions/BytesreprError"
             }
           },
           "additionalProperties": false
@@ -4612,7 +4612,7 @@
         }
       ]
     },
-    "SerializationError": {
+    "BytesreprError": {
       "description": "Serialization and deserialization errors.",
       "oneOf": [
         {

@@ -115,8 +115,11 @@ pub fn allocate_buffer<T: ToBytes>(to_be_serialized: &T) -> Result<Vec<u8>, Erro
 /// Serialization and deserialization errors.
 #[derive(Copy, Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-#[cfg_attr(feature = "json-schema", schemars(rename = "SerializationError"))]
+#[cfg_attr(
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(rename = "BytesreprError")
+)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum Error {

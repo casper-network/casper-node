@@ -335,7 +335,7 @@ where
             };
             let serialized =
                 bincode::serialize(&transfers).expect("should serialize transfers to bytes");
-            let bytes = DbRawBytesSpec::new_legacy(&serialized);
+            let bytes = DbRawBytesSpec::new_current(&serialized);
             BinaryResponse::from_db_raw_bytes(DbId::Transfer, Some(bytes), protocol_version)
         }
         GetRequest::Db { db_tag, key } => {
