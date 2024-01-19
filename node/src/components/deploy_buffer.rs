@@ -214,7 +214,7 @@ impl DeployBuffer {
     }
 
     /// Update buffer considering new stored deploy.
-    fn register_deploy(&mut self, deploy: Transaction) {
+    fn register_transaction(&mut self, deploy: Transaction) {
         let deploy_hash = deploy.hash();
         if deploy.is_valid().is_err() {
             error!(%deploy_hash, "TransactionBuffer: invalid deploy must not be buffered");
@@ -605,12 +605,10 @@ where
                 Event::ReceiveTransactionGossiped(deploy_id) => {
                     self.register_deploy_gossiped(deploy_id, effect_builder)
                 }
-                Event::StoredTransaction(deploy_id, maybe_deploy) => {
-                    match maybe_deploy {
+                Event::StoredTransaction(deploy_id, maybe_transaction) => {
+                    match maybe_transaction {
                         Some(deploy) => {
-                            // TODO[RC]
-                            todo!()
-                            //self.register_deploy(*deploy);
+                            self.register_transaction(*deploy);
                         }
                         None => {
                             warn!("cannot register un-stored deploy({})", deploy_id);

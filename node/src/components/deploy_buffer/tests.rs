@@ -135,7 +135,7 @@ fn register_deploy_and_check_size() {
         create_valid_deploys(&mut rng, num_valid_deploys, DeployType::Random, None, None);
     valid_deploys
         .iter()
-        .for_each(|deploy| deploy_buffer.register_deploy(deploy.clone()));
+        .for_each(|deploy| deploy_buffer.register_transaction(deploy.clone()));
     assert_container_sizes(&deploy_buffer, valid_deploys.len(), 0, 0);
 
     // Try to register invalid deploys
@@ -143,7 +143,7 @@ fn register_deploy_and_check_size() {
     let invalid_deploys = create_invalid_deploys(&mut rng, num_invalid_deploys);
     invalid_deploys
         .iter()
-        .for_each(|deploy| deploy_buffer.register_deploy(deploy.clone()));
+        .for_each(|deploy| deploy_buffer.register_transaction(deploy.clone()));
     assert_container_sizes(&deploy_buffer, valid_deploys.len(), 0, 0);
 
     // Try to register a duplicate deploy
@@ -151,12 +151,12 @@ fn register_deploy_and_check_size() {
         .get(rng.gen_range(0..num_valid_deploys))
         .unwrap()
         .clone();
-    deploy_buffer.register_deploy(duplicate_deploy);
+    deploy_buffer.register_transaction(duplicate_deploy);
     assert_container_sizes(&deploy_buffer, valid_deploys.len(), 0, 0);
 
     // Insert deploy without footprint
     let bad_deploy = Deploy::random_without_payment_amount(&mut rng);
-    deploy_buffer.register_deploy(bad_deploy);
+    deploy_buffer.register_transaction(bad_deploy);
     assert_container_sizes(&deploy_buffer, valid_deploys.len(), 0, 0);
 }
 
@@ -224,7 +224,7 @@ fn get_proposable_deploys() {
     let deploys = create_valid_deploys(&mut rng, 50, DeployType::Random, None, None);
     deploys
         .iter()
-        .for_each(|deploy| deploy_buffer.register_deploy(deploy.clone()));
+        .for_each(|deploy| deploy_buffer.register_transaction(deploy.clone()));
     assert_container_sizes(&deploy_buffer, deploys.len(), 0, 0);
 
     // Create a block with some deploys and register it with the deploy_buffer
@@ -349,7 +349,7 @@ fn get_appendable_block(
     let deploys = create_valid_deploys(rng, deploy_limit + 50, deploy_type, None, None);
     deploys
         .iter()
-        .for_each(|deploy| deploy_buffer.register_deploy(deploy.clone()));
+        .for_each(|deploy| deploy_buffer.register_transaction(deploy.clone()));
     assert_container_sizes(deploy_buffer, deploys.len(), 0, 0);
 
     // now check how many transfers were added in the block; should not exceed the config limits.
@@ -380,7 +380,7 @@ fn register_deploys_and_blocks() {
         create_valid_deploys(&mut rng, num_valid_deploys, DeployType::Random, None, None);
     valid_deploys
         .iter()
-        .for_each(|deploy| deploy_buffer.register_deploy(deploy.clone()));
+        .for_each(|deploy| deploy_buffer.register_transaction(deploy.clone()));
     assert_container_sizes(&deploy_buffer, valid_deploys.len(), 0, 0);
 
     // register a block with deploys
@@ -411,7 +411,7 @@ fn register_deploys_and_blocks() {
     // try to register the deploys of the block again. Should not work since those deploys are dead.
     block_deploys
         .iter()
-        .for_each(|deploy| deploy_buffer.register_deploy(deploy.clone()));
+        .for_each(|deploy| deploy_buffer.register_transaction(deploy.clone()));
     assert_container_sizes(
         &deploy_buffer,
         block_deploys.len() + valid_deploys.len(),
@@ -442,7 +442,7 @@ fn register_deploys_and_blocks() {
         })
         .peekable();
     assert!(held_deploys.peek().is_some());
-    held_deploys.for_each(|deploy| deploy_buffer.register_deploy(deploy));
+    held_deploys.for_each(|deploy| deploy_buffer.register_transaction(deploy));
     assert_container_sizes(
         &deploy_buffer,
         block_deploys.len() + valid_deploys.len(),
@@ -550,7 +550,7 @@ async fn expire_deploys_and_check_announcement() {
     );
     expired_deploys
         .iter()
-        .for_each(|deploy| deploy_buffer.register_deploy(deploy.clone()));
+        .for_each(|deploy| deploy_buffer.register_transaction(deploy.clone()));
     assert_container_sizes(&deploy_buffer, expired_deploys.len(), 0, 0);
 
     // include the last expired deploy in a block and register it
@@ -572,7 +572,7 @@ async fn expire_deploys_and_check_announcement() {
     let deploys = create_valid_deploys(&mut rng, num_deploys, DeployType::Transfer, None, None);
     deploys
         .iter()
-        .for_each(|deploy| deploy_buffer.register_deploy(deploy.clone()));
+        .for_each(|deploy| deploy_buffer.register_transaction(deploy.clone()));
     assert_container_sizes(&deploy_buffer, deploys.len() + expired_deploys.len(), 1, 0);
 
     // expire deploys and check that they were announced as expired
