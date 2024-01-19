@@ -344,8 +344,15 @@ impl DeployBuffer {
     }
 
     /// Returns a right-sized payload of deploys that can be proposed.
-    fn appendable_block(&mut self, timestamp: Timestamp) -> AppendableBlock {
+    fn appendable_block(
+        &mut self,
+        timestamp: Timestamp,
+        request_expiry: Timestamp,
+    ) -> AppendableBlock {
         let mut ret = AppendableBlock::new(self.deploy_config, timestamp);
+        if Timestamp::now() >= request_expiry {
+            return ret;
+        }
         let mut holds = HashSet::new();
         let mut have_hit_transfer_limit = false;
         let mut have_hit_deploy_limit = false;
@@ -359,6 +366,9 @@ impl DeployBuffer {
         let iter_limit = self.buffer.len() * 4;
 
         while let Some(body_hash) = body_hashes_queue.pop_front() {
+            if Timestamp::now() > request_expiry {
+                break;
+            }
             #[cfg(test)]
             {
                 iter_counter += 1;
@@ -593,8 +603,11 @@ where
                 }
                 Event::Request(DeployBufferRequest::GetAppendableBlock {
                     timestamp,
+                    request_expiry,
                     responder,
-                }) => responder.respond(self.appendable_block(timestamp)).ignore(),
+                }) => responder
+                    .respond(self.appendable_block(timestamp, request_expiry))
+                    .ignore(),
                 Event::BlockFinalized(finalized_block) => {
                     self.register_block_finalized(&finalized_block);
                     Effects::new()

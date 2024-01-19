@@ -547,7 +547,7 @@ impl<C: Context> Highway<C> {
                     result.extend(self.add_valid_vertex(vv.clone(), timestamp))
                 }
                 Effect::WeAreFaulty(_) => self.deactivate_validator(),
-                Effect::ScheduleTimer(_) | Effect::RequestNewBlock(_) => (),
+                Effect::ScheduleTimer(_) | Effect::RequestNewBlock(_, _) => (),
             }
         }
         result.extend(effects);

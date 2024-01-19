@@ -1705,13 +1705,18 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Passes the timestamp of a future block for which deploys are to be proposed.
-    pub(crate) async fn request_appendable_block(self, timestamp: Timestamp) -> AppendableBlock
+    pub(crate) async fn request_appendable_block(
+        self,
+        timestamp: Timestamp,
+        request_expiry: Timestamp,
+    ) -> AppendableBlock
     where
         REv: From<DeployBufferRequest>,
     {
         self.make_request(
             |responder| DeployBufferRequest::GetAppendableBlock {
                 timestamp,
+                request_expiry,
                 responder,
             },
             QueueKind::Consensus,

@@ -202,8 +202,9 @@ fn get_proposable_deploys() {
         assert!(proposable_deploy_hashes.contains(deploy.hash()));
     }
 
-    // Get an appendable block. This should put the deploys on hold.
-    let appendable_block = deploy_buffer.appendable_block(Timestamp::now());
+    let timestamp = Timestamp::now();
+    let expiry = timestamp.saturating_add(TimeDiff::from_seconds(1));
+    let appendable_block = deploy_buffer.appendable_block(timestamp, expiry);
     assert_eq!(deploy_buffer.hold.len(), 1);
     assert_container_sizes(
         &deploy_buffer,
@@ -295,8 +296,9 @@ fn get_appendable_block(
         .for_each(|deploy| deploy_buffer.register_deploy(deploy.clone()));
     assert_container_sizes(deploy_buffer, deploys.len(), 0, 0);
 
-    // now check how many transfers were added in the block; should not exceed the config limits.
-    let appendable_block = deploy_buffer.appendable_block(Timestamp::now());
+    let timestamp = Timestamp::now();
+    let expiry = timestamp.saturating_add(TimeDiff::from_seconds(1));
+    let appendable_block = deploy_buffer.appendable_block(timestamp, expiry);
     assert!(appendable_block.deploy_and_transfer_set().len() <= deploy_limit,);
     assert_eq!(deploy_buffer.hold.len(), 1);
     assert_container_sizes(
@@ -346,8 +348,9 @@ fn register_deploys_and_blocks() {
 
     let pre_proposal_timestamp = Timestamp::now();
 
-    // get an appendable block. This should put the deploys on hold.
-    let appendable_block = deploy_buffer.appendable_block(Timestamp::now());
+    let timestamp = Timestamp::now();
+    let expiry = timestamp.saturating_add(TimeDiff::from_seconds(1));
+    let appendable_block = deploy_buffer.appendable_block(timestamp, expiry);
     assert_eq!(deploy_buffer.hold.len(), 1);
     assert_container_sizes(
         &deploy_buffer,
@@ -499,6 +502,62 @@ fn should_have_one_bucket_per_distinct_body_hash() {
 }
 
 #[test]
+fn should_be_empty_if_no_time_until_expiry() {
+    let mut rng = TestRng::new();
+    let max_deploy_count = 1;
+    let max_transfer_count = 1;
+    let deploy_config = DeployConfig {
+        block_max_deploy_count: max_deploy_count,
+        block_max_transfer_count: max_transfer_count,
+        block_max_approval_count: max_deploy_count + max_transfer_count,
+        ..Default::default()
+    };
+    let mut deploy_buffer =
+        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
+
+    let secret_key1 = SecretKey::random(&mut rng);
+    let ttl = TimeDiff::from_seconds(30);
+    let deploy1 = Deploy::random_contract_by_name(
+        &mut rng,
+        Some(secret_key1),
+        None,
+        None,
+        Some(Timestamp::now()),
+        Some(ttl),
+    );
+    let deploy1_body_hash = *deploy1.header().body_hash();
+    deploy_buffer.register_deploy(deploy1);
+
+    let buckets = deploy_buffer.buckets();
+    assert!(buckets.len() == 1, "should be 1 buckets");
+
+    let transfer2 = Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
+        &mut rng,
+        Timestamp::now(),
+        ttl,
+    );
+    assert_ne!(
+        &deploy1_body_hash,
+        transfer2.header().body_hash(),
+        "1 & 2 should have different body hashes"
+    );
+    deploy_buffer.register_deploy(transfer2);
+    let buckets = deploy_buffer.buckets();
+    assert!(buckets.len() == 2, "should be 2 buckets");
+
+    let now = Timestamp::now();
+    let appendable = deploy_buffer.appendable_block(now, now);
+    let count = appendable.deploy_and_transfer_set().len();
+    assert!(count == 0, "expected 0 found {}", count);
+
+    // logic should tolerate invalid expiry
+    let appendable =
+        deploy_buffer.appendable_block(now, now.saturating_sub(TimeDiff::from_millis(1)));
+    let count = appendable.deploy_and_transfer_set().len();
+    assert!(count == 0, "expected 0 found {}", count);
+}
+
+#[test]
 fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
     let mut rng = TestRng::new();
     let max_deploy_count = 50;
@@ -512,7 +571,7 @@ fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
     let mut deploy_buffer =
         DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
 
-    let cap = (max_deploy_count * 20) as usize;
+    let cap = (max_deploy_count * 100) as usize;
 
     let secret_keys = {
         let mut accounts = vec![];
@@ -589,9 +648,11 @@ fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
     // using this strategy, it should be very unlikely...the below brute forces a check for this
     let expected_eq_tolerance = 1;
     let mut actual_eq_count = 0;
+
+    let expiry = last_timestamp.saturating_add(TimeDiff::from_seconds(1));
     for _ in 0..10 {
-        let appendable1 = deploy_buffer.appendable_block(last_timestamp);
-        let appendable2 = deploy_buffer.appendable_block(last_timestamp);
+        let appendable1 = deploy_buffer.appendable_block(last_timestamp, expiry);
+        let appendable2 = deploy_buffer.appendable_block(last_timestamp, expiry);
         if appendable1 == appendable2 {
             actual_eq_count += 1;
         }
@@ -771,7 +832,10 @@ fn test_buckets_single_hash() {
 
     register_random_deploys_same_hash(&mut deploy_buffer, 64000, &mut rng);
 
-    let _block = deploy_buffer.appendable_block(Timestamp::now());
+    let _block = deploy_buffer.appendable_block(
+        Timestamp::now(),
+        Timestamp::now() + TimeDiff::from_millis(16384 / 6),
+    );
 }
 
 #[test]
@@ -788,7 +852,10 @@ fn test_buckets_unique_hashes() {
 
     register_random_deploys_unique_hashes(&mut deploy_buffer, 64000, &mut rng);
 
-    let _block = deploy_buffer.appendable_block(Timestamp::now());
+    let _block = deploy_buffer.appendable_block(
+        Timestamp::now(),
+        Timestamp::now() + TimeDiff::from_millis(16384 / 6),
+    );
 }
 
 #[test]
@@ -806,5 +873,8 @@ fn test_buckets_mixed_load() {
     register_random_deploys_unique_hashes(&mut deploy_buffer, 60000, &mut rng);
     register_random_deploys_same_hash(&mut deploy_buffer, 4000, &mut rng);
 
-    let _block = deploy_buffer.appendable_block(Timestamp::now());
+    let _block = deploy_buffer.appendable_block(
+        Timestamp::now(),
+        Timestamp::now() + TimeDiff::from_millis(16384 / 6),
+    );
 }
