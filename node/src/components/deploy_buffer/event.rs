@@ -6,7 +6,7 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 
-use casper_types::{Block, BlockV2, Deploy, DeployId};
+use casper_types::{Block, BlockV2, Deploy, DeployId, Transaction, TransactionId};
 
 use crate::{
     components::consensus::{ClContext, ProposedBlock},
@@ -19,8 +19,8 @@ pub(crate) enum Event {
     Initialize(Vec<Block>),
     #[from]
     Request(DeployBufferRequest),
-    ReceiveDeployGossiped(DeployId),
-    StoredDeploy(DeployId, Option<Box<Deploy>>),
+    ReceiveTransactionGossiped(TransactionId),
+    StoredTransaction(TransactionId, Option<Box<Transaction>>),
     BlockProposed(Box<ProposedBlock<ClContext>>),
     Block(Arc<BlockV2>),
     VersionedBlock(Arc<Block>),
@@ -37,10 +37,10 @@ impl Display for Event {
             Event::Request(DeployBufferRequest::GetAppendableBlock { .. }) => {
                 write!(formatter, "get appendable block request")
             }
-            Event::ReceiveDeployGossiped(deploy_id) => {
+            Event::ReceiveTransactionGossiped(deploy_id) => {
                 write!(formatter, "receive deploy gossiped {}", deploy_id)
             }
-            Event::StoredDeploy(deploy_id, maybe_deploy) => {
+            Event::StoredTransaction(deploy_id, maybe_deploy) => {
                 write!(
                     formatter,
                     "{} stored: {:?}",

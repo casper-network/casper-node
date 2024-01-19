@@ -199,7 +199,7 @@ impl DeployBuffer {
 
     fn register_deploy_gossiped<REv>(
         &mut self,
-        deploy_id: DeployId,
+        deploy_id: TransactionId,
         effect_builder: EffectBuilder<REv>,
     ) -> Effects<Event>
     where
@@ -208,17 +208,8 @@ impl DeployBuffer {
         debug!(%deploy_id, "TransactionBuffer: registering gossiped deploy");
         effect_builder
             .get_stored_transaction(TransactionId::from(deploy_id))
-            .event(move |result| {
-                let deploy = result.map(|txn| match txn {
-                    Transaction::Deploy(deploy) => Box::new(deploy),
-                    Transaction::V1(_) => {
-                        todo!(
-                            "unreachable, but this code path will be removed as part of \
-                            https://github.com/casper-network/roadmap/issues/184"
-                        )
-                    }
-                });
-                Event::StoredDeploy(deploy_id, deploy)
+            .event(move |maybe_transaction| {
+                Event::StoredTransaction(deploy_id, maybe_transaction.map(Box::new))
             })
     }
 
@@ -566,8 +557,8 @@ where
                             .event(move |_| Event::Expire)
                     }
                     Event::Request(_)
-                    | Event::ReceiveDeployGossiped(_)
-                    | Event::StoredDeploy(_, _)
+                    | Event::ReceiveTransactionGossiped(_)
+                    | Event::StoredTransaction(_, _)
                     | Event::BlockProposed(_)
                     | Event::Block(_)
                     | Event::VersionedBlock(_)
@@ -611,10 +602,10 @@ where
                     self.register_block_proposed(*proposed);
                     Effects::new()
                 }
-                Event::ReceiveDeployGossiped(deploy_id) => {
+                Event::ReceiveTransactionGossiped(deploy_id) => {
                     self.register_deploy_gossiped(deploy_id, effect_builder)
                 }
-                Event::StoredDeploy(deploy_id, maybe_deploy) => {
+                Event::StoredTransaction(deploy_id, maybe_deploy) => {
                     match maybe_deploy {
                         Some(deploy) => {
                             // TODO[RC]

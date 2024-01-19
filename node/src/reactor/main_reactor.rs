@@ -807,21 +807,12 @@ impl reactor::Reactor for MainReactor {
             ),
             MainEvent::TransactionGossiperAnnouncement(
                 GossiperAnnouncement::FinishedGossiping(gossiped_txn_id),
-            ) => match gossiped_txn_id {
-                TransactionId::Deploy {
-                    deploy_hash,
-                    approvals_hash,
-                } => {
-                    let deploy_id = DeployId::new(deploy_hash, approvals_hash);
-                    let reactor_event = MainEvent::DeployBuffer(
-                        deploy_buffer::Event::ReceiveDeployGossiped(deploy_id),
-                    );
-                    self.dispatch_event(effect_builder, rng, reactor_event)
-                }
-                TransactionId::V1 { .. } => {
-                    todo!("avoid match `gossiped_txn_id` once deploy buffer handles transactions");
-                }
-            },
+            ) => {
+                let reactor_event = MainEvent::DeployBuffer(
+                    deploy_buffer::Event::ReceiveTransactionGossiped(gossiped_txn_id),
+                );
+                self.dispatch_event(effect_builder, rng, reactor_event)
+            }
             MainEvent::DeployBuffer(event) => reactor::wrap_effects(
                 MainEvent::DeployBuffer,
                 self.deploy_buffer.handle_event(effect_builder, rng, event),
