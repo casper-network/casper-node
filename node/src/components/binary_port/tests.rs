@@ -6,7 +6,7 @@ use serde::Serialize;
 
 use casper_types::{
     binary_port::{binary_request::BinaryRequest, get::GetRequest},
-    Digest, KeyTag,
+    BinaryResponse, Digest, KeyTag,
 };
 
 use crate::{
@@ -23,7 +23,7 @@ use crate::{
 };
 use std::{sync::Arc, time::Duration};
 
-use futures::channel::oneshot;
+use futures::channel::oneshot::{self, Receiver};
 use prometheus::Registry;
 use thiserror::Error as ThisError;
 
@@ -70,59 +70,8 @@ async fn should_execute_enabled_functions() {
         request_generator: trie_request,
     };
 
-    for TestCase {
-        allow_request_get_all_values,
-        allow_request_get_trie,
-        request_generator,
-    } in [get_all_values_enabled, get_trie_enabled]
-    {
-        let config = BinaryPortConfig {
-            enable_server: true,
-            allow_request_get_all_values,
-            allow_request_get_trie,
-            max_request_size_bytes: 1024,
-            max_response_size_bytes: 1024,
-            client_request_limit: 2,
-            client_request_buffer_size: 16,
-            max_connections: 2,
-            ..Default::default()
-        };
-
-        let (chainspec, chainspec_raw_bytes) =
-            <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-        let mut runner: Runner<ConditionCheckReactor<MockReactor>> = Runner::new(
-            config.clone(),
-            Arc::new(chainspec),
-            Arc::new(chainspec_raw_bytes),
-            &mut rng,
-        )
-        .await
-        .unwrap();
-
-        // Initialize component.
-        runner
-            .process_injected_effects(|effect_builder| {
-                effect_builder
-                    .into_inner()
-                    .schedule(BinaryPortEvent::Initialize, QueueKind::Api)
-                    .ignore()
-            })
-            .await;
-
-        let (sender, _receiver) = oneshot::channel();
-        let event = BinaryPortEvent::HandleRequest {
-            request: request_generator(),
-            responder: Responder::without_shutdown(sender),
-        };
-
-        runner
-            .process_injected_effects(|effect_builder| {
-                effect_builder
-                    .into_inner()
-                    .schedule(event, QueueKind::Api)
-                    .ignore()
-            })
-            .await;
+    for test_case in [get_all_values_enabled, get_trie_enabled] {
+        let (_, mut runner) = run_test_case(test_case, &mut rng).await;
 
         runner
             .crank_until(
@@ -152,59 +101,8 @@ async fn should_return_error_for_disabled_functions() {
         request_generator: trie_request,
     };
 
-    for TestCase {
-        allow_request_get_all_values,
-        allow_request_get_trie,
-        request_generator,
-    } in [get_all_values_disabled, get_trie_disabled]
-    {
-        let config = BinaryPortConfig {
-            enable_server: true,
-            allow_request_get_all_values,
-            allow_request_get_trie,
-            max_request_size_bytes: 1024,
-            max_response_size_bytes: 1024,
-            client_request_limit: 2,
-            client_request_buffer_size: 16,
-            max_connections: 2,
-            ..Default::default()
-        };
-
-        let (chainspec, chainspec_raw_bytes) =
-            <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-        let mut runner: Runner<ConditionCheckReactor<MockReactor>> = Runner::new(
-            config.clone(),
-            Arc::new(chainspec),
-            Arc::new(chainspec_raw_bytes),
-            &mut rng,
-        )
-        .await
-        .unwrap();
-
-        // Initialize component.
-        runner
-            .process_injected_effects(|effect_builder| {
-                effect_builder
-                    .into_inner()
-                    .schedule(BinaryPortEvent::Initialize, QueueKind::Api)
-                    .ignore()
-            })
-            .await;
-
-        let (sender, receiver) = oneshot::channel();
-        let event = BinaryPortEvent::HandleRequest {
-            request: request_generator(),
-            responder: Responder::without_shutdown(sender),
-        };
-
-        runner
-            .process_injected_effects(|effect_builder| {
-                effect_builder
-                    .into_inner()
-                    .schedule(event, QueueKind::Api)
-                    .ignore()
-            })
-            .await;
+    for test_case in [get_all_values_disabled, get_trie_disabled] {
+        let (receiver, mut runner) = run_test_case(test_case, &mut rng).await;
 
         let result = tokio::select! {
             result = receiver => result.expect("expected successful response"),
@@ -218,6 +116,68 @@ async fn should_return_error_for_disabled_functions() {
         };
         assert_eq!(result.error_code(), EXPECTED_ERROR_CODE as u8)
     }
+}
+
+async fn run_test_case(
+    TestCase {
+        allow_request_get_all_values,
+        allow_request_get_trie,
+        request_generator,
+    }: TestCase,
+    rng: &mut TestRng,
+) -> (
+    Receiver<BinaryResponse>,
+    Runner<ConditionCheckReactor<MockReactor>>,
+) {
+    let config = BinaryPortConfig {
+        enable_server: true,
+        allow_request_get_all_values,
+        allow_request_get_trie,
+        max_request_size_bytes: 1024,
+        max_response_size_bytes: 1024,
+        client_request_limit: 2,
+        client_request_buffer_size: 16,
+        max_connections: 2,
+        ..Default::default()
+    };
+
+    let (chainspec, chainspec_raw_bytes) =
+        <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+    let mut runner: Runner<ConditionCheckReactor<MockReactor>> = Runner::new(
+        config.clone(),
+        Arc::new(chainspec),
+        Arc::new(chainspec_raw_bytes),
+        rng,
+    )
+    .await
+    .unwrap();
+
+    // Initialize component.
+    runner
+        .process_injected_effects(|effect_builder| {
+            effect_builder
+                .into_inner()
+                .schedule(BinaryPortEvent::Initialize, QueueKind::Api)
+                .ignore()
+        })
+        .await;
+
+    let (sender, receiver) = oneshot::channel();
+    let event = BinaryPortEvent::HandleRequest {
+        request: request_generator(),
+        responder: Responder::without_shutdown(sender),
+    };
+
+    runner
+        .process_injected_effects(|effect_builder| {
+            effect_builder
+                .into_inner()
+                .schedule(event, QueueKind::Api)
+                .ignore()
+        })
+        .await;
+
+    (receiver, runner)
 }
 
 struct MockReactor {
