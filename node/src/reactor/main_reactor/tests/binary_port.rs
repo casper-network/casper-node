@@ -571,7 +571,7 @@ fn get_block_transfers(expected: BlockHeader) -> TestCase {
             key: expected.block_hash().to_bytes().unwrap(),
         }),
         asserter: Box::new(move |response| {
-            validate_metadata(response, Some(PayloadType::VecTransfers))
+            validate_metadata(response, Some(PayloadType::Transfers))
                 && bincode::deserialize::<Vec<Transfer>>(response.payload()).is_ok()
         }),
     }

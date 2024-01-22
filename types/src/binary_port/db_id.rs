@@ -31,16 +31,14 @@ pub enum DbId {
     ExecutionResult = 5,
     /// Refers to `Transfer` db.
     Transfer = 6,
-    /// Refers to `StateStore` db.
-    StateStore = 7,
     /// Refers to `FinalizedTransactionApprovals` db.
-    FinalizedTransactionApprovals = 8,
+    FinalizedTransactionApprovals = 7,
 }
 
 impl DbId {
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        Self::try_from(rng.gen_range(0..9)).expect("should be a valid db id")
+        Self::try_from(rng.gen_range(0..8)).expect("should be a valid db id")
     }
 }
 
@@ -56,8 +54,7 @@ impl TryFrom<u8> for DbId {
             4 => Ok(DbId::Transaction),
             5 => Ok(DbId::ExecutionResult),
             6 => Ok(DbId::Transfer),
-            7 => Ok(DbId::StateStore),
-            8 => Ok(DbId::FinalizedTransactionApprovals),
+            7 => Ok(DbId::FinalizedTransactionApprovals),
             _ => Err(UnknownDbId(value)),
         }
     }
@@ -83,7 +80,6 @@ impl core::fmt::Display for DbId {
             DbId::Transaction => write!(f, "Transaction"),
             DbId::ExecutionResult => write!(f, "ExecutionResult"),
             DbId::Transfer => write!(f, "Transfer"),
-            DbId::StateStore => write!(f, "StateStore"),
             DbId::FinalizedTransactionApprovals => write!(f, "FinalizedTransactionApprovals"),
         }
     }

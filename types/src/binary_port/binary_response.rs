@@ -16,7 +16,7 @@ use super::{
     DbRawBytesSpec, ErrorCode,
 };
 
-/// The response use in the binary port protocol.
+/// The response used in the binary port protocol.
 #[derive(Debug, PartialEq)]
 pub struct BinaryResponse {
     /// Header of the binary response.

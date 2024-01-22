@@ -188,30 +188,7 @@ impl FromBytes for GetRequest {
             }
             ALL_VALUES_TAG => {
                 let (state_root_hash, remainder) = FromBytes::from_bytes(remainder)?;
-                let (key_tag, remainder) = u8::from_bytes(remainder)?;
-                let key_tag = match key_tag {
-                    0 => KeyTag::Account,
-                    1 => KeyTag::Hash,
-                    2 => KeyTag::URef,
-                    3 => KeyTag::Transfer,
-                    4 => KeyTag::DeployInfo,
-                    5 => KeyTag::EraInfo,
-                    6 => KeyTag::Balance,
-                    7 => KeyTag::Bid,
-                    8 => KeyTag::Withdraw,
-                    9 => KeyTag::Dictionary,
-                    10 => KeyTag::SystemContractRegistry,
-                    11 => KeyTag::EraSummary,
-                    12 => KeyTag::Unbond,
-                    13 => KeyTag::ChainspecRegistry,
-                    14 => KeyTag::ChecksumRegistry,
-                    15 => KeyTag::BidAddr,
-                    16 => KeyTag::Package,
-                    17 => KeyTag::AddressableEntity,
-                    18 => KeyTag::ByteCode,
-                    19 => KeyTag::Message,
-                    _ => return Err(bytesrepr::Error::Formatting),
-                };
+                let (key_tag, remainder) = KeyTag::from_bytes(remainder)?;
                 Ok((
                     GetRequest::AllValues {
                         state_root_hash,

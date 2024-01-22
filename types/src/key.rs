@@ -214,6 +214,53 @@ impl Display for KeyTag {
     }
 }
 
+impl ToBytes for KeyTag {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut result = bytesrepr::unchecked_allocate_buffer(self);
+        self.write_bytes(&mut result)?;
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        KEY_ID_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        writer.push(*self as u8);
+        Ok(())
+    }
+}
+
+impl FromBytes for KeyTag {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (id, rem) = u8::from_bytes(bytes)?;
+        let tag = match id {
+            tag if tag == KeyTag::Account as u8 => KeyTag::Account,
+            tag if tag == KeyTag::Hash as u8 => KeyTag::Hash,
+            tag if tag == KeyTag::URef as u8 => KeyTag::URef,
+            tag if tag == KeyTag::Transfer as u8 => KeyTag::Transfer,
+            tag if tag == KeyTag::DeployInfo as u8 => KeyTag::DeployInfo,
+            tag if tag == KeyTag::EraInfo as u8 => KeyTag::EraInfo,
+            tag if tag == KeyTag::Balance as u8 => KeyTag::Balance,
+            tag if tag == KeyTag::Bid as u8 => KeyTag::Bid,
+            tag if tag == KeyTag::Withdraw as u8 => KeyTag::Withdraw,
+            tag if tag == KeyTag::Dictionary as u8 => KeyTag::Dictionary,
+            tag if tag == KeyTag::SystemContractRegistry as u8 => KeyTag::SystemContractRegistry,
+            tag if tag == KeyTag::EraSummary as u8 => KeyTag::EraSummary,
+            tag if tag == KeyTag::Unbond as u8 => KeyTag::Unbond,
+            tag if tag == KeyTag::ChainspecRegistry as u8 => KeyTag::ChainspecRegistry,
+            tag if tag == KeyTag::ChecksumRegistry as u8 => KeyTag::ChecksumRegistry,
+            tag if tag == KeyTag::BidAddr as u8 => KeyTag::BidAddr,
+            tag if tag == KeyTag::Package as u8 => KeyTag::Package,
+            tag if tag == KeyTag::AddressableEntity as u8 => KeyTag::AddressableEntity,
+            tag if tag == KeyTag::ByteCode as u8 => KeyTag::ByteCode,
+            tag if tag == KeyTag::Message as u8 => KeyTag::Message,
+            _ => return Err(Error::Formatting),
+        };
+        Ok((tag, rem))
+    }
+}
+
 /// The key under which data (e.g. [`CLValue`]s, smart contracts, user accounts) are stored in
 /// global state.
 #[repr(C)]
@@ -1231,91 +1278,90 @@ impl ToBytes for Key {
 
 impl FromBytes for Key {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
+        let (tag, remainder) = KeyTag::from_bytes(bytes)?;
         match tag {
-            tag if tag == KeyTag::Account as u8 => {
+            KeyTag::Account => {
                 let (account_hash, rem) = AccountHash::from_bytes(remainder)?;
                 Ok((Key::Account(account_hash), rem))
             }
-            tag if tag == KeyTag::Hash as u8 => {
+            KeyTag::Hash => {
                 let (hash, rem) = HashAddr::from_bytes(remainder)?;
                 Ok((Key::Hash(hash), rem))
             }
-            tag if tag == KeyTag::URef as u8 => {
+            KeyTag::URef => {
                 let (uref, rem) = URef::from_bytes(remainder)?;
                 Ok((Key::URef(uref), rem))
             }
-            tag if tag == KeyTag::Transfer as u8 => {
+            KeyTag::Transfer => {
                 let (transfer_addr, rem) = TransferAddr::from_bytes(remainder)?;
                 Ok((Key::Transfer(transfer_addr), rem))
             }
-            tag if tag == KeyTag::DeployInfo as u8 => {
+            KeyTag::DeployInfo => {
                 let (deploy_hash, rem) = DeployHash::from_bytes(remainder)?;
                 Ok((Key::DeployInfo(deploy_hash), rem))
             }
-            tag if tag == KeyTag::EraInfo as u8 => {
+            KeyTag::EraInfo => {
                 let (era_id, rem) = EraId::from_bytes(remainder)?;
                 Ok((Key::EraInfo(era_id), rem))
             }
-            tag if tag == KeyTag::Balance as u8 => {
+            KeyTag::Balance => {
                 let (uref_addr, rem) = URefAddr::from_bytes(remainder)?;
                 Ok((Key::Balance(uref_addr), rem))
             }
-            tag if tag == KeyTag::Bid as u8 => {
+            KeyTag::Bid => {
                 let (account_hash, rem) = AccountHash::from_bytes(remainder)?;
                 Ok((Key::Bid(account_hash), rem))
             }
-            tag if tag == KeyTag::Withdraw as u8 => {
+            KeyTag::Withdraw => {
                 let (account_hash, rem) = AccountHash::from_bytes(remainder)?;
                 Ok((Key::Withdraw(account_hash), rem))
             }
-            tag if tag == KeyTag::Dictionary as u8 => {
+            KeyTag::Dictionary => {
                 let (addr, rem) = DictionaryAddr::from_bytes(remainder)?;
                 Ok((Key::Dictionary(addr), rem))
             }
-            tag if tag == KeyTag::SystemContractRegistry as u8 => {
+            KeyTag::SystemContractRegistry => {
                 let (_, rem) = <[u8; 32]>::from_bytes(remainder)?;
                 Ok((Key::SystemContractRegistry, rem))
             }
-            tag if tag == KeyTag::EraSummary as u8 => {
+            KeyTag::EraSummary => {
                 let (_, rem) = <[u8; 32]>::from_bytes(remainder)?;
                 Ok((Key::EraSummary, rem))
             }
-            tag if tag == KeyTag::Unbond as u8 => {
+            KeyTag::Unbond => {
                 let (account_hash, rem) = AccountHash::from_bytes(remainder)?;
                 Ok((Key::Unbond(account_hash), rem))
             }
-            tag if tag == KeyTag::ChainspecRegistry as u8 => {
+            KeyTag::ChainspecRegistry => {
                 let (_, rem) = <[u8; 32]>::from_bytes(remainder)?;
                 Ok((Key::ChainspecRegistry, rem))
             }
-            tag if tag == KeyTag::ChecksumRegistry as u8 => {
+            KeyTag::ChecksumRegistry => {
                 let (_, rem) = <[u8; 32]>::from_bytes(remainder)?;
                 Ok((Key::ChecksumRegistry, rem))
             }
-            tag if tag == KeyTag::BidAddr as u8 => {
+            KeyTag::BidAddr => {
                 let (bid_addr, rem) = BidAddr::from_bytes(remainder)?;
                 Ok((Key::BidAddr(bid_addr), rem))
             }
-            tag if tag == KeyTag::Package as u8 => {
+            KeyTag::Package => {
                 let (package_addr, rem) = PackageAddr::from_bytes(remainder)?;
                 Ok((Key::Package(package_addr), rem))
             }
-            tag if tag == KeyTag::AddressableEntity as u8 => {
+            KeyTag::AddressableEntity => {
                 let (package_kind_tag, rem) = PackageKindTag::from_bytes(remainder)?;
                 let (entity_addr, rem) = EntityAddr::from_bytes(rem)?;
                 Ok((Key::AddressableEntity(package_kind_tag, entity_addr), rem))
             }
-            tag if tag == KeyTag::ByteCode as u8 => {
+            KeyTag::ByteCode => {
                 let (byte_code_kind, rem) = ByteCodeKind::from_bytes(remainder)?;
                 let (byte_code_addr, rem) = ByteCodeAddr::from_bytes(rem)?;
                 Ok((Key::ByteCode(byte_code_kind, byte_code_addr), rem))
             }
-            tag if tag == KeyTag::Message as u8 => {
+            KeyTag::Message => {
                 let (message_addr, rem) = MessageAddr::from_bytes(remainder)?;
                 Ok((Key::Message(message_addr), rem))
             }
-            _ => Err(Error::Formatting),
         }
     }
 }
@@ -2063,6 +2109,14 @@ mod tests {
             let encoded = bincode::serialize(key).unwrap();
             let decoded = bincode::deserialize(&encoded).unwrap();
             assert_eq!(key, &decoded);
+        }
+    }
+
+    #[test]
+    fn key_tag_bytes_roundtrip() {
+        for key in KEYS {
+            let tag: KeyTag = key.tag();
+            bytesrepr::test_serialization_roundtrip(&tag);
         }
     }
 

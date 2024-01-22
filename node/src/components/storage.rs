@@ -389,7 +389,6 @@ impl Storage {
         db_mapper.insert(DbId::BlockHeader, Box::new(block_header_dbs));
         db_mapper.insert(DbId::BlockMetadata, Box::new(block_metadata_db));
         db_mapper.insert(DbId::Transfer, Box::new(transfer_db));
-        db_mapper.insert(DbId::StateStore, Box::new(state_store_db));
         db_mapper.insert(DbId::BlockBody, Box::new(block_body_dbs));
         db_mapper.insert(DbId::ApprovalsHashes, Box::new(approvals_hashes_dbs));
 

@@ -50,7 +50,7 @@ impl BinaryResponseHeader {
         self.error == ErrorCode::NoError as u8
     }
 
-    /// Returns true if the response represents error.
+    /// Returns true if the response indicates the data was not found.
     pub fn is_not_found(&self) -> bool {
         self.error == ErrorCode::NotFound as u8
     }
