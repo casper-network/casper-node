@@ -6,11 +6,7 @@ mod metrics;
 #[cfg(test)]
 mod tests;
 
-use std::{
-    convert::{TryFrom, TryInto},
-    net::SocketAddr,
-    sync::Arc,
-};
+use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
 
 use bytes::Bytes;
 use casper_execution_engine::engine_state::{
@@ -29,7 +25,7 @@ use casper_types::{
     },
     bytesrepr::{self, FromBytes, ToBytes},
     BinaryResponse, BinaryResponseAndRequest, BlockHashAndHeight, BlockHeader, Digest, Peers,
-    ProtocolVersion, Timestamp, Transaction,
+    ProtocolVersion, TimeDiff, Timestamp, Transaction,
 };
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
@@ -328,8 +324,9 @@ where
                 .await else {
                 return BinaryResponse::new_empty(protocol_version);
             };
-            let serialized =
-                bincode::serialize(&transfers).expect("should serialize transfers to bytes");
+            let Ok(serialized) = bincode::serialize(&transfers) else {
+                return BinaryResponse::new_error(binary_port::ErrorCode::InternalError, protocol_version);
+            };
             let bytes = DbRawBytesSpec::new_current(&serialized);
             BinaryResponse::from_db_raw_bytes(DbId::Transfer, Some(bytes), protocol_version)
         }
@@ -585,6 +582,13 @@ where
                     (Some(pub_key), round_len)
                 });
 
+            let Ok(uptime) = TimeDiff::try_from(node_uptime) else {
+                return BinaryResponse::new_error(
+                    binary_port::ErrorCode::InternalError,
+                    protocol_version,
+                )
+            };
+
             let status = NodeStatus {
                 peers: Peers::from(peers),
                 build_version: crate::VERSION_STRING.clone(),
@@ -594,9 +598,7 @@ where
                 our_public_signing_key,
                 round_length,
                 next_upgrade,
-                uptime: node_uptime
-                    .try_into()
-                    .expect("uptime should fit into TimeDiff"),
+                uptime,
                 reactor_state,
                 last_progress: last_progress.into(),
                 available_block_range,
@@ -681,7 +683,7 @@ where
             return Err(Error::NoPayload);
         };
 
-        let resp = handle_payload(effect_builder, payload, version).await?;
+        let resp = handle_payload(effect_builder, payload, version).await;
         let resp_and_payload = BinaryResponseAndRequest::new(resp, payload);
         incoming_request.respond(Some(Bytes::from(ToBytes::to_bytes(&resp_and_payload)?)))
     }
@@ -691,39 +693,46 @@ async fn handle_payload<REv>(
     effect_builder: EffectBuilder<REv>,
     payload: &[u8],
     protocol_version: ProtocolVersion,
-) -> Result<BinaryResponse, Error>
+) -> BinaryResponse
 where
     REv: From<Event>,
 {
-    let (header, remainder) = BinaryRequestHeader::from_bytes(payload)?;
+    let Ok((header, remainder)) = BinaryRequestHeader::from_bytes(payload) else {
+        return BinaryResponse::new_error(binary_port::ErrorCode::BadRequest, protocol_version);
+    };
 
     if !header
         .protocol_version()
         .is_compatible_with(&protocol_version)
     {
-        return Ok(BinaryResponse::new_error(
+        return BinaryResponse::new_error(
             binary_port::ErrorCode::UnsupportedProtocolVersion,
             protocol_version,
-        ));
+        );
     }
 
     // we might receive a request added in a minor version if we're behind
-    let (tag, _) = u8::from_bytes(remainder)?;
+    let Ok((tag, _)) = u8::from_bytes(remainder) else {
+        return BinaryResponse::new_error(binary_port::ErrorCode::BadRequest, protocol_version);
+    };
+
     if BinaryRequestTag::try_from(tag).is_err() {
-        return Ok(BinaryResponse::new_error(
+        return BinaryResponse::new_error(
             binary_port::ErrorCode::UnsupportedRequest,
             protocol_version,
-        ));
+        );
     }
 
-    let request = bytesrepr::deserialize_from_slice(remainder)?;
-    let resp = effect_builder
+    let Ok(request) = bytesrepr::deserialize_from_slice(remainder) else {
+        return BinaryResponse::new_error(binary_port::ErrorCode::BadRequest, protocol_version);
+    };
+
+    effect_builder
         .make_request(
             |responder| Event::HandleRequest { request, responder },
             QueueKind::Regular,
         )
-        .await;
-    Ok(resp)
+        .await
 }
 
 async fn handle_client<REv>(
