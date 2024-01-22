@@ -731,7 +731,7 @@ async fn handle_client<REv>(
     mut client: TcpStream,
     effect_builder: EffectBuilder<REv>,
     config: Arc<Config>,
-    permit: OwnedSemaphorePermit,
+    _permit: OwnedSemaphorePermit,
 ) where
     REv: From<Event>
         + From<StorageRequest>
@@ -746,17 +746,14 @@ async fn handle_client<REv>(
         + Send,
 {
     let (reader, writer) = client.split();
-    let (client, server) = new_rpc_builder(&config).build(reader, writer);
+    // We are a server, we won't make any requests of our own, but we need to keep the client
+    // around, since dropping the client will trigger a server shutdown.
+    let (_client, server) = new_rpc_builder(&config).build(reader, writer);
 
     if let Err(err) = client_loop(server, effect_builder).await {
         // Low severity is used to prevent malicious clients from causing log floods.
         info!(%addr, %err, "binary port client handler error");
     }
-
-    // We are a server, we won't make any requests of our own, but we need to keep the client
-    // around, since dropping the client will trigger a server shutdown.
-    drop(client);
-    drop(permit);
 }
 
 async fn run_server<REv>(
