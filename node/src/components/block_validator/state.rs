@@ -10,7 +10,9 @@ use tracing::{debug, error, warn};
 #[cfg(test)]
 use casper_types::DeployHash;
 use casper_types::{
-    Chainspec, DeployApproval, DeployApprovalsHash, DeployFootprint, FinalitySignatureId, Timestamp,
+    Chainspec, DeployApproval, DeployApprovalsHash, DeployFootprint, FinalitySignatureId,
+    Timestamp, TransactionApproval, TransactionApprovalsHash, TransactionFootprint,
+    TransactionHash,
 };
 
 use crate::{
@@ -18,6 +20,7 @@ use crate::{
     effect::Responder,
     types::{
         appendable_block::AppendableBlock, DeployHashWithApprovals, DeployOrTransferHash, NodeId,
+        TransactionHashWithApprovals,
     },
 };
 
@@ -50,7 +53,7 @@ pub(super) enum MaybeStartFetching {
     /// Should start a new round of fetches.
     Start {
         holder: NodeId,
-        missing_deploys: HashMap<DeployOrTransferHash, DeployApprovalsHash>,
+        missing_deploys: HashMap<DeployOrTransferHash, TransactionApprovalsHash>,
         missing_signatures: HashSet<FinalitySignatureId>,
     },
     /// No new round of fetches should be started as one is already in progress.
@@ -65,12 +68,15 @@ pub(super) enum MaybeStartFetching {
 
 #[derive(Clone, Eq, PartialEq, DataSize, Debug)]
 pub(super) struct ApprovalInfo {
-    approvals: BTreeSet<DeployApproval>,
-    approvals_hash: DeployApprovalsHash,
+    approvals: BTreeSet<TransactionApproval>,
+    approvals_hash: TransactionApprovalsHash,
 }
 
 impl ApprovalInfo {
-    fn new(approvals: BTreeSet<DeployApproval>, approvals_hash: DeployApprovalsHash) -> Self {
+    fn new(
+        approvals: BTreeSet<TransactionApproval>,
+        approvals_hash: TransactionApprovalsHash,
+    ) -> Self {
         ApprovalInfo {
             approvals,
             approvals_hash,
@@ -120,13 +126,15 @@ impl BlockValidationState {
         responder: Responder<bool>,
         chainspec: &Chainspec,
     ) -> (Self, Option<Responder<bool>>) {
-        let deploy_count = block.deploys().len() + block.transfers().len();
+        let deploy_count = block.transactions().len() + block.transfers().len();
         if deploy_count == 0 {
             let state = BlockValidationState::Valid(block.timestamp());
             return (state, Some(responder));
         }
 
-        if block.deploys().len() > chainspec.transaction_config.block_max_standard_count as usize {
+        if block.transactions().len()
+            > chainspec.transaction_config.block_max_standard_count as usize
+        {
             warn!("too many non-transfer deploys");
             let state = BlockValidationState::Invalid(block.timestamp());
             return (state, Some(responder));
@@ -142,16 +150,16 @@ impl BlockValidationState {
             AppendableBlock::new(chainspec.transaction_config, block.timestamp());
 
         let mut missing_deploys = HashMap::new();
-        let deploys_iter = block.deploys().into_iter().map(|dhwa| {
-            let dt_hash = DeployOrTransferHash::Deploy(*dhwa.deploy_hash());
+        let deploys_iter = block.transactions().into_iter().map(|dhwa| {
+            let dt_hash = DeployOrTransferHash::Deploy(dhwa.transaction_hash());
             (dt_hash, dhwa.approvals().clone())
         });
         let transfers_iter = block.transfers().into_iter().map(|dhwa| {
-            let dt_hash = DeployOrTransferHash::Transfer(*dhwa.deploy_hash());
+            let dt_hash = DeployOrTransferHash::Transfer(dhwa.transaction_hash());
             (dt_hash, dhwa.approvals().clone())
         });
         for (dt_hash, approvals) in deploys_iter.chain(transfers_iter) {
-            let approval_info = match DeployApprovalsHash::compute(&approvals) {
+            let approval_info = match TransactionApprovalsHash::compute(&approvals) {
                 Ok(approvals_hash) => ApprovalInfo::new(approvals, approvals_hash),
                 Err(error) => {
                     warn!(%dt_hash, %error, "could not compute approvals hash");
@@ -305,13 +313,12 @@ impl BlockValidationState {
     pub(super) fn try_add_deploy_footprint(
         &mut self,
         dt_hash: &DeployOrTransferHash,
-        footprint: &DeployFootprint,
+        footprint: &TransactionFootprint,
     ) -> Vec<Responder<bool>> {
         let (new_state, responders) = match self {
             BlockValidationState::InProgress {
                 appendable_block,
                 missing_deploys,
-                missing_signatures,
                 responders,
                 ..
             } => {
@@ -324,30 +331,34 @@ impl BlockValidationState {
                 };
                 // Try adding the footprint to the appendable block to see if the block remains
                 // valid.
-                let dhwa =
-                    DeployHashWithApprovals::new((*dt_hash).into(), approvals_info.approvals);
+                let transaction_hash: TransactionHash = (*dt_hash).into();
+                let dhwa = TransactionHashWithApprovals::new_from_hash_and_approvals(
+                    &transaction_hash,
+                    &approvals_info.approvals,
+                );
                 let add_result = match dt_hash {
-                    DeployOrTransferHash::Deploy(_) => appendable_block.add_deploy(dhwa, footprint),
+                    DeployOrTransferHash::Deploy(_) => {
+                        appendable_block.add_transaction(dhwa, footprint)
+                    }
                     DeployOrTransferHash::Transfer(_) => {
                         appendable_block.add_transfer(dhwa, footprint)
                     }
                 };
                 match add_result {
                     Ok(()) => {
-                        if !missing_deploys.is_empty() || !missing_signatures.is_empty() {
+                        if !missing_deploys.is_empty() {
                             // The appendable block is still valid, but we still have missing
-                            // deploys or signatures - nothing further to do here.
+                            // deploys - nothing further to do here.
                             debug!(
                                 block_timestamp = %appendable_block.timestamp(),
                                 missing_deploys_len = missing_deploys.len(),
-                                missing_signatures_len = missing_signatures.len(),
-                                "still missing deploys or signatures - block validation incomplete"
+                                "still missing deploys - block validation incomplete"
                             );
                             return vec![];
                         }
                         debug!(
                             block_timestamp = %appendable_block.timestamp(),
-                            "no further missing deploys or signatures - block validation complete"
+                            "no further missing deploys - block validation complete"
                         );
                         let new_state = BlockValidationState::Valid(appendable_block.timestamp());
                         (new_state, mem::take(responders))
@@ -461,7 +472,7 @@ impl BlockValidationState {
     }
 
     #[cfg(test)]
-    pub(super) fn missing_hashes(&self) -> Vec<DeployHash> {
+    pub(super) fn missing_hashes(&self) -> Vec<TransactionHash> {
         match self {
             BlockValidationState::InProgress {
                 missing_deploys, ..

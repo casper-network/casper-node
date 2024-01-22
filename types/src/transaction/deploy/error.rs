@@ -10,7 +10,7 @@ use std::error::Error as StdError;
 use datasize::DataSize;
 use serde::Serialize;
 
-use crate::{crypto, TimeDiff, Timestamp, U512};
+use crate::{crypto, TimeDiff, Timestamp, TransactionV1Error, U512};
 
 /// A representation of the way in which a deploy failed validation checks.
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -299,7 +299,6 @@ impl Display for ExcessiveSizeError {
 
 #[cfg(feature = "std")]
 impl StdError for ExcessiveSizeError {}
-
 /// Errors other than validation failures relating to `Deploy`s.
 #[derive(Debug)]
 #[non_exhaustive]

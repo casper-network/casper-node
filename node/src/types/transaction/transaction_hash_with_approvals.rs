@@ -113,6 +113,21 @@ impl TransactionHashWithApprovals {
             TransactionHashWithApprovals::V1 { approvals, .. } => approvals.len(),
         }
     }
+
+    /// Returns the approvals.
+    // TODO[RC]: It's been returning a reference previously
+    pub(crate) fn approvals(&self) -> BTreeSet<TransactionApproval> {
+        match self {
+            TransactionHashWithApprovals::Deploy {
+                deploy_hash,
+                approvals,
+            } => approvals.into_iter().map(Into::into).collect(),
+            TransactionHashWithApprovals::V1 {
+                transaction_hash,
+                approvals,
+            } => approvals.into_iter().map(Into::into).collect(),
+        }
+    }
 }
 
 impl From<&Transaction> for TransactionHashWithApprovals {

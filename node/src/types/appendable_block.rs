@@ -9,7 +9,7 @@ use thiserror::Error;
 
 use casper_types::{
     DeployFootprint, DeployHash, Gas, PublicKey, RewardedSignatures, TimeDiff, Timestamp,
-    TransactionConfig,
+    TransactionConfig, TransactionFootprint, TransactionHash,
 };
 
 use super::BlockPayload;
@@ -41,9 +41,9 @@ pub(crate) enum AddError {
 #[derive(Clone, Eq, PartialEq, DataSize, Debug)]
 pub(crate) struct AppendableBlock {
     transaction_config: TransactionConfig,
-    deploys: Vec<DeployHashWithApprovals>,
-    transfers: Vec<DeployHashWithApprovals>,
-    deploy_and_transfer_set: HashSet<DeployHash>,
+    deploys: Vec<TransactionHashWithApprovals>,
+    transfers: Vec<TransactionHashWithApprovals>,
+    deploy_and_transfer_set: HashSet<TransactionHash>,
     timestamp: Timestamp,
     #[data_size(skip)]
     total_gas: Gas,
@@ -70,15 +70,13 @@ impl AppendableBlock {
     pub(crate) fn add(
         &mut self,
         deploy_hash_with_approvals: TransactionHashWithApprovals,
-        footprint: &DeployFootprint,
+        footprint: &TransactionFootprint,
     ) -> Result<(), AddError> {
-        // TODO[RC]: Temporary refactor boundary between DeployBuffer and AppendableBlock
-        todo!();
-        // if footprint.is_transfer {
-        // self.add_transfer(deploy_hash_with_approvals, footprint)
-        // } else {
-        // self.add_deploy(deploy_hash_with_approvals, footprint)
-        // }
+        if footprint.is_transfer() {
+            self.add_transfer(deploy_hash_with_approvals, footprint)
+        } else {
+            self.add_transaction(deploy_hash_with_approvals, footprint)
+        }
     }
 
     /// Attempts to add a transfer to the block; returns an error if that would violate a validity
@@ -88,25 +86,24 @@ impl AppendableBlock {
     /// actually a transfer.
     pub(crate) fn add_transfer(
         &mut self,
-        transfer: DeployHashWithApprovals,
-        footprint: &DeployFootprint,
+        transfer: TransactionHashWithApprovals,
+        footprint: &TransactionFootprint,
     ) -> Result<(), AddError> {
         if self
             .deploy_and_transfer_set
-            .contains(transfer.deploy_hash())
+            .contains(&transfer.transaction_hash())
         {
             return Err(AddError::Duplicate);
         }
-        if footprint.header.expired(self.timestamp) {
+        if footprint.expired(self.timestamp) {
             return Err(AddError::Expired);
         }
         if footprint
-            .header
             .is_valid(
                 &self.transaction_config,
                 NO_LEEWAY,
                 self.timestamp,
-                transfer.deploy_hash(),
+                &transfer.transaction_hash(),
             )
             .is_err()
         {
@@ -118,7 +115,8 @@ impl AppendableBlock {
         if self.would_exceed_approval_limits(transfer.approvals().len()) {
             return Err(AddError::ApprovalCount);
         }
-        self.deploy_and_transfer_set.insert(*transfer.deploy_hash());
+        self.deploy_and_transfer_set
+            .insert(transfer.transaction_hash());
         self.total_approvals += transfer.approvals().len();
         self.transfers.push(transfer);
         Ok(())
@@ -129,24 +127,26 @@ impl AppendableBlock {
     ///
     /// This _must not_ be called with a transfer - the function cannot check whether the argument
     /// is actually not a transfer.
-    pub(crate) fn add_deploy(
+    pub(crate) fn add_transaction(
         &mut self,
-        deploy: DeployHashWithApprovals,
-        footprint: &DeployFootprint,
+        transaction: TransactionHashWithApprovals,
+        footprint: &TransactionFootprint,
     ) -> Result<(), AddError> {
-        if self.deploy_and_transfer_set.contains(deploy.deploy_hash()) {
+        if self
+            .deploy_and_transfer_set
+            .contains(&transaction.transaction_hash())
+        {
             return Err(AddError::Duplicate);
         }
-        if footprint.header.expired(self.timestamp) {
+        if footprint.expired(self.timestamp) {
             return Err(AddError::Expired);
         }
         if footprint
-            .header
             .is_valid(
                 &self.transaction_config,
                 NO_LEEWAY,
                 self.timestamp,
-                deploy.deploy_hash(),
+                &transaction.transaction_hash(),
             )
             .is_err()
         {
@@ -155,16 +155,16 @@ impl AppendableBlock {
         if self.has_max_deploy_count() {
             return Err(AddError::DeployCount);
         }
-        if self.would_exceed_approval_limits(deploy.approvals().len()) {
+        if self.would_exceed_approval_limits(transaction.approvals().len()) {
             return Err(AddError::ApprovalCount);
         }
         // Only deploys count towards the size and gas limits.
         let new_total_size = self
             .total_size
-            .checked_add(footprint.size_estimate)
+            .checked_add(todo!() /*footprint.size_estimate*/)
             .filter(|size| *size <= self.transaction_config.max_block_size as usize)
             .ok_or(AddError::BlockSize)?;
-        let gas_estimate = footprint.gas_estimate;
+        let gas_estimate = todo!(); /*footprint.gas_estimate*/
         let new_total_gas = self
             .total_gas
             .checked_add(gas_estimate)
@@ -174,9 +174,10 @@ impl AppendableBlock {
         }
         self.total_gas = new_total_gas;
         self.total_size = new_total_size;
-        self.total_approvals += deploy.approvals().len();
-        self.deploy_and_transfer_set.insert(*deploy.deploy_hash());
-        self.deploys.push(deploy);
+        self.total_approvals += transaction.approvals().len();
+        self.deploy_and_transfer_set
+            .insert(transaction.transaction_hash());
+        self.deploys.push(transaction);
         Ok(())
     }
 
@@ -192,26 +193,10 @@ impl AppendableBlock {
             deploys, transfers, ..
         } = self;
         BlockPayload::new(
-            transfers
-                .iter()
-                .map(|dhwa| {
-                    TransactionHashWithApprovals::new_deploy(
-                        *dhwa.deploy_hash(),
-                        dhwa.approvals().clone(),
-                    )
-                })
-                .collect(),
+            transfers,
             vec![],
             vec![],
-            deploys
-                .iter()
-                .map(|dhwa| {
-                    TransactionHashWithApprovals::new_deploy(
-                        *dhwa.deploy_hash(),
-                        dhwa.approvals().clone(),
-                    )
-                })
-                .collect(),
+            deploys,
             accusations,
             rewarded_signatures,
             random_bit,

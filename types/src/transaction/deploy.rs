@@ -55,14 +55,14 @@ use crate::runtime_args;
 use crate::RuntimeArgs;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, Digest, DisplayIter, PublicKey, SecretKey, TimeDiff, Timestamp,
+    crypto, Digest, DisplayIter, PublicKey, SecretKey, TimeDiff, Timestamp, TransactionApproval,
 };
 
 pub use deploy_approval::DeployApproval;
 pub use deploy_approvals_hash::DeployApprovalsHash;
 #[cfg(any(feature = "std", test))]
 pub use deploy_builder::{DeployBuilder, DeployBuilderError};
-pub use deploy_footprint::DeployFootprint;
+pub use deploy_footprint::{DeployFootprint, TransactionFootprint, TransactionV1Footprint};
 pub use deploy_hash::DeployHash;
 pub use deploy_header::DeployHeader;
 pub use deploy_id::DeployId;

@@ -30,6 +30,7 @@ use tracing::debug;
 use super::InitiatorAddrAndSecretKey;
 use super::{
     InitiatorAddr, PricingMode, TransactionEntryPoint, TransactionScheduling, TransactionTarget,
+    TransactionV1Footprint,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
@@ -130,6 +131,10 @@ impl TransactionV1 {
     /// Returns the hash identifying this transaction.
     pub fn hash(&self) -> &TransactionV1Hash {
         &self.hash
+    }
+
+    pub fn is_transfer(&self) -> bool {
+        matches!(self.body.target, TransactionTarget::Native)
     }
 
     /// Returns the name of the chain the transaction should be executed on.
@@ -293,6 +298,16 @@ impl TransactionV1 {
         }
 
         Ok(())
+    }
+
+    /// Returns the `DeployFootprint`.
+    pub fn footprint(&self) -> Result<TransactionV1Footprint, TransactionV1Error> {
+        let header = self.header().clone();
+        let is_transfer = self.is_transfer();
+        Ok(TransactionV1Footprint {
+            header,
+            is_transfer,
+        })
     }
 
     /// Returns `Ok` if and only if:

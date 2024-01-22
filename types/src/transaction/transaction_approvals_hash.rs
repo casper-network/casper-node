@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use alloc::{collections::BTreeSet, vec::Vec};
 use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "datasize")]
@@ -8,7 +8,10 @@ use serde::{Deserialize, Serialize};
 #[cfg(doc)]
 use super::TransactionV1;
 use super::{DeployApprovalsHash, TransactionV1ApprovalsHash};
-use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    Digest, TransactionApproval,
+};
 
 const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;
@@ -23,6 +26,15 @@ pub enum TransactionApprovalsHash {
     /// A version 1 transaction approvals hash.
     #[serde(rename = "Version1")]
     V1(TransactionV1ApprovalsHash),
+}
+
+impl TransactionApprovalsHash {
+    /// Constructs a new `TransactionApprovalsHash` by bytesrepr-encoding `approvals` and creating
+    /// a [`Digest`] of this.
+    pub fn compute(approvals: &BTreeSet<TransactionApproval>) -> Result<Self, bytesrepr::Error> {
+        let digest = Digest::hash(approvals.to_bytes()?);
+        Ok(TransactionV1ApprovalsHash::from(digest).into()) // TODO[RC]: V1?
+    }
 }
 
 impl From<DeployApprovalsHash> for TransactionApprovalsHash {

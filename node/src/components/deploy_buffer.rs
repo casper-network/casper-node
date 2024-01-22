@@ -20,7 +20,8 @@ use tracing::{debug, error, info, warn};
 
 use casper_types::{
     Block, BlockV2, DeployApproval, DeployFootprint, DeployHash, DeployId, DisplayIter, Timestamp,
-    Transaction, TransactionApproval, TransactionConfig, TransactionHash, TransactionId,
+    Transaction, TransactionApproval, TransactionConfig, TransactionFootprint, TransactionHash,
+    TransactionId,
 };
 
 use crate::{
@@ -50,7 +51,7 @@ use metrics::Metrics;
 
 const COMPONENT_NAME: &str = "deploy_buffer";
 
-type FootprintAndApprovals = (DeployFootprint, BTreeSet<TransactionApproval>);
+type FootprintAndApprovals = (TransactionFootprint, BTreeSet<TransactionApproval>);
 
 #[derive(DataSize, Debug)]
 pub(crate) struct DeployBuffer {
@@ -216,7 +217,7 @@ impl DeployBuffer {
     /// Update buffer considering new stored deploy.
     fn register_transaction(&mut self, deploy: Transaction) {
         let deploy_hash = deploy.hash();
-        if deploy.is_valid().is_err() {
+        if deploy.verify().is_err() {
             error!(%deploy_hash, "TransactionBuffer: invalid deploy must not be buffered");
             return;
         }
@@ -342,7 +343,7 @@ impl DeployBuffer {
     }
 
     /// Returns eligible deploys that are buffered and not held or dead.
-    fn proposable(&self) -> Vec<(TransactionHashWithApprovals, DeployFootprint)> {
+    fn proposable(&self) -> Vec<(TransactionHashWithApprovals, TransactionFootprint)> {
         debug!("TransactionBuffer: getting proposable deploys");
         self.buffer
             .iter()
@@ -366,10 +367,10 @@ impl DeployBuffer {
         let mut have_hit_transfer_limit = false;
         let mut have_hit_deploy_limit = false;
         for (with_approvals, footprint) in self.proposable() {
-            if footprint.is_transfer && have_hit_transfer_limit {
+            if footprint.is_transfer() && have_hit_transfer_limit {
                 continue;
             }
-            if !footprint.is_transfer && have_hit_deploy_limit {
+            if !footprint.is_transfer() && have_hit_deploy_limit {
                 continue;
             }
             let deploy_hash = with_approvals.transaction_hash();

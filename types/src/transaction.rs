@@ -31,6 +31,7 @@ use rand::Rng;
 use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use tracing::error;
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
@@ -46,7 +47,8 @@ pub use addressable_entity_identifier::AddressableEntityIdentifier;
 pub use deploy::{
     Deploy, DeployApproval, DeployApprovalsHash, DeployConfigFailure, DeployDecodeFromJsonError,
     DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash, DeployHeader, DeployId,
-    ExecutableDeployItem, ExecutableDeployItemIdentifier, TransferTarget,
+    ExecutableDeployItem, ExecutableDeployItemIdentifier, TransactionFootprint,
+    TransactionV1Footprint, TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use deploy::{DeployBuilder, DeployBuilderError};
@@ -102,6 +104,14 @@ pub(super) static TRANSACTION: Lazy<Transaction> = Lazy::new(|| {
     Transaction::V1(v1_txn)
 });
 
+#[derive(Debug, Error)]
+pub enum TransactionConfigFailure {
+    #[error(transparent)]
+    Deploy(#[from] DeployConfigFailure),
+    #[error(transparent)]
+    V1(#[from] TransactionV1ConfigFailure),
+}
+
 /// A versioned wrapper for a transaction or deploy.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 #[cfg_attr(
@@ -128,24 +138,26 @@ impl Transaction {
         }
     }
 
-    // TODO[RC]
-    pub fn is_valid(&self) -> Result<(), DeployConfigFailure> {
+    /// Returns `Ok` if the given transaction is valid. Verification procedure is delegated to the
+    /// implementation of the particular variant of the transaction.
+    pub fn verify(&self) -> Result<(), TransactionConfigFailure> {
         match self {
-            Transaction::Deploy(deploy) => deploy.is_valid(),
-            Transaction::V1(_) => todo!(),
+            Transaction::Deploy(deploy) => deploy.is_valid().map_err(Into::into),
+            Transaction::V1(v1) => v1.verify().map_err(Into::into),
         }
     }
 
-    // TODO[RC]
-    pub fn footprint(&self) -> Result<DeployFootprint, DeployError> {
-        match self {
-            Transaction::Deploy(deploy) => deploy.footprint(),
-            Transaction::V1(_) => todo!(),
-        }
+    /// Returns the `TransactionFootprint`.
+    pub fn footprint(&self) -> Result<TransactionFootprint, TransactionError> {
+        Ok(match self {
+            Transaction::Deploy(deploy) => deploy.footprint()?.into(),
+            Transaction::V1(v1) => v1.footprint()?.into(),
+        })
     }
 
     // TODO[RC] - check for unnecessary clones (previously the return type was &)
-    // This causes another possibly unnecessary conversion in TransactionHashWithApprovals::new_from_hash_and_approvals()
+    // This causes another possibly unnecessary conversion in
+    // TransactionHashWithApprovals::new_from_hash_and_approvals()
     pub fn approvals(&self) -> BTreeSet<TransactionApproval> {
         match self {
             Transaction::Deploy(deploy) => deploy.approvals().iter().map(Into::into).collect(),
@@ -243,6 +255,13 @@ impl Transaction {
             Transaction::V1(TransactionV1::random(rng))
         }
     }
+
+    pub fn is_transfer(&self) -> bool {
+        match self {
+            Transaction::Deploy(deploy) => deploy.session().is_transfer(),
+            Transaction::V1(v1) => v1.is_transfer(),
+        }
+    }
 }
 
 impl From<Deploy> for Transaction {
@@ -308,6 +327,32 @@ impl Display for Transaction {
         match self {
             Transaction::Deploy(deploy) => Display::fmt(deploy, formatter),
             Transaction::V1(txn) => Display::fmt(txn, formatter),
+        }
+    }
+}
+
+pub enum TransactionError {
+    Deploy(DeployError),
+    V1(TransactionV1Error),
+}
+
+impl From<TransactionV1Error> for TransactionError {
+    fn from(value: TransactionV1Error) -> Self {
+        Self::V1(value)
+    }
+}
+
+impl From<DeployError> for TransactionError {
+    fn from(value: DeployError) -> Self {
+        Self::Deploy(value)
+    }
+}
+
+impl Display for TransactionError {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            TransactionError::Deploy(deploy) => write!(formatter, "{}", deploy),
+            TransactionError::V1(v1) => write!(formatter, "{}", v1),
         }
     }
 }

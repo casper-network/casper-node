@@ -23,7 +23,8 @@ use tracing::{debug, error, trace, warn};
 
 use casper_types::{
     Chainspec, DeployApprovalsHash, EraId, FinalitySignature, FinalitySignatureId, PublicKey,
-    RewardedSignatures, SingleBlockRewardedSignatures, Timestamp, Transaction, TransactionId,
+    RewardedSignatures, SingleBlockRewardedSignatures, Timestamp, Transaction,
+    TransactionApprovalsHash, TransactionHash, TransactionId,
 };
 
 use crate::{
@@ -55,36 +56,12 @@ impl ProposedBlock<ClContext> {
         self.context().timestamp()
     }
 
-    fn deploys(&self) -> Vec<DeployHashWithApprovals> {
-        self.value()
-            .standard()
-            .filter_map(|thwa| match thwa {
-                TransactionHashWithApprovals::Deploy {
-                    deploy_hash,
-                    approvals,
-                } => Some(DeployHashWithApprovals::new(
-                    *deploy_hash,
-                    approvals.clone(),
-                )),
-                TransactionHashWithApprovals::V1 { .. } => None,
-            })
-            .collect()
+    fn transactions(&self) -> Vec<TransactionHashWithApprovals> {
+        self.value().standard().cloned().collect()
     }
 
-    fn transfers(&self) -> Vec<DeployHashWithApprovals> {
-        self.value()
-            .transfer()
-            .filter_map(|thwa| match thwa {
-                TransactionHashWithApprovals::Deploy {
-                    deploy_hash,
-                    approvals,
-                } => Some(DeployHashWithApprovals::new(
-                    *deploy_hash,
-                    approvals.clone(),
-                )),
-                TransactionHashWithApprovals::V1 { .. } => None,
-            })
-            .collect()
+    fn transfers(&self) -> Vec<TransactionHashWithApprovals> {
+        self.value().transfer().cloned().collect()
     }
 }
 
@@ -542,10 +519,6 @@ impl BlockValidator {
         }
         match result {
             Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => {
-                let item = match *item {
-                    Transaction::Deploy(deploy) => deploy,
-                    Transaction::V1(_) => unreachable!("we only fetch deploys for now"),
-                };
                 if DeployOrTransferHash::new(&item) != dt_hash {
                     warn!(
                         deploy = %item,
@@ -797,7 +770,7 @@ where
 fn fetch_deploys_and_signatures<REv>(
     effect_builder: EffectBuilder<REv>,
     holder: NodeId,
-    missing_deploys: HashMap<DeployOrTransferHash, DeployApprovalsHash>,
+    missing_deploys: HashMap<DeployOrTransferHash, TransactionApprovalsHash>,
     missing_signatures: HashSet<FinalitySignatureId>,
 ) -> Effects<Event>
 where
@@ -809,9 +782,29 @@ where
     let mut effects: Effects<Event> = missing_deploys
         .into_iter()
         .flat_map(|(dt_hash, approvals_hash)| {
-            let txn_id = TransactionId::Deploy {
-                deploy_hash: dt_hash.into(),
-                approvals_hash,
+            let txn_id = match dt_hash {
+                DeployOrTransferHash::Deploy(transaction_hash) => {
+                    match (transaction_hash, approvals_hash) {
+                        (
+                            TransactionHash::Deploy(deploy_hash),
+                            TransactionApprovalsHash::Deploy(deploy_approvals_hash),
+                        ) => TransactionId::Deploy {
+                            deploy_hash,
+                            approvals_hash: deploy_approvals_hash,
+                        },
+                        (
+                            TransactionHash::V1(transaction_v1_hash),
+                            TransactionApprovalsHash::V1(transaction_v1_approvals_hash),
+                        ) => TransactionId::V1 {
+                            transaction_v1_hash,
+                            approvals_hash: transaction_v1_approvals_hash,
+                        },
+                        _ => panic!("transaction hash and approvals hash type mismatch"), // TODO[RC]
+                    }
+                }
+                DeployOrTransferHash::Transfer(_) => {
+                    panic!("unexpected transfer hash in block validator") // TODO[RC]
+                }
             };
             effect_builder
                 .fetch::<Transaction>(txn_id, holder, Box::new(EmptyValidationMetadata))

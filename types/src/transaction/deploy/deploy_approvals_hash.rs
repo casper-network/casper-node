@@ -12,7 +12,7 @@ use super::DeployApproval;
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    Digest,
+    Digest, TransactionApproval,
 };
 
 /// The cryptographic hash of the bytesrepr-encoded set of approvals for a single deploy.
