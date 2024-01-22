@@ -1,3 +1,10 @@
+use std::iter;
+
+use prometheus::Registry;
+use rand::Rng;
+
+use casper_types::{testing::TestRng, EraId, SecretKey, TimeDiff};
+
 use super::*;
 use crate::{
     effect::announcements::DeployBufferAnnouncement::{self, DeploysExpired},
@@ -5,9 +12,6 @@ use crate::{
     types::{Block, FinalizedBlock},
     utils,
 };
-use casper_types::{testing::TestRng, EraId, SecretKey, TimeDiff};
-use prometheus::Registry;
-use rand::Rng;
 
 enum DeployType {
     Transfer,
@@ -81,27 +85,50 @@ fn assert_container_sizes(
     expected_dead: usize,
     expected_held: usize,
 ) {
-    assert_eq!(deploy_buffer.buffer.len(), expected_buffer);
-    assert_eq!(deploy_buffer.dead.len(), expected_dead);
     assert_eq!(
-        deploy_buffer
-            .hold
-            .values()
-            .map(|deploys| deploys.len())
-            .sum::<usize>(),
-        expected_held
+        deploy_buffer.buffer.len(),
+        expected_buffer,
+        "buffer.len {} != expected {}",
+        deploy_buffer.buffer.len(),
+        expected_buffer
+    );
+    assert_eq!(
+        deploy_buffer.dead.len(),
+        expected_dead,
+        "dead.len {} != expected {}",
+        deploy_buffer.dead.len(),
+        expected_dead
+    );
+    let hold_len = deploy_buffer
+        .hold
+        .values()
+        .map(|deploys| deploys.len())
+        .sum::<usize>();
+    assert_eq!(
+        hold_len, expected_held,
+        "hold.len {} != expected {}",
+        hold_len, expected_held
     );
     assert_eq!(
         deploy_buffer.metrics.total_deploys.get(),
-        expected_buffer as i64
+        expected_buffer as i64,
+        "metrics total {} != expected {}",
+        deploy_buffer.metrics.total_deploys.get(),
+        expected_buffer,
     );
     assert_eq!(
         deploy_buffer.metrics.held_deploys.get(),
-        expected_held as i64
+        expected_held as i64,
+        "metrics held {} != expected {}",
+        deploy_buffer.metrics.held_deploys.get(),
+        expected_held,
     );
     assert_eq!(
         deploy_buffer.metrics.dead_deploys.get(),
-        expected_dead as i64
+        expected_dead as i64,
+        "metrics dead {} != expected {}",
+        deploy_buffer.metrics.dead_deploys.get(),
+        expected_dead,
     );
 }
 
@@ -559,7 +586,7 @@ fn should_be_empty_if_no_time_until_expiry() {
 
 #[test]
 fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
-    let mut rng = TestRng::new();
+    let rng = &mut TestRng::new();
     let max_deploy_count = 50;
     let max_transfer_count = 5;
     let deploy_config = DeployConfig {
@@ -573,31 +600,19 @@ fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
 
     let cap = (max_deploy_count * 100) as usize;
 
-    let secret_keys = {
-        let mut accounts = vec![];
-        for _ in 0..10 {
-            accounts.push(SecretKey::random(&mut rng));
-        }
-        accounts
-    };
+    let secret_keys: Vec<SecretKey> = iter::repeat_with(|| SecretKey::random(rng))
+        .take(10)
+        .collect();
     let contract_names = ["a", "b", "c", "d", "e"];
     let contract_entry_points = ["foo", "bar"];
-
-    let mut last_timestamp = Timestamp::now();
-    fn timestamp(rng: &mut TestRng, last_timestamp: Timestamp) -> Timestamp {
-        if rng.gen_range(0..=1) == 1 {
-            return Timestamp::now();
-        }
-        last_timestamp
-    }
 
     fn ttl(rng: &mut TestRng) -> TimeDiff {
         TimeDiff::from_seconds(rng.gen_range(60..3600))
     }
 
-    for _ in 0..cap {
-        last_timestamp = timestamp(&mut rng, last_timestamp);
-        let ttl = ttl(&mut rng);
+    let mut last_timestamp = Timestamp::now();
+    for i in 0..cap {
+        let ttl = ttl(rng);
         let secret_key = Some(
             SecretKey::from_pem(
                 secret_keys[rng.gen_range(0..secret_keys.len())]
@@ -610,24 +625,35 @@ fn should_have_diverse_proposable_blocks_with_stocked_buffer() {
         let contract_entry_point =
             Some(contract_entry_points[rng.gen_range(0..contract_entry_points.len())].into());
         let deploy = Deploy::random_contract_by_name(
-            &mut rng,
+            rng,
             secret_key,
             contract_name,
             contract_entry_point,
             Some(last_timestamp),
             Some(ttl),
         );
-        deploy_buffer.register_deploy(deploy)
+        deploy_buffer.register_deploy(deploy);
+        assert_eq!(
+            deploy_buffer.buffer.len(),
+            i + 1,
+            "failed to buffer deploy {i}"
+        );
+        last_timestamp += TimeDiff::from_millis(1);
     }
 
-    for _ in 0..max_transfer_count {
-        last_timestamp = timestamp(&mut rng, last_timestamp);
-        let ttl = ttl(&mut rng);
+    for i in 0..max_transfer_count {
+        let ttl = ttl(rng);
         deploy_buffer.register_deploy(Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
-            &mut rng,
+            rng,
             last_timestamp,
             ttl,
         ));
+        assert_eq!(
+            deploy_buffer.buffer.len(),
+            i as usize + 1 + cap,
+            "failed to buffer transfer {i}"
+        );
+        last_timestamp += TimeDiff::from_millis(1);
     }
 
     let expected_count = cap + (max_transfer_count as usize);
