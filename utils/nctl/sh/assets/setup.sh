@@ -53,7 +53,7 @@ NODE_COUNT=${NODE_COUNT:-5}
 PATH_TO_CHAINSPEC=${PATH_TO_CHAINSPEC:-"${NCTL_CASPER_HOME}/resources/local/chainspec.toml.in"}
 PATH_TO_ACCOUNTS=${PATH_TO_ACCOUNTS:-""}
 PATH_TO_CONFIG_TOML=${PATH_TO_CONFIG_TOML:-"${NCTL_CASPER_HOME}/resources/local/config.toml"}
-PATH_TO_SIDECAR_CONFIG_TOML=${PATH_TO_SIDECAR_CONFIG_TOML:-"${NCTL_CASPER_SIDECAR_HOME}/resources/example_configs/rpc_sidecar/sidecar.toml"}
+PATH_TO_SIDECAR_CONFIG_TOML=${PATH_TO_SIDECAR_CONFIG_TOML:-"${NCTL_CASPER_SIDECAR_HOME}/resources/example_configs/default_rpc_only_config.toml"}
 
 #######################################
 # Main
@@ -94,7 +94,7 @@ function _main()
                              "$NCTL_CASPER_CLIENT_HOME/target/debug/casper-client" \
                              "$NCTL_CASPER_HOME/target/debug/casper-node" \
                              "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/debug/casper-node-launcher" \
-                             "$NCTL_CASPER_SIDECAR_HOME/target/debug/casper-rpc-sidecar" \
+                             "$NCTL_CASPER_SIDECAR_HOME/target/debug/casper-sidecar" \
                              "$NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release"
     else
         setup_asset_binaries "1_0_0" \
@@ -102,7 +102,7 @@ function _main()
                              "$NCTL_CASPER_CLIENT_HOME/target/release/casper-client" \
                              "$NCTL_CASPER_HOME/target/release/casper-node" \
                              "$NCTL_CASPER_NODE_LAUNCHER_HOME/target/release/casper-node-launcher" \
-                             "$NCTL_CASPER_SIDECAR_HOME/target/release/casper-rpc-sidecar" \
+                             "$NCTL_CASPER_SIDECAR_HOME/target/release/casper-sidecar" \
                              "$NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release"
     fi
 
