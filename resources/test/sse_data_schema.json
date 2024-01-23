@@ -2517,7 +2517,7 @@
             "AddKeys": {
               "type": "array",
               "items": {
-                "$ref": "#/definitions/ExecutionResultNamedKey"
+                "$ref": "#/definitions/NamedKey"
               }
             }
           },
@@ -3055,7 +3055,7 @@
       "description": "Decimal representation of a 256-bit integer.",
       "type": "string"
     },
-    "ExecutionResultNamedKey": {
+    "NamedKey": {
       "description": "A key with a name.",
       "type": "object",
       "required": [
@@ -3069,10 +3069,18 @@
         },
         "key": {
           "description": "The value of the entry: a casper `Key` type.",
-          "type": "string"
+          "allOf": [
+            {
+              "$ref": "#/definitions/Key"
+            }
+          ]
         }
       },
       "additionalProperties": false
+    },
+    "Key": {
+      "description": "The key as a formatted string, under which data (e.g. `CLValue`s, smart contracts, user accounts) are stored in global state.",
+      "type": "string"
     },
     "UnbondingPurse": {
       "description": "Unbonding purse.",
@@ -3138,10 +3146,6 @@
         }
       },
       "additionalProperties": false
-    },
-    "Key": {
-      "description": "The key as a formatted string, under which data (e.g. `CLValue`s, smart contracts, user accounts) are stored in global state.",
-      "type": "string"
     },
     "BidKind": {
       "description": "Auction bid variants.",
@@ -3763,38 +3767,9 @@
     },
     "NamedKeys": {
       "description": "A collection of named keys.",
-      "allOf": [
-        {
-          "$ref": "#/definitions/Array_of_NamedKey"
-        }
-      ]
-    },
-    "Array_of_NamedKey": {
       "type": "array",
       "items": {
         "$ref": "#/definitions/NamedKey"
-      }
-    },
-    "NamedKey": {
-      "description": "A key with a name.",
-      "type": "object",
-      "required": [
-        "key",
-        "name"
-      ],
-      "properties": {
-        "name": {
-          "description": "The name of the entry.",
-          "type": "string"
-        },
-        "key": {
-          "description": "The value of the entry: a casper `Key` type.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Key"
-            }
-          ]
-        }
       }
     },
     "AccountAssociatedKeys": {
