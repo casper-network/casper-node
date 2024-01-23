@@ -53,7 +53,7 @@ NODE_COUNT=${NODE_COUNT:-5}
 PATH_TO_CHAINSPEC=${PATH_TO_CHAINSPEC:-"${NCTL_CASPER_HOME}/resources/local/chainspec.toml.in"}
 PATH_TO_ACCOUNTS=${PATH_TO_ACCOUNTS:-""}
 PATH_TO_CONFIG_TOML=${PATH_TO_CONFIG_TOML:-"${NCTL_CASPER_HOME}/resources/local/config.toml"}
-PATH_TO_SIDECAR_CONFIG_TOML=${PATH_TO_SIDECAR_CONFIG_TOML:-"${NCTL_CASPER_SIDECAR_HOME}/default_rpc_only_config.toml"}
+PATH_TO_SIDECAR_CONFIG_TOML=${PATH_TO_SIDECAR_CONFIG_TOML:-"${NCTL_CASPER_SIDECAR_HOME}/resources/example_configs/default_rpc_only_config.toml"}
 
 #######################################
 # Main

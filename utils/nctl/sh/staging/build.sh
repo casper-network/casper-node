@@ -153,8 +153,8 @@ function set_stage_files_from_repo()
        "$PATH_TO_STAGE"
 
     # Stage sidecar config.
-    cp "$PATH_TO_SIDECAR_SOURCE/default_rpc_only_config.toml" \
-       "$PATH_TO_STAGE"
+    cp "$PATH_TO_SIDECAR_SOURCE/resources/example_configs/default_rpc_only_config.toml" \
+       "$PATH_TO_STAGE/sidecar.toml"
 }
 
 # ----------------------------------------------------------------
