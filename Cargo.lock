@@ -3288,9 +3288,9 @@ dependencies = [
 
 [[package]]
 name = "juliet"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f4800e6c04db91d3a80a9b84da77f73ce21bdd60f064b2e1a3a55680aacd88c"
+checksum = "037077290fa87cd3a82b7bace2b3278c5e774d584e2626e1a356dced41f690a5"
 dependencies = [
  "array-init",
  "bimap",
