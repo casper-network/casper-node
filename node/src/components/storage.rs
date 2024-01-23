@@ -30,9 +30,7 @@
 //! The storage component itself is panic free and in general reports three classes of errors:
 //! Corruption, temporary resource exhaustion and potential bugs.
 
-mod block_hash_height_and_era;
 mod config;
-mod deploy_metadata_v1;
 pub(crate) mod disjoint_sequences;
 mod error;
 mod event;
@@ -76,9 +74,10 @@ use casper_types::{
         execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
     },
     Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, BlockV2, DeployApprovalsHash,
-    DeployHash, Digest, EraId, FinalitySignature, ProtocolVersion, PublicKey, SignedBlockHeader,
-    StoredValue, Timestamp, Transaction, TransactionApprovalsHash, TransactionHash,
-    TransactionHeader, TransactionId, TransactionV1ApprovalsHash, Transfer,
+    DeployHash, Digest, EraId, FinalitySignature, FinalizedApprovals, ProtocolVersion, PublicKey,
+    SignedBlockHeader, StoredValue, Timestamp, Transaction, TransactionApprovalsHash,
+    TransactionHash, TransactionHeader, TransactionId, TransactionV1ApprovalsHash,
+    TransactionWithFinalizedApprovals, Transfer,
 };
 
 use crate::{
@@ -95,16 +94,16 @@ use crate::{
     fatal,
     protocol::Message,
     types::{
-        ApprovalsHashes, AvailableBlockRange, BlockExecutionResultsOrChunk,
-        BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, ExecutionInfo,
-        FinalizedApprovals, LegacyDeploy, MaxTtl, NodeId, NodeRng, SignedBlock, SyncLeap,
-        SyncLeapIdentifier, TransactionWithFinalizedApprovals, VariantMismatch,
+        AvailableBlockRange, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId,
+        BlockWithMetadata, ExecutableBlock, ExecutionInfo, LegacyDeploy, MaxTtl, NodeId, NodeRng,
+        SignedBlock, SyncLeap, SyncLeapIdentifier, VariantMismatch,
     },
     utils::{display_error, WithDir},
 };
-use block_hash_height_and_era::BlockHashHeightAndEra;
+use casper_storage::block_store::types::{
+    ApprovalsHashes, BlockHashHeightAndEra, DeployMetadataV1,
+};
 pub use config::Config;
-use deploy_metadata_v1::DeployMetadataV1;
 use disjoint_sequences::{DisjointSequences, Sequence};
 pub use error::FatalStorageError;
 use error::GetRequestError;

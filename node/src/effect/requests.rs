@@ -31,9 +31,9 @@ use casper_types::{
     execution::{ExecutionResult, ExecutionResultV2},
     system::auction::EraValidators,
     Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash, Digest,
-    DisplayIter, EraId, FinalitySignature, FinalitySignatureId, Key, ProtocolVersion, PublicKey,
-    TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer,
-    URef, U512,
+    DisplayIter, EraId, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key,
+    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash,
+    TransactionHeader, TransactionId, TransactionWithFinalizedApprovals, Transfer, URef, U512,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -59,13 +59,13 @@ use crate::{
     reactor::main_reactor::ReactorState,
     rpcs::docs::OpenRpcSchema,
     types::{
-        appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
-        ExecutableBlock, ExecutionInfo, FinalizedApprovals, LegacyDeploy, MetaBlockState, NodeId,
-        SignedBlock, StatusFeed, TransactionWithFinalizedApprovals, TrieOrChunk, TrieOrChunkId,
+        appendable_block::AppendableBlock, AvailableBlockRange, BlockExecutionResultsOrChunk,
+        BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, ExecutionInfo,
+        LegacyDeploy, MetaBlockState, NodeId, SignedBlock, StatusFeed, TrieOrChunk, TrieOrChunkId,
     },
     utils::Source,
 };
+use casper_storage::block_store::types::ApprovalsHashes;
 
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
 const_assert!(_STORAGE_REQUEST_SIZE < 97);

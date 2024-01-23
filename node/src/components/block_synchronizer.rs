@@ -29,6 +29,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state;
+use casper_storage::block_store::types::ApprovalsHashes;
 use casper_types::{
     Block, BlockHash, BlockHeader, BlockSignatures, Chainspec, Digest, FinalitySignature,
     FinalitySignatureId, Timestamp, Transaction,
@@ -54,9 +55,9 @@ use crate::{
     reactor::{self, main_reactor::MainEvent},
     rpcs::docs::DocExample,
     types::{
-        sync_leap_validation_metadata::SyncLeapValidationMetaData, ApprovalsHashes,
-        BlockExecutionResultsOrChunk, ExecutableBlock, LegacyDeploy, MetaBlock, MetaBlockState,
-        NodeId, SyncLeap, SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix,
+        sync_leap_validation_metadata::SyncLeapValidationMetaData, BlockExecutionResultsOrChunk,
+        ExecutableBlock, LegacyDeploy, MetaBlock, MetaBlockState, NodeId, SyncLeap,
+        SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix,
     },
     NodeRng,
 };

@@ -16,6 +16,7 @@ use rand::{prelude::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
+use casper_storage::block_store::types::{ApprovalsHashes, BlockHashHeightAndEra};
 use casper_types::{
     execution::{
         execution_result_v1::{ExecutionEffect, ExecutionResultV1, Transform, TransformEntry},
@@ -28,15 +29,15 @@ use casper_types::{
     ChainspecRawBytes, Deploy, DeployApprovalsHash, DeployHash, Digest, EraId, FinalitySignature,
     Key, ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TestBlockBuilder,
     TestBlockV1Builder, TimeDiff, Transaction, TransactionApprovalsHash, TransactionHash,
-    TransactionV1Hash, Transfer, URef, U512,
+    TransactionV1Hash, TransactionWithFinalizedApprovals, Transfer, URef, U512,
 };
 use tempfile::tempdir;
 
 use super::{
     initialize_block_metadata_db,
     lmdb_ext::{deserialize_internal, serialize_internal, TransactionExt, WriteTransactionExt},
-    move_storage_files_to_network_subdir, should_move_storage_files_to_network_subdir,
-    BlockHashHeightAndEra, Config, Storage, FORCE_RESYNC_FILE_NAME,
+    move_storage_files_to_network_subdir, should_move_storage_files_to_network_subdir, Config,
+    Storage, FORCE_RESYNC_FILE_NAME,
 };
 use crate::{
     components::fetcher::{FetchItem, FetchResponse},
@@ -46,9 +47,8 @@ use crate::{
     },
     testing::{ComponentHarness, UnitTestEvent},
     types::{
-        sync_leap_validation_metadata::SyncLeapValidationMetaData, ApprovalsHashes,
-        AvailableBlockRange, ExecutionInfo, LegacyDeploy, SignedBlock, SyncLeapIdentifier,
-        TransactionWithFinalizedApprovals,
+        sync_leap_validation_metadata::SyncLeapValidationMetaData, AvailableBlockRange,
+        ExecutionInfo, LegacyDeploy, SignedBlock, SyncLeapIdentifier,
     },
     utils::{Loadable, WithDir},
 };
@@ -920,7 +920,11 @@ fn can_retrieve_store_and_load_transactions() {
     let transaction = Transaction::random(&mut harness.rng);
 
     let was_new = put_transaction(&mut harness, &mut storage, &transaction);
-    let block_hash_height_and_era = BlockHashHeightAndEra::random(&mut harness.rng);
+    let block_hash_height_and_era = BlockHashHeightAndEra::new(
+        BlockHash::random(&mut harness.rng),
+        harness.rng.gen(),
+        EraId::random(&mut harness.rng),
+    );
     // Insert to the deploy hash index as well so that we can perform the GET later.
     // Also check that we don't have an entry there for this deploy.
     assert!(insert_to_transaction_index(

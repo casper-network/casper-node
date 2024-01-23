@@ -25,7 +25,7 @@ use casper_types::{
     AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, Block, BlockHash,
     BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Deploy, EraId, Key, Motes,
     ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, Timestamp, Transaction,
-    TransactionHash, ValidatorConfig, U512,
+    TransactionHash, TransactionWithFinalizedApprovals, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -51,7 +51,7 @@ use crate::{
     },
     types::{
         AvailableBlockRange, BlockPayload, DeployOrTransferHash, DeployWithFinalizedApprovals,
-        ExitCode, NodeId, SyncHandling, TransactionWithFinalizedApprovals,
+        ExitCode, NodeId, SyncHandling,
     },
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,

@@ -15,6 +15,7 @@ use casper_execution_engine::{
     execution,
 };
 use casper_storage::{
+    block_store::types::ApprovalsHashes,
     data_access_layer::DataAccessLayer,
     global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
 };
@@ -36,7 +37,7 @@ use crate::{
         },
         fetcher::FetchItem,
     },
-    types::{self, ApprovalsHashes, Chunkable, ExecutableBlock, InternalEraReport},
+    types::{self, Chunkable, ExecutableBlock, InternalEraReport},
 };
 
 use super::ExecutionArtifact;

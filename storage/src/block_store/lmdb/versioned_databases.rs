@@ -20,19 +20,19 @@ use casper_types::{
     FinalizedApprovals, FinalizedDeployApprovals, Transaction, TransactionHash,
 };
 
-use super::{
-    lmdb_ext::{self, LmdbExtError, TransactionExt, WriteTransactionExt},
-    DeployMetadataV1, FatalStorageError, LegacyApprovalsHashes,
+use super::lmdb_ext::{self, LmdbExtError, TransactionExt, WriteTransactionExt};
+use crate::block_store::{
+    error::BlockStoreError,
+    types::{ApprovalsHashes, DeployMetadataV1, LegacyApprovalsHashes},
 };
-use casper_storage::block_store::types::ApprovalsHashes;
 
-pub(super) trait VersionedKey: ToBytes {
+pub(crate) trait VersionedKey: ToBytes {
     type Legacy: AsRef<[u8]>;
 
     fn legacy_key(&self) -> Option<&Self::Legacy>;
 }
 
-pub(super) trait VersionedValue: ToBytes + FromBytes {
+pub(crate) trait VersionedValue: ToBytes + FromBytes {
     type Legacy: 'static + DeserializeOwned + Into<Self>;
 }
 
@@ -98,7 +98,7 @@ impl VersionedValue for FinalizedApprovals {
 /// will be a duplicated entry in the `legacy` and `current` DBs.  This should not be a common
 /// occurrence though.
 #[derive(Eq, PartialEq, DataSize, Debug)]
-pub(super) struct VersionedDatabases<K, V> {
+pub(crate) struct VersionedDatabases<K, V> {
     /// Legacy form of the data, with the key as `K::Legacy` type (converted to bytes using
     /// `AsRef<[u8]>`) and the value bincode-encoded.
     #[data_size(skip)]
@@ -217,14 +217,18 @@ where
         &self,
         txn: &'a mut RwTransaction,
         f: &mut F,
-    ) -> Result<(), FatalStorageError>
+    ) -> Result<(), BlockStoreError>
     where
-        F: FnMut(&mut RwCursor<'a>, V) -> Result<(), FatalStorageError>,
+        F: FnMut(&mut RwCursor<'a>, V) -> Result<(), BlockStoreError>,
     {
-        let mut cursor = txn.open_rw_cursor(self.current)?;
+        let mut cursor = txn
+            .open_rw_cursor(self.current)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
         for row in cursor.iter() {
-            let (_, raw_val) = row?;
-            let value: V = lmdb_ext::deserialize_bytesrepr(raw_val)?;
+            let (_, raw_val) =
+                row.map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+            let value: V = lmdb_ext::deserialize_bytesrepr(raw_val)
+                .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
             f(&mut cursor, value)?;
         }
         Ok(())
@@ -236,14 +240,18 @@ where
         &self,
         txn: &'a mut RwTransaction,
         f: &mut F,
-    ) -> Result<(), FatalStorageError>
+    ) -> Result<(), BlockStoreError>
     where
-        F: FnMut(&mut RwCursor<'a>, V) -> Result<(), FatalStorageError>,
+        F: FnMut(&mut RwCursor<'a>, V) -> Result<(), BlockStoreError>,
     {
-        let mut cursor = txn.open_rw_cursor(self.legacy)?;
+        let mut cursor = txn
+            .open_rw_cursor(self.legacy)
+            .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
         for row in cursor.iter() {
-            let (_, raw_val) = row?;
-            let value: V::Legacy = lmdb_ext::deserialize(raw_val)?;
+            let (_, raw_val) =
+                row.map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
+            let value: V::Legacy = lmdb_ext::deserialize(raw_val)
+                .map_err(|err| BlockStoreError::InternalStorage(Box::new(err)))?;
             f(&mut cursor, value.into())?;
         }
         Ok(())
@@ -267,6 +275,7 @@ where
 
     /// Returns the keys from the `current` database only.
     #[cfg(test)]
+    #[allow(dead_code)]
     pub(super) fn keys<Tx: LmdbTransaction>(&self, txn: &Tx) -> BTreeSet<K>
     where
         K: Ord + FromBytes,
@@ -287,6 +296,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::block_store::lmdb::lmdb_block_store::new_environment;
     use lmdb::WriteFlags;
     use std::collections::HashMap;
 
@@ -309,7 +319,7 @@ mod tests {
         fn new() -> Fixture {
             let rng = TestRng::new();
             let data_dir = TempDir::new().expect("should create temp dir");
-            let env = super::super::new_environment(1024 * 1024, data_dir.path()).unwrap();
+            let env = new_environment(1024 * 1024, data_dir.path()).unwrap();
             let dbs = VersionedDatabases::new(&env, "legacy", "current").unwrap();
             let mut fixture = Fixture {
                 rng,

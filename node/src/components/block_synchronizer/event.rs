@@ -5,6 +5,7 @@ use either::Either;
 use serde::Serialize;
 
 use casper_execution_engine::engine_state;
+use casper_storage::block_store::types::ApprovalsHashes;
 use casper_types::{Block, BlockHash, BlockHeader, Digest, FinalitySignature, Transaction};
 
 use super::GlobalStateSynchronizerEvent;
@@ -14,10 +15,7 @@ use crate::{
         fetcher::FetchResult,
     },
     effect::requests::BlockSynchronizerRequest,
-    types::{
-        ApprovalsHashes, BlockExecutionResultsOrChunk, ExecutableBlock, LegacyDeploy, NodeId,
-        SyncLeap,
-    },
+    types::{BlockExecutionResultsOrChunk, ExecutableBlock, LegacyDeploy, NodeId, SyncLeap},
 };
 
 #[derive(From, Debug, Serialize)]

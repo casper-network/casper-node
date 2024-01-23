@@ -17,16 +17,13 @@ use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
 use tracing::warn;
 
-use casper_storage::block_store::types::DeployMetadataV1;
-
+use crate::block_store::types::{ApprovalsHashes, DeployMetadataV1};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     execution::ExecutionResult,
     system::auction::UnbondingPurse,
     BlockBody, BlockHeader, BlockSignatures, Deploy, DeployHash, FinalizedApprovals, Transfer,
 };
-
-use casper_storage::block_store::types::ApprovalsHashes;
 
 const UNBONDING_PURSE_V2_MAGIC_BYTES: &[u8] = &[121, 17, 133, 179, 91, 63, 69, 222];
 
