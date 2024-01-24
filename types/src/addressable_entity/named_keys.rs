@@ -22,7 +22,7 @@ use crate::{
 #[rustfmt::skip]
 pub struct NamedKeys(
     #[serde(with = "BTreeMapToArray::<String, Key>")]
-    #[schemars(with = "Vec<NamedKey>")]
+    #[cfg_attr(feature = "json-schema", schemars(with = "Vec<NamedKey>"))]
     BTreeMap<String, Key>,
 );
 
