@@ -19,7 +19,7 @@ use crate::{
     execution::{ExecutionResult, ExecutionResultV1},
     AvailableBlockRange, BlockBody, BlockBodyV1, BlockHash, BlockHashAndHeight, BlockHeader,
     BlockHeaderV1, BlockSignatures, BlockSynchronizerStatus, Deploy, FinalizedApprovals,
-    FinalizedDeployApprovals, Peers, ReactorState, Transaction, Transfer, Uptime,
+    FinalizedDeployApprovals, Peers, ReactorState, StoredValue, Transaction, Transfer, Uptime,
 };
 #[cfg(any(feature = "std", test))]
 use crate::{ChainspecRawBytes, NextUpgrade};
@@ -30,7 +30,6 @@ use super::{
     type_wrappers::{
         ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult,
         HighestBlockSequenceCheckResult, LastProgress, NetworkName, SpeculativeExecutionResult,
-        StoredValues,
     },
 };
 
@@ -455,7 +454,7 @@ impl PayloadEntity for GlobalStateQueryResult {
     const PAYLOAD_TYPE: PayloadType = PayloadType::GlobalStateQueryResult;
 }
 
-impl PayloadEntity for StoredValues {
+impl PayloadEntity for Vec<StoredValue> {
     const PAYLOAD_TYPE: PayloadType = PayloadType::StoredValues;
 }
 

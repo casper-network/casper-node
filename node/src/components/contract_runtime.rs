@@ -1081,7 +1081,7 @@ impl ContractRuntime {
         metrics.get_trie.observe(start.elapsed().as_secs_f64());
         // Extract the inner Bytes, we don't want this change to ripple through the system right
         // now.
-        result.map(|option| GetTrieFullResult(option.map(|trie_raw| trie_raw.into_inner())))
+        result.map(|option| GetTrieFullResult::new(option.map(|trie_raw| trie_raw.into_inner())))
     }
 
     #[inline]

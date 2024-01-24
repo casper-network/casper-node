@@ -1134,13 +1134,13 @@ impl Storage {
                     }
                 };
                 let Some(header) = result else {
-                    return Ok(responder.respond(HighestBlockSequenceCheckResult(false)).ignore());
+                    return Ok(responder.respond(HighestBlockSequenceCheckResult::new(false)).ignore());
                 };
 
                 let height = header.height();
                 let result = self.get_available_block_range().contains(height);
                 responder
-                    .respond(HighestBlockSequenceCheckResult(result))
+                    .respond(HighestBlockSequenceCheckResult::new(result))
                     .ignore()
             }
         })

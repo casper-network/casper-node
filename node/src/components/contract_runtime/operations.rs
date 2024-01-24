@@ -490,13 +490,13 @@ where
                 ?deploy_hash,
                 "got more ({}) execution results from a single transaction", len
             );
-            SpeculativeExecutionResult(None)
+            SpeculativeExecutionResult::new(None)
         } else {
             // We know it must be 1, we could unwrap and then wrap
             // with `Some(_)` but `pop_front` already returns an `Option`.
             // We need to transform the `engine_state::ExecutionResult` into
             // `casper_types::ExecutionResult` as well.
-            SpeculativeExecutionResult(execution_results.pop_front().map(|result| {
+            SpeculativeExecutionResult::new(execution_results.pop_front().map(|result| {
                 let ExecutionResultAndMessages {
                     execution_result,
                     messages,

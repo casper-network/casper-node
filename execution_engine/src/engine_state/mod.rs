@@ -49,7 +49,7 @@ use casper_storage::{
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{AssociatedKeys, MessageTopics, NamedKeys},
-    binary_port::{get_all_values_result::GetAllValuesResult, type_wrappers::StoredValues},
+    binary_port::get_all_values_result::GetAllValuesResult,
     bytesrepr::ToBytes,
     execution::Effects,
     package::{EntityVersions, Groups, PackageKind, PackageKindTag, PackageStatus},
@@ -2232,16 +2232,14 @@ where
             .get_keys(&get_all_values_request.key_tag())
             .map_err(|err| Error::Exec(err.into()))?;
 
-        let mut all_values = vec![];
+        let mut values = vec![];
         for key in keys {
             if let Some(value) = tracking_copy.get(&key).map_err(Into::into)? {
-                all_values.push(value);
+                values.push(value);
             }
         }
 
-        Ok(GetAllValuesResult::Success {
-            values: StoredValues(all_values),
-        })
+        Ok(GetAllValuesResult::Success { values })
     }
 
     /// Gets current bids from the auction system.
