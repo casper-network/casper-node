@@ -3,7 +3,7 @@ mod repeated_ffi_call_should_gas_out_quickly {
         env,
         sync::mpsc::{self, RecvTimeoutError},
         thread,
-        time::Duration,
+        time::{Duration, Instant},
     };
 
     use rand::Rng;
@@ -87,7 +87,7 @@ mod repeated_ffi_call_should_gas_out_quickly {
             for i in 1..=extra_auth_keys {
                 auth_keys.push(AccountHash::new([i; 32]));
             }
-            let _ = thread::spawn(move || {
+            let executor = thread::spawn(move || {
                 let payment_args = runtime_args! { "amount" => U512::from(PAYMENT_AMOUNT) };
                 let deploy = DeployItemBuilder::new()
                     .with_address(*DEFAULT_ACCOUNT_ADDR)
@@ -118,13 +118,24 @@ mod repeated_ffi_call_should_gas_out_quickly {
             } else {
                 TIMEOUT
             };
-            match rx.recv_timeout(timeout) {
-                Ok(error) => assert!(
-                    matches!(error, Error::Exec(ExecError::GasLimit)),
-                    "expected gas limit error, but got {:?}",
-                    error
-                ),
-                Err(RecvTimeoutError::Timeout) => panic!("timed out"),
+            let start = Instant::now();
+            let receiver_result = rx.recv_timeout(timeout);
+            executor.join().unwrap();
+            match receiver_result {
+                Ok(error) => {
+                    assert!(
+                        matches!(error, Error::Exec(ExecError::GasLimit)),
+                        "expected gas limit error, but got {:?}",
+                        error
+                    );
+                }
+                Err(RecvTimeoutError::Timeout) => {
+                    panic!(
+                        "execution should take less than {} seconds, but took {} seconds ",
+                        timeout.as_secs_f32(),
+                        start.elapsed().as_secs_f32(),
+                    )
+                }
                 Err(RecvTimeoutError::Disconnected) => unreachable!(),
             }
         }
