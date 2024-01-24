@@ -1,9 +1,9 @@
 use alloc::vec::Vec;
 
-#[cfg(any(feature = "testing", test))]
-use crate::testing::TestRng;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
+use rand::distributions::Distribution;
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
 #[cfg(feature = "json-schema")]
@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{ExecutionResultV1, ExecutionResultV2};
 use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 
 const V1_TAG: u8 = 0;
 const V2_TAG: u8 = 1;
@@ -34,8 +36,6 @@ impl ExecutionResult {
     /// Returns a random ExecutionResult.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        use rand::distributions::Distribution;
-
         if rng.gen_bool(0.5) {
             Self::V1(rand::distributions::Standard.sample(rng))
         } else {

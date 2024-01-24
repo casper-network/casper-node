@@ -14,7 +14,7 @@ use crate::testing::TestRng;
 
 const BLOCK_HEIGHT_2_HASH_TAG: u8 = 0;
 const HIGHEST_COMPLETE_BLOCK_TAG: u8 = 1;
-const COMPLETED_BLOCK_CONTAINS_TAG: u8 = 2;
+const COMPLETED_BLOCKS_CONTAIN_TAG: u8 = 2;
 const TRANSACTION_HASH_2_BLOCK_HASH_AND_HEIGHT_TAG: u8 = 3;
 const PEERS_TAG: u8 = 4;
 const UPTIME_TAG: u8 = 5;
@@ -26,8 +26,8 @@ const BLOCK_SYNCHRONIZER_STATUS_TAG: u8 = 10;
 const AVAILABLE_BLOCK_RANGE_TAG: u8 = 11;
 const NEXT_UPGRADE_TAG: u8 = 12;
 const CONSENSUS_STATUS_TAG: u8 = 13;
-const CHAINSPEC_RAW_BYTES: u8 = 14;
-const STATUS_TAG: u8 = 15;
+const CHAINSPEC_RAW_BYTES_TAG: u8 = 14;
+const NODE_STATUS_TAG: u8 = 15;
 
 /// Request for non persistent data
 #[derive(Clone, Debug, PartialEq)]
@@ -57,7 +57,7 @@ pub enum NonPersistedDataRequest {
     LastProgress,
     /// Returns current state of the main reactor.
     ReactorState,
-    /// Returns current network name.
+    /// Returns network name.
     NetworkName,
     /// Returns consensus validator changes.
     ConsensusValidatorChanges,
@@ -123,7 +123,7 @@ impl ToBytes for NonPersistedDataRequest {
             NonPersistedDataRequest::CompletedBlocksContain {
                 block_identifier: block_hash,
             } => {
-                COMPLETED_BLOCK_CONTAINS_TAG.write_bytes(writer)?;
+                COMPLETED_BLOCKS_CONTAIN_TAG.write_bytes(writer)?;
                 block_hash.write_bytes(writer)
             }
             NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { transaction_hash } => {
@@ -146,8 +146,10 @@ impl ToBytes for NonPersistedDataRequest {
             }
             NonPersistedDataRequest::NextUpgrade => NEXT_UPGRADE_TAG.write_bytes(writer),
             NonPersistedDataRequest::ConsensusStatus => CONSENSUS_STATUS_TAG.write_bytes(writer),
-            NonPersistedDataRequest::ChainspecRawBytes => CHAINSPEC_RAW_BYTES.write_bytes(writer),
-            NonPersistedDataRequest::NodeStatus => STATUS_TAG.write_bytes(writer),
+            NonPersistedDataRequest::ChainspecRawBytes => {
+                CHAINSPEC_RAW_BYTES_TAG.write_bytes(writer)
+            }
+            NonPersistedDataRequest::NodeStatus => NODE_STATUS_TAG.write_bytes(writer),
         }
     }
 
@@ -192,7 +194,7 @@ impl FromBytes for NonPersistedDataRequest {
             HIGHEST_COMPLETE_BLOCK_TAG => {
                 Ok((NonPersistedDataRequest::HighestCompleteBlock, remainder))
             }
-            COMPLETED_BLOCK_CONTAINS_TAG => {
+            COMPLETED_BLOCKS_CONTAIN_TAG => {
                 let (block_hash, remainder) = FromBytes::from_bytes(remainder)?;
                 Ok((
                     NonPersistedDataRequest::CompletedBlocksContain {
@@ -227,8 +229,8 @@ impl FromBytes for NonPersistedDataRequest {
             }
             NEXT_UPGRADE_TAG => Ok((NonPersistedDataRequest::NextUpgrade, remainder)),
             CONSENSUS_STATUS_TAG => Ok((NonPersistedDataRequest::ConsensusStatus, remainder)),
-            CHAINSPEC_RAW_BYTES => Ok((NonPersistedDataRequest::ChainspecRawBytes, remainder)),
-            STATUS_TAG => Ok((NonPersistedDataRequest::NodeStatus, remainder)),
+            CHAINSPEC_RAW_BYTES_TAG => Ok((NonPersistedDataRequest::ChainspecRawBytes, remainder)),
+            NODE_STATUS_TAG => Ok((NonPersistedDataRequest::NodeStatus, remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
