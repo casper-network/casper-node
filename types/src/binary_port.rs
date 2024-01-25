@@ -29,7 +29,7 @@ pub use minimal_block_info::MinimalBlockInfo;
 #[cfg(any(feature = "std", test))]
 pub use node_status::NodeStatus;
 pub use non_persistent_data_request::NonPersistedDataRequest;
-pub use payload_type::PayloadType;
+pub use payload_type::{PayloadEntity, PayloadType};
 pub use type_wrappers::{
     ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
     LastProgress, NetworkName, SpeculativeExecutionResult, Uptime,
