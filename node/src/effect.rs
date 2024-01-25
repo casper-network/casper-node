@@ -1856,6 +1856,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn validate_block(
         self,
         sender: NodeId,
+        proposed_block_height: u64,
         block: ProposedBlock<ClContext>,
     ) -> bool
     where
@@ -1863,6 +1864,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| BlockValidationRequest {
+                proposed_block_height,
                 block,
                 sender,
                 responder,
