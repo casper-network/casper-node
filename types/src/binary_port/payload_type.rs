@@ -19,7 +19,7 @@ use crate::{
     execution::{ExecutionResult, ExecutionResultV1},
     AvailableBlockRange, BlockBody, BlockBodyV1, BlockHash, BlockHashAndHeight, BlockHeader,
     BlockHeaderV1, BlockSignatures, BlockSynchronizerStatus, Deploy, FinalizedApprovals,
-    FinalizedDeployApprovals, Peers, ReactorState, StoredValue, Transaction, Transfer, Uptime,
+    FinalizedDeployApprovals, Peers, ReactorState, StoredValue, Transaction, Transfer,
 };
 #[cfg(any(feature = "std", test))]
 use crate::{ChainspecRawBytes, NextUpgrade};
@@ -31,6 +31,7 @@ use super::{
         ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult,
         HighestBlockSequenceCheckResult, LastProgress, NetworkName, SpeculativeExecutionResult,
     },
+    Uptime,
 };
 
 /// A type of the payload being returned in a binary response.

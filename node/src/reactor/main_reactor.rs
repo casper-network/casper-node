@@ -25,10 +25,10 @@ use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    binary_port::type_wrappers::{LastProgress, NetworkName},
+    binary_port::{LastProgress, NetworkName, Uptime},
     Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, DeployId, EraId, FinalitySignature,
     PublicKey, ReactorState, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader,
-    TransactionId, Uptime, U512,
+    TransactionId, U512,
 };
 
 use crate::{

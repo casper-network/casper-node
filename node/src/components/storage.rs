@@ -70,7 +70,7 @@ use tracing::{debug, error, info, trace, warn};
 #[cfg(test)]
 use casper_types::Deploy;
 use casper_types::{
-    binary_port::{db_id::DbId, type_wrappers::HighestBlockSequenceCheckResult, DbRawBytesSpec},
+    binary_port::{DbId, DbRawBytesSpec, HighestBlockSequenceCheckResult},
     bytesrepr::{FromBytes, ToBytes},
     execution::{
         execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,

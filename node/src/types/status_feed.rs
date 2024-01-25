@@ -9,9 +9,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    binary_port::type_wrappers::ConsensusStatus, ActivationPoint, AvailableBlockRange, Block,
-    BlockHash, BlockSynchronizerStatus, Digest, EraId, NextUpgrade, Peers, ProtocolVersion,
-    PublicKey, ReactorState, TimeDiff, Timestamp,
+    binary_port::ConsensusStatus, ActivationPoint, AvailableBlockRange, Block, BlockHash,
+    BlockSynchronizerStatus, Digest, EraId, NextUpgrade, Peers, ProtocolVersion, PublicKey,
+    ReactorState, TimeDiff, Timestamp,
 };
 
 use crate::{

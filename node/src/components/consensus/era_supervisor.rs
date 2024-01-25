@@ -31,7 +31,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
-    binary_port::type_wrappers::{ConsensusStatus, ConsensusValidatorChanges},
+    binary_port::{ConsensusStatus, ConsensusValidatorChanges},
     AsymmetricType, BlockHash, BlockHeader, Chainspec, ConsensusProtocolName, Digest, DisplayIter,
     EraId, FinalizedApprovals, PublicKey, RewardedSignatures, Timestamp, Transaction,
     TransactionHash, ValidatorChange,

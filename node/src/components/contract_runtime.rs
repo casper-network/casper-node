@@ -44,9 +44,9 @@ use casper_storage::{
     },
 };
 use casper_types::{
-    binary_port::type_wrappers::GetTrieFullResult, package::PackageKindTag, BlockHash,
-    BlockHeaderV2, Chainspec, ChainspecRawBytes, ChainspecRegistry, Digest, EraId, Key,
-    ProtocolVersion, Timestamp, Transaction, UpgradeConfig, U512,
+    binary_port::GetTrieFullResult, package::PackageKindTag, BlockHash, BlockHeaderV2, Chainspec,
+    ChainspecRawBytes, ChainspecRegistry, Digest, EraId, Key, ProtocolVersion, Timestamp,
+    Transaction, UpgradeConfig, U512,
 };
 
 use crate::{

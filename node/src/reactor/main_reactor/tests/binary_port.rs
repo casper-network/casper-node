@@ -2,23 +2,17 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use casper_types::{
     binary_port::{
-        binary_request::{BinaryRequest, BinaryRequestHeader},
-        db_id::DbId,
-        get::GetRequest,
-        global_state_query_result::GlobalStateQueryResult,
-        non_persistent_data_request::NonPersistedDataRequest,
-        type_wrappers::{
-            ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult,
-            HighestBlockSequenceCheckResult, LastProgress, NetworkName, StoredValues,
-        },
-        NodeStatus,
+        BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest,
+        ConsensusStatus, ConsensusValidatorChanges, DbId, ErrorCode, GetRequest, GetTrieFullResult,
+        GlobalStateQueryResult, HighestBlockSequenceCheckResult, LastProgress, NetworkName,
+        NodeStatus, NonPersistedDataRequest, PayloadType, Uptime,
     },
     bytesrepr::{FromBytes, ToBytes},
     testing::TestRng,
-    AvailableBlockRange, BinaryResponse, BinaryResponseAndRequest, BlockHash, BlockHashAndHeight,
-    BlockHeader, BlockIdentifier, BlockSynchronizerStatus, ChainspecRawBytes, Digest, ErrorCode,
-    Key, KeyTag, NextUpgrade, PayloadType, Peers, ProtocolVersion, ReactorState, SecretKey,
-    SignedBlock, StoredValue, Transaction, TransactionHash, TransactionV1Builder, Transfer, Uptime,
+    AvailableBlockRange, BlockHash, BlockHashAndHeight, BlockHeader, BlockIdentifier,
+    BlockSynchronizerStatus, ChainspecRawBytes, Digest, Key, KeyTag, NextUpgrade, Peers,
+    ProtocolVersion, ReactorState, SecretKey, SignedBlock, StoredValue, Transaction,
+    TransactionHash, TransactionV1Builder, Transfer,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -321,7 +315,7 @@ fn completed_blocks_contain_true() -> TestCase {
             assert_response::<HighestBlockSequenceCheckResult, _>(
                 response,
                 Some(PayloadType::HighestBlockSequenceCheckResult),
-                |HighestBlockSequenceCheckResult(result)| result,
+                HighestBlockSequenceCheckResult::into_inner,
             )
         }),
     }
@@ -339,7 +333,7 @@ fn completed_blocks_contain_false() -> TestCase {
             assert_response::<HighestBlockSequenceCheckResult, _>(
                 response,
                 Some(PayloadType::HighestBlockSequenceCheckResult),
-                |HighestBlockSequenceCheckResult(result)| !result,
+                |res| !res.into_inner(),
             )
         }),
     }
@@ -606,11 +600,11 @@ fn get_all_bids(state_root_hash: Digest) -> TestCase {
             key_tag: KeyTag::Bid,
         }),
         asserter: Box::new(|response| {
-            assert_response::<StoredValues, _>(response, Some(PayloadType::StoredValues), |res| {
-                res.into_inner()
-                    .iter()
-                    .all(|v| matches!(v, StoredValue::BidKind(_)))
-            })
+            assert_response::<Vec<StoredValue>, _>(
+                response,
+                Some(PayloadType::StoredValues),
+                |res| res.iter().all(|v| matches!(v, StoredValue::BidKind(_))),
+            )
         }),
     }
 }

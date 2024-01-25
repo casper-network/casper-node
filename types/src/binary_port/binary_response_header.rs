@@ -2,11 +2,13 @@
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    ErrorCode, PayloadType, ProtocolVersion,
+    ProtocolVersion,
 };
 use alloc::vec::Vec;
 #[cfg(test)]
 use rand::Rng;
+
+use super::{ErrorCode, PayloadType};
 
 /// Header of the binary response.
 #[derive(Debug, PartialEq)]

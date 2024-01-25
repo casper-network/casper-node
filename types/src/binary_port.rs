@@ -1,28 +1,39 @@
 //! The binary port.
-pub mod binary_request;
-pub(crate) mod binary_response;
-pub(crate) mod binary_response_and_request;
-pub(crate) mod binary_response_header;
-pub mod db_id;
-pub mod error_code;
-pub mod get;
-pub mod get_all_values_result;
-pub mod global_state_query_result;
+mod binary_request;
+mod binary_response;
+mod binary_response_and_request;
+mod binary_response_header;
+mod db_id;
+mod error_code;
+mod get;
+mod get_all_values_result;
+mod global_state_query_result;
 mod minimal_block_info;
 #[cfg(any(feature = "std", test))]
 mod node_status;
-pub mod non_persistent_data_request;
-pub mod payload_type;
-pub mod speculative_execution_result;
-pub mod type_wrappers;
+mod non_persistent_data_request;
+mod payload_type;
+mod type_wrappers;
 
+pub use binary_request::{BinaryRequest, BinaryRequestHeader, BinaryRequestTag};
+pub use binary_response::BinaryResponse;
+pub use binary_response_and_request::BinaryResponseAndRequest;
+pub use binary_response_header::BinaryResponseHeader;
+pub use db_id::DbId;
 pub use error_code::ErrorCode;
+pub use get::GetRequest;
+pub use get_all_values_result::GetAllValuesResult;
+pub use global_state_query_result::GlobalStateQueryResult;
 #[cfg(any(feature = "std", test))]
 pub use minimal_block_info::MinimalBlockInfo;
 #[cfg(any(feature = "std", test))]
 pub use node_status::NodeStatus;
+pub use non_persistent_data_request::NonPersistedDataRequest;
 pub use payload_type::PayloadType;
-pub use type_wrappers::Uptime;
+pub use type_wrappers::{
+    ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
+    LastProgress, NetworkName, SpeculativeExecutionResult, Uptime,
+};
 
 use alloc::vec::Vec;
 

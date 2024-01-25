@@ -14,18 +14,13 @@ use casper_execution_engine::engine_state::{
 };
 use casper_types::{
     binary_port::{
-        self,
-        binary_request::{BinaryRequest, BinaryRequestHeader, BinaryRequestTag},
-        db_id::DbId,
-        get::GetRequest,
-        get_all_values_result::GetAllValuesResult,
-        global_state_query_result::GlobalStateQueryResult,
-        non_persistent_data_request::NonPersistedDataRequest,
-        DbRawBytesSpec, NodeStatus,
+        self, BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse,
+        BinaryResponseAndRequest, DbId, DbRawBytesSpec, GetAllValuesResult, GetRequest,
+        GlobalStateQueryResult, NodeStatus, NonPersistedDataRequest,
     },
     bytesrepr::{self, FromBytes, ToBytes},
-    BinaryResponse, BinaryResponseAndRequest, BlockHashAndHeight, BlockHeader, Digest, Peers,
-    ProtocolVersion, TimeDiff, Timestamp, Transaction,
+    BlockHashAndHeight, BlockHeader, Digest, Peers, ProtocolVersion, TimeDiff, Timestamp,
+    Transaction,
 };
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};

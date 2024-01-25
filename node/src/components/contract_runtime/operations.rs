@@ -20,7 +20,7 @@ use casper_storage::{
 };
 use casper_types::{
     account::AccountHash,
-    binary_port::type_wrappers::SpeculativeExecutionResult,
+    binary_port::SpeculativeExecutionResult,
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     contract_messages::Messages,
     execution::{Effects, ExecutionResult, Transform, TransformKind},

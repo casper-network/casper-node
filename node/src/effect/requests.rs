@@ -28,13 +28,9 @@ use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     addressable_entity::AddressableEntity,
     binary_port::{
-        db_id::DbId,
-        get_all_values_result::GetAllValuesResult,
-        type_wrappers::{
-            ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult,
-            HighestBlockSequenceCheckResult, LastProgress, NetworkName, SpeculativeExecutionResult,
-        },
-        DbRawBytesSpec,
+        ConsensusStatus, ConsensusValidatorChanges, DbId, DbRawBytesSpec, GetAllValuesResult,
+        GetTrieFullResult, HighestBlockSequenceCheckResult, LastProgress, NetworkName,
+        SpeculativeExecutionResult, Uptime,
     },
     execution::ExecutionResult,
     system::auction::EraValidators,
@@ -42,7 +38,7 @@ use casper_types::{
     BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest,
     DisplayIter, EraId, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key,
     NextUpgrade, ProtocolVersion, PublicKey, ReactorState, Timestamp, Transaction, TransactionHash,
-    TransactionHeader, TransactionId, Transfer, Uptime, U512,
+    TransactionHeader, TransactionId, Transfer, U512,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};

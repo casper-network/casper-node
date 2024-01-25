@@ -5,8 +5,8 @@ use rand::Rng;
 use serde::Serialize;
 
 use casper_types::{
-    binary_port::{binary_request::BinaryRequest, get::GetRequest},
-    BinaryResponse, Digest, KeyTag,
+    binary_port::{BinaryRequest, BinaryResponse, GetRequest},
+    Digest, KeyTag,
 };
 
 use crate::{
