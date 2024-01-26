@@ -39,7 +39,7 @@ use crate::{
     storage::Storage,
     types::{
         appendable_block::{AddError, AppendableBlock},
-        DeployHashWithApprovals, FinalizedBlock,
+        FinalizedBlock,
     },
     NodeRng,
 };
@@ -324,10 +324,13 @@ impl DeployBuffer {
             block_height
         );
         match block {
-            Block::V1(v1_block) => self.register_deploys(
-                timestamp,
-                v1_block.deploy_and_transfer_hashes().map(Into::into),
-            ),
+            Block::V1(v1_block) => {
+                let transaction_hashes: Vec<TransactionHash> = v1_block
+                    .deploy_and_transfer_hashes()
+                    .map(|deploy_hash| TransactionHash::Deploy(deploy_hash.clone()))
+                    .collect();
+                self.register_deploys(timestamp, transaction_hashes.iter())
+            }
             Block::V2(v2_block) => {
                 self.register_deploys(timestamp, v2_block.all_transactions());
             }

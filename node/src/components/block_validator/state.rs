@@ -10,16 +10,15 @@ use tracing::{debug, error, warn};
 #[cfg(test)]
 use casper_types::DeployHash;
 use casper_types::{
-    Chainspec, DeployApproval, DeployApprovalsHash, DeployFootprint, FinalitySignatureId,
-    Timestamp, TransactionApproval, TransactionApprovalsHash, TransactionFootprint,
-    TransactionHash,
+    Chainspec, DeployFootprint, FinalitySignatureId, Timestamp, TransactionApproval,
+    TransactionApprovalsHash, TransactionFootprint, TransactionHash,
 };
 
 use crate::{
     components::consensus::{ClContext, ProposedBlock},
     effect::Responder,
     types::{
-        appendable_block::AppendableBlock, DeployHashWithApprovals, DeployOrTransferHash, NodeId,
+        appendable_block::AppendableBlock, DeployOrTransferHash, NodeId,
         TransactionHashWithApprovals,
     },
 };

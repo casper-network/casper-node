@@ -7,8 +7,7 @@ mod transaction_with_finalized_approvals;
 mod typed_transaction_hash;
 
 pub(crate) use deploy::{
-    DeployHashWithApprovals, DeployOrTransferHash, DeployWithFinalizedApprovals,
-    FinalizedDeployApprovals, LegacyDeploy,
+    DeployOrTransferHash, DeployWithFinalizedApprovals, FinalizedDeployApprovals, LegacyDeploy,
 };
 pub(crate) use execution_info::ExecutionInfo;
 pub(crate) use finalized_approvals::FinalizedApprovals;

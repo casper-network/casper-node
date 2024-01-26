@@ -45,8 +45,8 @@ pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
 pub(crate) use sync_leap::{GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier};
 pub use transaction::TransactionHashWithApprovals;
 pub(crate) use transaction::{
-    DeployHashWithApprovals, DeployOrTransferHash, DeployWithFinalizedApprovals, ExecutionInfo,
-    FinalizedApprovals, FinalizedDeployApprovals, FinalizedTransactionV1Approvals, LegacyDeploy,
+    DeployOrTransferHash, DeployWithFinalizedApprovals, ExecutionInfo, FinalizedApprovals,
+    FinalizedDeployApprovals, FinalizedTransactionV1Approvals, LegacyDeploy,
     TransactionWithFinalizedApprovals, TypedTransactionHash,
 };
 pub(crate) use validator_matrix::{EraValidatorWeights, SignatureWeight, ValidatorMatrix};

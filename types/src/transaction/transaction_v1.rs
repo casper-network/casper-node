@@ -134,6 +134,7 @@ impl TransactionV1 {
         &self.hash
     }
 
+    /// Returns `true` if this transaction v1 is a native transfer.
     pub fn is_transfer(&self) -> bool {
         matches!(self.body.target, TransactionTarget::Native)
     }

@@ -18,6 +18,7 @@ pub struct TransactionV1Footprint {
 }
 
 impl TransactionV1Footprint {
+    /// Returns `true` if this transaction is a native transfer.
     pub fn is_transfer(&self) -> bool {
         self.is_transfer
     }

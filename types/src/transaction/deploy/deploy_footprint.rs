@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(doc)]
 use super::Deploy;
 use super::DeployHeader;
-use crate::{Gas, TransactionV1Header};
+use crate::Gas;
 
 /// Information about how much block limit a [`Deploy`] will consume.
 #[derive(Clone, Debug)]

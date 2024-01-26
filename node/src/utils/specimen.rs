@@ -38,9 +38,8 @@ use crate::{
     },
     protocol::Message,
     types::{
-        ApprovalsHashes, BlockExecutionResultsOrChunk, BlockPayload, DeployHashWithApprovals,
-        FinalizedBlock, InternalEraReport, LegacyDeploy, SyncLeap, TransactionHashWithApprovals,
-        TrieOrChunk,
+        ApprovalsHashes, BlockExecutionResultsOrChunk, BlockPayload, FinalizedBlock,
+        InternalEraReport, LegacyDeploy, SyncLeap, TransactionHashWithApprovals, TrieOrChunk,
     },
 };
 
@@ -883,16 +882,27 @@ where
     }
 }
 
-impl LargestSpecimen for DeployHashWithApprovals {
+impl LargestSpecimen for TransactionHashWithApprovals {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
         // Note: This is an upper bound, the actual value is lower. We are keeping the order of
         //       magnitude intact though.
         let max_items = estimator.parameter::<usize>("max_transfers_per_block")
             + estimator.parameter::<usize>("max_standard_per_block");
-        DeployHashWithApprovals::new(
+
+        let deploy = TransactionHashWithApprovals::new_deploy(
             LargestSpecimen::largest_specimen(estimator, cache),
             btree_set_distinct(estimator, max_items, cache),
-        )
+        );
+        let v1 = TransactionHashWithApprovals::new_v1(
+            LargestSpecimen::largest_specimen(estimator, cache),
+            btree_set_distinct(estimator, max_items, cache),
+        );
+
+        if estimator.estimate(&deploy) > estimator.estimate(&v1) {
+            deploy
+        } else {
+            v1
+        }
     }
 }
 

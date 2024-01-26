@@ -2,7 +2,7 @@ use datasize::DataSize;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{Deploy, DeployHash, Transaction, TransactionHash};
+use casper_types::{Transaction, TransactionHash};
 
 /// The [`DeployHash`] stored in a way distinguishing between Wasm deploys and transfers.
 #[derive(

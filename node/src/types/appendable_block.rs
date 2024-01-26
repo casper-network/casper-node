@@ -13,7 +13,7 @@ use casper_types::{
 };
 
 use super::BlockPayload;
-use crate::types::{DeployHashWithApprovals, TransactionHashWithApprovals};
+use crate::types::TransactionHashWithApprovals;
 
 const NO_LEEWAY: TimeDiff = TimeDiff::from_millis(0);
 

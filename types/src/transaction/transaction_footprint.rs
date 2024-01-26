@@ -33,6 +33,7 @@ impl From<TransactionV1Footprint> for TransactionFootprint {
 }
 
 impl TransactionFootprint {
+    /// Returns `true` if this transaction is a native transfer.
     pub fn is_transfer(&self) -> bool {
         match self {
             TransactionFootprint::Deploy(deploy_footprint) => deploy_footprint.is_transfer,

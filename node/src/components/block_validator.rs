@@ -40,8 +40,8 @@ use crate::{
     },
     fatal,
     types::{
-        BlockWithMetadata, DeployHashWithApprovals, DeployOrTransferHash, NodeId,
-        TransactionHashWithApprovals, ValidatorMatrix,
+        BlockWithMetadata, DeployOrTransferHash, NodeId, TransactionHashWithApprovals,
+        ValidatorMatrix,
     },
     NodeRng,
 };

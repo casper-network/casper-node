@@ -105,10 +105,13 @@ pub(super) static TRANSACTION: Lazy<Transaction> = Lazy::new(|| {
     Transaction::V1(v1_txn)
 });
 
+/// A representation of the way in which a transaction failed validation checks.
 #[derive(Debug, Error)]
 pub enum TransactionConfigFailure {
+    /// Error details for the Deploy variant.
     #[error(transparent)]
     Deploy(#[from] DeployConfigFailure),
+    /// Error details for the TransactionV1 variant.
     #[error(transparent)]
     V1(#[from] TransactionV1ConfigFailure),
 }
@@ -156,10 +159,11 @@ impl Transaction {
         })
     }
 
-    // TODO[RC] - check for unnecessary clones (previously the return type was &)
-    // This causes another possibly unnecessary conversion in
-    // TransactionHashWithApprovals::new_from_hash_and_approvals()
+    /// Returns the `Approval`s for this transaction.
     pub fn approvals(&self) -> BTreeSet<TransactionApproval> {
+        // TODO[RC] - check for unnecessary clones (previously the return type was &)
+        // This causes another possibly unnecessary conversion in
+        // TransactionHashWithApprovals::new_from_hash_and_approvals()
         match self {
             Transaction::Deploy(deploy) => deploy.approvals().iter().map(Into::into).collect(),
             Transaction::V1(v1) => v1.approvals().iter().map(Into::into).collect(),
@@ -257,6 +261,7 @@ impl Transaction {
         }
     }
 
+    /// Returns `true` if this transaction is a native transfer.
     pub fn is_transfer(&self) -> bool {
         match self {
             Transaction::Deploy(deploy) => deploy.session().is_transfer(),
