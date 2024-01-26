@@ -43,10 +43,6 @@ do
     PATH_NODE_CONFIG=$(get_path_to_node_config "$NODE_ID")
     PATH_NODE_LOGS=$(get_path_to_node_logs "$NODE_ID")
 
-    local NODE_PROTOCOL_VERSION
-
-    NODE_PROTOCOL_VERSION=$(get_node_protocol_version_from_fs "$NODE_ID" "_")
-
     cat >> "$PATH_SUPERVISOR_CONFIG" <<- EOM
 
 [program:casper-net-$NET_ID-node-$NODE_ID]
