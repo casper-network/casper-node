@@ -161,10 +161,10 @@ impl AppendableBlock {
         // Only deploys count towards the size and gas limits.
         let new_total_size = self
             .total_size
-            .checked_add(todo!() /*footprint.size_estimate*/)
+            .checked_add(todo!() /* TODO[RC]: footprint.size_estimate */)
             .filter(|size| *size <= self.transaction_config.max_block_size as usize)
             .ok_or(AddError::BlockSize)?;
-        let gas_estimate = todo!(); /*footprint.gas_estimate*/
+        let gas_estimate = todo!(); /* TODO[RC]: footprint.gas_estimate */
         let new_total_gas = self
             .total_gas
             .checked_add(gas_estimate)

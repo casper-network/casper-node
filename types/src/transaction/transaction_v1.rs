@@ -4,6 +4,7 @@ mod transaction_v1_approvals_hash;
 mod transaction_v1_body;
 #[cfg(any(feature = "std", test))]
 mod transaction_v1_builder;
+mod transaction_v1_footprint;
 mod transaction_v1_hash;
 mod transaction_v1_header;
 
@@ -30,7 +31,6 @@ use tracing::debug;
 use super::InitiatorAddrAndSecretKey;
 use super::{
     InitiatorAddr, PricingMode, TransactionEntryPoint, TransactionScheduling, TransactionTarget,
-    TransactionV1Footprint,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
@@ -49,6 +49,7 @@ pub use transaction_v1_approvals_hash::TransactionV1ApprovalsHash;
 pub use transaction_v1_body::TransactionV1Body;
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1_builder::{TransactionV1Builder, TransactionV1BuilderError};
+pub use transaction_v1_footprint::TransactionV1Footprint;
 pub use transaction_v1_hash::TransactionV1Hash;
 pub use transaction_v1_header::TransactionV1Header;
 

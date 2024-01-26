@@ -8,6 +8,7 @@ mod pricing_mode;
 mod runtime_args;
 mod transaction_approvals_hash;
 mod transaction_entry_point;
+mod transaction_footprint;
 mod transaction_hash;
 mod transaction_header;
 mod transaction_id;
@@ -47,8 +48,7 @@ pub use addressable_entity_identifier::AddressableEntityIdentifier;
 pub use deploy::{
     Deploy, DeployApproval, DeployApprovalsHash, DeployConfigFailure, DeployDecodeFromJsonError,
     DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash, DeployHeader, DeployId,
-    ExecutableDeployItem, ExecutableDeployItemIdentifier, TransactionFootprint,
-    TransactionV1Footprint, TransferTarget,
+    ExecutableDeployItem, ExecutableDeployItemIdentifier, TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use deploy::{DeployBuilder, DeployBuilderError};
@@ -60,6 +60,7 @@ pub use pricing_mode::PricingMode;
 pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use transaction_approvals_hash::TransactionApprovalsHash;
 pub use transaction_entry_point::TransactionEntryPoint;
+pub use transaction_footprint::TransactionFootprint;
 pub use transaction_hash::TransactionHash;
 pub use transaction_header::TransactionHeader;
 pub use transaction_id::TransactionId;
