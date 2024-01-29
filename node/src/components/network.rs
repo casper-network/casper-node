@@ -36,6 +36,7 @@ mod insights;
 mod message;
 mod metrics;
 mod outgoing;
+mod per_channel;
 mod symmetry;
 pub(crate) mod tasks;
 #[cfg(test)]
@@ -100,6 +101,7 @@ pub(crate) use self::{
     message::{
         generate_largest_serialized_message, Channel, FromIncoming, Message, MessageKind, Payload,
     },
+    per_channel::PerChannel,
     transport::Ticket,
 };
 use crate::{
@@ -222,6 +224,8 @@ where
     ) -> Result<Network<REv, P>, Error> {
         let net_metrics = Arc::new(Metrics::new(registry)?);
 
+        let chain_info = chain_info_source.into();
+
         let outgoing_manager = OutgoingManager::with_metrics(
             OutgoingConfig {
                 retry_attempts: RECONNECTION_ATTEMPTS,
@@ -246,10 +250,9 @@ where
             None => None,
         };
 
-        let chain_info = chain_info_source.into();
         let rpc_builder = transport::create_rpc_builder(
-            chain_info.maximum_net_message_size,
-            cfg.max_in_flight_demands,
+            chain_info.networking_config,
+            cfg.send_buffer_size,
             cfg.ack_timeout,
         );
 

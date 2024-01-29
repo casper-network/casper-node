@@ -13,10 +13,12 @@ use serde::{Deserialize, Serialize};
 use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
 use casper_types::{bytesrepr::Bytes, file_utils, ProtocolVersion};
 
+use crate::components::network::PerChannel;
+
 use super::{
     accounts_config::AccountsConfig, global_state_update::GlobalStateUpdateConfig, ActivationPoint,
     Chainspec, ChainspecRawBytes, CoreConfig, DeployConfig, Error, GlobalStateUpdate,
-    HighwayConfig, NetworkConfig, ProtocolConfig,
+    HighwayConfig, JulietConfig, NetworkConfig, ProtocolConfig,
 };
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -24,7 +26,8 @@ use super::{
 #[serde(deny_unknown_fields)]
 struct TomlNetwork {
     name: String,
-    maximum_net_message_size: u32,
+    maximum_handshake_message_size: u32,
+    networking_config: PerChannel<JulietConfig>,
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -59,7 +62,8 @@ impl From<&Chainspec> for TomlChainspec {
         };
         let network = TomlNetwork {
             name: chainspec.network_config.name.clone(),
-            maximum_net_message_size: chainspec.network_config.maximum_net_message_size,
+            maximum_handshake_message_size: chainspec.network_config.maximum_handshake_message_size,
+            networking_config: chainspec.network_config.networking_config,
         };
 
         let core = chainspec.core_config.clone();
@@ -98,7 +102,8 @@ pub(super) fn parse_toml<P: AsRef<Path>>(
     let network_config = NetworkConfig {
         name: toml_chainspec.network.name,
         accounts_config,
-        maximum_net_message_size: toml_chainspec.network.maximum_net_message_size,
+        maximum_handshake_message_size: toml_chainspec.network.maximum_handshake_message_size,
+        networking_config: toml_chainspec.network.networking_config,
     };
 
     // global_state_update.toml must live in the same directory as chainspec.toml.

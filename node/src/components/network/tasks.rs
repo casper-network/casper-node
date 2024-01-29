@@ -195,9 +195,6 @@ where
     tarpit_duration: TimeDiff,
     /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
     tarpit_chance: f32,
-    /// Maximum number of demands allowed to be running at once. If 0, no limit is enforced.
-    #[allow(dead_code)] // TODO: Readd if necessary for backpressure.
-    max_in_flight_demands: usize,
 }
 
 impl<REv> NetworkContext<REv> {
@@ -209,13 +206,6 @@ impl<REv> NetworkContext<REv> {
         chain_info: ChainInfo,
         net_metrics: &Arc<Metrics>,
     ) -> Self {
-        // Set the demand max from configuration, regarding `0` as "unlimited".
-        let max_in_flight_demands = if cfg.max_in_flight_demands == 0 {
-            usize::MAX
-        } else {
-            cfg.max_in_flight_demands as usize
-        };
-
         let Identity {
             secret_key,
             tls_certificate,
@@ -237,7 +227,6 @@ impl<REv> NetworkContext<REv> {
             tarpit_version_threshold: cfg.tarpit_version_threshold,
             tarpit_duration: cfg.tarpit_duration,
             tarpit_chance: cfg.tarpit_chance,
-            max_in_flight_demands,
             keylog,
         }
     }

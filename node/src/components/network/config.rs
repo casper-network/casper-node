@@ -6,6 +6,8 @@ use casper_types::{ProtocolVersion, TimeDiff};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
+use super::PerChannel;
+
 /// Default binding address.
 ///
 /// Uses a fixed port per node, but binds on any interface.
@@ -44,11 +46,10 @@ impl Default for Config {
             handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
             max_incoming_peer_connections: 0,
             max_outgoing_byte_rate_non_validators: 0,
-            max_incoming_message_rate_non_validators: 0,
             tarpit_version_threshold: None,
             tarpit_duration: TimeDiff::from_seconds(600),
             tarpit_chance: 0.2,
-            max_in_flight_demands: 5000, // TODO: Adjust after testing.
+            send_buffer_size: PerChannel::init_with(|_| None), // TODO: Adjust after testing.
             ack_timeout: TimeDiff::from_seconds(30),
             blocklist_retain_duration: TimeDiff::from_seconds(600),
             identity: None,
@@ -98,16 +99,17 @@ pub struct Config {
     pub max_incoming_peer_connections: u16,
     /// Maximum number of bytes per second allowed for non-validating peers. Unlimited if 0.
     pub max_outgoing_byte_rate_non_validators: u32,
-    /// Maximum of requests answered from non-validating peers. Unlimited if 0.
-    pub max_incoming_message_rate_non_validators: u32,
     /// The protocol version at which (or under) tarpitting is enabled.
     pub tarpit_version_threshold: Option<ProtocolVersion>,
     /// If tarpitting is enabled, duration for which connections should be kept open.
     pub tarpit_duration: TimeDiff,
     /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
     pub tarpit_chance: f32,
-    /// Maximum number of demands for objects that can be in-flight.
-    pub max_in_flight_demands: u16,
+    /// An optional buffer size for each Juliet channel, allowing to setup how many messages
+    /// we can keep in a memory buffer before blocking at call site.
+    ///
+    /// If it is not specified, `in_flight_limit * 2` is used as a default.
+    pub send_buffer_size: PerChannel<Option<usize>>,
     /// Timeout for completing handling of a message before closing a connection to a peer.
     pub ack_timeout: TimeDiff,
     /// Duration peers are kept on the block list, before being redeemed.

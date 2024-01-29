@@ -156,7 +156,7 @@ where
     // The remote's message should be a handshake, but can technically be any message. We receive,
     // deserialize and check it.
     let remote_message_raw = read_length_prefixed_frame(
-        context.chain_info().maximum_net_message_size,
+        context.chain_info().maximum_handshake_message_size,
         &mut read_half,
     )
     .await
