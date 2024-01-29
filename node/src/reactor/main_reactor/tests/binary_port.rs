@@ -20,7 +20,7 @@ use juliet::{
     rpc::{JulietRpcClient, RpcBuilder},
     ChannelConfiguration, ChannelId,
 };
-use tokio::net::TcpStream;
+use tokio::{net::TcpStream, time::timeout};
 use tracing::error;
 
 use crate::{
@@ -252,10 +252,10 @@ async fn binary_port_component() {
             .queue_for_sending()
             .await;
 
-        let response = request_guard
-            .wait_for_response()
+        let response = timeout(Duration::from_secs(10), request_guard.wait_for_response())
             .await
-            .unwrap_or_else(|_| panic!("{}: should have ok response", name))
+            .unwrap_or_else(|err| panic!("{}: should complete without timeout: {}", name, err))
+            .unwrap_or_else(|err| panic!("{}: should have ok response: {}", name, err))
             .unwrap_or_else(|| panic!("{}: should have bytes", name));
         let (binary_response_and_request, _): (BinaryResponseAndRequest, _) =
             FromBytes::from_bytes(&response).expect("should deserialize response");
@@ -270,7 +270,9 @@ async fn binary_port_component() {
         assert!(asserter(binary_response_and_request.response()), "{}", name);
     }
 
-    let (_net, _rng) = finish_cranking.await;
+    let (_net, _rng) = timeout(Duration::from_secs(10), finish_cranking)
+        .await
+        .unwrap_or_else(|_| panic!("should finish cranking without timeout"));
 }
 
 fn block_hash_2_height() -> TestCase {
