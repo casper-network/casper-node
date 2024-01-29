@@ -26,9 +26,8 @@ use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, DeployId, EraId, FinalitySignature,
-    PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId,
-    U512,
+    Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignature, PublicKey,
+    TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader, U512,
 };
 
 #[cfg(test)]

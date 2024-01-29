@@ -1,10 +1,14 @@
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    DeployFootprint, TimeDiff, Timestamp, TransactionConfig, TransactionConfigFailure,
-    TransactionHash,
-};
+use crate::{DeployFootprint, Timestamp};
+#[cfg(any(feature = "std", test))]
+use crate::{TimeDiff, TransactionConfig, TransactionHash};
+
+#[cfg(any(feature = "std", test))]
+use crate::TransactionConfigFailure;
 
 use super::transaction_v1::TransactionV1Footprint;
 
@@ -15,8 +19,11 @@ use super::transaction_v1::TransactionV1Footprint;
     serde(deny_unknown_fields)
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+/// A footprint of a transaction.
 pub enum TransactionFootprint {
+    /// The legacy, initial version of the deploy (v1).
     Deploy(DeployFootprint),
+    /// The version 2 of the deploy, aka Transaction.
     V1(TransactionV1Footprint),
 }
 
@@ -52,6 +59,7 @@ impl TransactionFootprint {
     }
 
     /// Returns `Ok` if and only if the transaction is valid.
+    #[cfg(any(feature = "std", test))]
     pub fn is_valid(
         &self,
         config: &TransactionConfig,

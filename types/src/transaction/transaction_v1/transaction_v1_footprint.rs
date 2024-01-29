@@ -1,4 +1,6 @@
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
 
 use crate::TransactionV1Header;

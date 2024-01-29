@@ -19,9 +19,8 @@ use smallvec::smallvec;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    Block, BlockV2, DeployApproval, DeployFootprint, DeployHash, DeployId, DisplayIter, Timestamp,
-    Transaction, TransactionApproval, TransactionConfig, TransactionFootprint, TransactionHash,
-    TransactionId,
+    Block, BlockV2, DisplayIter, Timestamp, Transaction, TransactionApproval, TransactionConfig,
+    TransactionFootprint, TransactionHash, TransactionId,
 };
 
 use crate::{

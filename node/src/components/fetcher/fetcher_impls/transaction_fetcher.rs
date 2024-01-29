@@ -2,13 +2,8 @@ use std::{collections::HashMap, time::Duration};
 
 use async_trait::async_trait;
 use futures::FutureExt;
-use thiserror::Error;
-use tracing::error;
 
-use casper_types::{
-    DeployConfigFailure, Transaction, TransactionConfigFailure, TransactionId,
-    TransactionV1ConfigFailure,
-};
+use casper_types::{Transaction, TransactionConfigFailure, TransactionId};
 
 use crate::{
     components::fetcher::{

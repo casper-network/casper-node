@@ -6,7 +6,7 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 
-use casper_types::{Block, BlockV2, Deploy, DeployId, Transaction, TransactionId};
+use casper_types::{Block, BlockV2, Transaction, TransactionId};
 
 use crate::{
     components::consensus::{ClContext, ProposedBlock},

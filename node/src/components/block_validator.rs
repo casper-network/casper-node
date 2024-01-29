@@ -22,9 +22,9 @@ use datasize::DataSize;
 use tracing::{debug, error, trace, warn};
 
 use casper_types::{
-    Chainspec, DeployApprovalsHash, EraId, FinalitySignature, FinalitySignatureId, PublicKey,
-    RewardedSignatures, SingleBlockRewardedSignatures, Timestamp, Transaction,
-    TransactionApprovalsHash, TransactionHash, TransactionId,
+    Chainspec, EraId, FinalitySignature, FinalitySignatureId, PublicKey, RewardedSignatures,
+    SingleBlockRewardedSignatures, Timestamp, Transaction, TransactionApprovalsHash,
+    TransactionHash, TransactionId,
 };
 
 use crate::{

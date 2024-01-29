@@ -10,8 +10,8 @@ use tracing::{debug, error, warn};
 #[cfg(test)]
 use casper_types::DeployHash;
 use casper_types::{
-    Chainspec, DeployFootprint, FinalitySignatureId, Timestamp, TransactionApproval,
-    TransactionApprovalsHash, TransactionFootprint, TransactionHash,
+    Chainspec, FinalitySignatureId, Timestamp, TransactionApproval, TransactionApprovalsHash,
+    TransactionFootprint, TransactionHash,
 };
 
 use crate::{

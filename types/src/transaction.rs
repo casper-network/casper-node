@@ -21,6 +21,8 @@ mod transaction_v1;
 
 use alloc::{collections::BTreeSet, vec::Vec};
 use core::fmt::{self, Debug, Display, Formatter};
+#[cfg(feature = "std")]
+use std::error::Error as StdError;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -32,7 +34,6 @@ use rand::Rng;
 use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 use tracing::error;
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
@@ -106,14 +107,43 @@ pub(super) static TRANSACTION: Lazy<Transaction> = Lazy::new(|| {
 });
 
 /// A representation of the way in which a transaction failed validation checks.
-#[derive(Debug, Error)]
+#[derive(Debug)]
 pub enum TransactionConfigFailure {
     /// Error details for the Deploy variant.
-    #[error(transparent)]
-    Deploy(#[from] DeployConfigFailure),
+    Deploy(DeployConfigFailure),
     /// Error details for the TransactionV1 variant.
-    #[error(transparent)]
-    V1(#[from] TransactionV1ConfigFailure),
+    V1(TransactionV1ConfigFailure),
+}
+
+impl From<DeployConfigFailure> for TransactionConfigFailure {
+    fn from(value: DeployConfigFailure) -> Self {
+        Self::Deploy(value)
+    }
+}
+
+impl From<TransactionV1ConfigFailure> for TransactionConfigFailure {
+    fn from(value: TransactionV1ConfigFailure) -> Self {
+        Self::V1(value)
+    }
+}
+
+#[cfg(feature = "std")]
+impl StdError for TransactionConfigFailure {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        match self {
+            TransactionConfigFailure::Deploy(deploy) => deploy.source(),
+            TransactionConfigFailure::V1(v1) => v1.source(),
+        }
+    }
+}
+
+impl Display for TransactionConfigFailure {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            TransactionConfigFailure::Deploy(deploy) => write!(f, "{}", deploy),
+            TransactionConfigFailure::V1(v1) => write!(f, "{}", v1),
+        }
+    }
 }
 
 /// A versioned wrapper for a transaction or deploy.

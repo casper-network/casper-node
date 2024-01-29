@@ -8,8 +8,8 @@ use num_traits::Zero;
 use thiserror::Error;
 
 use casper_types::{
-    DeployFootprint, DeployHash, Gas, PublicKey, RewardedSignatures, TimeDiff, Timestamp,
-    TransactionConfig, TransactionFootprint, TransactionHash,
+    Gas, PublicKey, RewardedSignatures, TimeDiff, Timestamp, TransactionConfig,
+    TransactionFootprint, TransactionHash,
 };
 
 use super::BlockPayload;
