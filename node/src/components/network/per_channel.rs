@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use super::Channel;
 
 /// Allows to hold some data for every channel used in the node.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, DataSize, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, DataSize, Serialize, Deserialize)]
 pub struct PerChannel<T> {
     network: T,
     sync_data_request: T,
