@@ -12,6 +12,8 @@ use std::{
 };
 use vm_common::flags::EntryPointFlags;
 
+const DEFAULT_DERIVED_TRAITS: &[&str] = &["Debug", "BorshSerialize", "BorshDeserialize"];
+
 #[derive(Deserialize, Serialize)]
 pub struct Codegen {
     schema: Schema,
@@ -270,9 +272,11 @@ impl Codegen {
 
                         let r#struct = scope
                             .new_struct(&struct_name)
-                            .doc(&format!("Declared as {decl}"))
-                            .derive("BorshSerialize")
-                            .derive("BorshDeserialize");
+                            .doc(&format!("Declared as {decl}"));
+
+                        for trait_name in DEFAULT_DERIVED_TRAITS {
+                            r#struct.derive(trait_name);
+                        }
 
                         if items.is_empty() {
                             r#struct.tuple_field(Type::new("()"));
@@ -297,9 +301,11 @@ impl Codegen {
                         let r#enum = scope
                             .new_enum(&enum_name)
                             .vis("pub")
-                            .doc(&format!("Declared as {decl}"))
-                            .derive("BorshSerialize")
-                            .derive("BorshDeserialize");
+                            .doc(&format!("Declared as {decl}"));
+
+                        for trait_name in DEFAULT_DERIVED_TRAITS {
+                            r#enum.derive(trait_name);
+                        }
 
                         for item in &items {
                             let variant = r#enum.new_variant(&item.name);
@@ -317,10 +323,11 @@ impl Codegen {
                     Definition::Struct { items } => {
                         // println!("Processing struct type {items:?}");
                         let type_name = format!("Struct{}", counter.next().unwrap());
-                        let r#struct = scope
-                            .new_struct(&type_name)
-                            .derive("BorshSerialize")
-                            .derive("BorshDeserialize");
+                        let r#struct = scope.new_struct(&type_name);
+
+                        for trait_name in DEFAULT_DERIVED_TRAITS {
+                            r#struct.derive(trait_name);
+                        }
 
                         for item in items {
                             let mapped_type =
@@ -341,6 +348,10 @@ impl Codegen {
 
         let struct_name = format!("{}Client", self.schema.name);
         let client = scope.new_struct(&struct_name).vis("pub");
+
+        for trait_name in DEFAULT_DERIVED_TRAITS {
+            client.derive(trait_name);
+        }
 
         let mut field = Field::new("address", Type::new("[u8; 32]"));
         field.vis("pub");

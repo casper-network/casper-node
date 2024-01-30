@@ -354,6 +354,7 @@ pub fn start_noret<Args: BorshDeserialize, Ret: BorshSerialize>(
     func(args)
 }
 
+#[derive(Debug)]
 pub struct CallResult<T: BorshDeserialize> {
     data: Vec<u8>,
     result: ResultCode,
