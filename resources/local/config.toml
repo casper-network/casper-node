@@ -217,10 +217,6 @@ max_outgoing_byte_rate_non_validators = 0
 # A value of `0` means unlimited.
 max_incoming_message_rate_non_validators = 0
 
-# Maximum number of requests for data from a single peer that are allowed be buffered. A value of
-# `0` means unlimited.
-max_in_flight_demands = 50
-
 # Timeout before giving up on a peer. If a peer exceeds this time limit for acknowledging or
 # responding to a received message, it is considered unresponsive and the connection severed.
 ack_timeout = '30sec'
