@@ -17,7 +17,7 @@ All notable changes to this project will be documented in this file.  The format
 * Rename `BlockValidator` component to `ProposedBlockValidator`, and corresponding config section `block_validator` to `proposed_block_validator`.
 
 ### Remove
-* The `max_in_flight_demands` setting has been removed from the configuration file due to the changes in the underlying networking protocol.
+* The `max_in_flight_demands` and `max_incoming_message_rate_non_validators` settings has been removed from the network section of the configuration file due to the changes in the underlying networking protocol.
 
 
 
