@@ -168,9 +168,9 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     #[allow(non_upper_case_globals)]
                                     const #name: (&'static str, [casper_sdk::sys::Param; #arg_count], extern "C" fn() -> ()) = {
                                         extern "C" fn #name() {
-                                            casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
+                                            let _ret = casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
                                                 <#struct_name>::#name(#(#arg_names,)*)
-                                            })
+                                            });
                                         }
                                         (stringify!(#name), [#(#entrypoint_params,)*], #name)
                                     };

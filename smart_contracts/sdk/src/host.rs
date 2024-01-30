@@ -34,7 +34,8 @@ pub fn casper_print(msg: &str) {
 }
 
 pub fn capser_return(flags: u32, data: &[u8]) -> ! {
-    unsafe { casper_sdk_sys::casper_return(flags, data.as_ptr(), data.len()) }
+    unsafe { casper_sdk_sys::casper_return(flags, data.as_ptr(), data.len()) };
+    unreachable!()
 }
 
 pub enum Alloc<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>> {
@@ -75,8 +76,10 @@ extern "C" fn alloc_callback<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     len: usize,
     ctx: *mut c_void,
 ) -> *mut u8 {
+    // dbg!(&len);
     let opt_closure = ctx as *mut Option<F>;
     let allocated_ptr = unsafe { (*opt_closure).take().unwrap()(len) };
+    dbg!(&allocated_ptr);
     match allocated_ptr {
         Some(ptr) => ptr.as_ptr(),
         None => ptr::null_mut(),
@@ -97,8 +100,14 @@ pub fn copy_input_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
 pub fn casper_copy_input() -> Vec<u8> {
     let mut vec = Vec::new();
     let last_ptr = copy_input_into(Some(|size| reserve_vec_space(&mut vec, size)));
-    last_ptr.unwrap();
-    vec
+    match last_ptr {
+        Some(_last_ptr) => vec,
+        None => {
+            // TODO: size of input was 0, we could properly deal with this case by not calling alloc
+            // cb if size==0
+            Vec::new()
+        }
+    }
 }
 
 pub fn copy_input_dest(dest: &mut [u8]) -> Option<&[u8]> {
@@ -118,12 +127,14 @@ pub fn copy_input_dest(dest: &mut [u8]) -> Option<&[u8]> {
     Some(&dest[..length])
 }
 
-pub fn casper_return(flags: ReturnFlags, data: Option<&[u8]>) -> ! {
+pub fn casper_return(flags: ReturnFlags, data: Option<&[u8]>) {
     let (data_ptr, data_len) = match data {
         Some(data) => (data.as_ptr(), data.len()),
         None => (ptr::null(), 0),
     };
     unsafe { casper_sdk_sys::casper_return(flags.bits(), data_ptr, data_len) };
+    #[cfg(target_arch = "wasm32")]
+    unreachable!()
 }
 
 pub fn casper_read<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
@@ -316,7 +327,7 @@ pub fn write_state<T: Contract + BorshSerialize>(state: &T) -> Result<(), Error>
 
 /// TODO: Remove once procedural macros are improved, this is just to save the boilerplate when
 /// doing things manually.
-pub fn start<Args: BorshDeserialize, Ret: BorshSerialize>(mut func: impl FnMut(Args) -> Ret) -> ! {
+pub fn start<Args: BorshDeserialize, Ret: BorshSerialize>(mut func: impl FnMut(Args) -> Ret) {
     // Set panic hook (assumes std is enabled etc.)
     #[cfg(target_arch = "wasm32")]
     {
@@ -326,6 +337,7 @@ pub fn start<Args: BorshDeserialize, Ret: BorshSerialize>(mut func: impl FnMut(A
     let args: Args = BorshDeserialize::try_from_slice(&input).unwrap();
     let result = func(args);
     let serialized_result = borsh::to_vec(&result).unwrap();
+    dbg!(&serialized_result);
     casper_return(ReturnFlags::empty(), Some(serialized_result.as_slice()));
 }
 

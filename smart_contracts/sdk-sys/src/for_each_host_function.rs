@@ -20,7 +20,7 @@ macro_rules! for_each_host_function {
                 value_size: usize,
             ) -> i32;
             pub fn casper_print(msg_ptr: *const u8, msg_size: usize,) -> i32;
-            pub fn casper_return(flags: u32, data_ptr: *const u8, data_len: usize,) -> !;
+            pub fn casper_return(flags: u32, data_ptr: *const u8, data_len: usize,);
             pub fn casper_copy_input(
                 alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
                 alloc_ctx: *const core::ffi::c_void,

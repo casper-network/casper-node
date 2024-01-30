@@ -33,11 +33,15 @@ pub fn set_panic_hook() {
 }
 
 pub fn reserve_vec_space(vec: &mut Vec<u8>, size: usize) -> Option<NonNull<u8>> {
-    *vec = Vec::with_capacity(size);
-    unsafe {
-        vec.set_len(size);
+    if size == 0 {
+        None
+    } else {
+        *vec = Vec::with_capacity(size);
+        unsafe {
+            vec.set_len(size);
+        }
+        NonNull::new(vec.as_mut_ptr())
     }
-    NonNull::new(vec.as_mut_ptr())
 }
 
 pub trait Contract {
@@ -72,9 +76,10 @@ macro_rules! log {
 
 #[macro_export]
 macro_rules! revert {
-    () => {
-        casper_sdk::host::casper_return(vm_common::flags::ReturnFlags::REVERT, None)
-    };
+    () => {{
+        casper_sdk::host::casper_return(vm_common::flags::ReturnFlags::REVERT, None);
+        unreachable!()
+    }};
     ($arg:expr) => {{
         let value = $arg;
         let data = borsh::to_vec(&value).expect("Revert value should serialize");
@@ -103,7 +108,8 @@ where
             host::casper_return(
                 vm_common::flags::ReturnFlags::REVERT,
                 Some(error_data.as_slice()),
-            )
+            );
+            unreachable!("Support for unwrap_or_revert")
         })
     }
 }
