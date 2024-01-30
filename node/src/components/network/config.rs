@@ -109,6 +109,7 @@ pub struct Config {
     /// we can keep in a memory buffer before blocking at call site.
     ///
     /// If it is not specified, `in_flight_limit * 2` is used as a default.
+    #[serde(default)]
     pub send_buffer_size: PerChannel<Option<usize>>,
     /// Timeout for completing handling of a message before closing a connection to a peer.
     pub ack_timeout: TimeDiff,
