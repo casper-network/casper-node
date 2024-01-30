@@ -4,12 +4,9 @@ use alloc::collections::BTreeMap;
 use rand::Rng;
 
 use crate::{
-    testing::TestRng, Block, EraEndV2, RewardedSignatures, Transaction, TransactionV1Kind,
-};
-
-use crate::{
-    system::auction::ValidatorWeights, BlockHash, BlockV2, Digest, EraId, NativeTransactionV1,
-    ProtocolVersion, PublicKey, Timestamp, UserlandTransactionV1, U512,
+    system::auction::ValidatorWeights, testing::TestRng, Block, BlockHash, BlockV2, Digest,
+    EraEndV2, EraId, ProtocolVersion, PublicKey, RewardedSignatures, Timestamp, Transaction,
+    TransactionEntryPoint, TransactionSessionKind, TransactionTarget, U512,
 };
 
 /// A helper to build the blocks with various properties required for tests.
@@ -189,15 +186,25 @@ impl TestBlockV2Builder {
                         standard_hashes.push(txn_hash);
                     }
                 }
-                Transaction::V1(v1_txn) => match v1_txn.body() {
-                    TransactionV1Kind::Native(NativeTransactionV1::MintTransfer(_)) => {
-                        transfer_hashes.push(txn_hash)
-                    }
-                    TransactionV1Kind::Native(_) => staking_hashes.push(txn_hash),
-                    TransactionV1Kind::Userland(UserlandTransactionV1::InstallerUpgrader {
-                        ..
-                    }) => install_upgrade_hashes.push(txn_hash),
-                    TransactionV1Kind::Userland(_) => standard_hashes.push(txn_hash),
+                Transaction::V1(v1_txn) => match v1_txn.target() {
+                    TransactionTarget::Native => match v1_txn.entry_point() {
+                        TransactionEntryPoint::Transfer => transfer_hashes.push(txn_hash),
+                        TransactionEntryPoint::Custom(_)
+                        | TransactionEntryPoint::AddBid
+                        | TransactionEntryPoint::WithdrawBid
+                        | TransactionEntryPoint::Delegate
+                        | TransactionEntryPoint::Undelegate
+                        | TransactionEntryPoint::Redelegate => staking_hashes.push(txn_hash),
+                    },
+                    TransactionTarget::Stored { .. } => standard_hashes.push(txn_hash),
+                    TransactionTarget::Session { kind, .. } => match kind {
+                        TransactionSessionKind::Standard | TransactionSessionKind::Isolated => {
+                            standard_hashes.push(txn_hash)
+                        }
+                        TransactionSessionKind::Installer | TransactionSessionKind::Upgrader => {
+                            install_upgrade_hashes.push(txn_hash)
+                        }
+                    },
                 },
             }
         }

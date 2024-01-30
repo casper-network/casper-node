@@ -25,7 +25,7 @@ pub struct ExecutableBlock {
     pub(crate) transfer: Vec<TransactionHash>,
     /// The hashes of the non-transfer, native transactions within the `FinalizedBlock`.
     pub(crate) staking: Vec<TransactionHash>,
-    /// The hashes of the installer/upgrader userland transactions within the `FinalizedBlock`.
+    /// The hashes of the installer/upgrader transactions within the `FinalizedBlock`.
     pub(crate) install_upgrade: Vec<TransactionHash>,
     /// The hashes of all other transactions within the `FinalizedBlock`.
     pub(crate) standard: Vec<TransactionHash>,

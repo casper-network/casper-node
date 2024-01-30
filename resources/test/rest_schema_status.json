@@ -198,13 +198,15 @@
     },
     "BlockHash": {
       "description": "Hex-encoded cryptographic hash of a block.",
-      "type": "string"
+      "allOf": [
+        {
+          "$ref": "#/definitions/Digest"
+        }
+      ]
     },
     "Timestamp": {
       "description": "Timestamp formatted as per RFC 3339",
-      "type": "integer",
-      "format": "uint64",
-      "minimum": 0.0
+      "type": "string"
     },
     "EraId": {
       "description": "Era ID newtype.",
@@ -235,9 +237,7 @@
     },
     "TimeDiff": {
       "description": "Human-readable duration.",
-      "type": "integer",
-      "format": "uint64",
-      "minimum": 0.0
+      "type": "string"
     },
     "NextUpgrade": {
       "description": "Information about the next protocol upgrade.",

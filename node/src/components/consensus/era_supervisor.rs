@@ -1060,9 +1060,7 @@ impl EraSupervisor {
             ProtocolOutcome::CreateNewBlock(block_context) => {
                 let signature_rewards_max_delay =
                     self.chainspec.core_config.signature_rewards_max_delay;
-                let initial_era_height = self.era(era_id).start_height;
-                let current_block_height =
-                    initial_era_height + block_context.ancestor_values().len() as u64;
+                let current_block_height = self.proposed_block_height(&block_context, era_id);
                 let minimum_block_height =
                     current_block_height.saturating_sub(signature_rewards_max_delay);
 
@@ -1224,11 +1222,14 @@ impl EraSupervisor {
                     let msg = ConsensusMessage::EvidenceRequest { era_id, pub_key };
                     effects.extend(effect_builder.send_message(sender, msg.into()).ignore());
                 }
+                let proposed_block_height =
+                    self.proposed_block_height(proposed_block.context(), era_id);
                 effects.extend(
                     async move {
                         check_txns_for_replay_in_previous_eras_and_validate_block(
                             effect_builder,
                             era_id,
+                            proposed_block_height,
                             sender,
                             proposed_block,
                         )
@@ -1303,6 +1304,11 @@ impl EraSupervisor {
     /// This node's public signing key.
     pub(crate) fn public_key(&self) -> &PublicKey {
         self.validator_matrix.public_signing_key()
+    }
+
+    fn proposed_block_height(&self, block_context: &BlockContext<ClContext>, era_id: EraId) -> u64 {
+        let initial_era_height = self.era(era_id).start_height;
+        initial_era_height.saturating_add(block_context.ancestor_values().len() as u64)
     }
 }
 
@@ -1435,6 +1441,7 @@ fn instance_id(chainspec_hash: Digest, era_id: EraId, key_block_hash: BlockHash)
 async fn check_txns_for_replay_in_previous_eras_and_validate_block<REv>(
     effect_builder: EffectBuilder<REv>,
     proposed_block_era_id: EraId,
+    proposed_block_height: u64,
     sender: NodeId,
     proposed_block: ProposedBlock<ClContext>,
 ) -> Event
@@ -1470,7 +1477,11 @@ where
 
     let sender_for_validate_block: NodeId = sender;
     let valid = effect_builder
-        .validate_block(sender_for_validate_block, proposed_block.clone())
+        .validate_block(
+            sender_for_validate_block,
+            proposed_block_height,
+            proposed_block.clone(),
+        )
         .await;
 
     Event::ResolveValidity(ResolveValidity {

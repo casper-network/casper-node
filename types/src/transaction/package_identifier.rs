@@ -1,14 +1,6 @@
 use alloc::{string::String, vec::Vec};
 use core::fmt::{self, Display, Formatter};
 
-#[cfg(any(feature = "testing", test))]
-use crate::testing::TestRng;
-use crate::{
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    AddressableEntityHash, EntityVersion, PackageHash,
-};
-#[cfg(doc)]
-use crate::{DirectCallV1, ExecutableDeployItem};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 use hex_fmt::HexFmt;
@@ -18,59 +10,55 @@ use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-const CONTRACT_PACKAGE_ID_HASH_TAG: u8 = 0;
-const CONTRACT_PACKAGE_ID_NAME_TAG: u8 = 1;
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    EntityVersion, PackageHash,
+};
+#[cfg(doc)]
+use crate::{ExecutableDeployItem, TransactionTarget};
 
-/// Identifier for an [`ExecutableDeployItem`].
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub enum ExecutableDeployItemIdentifier {
-    /// The deploy item is of the type [`ExecutableDeployItem::ModuleBytes`]
-    Module,
-    /// The deploy item is a variation of a stored contract.
-    AddressableEntity(EntityIdentifier),
-    /// The deploy item is a variation of a stored contract package.
-    Package(PackageIdentifier),
-    /// The deploy item is a native transfer.
-    Transfer,
-}
+const HASH_TAG: u8 = 0;
+const NAME_TAG: u8 = 1;
 
-/// Identifier for the contract object within a [`DirectCallV1`] or an [`ExecutableDeployItem`].
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub enum EntityIdentifier {
-    /// The entity object within the deploy item is identified by its hash.
-    Hash(AddressableEntityHash),
-    /// The entity object within the deploy item is identified by name.
-    Name(String),
-}
-
-/// Identifier for the package object within a [`DirectCallV1`] or an
+/// Identifier for the package object within a [`TransactionTarget::Stored`] or an
 /// [`ExecutableDeployItem`].
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
     feature = "json-schema",
     derive(JsonSchema),
-    schemars(description = "Identifier for a package.")
+    schemars(
+        description = "Identifier for the package object within a `Stored` transaction target or \
+        an `ExecutableDeployItem`."
+    )
 )]
 pub enum PackageIdentifier {
-    /// The stored contract package within the deploy item is identified by its hash.
+    /// The hash and optional version identifying the contract package.
     Hash {
-        /// Hash of the contract package.
+        /// The hash of the contract package.
         package_hash: PackageHash,
-        /// The version specified in the deploy item.
+        /// The version of the contract package.
+        ///
+        /// `None` implies latest version.
         version: Option<EntityVersion>,
     },
-    /// The stored contract package within the deploy item is identified by name.
+    /// The name and optional version identifying the contract package.
     Name {
-        /// Name of the contract package.
+        /// The name of the contract package.
         name: String,
-        /// The version specified in the deploy item.
+        /// The version of the contract package.
+        ///
+        /// `None` implies latest version.
         version: Option<EntityVersion>,
     },
 }
 
 impl PackageIdentifier {
-    /// Returns the version of the contract package specified in the deploy item.
+    /// Returns the optional version of the contract package.
+    ///
+    /// `None` implies latest version.
     pub fn version(&self) -> Option<EntityVersion> {
         match self {
             PackageIdentifier::Hash { version, .. } | PackageIdentifier::Name { version, .. } => {
@@ -79,7 +67,7 @@ impl PackageIdentifier {
         }
     }
 
-    /// Returns a random `ContractPackageIdentifier`.
+    /// Returns a random `PackageIdentifier`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         let version = rng.gen::<bool>().then(|| rng.gen::<EntityVersion>());
@@ -105,7 +93,7 @@ impl Display for PackageIdentifier {
                 version: Some(ver),
             } => write!(
                 formatter,
-                "contract-package-id(hash: {}, version: {})",
+                "package-id({}, version {})",
                 HexFmt(contract_package_hash),
                 ver
             ),
@@ -114,22 +102,16 @@ impl Display for PackageIdentifier {
                 ..
             } => write!(
                 formatter,
-                "contract-package-id(hash: {}, version: latest)",
+                "package-id({}, latest)",
                 HexFmt(contract_package_hash),
             ),
             PackageIdentifier::Name {
                 name,
                 version: Some(ver),
-            } => write!(
-                formatter,
-                "contract-package-id(name: {}, version: {})",
-                name, ver
-            ),
-            PackageIdentifier::Name { name, .. } => write!(
-                formatter,
-                "contract-package-id(name: {}, version: latest)",
-                name
-            ),
+            } => write!(formatter, "package-id({}, version {})", name, ver),
+            PackageIdentifier::Name { name, .. } => {
+                write!(formatter, "package-id({}, latest)", name)
+            }
         }
     }
 }
@@ -138,15 +120,15 @@ impl ToBytes for PackageIdentifier {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
             PackageIdentifier::Hash {
-                package_hash: contract_package_hash,
+                package_hash,
                 version,
             } => {
-                CONTRACT_PACKAGE_ID_HASH_TAG.write_bytes(writer)?;
-                contract_package_hash.write_bytes(writer)?;
+                HASH_TAG.write_bytes(writer)?;
+                package_hash.write_bytes(writer)?;
                 version.write_bytes(writer)
             }
             PackageIdentifier::Name { name, version } => {
-                CONTRACT_PACKAGE_ID_NAME_TAG.write_bytes(writer)?;
+                NAME_TAG.write_bytes(writer)?;
                 name.write_bytes(writer)?;
                 version.write_bytes(writer)
             }
@@ -163,9 +145,9 @@ impl ToBytes for PackageIdentifier {
         U8_SERIALIZED_LENGTH
             + match self {
                 PackageIdentifier::Hash {
-                    package_hash: contract_package_hash,
+                    package_hash,
                     version,
-                } => contract_package_hash.serialized_length() + version.serialized_length(),
+                } => package_hash.serialized_length() + version.serialized_length(),
                 PackageIdentifier::Name { name, version } => {
                     name.serialized_length() + version.serialized_length()
                 }
@@ -177,16 +159,16 @@ impl FromBytes for PackageIdentifier {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
-            CONTRACT_PACKAGE_ID_HASH_TAG => {
-                let (contract_package_hash, remainder) = PackageHash::from_bytes(remainder)?;
+            HASH_TAG => {
+                let (package_hash, remainder) = PackageHash::from_bytes(remainder)?;
                 let (version, remainder) = Option::<EntityVersion>::from_bytes(remainder)?;
                 let id = PackageIdentifier::Hash {
-                    package_hash: contract_package_hash,
+                    package_hash,
                     version,
                 };
                 Ok((id, remainder))
             }
-            CONTRACT_PACKAGE_ID_NAME_TAG => {
+            NAME_TAG => {
                 let (name, remainder) = String::from_bytes(remainder)?;
                 let (version, remainder) = Option::<EntityVersion>::from_bytes(remainder)?;
                 let id = PackageIdentifier::Name { name, version };
