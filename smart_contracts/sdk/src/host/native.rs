@@ -5,8 +5,8 @@ use once_cell::sync::Lazy;
 use rand::Rng;
 use std::{
     borrow::BorrowMut,
-    cell::RefCell,
-    collections::BTreeMap,
+    cell::{Ref, RefCell},
+    collections::{BTreeMap, VecDeque},
     convert::Infallible,
     ptr::{self, NonNull},
     sync::{Arc, Mutex, RwLock},
@@ -15,7 +15,7 @@ use vm_common::flags::{EntryPointFlags, ReturnFlags};
 
 use crate::types::Address;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NativeTrap {
     Return(ReturnFlags, Bytes),
 }
@@ -126,7 +126,8 @@ impl Into<NativeManifest> for NonNull<casper_sdk_sys::Manifest> {
 pub struct Stub {
     db: Arc<RwLock<Container>>,
     manifests: Arc<RwLock<BTreeMap<Address, NativeManifest>>>,
-    input_data: Arc<RwLock<Option<Bytes>>>,
+    // input_data: Arc<RwLock<Option<Bytes>>>,
+    input_data: Option<Bytes>,
     caller: Address,
 }
 
@@ -229,8 +230,7 @@ impl Stub {
         alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
         alloc_ctx: *const core::ffi::c_void,
     ) -> Result<*mut u8, NativeTrap> {
-        let input_data = self.input_data.read().unwrap().clone();
-        dbg!(&input_data);
+        let input_data = self.input_data.clone();
         let input_data = input_data.as_ref().cloned().unwrap_or_default();
         let ptr = NonNull::new(alloc(input_data.len(), alloc_ctx as _));
 
@@ -319,36 +319,23 @@ impl Stub {
                 .iter()
                 .find(|entry_point| entry_point.name == entry_point_name)
                 .expect("Entry point exists");
-            if let Some(input_data) = input_data {
-                let mut data = self.input_data.write().unwrap();
-                data.replace(Bytes::copy_from_slice(input_data));
-            }
 
-            // Clear a trap, if present
-            LAST_TRAP.with(|last_trap| last_trap.borrow_mut().take());
+            let mut stub = with_stub(|stub| stub);
+            stub.caller = contract_address;
+            stub.input_data = input_data.map(Bytes::copy_from_slice);
 
             // Call constructor, expect a trap
-            (entry_point.fptr)();
+            let result = dispatch_with(stub, || {
+                (entry_point.fptr)();
+            });
 
-            // Deal with a return value from a constructor
-            let trap_after_constructor = LAST_TRAP.with(|last_trap| last_trap.borrow_mut().take());
-            dbg!(&trap_after_constructor);
-            match trap_after_constructor {
-                Some(NativeTrap::Return(flags, bytes)) => {
+            match result {
+                Ok(()) => todo!("Constructor did not return"),
+                Err(NativeTrap::Return(flags, bytes)) => {
                     if flags.contains(ReturnFlags::REVERT) {
                         todo!("Constructor returned with a revert flag");
                     }
-                    // todo!("OK");
-                    // caller
-                    // .context()
-                    // .storage
-                    // .write(
-                    //     0, // KEYSPACE_STATE
-                    //     &contract_address,
-                    //     0,
-                    //     &state,
-                    // )
-                    // .unwrap();
+
                     let mut db = self.db.write().unwrap();
                     let values = db.entry(0).or_default();
                     values.insert(
@@ -359,7 +346,6 @@ impl Stub {
                         },
                     );
                 }
-                None => todo!("Constructor did not return"),
             }
         }
 
@@ -378,7 +364,61 @@ impl Stub {
         alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
         alloc_ctx: *const core::ffi::c_void,
     ) -> Result<u32, NativeTrap> {
-        todo!()
+        let address = unsafe { slice::from_raw_parts(address_ptr, address_size) };
+        let entry_point_name = unsafe { slice::from_raw_parts(entry_point_ptr, entry_point_size) };
+        let input_data = unsafe { slice::from_raw_parts(input_ptr, input_size) };
+        dbg!(&input_data);
+        let manifests = self.manifests.read().unwrap();
+        let manifest = manifests.get(address).expect("Manifest exists");
+
+        let entry_point = manifest
+            .entry_points
+            .iter()
+            .find(|entry_point| entry_point.name.as_bytes() == entry_point_name)
+            .expect("Entry point exists");
+
+        // TODO: Wasm host should also forbid calling constructors
+        assert!(
+            !entry_point.flags.contains(EntryPointFlags::CONSTRUCTOR),
+            "Calling constructors is unsupported"
+        );
+
+        // self.input_data
+
+        let mut new_stub = with_stub(|stub| stub.clone());
+        new_stub.input_data = Some(Bytes::copy_from_slice(input_data));
+
+        match dispatch_with(new_stub, || {
+            (entry_point.fptr)();
+        }) {
+            Ok(()) => Ok(0),
+            Err(NativeTrap::Return(flags, bytes)) => {
+                if !flags.contains(ReturnFlags::REVERT) {
+                    // TODO: This is currently really bad simplification and only means that when a
+                    // casper_return is called it will not update the state, but all other
+                    // casper_write calls succeeded and are observable.
+
+                    let mut db = self.db.write().unwrap();
+                    let values = db.entry(0).or_default();
+                    values.insert(
+                        Bytes::copy_from_slice(address),
+                        TaggedValue {
+                            tag: 0,
+                            value: bytes.clone(),
+                        },
+                    );
+                }
+
+                let ptr = NonNull::new(alloc(bytes.len(), alloc_ctx as _));
+                if let Some(output_ptr) = ptr {
+                    unsafe {
+                        ptr::copy_nonoverlapping(bytes.as_ptr(), output_ptr.as_ptr(), bytes.len());
+                    }
+                }
+
+                Ok(0)
+            }
+        }
     }
 
     #[doc = r"Obtain data from the blockchain environemnt of current wasm invocation.
@@ -410,15 +450,20 @@ Example paths:
     }
 }
 
-/// Stores last result after invoking a symbol.
-///
-/// NOTE: A bit hacky, but it will works for now.
-pub(crate) static LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
-// pub(crate) static STUB: Lazy<RwLock<Stub>> = Lazy::new(|| RwLock::new(Stub::default()));
-
 thread_local! {
     pub(crate) static LAST_TRAP: RefCell<Option<NativeTrap>> = RefCell::new(None);
-    pub static STUB: RefCell<Stub> = RefCell::new(Stub::default());
+    static STUB_STACK: RefCell<VecDeque<Stub>> = RefCell::new(VecDeque::new());
+}
+
+pub fn with_stub<T>(f: impl FnOnce(Stub) -> T) -> T {
+    STUB_STACK.with(|stack| {
+        let stub = {
+            let borrowed = stack.borrow();
+            let front = borrowed.front().expect("Stub exists").clone();
+            front
+        };
+        f(stub)
+    })
 }
 
 fn handle_ret_with<T>(value: Result<T, NativeTrap>, ret: impl FnOnce() -> T) -> T {
@@ -439,8 +484,34 @@ fn handle_ret<T: Default>(value: Result<T, NativeTrap>) -> T {
     handle_ret_with(value, || Default::default())
 }
 
-fn get_last_trap() -> Option<NativeTrap> {
-    LAST_TRAP.with(|last_trap| last_trap.borrow().clone())
+pub fn dispatch_with<T>(stub: Stub, f: impl FnOnce() -> T) -> Result<T, NativeTrap> {
+    STUB_STACK.with(|stack| {
+        let mut borrowed = stack.borrow_mut();
+        borrowed.push_front(stub);
+    });
+
+    // Clear previous trap (if present)
+    LAST_TRAP.with(|last_trap| last_trap.borrow_mut().take());
+
+    // Call a function
+    let result = f();
+
+    // Check if a trap was set and return it if so (otherwise return the result).
+    let last_trap = LAST_TRAP.with(|last_trap| last_trap.borrow_mut().take());
+
+    let result = if let Some(trap) = last_trap {
+        Err(trap)
+    } else {
+        Ok(result)
+    };
+
+    // Pop the stub from the stack
+    STUB_STACK.with(|stack| {
+        let mut borrowed = stack.borrow_mut();
+        borrowed.pop_front();
+    });
+
+    result
 }
 
 macro_rules! define_symbols {
@@ -466,266 +537,211 @@ macro_rules! define_symbols {
                     $crate::host::native::handle_ret(_call_result)
                 }
             }
-            pub use $name::$name;
+
         )*
     }
 }
 
 mod symbols {
-    // use super::HostInterface;
-    // use casper_sdk_sys::for_each_host_function;
-    // for_each_host_function!(define_symbols);
-    mod casper_read {
-        type Ret = i32;
-        #[no_mangle]
-        ///Read value from a storage available for caller's entity address.
-        pub extern "C" fn casper_read(
-            key_space: u64,
-            key_ptr: *const u8,
-            key_size: usize,
-            info: *mut ::casper_sdk_sys::ReadInfo,
-            alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
-            alloc_ctx: *const core::ffi::c_void,
-        ) -> Ret {
-            let _name = "casper_read";
-            let _args = (&key_space, &key_ptr, &key_size, &info, &alloc, &alloc_ctx);
-            let _call_result = crate::host::native::STUB.with(|stub| {
-                let stub = stub.borrow();
-                stub.casper_read(key_space, key_ptr, key_size, info, alloc, alloc_ctx)
-            });
-            crate::host::native::handle_ret(_call_result)
-        }
+    // TODO: Figure out how to use for_each_host_function macro here and deal with never type in
+    // casper_return
+    #[no_mangle]
+    ///Read value from a storage available for caller's entity address.
+    pub extern "C" fn casper_read(
+        key_space: u64,
+        key_ptr: *const u8,
+        key_size: usize,
+        info: *mut ::casper_sdk_sys::ReadInfo,
+        alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
+        alloc_ctx: *const core::ffi::c_void,
+    ) -> i32 {
+        let _name = "casper_read";
+        let _args = (&key_space, &key_ptr, &key_size, &info, &alloc, &alloc_ctx);
+        let _call_result = with_stub(|stub| {
+            stub.casper_read(key_space, key_ptr, key_size, info, alloc, alloc_ctx)
+        });
+        crate::host::native::handle_ret(_call_result)
     }
-    pub use casper_read::casper_read;
-    mod casper_write {
-        type Ret = i32;
-        #[no_mangle]
-        pub extern "C" fn casper_write(
-            key_space: u64,
-            key_ptr: *const u8,
-            key_size: usize,
-            value_tag: u64,
-            value_ptr: *const u8,
-            value_size: usize,
-        ) -> Ret {
-            let _name = "casper_write";
-            let _args = (
-                &key_space,
-                &key_ptr,
-                &key_size,
-                &value_tag,
-                &value_ptr,
-                &value_size,
-            );
-            let _call_result = crate::host::native::STUB.with(|stub| {
-                let stub = stub.borrow();
-                stub.casper_write(
-                    key_space, key_ptr, key_size, value_tag, value_ptr, value_size,
-                )
-            });
-            crate::host::native::handle_ret(_call_result)
-        }
-    }
-    pub use casper_write::casper_write;
-    mod casper_print {
-        type Ret = i32;
-        #[no_mangle]
-        pub extern "C" fn casper_print(msg_ptr: *const u8, msg_size: usize) -> Ret {
-            let _name = "casper_print";
-            let _args = (&msg_ptr, &msg_size);
-            let _call_result = crate::host::native::STUB.with(|stub| {
-                let stub = stub.borrow();
-                stub.casper_print(msg_ptr, msg_size)
-            });
-            crate::host::native::handle_ret(_call_result)
-        }
-    }
-    pub use casper_print::casper_print;
-    mod casper_return {
-        use crate::host::native::LAST_TRAP;
 
-        type Ret = ();
-        #[no_mangle]
-        pub extern "C" fn casper_return(flags: u32, data_ptr: *const u8, data_len: usize) -> Ret {
-            let _name = "casper_return";
-            let _args = (&flags, &data_ptr, &data_len);
-            let _call_result = crate::host::native::STUB.with(|stub| {
-                let stub = stub.borrow();
-                stub.casper_return(flags, data_ptr, data_len)
-            });
-            let err = _call_result.unwrap_err(); // SAFE
-            dbg!(&err);
-            LAST_TRAP.with(|last_trap| last_trap.borrow_mut().replace(err));
-        }
+    #[no_mangle]
+    pub extern "C" fn casper_write(
+        key_space: u64,
+        key_ptr: *const u8,
+        key_size: usize,
+        value_tag: u64,
+        value_ptr: *const u8,
+        value_size: usize,
+    ) -> i32 {
+        let _name = "casper_write";
+        let _args = (
+            &key_space,
+            &key_ptr,
+            &key_size,
+            &value_tag,
+            &value_ptr,
+            &value_size,
+        );
+        let _call_result = with_stub(|stub| {
+            stub.casper_write(
+                key_space, key_ptr, key_size, value_tag, value_ptr, value_size,
+            )
+        });
+        crate::host::native::handle_ret(_call_result)
     }
-    pub use casper_return::casper_return;
-    mod casper_copy_input {
-        use std::ptr;
 
-        type Ret = *mut u8;
-        #[no_mangle]
-        pub extern "C" fn casper_copy_input(
-            alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
-            alloc_ctx: *const core::ffi::c_void,
-        ) -> Ret {
-            let _name = "casper_copy_input";
-            let _args = (&alloc, &alloc_ctx);
-            let _call_result = crate::host::native::STUB.with(|stub| {
-                let stub = stub.borrow();
-                stub.casper_copy_input(alloc, alloc_ctx)
-            });
-            crate::host::native::handle_ret_with(_call_result, || ptr::null_mut())
-        }
+    #[no_mangle]
+    pub extern "C" fn casper_print(msg_ptr: *const u8, msg_size: usize) -> i32 {
+        let _name = "casper_print";
+        let _args = (&msg_ptr, &msg_size);
+        let _call_result = with_stub(|stub| stub.casper_print(msg_ptr, msg_size));
+        crate::host::native::handle_ret(_call_result)
     }
-    pub use casper_copy_input::casper_copy_input;
-    mod casper_copy_output {
-        type Ret = ();
-        #[no_mangle]
-        pub extern "C" fn casper_copy_output(output_ptr: *const u8, output_len: usize) -> Ret {
-            let _name = "casper_copy_output";
-            let _args = (&output_ptr, &output_len);
-            let _call_result = crate::host::native::STUB.with(|stub| {
-                let stub = stub.borrow();
-                stub.casper_copy_output(output_ptr, output_len)
-            });
-            crate::host::native::handle_ret(_call_result)
-        }
-    }
-    pub use casper_copy_output::casper_copy_output;
-    mod casper_create_contract {
-        type Ret = u32;
-        #[no_mangle]
-        pub extern "C" fn casper_create_contract(
-            code_ptr: *const u8,
-            code_size: usize,
-            manifest_ptr: *const ::casper_sdk_sys::Manifest,
-            entry_point_ptr: *const u8,
-            entry_point_size: usize,
-            input_ptr: *const u8,
-            input_size: usize,
-            result_ptr: *mut ::casper_sdk_sys::CreateResult,
-        ) -> Ret {
-            let _name = "casper_create_contract";
-            let _args = (
-                &code_ptr,
-                &code_size,
-                &manifest_ptr,
-                &entry_point_ptr,
-                &entry_point_size,
-                &input_ptr,
-                &input_size,
-                &result_ptr,
-            );
-            let _call_result = crate::host::native::STUB.with(|stub| {
-                let stub = stub.borrow();
-                stub.casper_create_contract(
-                    code_ptr,
-                    code_size,
-                    manifest_ptr,
-                    entry_point_ptr,
-                    entry_point_size,
-                    input_ptr,
-                    input_size,
-                    result_ptr,
-                )
-            });
-            crate::host::native::handle_ret(_call_result)
-        }
-    }
-    pub use casper_create_contract::casper_create_contract;
-    mod casper_call {
-        type Ret = u32;
-        #[no_mangle]
-        pub extern "C" fn casper_call(
-            address_ptr: *const u8,
-            address_size: usize,
-            value: u64,
-            entry_point_ptr: *const u8,
-            entry_point_size: usize,
-            input_ptr: *const u8,
-            input_size: usize,
-            alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
-            alloc_ctx: *const core::ffi::c_void,
-        ) -> Ret {
-            let _name = "casper_call";
-            let _args = (
-                &address_ptr,
-                &address_size,
-                &value,
-                &entry_point_ptr,
-                &entry_point_size,
-                &input_ptr,
-                &input_size,
-                &alloc,
-                &alloc_ctx,
-            );
-            let _call_result = crate::host::native::STUB.with(|stub| {
-                let stub = stub.borrow();
-                stub.casper_call(
-                    address_ptr,
-                    address_size,
-                    value,
-                    entry_point_ptr,
-                    entry_point_size,
-                    input_ptr,
-                    input_size,
-                    alloc,
-                    alloc_ctx,
-                )
-            });
-            crate::host::native::handle_ret(_call_result)
-        }
-    }
-    pub use casper_call::casper_call;
-    mod casper_env_read {
-        use std::ptr;
 
-        type Ret = *mut u8;
-        #[no_mangle]
-        /**Obtain data from the blockchain environemnt of current wasm invocation.
+    use crate::host::native::LAST_TRAP;
 
-        Example paths:
-
-        * `env_read([CASPER_CALLER], 1, nullptr, &caller_addr)` -> read caller's address into
-        `caller_addr` memory.
-        * `env_read([CASPER_CHAIN, BLOCK_HASH, 0], 3, nullptr, &block_hash)` -> read hash of the
-        current block into `block_hash` memory.
-        * `env_read([CASPER_CHAIN, BLOCK_HASH, 5], 3, nullptr, &block_hash)` -> read hash of the 5th
-        block from the current one into `block_hash` memory.
-        * `env_read([CASPER_AUTHORIZED_KEYS], 1, nullptr, &authorized_keys)` -> read list of
-        authorized keys into `authorized_keys` memory.*/
-        pub extern "C" fn casper_env_read(
-            env_path: *const u64,
-            env_path_size: usize,
-            alloc: Option<extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8>,
-            alloc_ctx: *const core::ffi::c_void,
-        ) -> Ret {
-            let _name = "casper_env_read";
-            let _args = (&env_path, &env_path_size, &alloc, &alloc_ctx);
-            let _call_result = crate::host::native::STUB.with(|stub| {
-                let stub = stub.borrow();
-                stub.casper_env_read(env_path, env_path_size, alloc, alloc_ctx)
-            });
-            crate::host::native::handle_ret_with(_call_result, || ptr::null_mut())
-        }
+    #[no_mangle]
+    pub extern "C" fn casper_return(flags: u32, data_ptr: *const u8, data_len: usize) {
+        let _name = "casper_return";
+        let _args = (&flags, &data_ptr, &data_len);
+        let _call_result = with_stub(|stub| stub.casper_return(flags, data_ptr, data_len));
+        let err = _call_result.unwrap_err(); // SAFE
+        dbg!(&err);
+        LAST_TRAP.with(|last_trap| last_trap.borrow_mut().replace(err));
     }
-    pub use casper_env_read::casper_env_read;
-    mod casper_env_caller {
-        use std::ptr;
 
-        type Ret = *const u8;
-        #[no_mangle]
-        pub extern "C" fn casper_env_caller(dest: *mut u8, dest_len: usize) -> Ret {
-            let _name = "casper_env_caller";
-            let _args = (&dest, &dest_len);
-            let _call_result = crate::host::native::STUB.with(|stub| {
-                let stub = stub.borrow();
-                stub.casper_env_caller(dest, dest_len)
-            });
-            crate::host::native::handle_ret_with(_call_result, || ptr::null())
-        }
+    #[no_mangle]
+    pub extern "C" fn casper_copy_input(
+        alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
+        alloc_ctx: *const core::ffi::c_void,
+    ) -> *mut u8 {
+        let _name = "casper_copy_input";
+        let _args = (&alloc, &alloc_ctx);
+        let _call_result = with_stub(|stub| stub.casper_copy_input(alloc, alloc_ctx));
+        crate::host::native::handle_ret_with(_call_result, || ptr::null_mut())
     }
-    pub use casper_env_caller::casper_env_caller;
+
+    #[no_mangle]
+    pub extern "C" fn casper_copy_output(output_ptr: *const u8, output_len: usize) {
+        let _name = "casper_copy_output";
+        let _args = (&output_ptr, &output_len);
+        let _call_result = with_stub(|stub| stub.casper_copy_output(output_ptr, output_len));
+        crate::host::native::handle_ret(_call_result)
+    }
+
+    #[no_mangle]
+    pub extern "C" fn casper_create_contract(
+        code_ptr: *const u8,
+        code_size: usize,
+        manifest_ptr: *const ::casper_sdk_sys::Manifest,
+        entry_point_ptr: *const u8,
+        entry_point_size: usize,
+        input_ptr: *const u8,
+        input_size: usize,
+        result_ptr: *mut ::casper_sdk_sys::CreateResult,
+    ) -> u32 {
+        let _name = "casper_create_contract";
+        let _args = (
+            &code_ptr,
+            &code_size,
+            &manifest_ptr,
+            &entry_point_ptr,
+            &entry_point_size,
+            &input_ptr,
+            &input_size,
+            &result_ptr,
+        );
+        let _call_result = with_stub(|stub| {
+            stub.casper_create_contract(
+                code_ptr,
+                code_size,
+                manifest_ptr,
+                entry_point_ptr,
+                entry_point_size,
+                input_ptr,
+                input_size,
+                result_ptr,
+            )
+        });
+        crate::host::native::handle_ret(_call_result)
+    }
+
+    #[no_mangle]
+    pub extern "C" fn casper_call(
+        address_ptr: *const u8,
+        address_size: usize,
+        value: u64,
+        entry_point_ptr: *const u8,
+        entry_point_size: usize,
+        input_ptr: *const u8,
+        input_size: usize,
+        alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
+        alloc_ctx: *const core::ffi::c_void,
+    ) -> u32 {
+        let _name = "casper_call";
+        let _args = (
+            &address_ptr,
+            &address_size,
+            &value,
+            &entry_point_ptr,
+            &entry_point_size,
+            &input_ptr,
+            &input_size,
+            &alloc,
+            &alloc_ctx,
+        );
+        let _call_result = with_stub(|stub| {
+            stub.casper_call(
+                address_ptr,
+                address_size,
+                value,
+                entry_point_ptr,
+                entry_point_size,
+                input_ptr,
+                input_size,
+                alloc,
+                alloc_ctx,
+            )
+        });
+        crate::host::native::handle_ret(_call_result)
+    }
+
+    use std::ptr;
+
+    use super::with_stub;
+
+    #[no_mangle]
+    /**Obtain data from the blockchain environemnt of current wasm invocation.
+
+    Example paths:
+
+    * `env_read([CASPER_CALLER], 1, nullptr, &caller_addr)` -> read caller's address into
+    `caller_addr` memory.
+    * `env_read([CASPER_CHAIN, BLOCK_HASH, 0], 3, nullptr, &block_hash)` -> read hash of the
+    current block into `block_hash` memory.
+    * `env_read([CASPER_CHAIN, BLOCK_HASH, 5], 3, nullptr, &block_hash)` -> read hash of the 5th
+    block from the current one into `block_hash` memory.
+    * `env_read([CASPER_AUTHORIZED_KEYS], 1, nullptr, &authorized_keys)` -> read list of
+    authorized keys into `authorized_keys` memory.*/
+    pub extern "C" fn casper_env_read(
+        env_path: *const u64,
+        env_path_size: usize,
+        alloc: Option<extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8>,
+        alloc_ctx: *const core::ffi::c_void,
+    ) -> *mut u8 {
+        let _name = "casper_env_read";
+        let _args = (&env_path, &env_path_size, &alloc, &alloc_ctx);
+        let _call_result =
+            with_stub(|stub| stub.casper_env_read(env_path, env_path_size, alloc, alloc_ctx));
+        crate::host::native::handle_ret_with(_call_result, || ptr::null_mut())
+    }
+
+    #[no_mangle]
+    pub extern "C" fn casper_env_caller(dest: *mut u8, dest_len: usize) -> *const u8 {
+        let _name = "casper_env_caller";
+        let _args = (&dest, &dest_len);
+        let _call_result = with_stub(|stub| stub.casper_env_caller(dest, dest_len));
+        crate::host::native::handle_ret_with(_call_result, || ptr::null())
+    }
 }
 
 #[cfg(test)]
@@ -737,5 +753,7 @@ mod tests {
         let msg = "Hello";
         // let stub = STUB.read().unwrap();
         // stub.casper_print(msg.as_ptr(), msg.len());
+        let res = with_stub(|stub| stub.casper_print(msg.as_ptr(), msg.len())).expect("Ok");
+        assert_eq!(res, 0);
     }
 }

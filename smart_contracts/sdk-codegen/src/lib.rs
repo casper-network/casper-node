@@ -185,7 +185,7 @@ impl Codegen {
         let mut counter = iter::successors(Some(0usize), |prev| prev.checked_add(1));
 
         for (_decl, deps) in graph {
-            for decl in deps.iter().rev() {
+            for decl in deps.into_iter().rev() {
                 // println!("generate {decl}");
 
                 let def = self
@@ -296,29 +296,37 @@ impl Codegen {
                     Definition::Enum { items } => {
                         println!("Processing enum type {decl} {items:?}");
 
-                        let enum_name = format!("Enum{}", counter.next().unwrap());
+                        if decl.starts_with("Result")
+                            && items.len() == 2
+                            && items[0].name == "Ok"
+                            && items[1].name == "Err"
+                        {
+                            self.type_mapping.insert(decl.clone(), decl.clone());
+                        } else {
+                            let enum_name = format!("Enum{}", counter.next().unwrap());
 
-                        let r#enum = scope
-                            .new_enum(&enum_name)
-                            .vis("pub")
-                            .doc(&format!("Declared as {decl}"));
+                            let r#enum = scope
+                                .new_enum(&enum_name)
+                                .vis("pub")
+                                .doc(&format!("Declared as {decl}"));
 
-                        for trait_name in DEFAULT_DERIVED_TRAITS {
-                            r#enum.derive(trait_name);
+                            for trait_name in DEFAULT_DERIVED_TRAITS {
+                                r#enum.derive(trait_name);
+                            }
+
+                            for item in &items {
+                                let variant = r#enum.new_variant(&item.name);
+
+                                let def = self.type_mapping.get(&item.decl).unwrap_or_else(|| {
+                                    panic!("Missing type mapping for {}", item.decl)
+                                });
+
+                                variant.tuple(def);
+                            }
+
+                            self.type_mapping
+                                .insert(decl.to_string(), enum_name.to_owned());
                         }
-
-                        for item in &items {
-                            let variant = r#enum.new_variant(&item.name);
-
-                            let def = self.type_mapping.get(&item.decl).unwrap_or_else(|| {
-                                panic!("Missing type mapping for {}", item.decl)
-                            });
-
-                            variant.tuple(def);
-                        }
-
-                        self.type_mapping
-                            .insert(decl.to_string(), enum_name.to_owned());
                     }
                     Definition::Struct { items } => {
                         // println!("Processing struct type {items:?}");
@@ -413,9 +421,6 @@ impl Codegen {
             }
 
             if entry_point.flags.contains(EntryPointFlags::CONSTRUCTOR) {
-                func.line(format!(
-                    r#"let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");"#
-                ));
                 if !entry_point.arguments.is_empty() {
                     func.line(format!(
                         r#"let create_result = C::create(Some("{name}"), Some(&input_data))?;"#,
@@ -438,7 +443,7 @@ impl Codegen {
                 func.line(r#"let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");"#);
 
                 func.line(format!(
-                    r#"casper_sdk::host::call(&self.address, value, "{name}", &input_data)"#,
+                    r#"casper_sdk::host::call(&self.address, value, "{name}", &input_args)"#,
                     name = &entry_point.name
                 ));
             }

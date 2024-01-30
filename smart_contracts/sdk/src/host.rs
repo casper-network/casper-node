@@ -350,15 +350,33 @@ pub fn start_noret<Args: BorshDeserialize, Ret: BorshSerialize>(
         crate::set_panic_hook();
     }
     let input = casper_copy_input();
+    dbg!(&input);
     let args: Args = BorshDeserialize::try_from_slice(&input).unwrap();
     func(args)
 }
 
 #[derive(Debug)]
 pub struct CallResult<T: BorshDeserialize> {
-    data: Vec<u8>,
-    result: ResultCode,
-    marker: PhantomData<T>,
+    pub data: Option<Vec<u8>>,
+    pub result: ResultCode,
+    pub marker: PhantomData<T>,
+}
+
+impl<Ret: BorshDeserialize> CallResult<Ret> {
+    pub fn into_result(self) -> Ret {
+        match self.result {
+            ResultCode::Success | ResultCode::CalleeReverted => {
+                dbg!(&self.data);
+                borsh::from_slice::<Ret>(&self.data.unwrap()).unwrap()
+            }
+            ResultCode::CalleeTrapped => panic!("CalleeTrapped"),
+            ResultCode::CalleeGasDepleted => panic!("CalleeGasDepleted"),
+            ResultCode::Unknown => panic!("Unknown"),
+        }
+    }
+    pub fn did_revert(&self) -> bool {
+        self.result == ResultCode::CalleeReverted
+    }
 }
 
 pub fn call<Args: BorshSerialize, Ret: BorshDeserialize>(
@@ -371,14 +389,11 @@ pub fn call<Args: BorshSerialize, Ret: BorshDeserialize>(
     let (maybe_data, result_code) =
         casper_call(contract_address, value, entry_point_name, &input_data);
     match result_code {
-        ResultCode::Success | ResultCode::CalleeReverted => {
-            let data = maybe_data.unwrap_or_default();
-            Ok(CallResult {
-                data,
-                result: result_code,
-                marker: PhantomData,
-            })
-        }
+        ResultCode::Success | ResultCode::CalleeReverted => Ok(CallResult {
+            data: maybe_data,
+            result: result_code,
+            marker: PhantomData,
+        }),
         ResultCode::CalleeTrapped => Err(CallError::CalleeTrapped),
         ResultCode::CalleeGasDepleted => Err(CallError::CalleeGasDepleted),
         ResultCode::Unknown => Err(CallError::Unknown),

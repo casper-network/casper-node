@@ -13,7 +13,7 @@ use alloc::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use casper_macros::{casper, CasperABI, CasperSchema, Contract};
 use casper_sdk::{
-    host::{self, Alloc},
+    host::{self, Alloc, CallResult},
     log, revert,
     sys::CreateResult,
     types::{Address, CallError, ResultCode},
@@ -124,27 +124,6 @@ struct TypedCall<Args: BorshSerialize, Ret: BorshDeserialize> {
     _marker: PhantomData<fn(Args) -> Ret>,
 }
 
-struct CallResult<Ret: BorshDeserialize> {
-    data: Option<Vec<u8>>,
-    result_code: ResultCode,
-    _marker: PhantomData<Ret>,
-}
-
-impl<Ret: BorshDeserialize> CallResult<Ret> {
-    fn into_result(self) -> Ret {
-        match self.result_code {
-            ResultCode::Success | ResultCode::CalleeReverted => {
-                borsh::from_slice::<Ret>(&self.data.unwrap()).unwrap()
-            }
-            ResultCode::CalleeTrapped => panic!("CalleeTrapped"),
-            ResultCode::CalleeGasDepleted => panic!("CalleeGasDepleted"),
-            ResultCode::Unknown => panic!("Unknown"),
-        }
-    }
-    fn did_revert(&self) -> bool {
-        self.result_code == ResultCode::CalleeReverted
-    }
-}
 impl<Args: BorshSerialize, Ret: BorshDeserialize> TypedCall<Args, Ret> {
     fn new(address: Address, name: &'static str) -> Self {
         Self {
@@ -159,8 +138,8 @@ impl<Args: BorshSerialize, Ret: BorshDeserialize> TypedCall<Args, Ret> {
             host::casper_call(&self.address, 0, self.name, &args_data);
         CallResult::<Ret> {
             data: maybe_output_data,
-            result_code,
-            _marker: PhantomData,
+            result: result_code,
+            marker: PhantomData,
         }
     }
 }
