@@ -86,7 +86,8 @@ enum InitialStakes {
     AllEqual { count: usize, stake: u128 },
 }
 
-struct ChainspecOverride {
+/// Options to allow overriding default chainspec and config settings.
+struct ConfigsOverride {
     era_duration: TimeDiff,
     minimum_block_time: TimeDiff,
     minimum_era_height: u64,
@@ -96,11 +97,12 @@ struct ChainspecOverride {
     finders_fee: Ratio<u64>,
     finality_signature_proportion: Ratio<u64>,
     signature_rewards_max_delay: u64,
+    storage_multiplier: u8,
 }
 
-impl Default for ChainspecOverride {
+impl Default for ConfigsOverride {
     fn default() -> Self {
-        ChainspecOverride {
+        ConfigsOverride {
             era_duration: TimeDiff::from_millis(0), // zero means use the default value
             minimum_block_time: "1second".parse().unwrap(),
             minimum_era_height: 2,
@@ -110,6 +112,7 @@ impl Default for ChainspecOverride {
             finders_fee: Ratio::new(1, 4),
             finality_signature_proportion: Ratio::new(1, 3),
             signature_rewards_max_delay: 5,
+            storage_multiplier: 1,
         }
     }
 }
@@ -134,7 +137,7 @@ impl TestFixture {
     ///
     /// Runs the network until all nodes are initialized (i.e. none of their reactor states are
     /// still `ReactorState::Initialize`).
-    async fn new(initial_stakes: InitialStakes, spec_override: Option<ChainspecOverride>) -> Self {
+    async fn new(initial_stakes: InitialStakes, spec_override: Option<ConfigsOverride>) -> Self {
         let mut rng = TestRng::new();
         let stake_values = match initial_stakes {
             InitialStakes::FromVec(stakes) => {
@@ -167,7 +170,7 @@ impl TestFixture {
         mut rng: TestRng,
         secret_keys: Vec<Arc<SecretKey>>,
         stakes: BTreeMap<PublicKey, U512>,
-        spec_override: Option<ChainspecOverride>,
+        spec_override: Option<ConfigsOverride>,
     ) -> Self {
         testing::init_logging();
 
@@ -204,7 +207,7 @@ impl TestFixture {
         chainspec.core_config.era_duration = TimeDiff::from_millis(0);
         chainspec.core_config.auction_delay = 1;
         chainspec.core_config.validator_slots = 100;
-        let ChainspecOverride {
+        let ConfigsOverride {
             era_duration,
             minimum_block_time,
             minimum_era_height,
@@ -214,6 +217,7 @@ impl TestFixture {
             finders_fee,
             finality_signature_proportion,
             signature_rewards_max_delay,
+            storage_multiplier,
         } = spec_override.unwrap_or_default();
         if era_duration != TimeDiff::from_millis(0) {
             chainspec.core_config.era_duration = era_duration;
@@ -238,7 +242,8 @@ impl TestFixture {
         };
 
         for secret_key in secret_keys {
-            let (config, storage_dir) = fixture.create_node_config(secret_key.as_ref(), None);
+            let (config, storage_dir) =
+                fixture.create_node_config(secret_key.as_ref(), None, storage_multiplier);
             fixture.add_node(secret_key, config, storage_dir).await;
         }
 
@@ -301,6 +306,7 @@ impl TestFixture {
         &mut self,
         secret_key: &SecretKey,
         maybe_trusted_hash: Option<BlockHash>,
+        storage_multiplier: u8,
     ) -> (Config, TempDir) {
         // Set the network configuration.
         let network_cfg = match self.node_contexts.first() {
@@ -321,7 +327,7 @@ impl TestFixture {
         };
 
         // Additionally set up storage in a temporary directory.
-        let (storage_cfg, temp_dir) = storage::Config::default_for_tests();
+        let (storage_cfg, temp_dir) = storage::Config::new_for_tests(storage_multiplier);
         // ...and the secret key for our validator.
         {
             let secret_key_path = temp_dir.path().join("secret_key");
@@ -332,6 +338,8 @@ impl TestFixture {
         }
         cfg.storage = storage_cfg;
         cfg.node.trusted_hash = maybe_trusted_hash;
+        cfg.contract_runtime.max_global_state_size =
+            Some(1024 * 1024 * storage_multiplier as usize);
 
         (cfg, temp_dir)
     }
@@ -802,7 +810,7 @@ async fn run_network() {
 #[tokio::test]
 async fn historical_sync_with_era_height_1() {
     let initial_stakes = InitialStakes::Random { count: 5 };
-    let spec_override = ChainspecOverride {
+    let spec_override = ConfigsOverride {
         minimum_block_time: "4seconds".parse().unwrap(),
         ..Default::default()
     };
@@ -814,7 +822,7 @@ async fn historical_sync_with_era_height_1() {
     // Create a joiner node.
     let secret_key = SecretKey::random(&mut fixture.rng);
     let trusted_hash = *fixture.highest_complete_block().hash();
-    let (mut config, storage_dir) = fixture.create_node_config(&secret_key, Some(trusted_hash));
+    let (mut config, storage_dir) = fixture.create_node_config(&secret_key, Some(trusted_hash), 1);
     config.node.sync_handling = SyncHandling::Genesis;
     let joiner_id = fixture
         .add_node(Arc::new(secret_key), config, storage_dir)
@@ -850,9 +858,9 @@ async fn historical_sync_with_era_height_1() {
 #[tokio::test]
 async fn should_not_historical_sync_no_sync_node() {
     let initial_stakes = InitialStakes::Random { count: 5 };
-    let spec_override = ChainspecOverride {
+    let spec_override = ConfigsOverride {
         minimum_block_time: "4seconds".parse().unwrap(),
-        minimum_era_height: 1,
+        minimum_era_height: 2,
         ..Default::default()
     };
     let mut fixture = TestFixture::new(initial_stakes, Some(spec_override)).await;
@@ -871,7 +879,7 @@ async fn should_not_historical_sync_no_sync_node() {
     );
     info!("joining node using block {trusted_height} {trusted_hash}");
     let secret_key = SecretKey::random(&mut fixture.rng);
-    let (mut config, storage_dir) = fixture.create_node_config(&secret_key, Some(trusted_hash));
+    let (mut config, storage_dir) = fixture.create_node_config(&secret_key, Some(trusted_hash), 1);
     config.node.sync_handling = SyncHandling::NoSync;
     let joiner_id = fixture
         .add_node(Arc::new(secret_key), config, storage_dir)
@@ -954,9 +962,10 @@ async fn run_equivocator_network() {
     ];
 
     // We configure the era to take 15 rounds. That should guarantee that the two nodes equivocate.
-    let spec_override = ChainspecOverride {
+    let spec_override = ConfigsOverride {
         minimum_era_height: 10,
         consensus_protocol: ConsensusProtocolName::Highway,
+        storage_multiplier: 2,
         ..Default::default()
     };
 
@@ -1350,7 +1359,7 @@ async fn empty_block_validation_regression() {
         count: 4,
         stake: 100,
     };
-    let spec_override = ChainspecOverride {
+    let spec_override = ConfigsOverride {
         minimum_era_height: 15,
         ..Default::default()
     };
@@ -1626,7 +1635,7 @@ async fn run_redelegate_bid_network() {
         charlie_stake.into(),
     ]);
 
-    let spec_override = ChainspecOverride {
+    let spec_override = ConfigsOverride {
         unbonding_delay: 1,
         minimum_era_height: 5,
         ..Default::default()
@@ -1748,7 +1757,7 @@ async fn run_redelegate_bid_network() {
 #[tokio::test]
 async fn rewards_are_calculated() {
     let initial_stakes = InitialStakes::Random { count: 5 };
-    let spec_override = ChainspecOverride {
+    let spec_override = ConfigsOverride {
         minimum_era_height: 3,
         ..Default::default()
     };
@@ -1794,7 +1803,7 @@ async fn run_rewards_network_scenario(
     time_out: u64, //seconds
     representative_node_index: usize,
     filtered_nodes_indices: &[usize],
-    spec_override: ChainspecOverride,
+    spec_override: ConfigsOverride,
 ) {
     use casper_execution_engine::engine_state::{Error, QueryResult::*};
 
@@ -2170,7 +2179,7 @@ async fn run_reward_network_zug_all_finality_small_prime_five_eras() {
         TIME_OUT,
         REPRESENTATIVE_NODE_INDEX,
         &[],
-        ChainspecOverride {
+        ConfigsOverride {
             consensus_protocol: CONSENSUS_ZUG,
             era_duration: TimeDiff::from_millis(ERA_DURATION),
             minimum_era_height: MIN_HEIGHT,
@@ -2194,7 +2203,7 @@ async fn run_reward_network_zug_all_finality_small_prime_five_eras_no_lookback()
         TIME_OUT,
         REPRESENTATIVE_NODE_INDEX,
         &[],
-        ChainspecOverride {
+        ConfigsOverride {
             consensus_protocol: CONSENSUS_ZUG,
             era_duration: TimeDiff::from_millis(ERA_DURATION),
             minimum_era_height: MIN_HEIGHT,
@@ -2218,7 +2227,7 @@ async fn run_reward_network_zug_no_finality_small_nominal_five_eras() {
         TIME_OUT,
         REPRESENTATIVE_NODE_INDEX,
         &[],
-        ChainspecOverride {
+        ConfigsOverride {
             consensus_protocol: CONSENSUS_ZUG,
             era_duration: TimeDiff::from_millis(ERA_DURATION),
             minimum_era_height: MIN_HEIGHT,
@@ -2242,7 +2251,7 @@ async fn run_reward_network_zug_half_finality_half_finders_small_nominal_five_er
         TIME_OUT,
         REPRESENTATIVE_NODE_INDEX,
         &[],
-        ChainspecOverride {
+        ConfigsOverride {
             consensus_protocol: CONSENSUS_ZUG,
             era_duration: TimeDiff::from_millis(ERA_DURATION),
             minimum_era_height: MIN_HEIGHT,
@@ -2266,7 +2275,7 @@ async fn run_reward_network_zug_half_finality_half_finders_small_nominal_five_er
         TIME_OUT,
         REPRESENTATIVE_NODE_INDEX,
         &[],
-        ChainspecOverride {
+        ConfigsOverride {
             consensus_protocol: CONSENSUS_ZUG,
             era_duration: TimeDiff::from_millis(ERA_DURATION),
             minimum_era_height: MIN_HEIGHT,
@@ -2290,7 +2299,7 @@ async fn run_reward_network_zug_all_finality_half_finders_small_nominal_five_era
         TIME_OUT,
         REPRESENTATIVE_NODE_INDEX,
         &[],
-        ChainspecOverride {
+        ConfigsOverride {
             consensus_protocol: CONSENSUS_ZUG,
             era_duration: TimeDiff::from_millis(ERA_DURATION),
             minimum_era_height: MIN_HEIGHT,
@@ -2316,7 +2325,7 @@ async fn run_reward_network_zug_all_finality_half_finders() {
         TIME_OUT,
         REPRESENTATIVE_NODE_INDEX,
         FILTERED_NODES_INDICES,
-        ChainspecOverride {
+        ConfigsOverride {
             consensus_protocol: CONSENSUS_ZUG,
             era_duration: TimeDiff::from_millis(ERA_DURATION),
             minimum_era_height: MIN_HEIGHT,
@@ -2342,7 +2351,7 @@ async fn run_reward_network_zug_all_finality_half_finders_five_eras() {
         TIME_OUT,
         REPRESENTATIVE_NODE_INDEX,
         FILTERED_NODES_INDICES,
-        ChainspecOverride {
+        ConfigsOverride {
             consensus_protocol: CONSENSUS_ZUG,
             era_duration: TimeDiff::from_millis(ERA_DURATION),
             minimum_era_height: MIN_HEIGHT,
@@ -2368,7 +2377,7 @@ async fn run_reward_network_zug_all_finality_zero_finders() {
         TIME_OUT,
         REPRESENTATIVE_NODE_INDEX,
         FILTERED_NODES_INDICES,
-        ChainspecOverride {
+        ConfigsOverride {
             consensus_protocol: CONSENSUS_ZUG,
             era_duration: TimeDiff::from_millis(ERA_DURATION),
             minimum_era_height: MIN_HEIGHT,
@@ -2394,7 +2403,7 @@ async fn run_reward_network_highway_all_finality_zero_finders() {
         TIME_OUT,
         REPRESENTATIVE_NODE_INDEX,
         FILTERED_NODES_INDICES,
-        ChainspecOverride {
+        ConfigsOverride {
             consensus_protocol: CONSENSUS_HIGHWAY,
             era_duration: TimeDiff::from_millis(ERA_DURATION),
             minimum_era_height: MIN_HEIGHT,
@@ -2420,7 +2429,7 @@ async fn run_reward_network_highway_no_finality() {
         TIME_OUT,
         REPRESENTATIVE_NODE_INDEX,
         FILTERED_NODES_INDICES,
-        ChainspecOverride {
+        ConfigsOverride {
             consensus_protocol: CONSENSUS_HIGHWAY,
             era_duration: TimeDiff::from_millis(ERA_DURATION),
             minimum_era_height: MIN_HEIGHT,

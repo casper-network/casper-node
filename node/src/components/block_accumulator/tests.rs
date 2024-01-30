@@ -161,7 +161,7 @@ impl Reactor for MockReactor {
         _event_queue: EventQueueHandle<Self::Event>,
         _rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
-        let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
+        let (storage_config, storage_tempdir) = storage::Config::new_for_tests(1);
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
         let validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
         let block_accumulator_config = Config::default();

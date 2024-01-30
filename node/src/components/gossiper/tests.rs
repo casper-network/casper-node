@@ -159,7 +159,7 @@ impl reactor::Reactor for Reactor {
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
         let network = NetworkController::create_node(event_queue, rng);
 
-        let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
+        let (storage_config, storage_tempdir) = storage::Config::new_for_tests(1);
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
         let storage = Storage::new(
             &storage_withdir,
