@@ -5,7 +5,7 @@ use casper_types::{FinalitySignature, FinalitySignatureId, Transaction};
 use crate::{
     components::fetcher::FetchResult,
     effect::requests::BlockValidationRequest,
-    types::{BlockWithMetadata, DeployOrTransferHash},
+    types::{BlockWithMetadata, DeployOrTransactionHash, DeployOrTransferHash},
 };
 
 #[derive(Debug, From, Display)]
@@ -24,7 +24,7 @@ pub(crate) enum Event {
 
     #[display(fmt = "{} fetched", dt_hash)]
     TransactionFetched {
-        dt_hash: DeployOrTransferHash,
+        dt_hash: DeployOrTransactionHash,
         result: FetchResult<Transaction>,
     },
 

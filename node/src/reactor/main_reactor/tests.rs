@@ -50,8 +50,9 @@ use crate::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
     },
     types::{
-        AvailableBlockRange, BlockPayload, DeployOrTransferHash, DeployWithFinalizedApprovals,
-        ExitCode, NodeId, SyncHandling, TransactionWithFinalizedApprovals,
+        AvailableBlockRange, BlockPayload, DeployOrTransactionHash, DeployOrTransferHash,
+        DeployWithFinalizedApprovals, ExitCode, NodeId, SyncHandling,
+        TransactionWithFinalizedApprovals,
     },
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
@@ -1220,7 +1221,8 @@ async fn should_store_finalized_approvals() {
         .collect();
     assert_ne!(bobs_original_approvals, expected_approvals);
 
-    let deploy_hash = *DeployOrTransferHash::new(&deploy_alice_bob).deploy_hash();
+    //    let deploy_hash = *DeployOrTransferHash::new(&deploy_alice_bob).deploy_hash();
+    let deploy_hash = deploy_alice_bob.hash();
 
     for runner in fixture.network.runners_mut() {
         let deploy = if runner.main_reactor().consensus().public_key() == &alice_public_key {

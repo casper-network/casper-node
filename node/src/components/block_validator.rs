@@ -40,8 +40,8 @@ use crate::{
     },
     fatal,
     types::{
-        BlockWithMetadata, DeployOrTransferHash, NodeId, TransactionHashWithApprovals,
-        ValidatorMatrix,
+        BlockWithMetadata, DeployOrTransactionHash, DeployOrTransferHash, NodeId,
+        TransactionHashWithApprovals, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -501,7 +501,7 @@ impl BlockValidator {
     fn handle_transaction_fetched<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        dt_hash: DeployOrTransferHash,
+        dt_hash: DeployOrTransactionHash,
         result: FetchResult<Transaction>,
     ) -> Effects<Event>
     where
@@ -519,18 +519,18 @@ impl BlockValidator {
         }
         match result {
             Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => {
-                if DeployOrTransferHash::new(&item) != dt_hash {
+                if DeployOrTransactionHash::new(&item) != dt_hash {
                     warn!(
-                        deploy = %item,
-                        expected_deploy_or_transfer_hash = %dt_hash,
-                        actual_deploy_or_transfer_hash = %DeployOrTransferHash::new(&item),
-                        "deploy has incorrect deploy-or-transfer hash"
+                        transaction = %item,
+                        expected_deploy_or_transaction_hash = %dt_hash,
+                        actual_deploy_or_transaction_hash = %DeployOrTransactionHash::new(&item),
+                        "deploy has incorrect deploy-or-transaction hash"
                     );
                     // Hard failure - change state to Invalid.
                     let responders = self
                         .validation_states
                         .values_mut()
-                        .flat_map(|state| state.try_mark_invalid(&dt_hash));
+                        .flat_map(|state| state.try_mark_invalid(&dt_hash.into()));
                     return respond(false, responders);
                 }
                 let deploy_footprint = match item.footprint() {
@@ -546,16 +546,18 @@ impl BlockValidator {
                         let responders = self
                             .validation_states
                             .values_mut()
-                            .flat_map(|state| state.try_mark_invalid(&dt_hash));
+                            .flat_map(|state| state.try_mark_invalid(&dt_hash.into()));
                         return respond(false, responders);
                     }
-                };
+                }
+                .into();
 
                 let mut effects = Effects::new();
                 for state in self.validation_states.values_mut() {
                     let responders = state.try_add_deploy_footprint(&dt_hash, &deploy_footprint);
                     if !responders.is_empty() {
                         let is_valid = matches!(state, BlockValidationState::Valid(_));
+                        dbg!("Block validation succeeded");
                         effects.extend(respond(is_valid, responders));
                     }
                 }
@@ -609,7 +611,7 @@ impl BlockValidator {
                         let responders = self
                             .validation_states
                             .values_mut()
-                            .flat_map(|state| state.try_mark_invalid(&dt_hash));
+                            .flat_map(|state| state.try_mark_invalid(&dt_hash.into()));
                         respond(false, responders)
                     }
                 }
@@ -770,7 +772,7 @@ where
 fn fetch_deploys_and_signatures<REv>(
     effect_builder: EffectBuilder<REv>,
     holder: NodeId,
-    missing_deploys: HashMap<DeployOrTransferHash, TransactionApprovalsHash>,
+    missing_deploys: HashMap<DeployOrTransactionHash, TransactionApprovalsHash>,
     missing_signatures: HashSet<FinalitySignatureId>,
 ) -> Effects<Event>
 where
@@ -782,30 +784,29 @@ where
     let mut effects: Effects<Event> = missing_deploys
         .into_iter()
         .flat_map(|(dt_hash, approvals_hash)| {
-            let txn_id = match dt_hash {
-                DeployOrTransferHash::Deploy(transaction_hash) => {
-                    match (transaction_hash, approvals_hash) {
-                        (
-                            TransactionHash::Deploy(deploy_hash),
-                            TransactionApprovalsHash::Deploy(deploy_approvals_hash),
-                        ) => TransactionId::Deploy {
-                            deploy_hash,
-                            approvals_hash: deploy_approvals_hash,
-                        },
-                        (
-                            TransactionHash::V1(transaction_v1_hash),
-                            TransactionApprovalsHash::V1(transaction_v1_approvals_hash),
-                        ) => TransactionId::V1 {
-                            transaction_v1_hash,
-                            approvals_hash: transaction_v1_approvals_hash,
-                        },
-                        _ => panic!("transaction hash and approvals hash type mismatch"), // TODO[RC]
-                    }
+            let txn_id = match (dt_hash, approvals_hash) {
+                (
+                    DeployOrTransactionHash::Deploy(dt_hash),
+                    TransactionApprovalsHash::Deploy(approvals_hash),
+                ) => TransactionId::Deploy {
+                    deploy_hash: dt_hash.into(),
+                    approvals_hash,
+                },
+                (DeployOrTransactionHash::Deploy(_), TransactionApprovalsHash::V1(_)) => {
+                    panic!("mismatch 1") // TODO[RC]: Handle errors
                 }
-                DeployOrTransferHash::Transfer(_) => {
-                    panic!("unexpected transfer hash in block validator") // TODO[RC]
+                (DeployOrTransactionHash::V1(_), TransactionApprovalsHash::Deploy(_)) => {
+                    panic!("mismatch 2")
                 }
+                (
+                    DeployOrTransactionHash::V1(dt_hash),
+                    TransactionApprovalsHash::V1(approvals_hash),
+                ) => TransactionId::V1 {
+                    transaction_v1_hash: dt_hash,
+                    approvals_hash,
+                },
             };
+
             effect_builder
                 .fetch::<Transaction>(txn_id, holder, Box::new(EmptyValidationMetadata))
                 .event(move |result| Event::TransactionFetched { dt_hash, result })

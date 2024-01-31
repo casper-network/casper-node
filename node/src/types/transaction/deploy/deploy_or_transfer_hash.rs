@@ -2,7 +2,7 @@ use datasize::DataSize;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{Transaction, TransactionHash};
+use casper_types::{Deploy, DeployHash, TransactionHash};
 
 /// The [`DeployHash`] stored in a way distinguishing between Wasm deploys and transfers.
 #[derive(
@@ -23,32 +23,35 @@ use casper_types::{Transaction, TransactionHash};
 pub(crate) enum DeployOrTransferHash {
     /// Hash of a deploy.
     #[display(fmt = "deploy {}", _0)]
-    Deploy(TransactionHash),
+    Deploy(DeployHash),
     /// Hash of a transfer.
     #[display(fmt = "transfer {}", _0)]
-    Transfer(TransactionHash), // TODO[RC]: Should this remain as DeployHash?
+    Transfer(DeployHash),
 }
 
 impl DeployOrTransferHash {
     /// Returns the hash of `deploy` wrapped in `DeployOrTransferHash`.
-    pub(crate) fn new(transaction: &Transaction) -> DeployOrTransferHash {
-        match transaction {
-            Transaction::Deploy(deploy) if deploy.session().is_transfer() => {
-                DeployOrTransferHash::Transfer(transaction.hash())
-            }
-            Transaction::V1(v1) if v1.is_transfer() => {
-                DeployOrTransferHash::Transfer(transaction.hash())
-            }
-            Transaction::V1(_) | Transaction::Deploy(_) => {
-                DeployOrTransferHash::Deploy(transaction.hash())
-            }
+    pub(crate) fn new(deploy: &Deploy) -> DeployOrTransferHash {
+        if deploy.session().is_transfer() {
+            DeployOrTransferHash::Transfer(*deploy.hash())
+        } else {
+            DeployOrTransferHash::Deploy(*deploy.hash())
         }
     }
 
     #[cfg(test)]
-    pub(crate) fn deploy_hash(&self) -> &TransactionHash {
+    pub(crate) fn deploy_hash(&self) -> &DeployHash {
         match self {
             DeployOrTransferHash::Deploy(hash) | DeployOrTransferHash::Transfer(hash) => hash,
+        }
+    }
+}
+
+impl From<DeployOrTransferHash> for DeployHash {
+    fn from(dt_hash: DeployOrTransferHash) -> DeployHash {
+        match dt_hash {
+            DeployOrTransferHash::Deploy(hash) => hash,
+            DeployOrTransferHash::Transfer(hash) => hash,
         }
     }
 }
@@ -56,8 +59,9 @@ impl DeployOrTransferHash {
 impl From<DeployOrTransferHash> for TransactionHash {
     fn from(dt_hash: DeployOrTransferHash) -> TransactionHash {
         match dt_hash {
-            DeployOrTransferHash::Deploy(hash) => hash,
-            DeployOrTransferHash::Transfer(hash) => hash,
+            DeployOrTransferHash::Transfer(hash) | DeployOrTransferHash::Deploy(hash) => {
+                TransactionHash::Deploy(hash)
+            }
         }
     }
 }

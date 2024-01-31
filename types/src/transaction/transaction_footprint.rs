@@ -3,7 +3,7 @@ use datasize::DataSize;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
 
-use crate::{DeployFootprint, Timestamp};
+use crate::{DeployFootprint, Gas, Timestamp};
 #[cfg(any(feature = "std", test))]
 use crate::{TimeDiff, TransactionConfig, TransactionHash};
 
@@ -45,6 +45,22 @@ impl TransactionFootprint {
         match self {
             TransactionFootprint::Deploy(deploy_footprint) => deploy_footprint.is_transfer,
             TransactionFootprint::V1(v1_footprint) => v1_footprint.is_transfer,
+        }
+    }
+
+    /// Returns gas estimate
+    pub fn gas_estimate(&self) -> Gas {
+        match self {
+            TransactionFootprint::Deploy(deploy_footprint) => deploy_footprint.gas_estimate,
+            TransactionFootprint::V1(v1_footprint) => v1_footprint.gas_estimate,
+        }
+    }
+
+    /// Returns size estimate
+    pub fn size_estimate(&self) -> usize {
+        match self {
+            TransactionFootprint::Deploy(deploy_footprint) => deploy_footprint.size_estimate,
+            TransactionFootprint::V1(v1_footprint) => v1_footprint.size_estimate,
         }
     }
 

@@ -45,15 +45,14 @@ pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};
 pub(crate) use sync_leap::{GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier};
 pub use transaction::TransactionHashWithApprovals;
 pub(crate) use transaction::{
-    DeployOrTransferHash, DeployWithFinalizedApprovals, ExecutionInfo, FinalizedApprovals,
-    FinalizedDeployApprovals, FinalizedTransactionV1Approvals, LegacyDeploy,
+    DeployOrTransactionHash, DeployOrTransferHash, DeployWithFinalizedApprovals, ExecutionInfo,
+    FinalizedApprovals, FinalizedDeployApprovals, FinalizedTransactionV1Approvals, LegacyDeploy,
     TransactionWithFinalizedApprovals, TypedTransactionHash,
 };
 pub(crate) use validator_matrix::{EraValidatorWeights, SignatureWeight, ValidatorMatrix};
 pub use value_or_chunk::{
     ChunkingError, TrieOrChunk, TrieOrChunkId, TrieOrChunkIdDisplay, ValueOrChunk,
 };
-
 /// An object-safe RNG trait that requires a cryptographically strong random number generator.
 pub trait CryptoRngCore: CryptoRng + RngCore {}
 

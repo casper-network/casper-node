@@ -28,15 +28,6 @@ pub enum TransactionApprovalsHash {
     V1(TransactionV1ApprovalsHash),
 }
 
-impl TransactionApprovalsHash {
-    /// Constructs a new `TransactionApprovalsHash` by bytesrepr-encoding `approvals` and creating
-    /// a [`Digest`] of this.
-    pub fn compute(approvals: &BTreeSet<TransactionApproval>) -> Result<Self, bytesrepr::Error> {
-        let digest = Digest::hash(approvals.to_bytes()?);
-        Ok(TransactionV1ApprovalsHash::from(digest).into()) // TODO[RC]: V1?
-    }
-}
-
 impl From<DeployApprovalsHash> for TransactionApprovalsHash {
     fn from(hash: DeployApprovalsHash) -> Self {
         Self::Deploy(hash)

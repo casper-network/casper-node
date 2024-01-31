@@ -3,7 +3,7 @@ use datasize::DataSize;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
 
-use crate::TransactionV1Header;
+use crate::{Gas, TransactionV1Header};
 
 #[derive(Clone, Debug)]
 #[cfg_attr(
@@ -15,7 +15,12 @@ use crate::TransactionV1Header;
 pub struct TransactionV1Footprint {
     /// The header of the `Transaction`.
     pub header: TransactionV1Header,
+    /// The estimated gas consumption of the `Transaction`.
+    pub gas_estimate: Gas,
+    /// The bytesrepr serialized length of the `Transaction`.
+    pub size_estimate: usize,
     /// Whether the `Transaction` is a transfer or not.
+    // TODO[RC]: Is this distinction still correct for V1?
     pub is_transfer: bool,
 }
 

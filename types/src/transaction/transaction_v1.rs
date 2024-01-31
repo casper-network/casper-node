@@ -38,7 +38,7 @@ use crate::testing::TestRng;
 use crate::TransactionConfig;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp,
+    crypto, Digest, DisplayIter, Gas, Motes, RuntimeArgs, SecretKey, TimeDiff, Timestamp, U512,
 };
 pub use errors_v1::{
     DecodeFromJsonErrorV1 as TransactionV1DecodeFromJsonError, ErrorV1 as TransactionV1Error,
@@ -306,9 +306,30 @@ impl TransactionV1 {
     pub fn footprint(&self) -> Result<TransactionV1Footprint, TransactionV1Error> {
         let header = self.header().clone();
         let is_transfer = self.is_transfer();
+
+        // TODO[RC]: Is this ok?
+        let conv_rate = match header.pricing_mode() {
+            PricingMode::GasPriceMultiplier(multiplier) => *multiplier,
+            PricingMode::Fixed | PricingMode::Reserved => 1,
+        };
+
+        let gas_estimate = match header.payment_amount() {
+            Some(payment_amount) => {
+                match Gas::from_motes(Motes::new(U512::from(payment_amount)), conv_rate) {
+                    Some(gas_estimate) => gas_estimate,
+                    None => return Err(TransactionV1Error::InvalidPayment),
+                }
+            }
+            None => {
+                return Err(TransactionV1Error::InvalidPayment);
+            }
+        };
+        let size_estimate = self.serialized_length();
         Ok(TransactionV1Footprint {
             header,
             is_transfer,
+            gas_estimate,
+            size_estimate,
         })
     }
 

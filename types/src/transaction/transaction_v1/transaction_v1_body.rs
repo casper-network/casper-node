@@ -73,6 +73,12 @@ impl TransactionV1Body {
         &self.target
     }
 
+    #[cfg(any(feature = "std", test))]
+    /// Sets target for transaction.
+    pub fn set_target(&mut self, target: TransactionTarget) {
+        self.target = target;
+    }
+
     /// Returns the entry point of the transaction.
     pub fn entry_point(&self) -> &TransactionEntryPoint {
         &self.entry_point
