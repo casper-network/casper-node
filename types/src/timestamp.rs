@@ -33,9 +33,9 @@ const TIMESTAMP: Timestamp = Timestamp(1_605_573_564_072);
 #[cfg_attr(
     feature = "json-schema",
     derive(JsonSchema),
-    schemars(with = "String", description = "Timestamp formatted as per RFC 3339")
+    schemars(description = "Timestamp formatted as per RFC 3339")
 )]
-pub struct Timestamp(u64);
+pub struct Timestamp(#[cfg_attr(feature = "json-schema", schemars(with = "String"))] u64);
 
 impl Timestamp {
     /// The maximum value a timestamp can have.
@@ -240,9 +240,9 @@ impl From<u64> for Timestamp {
 #[cfg_attr(
     feature = "json-schema",
     derive(JsonSchema),
-    schemars(with = "String", description = "Human-readable duration.")
+    schemars(description = "Human-readable duration.")
 )]
-pub struct TimeDiff(u64);
+pub struct TimeDiff(#[cfg_attr(feature = "json-schema", schemars(with = "String"))] u64);
 
 impl Display for TimeDiff {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {

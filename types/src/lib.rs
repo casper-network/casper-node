@@ -150,6 +150,7 @@ pub use key::{
     BLAKE2B_DIGEST_LENGTH, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
 };
 pub use motes::Motes;
+#[doc(inline)]
 pub use package::{
     EntityVersion, EntityVersionKey, EntityVersions, Group, Groups, Package, PackageHash,
 };
@@ -161,20 +162,17 @@ pub use tagged::Tagged;
 #[cfg(any(feature = "std", test))]
 pub use timestamp::serde_option_time_diff;
 pub use timestamp::{TimeDiff, Timestamp};
-#[doc(inline)]
-pub use transaction::runtime_args::{NamedArg, RuntimeArgs};
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-pub use transaction::TestTransactionV1Builder;
 pub use transaction::{
-    runtime_args, AuctionTransactionV1, Deploy, DeployApproval, DeployApprovalsHash,
-    DeployConfigFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
-    DeployFootprint, DeployHash, DeployHeader, DeployId, DirectCallV1, EntityIdentifier,
-    ExecutableDeployItem, ExecutableDeployItemIdentifier, NativeTransactionV1, PackageIdentifier,
-    PricingModeV1, Transaction, TransactionApprovalsHash, TransactionHash, TransactionHeader,
-    TransactionId, TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash,
-    TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError, TransactionV1Error,
-    TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header, TransactionV1Kind,
-    TransferTarget, UserlandTransactionV1,
+    AddressableEntityIdentifier, Deploy, DeployApproval, DeployApprovalsHash, DeployConfigFailure,
+    DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash,
+    DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, InitiatorAddr,
+    NamedArg, PackageIdentifier, PricingMode, RuntimeArgs, Transaction, TransactionApprovalsHash,
+    TransactionEntryPoint, TransactionHash, TransactionHeader, TransactionId,
+    TransactionInvocationTarget, TransactionRuntime, TransactionScheduling, TransactionSessionKind,
+    TransactionTarget, TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash,
+    TransactionV1Body, TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError,
+    TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
+    TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction::{

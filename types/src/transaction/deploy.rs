@@ -8,8 +8,6 @@ mod deploy_header;
 mod deploy_id;
 mod error;
 mod executable_deploy_item;
-#[macro_use]
-pub mod runtime_args;
 
 use alloc::{collections::BTreeSet, vec::Vec};
 use core::{
@@ -24,7 +22,7 @@ use datasize::DataSize;
 use once_cell::sync::OnceCell;
 #[cfg(any(feature = "std", test))]
 use {
-    super::AccountAndSecretKey,
+    super::{InitiatorAddr, InitiatorAddrAndSecretKey},
     itertools::Itertools,
     serde::{Deserialize, Serialize},
 };
@@ -47,6 +45,14 @@ use {
 #[cfg(feature = "json-schema")]
 use {once_cell::sync::Lazy, schemars::JsonSchema};
 
+#[cfg(any(
+    all(feature = "std", feature = "testing"),
+    feature = "json-schema",
+    test
+))]
+use crate::runtime_args;
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use crate::RuntimeArgs;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, Digest, DisplayIter, PublicKey, SecretKey, TimeDiff, Timestamp,
@@ -65,10 +71,8 @@ pub use error::{
     ExcessiveSizeError as DeployExcessiveSizeError,
 };
 pub use executable_deploy_item::{
-    EntityIdentifier, ExecutableDeployItem, ExecutableDeployItemIdentifier, PackageIdentifier,
-    TransferTarget,
+    ExecutableDeployItem, ExecutableDeployItemIdentifier, TransferTarget,
 };
-pub use runtime_args::RuntimeArgs;
 
 #[cfg(feature = "json-schema")]
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
@@ -157,12 +161,15 @@ impl Deploy {
         chain_name: String,
         payment: ExecutableDeployItem,
         session: ExecutableDeployItem,
-        account_and_secret_key: AccountAndSecretKey,
+        initiator_addr_and_secret_key: InitiatorAddrAndSecretKey,
     ) -> Deploy {
         let serialized_body = serialize_body(&payment, &session);
         let body_hash = Digest::hash(serialized_body);
 
-        let account = account_and_secret_key.account();
+        let account = match initiator_addr_and_secret_key.initiator_addr() {
+            InitiatorAddr::PublicKey(public_key) => public_key,
+            InitiatorAddr::AccountHash(_) | InitiatorAddr::EntityAddr(_) => unreachable!(),
+        };
 
         let dependencies = dependencies.into_iter().unique().collect();
         let header = DeployHeader::new(
@@ -187,7 +194,7 @@ impl Deploy {
             is_valid: OnceCell::new(),
         };
 
-        if let Some(secret_key) = account_and_secret_key.secret_key() {
+        if let Some(secret_key) = initiator_addr_and_secret_key.secret_key() {
             deploy.sign(secret_key);
         }
         deploy
@@ -497,11 +504,11 @@ impl Deploy {
         account: Option<PublicKey>,
     ) -> Deploy {
         let account_and_secret_key = match account {
-            Some(account) => AccountAndSecretKey::Both {
-                account,
+            Some(account) => InitiatorAddrAndSecretKey::Both {
+                initiator_addr: InitiatorAddr::PublicKey(account),
                 secret_key,
             },
-            None => AccountAndSecretKey::SecretKey(secret_key),
+            None => InitiatorAddrAndSecretKey::SecretKey(secret_key),
         };
 
         Deploy::build(
@@ -974,7 +981,7 @@ impl Deploy {
             chain_name,
             payment,
             session,
-            AccountAndSecretKey::Account(public_key),
+            InitiatorAddrAndSecretKey::InitiatorAddr(InitiatorAddr::PublicKey(public_key)),
         )
     }
 
@@ -1012,7 +1019,9 @@ impl Deploy {
             chain_name,
             payment,
             session,
-            AccountAndSecretKey::Account(delegator_public_key),
+            InitiatorAddrAndSecretKey::InitiatorAddr(InitiatorAddr::PublicKey(
+                delegator_public_key,
+            )),
         )
     }
 
@@ -1050,7 +1059,9 @@ impl Deploy {
             chain_name,
             payment,
             session,
-            AccountAndSecretKey::Account(delegator_public_key),
+            InitiatorAddrAndSecretKey::InitiatorAddr(InitiatorAddr::PublicKey(
+                delegator_public_key,
+            )),
         )
     }
 
@@ -1091,7 +1102,9 @@ impl Deploy {
             chain_name,
             payment,
             session,
-            AccountAndSecretKey::Account(delegator_public_key),
+            InitiatorAddrAndSecretKey::InitiatorAddr(InitiatorAddr::PublicKey(
+                delegator_public_key,
+            )),
         )
     }
 }

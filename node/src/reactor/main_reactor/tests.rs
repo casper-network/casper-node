@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, iter, net::SocketAddr, str::FromStr, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeMap, convert::TryFrom, iter, net::SocketAddr, str::FromStr, sync::Arc,
+    time::Duration,
+};
 
 use either::Either;
 use num::Zero;
@@ -20,9 +23,9 @@ use casper_types::{
     },
     testing::TestRng,
     AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, Block, BlockHash,
-    BlockHeader, CLValue, Chainspec, ChainspecRawBytes, Deploy, EraId, Key, Motes, ProtocolVersion,
-    PublicKey, SecretKey, StoredValue, TimeDiff, Timestamp, Transaction, TransactionHash,
-    ValidatorConfig, U512,
+    BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Deploy, EraId, Key, Motes,
+    ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, Timestamp, Transaction,
+    TransactionHash, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -234,6 +237,25 @@ impl TestFixture {
             .read_highest_complete_block()
             .expect("should not error reading db")
             .expect("node 0 should have a complete block")
+    }
+
+    #[track_caller]
+    fn switch_block(&self, era: EraId) -> BlockV2 {
+        let node_0 = self
+            .node_contexts
+            .first()
+            .expect("should have at least one node")
+            .id;
+        self.network
+            .nodes()
+            .get(&node_0)
+            .expect("should have node 0")
+            .main_reactor()
+            .storage()
+            .read_switch_block_by_era_id(era)
+            .expect("should not error reading db")
+            .and_then(|block| BlockV2::try_from(block).ok())
+            .unwrap_or_else(|| panic!("node 0 should have a switch block V2 for {}", era))
     }
 
     #[track_caller]
@@ -1682,4 +1704,23 @@ async fn run_redelegate_bid_network() {
     fixture.check_bid_existence_at_tip(&bob_public_key, None, true);
     // Ensure redelegated bid exists.
     fixture.check_bid_existence_at_tip(&charlie_public_key, Some(&alice_public_key), true);
+}
+
+#[tokio::test]
+async fn rewards_are_calculated() {
+    let initial_stakes = InitialStakes::Random { count: 5 };
+    let spec_override = ChainspecOverride {
+        minimum_era_height: 3,
+        ..Default::default()
+    };
+    let mut fixture = TestFixture::new(initial_stakes, Some(spec_override)).await;
+    fixture
+        .run_until_consensus_in_era(ERA_THREE, Duration::from_secs(150))
+        .await;
+
+    let switch_block = fixture.switch_block(ERA_TWO);
+
+    for reward in switch_block.era_end().unwrap().rewards().values() {
+        assert_ne!(reward, &U512::zero());
+    }
 }

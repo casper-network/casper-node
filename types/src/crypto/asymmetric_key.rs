@@ -699,6 +699,38 @@ impl From<&SecretKey> for PublicKey {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
+impl PartialEq for SecretKey {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::System, Self::System) => true,
+            (Self::Ed25519(k1), Self::Ed25519(k2)) => k1.to_bytes() == k2.to_bytes(),
+            (Self::Secp256k1(k1), Self::Secp256k1(k2)) => k1.to_bytes() == k2.to_bytes(),
+            _ => false,
+        }
+    }
+}
+#[cfg(any(feature = "testing", test))]
+impl Eq for SecretKey {}
+
+#[cfg(any(feature = "testing", test))]
+impl Ord for SecretKey {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (Self::System, Self::System) => Ordering::Equal,
+            (Self::Ed25519(k1), Self::Ed25519(k2)) => k1.to_bytes().cmp(&k2.to_bytes()),
+            (Self::Secp256k1(k1), Self::Secp256k1(k2)) => k1.to_bytes().cmp(&k2.to_bytes()),
+            (k1, k2) => k1.variant_name().cmp(k2.variant_name()),
+        }
+    }
+}
+#[cfg(any(feature = "testing", test))]
+impl PartialOrd for SecretKey {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl From<&PublicKey> for Vec<u8> {
     fn from(public_key: &PublicKey) -> Self {
         match public_key {

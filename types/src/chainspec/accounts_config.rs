@@ -82,6 +82,13 @@ impl AccountsConfig {
             .find(|account| &account.public_key == public_key)
     }
 
+    /// All of the validators.
+    pub fn validators(&self) -> impl Iterator<Item = &AccountConfig> {
+        self.accounts
+            .iter()
+            .filter(|account| account.validator.is_some())
+    }
+
     /// Is the provided public key in the set of genesis validator public keys.
     pub fn is_genesis_validator(&self, public_key: &PublicKey) -> bool {
         match self.account(public_key) {

@@ -875,11 +875,10 @@ impl ContractRuntime {
         let prune_batch_size = chainspec.core_config.prune_batch_size;
         if executable_block.era_report.is_some() && executable_block.rewards.is_none() {
             executable_block.rewards = Some(if chainspec.core_config.compute_rewards {
-                match rewards::rewards_for_era(
+                let rewards = match rewards::fetch_data_and_calculate_rewards_for_era(
                     effect_builder,
-                    executable_block.era_id,
-                    executable_block.height,
                     chainspec,
+                    executable_block.clone(),
                 )
                 .await
                 {
@@ -887,7 +886,11 @@ impl ContractRuntime {
                     Err(e) => {
                         return fatal!(effect_builder, "Failed to compute the rewards: {e:?}").await
                     }
-                }
+                };
+
+                tracing::info!("rewards successfully computed");
+
+                rewards
             } else {
                 //TODO instead, use a list of all the validators with 0
                 BTreeMap::new()
@@ -984,7 +987,7 @@ impl ContractRuntime {
         let execution_results_map: HashMap<_, _> = execution_results
             .iter()
             .cloned()
-            .map(|artifact| (artifact.deploy_hash, artifact.execution_result))
+            .map(|artifact| (artifact.deploy_hash.into(), artifact.execution_result))
             .collect();
         if meta_block_state.register_as_stored().was_updated() {
             effect_builder

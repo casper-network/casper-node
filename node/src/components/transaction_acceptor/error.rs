@@ -4,7 +4,7 @@ use thiserror::Error;
 
 use casper_types::{
     AddressableEntityHash, BlockHash, BlockHeader, DeployConfigFailure, Digest, EntityVersion,
-    PackageHash, PublicKey, Timestamp, TransactionV1ConfigFailure,
+    InitiatorAddr, PackageHash, Timestamp, TransactionV1ConfigFailure,
 };
 
 // `allow` can be removed once https://github.com/casper-network/casper-node/issues/3063 is fixed.
@@ -72,8 +72,8 @@ impl Error {
 #[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Error, Serialize)]
 pub(crate) enum ParameterFailure {
     /// No such addressable entity.
-    #[error("addressable entity under {public_key} does not exist")]
-    NoSuchAddressableEntity { public_key: PublicKey },
+    #[error("addressable entity under {initiator_addr} does not exist")]
+    NoSuchAddressableEntity { initiator_addr: InitiatorAddr },
     /// No such contract at given hash.
     #[error("contract at {contract_hash} does not exist")]
     NoSuchContractAtHash {
@@ -95,11 +95,11 @@ pub(crate) enum ParameterFailure {
     #[error("insufficient transaction signature weight")]
     InsufficientSignatureWeight,
     /// The transaction's addressable entity has insufficient balance.
-    #[error("insufficient balance in {public_key}")]
-    InsufficientBalance { public_key: PublicKey },
+    #[error("insufficient balance in {initiator_addr}")]
+    InsufficientBalance { initiator_addr: InitiatorAddr },
     /// The balance of the transaction's addressable entity cannot be read.
-    #[error("unable to determine balance for {public_key}")]
-    UnknownBalance { public_key: PublicKey },
+    #[error("unable to determine balance for {initiator_addr}")]
+    UnknownBalance { initiator_addr: InitiatorAddr },
     /// Error specific to `Deploy` parameters.
     #[error(transparent)]
     Deploy(#[from] DeployParameterFailure),

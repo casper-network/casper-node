@@ -61,8 +61,7 @@ impl BlockPayload {
         self.staking.iter()
     }
 
-    /// Returns the hashes and approvals of the installer/upgrader userland transactions within the
-    /// block.
+    /// Returns the hashes and approvals of the installer/upgrader transactions within the block.
     pub fn install_upgrade(&self) -> impl Iterator<Item = &TransactionHashWithApprovals> {
         self.install_upgrade.iter()
     }

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    Deploy, DeployConfigFailure, DeployHash,
+    Deploy, DeployConfigFailure, DeployHash, Transaction,
 };
 
 use crate::components::fetcher::{EmptyValidationMetadata, FetchItem, Tag};
@@ -52,6 +52,12 @@ impl FromBytes for LegacyDeploy {
 impl From<LegacyDeploy> for Deploy {
     fn from(legacy_deploy: LegacyDeploy) -> Self {
         legacy_deploy.0
+    }
+}
+
+impl From<LegacyDeploy> for Transaction {
+    fn from(legacy_deploy: LegacyDeploy) -> Self {
+        Self::Deploy(legacy_deploy.0)
     }
 }
 
