@@ -355,6 +355,16 @@ impl Codegen {
                             items.reverse();
                         }
 
+                        if decl.starts_with("Option") && items.len() == 2 && items[0].name == "None"
+                            && items[1].name == "Some"
+                        {
+                            specialized = Some(Specialized::Option {
+                                some: items[1].decl.clone(),
+                            });
+
+                            items.reverse();
+                        }
+
                         let enum_name = slugify_type(&decl);
 
                         let r#enum = scope
@@ -406,7 +416,26 @@ impl Codegen {
                                     .line(format!("{enum_name}::Err(err) => Err(err),"))
                                     .line("}");
                             }
-                            Some(Specialized::Option { some }) => todo!(),
+                            Some(Specialized::Option { some }) => {
+                                let some_type = self
+                                    .type_mapping
+                                    .get(&some)
+                                    .unwrap_or_else(|| panic!("Missing type mapping for {}", &some));
+
+                                let impl_block = scope
+                                    .new_impl(&enum_name)
+                                    .impl_trait(format!("IntoOption<{some_type}>"));
+
+                                let func = impl_block.new_fn("into_option").arg_self().ret(
+                                    Type::new(format!(
+                                        "Option<{some_type}>",
+                                    )),
+                                );
+                                func.line("match self {")
+                                    .line(format!("{enum_name}::None => None,"))
+                                    .line(format!("{enum_name}::Some(some) => Some(some),"))
+                                    .line("}");
+                            }
                             None => {}
                         }
                     }
