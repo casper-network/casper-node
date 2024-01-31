@@ -1,7 +1,7 @@
 use prometheus::Registry;
 use rand::Rng;
 
-use casper_types::{testing::TestRng, EraId, TestBlockBuilder, TimeDiff, Transaction};
+use casper_types::{testing::TestRng, Deploy, EraId, TestBlockBuilder, TimeDiff, Transaction};
 
 use super::*;
 use crate::{
@@ -24,7 +24,7 @@ fn create_valid_deploys(
     deploy_type: DeployType,
     strict_timestamp: Option<Timestamp>,
     with_ttl: Option<TimeDiff>,
-) -> Vec<Deploy> {
+) -> Vec<Transaction> {
     let mut deploys = Vec::with_capacity(size);
 
     for _ in 0..size {
@@ -38,26 +38,29 @@ fn create_valid_deploys(
         };
         match deploy_type {
             DeployType::Transfer => {
-                deploys.push(Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
-                    rng,
-                    deploy_timestamp,
-                    deploy_ttl,
+                deploys.push(Transaction::from(
+                    Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
+                        rng,
+                        deploy_timestamp,
+                        deploy_ttl,
+                    ),
                 ));
             }
             DeployType::Standard => {
                 if strict_timestamp.is_some() {
                     unimplemented!();
                 }
-                let deploy = Deploy::random_with_valid_session_package_by_name(rng);
-                assert!(deploy.is_valid().is_ok());
+                let deploy =
+                    Transaction::from(Deploy::random_with_valid_session_package_by_name(rng));
+                assert!(deploy.verify().is_ok());
                 deploys.push(deploy);
             }
             DeployType::Random => {
-                deploys.push(Deploy::random_with_timestamp_and_ttl(
+                deploys.push(Transaction::from(Deploy::random_with_timestamp_and_ttl(
                     rng,
                     deploy_timestamp,
                     deploy_ttl,
-                ));
+                )));
             }
         }
     }
@@ -65,7 +68,7 @@ fn create_valid_deploys(
     deploys
 }
 
-fn create_invalid_deploys(rng: &mut TestRng, size: usize) -> Vec<Deploy> {
+fn create_invalid_deploys(rng: &mut TestRng, size: usize) -> Vec<Transaction> {
     let mut deploys = create_valid_deploys(rng, size, DeployType::Random, None, None);
 
     for deploy in deploys.iter_mut() {
@@ -155,7 +158,7 @@ fn register_deploy_and_check_size() {
     assert_container_sizes(&deploy_buffer, valid_deploys.len(), 0, 0);
 
     // Insert deploy without footprint
-    let bad_deploy = Deploy::random_without_payment_amount(&mut rng);
+    let bad_deploy = Transaction::from(Deploy::random_without_payment_amount(&mut rng));
     deploy_buffer.register_transaction(bad_deploy);
     assert_container_sizes(&deploy_buffer, valid_deploys.len(), 0, 0);
 }
@@ -246,10 +249,12 @@ fn get_proposable_deploys() {
     // block since those should be dead.
     let proposable = deploy_buffer.proposable();
     assert_eq!(proposable.len(), deploys.len());
-    let proposable_deploy_hashes: HashSet<_> =
-        proposable.iter().map(|(dh, _)| dh.deploy_hash()).collect();
+    let proposable_deploy_hashes: HashSet<_> = proposable
+        .iter()
+        .map(|(dh, _)| dh.transaction_hash())
+        .collect();
     for deploy in deploys.iter() {
-        assert!(proposable_deploy_hashes.contains(deploy.hash()));
+        assert!(proposable_deploy_hashes.contains(&deploy.hash()));
     }
 
     // Get an appendable block. This should put the deploys on hold.
@@ -271,7 +276,7 @@ fn get_proposable_deploys() {
     for deploy in proposable.iter() {
         assert!(!appendable_block
             .deploy_and_transfer_set()
-            .contains(deploy.0.deploy_hash()));
+            .contains(&deploy.0.transaction_hash()));
     }
 }
 
@@ -438,7 +443,7 @@ fn register_deploys_and_blocks() {
         .filter(|deploy| {
             appendable_block
                 .deploy_and_transfer_set()
-                .contains(deploy.hash())
+                .contains(&deploy.hash())
         })
         .peekable();
     assert!(held_deploys.peek().is_some());
@@ -505,7 +510,7 @@ impl MockReactor {
 
     async fn expect_deploy_buffer_expire_announcement(
         &self,
-        should_be_expired: &HashSet<DeployHash>,
+        should_be_expired: &HashSet<TransactionHash>,
     ) {
         let ((_ancestor, reactor_event), _) = self.scheduler.pop().await;
         match reactor_event {
@@ -584,7 +589,7 @@ async fn expire_deploys_and_check_announcement() {
     let expired_deploy_hashes: HashSet<_> = expired_deploys
         .iter()
         .take(expired_deploys.len() - 1)
-        .map(|deploy| *deploy.hash())
+        .map(|deploy| deploy.hash())
         .collect();
     reactor
         .expect_deploy_buffer_expire_announcement(&expired_deploy_hashes)

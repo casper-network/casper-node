@@ -269,7 +269,7 @@ mod tests {
     use super::*;
 
     impl AppendableBlock {
-        pub(crate) fn deploy_and_transfer_set(&self) -> &HashSet<DeployHash> {
+        pub(crate) fn deploy_and_transfer_set(&self) -> &HashSet<TransactionHash> {
             &self.deploy_and_transfer_set
         }
     }

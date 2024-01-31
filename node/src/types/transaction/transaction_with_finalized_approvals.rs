@@ -1,6 +1,13 @@
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+use std::collections::BTreeSet;
+
+#[cfg(test)]
+use super::FinalizedApprovals;
+#[cfg(test)]
+use casper_types::TransactionApproval;
 use casper_types::{Deploy, Transaction, TransactionV1};
 
 use crate::types::{FinalizedDeployApprovals, FinalizedTransactionV1Approvals};
@@ -81,6 +88,32 @@ impl TransactionWithFinalizedApprovals {
             TransactionWithFinalizedApprovals::V1 { transaction, .. } => {
                 Transaction::V1(transaction)
             }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn original_approvals(&self) -> BTreeSet<TransactionApproval> {
+        match self {
+            TransactionWithFinalizedApprovals::Deploy { deploy, .. } => {
+                deploy.approvals().iter().map(Into::into).collect()
+            }
+            TransactionWithFinalizedApprovals::V1 { transaction, .. } => {
+                transaction.approvals().iter().map(Into::into).collect()
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn finalized_approvals(&self) -> Option<FinalizedApprovals> {
+        match self {
+            TransactionWithFinalizedApprovals::Deploy {
+                finalized_approvals,
+                ..
+            } => finalized_approvals.clone().map(Into::into),
+            TransactionWithFinalizedApprovals::V1 {
+                finalized_approvals,
+                ..
+            } => finalized_approvals.clone().map(Into::into),
         }
     }
 }

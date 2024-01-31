@@ -10,8 +10,9 @@ use rand::Rng;
 
 use casper_types::{
     bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng,
-    Chainspec, ChainspecRawBytes, Deploy, DeployHash, ExecutableDeployItem, RuntimeArgs, SecretKey,
-    TimeDiff, Transaction, TransactionHash, U512,
+    Chainspec, ChainspecRawBytes, Deploy, DeployHash, ExecutableDeployItem,
+    InitiatorAddrAndSecretKey, PricingMode, RuntimeArgs, SecretKey, TimeDiff, Transaction,
+    TransactionHash, TransactionV1, TransactionV1Body, U512,
 };
 
 use crate::{
@@ -71,8 +72,8 @@ impl MockReactor {
 
     async fn expect_fetch_deploys(
         &self,
-        mut deploys_to_fetch: Vec<Deploy>,
-        mut deploys_to_not_fetch: HashSet<DeployHash>,
+        mut deploys_to_fetch: Vec<Transaction>,
+        mut deploys_to_not_fetch: HashSet<TransactionHash>,
     ) {
         while !deploys_to_fetch.is_empty() || !deploys_to_not_fetch.is_empty() {
             let ((_ancestor, reactor_event), _) = self.scheduler.pop().await;
@@ -85,18 +86,15 @@ impl MockReactor {
             {
                 if let Some((position, _)) = deploys_to_fetch
                     .iter()
-                    .find_position(|&deploy| Transaction::Deploy(deploy.clone()).fetch_id() == id)
+                    .find_position(|&deploy| Transaction::from(deploy.clone()).fetch_id() == id)
                 {
                     let deploy = deploys_to_fetch.remove(position);
                     let response = FetchedData::FromPeer {
-                        item: Box::new(Transaction::Deploy(deploy)),
+                        item: Box::new(Transaction::from(deploy)),
                         peer,
                     };
                     responder.respond(Ok(response)).await;
-                } else if deploys_to_not_fetch.remove(&match id.transaction_hash() {
-                    TransactionHash::Deploy(deploy_hash) => deploy_hash,
-                    TransactionHash::V1(_) => unreachable!("only fetching deploys for now"),
-                }) {
+                } else if deploys_to_not_fetch.remove(&id.transaction_hash()) {
                     responder
                         .respond(Err(fetcher::Error::Absent {
                             id: Box::new(id),
@@ -111,6 +109,12 @@ impl MockReactor {
             }
         }
     }
+}
+
+pub(super) enum NewTransactionKind {
+    Deploy,
+    V1,
+    Random,
 }
 
 pub(super) fn new_proposed_block(
@@ -162,6 +166,57 @@ pub(super) fn new_deploy(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff)
     )
 }
 
+pub(super) fn new_transaction_v1(
+    rng: &mut TestRng,
+    timestamp: Timestamp,
+    ttl: TimeDiff,
+) -> TransactionV1 {
+    let secret_key = SecretKey::random(rng);
+    let chain_name = "chain".to_string();
+    let payment = ExecutableDeployItem::ModuleBytes {
+        module_bytes: Bytes::new(),
+        args: runtime_args! { ARG_AMOUNT => U512::from(1) },
+    };
+    let session = ExecutableDeployItem::ModuleBytes {
+        module_bytes: Bytes::new(),
+        args: RuntimeArgs::new(),
+    };
+    let gas_price = 1;
+
+    let body: TransactionV1Body = todo!();
+    let pricing_mode = PricingMode::Fixed;
+    let initiator_addr_and_secret_key = InitiatorAddrAndSecretKey::SecretKey(&secret_key);
+
+    TransactionV1::build(
+        chain_name,
+        timestamp,
+        ttl,
+        body,
+        pricing_mode,
+        None,
+        initiator_addr_and_secret_key,
+    )
+}
+
+pub(super) fn new_transaction(
+    rng: &mut TestRng,
+    timestamp: Timestamp,
+    ttl: TimeDiff,
+    kind: NewTransactionKind,
+) -> Transaction {
+    match kind {
+        NewTransactionKind::Deploy => Transaction::Deploy(new_deploy(rng, timestamp, ttl)),
+        NewTransactionKind::V1 => Transaction::V1(new_transaction_v1(rng, timestamp, ttl)),
+        NewTransactionKind::Random => {
+            if rng.gen() {
+                Transaction::Deploy(new_deploy(rng, timestamp, ttl))
+            } else {
+                Transaction::V1(new_transaction_v1(rng, timestamp, ttl))
+            }
+        }
+    }
+}
+
 pub(super) fn new_transfer(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Deploy {
     let secret_key = SecretKey::random(rng);
     let chain_name = "chain".to_string();
@@ -192,17 +247,17 @@ pub(super) fn new_transfer(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDif
 async fn validate_block(
     rng: &mut TestRng,
     timestamp: Timestamp,
-    deploys: Vec<Deploy>,
-    transfers: Vec<Deploy>,
+    deploys: Vec<Transaction>,
+    transfers: Vec<Transaction>,
 ) -> bool {
     // Assemble the block to be validated.
     let transfers_for_block = transfers
         .iter()
-        .map(|deploy| TransactionHashWithApprovals::from(&Transaction::Deploy(deploy.clone())))
+        .map(|deploy| TransactionHashWithApprovals::from(&Transaction::from(deploy.clone())))
         .collect_vec();
     let standard_for_block = deploys
         .iter()
-        .map(|deploy| TransactionHashWithApprovals::from(&Transaction::Deploy(deploy.clone())))
+        .map(|deploy| TransactionHashWithApprovals::from(&Transaction::from(deploy.clone())))
         .collect_vec();
     let proposed_block = new_proposed_block(
         timestamp,
@@ -291,12 +346,12 @@ async fn ttl() {
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
     let deploys = vec![
-        new_deploy(&mut rng, 1000.into(), ttl),
-        new_deploy(&mut rng, 900.into(), ttl),
+        Transaction::from(new_deploy(&mut rng, 1000.into(), ttl)),
+        Transaction::from(new_deploy(&mut rng, 900.into(), ttl)),
     ];
     let transfers = vec![
-        new_transfer(&mut rng, 1000.into(), ttl),
-        new_transfer(&mut rng, 900.into(), ttl),
+        Transaction::from(new_transfer(&mut rng, 1000.into(), ttl)),
+        Transaction::from(new_transfer(&mut rng, 900.into(), ttl)),
     ];
 
     // Both 1000 and 1100 are timestamps compatible with the deploys and transfers.
@@ -321,10 +376,10 @@ async fn transfer_deploy_mixup_and_replay() {
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
     let timestamp = Timestamp::from(1000);
-    let deploy1 = new_deploy(&mut rng, timestamp, ttl);
-    let deploy2 = new_deploy(&mut rng, timestamp, ttl);
-    let transfer1 = new_transfer(&mut rng, timestamp, ttl);
-    let transfer2 = new_transfer(&mut rng, timestamp, ttl);
+    let deploy1 = Transaction::from(new_deploy(&mut rng, timestamp, ttl));
+    let deploy2 = Transaction::from(new_deploy(&mut rng, timestamp, ttl));
+    let transfer1 = Transaction::from(new_transfer(&mut rng, timestamp, ttl));
+    let transfer2 = Transaction::from(new_transfer(&mut rng, timestamp, ttl));
 
     // First we make sure that our transfers and deploys would normally be valid.
     let deploys = vec![deploy1.clone(), deploy2.clone()];
@@ -361,20 +416,20 @@ async fn should_fetch_from_multiple_peers() {
         let mut rng = TestRng::new();
         let ttl = TimeDiff::from_seconds(200);
         let deploys = (0..peer_count)
-            .map(|i| new_deploy(&mut rng, (900 + i).into(), ttl))
+            .map(|i| Transaction::from(new_deploy(&mut rng, (900 + i).into(), ttl)))
             .collect_vec();
         let transfers = (0..peer_count)
-            .map(|i| new_transfer(&mut rng, (1000 + i).into(), ttl))
+            .map(|i| Transaction::from(new_transfer(&mut rng, (1000 + i).into(), ttl)))
             .collect_vec();
 
         // Assemble the block to be validated.
         let transfers_for_block = transfers
             .iter()
-            .map(|deploy| TransactionHashWithApprovals::from(&Transaction::Deploy(deploy.clone())))
+            .map(|deploy| TransactionHashWithApprovals::from(deploy))
             .collect_vec();
         let standard_for_block = deploys
             .iter()
-            .map(|deploy| TransactionHashWithApprovals::from(&Transaction::Deploy(deploy.clone())))
+            .map(|deploy| TransactionHashWithApprovals::from(deploy))
             .collect_vec();
         let proposed_block = new_proposed_block(
             1100.into(),
@@ -428,10 +483,10 @@ async fn should_fetch_from_multiple_peers() {
         // Provide the first deploy and transfer on first asking.
         let deploys_to_fetch = vec![deploys[0].clone(), transfers[0].clone()];
         let deploys_to_not_fetch = vec![
-            *deploys[1].hash(),
-            *deploys[2].hash(),
-            *transfers[1].hash(),
-            *transfers[2].hash(),
+            deploys[1].hash(),
+            deploys[2].hash(),
+            transfers[1].hash(),
+            transfers[2].hash(),
         ]
         .into_iter()
         .collect();
@@ -467,10 +522,10 @@ async fn should_fetch_from_multiple_peers() {
         // second asking.
         let deploys_to_fetch = vec![&deploys[0], &deploys[1], &transfers[0], &transfers[1]]
             .into_iter()
-            .filter(|deploy| missing.contains(deploy.hash()))
+            .filter(|deploy| missing.contains(&deploy.hash()))
             .cloned()
             .collect();
-        let deploys_to_not_fetch = vec![*deploys[2].hash(), *transfers[2].hash()]
+        let deploys_to_not_fetch = vec![deploys[2].hash(), transfers[2].hash()]
             .into_iter()
             .filter(|deploy_hash| missing.contains(deploy_hash))
             .collect();
@@ -506,7 +561,7 @@ async fn should_fetch_from_multiple_peers() {
         let deploys_to_fetch = deploys
             .iter()
             .chain(transfers.iter())
-            .filter(|deploy| missing.contains(deploy.hash()))
+            .filter(|deploy| missing.contains(&deploy.hash()))
             .cloned()
             .collect();
         reactor

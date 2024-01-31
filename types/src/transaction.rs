@@ -41,10 +41,10 @@ use crate::testing::TestRng;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, Timestamp,
+    Digest, SecretKey, Timestamp,
 };
 #[cfg(feature = "json-schema")]
-use crate::{account::ACCOUNT_HASH_LENGTH, SecretKey, TimeDiff, URef};
+use crate::{account::ACCOUNT_HASH_LENGTH, TimeDiff, URef};
 pub use addressable_entity_identifier::AddressableEntityIdentifier;
 pub use deploy::{
     Deploy, DeployApproval, DeployApprovalsHash, DeployConfigFailure, DeployDecodeFromJsonError,
@@ -55,7 +55,7 @@ pub use deploy::{
 pub use deploy::{DeployBuilder, DeployBuilderError};
 pub use initiator_addr::InitiatorAddr;
 #[cfg(any(feature = "std", test))]
-use initiator_addr_and_secret_key::InitiatorAddrAndSecretKey;
+pub use initiator_addr_and_secret_key::InitiatorAddrAndSecretKey;
 pub use package_identifier::PackageIdentifier;
 pub use pricing_mode::PricingMode;
 pub use runtime_args::{NamedArg, RuntimeArgs};
@@ -181,6 +181,14 @@ impl Transaction {
         }
     }
 
+    /// Adds a signature of this transaction's hash to its approvals.
+    pub fn sign(&mut self, secret_key: &SecretKey) {
+        match self {
+            Transaction::Deploy(deploy) => deploy.sign(secret_key),
+            Transaction::V1(v1) => v1.sign(secret_key),
+        }
+    }
+
     /// Returns the `TransactionFootprint`.
     pub fn footprint(&self) -> Result<TransactionFootprint, TransactionError> {
         Ok(match self {
@@ -209,6 +217,16 @@ impl Transaction {
             Transaction::V1(txn) => TransactionApprovalsHash::V1(txn.compute_approvals_hash()?),
         };
         Ok(approvals_hash)
+    }
+
+    /// Turns `self` into an invalid `Deploy` by clearing the `chain_name`, invalidating the deploy
+    /// hash.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn invalidate(&mut self) {
+        match self {
+            Transaction::Deploy(deploy) => deploy.invalidate(),
+            Transaction::V1(v1) => v1.invalidate(),
+        }
     }
 
     /// Returns the computed `TransactionId` uniquely identifying this transaction and its
@@ -367,6 +385,7 @@ impl Display for Transaction {
     }
 }
 
+#[derive(Debug)]
 pub enum TransactionError {
     Deploy(DeployError),
     V1(TransactionV1Error),

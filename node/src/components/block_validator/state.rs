@@ -541,15 +541,15 @@ mod tests {
     use futures::channel::oneshot;
     use rand::Rng;
 
-    use casper_types::{testing::TestRng, ChainspecRawBytes, Deploy, TimeDiff};
+    use casper_types::{testing::TestRng, ChainspecRawBytes, TimeDiff, Transaction};
 
     use super::{super::tests::*, *};
     use crate::{types::TransactionHashWithApprovals, utils::Loadable};
 
     struct Fixture {
         rng: TestRng,
-        deploys: Vec<Deploy>,
-        transfers: Vec<Deploy>,
+        deploys: Vec<Transaction>,
+        transfers: Vec<Transaction>,
         chainspec: Chainspec,
     }
 
@@ -573,16 +573,22 @@ mod tests {
         ) -> (BlockValidationState, Option<Responder<bool>>) {
             let ttl = TimeDiff::from_seconds(10);
             let deploys: Vec<_> = (0..deploy_count)
-                .map(|index| new_deploy(&mut self.rng, Timestamp::from(1000 + index), ttl))
+                .map(|index| {
+                    Transaction::from(new_deploy(
+                        &mut self.rng,
+                        Timestamp::from(1000 + index),
+                        ttl,
+                    ))
+                })
                 .collect();
             self.deploys.extend(deploys);
             let transfers: Vec<_> = (0..transfer_count)
                 .map(|index| {
-                    new_transfer(
+                    Transaction::from(new_transfer(
                         &mut self.rng,
                         Timestamp::from(1000 + deploy_count + index),
                         ttl,
-                    )
+                    ))
                 })
                 .collect();
             self.transfers.extend(transfers);
@@ -591,9 +597,9 @@ mod tests {
                 .deploys
                 .iter()
                 .map(|deploy| {
-                    TransactionHashWithApprovals::new_deploy(
-                        *deploy.hash(),
-                        deploy.approvals().clone(),
+                    TransactionHashWithApprovals::new_from_hash_and_approvals(
+                        &deploy.hash(),
+                        &deploy.approvals(),
                     )
                 })
                 .collect();
@@ -601,9 +607,9 @@ mod tests {
                 .transfers
                 .iter()
                 .map(|deploy| {
-                    TransactionHashWithApprovals::new_deploy(
-                        *deploy.hash(),
-                        deploy.approvals().clone(),
+                    TransactionHashWithApprovals::new_from_hash_and_approvals(
+                        &deploy.hash(),
+                        &deploy.approvals(),
                     )
                 })
                 .collect();
@@ -625,15 +631,15 @@ mod tests {
             )
         }
 
-        fn footprints(&self) -> Vec<(DeployOrTransferHash, DeployFootprint)> {
+        fn footprints(&self) -> Vec<(DeployOrTransferHash, TransactionFootprint)> {
             self.deploys
                 .iter()
                 .map(|deploy| {
-                    let dt_hash = DeployOrTransferHash::Deploy(*deploy.hash());
+                    let dt_hash = DeployOrTransferHash::Deploy(deploy.hash());
                     (dt_hash, deploy.footprint().unwrap())
                 })
                 .chain(self.transfers.iter().map(|transfer| {
-                    let dt_hash = DeployOrTransferHash::Transfer(*transfer.hash());
+                    let dt_hash = DeployOrTransferHash::Transfer(transfer.hash());
                     (dt_hash, transfer.footprint().unwrap())
                 }))
                 .collect()
@@ -998,8 +1004,12 @@ mod tests {
         };
 
         // Create a new, random deploy.
-        let deploy = new_deploy(&mut fixture.rng, 1500.into(), TimeDiff::from_seconds(1));
-        let dt_hash = DeployOrTransferHash::Deploy(*deploy.hash());
+        let deploy = Transaction::from(new_deploy(
+            &mut fixture.rng,
+            1500.into(),
+            TimeDiff::from_seconds(1),
+        ));
+        let dt_hash = DeployOrTransferHash::Deploy(deploy.hash());
         let footprint = deploy.footprint().unwrap();
 
         // Ensure trying to add it doesn't change the state.
@@ -1026,8 +1036,11 @@ mod tests {
     fn state_should_change_to_validation_failed() {
         let mut fixture = Fixture::new();
         // Add an invalid (future-dated) deploy to the fixture.
-        let invalid_deploy =
-            new_deploy(&mut fixture.rng, Timestamp::MAX, TimeDiff::from_seconds(1));
+        let invalid_deploy = Transaction::from(new_deploy(
+            &mut fixture.rng,
+            Timestamp::MAX,
+            TimeDiff::from_seconds(1),
+        ));
         fixture.deploys.push(invalid_deploy.clone());
         let (mut state, _maybe_responder) = fixture.new_state(2, 2);
         assert!(matches!(state, BlockValidationState::InProgress { .. }));
@@ -1036,7 +1049,7 @@ mod tests {
         let mut footprints = fixture.footprints();
         while footprints.len() > 3 {
             let (dt_hash, footprint) = footprints.pop().unwrap();
-            if dt_hash.deploy_hash() == invalid_deploy.hash() {
+            if dt_hash.deploy_hash() == &invalid_deploy.hash() {
                 continue;
             }
             let responders = state.try_add_deploy_footprint(&dt_hash, &footprint);
@@ -1045,7 +1058,7 @@ mod tests {
 
         // The invalid deploy should cause the state to go to `Invalid` and the responders to be
         // returned.
-        let dt_hash = DeployOrTransferHash::Deploy(*invalid_deploy.hash());
+        let dt_hash = DeployOrTransferHash::Deploy(invalid_deploy.hash());
         let footprint = invalid_deploy.footprint().unwrap();
         let responders = state.try_add_deploy_footprint(&dt_hash, &footprint);
         assert_eq!(responders.len(), 1);

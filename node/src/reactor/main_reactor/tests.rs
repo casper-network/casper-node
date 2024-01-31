@@ -1190,7 +1190,9 @@ async fn should_store_finalized_approvals() {
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
 
     // Submit a deploy.
-    let mut deploy_alice_bob = Deploy::random_valid_native_transfer_without_deps(&mut fixture.rng);
+    let mut deploy_alice_bob = Transaction::from(
+        Deploy::random_valid_native_transfer_without_deps(&mut fixture.rng),
+    );
     let mut deploy_alice_bob_charlie = deploy_alice_bob.clone();
     let mut deploy_bob_alice = deploy_alice_bob.clone();
 
@@ -1253,7 +1255,7 @@ async fn should_store_finalized_approvals() {
             runner
                 .main_reactor()
                 .storage()
-                .read_execution_result(&TransactionHash::Deploy(deploy_hash))
+                .read_execution_result(&deploy_hash)
                 .is_some()
         })
     };
@@ -1264,14 +1266,7 @@ async fn should_store_finalized_approvals() {
         let maybe_dwa = runner
             .main_reactor()
             .storage()
-            .get_transaction_with_finalized_approvals_by_hash(&TransactionHash::from(deploy_hash))
-            .map(|transaction_wfa| match transaction_wfa {
-                TransactionWithFinalizedApprovals::Deploy {
-                    deploy,
-                    finalized_approvals,
-                } => DeployWithFinalizedApprovals::new(deploy, finalized_approvals),
-                _ => panic!("should receive deploy with finalized approvals"),
-            });
+            .get_transaction_with_finalized_approvals_by_hash(&deploy_hash);
         let maybe_finalized_approvals = maybe_dwa
             .as_ref()
             .and_then(|dwa| dwa.finalized_approvals())
