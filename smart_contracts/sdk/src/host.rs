@@ -363,7 +363,7 @@ pub struct CallResult<T: BorshDeserialize> {
 }
 
 impl<Ret: BorshDeserialize> CallResult<Ret> {
-    pub fn into_result(self) -> Ret {
+    pub fn into_return_value(self) -> Ret {
         match self.result {
             ResultCode::Success | ResultCode::CalleeReverted => {
                 dbg!(&self.data);

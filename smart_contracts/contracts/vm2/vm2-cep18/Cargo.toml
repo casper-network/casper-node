@@ -17,5 +17,8 @@ vm-common = { path = "../../../../vm-common" }
 serde_json = "1"
 ctor = "0.2.4"
 
+[dev-dependencies]
+casper-sdk-codegen = { path = "../../../sdk-codegen" }
+
 [build-dependencies]
 casper-sdk-codegen = { path = "../../../sdk-codegen" }

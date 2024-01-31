@@ -167,12 +167,12 @@ pub fn call() {
             // Verify that the address captured inside constructor is not the same as caller.
             let get_address_inside_constructor: TypedCall<(), Address> =
                 TypedCall::new(contract_address, "get_address_inside_constructor");
-            let result = get_address_inside_constructor.call(()).into_result();
+            let result = get_address_inside_constructor.call(()).into_return_value();
             assert_ne!(result, session_caller);
 
             let get_greeting: TypedCall<(), String> =
                 TypedCall::new(contract_address, "get_greeting");
-            let result = get_greeting.call(()).into_result();
+            let result = get_greeting.call(()).into_return_value();
             assert_eq!(result, INITIAL_GREETING);
 
             let call_1 = "set_greeting";
@@ -203,6 +203,7 @@ pub fn call() {
             let call_4: &str = "emit_revert_with_data";
             let (maybe_data_4, maybe_result_4) =
                 host::casper_call(&contract_address, 0, call_4, &[]);
+
             log!("{call_4:?} result={maybe_data_4:?}");
             assert_eq!(maybe_result_4, ResultCode::CalleeReverted);
             assert_eq!(
@@ -224,12 +225,12 @@ pub fn call() {
                 TypedCall::new(contract_address, "should_revert_on_error");
             let result = should_revert_on_error.call((false,));
             assert!(!result.did_revert());
-            assert_eq!(result.into_result(), Ok(()));
+            assert_eq!(result.into_return_value(), Ok(()));
 
             let result = should_revert_on_error.call((true,));
             assert!(result.did_revert());
             assert_eq!(
-                result.into_result(),
+                result.into_return_value(),
                 Err(CustomError::WithBody("Reverted".to_string()))
             );
         }

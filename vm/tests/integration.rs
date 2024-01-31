@@ -214,9 +214,6 @@ fn cep18() {
 fn run_wasm<T: BorshSerialize>(contract_name: &'static [u8], input_data: T) {
     let bytecode = Bytes::from_static(contract_name);
 
-    // for gas_limit in 1000..2000 {
-    // dbg!(&gas_limit);
-
     let storage = MockStorage::default();
 
     {

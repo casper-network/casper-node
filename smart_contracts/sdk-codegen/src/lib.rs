@@ -1,8 +1,10 @@
+pub mod support;
+
 use casper_sdk::{
     abi::{Declaration, Definition, Primitive},
     schema::Schema,
 };
-use codegen::{Field, Scope, Type};
+use codegen::{Field, Impl, Scope, Struct, Type};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -12,19 +14,52 @@ use std::{
 };
 use vm_common::flags::EntryPointFlags;
 
-const DEFAULT_DERIVED_TRAITS: &[&str] = &["Debug", "BorshSerialize", "BorshDeserialize"];
+const DEFAULT_DERIVED_TRAITS: &[&str] = &[
+    "Clone",
+    "Debug",
+    "PartialEq",
+    "Eq",
+    "PartialOrd",
+    "Ord",
+    "Hash",
+    "BorshSerialize",
+    "BorshDeserialize",
+];
+
+/// Replaces characters that are not valid in Rust identifiers with underscores.
+fn slugify_type(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+
+    for c in input.chars() {
+        if c.is_ascii_alphanumeric() {
+            output.push(c);
+        } else {
+            output.push('_');
+        }
+    }
+
+    output
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+enum Specialized {
+    Result { ok: Declaration, err: Declaration },
+    Option { some: Declaration },
+}
 
 #[derive(Deserialize, Serialize)]
 pub struct Codegen {
     schema: Schema,
     type_mapping: BTreeMap<Declaration, String>,
+    specialized_types: BTreeMap<Declaration, Specialized>,
 }
 
 impl Codegen {
     pub fn new(schema: Schema) -> Self {
         Self {
             schema,
-            type_mapping: BTreeMap::new(),
+            type_mapping: Default::default(),
+            specialized_types: Default::default(),
         }
     }
 
@@ -45,6 +80,8 @@ impl Codegen {
         scope.import("borsh", "self");
         scope.import("borsh", "BorshSerialize");
         scope.import("borsh", "BorshDeserialize");
+        scope.import("casper_sdk_codegen::support", "IntoResult");
+        scope.import("casper_sdk_codegen::support", "IntoOption");
 
         let head = self
             .schema
@@ -252,8 +289,7 @@ impl Codegen {
                             self.type_mapping.get(&fixed_seq_decl).unwrap_or_else(|| {
                                 panic!("Missing type mapping for {}", fixed_seq_decl)
                             });
-                        // println!("Processing fixed sequence type {length:?} * {decl:?}
-                        // {mapped_type}"); todo!()
+
                         let type_name = format!(
                             "FixedSequence{}_{length}_{fixed_seq_decl}",
                             counter.next().unwrap()
@@ -267,8 +303,8 @@ impl Codegen {
                             continue;
                         }
 
-                        // println!("Processing tuple type {items:?}");
-                        let struct_name = format!("Tuple{}", counter.next().unwrap());
+                        println!("Processing tuple type {items:?}");
+                        let struct_name = slugify_type(&decl);
 
                         let r#struct = scope
                             .new_struct(&struct_name)
@@ -291,46 +327,94 @@ impl Codegen {
                         }
 
                         self.type_mapping.insert(decl.to_string(), struct_name);
-                        // let tuple = scope.new_type_alias(&alias,
                     }
                     Definition::Enum { items } => {
                         println!("Processing enum type {decl} {items:?}");
+
+                        let mut items: Vec<&casper_sdk::abi::EnumVariant> = items.iter().collect();
+
+                        let mut specialized = None;
 
                         if decl.starts_with("Result")
                             && items.len() == 2
                             && items[0].name == "Ok"
                             && items[1].name == "Err"
                         {
-                            self.type_mapping.insert(decl.clone(), decl.clone());
-                        } else {
-                            let enum_name = format!("Enum{}", counter.next().unwrap());
+                            specialized = Some(Specialized::Result {
+                                ok: items[0].decl.clone(),
+                                err: items[1].decl.clone(),
+                            });
 
-                            let r#enum = scope
-                                .new_enum(&enum_name)
-                                .vis("pub")
-                                .doc(&format!("Declared as {decl}"));
+                            // NOTE: Because we're not doing the standard library Result, and also
+                            // to simplify things we're using default impl of
+                            // BorshSerialize/BorshDeserialize, we have to flip the order of enums.
+                            // The standard library defines Result as Ok, Err, but the borsh impl
+                            // serializes Err as 0, and Ok as 1. So, by flipping the order we can
+                            // enforce byte for byte compatibility between our "custom" Result and a
+                            // real Result.
+                            items.reverse();
+                        }
 
-                            for trait_name in DEFAULT_DERIVED_TRAITS {
-                                r#enum.derive(trait_name);
+                        let enum_name = slugify_type(&decl);
+
+                        let r#enum = scope
+                            .new_enum(&enum_name)
+                            .vis("pub")
+                            .doc(&format!("Declared as {decl}"));
+
+                        for trait_name in DEFAULT_DERIVED_TRAITS {
+                            r#enum.derive(trait_name);
+                        }
+
+                        for item in &items {
+                            let variant = r#enum.new_variant(&item.name);
+
+                            let def = self.type_mapping.get(&item.decl).unwrap_or_else(|| {
+                                panic!("Missing type mapping for {}", item.decl)
+                            });
+
+                            variant.tuple(def);
+                        }
+
+                        self.type_mapping
+                            .insert(decl.to_string(), enum_name.to_owned());
+
+                        match specialized {
+                            Some(Specialized::Result { ok, err }) => {
+                                let ok_type = self
+                                    .type_mapping
+                                    .get(&ok)
+                                    .unwrap_or_else(|| panic!("Missing type mapping for {}", ok));
+                                let err_type = self
+                                    .type_mapping
+                                    .get(&err)
+                                    .unwrap_or_else(|| panic!("Missing type mapping for {}", err));
+
+                                let impl_block = scope
+                                    .new_impl(&enum_name)
+                                    .impl_trait(format!("IntoResult<{ok_type}, {err_type}>"));
+
+                                let func = impl_block.new_fn("into_result").arg_self().ret(
+                                    Type::new(format!(
+                                        "Result<{ok_type}, {err_type}>",
+                                        ok_type = ok_type,
+                                        err_type = err_type
+                                    )),
+                                );
+                                func.line("match self {")
+                                    .line(format!("{enum_name}::Ok(ok) => Ok(ok),"))
+                                    .line(format!("{enum_name}::Err(err) => Err(err),"))
+                                    .line("}");
                             }
-
-                            for item in &items {
-                                let variant = r#enum.new_variant(&item.name);
-
-                                let def = self.type_mapping.get(&item.decl).unwrap_or_else(|| {
-                                    panic!("Missing type mapping for {}", item.decl)
-                                });
-
-                                variant.tuple(def);
-                            }
-
-                            self.type_mapping
-                                .insert(decl.to_string(), enum_name.to_owned());
+                            Some(Specialized::Option { some }) => todo!(),
+                            None => {}
                         }
                     }
                     Definition::Struct { items } => {
-                        // println!("Processing struct type {items:?}");
-                        let type_name = format!("Struct{}", counter.next().unwrap());
+                        println!("Processing struct type {items:?}");
+
+                        let type_name = slugify_type(&decl);
+
                         let r#struct = scope.new_struct(&type_name);
 
                         for trait_name in DEFAULT_DERIVED_TRAITS {
@@ -459,5 +543,18 @@ impl Codegen {
         decl: &Declaration,
         def: &Definition,
     ) {
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_slugify_complex_type() {
+        let input = "Option<Result<(), vm2_cep18::error::Cep18Error>>";
+        let expected = "Option_Result_____vm2_cep18__error__Cep18Error__";
+
+        assert_eq!(slugify_type(input), expected);
     }
 }
