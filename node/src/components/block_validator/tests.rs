@@ -168,7 +168,6 @@ pub(super) fn new_deploy(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff)
     )
 }
 
-// TODO[RC]: Deduplicate
 pub(super) fn new_transaction_v1_native(
     rng: &mut TestRng,
     timestamp: Timestamp,
@@ -221,8 +220,18 @@ pub(super) fn new_transaction(
     rng: &mut TestRng,
     timestamp: Timestamp,
     ttl: TimeDiff,
-    kind: NewTransactionKind,
+    mut kind: NewTransactionKind,
 ) -> Transaction {
+    if matches!(kind, NewTransactionKind::Random) {
+        kind = match rng.gen_range(0..=3) {
+            0 => NewTransactionKind::LegacyDeploy,
+            1 => NewTransactionKind::LegacyTransfer,
+            2 => NewTransactionKind::V1Native,
+            3 => NewTransactionKind::V1Transaction,
+            _ => unreachable!(),
+        }
+    }
+
     match kind {
         NewTransactionKind::LegacyDeploy => Transaction::Deploy(new_deploy(rng, timestamp, ttl)),
         NewTransactionKind::LegacyTransfer => {
@@ -234,7 +243,7 @@ pub(super) fn new_transaction(
         NewTransactionKind::V1Native => {
             Transaction::V1(new_transaction_v1_native(rng, timestamp, ttl))
         }
-        NewTransactionKind::Random => todo!(),
+        NewTransactionKind::Random => unreachable!(),
     }
 }
 
