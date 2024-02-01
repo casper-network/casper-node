@@ -792,12 +792,6 @@ where
                     deploy_hash: dt_hash.into(),
                     approvals_hash,
                 },
-                (DeployOrTransactionHash::Deploy(_), TransactionApprovalsHash::V1(_)) => {
-                    panic!("mismatch 1") // TODO[RC]: Handle errors
-                }
-                (DeployOrTransactionHash::V1(_), TransactionApprovalsHash::Deploy(_)) => {
-                    panic!("mismatch 2")
-                }
                 (
                     DeployOrTransactionHash::V1(dt_hash),
                     TransactionApprovalsHash::V1(approvals_hash),
@@ -805,6 +799,14 @@ where
                     transaction_v1_hash: dt_hash,
                     approvals_hash,
                 },
+                (DeployOrTransactionHash::Deploy(_), TransactionApprovalsHash::V1(_)) => {
+                    error!("can not fetch 'legacy deploy' using 'transaction' approvals hash");
+                    return Effects::new();
+                }
+                (DeployOrTransactionHash::V1(_), TransactionApprovalsHash::Deploy(_)) => {
+                    error!("can not fetch 'transaction' using 'legacy deploy' approvals hash");
+                    return Effects::new();
+                }
             };
 
             effect_builder
