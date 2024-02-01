@@ -16,8 +16,7 @@ unsafe impl TriviallyTransmutable for ReadInfo {}
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub(crate) struct EntryPoint {
-    pub(crate) name_ptr: u32,
-    pub(crate) name_len: u32,
+    pub(crate) selector: u32,
 
     pub(crate) params_ptr: u32, // pointer of pointers (preferred 'static lifetime)
     pub(crate) params_size: u32,

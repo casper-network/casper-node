@@ -16,6 +16,19 @@ pub use casper_sdk_sys as sys;
 use sys::CreateResult;
 use types::CallError;
 
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub struct Selector(u32);
+
+impl Selector {
+    pub const fn new(selector: u32) -> Self {
+        Selector(selector)
+    }
+
+    pub const fn get(&self) -> u32 {
+        self.0
+    }
+}
+
 #[cfg(target_arch = "wasm32")]
 fn hook_impl(info: &std::panic::PanicInfo) {
     let msg = info.to_string();
@@ -47,7 +60,7 @@ pub fn reserve_vec_space(vec: &mut Vec<u8>, size: usize) -> Option<NonNull<u8>> 
 pub trait Contract {
     fn name() -> &'static str;
     fn create(
-        entry_point: Option<&str>,
+        selector: Option<Selector>,
         input_data: Option<&[u8]>,
     ) -> Result<CreateResult, CallError>;
 }

@@ -1,5 +1,6 @@
 #![allow(dead_code, unused_variables, non_camel_case_types)]use borsh::{self, BorshSerialize, BorshDeserialize};
 use casper_sdk_codegen::support::{IntoResult, IntoOption};
+use casper_sdk::Selector;
 
 pub type U8 = u8;
 type FixedSequence0_32_U8 = [U8; 32];
@@ -105,101 +106,115 @@ impl CEP18Client {
     pub fn new<C>() -> Result<CEP18Client, casper_sdk::types::CallError>
     where C: casper_sdk::Contract,
     {
+        const SELECTOR: Selector = Selector::new(2611912030);
         let value = 0; // TODO: Transferring values
         let input_args = ();
-        let create_result = C::create(Some("new"), None)?;
+        let create_result = C::create(Some(SELECTOR), None)?;
         let result = CEP18Client { address: create_result.contract_address };
         Ok(result)
     }
 
     pub fn name(&self) -> Result<casper_sdk::host::CallResult<String>, casper_sdk::types::CallError> {
+        const SELECTOR: Selector = Selector::new(987428621);
         let value = 0; // TODO: Transferring values
         let input_args = ();
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
-        casper_sdk::host::call(&self.address, value, "name", &input_args)
+        casper_sdk::host::call(&self.address, value, SELECTOR, &input_args)
     }
 
     pub fn symbol(&self) -> Result<casper_sdk::host::CallResult<String>, casper_sdk::types::CallError> {
+        const SELECTOR: Selector = Selector::new(2614203198);
         let value = 0; // TODO: Transferring values
         let input_args = ();
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
-        casper_sdk::host::call(&self.address, value, "symbol", &input_args)
+        casper_sdk::host::call(&self.address, value, SELECTOR, &input_args)
     }
 
     pub fn decimals(&self) -> Result<casper_sdk::host::CallResult<U8>, casper_sdk::types::CallError> {
+        const SELECTOR: Selector = Selector::new(2176884103);
         let value = 0; // TODO: Transferring values
         let input_args = ();
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
-        casper_sdk::host::call(&self.address, value, "decimals", &input_args)
+        casper_sdk::host::call(&self.address, value, SELECTOR, &input_args)
     }
 
     pub fn total_supply(&self) -> Result<casper_sdk::host::CallResult<U64>, casper_sdk::types::CallError> {
+        const SELECTOR: Selector = Selector::new(3680728488);
         let value = 0; // TODO: Transferring values
         let input_args = ();
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
-        casper_sdk::host::call(&self.address, value, "total_supply", &input_args)
+        casper_sdk::host::call(&self.address, value, SELECTOR, &input_args)
     }
 
     pub fn balance_of(&self, address: FixedSequence0_32_U8) -> Result<casper_sdk::host::CallResult<U64>, casper_sdk::types::CallError> {
+        const SELECTOR: Selector = Selector::new(259349078);
         let value = 0; // TODO: Transferring values
         let input_args = (address,);
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
-        casper_sdk::host::call(&self.address, value, "balance_of", &input_args)
+        casper_sdk::host::call(&self.address, value, SELECTOR, &input_args)
     }
 
     pub fn allowance(&self, spender: FixedSequence0_32_U8, owner: FixedSequence0_32_U8) -> Result<casper_sdk::host::CallResult<()>, casper_sdk::types::CallError> {
+        const SELECTOR: Selector = Selector::new(1778390622);
         let value = 0; // TODO: Transferring values
         let input_args = (spender, owner);
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
-        casper_sdk::host::call(&self.address, value, "allowance", &input_args)
+        casper_sdk::host::call(&self.address, value, SELECTOR, &input_args)
     }
 
     pub fn approve(&self, spender: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_sdk::types::CallError> {
+        const SELECTOR: Selector = Selector::new(1746036384);
         let value = 0; // TODO: Transferring values
         let input_args = (spender, amount);
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
-        casper_sdk::host::call(&self.address, value, "approve", &input_args)
+        casper_sdk::host::call(&self.address, value, SELECTOR, &input_args)
     }
 
     pub fn decrease_allowance(&self, spender: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_sdk::types::CallError> {
+        const SELECTOR: Selector = Selector::new(4187548633);
         let value = 0; // TODO: Transferring values
         let input_args = (spender, amount);
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
-        casper_sdk::host::call(&self.address, value, "decrease_allowance", &input_args)
+        casper_sdk::host::call(&self.address, value, SELECTOR, &input_args)
     }
 
     pub fn increase_allowance(&self, spender: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_sdk::types::CallError> {
+        const SELECTOR: Selector = Selector::new(4115780642);
         let value = 0; // TODO: Transferring values
         let input_args = (spender, amount);
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
-        casper_sdk::host::call(&self.address, value, "increase_allowance", &input_args)
+        casper_sdk::host::call(&self.address, value, SELECTOR, &input_args)
     }
 
     pub fn transfer(&self, recipient: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_sdk::types::CallError> {
+        const SELECTOR: Selector = Selector::new(2225167777);
         let value = 0; // TODO: Transferring values
         let input_args = (recipient, amount);
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
-        casper_sdk::host::call(&self.address, value, "transfer", &input_args)
+        casper_sdk::host::call(&self.address, value, SELECTOR, &input_args)
     }
 
     pub fn transfer_from(&self, owner: FixedSequence0_32_U8, recipient: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_sdk::types::CallError> {
+        const SELECTOR: Selector = Selector::new(188313368);
         let value = 0; // TODO: Transferring values
         let input_args = (owner, recipient, amount);
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
-        casper_sdk::host::call(&self.address, value, "transfer_from", &input_args)
+        casper_sdk::host::call(&self.address, value, SELECTOR, &input_args)
     }
 
     pub fn mint(&self, owner: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_sdk::types::CallError> {
+        const SELECTOR: Selector = Selector::new(3487406754);
         let value = 0; // TODO: Transferring values
         let input_args = (owner, amount);
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
-        casper_sdk::host::call(&self.address, value, "mint", &input_args)
+        casper_sdk::host::call(&self.address, value, SELECTOR, &input_args)
     }
 
     pub fn burn(&self, owner: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_sdk::types::CallError> {
+        const SELECTOR: Selector = Selector::new(2985279867);
         let value = 0; // TODO: Transferring values
         let input_args = (owner, amount);
         let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
-        casper_sdk::host::call(&self.address, value, "burn", &input_args)
+        casper_sdk::host::call(&self.address, value, SELECTOR, &input_args)
     }
 }fn main() {}

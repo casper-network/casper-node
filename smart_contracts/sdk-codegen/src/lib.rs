@@ -82,6 +82,7 @@ impl Codegen {
         scope.import("borsh", "BorshDeserialize");
         scope.import("casper_sdk_codegen::support", "IntoResult");
         scope.import("casper_sdk_codegen::support", "IntoOption");
+        scope.import("casper_sdk", "Selector");
 
         let head = self
             .schema
@@ -355,7 +356,9 @@ impl Codegen {
                             items.reverse();
                         }
 
-                        if decl.starts_with("Option") && items.len() == 2 && items[0].name == "None"
+                        if decl.starts_with("Option")
+                            && items.len() == 2
+                            && items[0].name == "None"
                             && items[1].name == "Some"
                         {
                             specialized = Some(Specialized::Option {
@@ -417,20 +420,18 @@ impl Codegen {
                                     .line("}");
                             }
                             Some(Specialized::Option { some }) => {
-                                let some_type = self
-                                    .type_mapping
-                                    .get(&some)
-                                    .unwrap_or_else(|| panic!("Missing type mapping for {}", &some));
+                                let some_type = self.type_mapping.get(&some).unwrap_or_else(|| {
+                                    panic!("Missing type mapping for {}", &some)
+                                });
 
                                 let impl_block = scope
                                     .new_impl(&enum_name)
                                     .impl_trait(format!("IntoOption<{some_type}>"));
 
-                                let func = impl_block.new_fn("into_option").arg_self().ret(
-                                    Type::new(format!(
-                                        "Option<{some_type}>",
-                                    )),
-                                );
+                                let func = impl_block
+                                    .new_fn("into_option")
+                                    .arg_self()
+                                    .ret(Type::new(format!("Option<{some_type}>",)));
                                 func.line("match self {")
                                     .line(format!("{enum_name}::None => None,"))
                                     .line(format!("{enum_name}::Some(some) => Some(some),"))
@@ -513,7 +514,11 @@ impl Codegen {
                 func.arg(&arg.name, arg_ty);
             }
 
-            // func.line(format!(r#"const NAME: &str = "{name}";"#, name=&entry_point.name));
+            func.line(format!(
+                r#"const SELECTOR: Selector = Selector::new({});"#,
+                entry_point.selector
+            ));
+
             func.line("let value = 0; // TODO: Transferring values");
 
             if entry_point.arguments.is_empty() {
@@ -535,15 +540,11 @@ impl Codegen {
 
             if entry_point.flags.contains(EntryPointFlags::CONSTRUCTOR) {
                 if !entry_point.arguments.is_empty() {
-                    func.line(format!(
-                        r#"let create_result = C::create(Some("{name}"), Some(&input_data))?;"#,
-                        name = &entry_point.name
-                    ));
+                    func.line(
+                        r#"let create_result = C::create(Some(SELECTOR), Some(&input_data))?;"#,
+                    );
                 } else {
-                    func.line(format!(
-                        r#"let create_result = C::create(Some("{name}"), None)?;"#,
-                        name = &entry_point.name
-                    ));
+                    func.line(r#"let create_result = C::create(Some(SELECTOR), None)?;"#);
                 }
 
                 func.line(format!(
@@ -554,11 +555,7 @@ impl Codegen {
                 continue;
             } else {
                 func.line(r#"let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");"#);
-
-                func.line(format!(
-                    r#"casper_sdk::host::call(&self.address, value, "{name}", &input_args)"#,
-                    name = &entry_point.name
-                ));
+                func.line(r#"casper_sdk::host::call(&self.address, value, SELECTOR, &input_args)"#);
             }
         }
 

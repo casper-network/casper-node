@@ -2,7 +2,7 @@ pub mod error;
 pub mod security_badge;
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use casper_macros::{casper, CasperABI, CasperSchema, Contract};
+use casper_macros::{casper, selector, CasperABI, CasperSchema, Contract};
 use casper_sdk::{
     collections::{Map, Set},
     host, log, revert,
@@ -235,7 +235,7 @@ impl CEP18 {
 
 #[casper(export)]
 pub fn call() {
-    let result = CEP18::create(Some("new"), None).unwrap();
+    let result = CEP18::create(Some(selector!("new")), None).unwrap();
 }
 
 #[cfg(test)]

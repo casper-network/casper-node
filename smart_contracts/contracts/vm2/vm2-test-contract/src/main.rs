@@ -10,13 +10,14 @@ use casper_sdk::log;
 mod exports {
 
     use alloc::{string::String, vec::Vec};
-    use casper_macros::casper;
+    use casper_macros::{casper, selector};
 
     use casper_sdk::{
         host, reserve_vec_space,
         storage::Keyspace,
         sys::{CreateResult, EntryPoint, Manifest, Param},
         types::ResultCode,
+        Selector,
     };
     use core::ptr::NonNull;
     use vm_common::flags::EntryPointFlags;
@@ -25,6 +26,9 @@ mod exports {
 
     const KEY_SPACE_DEFAULT: u64 = 0;
     const TAG_BYTES: u64 = 0;
+
+    const MANGLED_ENTRY_POINT_1: Selector = selector!("mangled_entry_point_1");
+    const MANGLED_ENTRY_POINT_2: Selector = selector!("mangled_entry_point_2");
 
     #[casper(export)]
     pub fn call(arg1: String, arg2: u32) {
@@ -83,9 +87,6 @@ mod exports {
             host::casper_print("called inside a mangled entry point 2");
         }
 
-        let name_1 = "mangled_entry_point_1";
-        let name_2 = "mangled_entry_point_2";
-
         let param_1 = "param_1";
         let param_2 = "param_2";
 
@@ -104,8 +105,7 @@ mod exports {
 
         // host::casper_print(&format!("{:?}", mem::size_of::<
         let entry_point_1 = EntryPoint {
-            name_ptr: name_1.as_ptr(),
-            name_len: name_1.len(),
+            selector: MANGLED_ENTRY_POINT_1.get(),
             params_ptr: NonNull::from(params.as_slice()).as_ptr() as _,
             params_size: params.len(),
             fptr: mangled_entry_point_wrapper_1,
@@ -113,8 +113,7 @@ mod exports {
         };
 
         let entry_point_2 = EntryPoint {
-            name_ptr: name_2.as_ptr(),
-            name_len: name_2.len(),
+            selector: MANGLED_ENTRY_POINT_2.get(),
             params_ptr: NonNull::from(params.as_slice()).as_ptr() as _,
             params_size: params.len(),
             fptr: mangled_entry_point_wrapper_2,
@@ -155,7 +154,7 @@ mod exports {
                 let input_data = borsh::to_vec(&("Hello, world!", 42)).unwrap();
 
                 let (data, result_code) =
-                    host::casper_call(&contract_address, 10, "mangled_entry_point_1", &input_data);
+                    host::casper_call(&contract_address, 10, MANGLED_ENTRY_POINT_1, &input_data);
 
                 match result_code {
                     ResultCode::Success => {

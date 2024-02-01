@@ -11,13 +11,13 @@ use alloc::{
     vec::Vec,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use casper_macros::{casper, CasperABI, CasperSchema, Contract};
+use casper_macros::{casper, selector, CasperABI, CasperSchema, Contract};
 use casper_sdk::{
     host::{self, Alloc, CallResult},
     log, revert,
     sys::CreateResult,
     types::{Address, CallError, ResultCode},
-    Contract,
+    Contract, Selector,
 };
 
 const INITIAL_GREETING: &str = "This is initial data set from a constructor";
@@ -116,26 +116,29 @@ impl Greeter {
             Ok(())
         }
     }
+
+    #[casper(selector = 0xBADC0D3)]
+    pub fn custom_selector(&self) {}
 }
 
 struct TypedCall<Args: BorshSerialize, Ret: BorshDeserialize> {
     address: Address,
-    name: &'static str,
+    selector: Selector,
     _marker: PhantomData<fn(Args) -> Ret>,
 }
 
 impl<Args: BorshSerialize, Ret: BorshDeserialize> TypedCall<Args, Ret> {
-    fn new(address: Address, name: &'static str) -> Self {
+    const fn new(address: Address, selector: Selector) -> Self {
         Self {
             address,
-            name,
+            selector,
             _marker: PhantomData,
         }
     }
     fn call(&self, args: Args) -> CallResult<Ret> {
         let args_data = borsh::to_vec(&args).unwrap();
         let (maybe_output_data, result_code) =
-            host::casper_call(&self.address, 0, self.name, &args_data);
+            host::casper_call(&self.address, 0, self.selector, &args_data);
         CallResult::<Ret> {
             data: maybe_output_data,
             result: result_code,
@@ -153,7 +156,7 @@ pub fn call() {
 
     // Constructor without args
 
-    match Greeter::create(Some("initialize"), None) {
+    match Greeter::create(Some(selector!("initialize")), None) {
         Ok(CreateResult {
             package_address,
             contract_address,
@@ -165,17 +168,21 @@ pub fn call() {
             log!("version: {:?}", version);
 
             // Verify that the address captured inside constructor is not the same as caller.
+            const SELECTOR: Selector = selector!("get_address_inside_constructor");
             let get_address_inside_constructor: TypedCall<(), Address> =
-                TypedCall::new(contract_address, "get_address_inside_constructor");
+                TypedCall::new(contract_address, SELECTOR);
             let result = get_address_inside_constructor.call(()).into_return_value();
             assert_ne!(result, session_caller);
 
+            const GET_GREETING: Selector = selector!("get_greeting");
+            const SET_GREETING: Selector = selector!("set_greeting");
+
             let get_greeting: TypedCall<(), String> =
-                TypedCall::new(contract_address, "get_greeting");
+                TypedCall::new(contract_address, GET_GREETING);
             let result = get_greeting.call(()).into_return_value();
             assert_eq!(result, INITIAL_GREETING);
 
-            let call_1 = "set_greeting";
+            let call_1: Selector = selector!("set_greeting");
             let input_data_1: (String,) = ("Foo".into(),);
             let (maybe_data_1, result_code_1) = host::casper_call(
                 &contract_address,
@@ -185,26 +192,25 @@ pub fn call() {
             );
             log!("{call_1:?} result={result_code_1:?}");
 
-            let call_2 = "get_greeting";
             let (maybe_data_2, result_code_2) =
-                host::casper_call(&contract_address, 0, call_2, &[]);
-            log!("{call_2:?} result={result_code_2:?}");
+                host::casper_call(&contract_address, 0, GET_GREETING, &[]);
+            log!("get_greeting (selector:{GET_GREETING:?}) result={result_code_2:?}");
             assert_eq!(
                 borsh::from_slice::<String>(&maybe_data_2.as_ref().expect("return value")).unwrap(),
                 "Foo".to_string()
             );
 
-            let call_3 = "emit_unreachable_trap";
+            const CALL_3: Selector = selector!("emit_unreachable_trap");
             let (maybe_data_3, result_code_3) =
-                host::casper_call(&contract_address, 0, call_3, &[]);
+                host::casper_call(&contract_address, 0, CALL_3, &[]);
             assert_eq!(maybe_data_3, None);
             assert_eq!(result_code_3, ResultCode::CalleeTrapped);
 
-            let call_4: &str = "emit_revert_with_data";
+            const CALL_4: Selector = selector!("emit_revert_with_data");
             let (maybe_data_4, maybe_result_4) =
-                host::casper_call(&contract_address, 0, call_4, &[]);
+                host::casper_call(&contract_address, 0, CALL_4, &[]);
 
-            log!("{call_4:?} result={maybe_data_4:?}");
+            log!("{CALL_4:?} result={maybe_data_4:?}");
             assert_eq!(maybe_result_4, ResultCode::CalleeReverted);
             assert_eq!(
                 borsh::from_slice::<Result<(), CustomError>>(
@@ -214,15 +220,15 @@ pub fn call() {
                 Err(CustomError::Bar),
             );
 
-            let call_5: &str = "emit_revert_without_data";
+            const CALL_5: Selector = selector!("emit_revert_without_data");
             let (maybe_data_5, maybe_result_5) =
-                host::casper_call(&contract_address, 0, call_5, &[]);
-            log!("{call_5:?} result={maybe_data_5:?}");
+                host::casper_call(&contract_address, 0, CALL_5, &[]);
+            log!("{CALL_5:?} result={maybe_data_5:?}");
             assert_eq!(maybe_result_5, ResultCode::CalleeReverted);
             assert_eq!(maybe_data_5, None);
 
             let should_revert_on_error: TypedCall<(bool,), Result<(), CustomError>> =
-                TypedCall::new(contract_address, "should_revert_on_error");
+                TypedCall::new(contract_address, selector!("should_revert_on_error"));
             let result = should_revert_on_error.call((false,));
             assert!(!result.did_revert());
             assert_eq!(result.into_return_value(), Ok(()));
@@ -243,7 +249,7 @@ pub fn call() {
 
     let args = ("World".to_string(),);
     match Greeter::create(
-        Some("constructor_with_args"),
+        Some(selector!("constructor_with_args")),
         Some(&borsh::to_vec(&args).unwrap()),
     ) {
         Ok(CreateResult {
@@ -256,10 +262,10 @@ pub fn call() {
             log!("contract_address: {:?}", contract_address);
             log!("version: {:?}", version);
 
-            let call_0 = "get_greeting";
+            const GET_GREETING: Selector = selector!("get_greeting");
             let (maybe_data_0, result_code_0) =
-                host::casper_call(&contract_address, 0, call_0, &[]);
-            log!("{call_0:?} result={result_code_0:?}");
+                host::casper_call(&contract_address, 0, GET_GREETING, &[]);
+            log!("{GET_GREETING:?} result={result_code_0:?}");
             assert_eq!(
                 borsh::from_slice::<String>(&maybe_data_0.as_ref().expect(
                     "return
@@ -277,13 +283,13 @@ pub fn call() {
     let args = ("World".to_string(),);
 
     let error = Greeter::create(
-        Some("failing_constructor"),
+        Some(selector!("failing_constructor")),
         Some(&borsh::to_vec(&args).unwrap()),
     )
     .expect_err("Constructor that reverts should fail to create");
     assert_eq!(error, CallError::CalleeReverted);
 
-    let error = Greeter::create(Some("trapping_constructor"), None)
+    let error = Greeter::create(Some(selector!("trapping_constructor")), None)
         .expect_err("Constructor that traps should fail to create");
     assert_eq!(error, CallError::CalleeTrapped);
 
@@ -293,7 +299,9 @@ pub fn call() {
 #[cfg(test)]
 mod tests {
 
-    use alloc::collections::BTreeSet;
+    use core::slice;
+
+    use alloc::collections::{BTreeMap, BTreeSet};
     use borsh::{schema::BorshSchemaContainer, BorshSchema};
     use casper_sdk::{
         schema::{schema_helper, CasperSchema},
@@ -361,4 +369,33 @@ mod tests {
 
         assert_eq!(constructors, expected);
     }
+
+    #[test]
+    fn check_schema_selectors() {
+        let schema = Greeter::schema();
+
+        let schema_mapping: BTreeMap<_, _> = schema
+            .entry_points
+            .iter()
+            .map(|e| (e.name.as_str(), e.selector))
+            .collect();
+
+        let manifest = Greeter::__casper_manifest();
+        let manifest_entrypoints =
+            unsafe { slice::from_raw_parts(manifest.entry_points, manifest.entry_points_size) };
+
+        let manifest_selectors: BTreeSet<u32> =
+            manifest_entrypoints.iter().map(|e| e.selector).collect();
+
+        assert_eq!(schema_mapping["constructor_with_args"], 4116419170,);
+
+        assert_eq!(schema_mapping["custom_selector"], 0xBADC0D3,);
+        assert!(manifest_selectors.contains(&0xBADC0D3));
+        assert!(manifest_selectors.contains(&4116419170));
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn main() {
+    panic!("Execute \"cargo test\" to test the contract, \"cargo build\" to build it");
 }

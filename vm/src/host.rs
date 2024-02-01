@@ -1,7 +1,7 @@
 //! Implementation of all host functions.
 pub(crate) mod abi;
 
-use std::{cmp, mem};
+use std::{cmp, mem, num::NonZeroU32};
 
 use bytes::Bytes;
 use safe_transmute::SingleManyGuard;
@@ -172,8 +172,7 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
     code_ptr: u32,
     code_len: u32,
     manifest_ptr: u32,
-    entry_name: u32,
-    entry_len: u32,
+    selector: u32,
     input_ptr: u32,
     input_len: u32,
     result_ptr: u32,
@@ -188,13 +187,7 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
     };
 
     // For calling a constructor
-    let entry_point_name = if entry_name == 0 {
-        None
-    } else {
-        let data = caller.memory_read(entry_name, entry_len as _).unwrap();
-        let str = String::from_utf8(data).expect("should be valid utf8");
-        Some(str)
-    };
+    let constructor_selector = NonZeroU32::new(selector);
 
     // Pass input data when calling a constructor. It's optional, as constructors aren't required
     let input_data: Option<Bytes> = if input_ptr == 0 {
@@ -233,10 +226,6 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
         let mut vec = Vec::new();
 
         for entry_point in entry_points {
-            let entry_point_name = caller
-                .memory_read(entry_point.name_ptr, entry_point.name_len as usize)
-                .unwrap();
-
             let params_bytes = caller
                 .memory_read(
                     entry_point.params_ptr,
@@ -271,7 +260,7 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
             }
 
             vec.push(storage::EntryPoint {
-                name: entry_point_name.into(),
+                selector: entry_point.selector,
                 params: params_vec,
                 function_index: entry_point.fptr,
                 flags: EntryPointFlags::from_bits_truncate(entry_point.flags),
@@ -293,7 +282,7 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
         .create_contract(code.clone(), manifest)
         .unwrap();
 
-    let initial_state = if let Some(entry_point_name) = entry_point_name {
+    let initial_state = if let Some(constructor_selector) = constructor_selector {
         // Find all entrypoints with a flag set to CONSTRUCTOR
         let mut constructors = entrypoints
             .iter()
@@ -304,7 +293,7 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
                     None
                 }
             })
-            .filter(|entry_point| entry_point.name == entry_point_name);
+            .filter(|entry_point| entry_point.selector == constructor_selector.get());
 
         // TODO: Should we validate amount of constructors or just rely on the fact that the proc
         // macro will statically check it, and the document the behavior that only first
@@ -433,8 +422,7 @@ pub(crate) fn casper_call<S: Storage + 'static>(
     address_ptr: u32,
     address_len: u32,
     value: u64,
-    entry_name: u32,
-    entry_len: u32,
+    selector: u32,
     input_ptr: u32,
     input_len: u32,
     cb_alloc: u32,
@@ -451,10 +439,6 @@ pub(crate) fn casper_call<S: Storage + 'static>(
     // let vm = VM::new();
     // vm.
     let address = caller.memory_read(address_ptr, address_len as _).unwrap();
-    let entry_point_name = {
-        let data = caller.memory_read(entry_name, entry_len as _).unwrap();
-        String::from_utf8(data).expect("should be valid utf8")
-    };
     let input_data = caller
         .memory_read(input_ptr, input_len as _)
         .unwrap()
@@ -509,7 +493,7 @@ pub(crate) fn casper_call<S: Storage + 'static>(
                 let entry_point = entry_points
                     .iter()
                     .find_map(|entry_point| {
-                        if entry_point.name == entry_point_name {
+                        if entry_point.selector == selector {
                             Some(entry_point)
                         } else {
                             None

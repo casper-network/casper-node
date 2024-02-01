@@ -43,6 +43,7 @@ where
         let prefix = Keyspace::Context(&context_key);
         host::casper_write(prefix, 0, &borsh::to_vec(value).unwrap()).unwrap();
     }
+
     pub fn get(&self, key: &K) -> Option<V> {
         let mut key_bytes = self.prefix.as_bytes().to_owned();
         key.serialize(&mut key_bytes).unwrap();

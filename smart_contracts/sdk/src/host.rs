@@ -5,6 +5,7 @@ use std::{
     ffi::c_void,
     marker::PhantomData,
     mem::{self, MaybeUninit},
+    num::NonZeroU32,
     ptr::{self, NonNull},
 };
 
@@ -33,10 +34,10 @@ pub fn casper_print(msg: &str) {
     let _res = dispatch!(casper_print, msg.as_ptr(), msg.len());
 }
 
-pub fn capser_return(flags: u32, data: &[u8]) -> ! {
-    unsafe { casper_sdk_sys::casper_return(flags, data.as_ptr(), data.len()) };
-    unreachable!()
-}
+// pub fn casper_return(flags: u32, data: &[u8]) -> ! {
+//     unsafe { casper_sdk_sys::casper_return(flags, data.as_ptr(), data.len()) };
+//     unreachable!()
+// }
 
 pub enum Alloc<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>> {
     Callback(F),
@@ -207,7 +208,7 @@ pub fn casper_write(key: Keyspace, value_tag: u64, value: &[u8]) -> Result<(), E
 pub fn casper_create(
     code: Option<&[u8]>,
     manifest: &casper_sdk_sys::Manifest,
-    entry_point: Option<&str>,
+    selector: Option<Selector>,
     input_data: Option<&[u8]>,
 ) -> Result<casper_sdk_sys::CreateResult, CallError> {
     let (code_ptr, code_size): (*const u8, usize) = match code {
@@ -224,8 +225,7 @@ pub fn casper_create(
             code_ptr,
             code_size,
             manifest_ptr.as_ptr(),
-            entry_point.map(|s| s.as_ptr()).unwrap_or(ptr::null()),
-            entry_point.map(|s| s.len()).unwrap_or(0),
+            selector.map(|selector| selector.get()).unwrap_or(0),
             input_data.map(|s| s.as_ptr()).unwrap_or(ptr::null()),
             input_data.map(|s| s.len()).unwrap_or(0),
             result.as_mut_ptr(),
@@ -247,7 +247,7 @@ pub fn casper_create(
 pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
     address: &Address,
     value: u64,
-    entry_point: &str,
+    selector: Selector,
     input_data: &[u8],
     alloc: Option<F>,
 ) -> ResultCode {
@@ -256,8 +256,7 @@ pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
             address.as_ptr(),
             address.len(),
             value,
-            entry_point.as_ptr(),
-            entry_point.len(),
+            selector.get(),
             input_data.as_ptr(),
             input_data.len(),
             alloc_callback::<F>,
@@ -270,14 +269,14 @@ pub(crate) fn call_into<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>>(
 pub fn casper_call(
     address: &Address,
     value: u64,
-    entry_point: &str,
+    selector: Selector,
     input_data: &[u8],
 ) -> (Option<Vec<u8>>, ResultCode) {
     let mut output = None;
     let result_code = call_into(
         address,
         value,
-        entry_point,
+        selector,
         input_data,
         Some(|size| {
             let mut vec = Vec::new();
@@ -299,7 +298,7 @@ use crate::{
     reserve_vec_space,
     storage::Keyspace,
     types::{Address, CallError, Entry, ResultCode},
-    Contract,
+    Contract, Selector,
 };
 
 pub fn read_vec(key: Keyspace) -> Option<Vec<u8>> {
@@ -382,12 +381,11 @@ impl<Ret: BorshDeserialize> CallResult<Ret> {
 pub fn call<Args: BorshSerialize, Ret: BorshDeserialize>(
     contract_address: &Address,
     value: u64,
-    entry_point_name: &str,
+    selector: Selector,
     args: Args,
 ) -> Result<CallResult<Ret>, CallError> {
     let input_data = borsh::to_vec(&args).unwrap();
-    let (maybe_data, result_code) =
-        casper_call(contract_address, value, entry_point_name, &input_data);
+    let (maybe_data, result_code) = casper_call(contract_address, value, selector, &input_data);
     match result_code {
         ResultCode::Success | ResultCode::CalleeReverted => Ok(CallResult {
             data: maybe_data,

@@ -31,7 +31,7 @@ pub struct Param {
 
 #[derive(Default, Debug, Clone)]
 pub(crate) struct EntryPoint {
-    pub(crate) name: Bytes,
+    pub(crate) selector: u32,
     pub(crate) params: Vec<Param>,
     pub(crate) function_index: u32,
     pub(crate) flags: EntryPointFlags,

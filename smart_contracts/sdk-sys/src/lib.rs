@@ -9,8 +9,7 @@ pub struct Param {
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct EntryPoint {
-    pub name_ptr: *const u8,
-    pub name_len: usize,
+    pub selector: u32,
 
     pub params_ptr: *const Param, // pointer of pointers (preferred 'static lifetime)
     pub params_size: usize,

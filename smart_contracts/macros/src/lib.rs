@@ -1,12 +1,14 @@
 extern crate proc_macro;
 
+use blake2_rfc::blake2b;
+use casper_sdk::Selector;
 use darling::{FromAttributes, FromDeriveInput, FromMeta};
-use proc_macro::{Literal, TokenStream};
+use proc_macro::{Literal, TokenStream, TokenTree};
 use proc_macro2::Span;
 use quote::{format_ident, quote};
 use syn::{
     parse_macro_input, token::Struct, Data, DeriveInput, Error, Fields, ItemEnum, ItemFn, ItemImpl,
-    ItemStruct, ItemUnion, Meta, Path, Type,
+    ItemStruct, ItemUnion, Lit, LitByteStr, LitStr, Meta, Path, Type,
 };
 use vm_common::flags::{self, EntryPointFlags};
 
@@ -17,6 +19,8 @@ struct MethodAttribute {
     constructor: bool,
     #[darling(default)]
     revert_on_error: bool,
+    #[darling(default)]
+    selector: Option<u32>,
 }
 
 #[proc_macro_derive(Contract)]
@@ -41,8 +45,8 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
                 stringify!(#name)
             }
 
-            fn create(entry_point: Option<&str>, input_data: Option<&[u8]>) -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
-                Self::__casper_create(entry_point, input_data)
+            fn create(selector: Option<casper_sdk::Selector>, input_data: Option<&[u8]>) -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
+                Self::__casper_create(selector, input_data)
             }
         }
     };
@@ -215,11 +219,18 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                             let bits = flag_value.bits();
 
+                            let name_str = name.to_string();
+
+                            let selector = if let Some(selector) = method_attribute.selector {
+                                selector
+                            } else {
+                                compute_selector(name_str.as_bytes()).get()
+                            };
+
                             manifest_entry_points.push(quote! {
                                 {
                                     casper_sdk::sys::EntryPoint {
-                                        name_ptr: #name.0.as_ptr(),
-                                        name_len: #name.0.len(),
+                                        selector: #selector,
                                         params_ptr: #name.1.as_ptr(),
                                         params_size: #name.1.len(),
                                         fptr: #name.2,
@@ -327,9 +338,16 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                     // for arg in &entry_point
                     let bits = flag_value.bits();
 
+                    let selector = if let Some(selector) = method_attribute.selector {
+                        selector
+                    } else {
+                        compute_selector(func_name.to_string().as_bytes()).get()
+                    };
+
                     defs.push(quote! {
                         casper_sdk::schema::SchemaEntryPoint {
                             name: stringify!(#func_name).into(),
+                            selector: #selector,
                             arguments: vec![ #(#args,)* ],
                             result: #result,
                             flags: vm_common::flags::EntryPointFlags::from_bits(#bits).unwrap(),
@@ -373,7 +391,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                         #[inline(always)]
                         #[doc(hidden)]
-                        fn __casper_create(entry_point: Option<&str>, input_data: Option<&[u8]>) -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
+                        const fn __casper_manifest() -> casper_sdk::sys::Manifest {
                             #(#manifest_entry_points_data)*;
                             const ENTRY_POINTS: [casper_sdk::sys::EntryPoint; #manifest_entry_points_data_len] = [#(#manifest_entry_points,)*];
 
@@ -382,6 +400,13 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 entry_points_size: ENTRY_POINTS.len(),
                             };
 
+                            MANIFEST
+                        }
+
+                        #[inline(always)]
+                        #[doc(hidden)]
+                        fn __casper_create(entry_point: Option<casper_sdk::Selector>, input_data: Option<&[u8]>) -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
+                            const MANIFEST: casper_sdk::sys::Manifest = #struct_name::__casper_manifest();
                             casper_sdk::host::casper_create(None, &MANIFEST, entry_point, input_data)
                         }
                     }
@@ -832,4 +857,36 @@ pub fn derive_casper_abi(input: TokenStream) -> TokenStream {
         Ok(res) => res,
         Err(err) => err.to_compile_error(),
     })
+}
+
+/// Procedural macro that computes a selector for a given byte literal.
+#[proc_macro]
+pub fn selector(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as LitStr);
+
+    let str = input.value();
+    let bytes = str.as_bytes();
+
+    let selector = compute_selector(bytes).get();
+
+    TokenStream::from(quote! {
+        casper_sdk::Selector::new(#selector)
+    })
+    .into()
+}
+
+pub(crate) fn compute_selector(bytes: &[u8]) -> Selector {
+    let hash_bytes = {
+        let mut context = blake2_rfc::blake2b::Blake2b::new(32);
+        context.update(&bytes);
+        context.finalize()
+    };
+
+    let selector_bytes: [u8; 4] = (&hash_bytes.as_bytes()[0..4]).try_into().unwrap();
+
+    // Using be constructor from first 4 bytes in big endian order should basically copy first 4
+    // bytes in order into the integer.
+    let selector = u32::from_be_bytes(selector_bytes);
+
+    Selector::new(selector)
 }

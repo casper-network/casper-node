@@ -51,6 +51,7 @@ pub struct SchemaArgument {
 
 pub struct SchemaEntryPoint {
     pub name: String,
+    pub selector: u32,
     pub arguments: Vec<SchemaArgument>,
     pub result: abi::Declaration,
     #[serde(
@@ -71,6 +72,7 @@ pub struct Schema {
 #[derive(Debug)]
 pub struct EntryPoint<'a, F: Fn()> {
     pub name: &'a str,
+    pub selector: u32,
     pub params: &'a [&'a str],
     pub func: F,
 }

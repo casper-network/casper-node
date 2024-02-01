@@ -8,12 +8,13 @@ use std::{
     cell::{Ref, RefCell},
     collections::{BTreeMap, VecDeque},
     convert::Infallible,
+    num::NonZeroU32,
     ptr::{self, NonNull},
     sync::{Arc, Mutex, RwLock},
 };
 use vm_common::flags::{EntryPointFlags, ReturnFlags};
 
-use crate::types::Address;
+use crate::{types::Address, Selector};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NativeTrap {
@@ -64,7 +65,7 @@ impl Into<NativeParam> for &casper_sdk_sys::Param {
 
 #[derive(Clone)]
 pub struct NativeEntryPoint {
-    pub name: String,
+    pub selector: u32,
     pub params: Vec<NativeParam>,
     pub fptr: Arc<dyn Fn() -> () + Send + Sync>,
     pub flags: EntryPointFlags,
@@ -73,7 +74,7 @@ pub struct NativeEntryPoint {
 impl std::fmt::Debug for NativeEntryPoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("NativeEntryPoint")
-            .field("name", &self.name)
+            .field("selector", &self.selector)
             .field("params", &self.params)
             .field("fptr", &"<fptr>")
             .field("flags", &self.flags)
@@ -83,9 +84,7 @@ impl std::fmt::Debug for NativeEntryPoint {
 
 impl Into<NativeEntryPoint> for &casper_sdk_sys::EntryPoint {
     fn into(self) -> NativeEntryPoint {
-        let name =
-            String::from_utf8_lossy(unsafe { slice::from_raw_parts(self.name_ptr, self.name_len) })
-                .into_owned();
+        let selector = self.selector;
         let params = unsafe { slice::from_raw_parts(self.params_ptr, self.params_size) }
             .iter()
             .map(|param| param.into())
@@ -96,7 +95,7 @@ impl Into<NativeEntryPoint> for &casper_sdk_sys::EntryPoint {
         });
         let flags = EntryPointFlags::from_bits(self.flags).expect("Valid flags");
         NativeEntryPoint {
-            name,
+            selector,
             params,
             fptr,
             flags,
@@ -264,8 +263,7 @@ impl Stub {
         code_ptr: *const u8,
         code_size: usize,
         manifest_ptr: *const casper_sdk_sys::Manifest,
-        entry_point_ptr: *const u8,
-        entry_point_size: usize,
+        selector: u32,
         input_ptr: *const u8,
         input_size: usize,
         result_ptr: *mut casper_sdk_sys::CreateResult,
@@ -282,15 +280,10 @@ impl Stub {
             panic!("Supplying code is not supported yet in native mode");
         }
 
-        let entry_point: Option<&str> = if entry_point_ptr.is_null() {
+        let entry_point_selector: Option<Selector> = if selector == 0 {
             None
         } else {
-            Some(unsafe {
-                std::str::from_utf8_unchecked(slice::from_raw_parts(
-                    entry_point_ptr,
-                    entry_point_size,
-                ))
-            })
+            Some(Selector::new(selector))
         };
 
         let input_data = if input_ptr.is_null() {
@@ -312,12 +305,12 @@ impl Stub {
         let mut manifests = self.manifests.write().unwrap();
         manifests.insert(contract_address, manifest.into());
 
-        if let Some(entry_point_name) = entry_point {
+        if let Some(entry_point_selector) = entry_point_selector {
             let manifest = manifests.get(&contract_address).expect("Manifest exists");
             let entry_point = manifest
                 .entry_points
                 .iter()
-                .find(|entry_point| entry_point.name == entry_point_name)
+                .find(|entry_point| entry_point.selector == entry_point_selector.get())
                 .expect("Entry point exists");
 
             let mut stub = with_stub(|stub| stub);
@@ -357,24 +350,21 @@ impl Stub {
         address_ptr: *const u8,
         address_size: usize,
         value: u64,
-        entry_point_ptr: *const u8,
-        entry_point_size: usize,
+        selector: u32,
         input_ptr: *const u8,
         input_size: usize,
         alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
         alloc_ctx: *const core::ffi::c_void,
     ) -> Result<u32, NativeTrap> {
         let address = unsafe { slice::from_raw_parts(address_ptr, address_size) };
-        let entry_point_name = unsafe { slice::from_raw_parts(entry_point_ptr, entry_point_size) };
         let input_data = unsafe { slice::from_raw_parts(input_ptr, input_size) };
-        dbg!(&input_data);
         let manifests = self.manifests.read().unwrap();
         let manifest = manifests.get(address).expect("Manifest exists");
 
         let entry_point = manifest
             .entry_points
             .iter()
-            .find(|entry_point| entry_point.name.as_bytes() == entry_point_name)
+            .find(|entry_point| entry_point.selector == selector)
             .expect("Entry point exists");
 
         // TODO: Wasm host should also forbid calling constructors
@@ -633,8 +623,7 @@ mod symbols {
         code_ptr: *const u8,
         code_size: usize,
         manifest_ptr: *const ::casper_sdk_sys::Manifest,
-        entry_point_ptr: *const u8,
-        entry_point_size: usize,
+        selector: u32,
         input_ptr: *const u8,
         input_size: usize,
         result_ptr: *mut ::casper_sdk_sys::CreateResult,
@@ -644,8 +633,7 @@ mod symbols {
             &code_ptr,
             &code_size,
             &manifest_ptr,
-            &entry_point_ptr,
-            &entry_point_size,
+            &selector,
             &input_ptr,
             &input_size,
             &result_ptr,
@@ -655,8 +643,7 @@ mod symbols {
                 code_ptr,
                 code_size,
                 manifest_ptr,
-                entry_point_ptr,
-                entry_point_size,
+                selector,
                 input_ptr,
                 input_size,
                 result_ptr,
@@ -670,8 +657,7 @@ mod symbols {
         address_ptr: *const u8,
         address_size: usize,
         value: u64,
-        entry_point_ptr: *const u8,
-        entry_point_size: usize,
+        selector: u32,
         input_ptr: *const u8,
         input_size: usize,
         alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
@@ -682,8 +668,7 @@ mod symbols {
             &address_ptr,
             &address_size,
             &value,
-            &entry_point_ptr,
-            &entry_point_size,
+            &selector,
             &input_ptr,
             &input_size,
             &alloc,
@@ -694,8 +679,7 @@ mod symbols {
                 address_ptr,
                 address_size,
                 value,
-                entry_point_ptr,
-                entry_point_size,
+                selector,
                 input_ptr,
                 input_size,
                 alloc,

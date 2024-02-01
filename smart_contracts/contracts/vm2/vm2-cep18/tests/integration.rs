@@ -21,6 +21,8 @@ fn foo() {
             .transfer([1; 32], 42)
             .expect("Calling transfer entry point should work");
 
+        transfer_call_result.did_revert();
+
         // Actual returned data, deserialized from the returned bytes.
         let transfer_return_value = transfer_call_result.into_return_value();
 

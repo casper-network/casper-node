@@ -20,6 +20,24 @@ const VM2_TEST_CONTRACT: &[u8] = include_bytes!("../vm2-test-contract.wasm");
 const VM2_HARNESS: &[u8] = include_bytes!("../vm2-harness.wasm");
 const VM2_CEP18: &[u8] = include_bytes!("../vm2_cep18.wasm");
 
+#[test]
+fn test_contract() {
+    run_wasm(
+        VM2_TEST_CONTRACT,
+        ("Hello, world!".to_string(), 123456789u32),
+    );
+}
+
+#[test]
+fn harness() {
+    run_wasm(VM2_HARNESS, ());
+}
+
+#[test]
+fn cep18() {
+    run_wasm(VM2_CEP18, ());
+}
+
 type Blake2b256 = Blake2b<U32>;
 
 fn blake2b256(updater: impl FnOnce(&mut Blake2b256)) -> Address {
@@ -192,24 +210,6 @@ impl ContractRuntime {
 const ALICE: [u8; 32] = [100; 32];
 const BOB: [u8; 32] = [101; 32];
 const CSPR: u64 = 10u64.pow(9);
-
-#[test]
-fn test_contract() {
-    run_wasm(
-        VM2_TEST_CONTRACT,
-        ("Hello, world!".to_string(), 123456789u32),
-    );
-}
-
-#[test]
-fn harness() {
-    run_wasm(VM2_HARNESS, ());
-}
-
-#[test]
-fn cep18() {
-    run_wasm(VM2_CEP18, ());
-}
 
 fn run_wasm<T: BorshSerialize>(contract_name: &'static [u8], input_data: T) {
     let bytecode = Bytes::from_static(contract_name);
