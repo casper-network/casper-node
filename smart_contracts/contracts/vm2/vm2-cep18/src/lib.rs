@@ -85,8 +85,11 @@ impl CEP18 {
 #[casper(entry_points)]
 impl CEP18 {
     #[casper(constructor)]
-    pub fn new() -> Self {
+    pub fn new(token_name: String) -> Self {
+        // TODO: If argument has same name as another entrypoint there's a compile error for some
+        // reason, so can't use "name"
         let mut instance = Self::default();
+        instance.name = token_name;
         instance.enable_mint_burn = true;
         instance
             .security_badges
@@ -114,12 +117,12 @@ impl CEP18 {
         self.balances.get(&address).unwrap_or_default()
     }
 
-    fn allowance(&self, spender: Address, owner: Address) {
+    pub fn allowance(&self, spender: Address, owner: Address) {
         self.allowances.get(&(spender, owner)).unwrap_or_default();
     }
 
     #[casper(revert_on_error)]
-    fn approve(&mut self, spender: Address, amount: u64) -> Result<(), Cep18Error> {
+    pub fn approve(&mut self, spender: Address, amount: u64) -> Result<(), Cep18Error> {
         let owner = host::get_caller();
         if owner == spender {
             return Err(Cep18Error::CannotTargetSelfUser);
@@ -130,7 +133,7 @@ impl CEP18 {
     }
 
     #[casper(revert_on_error)]
-    fn decrease_allowance(&mut self, spender: Address, amount: u64) -> Result<(), Cep18Error> {
+    pub fn decrease_allowance(&mut self, spender: Address, amount: u64) -> Result<(), Cep18Error> {
         let owner = host::get_caller();
         if owner == spender {
             return Err(Cep18Error::CannotTargetSelfUser);
@@ -143,7 +146,7 @@ impl CEP18 {
     }
 
     #[casper(revert_on_error)]
-    fn increase_allowance(&mut self, spender: Address, amount: u64) -> Result<(), Cep18Error> {
+    pub fn increase_allowance(&mut self, spender: Address, amount: u64) -> Result<(), Cep18Error> {
         let owner = host::get_caller();
         if owner == spender {
             return Err(Cep18Error::CannotTargetSelfUser);
@@ -156,7 +159,7 @@ impl CEP18 {
     }
 
     #[casper(revert_on_error)]
-    fn transfer(&mut self, recipient: Address, amount: u64) -> Result<(), Cep18Error> {
+    pub fn transfer(&mut self, recipient: Address, amount: u64) -> Result<(), Cep18Error> {
         let sender = host::get_caller();
         if sender == recipient {
             return Err(Cep18Error::CannotTargetSelfUser);
@@ -166,7 +169,7 @@ impl CEP18 {
     }
 
     #[casper(revert_on_error)]
-    fn transfer_from(
+    pub fn transfer_from(
         &mut self,
         owner: Address,
         recipient: Address,
@@ -195,7 +198,7 @@ impl CEP18 {
     }
 
     #[casper(revert_on_error)]
-    fn mint(&mut self, owner: Address, amount: u64) -> Result<(), Cep18Error> {
+    pub fn mint(&mut self, owner: Address, amount: u64) -> Result<(), Cep18Error> {
         if !self.enable_mint_burn {
             return Err(Cep18Error::MintBurnDisabled);
         }
@@ -213,7 +216,7 @@ impl CEP18 {
     }
 
     #[casper(revert_on_error)]
-    fn burn(&mut self, owner: Address, amount: u64) -> Result<(), Cep18Error> {
+    pub fn burn(&mut self, owner: Address, amount: u64) -> Result<(), Cep18Error> {
         if !self.enable_mint_burn {
             return Err(Cep18Error::MintBurnDisabled);
         }
@@ -235,7 +238,7 @@ impl CEP18 {
 
 #[casper(export)]
 pub fn call() {
-    let result = CEP18::create(Some(selector!("new")), None).unwrap();
+    let result = CEP18::create(selector!("new"), None).unwrap();
 }
 
 #[cfg(test)]
@@ -267,11 +270,11 @@ mod tests {
         let stub = Stub::new(Default::default(), [42; 32]);
 
         let result = host::native::dispatch_with(stub, || {
-            let mut contract = CEP18::new();
+            let mut contract = CEP18::new("Foo Token".to_string());
 
             contract.sec_check(&[SecurityBadge::Admin]).unwrap();
 
-            assert_eq!(contract.name(), "Default name");
+            assert_eq!(contract.name(), "Foo Token");
             assert_eq!(contract.balance_of(ALICE), 0);
             assert_eq!(contract.balance_of(BOB), 0);
 

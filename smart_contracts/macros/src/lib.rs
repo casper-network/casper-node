@@ -43,8 +43,12 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
                 stringify!(#name)
             }
 
-            fn create(selector: Option<casper_sdk::Selector>, input_data: Option<&[u8]>) -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
+            fn create(selector: casper_sdk::Selector, input_data: Option<&[u8]>) -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
                 Self::__casper_create(selector, input_data)
+            }
+
+            fn default_create() -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
+                Self::__casper_default_create()
             }
         }
     };
@@ -90,7 +94,15 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                     let func = match entry_point {
                         syn::ImplItem::Const(_) => todo!(),
                         syn::ImplItem::Fn(ref mut func) => {
-                            // TODO: Can we use darling to parse this in a sane way?
+                            match &func.vis {
+                                syn::Visibility::Public(_) => {}
+                                syn::Visibility::Inherited => {
+                                    // As the doc says this "usually means private"
+                                    continue;
+                                }
+                                syn::Visibility::Restricted(_restricted) => {}
+                            }
+
                             method_attribute =
                                 MethodAttribute::from_attributes(&func.attrs).unwrap();
                             func.attrs.clear();
@@ -395,9 +407,16 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                         #[inline(always)]
                         #[doc(hidden)]
-                        fn __casper_create(entry_point: Option<casper_sdk::Selector>, input_data: Option<&[u8]>) -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
+                        fn __casper_create(entry_point: casper_sdk::Selector, input_data: Option<&[u8]>) -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
                             const MANIFEST: casper_sdk::sys::Manifest = #struct_name::__casper_manifest();
-                            casper_sdk::host::casper_create(None, &MANIFEST, entry_point, input_data)
+                            casper_sdk::host::casper_create(None, &MANIFEST, Some(entry_point), input_data)
+                        }
+
+                        #[inline(always)]
+                        #[doc(hidden)]
+                        fn __casper_default_create() -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
+                            const MANIFEST: casper_sdk::sys::Manifest = #struct_name::__casper_manifest();
+                            casper_sdk::host::casper_create(None, &MANIFEST, None, None)
                         }
                     }
                 };

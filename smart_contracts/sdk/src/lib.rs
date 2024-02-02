@@ -59,10 +59,8 @@ pub fn reserve_vec_space(vec: &mut Vec<u8>, size: usize) -> Option<NonNull<u8>> 
 
 pub trait Contract {
     fn name() -> &'static str;
-    fn create(
-        selector: Option<Selector>,
-        input_data: Option<&[u8]>,
-    ) -> Result<CreateResult, CallError>;
+    fn create(selector: Selector, input_data: Option<&[u8]>) -> Result<CreateResult, CallError>;
+    fn default_create() -> Result<CreateResult, CallError>;
 }
 
 #[derive(Debug)]

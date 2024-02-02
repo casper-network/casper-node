@@ -23,7 +23,7 @@ use casper_sdk::{
 const INITIAL_GREETING: &str = "This is initial data set from a constructor";
 
 #[derive(Contract, CasperSchema, BorshSerialize, BorshDeserialize, CasperABI, Debug)]
-struct Greeter {
+struct Harness {
     greeting: String,
     address_inside_constructor: Option<Address>,
 }
@@ -38,7 +38,7 @@ pub enum CustomError {
     Named { name: String, age: u64 },
 }
 
-impl Default for Greeter {
+impl Default for Harness {
     fn default() -> Self {
         Self {
             greeting: "Default value".to_string(),
@@ -49,7 +49,7 @@ impl Default for Greeter {
 pub type Result2 = Result<(), CustomError>;
 
 #[casper(entry_points)]
-impl Greeter {
+impl Harness {
     #[casper(constructor)]
     pub fn constructor_with_args(who: String) -> Self {
         log!("👋 Hello from constructor with args: {who}");
@@ -116,6 +116,15 @@ impl Greeter {
             Ok(())
         }
     }
+
+    #[allow(dead_code)]
+    fn private_function_that_should_not_be_exported(&self) {
+        log!("This function should not be callable from outside");
+    }
+
+    pub(crate) fn restricted_function_that_should_be_part_of_manifest(&self) {
+        log!("This function should be callable from outside");
+    }
 }
 
 struct TypedCall<Args: BorshSerialize, Ret: BorshDeserialize> {
@@ -153,7 +162,7 @@ pub fn call() {
 
     // Constructor without args
 
-    match Greeter::create(Some(selector!("initialize")), None) {
+    match Harness::create(selector!("initialize"), None) {
         Ok(CreateResult {
             package_address,
             contract_address,
@@ -245,8 +254,8 @@ pub fn call() {
     // Constructor with args
 
     let args = ("World".to_string(),);
-    match Greeter::create(
-        Some(selector!("constructor_with_args")),
+    match Harness::create(
+        selector!("constructor_with_args"),
         Some(&borsh::to_vec(&args).unwrap()),
     ) {
         Ok(CreateResult {
@@ -279,14 +288,14 @@ pub fn call() {
 
     let args = ("World".to_string(),);
 
-    let error = Greeter::create(
-        Some(selector!("failing_constructor")),
+    let error = Harness::create(
+        selector!("failing_constructor"),
         Some(&borsh::to_vec(&args).unwrap()),
     )
     .expect_err("Constructor that reverts should fail to create");
     assert_eq!(error, CallError::CalleeReverted);
 
-    let error = Greeter::create(Some(selector!("trapping_constructor")), None)
+    let error = Harness::create(selector!("trapping_constructor"), None)
         .expect_err("Constructor that traps should fail to create");
     assert_eq!(error, CallError::CalleeTrapped);
 
@@ -301,7 +310,9 @@ mod tests {
     use alloc::collections::{BTreeMap, BTreeSet};
     use borsh::{schema::BorshSchemaContainer, BorshSchema};
     use casper_sdk::{
+        host::native::{dispatch_with, Stub},
         schema::{schema_helper, CasperSchema},
+        sys::Manifest,
         Contract,
     };
     use vm_common::flags::EntryPointFlags;
@@ -321,7 +332,7 @@ mod tests {
 
     #[test]
     fn compile_time_schema() {
-        let schema = Greeter::schema();
+        let schema = Harness::schema();
         dbg!(&schema);
         println!("{}", serde_json::to_string_pretty(&schema).unwrap());
     }
@@ -337,7 +348,7 @@ mod tests {
 
     #[test]
     fn unittest() {
-        let mut foo = Greeter::initialize();
+        let mut foo = Harness::initialize();
         assert_eq!(foo.get_greeting(), INITIAL_GREETING);
         foo.set_greeting("New greeting".to_string());
         assert_eq!(foo.get_greeting(), "New greeting");
@@ -345,7 +356,7 @@ mod tests {
 
     #[test]
     fn list_of_constructors() {
-        let schema = Greeter::schema();
+        let schema = Harness::schema();
         let constructors: BTreeSet<_> = schema
             .entry_points
             .iter()
@@ -369,7 +380,7 @@ mod tests {
 
     #[test]
     fn check_schema_selectors() {
-        let schema = Greeter::schema();
+        let schema = Harness::schema();
 
         let schema_mapping: BTreeMap<_, _> = schema
             .entry_points
@@ -377,7 +388,7 @@ mod tests {
             .map(|e| (e.name.as_str(), e.selector))
             .collect();
 
-        let manifest = Greeter::__casper_manifest();
+        let manifest = Harness::__casper_manifest();
         let manifest_entrypoints =
             unsafe { slice::from_raw_parts(manifest.entry_points, manifest.entry_points_size) };
 
@@ -386,6 +397,55 @@ mod tests {
 
         assert_eq!(schema_mapping["constructor_with_args"], 4116419170,);
         assert!(manifest_selectors.contains(&4116419170));
+    }
+
+    #[test]
+    fn verify_check_private_and_public_methods() {
+        dispatch_with(Stub::default(), || {
+            Harness::default().private_function_that_should_not_be_exported();
+            Harness::default().restricted_function_that_should_be_part_of_manifest();
+        })
+        .expect("No trap");
+
+        const MANIFEST: Manifest = Harness::__casper_manifest();
+        const PRIVATE_SELECTOR: Selector =
+            selector!("private_function_that_should_not_be_exported");
+        const PUB_CRATE_SELECTOR: Selector =
+            selector!("restricted_function_that_should_be_part_of_manifest");
+        let entry_points =
+            unsafe { slice::from_raw_parts(MANIFEST.entry_points, MANIFEST.entry_points_size) };
+        assert!(
+            entry_points
+                .iter()
+                .find(|e| e.selector == PRIVATE_SELECTOR.get())
+                .is_none(),
+            "This entry point should not be part of manifest"
+        );
+        assert!(
+            entry_points
+                .iter()
+                .find(|e| e.selector == PUB_CRATE_SELECTOR.get())
+                .is_some(),
+            "This entry point should be part of manifest"
+        );
+
+        let schema = Harness::schema();
+        assert!(
+            schema
+                .entry_points
+                .iter()
+                .find(|e| e.selector == PRIVATE_SELECTOR.get())
+                .is_none(),
+            "This entry point should not be part of schema"
+        );
+        assert!(
+            schema
+                .entry_points
+                .iter()
+                .find(|e| e.selector == PUB_CRATE_SELECTOR.get())
+                .is_some(),
+            "This entry point should be part of schema"
+        );
     }
 }
 

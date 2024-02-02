@@ -15,29 +15,9 @@ pub enum Error {
     Bar,
 }
 
-macro_rules! dispatch {
-    ($name:ident, $($arg:expr),*) => {{
-        #[cfg(target_arch = "wasm32")]
-        {
-            unsafe { casper_sdk_sys::$name($($arg),*) }
-        }
-
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            todo!()
-        }
-    }};
-}
-
 pub fn casper_print(msg: &str) {
-    // let _res = unsafe { casper_sdk_sys::casper_print(msg.as_ptr(), msg.len()) };
-    let _res = dispatch!(casper_print, msg.as_ptr(), msg.len());
+    let _ = unsafe { casper_sdk_sys::casper_print(msg.as_ptr(), msg.len()) };
 }
-
-// pub fn casper_return(flags: u32, data: &[u8]) -> ! {
-//     unsafe { casper_sdk_sys::casper_return(flags, data.as_ptr(), data.len()) };
-//     unreachable!()
-// }
 
 pub enum Alloc<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>> {
     Callback(F),
