@@ -48,7 +48,7 @@ pub(crate) use event::Event;
 use crate::types::TransactionHashWithApprovals;
 use metrics::Metrics;
 
-const COMPONENT_NAME: &str = "deploy_buffer";
+const COMPONENT_NAME: &str = "transaction_buffer";
 
 type FootprintAndApprovals = (TransactionFootprint, BTreeSet<TransactionApproval>);
 

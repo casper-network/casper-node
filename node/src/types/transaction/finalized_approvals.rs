@@ -3,9 +3,11 @@ use std::collections::BTreeSet;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+use casper_types::TransactionApproval;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Transaction, TransactionApproval,
+    Transaction,
 };
 
 use super::{FinalizedDeployApprovals, FinalizedTransactionV1Approvals};

@@ -10,7 +10,7 @@ use super::TransactionV1;
 use super::{DeployApprovalsHash, TransactionV1ApprovalsHash};
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, TransactionApproval,
+    Digest,
 };
 
 const DEPLOY_TAG: u8 = 0;

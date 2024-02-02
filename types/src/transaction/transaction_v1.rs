@@ -44,7 +44,7 @@ pub use errors_v1::{
     DecodeFromJsonErrorV1 as TransactionV1DecodeFromJsonError, ErrorV1 as TransactionV1Error,
     ExcessiveSizeErrorV1 as TransactionV1ExcessiveSizeError, TransactionV1ConfigFailure,
 };
-pub use transaction_v1_approval::{TransactionApproval, TransactionV1Approval};
+pub use transaction_v1_approval::TransactionV1Approval;
 pub use transaction_v1_approvals_hash::TransactionV1ApprovalsHash;
 pub use transaction_v1_body::TransactionV1Body;
 #[cfg(any(feature = "std", test))]

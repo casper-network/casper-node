@@ -6,6 +6,7 @@ mod initiator_addr_and_secret_key;
 mod package_identifier;
 mod pricing_mode;
 mod runtime_args;
+mod transaction_approval;
 mod transaction_approvals_hash;
 mod transaction_entry_point;
 mod transaction_footprint;
@@ -59,6 +60,7 @@ pub use initiator_addr_and_secret_key::InitiatorAddrAndSecretKey;
 pub use package_identifier::PackageIdentifier;
 pub use pricing_mode::PricingMode;
 pub use runtime_args::{NamedArg, RuntimeArgs};
+pub use transaction_approval::TransactionApproval;
 pub use transaction_approvals_hash::TransactionApprovalsHash;
 pub use transaction_entry_point::TransactionEntryPoint;
 pub use transaction_footprint::TransactionFootprint;
@@ -71,9 +73,9 @@ pub use transaction_scheduling::TransactionScheduling;
 pub use transaction_session_kind::TransactionSessionKind;
 pub use transaction_target::TransactionTarget;
 pub use transaction_v1::{
-    TransactionApproval, TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash,
-    TransactionV1Body, TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError,
-    TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
+    TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash, TransactionV1Body,
+    TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError, TransactionV1Error,
+    TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1::{TransactionV1Builder, TransactionV1BuilderError};
