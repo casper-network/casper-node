@@ -304,18 +304,20 @@ where
                             Effects::new()
                         }
                         Some(mut partial_chunks) => {
-                            debug!(%error, %id, "error fetching trie chunk");
                             partial_chunks.mark_peer_unreliable(error.peer());
                             // try with the next peer, if possible
                             match partial_chunks.next_peer().cloned() {
-                                Some(next_peer) => self.try_download_chunk(
-                                    effect_builder,
-                                    id,
-                                    next_peer,
-                                    partial_chunks,
-                                ),
+                                Some(next_peer) => {
+                                    debug!(%error, %id, "error fetching trie chunk, trying next");
+                                    self.try_download_chunk(
+                                        effect_builder,
+                                        id,
+                                        next_peer,
+                                        partial_chunks,
+                                    )
+                                }
                                 None => {
-                                    warn!(%id, "couldn't fetch chunk");
+                                    warn!(%id, %error, "couldn't fetch chunk");
                                     let faulty_peers = partial_chunks.unreliable_peers.clone();
                                     partial_chunks.respond(Err(Error::PeersExhausted(
                                         Box::new(error),
