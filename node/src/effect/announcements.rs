@@ -229,15 +229,15 @@ impl Display for TransactionAcceptorAnnouncement {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) enum DeployBufferAnnouncement {
+pub(crate) enum TransactionBufferAnnouncement {
     /// Hashes of the deploys that expired.
-    DeploysExpired(Vec<TransactionHash>),
+    TransactionsExpired(Vec<TransactionHash>),
 }
 
-impl Display for DeployBufferAnnouncement {
+impl Display for TransactionBufferAnnouncement {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            DeployBufferAnnouncement::DeploysExpired(hashes) => {
+            TransactionBufferAnnouncement::TransactionsExpired(hashes) => {
                 write!(f, "pruned hashes: {}", hashes.iter().join(", "))
             }
         }

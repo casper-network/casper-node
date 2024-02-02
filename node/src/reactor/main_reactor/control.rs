@@ -260,11 +260,11 @@ impl MainReactor {
             return Some(effects);
         }
 
-        // initialize deploy buffer from local storage; on a new node this is nearly a noop
+        // initialize transaction buffer from local storage; on a new node this is nearly a noop
         // but on a restarting node it can be relatively time consuming (depending upon TTL and
-        // how many deploys there have been within the TTL)
+        // how many transactions there have been within the TTL)
         if let Some(effects) = self
-            .deploy_buffer
+            .transaction_buffer
             .initialize_component(effect_builder, &self.storage)
         {
             return Some(effects);

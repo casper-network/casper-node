@@ -57,7 +57,6 @@ pub(crate) use components::{
     block_validator::Config as BlockValidatorConfig,
     consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
-    deploy_buffer::Config as DeployBufferConfig,
     diagnostics_port::Config as DiagnosticsPortConfig,
     event_stream_server::Config as EventStreamServerConfig,
     fetcher::Config as FetcherConfig,
@@ -66,6 +65,7 @@ pub(crate) use components::{
     rest_server::Config as RestServerConfig,
     rpc_server::{Config as RpcServerConfig, SpeculativeExecConfig},
     transaction_acceptor::Config as TransactionAcceptorConfig,
+    transaction_buffer::Config as TransactionBufferConfig,
     upgrade_watcher::Config as UpgradeWatcherConfig,
 };
 pub use components::{

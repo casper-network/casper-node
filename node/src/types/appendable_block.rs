@@ -22,7 +22,7 @@ pub(crate) enum AddError {
     #[error("would exceed maximum transfer count per block")]
     TransferCount,
     #[error("would exceed maximum deploy count per block")]
-    DeployCount,
+    TransactionCount,
     #[error("would exceed maximum approval count per block")]
     ApprovalCount,
     #[error("would exceed maximum gas per block")]
@@ -34,7 +34,7 @@ pub(crate) enum AddError {
     #[error("deploy has expired")]
     Expired,
     #[error("deploy is not valid in this context")]
-    InvalidDeploy,
+    InvalidTransaction,
 }
 
 /// A block that is still being added to. It keeps track of and enforces block limits.
@@ -107,7 +107,7 @@ impl AppendableBlock {
             )
             .is_err()
         {
-            return Err(AddError::InvalidDeploy);
+            return Err(AddError::InvalidTransaction);
         }
         if self.has_max_transfer_count() {
             return Err(AddError::TransferCount);
@@ -150,10 +150,10 @@ impl AppendableBlock {
             )
             .is_err()
         {
-            return Err(AddError::InvalidDeploy);
+            return Err(AddError::InvalidTransaction);
         }
         if self.has_max_deploy_count() {
-            return Err(AddError::DeployCount);
+            return Err(AddError::TransactionCount);
         }
         if self.would_exceed_approval_limits(transaction.approvals().len()) {
             return Err(AddError::ApprovalCount);
@@ -269,7 +269,7 @@ mod tests {
     use super::*;
 
     impl AppendableBlock {
-        pub(crate) fn deploy_and_transfer_set(&self) -> &HashSet<TransactionHash> {
+        pub(crate) fn transaction_and_transfer_set(&self) -> &HashSet<TransactionHash> {
             &self.deploy_and_transfer_set
         }
     }

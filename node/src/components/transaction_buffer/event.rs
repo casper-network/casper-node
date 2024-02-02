@@ -10,7 +10,7 @@ use casper_types::{Block, BlockV2, Transaction, TransactionId};
 
 use crate::{
     components::consensus::{ClContext, ProposedBlock},
-    effect::requests::DeployBufferRequest,
+    effect::requests::TransactionBufferRequest,
     types::FinalizedBlock,
 };
 
@@ -18,7 +18,7 @@ use crate::{
 pub(crate) enum Event {
     Initialize(Vec<Block>),
     #[from]
-    Request(DeployBufferRequest),
+    Request(TransactionBufferRequest),
     ReceiveTransactionGossiped(TransactionId),
     StoredTransaction(TransactionId, Option<Box<Transaction>>),
     BlockProposed(Box<ProposedBlock<ClContext>>),
@@ -34,18 +34,18 @@ impl Display for Event {
             Event::Initialize(blocks) => {
                 write!(formatter, "initialize, {} blocks", blocks.len())
             }
-            Event::Request(DeployBufferRequest::GetAppendableBlock { .. }) => {
+            Event::Request(TransactionBufferRequest::GetAppendableBlock { .. }) => {
                 write!(formatter, "get appendable block request")
             }
-            Event::ReceiveTransactionGossiped(deploy_id) => {
-                write!(formatter, "receive deploy gossiped {}", deploy_id)
+            Event::ReceiveTransactionGossiped(transaction_id) => {
+                write!(formatter, "receive transaction gossiped {}", transaction_id)
             }
-            Event::StoredTransaction(deploy_id, maybe_deploy) => {
+            Event::StoredTransaction(transaction_id, maybe_transaction) => {
                 write!(
                     formatter,
                     "{} stored: {:?}",
-                    deploy_id,
-                    maybe_deploy.is_some()
+                    transaction_id,
+                    maybe_transaction.is_some()
                 )
             }
             Event::BlockProposed(_) => {
@@ -65,7 +65,7 @@ impl Display for Event {
                 write!(formatter, "versioned block")
             }
             Event::Expire => {
-                write!(formatter, "expire deploys")
+                write!(formatter, "expire transactions")
             }
         }
     }

@@ -708,17 +708,17 @@ impl Display for MarkBlockCompletedRequest {
 }
 
 #[derive(DataSize, Debug, Serialize)]
-pub(crate) enum DeployBufferRequest {
+pub(crate) enum TransactionBufferRequest {
     GetAppendableBlock {
         timestamp: Timestamp,
         responder: Responder<AppendableBlock>,
     },
 }
 
-impl Display for DeployBufferRequest {
+impl Display for TransactionBufferRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            DeployBufferRequest::GetAppendableBlock { timestamp, .. } => {
+            TransactionBufferRequest::GetAppendableBlock { timestamp, .. } => {
                 write!(
                     formatter,
                     "request for appendable block at instant {}",

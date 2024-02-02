@@ -29,8 +29,8 @@ use crate::{
         Component, ComponentState, InitializedComponent,
     },
     effect::{
-        announcements::DeployBufferAnnouncement,
-        requests::{DeployBufferRequest, StorageRequest},
+        announcements::TransactionBufferAnnouncement,
+        requests::{StorageRequest, TransactionBufferRequest},
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
@@ -53,39 +53,36 @@ const COMPONENT_NAME: &str = "transaction_buffer";
 type FootprintAndApprovals = (TransactionFootprint, BTreeSet<TransactionApproval>);
 
 #[derive(DataSize, Debug)]
-pub(crate) struct DeployBuffer {
+pub(crate) struct TransactionBuffer {
     state: ComponentState,
     cfg: Config,
     transaction_config: TransactionConfig,
-    // Keeps track of all deploys the buffer is currently aware of.
+    // Keeps track of all transactions the buffer is currently aware of.
     //
     // `hold` and `dead` are used to filter it on demand as necessary.
     //
-    // The timestamp is the time when the deploy expires.
+    // The timestamp is the time when the transaction expires.
     // Expired items are removed via a self-perpetuating expire event.
     buffer: HashMap<TransactionHash, (Timestamp, Option<FootprintAndApprovals>)>,
-    // when a maybe-block is in flight, we pause inclusion
-    // of the deploys within it in other proposed blocks
-    // if the maybe-block becomes an actual block the
-    // deploy hashes will get put to self.dead
-    // otherwise, the hold will be released and the deploys
-    // will become eligible to propose again.
+    // When a maybe-block is in flight, we pause inclusion of the transactions within it in other
+    // proposed blocks. If the maybe-block becomes an actual block the transaction hashes will get
+    // put to self.dead, otherwise, the hold will be released and the transactions will become
+    // eligible to propose again.
     hold: BTreeMap<Timestamp, HashSet<TransactionHash>>,
-    // deploy_hashes that should not be proposed, ever
+    // Transaction hashes that should not be proposed, ever.
     dead: HashSet<TransactionHash>,
-    // deploy buffer metrics
     #[data_size(skip)]
     metrics: Metrics,
 }
 
-impl DeployBuffer {
-    /// Create a deploy buffer for fun and profit.
+impl TransactionBuffer {
+    /// Create a transaction buffer.
     pub(crate) fn new(
         transaction_config: TransactionConfig,
         cfg: Config,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
-        Ok(DeployBuffer {
+        Ok(TransactionBuffer {
             state: ComponentState::Uninitialized,
             cfg,
             transaction_config,
@@ -130,7 +127,7 @@ impl DeployBuffer {
             info!("initialized {}", <Self as Component<MainEvent>>::name(self));
             let event = Event::Initialize(blocks);
             return Some(smallvec![async {
-                smallvec![MainEvent::DeployBuffer(event)]
+                smallvec![MainEvent::TransactionBuffer(event)]
             }
             .boxed()]);
         }
@@ -150,7 +147,7 @@ impl DeployBuffer {
     /// Manages cache ejection.
     fn expire<REv>(&mut self, effect_builder: EffectBuilder<REv>) -> Effects<Event>
     where
-        REv: From<Event> + From<DeployBufferAnnouncement> + Send,
+        REv: From<Event> + From<TransactionBufferAnnouncement> + Send,
     {
         let now = Timestamp::now();
         let (buffer, mut freed): (HashMap<_, _>, _) = mem::take(&mut self.buffer)
@@ -158,25 +155,26 @@ impl DeployBuffer {
             .partition(|(_, (expiry_time, _))| *expiry_time >= now);
 
         if !freed.is_empty() {
-            info!("TransactionBuffer: purging {} deploy(s)", freed.len());
+            info!("TransactionBuffer: purging {} transaction(s)", freed.len());
         }
 
-        // clear expired deploy from all holds, then clear any entries that have no items remaining
-        self.hold.iter_mut().for_each(|(_, held_deploys)| {
-            held_deploys.retain(|deploy_hash| !freed.contains_key(deploy_hash))
+        // clear expired transaction from all holds, then clear any entries that have no items
+        // remaining
+        self.hold.iter_mut().for_each(|(_, held_transactions)| {
+            held_transactions.retain(|transaction_hash| !freed.contains_key(transaction_hash))
         });
         self.hold.retain(|_, remaining| !remaining.is_empty());
 
         // retain all those in `dead` which are not in `freed`, at the same time reducing `freed` to
-        // only those entries not also in `dead` - i.e. deploys which expired without being included
-        // in a block
+        // only those entries not also in `dead` - i.e. transactions which expired without being
+        // included in a block
         self.dead
-            .retain(|deploy_hash| freed.remove(deploy_hash).is_none());
+            .retain(|transaction_hash| freed.remove(transaction_hash).is_none());
         self.buffer = buffer;
 
         if !freed.is_empty() {
             info!(
-                "TransactionBuffer: expiring without executing {} deploy(s)",
+                "TransactionBuffer: expiring without executing {} transaction(s)",
                 freed.len()
             );
             debug!(
@@ -186,7 +184,7 @@ impl DeployBuffer {
         }
 
         let mut effects = effect_builder
-            .announce_expired_deploys(freed.keys().cloned().collect())
+            .announce_expired_transactions(freed.keys().cloned().collect())
             .ignore();
         effects.extend(
             effect_builder
@@ -197,7 +195,7 @@ impl DeployBuffer {
         effects
     }
 
-    fn register_deploy_gossiped<REv>(
+    fn register_transaction_gossiped<REv>(
         &mut self,
         transaction_id: TransactionId,
         effect_builder: EffectBuilder<REv>,
@@ -205,7 +203,7 @@ impl DeployBuffer {
     where
         REv: From<Event> + From<StorageRequest> + Send,
     {
-        debug!(%transaction_id, "TransactionBuffer: registering gossiped deploy");
+        debug!(%transaction_id, "TransactionBuffer: registering gossiped transaction");
         effect_builder
             .get_stored_transaction(transaction_id)
             .event(move |maybe_transaction| {
@@ -213,40 +211,44 @@ impl DeployBuffer {
             })
     }
 
-    /// Update buffer considering new stored deploy.
-    fn register_transaction(&mut self, deploy: Transaction) {
-        let deploy_hash = deploy.hash();
-        if deploy.verify().is_err() {
-            error!(%deploy_hash, "TransactionBuffer: invalid deploy must not be buffered");
+    /// Update buffer considering new stored transaction.
+    fn register_transaction(&mut self, transaction: Transaction) {
+        let transaction_hash = transaction.hash();
+        if transaction.verify().is_err() {
+            error!(%transaction_hash, "TransactionBuffer: invalid transaction must not be buffered");
             return;
         }
-        if self.dead.contains(&deploy_hash) {
-            info!(%deploy_hash, "TransactionBuffer: attempt to register already dead deploy");
+        if self.dead.contains(&transaction_hash) {
+            info!(%transaction_hash, "TransactionBuffer: attempt to register already dead transaction");
             return;
         }
-        if self.hold.values().any(|dhs| dhs.contains(&deploy_hash)) {
-            info!(%deploy_hash, "TransactionBuffer: attempt to register already held deploy");
+        if self
+            .hold
+            .values()
+            .any(|ths| ths.contains(&transaction_hash))
+        {
+            info!(%transaction_hash, "TransactionBuffer: attempt to register already held transaction");
             return;
         }
-        let footprint = match deploy.footprint() {
+        let footprint = match transaction.footprint() {
             Ok(footprint) => footprint,
             Err(err) => {
-                error!(%deploy_hash, %err, "TransactionBuffer: deploy footprint exceeds tolerances");
+                error!(%transaction_hash, %err, "TransactionBuffer: transaction footprint exceeds tolerances");
                 return;
             }
         };
-        let expiry_time = deploy.expires();
-        let approvals = deploy.approvals();
-        match self
-            .buffer
-            .insert(deploy_hash, (expiry_time, Some((footprint, approvals))))
-        {
+        let expiry_time = transaction.expires();
+        let approvals = transaction.approvals();
+        match self.buffer.insert(
+            transaction_hash,
+            (expiry_time, Some((footprint, approvals))),
+        ) {
             Some(prev) => {
-                warn!(%deploy_hash, ?prev, "TransactionBuffer: deploy upserted");
+                warn!(%transaction_hash, ?prev, "TransactionBuffer: transaction upserted");
             }
             None => {
-                debug!(%deploy_hash, "TransactionBuffer: new deploy buffered");
-                self.metrics.total_deploys.inc();
+                debug!(%transaction_hash, "TransactionBuffer: new transaction buffered");
+                self.metrics.total_transactions.inc();
             }
         }
     }
@@ -274,30 +276,32 @@ impl DeployBuffer {
                 ),
             );
         }
-        self.metrics.held_deploys.set(
+        self.metrics.held_transactions.set(
             self.hold
                 .values()
-                .map(|deploys| deploys.len())
+                .map(|transactions| transactions.len())
                 .sum::<usize>()
                 .try_into()
                 .unwrap_or(i64::MIN),
         );
     }
 
-    fn register_deploys<'a>(
+    fn register_transactions<'a>(
         &mut self,
         timestamp: Timestamp,
-        deploy_hashes: impl Iterator<Item = &'a TransactionHash>,
+        transaction_hashes: impl Iterator<Item = &'a TransactionHash>,
     ) {
         let expiry_timestamp = timestamp.saturating_add(self.transaction_config.max_ttl);
 
-        for deploy_hash in deploy_hashes {
-            if !self.buffer.contains_key(deploy_hash) {
-                self.buffer.insert(*deploy_hash, (expiry_timestamp, None));
+        for transaction_hash in transaction_hashes {
+            if !self.buffer.contains_key(transaction_hash) {
+                self.buffer
+                    .insert(*transaction_hash, (expiry_timestamp, None));
             }
-            self.dead.insert(*deploy_hash);
+            self.dead.insert(*transaction_hash);
         }
-        // deploys held for proposed blocks which did not get finalized in time are eligible again
+        // Transactions held for proposed blocks which did not get finalized in time are eligible
+        // again
         let (hold, _) = mem::take(&mut self.hold)
             .into_iter()
             .partition(|(ts, _)| *ts > timestamp);
@@ -310,7 +314,7 @@ impl DeployBuffer {
         let block_height = block.height();
         let timestamp = block.timestamp();
         debug!(%timestamp, "TransactionBuffer: register_block({}) timestamp finalized", block_height);
-        self.register_deploys(timestamp, block.all_transactions());
+        self.register_transactions(timestamp, block.all_transactions());
     }
 
     /// When initializing the buffer, register past blocks in order to provide replay protection.
@@ -328,10 +332,10 @@ impl DeployBuffer {
                     .deploy_and_transfer_hashes()
                     .map(|deploy_hash| TransactionHash::Deploy(*deploy_hash))
                     .collect();
-                self.register_deploys(timestamp, transaction_hashes.iter())
+                self.register_transactions(timestamp, transaction_hashes.iter())
             }
             Block::V2(v2_block) => {
-                self.register_deploys(timestamp, v2_block.all_transactions());
+                self.register_transactions(timestamp, v2_block.all_transactions());
             }
         }
     }
@@ -341,20 +345,20 @@ impl DeployBuffer {
         let block_height = finalized_block.height;
         let timestamp = finalized_block.timestamp;
         debug!(%timestamp, "TransactionBuffer: register_block_finalized({}) timestamp finalized", block_height);
-        self.register_deploys(timestamp, finalized_block.all_transactions());
+        self.register_transactions(timestamp, finalized_block.all_transactions());
     }
 
-    /// Returns eligible deploys that are buffered and not held or dead.
+    /// Returns eligible transactions that are buffered and not held or dead.
     fn proposable(&self) -> Vec<(TransactionHashWithApprovals, TransactionFootprint)> {
-        debug!("TransactionBuffer: getting proposable deploys");
+        debug!("TransactionBuffer: getting proposable transactions");
         self.buffer
             .iter()
-            .filter(|(dh, _)| !self.hold.values().any(|hs| hs.contains(dh)))
-            .filter(|(dh, _)| !self.dead.contains(dh))
-            .filter_map(|(dh, (_, maybe_data))| {
+            .filter(|(th, _)| !self.hold.values().any(|hs| hs.contains(th)))
+            .filter(|(th, _)| !self.dead.contains(th))
+            .filter_map(|(th, (_, maybe_data))| {
                 maybe_data.as_ref().map(|(footprint, approvals)| {
                     (
-                        TransactionHashWithApprovals::new_from_hash_and_approvals(dh, approvals),
+                        TransactionHashWithApprovals::new_from_hash_and_approvals(th, approvals),
                         footprint.clone(),
                     )
                 })
@@ -362,82 +366,83 @@ impl DeployBuffer {
             .collect()
     }
 
-    /// Returns a right-sized payload of deploys that can be proposed.
+    /// Returns a right-sized payload of transactions that can be proposed.
     fn appendable_block(&mut self, timestamp: Timestamp) -> AppendableBlock {
         let mut ret = AppendableBlock::new(self.transaction_config, timestamp);
         let mut holds = HashSet::new();
         let mut have_hit_transfer_limit = false;
-        let mut have_hit_deploy_limit = false;
+        let mut have_hit_transaction_limit = false;
         for (with_approvals, footprint) in self.proposable() {
             if footprint.is_transfer() && have_hit_transfer_limit {
                 continue;
             }
-            if !footprint.is_transfer() && have_hit_deploy_limit {
+            if !footprint.is_transfer() && have_hit_transaction_limit {
                 continue;
             }
-            let deploy_hash = with_approvals.transaction_hash();
+            let transaction_hash = with_approvals.transaction_hash();
             let has_multiple_approvals = with_approvals.approvals_count() > 1;
             match ret.add(with_approvals, &footprint) {
                 Ok(_) => {
-                    debug!(%deploy_hash, "TransactionBuffer: proposing deploy");
-                    holds.insert(deploy_hash);
+                    debug!(%transaction_hash, "TransactionBuffer: proposing transaction");
+                    holds.insert(transaction_hash);
                 }
                 Err(error) => {
                     match error {
                         AddError::Duplicate => {
-                            // it should be physically impossible for a duplicate deploy to
-                            // be in the deploy buffer, thus this should be unreachable
+                            // it should be physically impossible for a duplicate transaction to
+                            // be in the transaction buffer, thus this should be unreachable
                             error!(
-                                ?deploy_hash,
-                                "TransactionBuffer: duplicated deploy in deploy buffer"
+                                ?transaction_hash,
+                                "TransactionBuffer: duplicated transaction in transaction buffer"
                             );
-                            self.dead.insert(deploy_hash);
+                            self.dead.insert(transaction_hash);
                         }
                         AddError::Expired => {
                             info!(
-                                ?deploy_hash,
-                                "TransactionBuffer: expired deploy in deploy buffer"
+                                ?transaction_hash,
+                                "TransactionBuffer: expired transaction in transaction buffer"
                             );
-                            self.dead.insert(deploy_hash);
+                            self.dead.insert(transaction_hash);
                         }
-                        AddError::InvalidDeploy => {
-                            // It should not generally be possible for an invalid deploy to get
+                        AddError::InvalidTransaction => {
+                            // It should not generally be possible for an invalid transaction to get
                             // buffered in the first place, thus this should be unreachable.  There
-                            // is a small potential for a slightly future-dated deploy to be
+                            // is a small potential for a slightly future-dated transaction to be
                             // accepted (if within `timestamp_leeway`) and still be future-dated by
                             // the time we try and add it to a proposed block here.
                             warn!(
-                                ?deploy_hash,
-                                "TransactionBuffer: invalid deploy in deploy buffer"
+                                ?transaction_hash,
+                                "TransactionBuffer: invalid transaction in transaction buffer"
                             );
-                            self.dead.insert(deploy_hash);
+                            self.dead.insert(transaction_hash);
                         }
                         AddError::TransferCount => {
-                            if have_hit_deploy_limit {
+                            if have_hit_transaction_limit {
                                 info!(
-                                    ?deploy_hash,
-                                    "TransactionBuffer: block filled with transfers and deploys"
+                                    ?transaction_hash,
+                                    "TransactionBuffer: block filled with transfers and transactions"
                                 );
                                 break;
                             }
                             have_hit_transfer_limit = true;
                         }
-                        AddError::DeployCount => {
+                        AddError::TransactionCount => {
                             if have_hit_transfer_limit {
                                 info!(
-                                    ?deploy_hash,
-                                    "TransactionBuffer: block filled with deploys and transfers"
+                                    ?transaction_hash,
+                                    "TransactionBuffer: block filled with transactions and transfers"
                                 );
                                 break;
                             }
-                            have_hit_deploy_limit = true;
+                            have_hit_transaction_limit = true;
                         }
                         AddError::ApprovalCount if has_multiple_approvals => {
-                            // keep iterating, we can maybe fit in a deploy with fewer approvals
+                            // keep iterating, we can maybe fit in a transaction with fewer
+                            // approvals
                         }
                         AddError::ApprovalCount | AddError::GasLimit | AddError::BlockSize => {
                             info!(
-                                ?deploy_hash,
+                                ?transaction_hash,
                                 %error,
                                 "TransactionBuffer: a block limit has been reached"
                             );
@@ -449,7 +454,7 @@ impl DeployBuffer {
             }
         }
 
-        // put a hold on all proposed deploys / transfers and update metrics
+        // Put a hold on all proposed transactions / transfers and update metrics
         match self.hold.entry(timestamp) {
             btree_map::Entry::Vacant(entry) => {
                 entry.insert(holds);
@@ -465,7 +470,7 @@ impl DeployBuffer {
             ret,
             self.hold
                 .values()
-                .map(|deploys| deploys.len())
+                .map(|transactions| transactions.len())
                 .sum::<usize>(),
             self.dead.len(),
             self.buffer.len()
@@ -474,30 +479,30 @@ impl DeployBuffer {
         ret
     }
 
-    /// Updates all deploy count metrics based on the size of the internal structs.
+    /// Updates all transaction count metrics based on the size of the internal structs.
     fn update_all_metrics(&mut self) {
         // if number of elements is too high to fit, we overflow the metric
         // intentionally in order to get some indication that something is wrong.
-        self.metrics.held_deploys.set(
+        self.metrics.held_transactions.set(
             self.hold
                 .values()
-                .map(|deploys| deploys.len())
+                .map(|transactions| transactions.len())
                 .sum::<usize>()
                 .try_into()
                 .unwrap_or(i64::MIN),
         );
         self.metrics
-            .dead_deploys
+            .dead_transactions
             .set(self.dead.len().try_into().unwrap_or(i64::MIN));
         self.metrics
-            .total_deploys
+            .total_transactions
             .set(self.buffer.len().try_into().unwrap_or(i64::MIN));
     }
 }
 
-impl<REv> InitializedComponent<REv> for DeployBuffer
+impl<REv> InitializedComponent<REv> for TransactionBuffer
 where
-    REv: From<Event> + From<DeployBufferAnnouncement> + From<StorageRequest> + Send + 'static,
+    REv: From<Event> + From<TransactionBufferAnnouncement> + From<StorageRequest> + Send + 'static,
 {
     fn state(&self) -> &ComponentState {
         &self.state
@@ -514,9 +519,9 @@ where
     }
 }
 
-impl<REv> Component<REv> for DeployBuffer
+impl<REv> Component<REv> for TransactionBuffer
 where
-    REv: From<Event> + From<DeployBufferAnnouncement> + From<StorageRequest> + Send + 'static,
+    REv: From<Event> + From<TransactionBufferAnnouncement> + From<StorageRequest> + Send + 'static,
 {
     type Event = Event;
 
@@ -585,7 +590,7 @@ where
                     );
                     Effects::new()
                 }
-                Event::Request(DeployBufferRequest::GetAppendableBlock {
+                Event::Request(TransactionBufferRequest::GetAppendableBlock {
                     timestamp,
                     responder,
                 }) => responder.respond(self.appendable_block(timestamp)).ignore(),
@@ -605,16 +610,16 @@ where
                     self.register_block_proposed(*proposed);
                     Effects::new()
                 }
-                Event::ReceiveTransactionGossiped(deploy_id) => {
-                    self.register_deploy_gossiped(deploy_id, effect_builder)
+                Event::ReceiveTransactionGossiped(transaction_id) => {
+                    self.register_transaction_gossiped(transaction_id, effect_builder)
                 }
-                Event::StoredTransaction(deploy_id, maybe_transaction) => {
+                Event::StoredTransaction(transaction_id, maybe_transaction) => {
                     match maybe_transaction {
-                        Some(deploy) => {
-                            self.register_transaction(*deploy);
+                        Some(transaction) => {
+                            self.register_transaction(*transaction);
                         }
                         None => {
-                            warn!("cannot register un-stored deploy({})", deploy_id);
+                            warn!("cannot register un-stored transaction({})", transaction_id);
                         }
                     }
                     Effects::new()

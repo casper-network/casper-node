@@ -21,7 +21,7 @@ pub(super) struct MemoryMetrics {
     mem_deploy_gossiper: IntGauge,
     mem_finality_signature_gossiper: IntGauge,
     mem_block_gossiper: IntGauge,
-    mem_deploy_buffer: IntGauge,
+    mem_transaction_buffer: IntGauge,
     mem_block_validator: IntGauge,
     mem_sync_leaper: IntGauge,
     mem_deploy_acceptor: IntGauge,
@@ -69,8 +69,10 @@ impl MemoryMetrics {
         )?;
         let mem_block_gossiper =
             IntGauge::new("mem_block_gossiper", "block gossiper memory usage in bytes")?;
-        let mem_deploy_buffer =
-            IntGauge::new("mem_deploy_buffer", "deploy buffer memory usage in bytes")?;
+        let mem_transaction_buffer = IntGauge::new(
+            "mem_transaction_buffer",
+            "transaction buffer memory usage in bytes",
+        )?;
         let mem_block_validator = IntGauge::new(
             "mem_block_validator",
             "block validator memory usage in bytes",
@@ -120,7 +122,7 @@ impl MemoryMetrics {
         registry.register(Box::new(mem_deploy_gossiper.clone()))?;
         registry.register(Box::new(mem_finality_signature_gossiper.clone()))?;
         registry.register(Box::new(mem_block_gossiper.clone()))?;
-        registry.register(Box::new(mem_deploy_buffer.clone()))?;
+        registry.register(Box::new(mem_transaction_buffer.clone()))?;
         registry.register(Box::new(mem_block_validator.clone()))?;
         registry.register(Box::new(mem_sync_leaper.clone()))?;
         registry.register(Box::new(mem_deploy_acceptor.clone()))?;
@@ -145,7 +147,7 @@ impl MemoryMetrics {
             mem_deploy_gossiper,
             mem_finality_signature_gossiper,
             mem_block_gossiper,
-            mem_deploy_buffer,
+            mem_transaction_buffer,
             mem_block_validator,
             mem_sync_leaper,
             mem_deploy_acceptor,
@@ -176,7 +178,7 @@ impl MemoryMetrics {
         let finality_signature_gossiper =
             reactor.finality_signature_gossiper.estimate_heap_size() as i64;
         let block_gossiper = reactor.block_gossiper.estimate_heap_size() as i64;
-        let deploy_buffer = reactor.deploy_buffer.estimate_heap_size() as i64;
+        let transaction_buffer = reactor.transaction_buffer.estimate_heap_size() as i64;
         let block_validator = reactor.block_validator.estimate_heap_size() as i64;
         let sync_leaper = reactor.sync_leaper.estimate_heap_size() as i64;
         let deploy_acceptor = reactor.transaction_acceptor.estimate_heap_size() as i64;
@@ -198,7 +200,7 @@ impl MemoryMetrics {
             + deploy_gossiper
             + finality_signature_gossiper
             + block_gossiper
-            + deploy_buffer
+            + transaction_buffer
             + block_validator
             + sync_leaper
             + deploy_acceptor
@@ -220,7 +222,7 @@ impl MemoryMetrics {
         self.mem_finality_signature_gossiper
             .set(finality_signature_gossiper);
         self.mem_block_gossiper.set(block_gossiper);
-        self.mem_deploy_buffer.set(deploy_buffer);
+        self.mem_transaction_buffer.set(transaction_buffer);
         self.mem_block_validator.set(block_validator);
         self.mem_sync_leaper.set(sync_leaper);
         self.mem_deploy_acceptor.set(deploy_acceptor);
@@ -250,7 +252,7 @@ impl MemoryMetrics {
                %deploy_gossiper,
                %finality_signature_gossiper,
                %block_gossiper,
-               %deploy_buffer,
+               %transaction_buffer,
                %block_validator,
                %sync_leaper,
                %deploy_acceptor,
@@ -280,7 +282,7 @@ impl Drop for MemoryMetrics {
         unregister_metric!(self.registry, self.mem_deploy_gossiper);
         unregister_metric!(self.registry, self.mem_finality_signature_gossiper);
         unregister_metric!(self.registry, self.mem_block_gossiper);
-        unregister_metric!(self.registry, self.mem_deploy_buffer);
+        unregister_metric!(self.registry, self.mem_transaction_buffer);
         unregister_metric!(self.registry, self.mem_block_validator);
         unregister_metric!(self.registry, self.mem_sync_leaper);
         unregister_metric!(self.registry, self.mem_deploy_acceptor);
