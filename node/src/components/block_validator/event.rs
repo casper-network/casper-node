@@ -5,7 +5,7 @@ use casper_types::{FinalitySignature, FinalitySignatureId, Transaction};
 use crate::{
     components::fetcher::FetchResult,
     effect::requests::BlockValidationRequest,
-    types::{BlockWithMetadata, DeployOrTransactionHash, DeployOrTransferHash},
+    types::{BlockWithMetadata, DeployOrTransactionHash},
 };
 
 #[derive(Debug, From, Display)]
