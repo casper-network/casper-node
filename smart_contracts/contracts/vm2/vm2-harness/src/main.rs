@@ -116,9 +116,6 @@ impl Greeter {
             Ok(())
         }
     }
-
-    #[casper(selector = 0xBADC0D3)]
-    pub fn custom_selector(&self) {}
 }
 
 struct TypedCall<Args: BorshSerialize, Ret: BorshDeserialize> {
@@ -388,9 +385,6 @@ mod tests {
             manifest_entrypoints.iter().map(|e| e.selector).collect();
 
         assert_eq!(schema_mapping["constructor_with_args"], 4116419170,);
-
-        assert_eq!(schema_mapping["custom_selector"], 0xBADC0D3,);
-        assert!(manifest_selectors.contains(&0xBADC0D3));
         assert!(manifest_selectors.contains(&4116419170));
     }
 }

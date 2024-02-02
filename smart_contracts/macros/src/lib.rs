@@ -19,8 +19,6 @@ struct MethodAttribute {
     constructor: bool,
     #[darling(default)]
     revert_on_error: bool,
-    #[darling(default)]
-    selector: Option<u32>,
 }
 
 #[proc_macro_derive(Contract)]
@@ -221,11 +219,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                             let name_str = name.to_string();
 
-                            let selector = if let Some(selector) = method_attribute.selector {
-                                selector
-                            } else {
-                                compute_selector(name_str.as_bytes()).get()
-                            };
+                            let selector = compute_selector(name_str.as_bytes()).get();
 
                             manifest_entry_points.push(quote! {
                                 {
@@ -338,11 +332,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                     // for arg in &entry_point
                     let bits = flag_value.bits();
 
-                    let selector = if let Some(selector) = method_attribute.selector {
-                        selector
-                    } else {
-                        compute_selector(func_name.to_string().as_bytes()).get()
-                    };
+                    let selector = compute_selector(func_name.to_string().as_bytes()).get();
 
                     defs.push(quote! {
                         casper_sdk::schema::SchemaEntryPoint {
