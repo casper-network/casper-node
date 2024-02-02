@@ -251,8 +251,9 @@ mod tests {
     const BOB: Address = [2; 32];
 
     #[test]
-    fn abi() {
+    fn should_generate_abi() {
         dbg!(CEP18::definition());
+        // add verification of ABI
     }
 
     #[test]

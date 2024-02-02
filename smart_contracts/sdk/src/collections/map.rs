@@ -11,7 +11,7 @@ use std::marker::PhantomData;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub struct Map<K, V> {
-    pub(crate) prefix: String,
+    pub(crate) name: String,
     pub(crate) _marker: PhantomData<(K, V)>,
 }
 
@@ -27,16 +27,16 @@ where
     K: BorshSerialize,
     V: BorshSerialize + BorshDeserialize,
 {
-    pub fn new<S: Into<String>>(prefix: S) -> Self {
+    pub fn new<S: Into<String>>(name: S) -> Self {
         Self {
-            prefix: prefix.into(),
+            name: name.into(),
             _marker: PhantomData,
         }
     }
 
     pub fn insert(&mut self, key: &K, value: &V) {
         let mut context_key = Vec::new();
-        context_key.extend(self.prefix.as_bytes());
+        context_key.extend(self.name.as_bytes());
         // NOTE: We may want to create new keyspace for a hashed context element to avoid hashing in
         // the wasm.
         key.serialize(&mut context_key).unwrap();
@@ -45,7 +45,7 @@ where
     }
 
     pub fn get(&self, key: &K) -> Option<V> {
-        let mut key_bytes = self.prefix.as_bytes().to_owned();
+        let mut key_bytes = self.name.as_bytes().to_owned();
         key.serialize(&mut key_bytes).unwrap();
         let prefix = Keyspace::Context(&key_bytes);
         match read_vec(prefix) {
