@@ -7,6 +7,7 @@ use casper_types::{
     DeployApproval, DeployHash, Transaction, TransactionApproval, TransactionHash,
     TransactionV1Approval, TransactionV1Hash,
 };
+use tracing::error;
 
 use super::{FinalizedApprovals, FinalizedDeployApprovals, FinalizedTransactionV1Approvals};
 
@@ -41,7 +42,6 @@ impl TransactionHashWithApprovals {
         }
     }
 
-    // TODO[RC]: Rework so the panics are impossible
     pub(crate) fn new_from_hash_and_approvals(
         hash: &TransactionHash,
         approvals: &BTreeSet<TransactionApproval>,
@@ -50,9 +50,12 @@ impl TransactionHashWithApprovals {
             TransactionHash::Deploy(deploy_hash) => {
                 let approvals: BTreeSet<_> = approvals
                     .iter()
-                    .map(|approval| match approval {
-                        TransactionApproval::Deploy(approval) => approval.clone(),
-                        TransactionApproval::V1(_) => panic!("Unexpected Deploy with V1 approval"),
+                    .filter_map(|approval| match approval {
+                        TransactionApproval::Deploy(approval) => Some(approval.clone()),
+                        TransactionApproval::V1(_) => {
+                            error!("can not add 'transaction' approval to 'legacy deploy'");
+                            None
+                        }
                     })
                     .collect();
                 Self::new_deploy(*deploy_hash, approvals)
@@ -60,14 +63,14 @@ impl TransactionHashWithApprovals {
             TransactionHash::V1(v1_hash) => {
                 let approvals: BTreeSet<_> = approvals
                     .iter()
-                    .map(|approval| match approval {
+                    .filter_map(|approval| match approval {
                         TransactionApproval::Deploy(_) => {
-                            panic!("Unexpected Transaction with Deploy approval")
+                            error!("can not add 'legacy deploy' approval to 'transaction'");
+                            None
                         }
-                        TransactionApproval::V1(approval) => approval.clone(),
+                        TransactionApproval::V1(approval) => Some(approval.clone()),
                     })
                     .collect();
-
                 Self::new_v1(*v1_hash, approvals.clone())
             }
         }
