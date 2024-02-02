@@ -18,13 +18,7 @@ pub(crate) enum DeployOrTransactionHash {
 impl DeployOrTransactionHash {
     pub(crate) fn new(transaction: &Transaction) -> Self {
         match transaction {
-            Transaction::Deploy(deploy) => {
-                if deploy.session().is_transfer() {
-                    DeployOrTransferHash::Transfer(*deploy.hash()).into()
-                } else {
-                    DeployOrTransferHash::Deploy(*deploy.hash()).into()
-                }
-            }
+            Transaction::Deploy(deploy) => DeployOrTransferHash::new(deploy).into(),
             Transaction::V1(transaction) => Self::V1(*transaction.hash()),
         }
     }

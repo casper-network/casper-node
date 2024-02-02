@@ -7,12 +7,6 @@ mod transaction_v1;
 mod transaction_with_finalized_approvals;
 mod typed_transaction_hash;
 
-use std::hash::Hash;
-
-use datasize::DataSize;
-use derive_more::Display;
-
-use casper_types::{Transaction, TransactionHash, TransactionV1Hash};
 pub(crate) use deploy::{
     DeployOrTransferHash, DeployWithFinalizedApprovals, FinalizedDeployApprovals, LegacyDeploy,
 };

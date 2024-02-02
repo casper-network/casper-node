@@ -174,10 +174,7 @@ fn register_block_with_valid_deploys() {
     .unwrap();
 
     let deploys = create_valid_deploys(&mut rng, 10, DeployType::Random, None, None);
-    let txns: Vec<_> = deploys
-        .iter()
-        .map(|deploy| Transaction::from(deploy.clone()))
-        .collect();
+    let txns: Vec<_> = deploys.to_vec();
     let era_id = EraId::new(rng.gen_range(0..6));
     let height = era_id.value() * 10 + rng.gen_range(0..10);
     let is_switch = rng.gen_bool(0.1);
@@ -203,10 +200,7 @@ fn register_finalized_block_with_valid_deploys() {
     .unwrap();
 
     let deploys = create_valid_deploys(&mut rng, 10, DeployType::Random, None, None);
-    let txns: Vec<_> = deploys
-        .iter()
-        .map(|deploy| Transaction::from(deploy.clone()))
-        .collect();
+    let txns: Vec<_> = deploys.to_vec();
     let block = FinalizedBlock::random(&mut rng, &txns);
 
     deploy_buffer.register_block_finalized(&block);
@@ -232,10 +226,7 @@ fn get_proposable_deploys() {
 
     // Create a block with some deploys and register it with the deploy_buffer
     let block_deploys = create_valid_deploys(&mut rng, 10, DeployType::Random, None, None);
-    let txns: Vec<_> = block_deploys
-        .iter()
-        .map(|deploy| Transaction::from(deploy.clone()))
-        .collect();
+    let txns: Vec<_> = block_deploys.to_vec();
     let block = FinalizedBlock::random(&mut rng, &txns);
     deploy_buffer.register_block_finalized(&block);
     assert_container_sizes(
@@ -390,10 +381,7 @@ fn register_deploys_and_blocks() {
 
     // register a block with deploys
     let block_deploys = create_valid_deploys(&mut rng, 5, DeployType::Random, None, None);
-    let txns: Vec<_> = block_deploys
-        .iter()
-        .map(|deploy| Transaction::from(deploy.clone()))
-        .collect();
+    let txns: Vec<_> = block_deploys.to_vec();
     let era = rng.gen_range(0..6);
     let height = era * 10 + rng.gen_range(0..10);
     let is_switch = rng.gen_bool(0.1);
@@ -560,10 +548,7 @@ async fn expire_deploys_and_check_announcement() {
 
     // include the last expired deploy in a block and register it
     let era = rng.gen_range(0..6);
-    let expired_txns: Vec<_> = expired_deploys
-        .iter()
-        .map(|deploy| Transaction::from(deploy.clone()))
-        .collect();
+    let expired_txns: Vec<_> = expired_deploys.to_vec();
     let block = TestBlockBuilder::new()
         .era(era)
         .height(era * 10 + rng.gen_range(0..10))

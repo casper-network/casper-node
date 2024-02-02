@@ -71,7 +71,7 @@ impl TransactionHashWithApprovals {
                         TransactionApproval::V1(approval) => Some(approval.clone()),
                     })
                     .collect();
-                Self::new_v1(*v1_hash, approvals.clone())
+                Self::new_v1(*v1_hash, approvals)
             }
         }
     }
@@ -118,17 +118,14 @@ impl TransactionHashWithApprovals {
     }
 
     /// Returns the approvals.
-    // TODO[RC]: It's been returning a reference previously
     pub(crate) fn approvals(&self) -> BTreeSet<TransactionApproval> {
         match self {
-            TransactionHashWithApprovals::Deploy {
-                deploy_hash,
-                approvals,
-            } => approvals.into_iter().map(Into::into).collect(),
-            TransactionHashWithApprovals::V1 {
-                transaction_hash,
-                approvals,
-            } => approvals.into_iter().map(Into::into).collect(),
+            TransactionHashWithApprovals::Deploy { approvals, .. } => {
+                approvals.iter().map(Into::into).collect()
+            }
+            TransactionHashWithApprovals::V1 { approvals, .. } => {
+                approvals.iter().map(Into::into).collect()
+            }
         }
     }
 }

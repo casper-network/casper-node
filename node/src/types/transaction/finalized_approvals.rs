@@ -1,3 +1,4 @@
+#[cfg(test)]
 use std::collections::BTreeSet;
 
 use datasize::DataSize;

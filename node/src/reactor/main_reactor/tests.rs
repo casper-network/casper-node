@@ -49,11 +49,7 @@ use crate::{
     testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
     },
-    types::{
-        AvailableBlockRange, BlockPayload, DeployOrTransactionHash, DeployOrTransferHash,
-        DeployWithFinalizedApprovals, ExitCode, NodeId, SyncHandling,
-        TransactionWithFinalizedApprovals,
-    },
+    types::{AvailableBlockRange, BlockPayload, ExitCode, NodeId, SyncHandling},
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };
@@ -1225,7 +1221,7 @@ async fn should_store_finalized_approvals() {
     let deploy_hash = deploy_alice_bob.hash();
 
     for runner in fixture.network.runners_mut() {
-        let deploy = if runner.main_reactor().consensus().public_key() == &alice_public_key {
+        let transaction = if runner.main_reactor().consensus().public_key() == &alice_public_key {
             // Alice will propose the deploy signed by Alice and Bob.
             deploy_alice_bob.clone()
         } else {
@@ -1235,17 +1231,14 @@ async fn should_store_finalized_approvals() {
         runner
             .process_injected_effects(|effect_builder| {
                 effect_builder
-                    .put_transaction_to_storage(Transaction::from(deploy.clone()))
+                    .put_transaction_to_storage(transaction.clone())
                     .ignore()
             })
             .await;
         runner
             .process_injected_effects(|effect_builder| {
                 effect_builder
-                    .announce_new_transaction_accepted(
-                        Arc::new(Transaction::from(deploy)),
-                        Source::Client,
-                    )
+                    .announce_new_transaction_accepted(Arc::new(transaction), Source::Client)
                     .ignore()
             })
             .await;

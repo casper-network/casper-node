@@ -23,8 +23,7 @@ use tracing::{debug, error, trace, warn};
 
 use casper_types::{
     Chainspec, EraId, FinalitySignature, FinalitySignatureId, PublicKey, RewardedSignatures,
-    SingleBlockRewardedSignatures, Timestamp, Transaction, TransactionApprovalsHash,
-    TransactionHash, TransactionId,
+    SingleBlockRewardedSignatures, Timestamp, Transaction, TransactionApprovalsHash, TransactionId,
 };
 
 use crate::{
@@ -40,8 +39,8 @@ use crate::{
     },
     fatal,
     types::{
-        BlockWithMetadata, DeployOrTransactionHash, DeployOrTransferHash, NodeId,
-        TransactionHashWithApprovals, ValidatorMatrix,
+        BlockWithMetadata, DeployOrTransactionHash, NodeId, TransactionHashWithApprovals,
+        ValidatorMatrix,
     },
     NodeRng,
 };
@@ -530,7 +529,7 @@ impl BlockValidator {
                     let responders = self
                         .validation_states
                         .values_mut()
-                        .flat_map(|state| state.try_mark_invalid(&dt_hash.into()));
+                        .flat_map(|state| state.try_mark_invalid(&dt_hash));
                     return respond(false, responders);
                 }
                 let deploy_footprint = match item.footprint() {
@@ -546,11 +545,10 @@ impl BlockValidator {
                         let responders = self
                             .validation_states
                             .values_mut()
-                            .flat_map(|state| state.try_mark_invalid(&dt_hash.into()));
+                            .flat_map(|state| state.try_mark_invalid(&dt_hash));
                         return respond(false, responders);
                     }
-                }
-                .into();
+                };
 
                 let mut effects = Effects::new();
                 for state in self.validation_states.values_mut() {
@@ -611,7 +609,7 @@ impl BlockValidator {
                         let responders = self
                             .validation_states
                             .values_mut()
-                            .flat_map(|state| state.try_mark_invalid(&dt_hash.into()));
+                            .flat_map(|state| state.try_mark_invalid(&dt_hash));
                         respond(false, responders)
                     }
                 }

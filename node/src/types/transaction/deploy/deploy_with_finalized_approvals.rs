@@ -1,12 +1,7 @@
-#[cfg(test)]
-use std::collections::BTreeSet;
-
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use casper_types::Deploy;
-#[cfg(test)]
-use casper_types::DeployApproval;
 
 use crate::types::FinalizedDeployApprovals;
 
@@ -53,15 +48,5 @@ impl DeployWithFinalizedApprovals {
     /// Extracts the original deploy by discarding the finalized approvals.
     pub(crate) fn discard_finalized_approvals(self) -> Deploy {
         self.deploy
-    }
-
-    #[cfg(test)]
-    pub(crate) fn original_approvals(&self) -> &BTreeSet<DeployApproval> {
-        self.deploy.approvals()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn finalized_approvals(&self) -> Option<&FinalizedDeployApprovals> {
-        self.finalized_approvals.as_ref()
     }
 }

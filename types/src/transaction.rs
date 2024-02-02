@@ -201,9 +201,6 @@ impl Transaction {
 
     /// Returns the `Approval`s for this transaction.
     pub fn approvals(&self) -> BTreeSet<TransactionApproval> {
-        // TODO[RC] - check for unnecessary clones (previously the return type was &)
-        // This causes another possibly unnecessary conversion in
-        // TransactionHashWithApprovals::new_from_hash_and_approvals()
         match self {
             Transaction::Deploy(deploy) => deploy.approvals().iter().map(Into::into).collect(),
             Transaction::V1(v1) => v1.approvals().iter().map(Into::into).collect(),

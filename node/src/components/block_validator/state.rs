@@ -7,8 +7,6 @@ use std::{
 use datasize::DataSize;
 use tracing::{debug, error, warn};
 
-#[cfg(test)]
-use casper_types::DeployHash;
 use casper_types::{
     Chainspec, DeployApprovalsHash, FinalitySignatureId, Timestamp, TransactionApproval,
     TransactionApprovalsHash, TransactionFootprint, TransactionHash, TransactionV1ApprovalsHash,
@@ -158,7 +156,7 @@ impl BlockValidationState {
                     transaction_hash, ..
                 } => DeployOrTransactionHash::from(*transaction_hash),
             };
-            (dt_hash, dhwa.approvals().clone())
+            (dt_hash, dhwa.approvals())
         });
         let transfers_iter = block.transfers().into_iter().map(|dhwa| {
             let dt_hash = match &dhwa {
@@ -169,7 +167,7 @@ impl BlockValidationState {
                     transaction_hash, ..
                 } => DeployOrTransactionHash::from(*transaction_hash),
             };
-            (dt_hash, dhwa.approvals().clone())
+            (dt_hash, dhwa.approvals())
         });
         for (dt_hash, approvals) in deploys_iter.chain(transfers_iter) {
             let approval_info: ApprovalInfo = match dt_hash {
@@ -596,8 +594,6 @@ impl Display for BlockValidationState {
 
 #[cfg(test)]
 mod tests {
-    use std::hash::Hash;
-
     use futures::channel::oneshot;
     use rand::Rng;
 
@@ -1104,7 +1100,7 @@ mod tests {
         // Add an invalid (future-dated) deploy to the fixture.
         let invalid_deploy =
             new_deploy(&mut fixture.rng, Timestamp::MAX, TimeDiff::from_seconds(1));
-        let invalid_deploy_hash = invalid_deploy.hash().clone();
+        let invalid_deploy_hash = *invalid_deploy.hash();
         let invalid_deploy = Transaction::from(invalid_deploy);
         fixture.deploys.push(invalid_deploy.clone());
         let (mut state, _maybe_responder) = fixture.new_state(2, 2);

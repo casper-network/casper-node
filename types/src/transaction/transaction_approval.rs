@@ -1,15 +1,10 @@
-use alloc::vec::Vec;
-
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    DeployApproval, TransactionV1Approval,
-};
+use crate::{DeployApproval, TransactionV1Approval};
 
 /// A struct containing a signature of a transaction hash and the public key of the signer.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]

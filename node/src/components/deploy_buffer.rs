@@ -199,17 +199,17 @@ impl DeployBuffer {
 
     fn register_deploy_gossiped<REv>(
         &mut self,
-        deploy_id: TransactionId,
+        transaction_id: TransactionId,
         effect_builder: EffectBuilder<REv>,
     ) -> Effects<Event>
     where
         REv: From<Event> + From<StorageRequest> + Send,
     {
-        debug!(%deploy_id, "TransactionBuffer: registering gossiped deploy");
+        debug!(%transaction_id, "TransactionBuffer: registering gossiped deploy");
         effect_builder
-            .get_stored_transaction(TransactionId::from(deploy_id))
+            .get_stored_transaction(transaction_id)
             .event(move |maybe_transaction| {
-                Event::StoredTransaction(deploy_id, maybe_transaction.map(Box::new))
+                Event::StoredTransaction(transaction_id, maybe_transaction.map(Box::new))
             })
     }
 
@@ -236,7 +236,7 @@ impl DeployBuffer {
             }
         };
         let expiry_time = deploy.expires();
-        let approvals = deploy.approvals().clone();
+        let approvals = deploy.approvals();
         match self
             .buffer
             .insert(deploy_hash, (expiry_time, Some((footprint, approvals))))
@@ -326,7 +326,7 @@ impl DeployBuffer {
             Block::V1(v1_block) => {
                 let transaction_hashes: Vec<TransactionHash> = v1_block
                     .deploy_and_transfer_hashes()
-                    .map(|deploy_hash| TransactionHash::Deploy(deploy_hash.clone()))
+                    .map(|deploy_hash| TransactionHash::Deploy(*deploy_hash))
                     .collect();
                 self.register_deploys(timestamp, transaction_hashes.iter())
             }

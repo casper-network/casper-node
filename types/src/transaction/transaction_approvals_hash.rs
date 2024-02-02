@@ -1,17 +1,12 @@
-use alloc::{collections::BTreeSet, vec::Vec};
+use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-#[cfg(doc)]
-use super::TransactionV1;
 use super::{DeployApprovalsHash, TransactionV1ApprovalsHash};
-use crate::{
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest,
-};
+use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
 const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;

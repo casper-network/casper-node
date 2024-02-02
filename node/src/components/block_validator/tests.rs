@@ -10,9 +10,9 @@ use rand::Rng;
 
 use casper_types::{
     bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng,
-    Chainspec, ChainspecRawBytes, Deploy, DeployHash, ExecutableDeployItem,
-    InitiatorAddrAndSecretKey, PricingMode, RuntimeArgs, SecretKey, TimeDiff, Transaction,
-    TransactionHash, TransactionTarget, TransactionV1, TransactionV1Body, U512,
+    Chainspec, ChainspecRawBytes, Deploy, ExecutableDeployItem, InitiatorAddrAndSecretKey,
+    PricingMode, RuntimeArgs, SecretKey, TimeDiff, Transaction, TransactionHash, TransactionTarget,
+    TransactionV1, TransactionV1Body, U512,
 };
 
 use crate::{
@@ -88,9 +88,9 @@ impl MockReactor {
                     .iter()
                     .find_position(|&deploy| deploy.clone().fetch_id() == id)
                 {
-                    let deploy = deploys_to_fetch.remove(position);
+                    let transaction = deploys_to_fetch.remove(position);
                     let response = FetchedData::FromPeer {
-                        item: Box::new(Transaction::from(deploy)),
+                        item: Box::new(transaction),
                         peer,
                     };
                     responder.respond(Ok(response)).await;
@@ -112,11 +112,11 @@ impl MockReactor {
 }
 
 pub(super) enum NewTransactionKind {
-    LegacyDeploy,
-    LegacyTransfer,
+    // TODO[RC]: Remove if we're not concerned with these variants in BlockValidator.
+    _LegacyDeploy,
+    _LegacyTransfer,
     V1Transaction,
     V1Native,
-    Random,
 }
 
 pub(super) fn new_proposed_block(
@@ -220,21 +220,11 @@ pub(super) fn new_transaction(
     rng: &mut TestRng,
     timestamp: Timestamp,
     ttl: TimeDiff,
-    mut kind: NewTransactionKind,
+    kind: NewTransactionKind,
 ) -> Transaction {
-    if matches!(kind, NewTransactionKind::Random) {
-        kind = match rng.gen_range(0..=3) {
-            0 => NewTransactionKind::LegacyDeploy,
-            1 => NewTransactionKind::LegacyTransfer,
-            2 => NewTransactionKind::V1Native,
-            3 => NewTransactionKind::V1Transaction,
-            _ => unreachable!(),
-        }
-    }
-
     match kind {
-        NewTransactionKind::LegacyDeploy => Transaction::Deploy(new_deploy(rng, timestamp, ttl)),
-        NewTransactionKind::LegacyTransfer => {
+        NewTransactionKind::_LegacyDeploy => Transaction::Deploy(new_deploy(rng, timestamp, ttl)),
+        NewTransactionKind::_LegacyTransfer => {
             Transaction::Deploy(new_transfer(rng, timestamp, ttl))
         }
         NewTransactionKind::V1Transaction => {
@@ -243,7 +233,6 @@ pub(super) fn new_transaction(
         NewTransactionKind::V1Native => {
             Transaction::V1(new_transaction_v1_native(rng, timestamp, ttl))
         }
-        NewTransactionKind::Random => unreachable!(),
     }
 }
 
@@ -473,11 +462,11 @@ async fn should_fetch_from_multiple_peers() {
         // Assemble the block to be validated.
         let transfers_for_block = transfers
             .iter()
-            .map(|deploy| TransactionHashWithApprovals::from(deploy))
+            .map(TransactionHashWithApprovals::from)
             .collect_vec();
         let standard_for_block = deploys
             .iter()
-            .map(|deploy| TransactionHashWithApprovals::from(deploy))
+            .map(TransactionHashWithApprovals::from)
             .collect_vec();
         let proposed_block = new_proposed_block(
             1100.into(),
