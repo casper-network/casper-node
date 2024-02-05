@@ -1,4 +1,4 @@
-[![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/master/images/casper-association-logo-new.svg)](https://casper.network/)
+[![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/dev/images/Casper-association-logo-new.svg)](https://casper.network/)
 
 # casper-node
 
@@ -32,7 +32,7 @@ The Casper MainNet is live.
 
 ### Community
 
-- [Discord Server](https://discord.gg/mpZ9AYD)
+- [Discord Server](https://discord.com/invite/casperblockchain)
 - [Telegram Channel](https://t.me/casperofficialann)
 
 
