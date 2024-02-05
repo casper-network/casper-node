@@ -238,7 +238,8 @@ impl CEP18 {
 
 #[casper(export)]
 pub fn call() {
-    let result = CEP18::create(selector!("new"), None).unwrap();
+    let args = ("my token name".to_string(),);
+    let result = CEP18::create(selector!("new"), Some(&borsh::to_vec(&args).unwrap())).unwrap();
 }
 
 #[cfg(test)]

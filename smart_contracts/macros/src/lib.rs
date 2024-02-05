@@ -130,10 +130,33 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                             let arg_count = arg_names.len();
 
+                            let handle_write_state = match func.sig.inputs.first() {
+                                Some(syn::FnArg::Receiver(receiver))
+                                    if receiver.mutability.is_some() =>
+                                {
+                                    // &mut self does write updated state
+                                    Some(quote! {
+                                        casper_sdk::host::write_state(&instance).unwrap();
+                                    })
+                                }
+                                Some(syn::FnArg::Receiver(receiver))
+                                    if receiver.mutability.is_none() =>
+                                {
+                                    // &self does not write state
+                                    None
+                                }
+                                Some(syn::FnArg::Receiver(receiver))
+                                    if receiver.lifetime().is_some() =>
+                                {
+                                    panic!("Lifetimes are currently not supported");
+                                }
+                                Some(_) | None => None,
+                            };
+
                             let preamble = if method_attribute.constructor {
                                 let sig = &func.sig;
                                 match func.sig.inputs.first() {
-                                    Some(syn::FnArg::Receiver(receiver)) => {
+                                    Some(syn::FnArg::Receiver(_receiver)) => {
                                         panic!("Constructor should not take a receiver")
                                     }
                                     _ => {}
@@ -146,7 +169,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     }
                                     syn::ReturnType::Type(_, ty) => match ty.as_ref() {
                                         Type::Never(_) => {
-                                            panic!("Constructors should return a have return value")
+                                            panic!("Constructors should have a return value")
                                         }
                                         ty2 => {
                                             quote! {
@@ -157,6 +180,20 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 }
                             } else {
                                 quote! {}
+                            };
+
+                            let handle_ret = match func.sig.output {
+                                syn::ReturnType::Default => {
+                                    // Do not call casper_return if there is no return value
+                                    None
+                                }
+                                _ => {
+                                    // There is a return value so call casper_return.
+                                    Some(quote! {
+                                        let ret_bytes = borsh::to_vec(&_ret).unwrap();
+                                        casper_sdk::host::casper_return(flags, Some(&ret_bytes));
+                                    })
+                                }
                             };
 
                             assert_eq!(arg_names.len(), arg_types.len());
@@ -174,8 +211,6 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 });
                             }
 
-                            // let wrapper_function_name = format_ident!("")
-
                             if method_attribute.constructor {
                                 manifest_entry_points_data.push(quote! {
 
@@ -192,6 +227,12 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 });
                             } else {
                                 let handle_err = if method_attribute.revert_on_error {
+                                    if let syn::ReturnType::Default = func.sig.output {
+                                        panic!(
+                                            "Cannot revert on error if there is no return value"
+                                        );
+                                    }
+
                                     quote! {
                                         let _ret: &Result<_, _> = &_ret;
                                         if _ret.is_err() {
@@ -212,10 +253,12 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                             let _ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
                                                 instance.#name(#(#arg_names,)*)
                                             });
+
                                             #handle_err;
-                                            casper_sdk::host::write_state(&instance).unwrap();
-                                            let ret_bytes = borsh::to_vec(&_ret).unwrap();
-                                            casper_sdk::host::casper_return(flags, Some(&ret_bytes));
+
+                                            #handle_write_state;
+
+                                            #handle_ret;
                                         }
                                         (stringify!(#name), [#(#entrypoint_params,)*], #name)
                                     };
