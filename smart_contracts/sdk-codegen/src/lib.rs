@@ -538,13 +538,13 @@ impl Codegen {
                 func.line(format!(r#"let input_args = ({input_args});"#));
             }
 
+            func.line(r#"let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");"#);
+
             if entry_point.flags.contains(EntryPointFlags::CONSTRUCTOR) {
                 if !entry_point.arguments.is_empty() {
-                    func.line(
-                        r#"let create_result = C::create(Some(SELECTOR), Some(&input_data))?;"#,
-                    );
+                    func.line(r#"let create_result = C::create(SELECTOR, Some(&input_data))?;"#);
                 } else {
-                    func.line(r#"let create_result = C::create(Some(SELECTOR), None)?;"#);
+                    func.line(r#"let create_result = C::create(SELECTOR, None)?;"#);
                 }
 
                 func.line(format!(
@@ -554,7 +554,6 @@ impl Codegen {
                 func.line(format!(r#"Ok(result)"#));
                 continue;
             } else {
-                func.line(r#"let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");"#);
                 func.line(r#"casper_sdk::host::call(&self.address, value, SELECTOR, &input_args)"#);
             }
         }

@@ -125,6 +125,16 @@ impl Harness {
     pub(crate) fn restricted_function_that_should_be_part_of_manifest(&self) {
         log!("This function should be callable from outside");
     }
+
+    pub fn entry_point_without_state() {
+        log!("This function does not require state");
+    }
+
+    pub fn entry_point_without_state_with_args_and_output(mut arg: String) -> String {
+        log!("This function does not require state");
+        arg.push_str("extra");
+        arg
+    }
 }
 
 struct TypedCall<Args: BorshSerialize, Ret: BorshDeserialize> {

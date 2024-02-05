@@ -14,7 +14,8 @@ fn foo() {
     let stub = Stub::default();
 
     let ret = dispatch_with(stub, || {
-        let client = bindings::CEP18Client::new::<CEP18>().expect("Constructor should work");
+        let client = bindings::CEP18Client::new::<CEP18>("Token Name".to_string())
+            .expect("Constructor should work");
 
         // Calling the `transfer` entry point with the following arguments:
         let transfer_call_result = client

@@ -247,7 +247,12 @@
     {
       "name": "new",
       "selector": 2611912030,
-      "arguments": [],
+      "arguments": [
+        {
+          "name": "token_name",
+          "decl": "String"
+        }
+      ],
       "result": "vm2_cep18::CEP18",
       "flags": 1
     },

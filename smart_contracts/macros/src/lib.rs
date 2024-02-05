@@ -130,10 +130,15 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                             let arg_count = arg_names.len();
 
+                            // Entry point has &self or &mut self
+                            let mut entry_point_requires_state: bool = false;
+
                             let handle_write_state = match func.sig.inputs.first() {
                                 Some(syn::FnArg::Receiver(receiver))
                                     if receiver.mutability.is_some() =>
                                 {
+                                    entry_point_requires_state = true;
+
                                     // &mut self does write updated state
                                     Some(quote! {
                                         casper_sdk::host::write_state(&instance).unwrap();
@@ -142,6 +147,8 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 Some(syn::FnArg::Receiver(receiver))
                                     if receiver.mutability.is_none() =>
                                 {
+                                    entry_point_requires_state = true;
+
                                     // &self does not write state
                                     None
                                 }
@@ -243,16 +250,30 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     quote! {}
                                 };
 
+                                let handle_call = if entry_point_requires_state {
+                                    quote! {
+                                        let mut instance: #struct_name = casper_sdk::host::read_state().unwrap();
+
+                                        let _ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
+                                            instance.#name(#(#arg_names,)*)
+                                        });
+                                    }
+                                } else {
+                                    quote! {
+                                        let _ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
+                                            #struct_name::#name(#(#arg_names,)*)
+                                        });
+                                    }
+                                };
+
                                 manifest_entry_points_data.push(quote! {
 
                                     #[allow(non_upper_case_globals)]
                                     const #name: (&'static str, [casper_sdk::sys::Param; #arg_count], extern "C" fn() -> ()) = {
                                         extern "C" fn #name() {
                                             let mut flags = vm_common::flags::ReturnFlags::empty();
-                                            let mut instance: #struct_name = casper_sdk::host::read_state().unwrap();
-                                            let _ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
-                                                instance.#name(#(#arg_names,)*)
-                                            });
+
+                                            #handle_call;
 
                                             #handle_err;
 

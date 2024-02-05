@@ -103,13 +103,14 @@ pub struct CEP18Client {
 }
 
 impl CEP18Client {
-    pub fn new<C>() -> Result<CEP18Client, casper_sdk::types::CallError>
+    pub fn new<C>(token_name: String) -> Result<CEP18Client, casper_sdk::types::CallError>
     where C: casper_sdk::Contract,
     {
         const SELECTOR: Selector = Selector::new(2611912030);
         let value = 0; // TODO: Transferring values
-        let input_args = ();
-        let create_result = C::create(Some(SELECTOR), None)?;
+        let input_args = (token_name,);
+        let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");
+        let create_result = C::create(SELECTOR, Some(&input_data))?;
         let result = CEP18Client { address: create_result.contract_address };
         Ok(result)
     }
