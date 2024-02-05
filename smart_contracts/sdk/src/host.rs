@@ -316,12 +316,11 @@ pub fn start<Args: BorshDeserialize, Ret: BorshSerialize>(mut func: impl FnMut(A
     let args: Args = BorshDeserialize::try_from_slice(&input).unwrap();
     let result = func(args);
     let serialized_result = borsh::to_vec(&result).unwrap();
-    dbg!(&serialized_result);
     casper_return(ReturnFlags::empty(), Some(serialized_result.as_slice()));
 }
 
 pub fn start_noret<Args: BorshDeserialize, Ret: BorshSerialize>(
-    mut func: impl FnMut(Args) -> Ret,
+    func: impl FnOnce(Args) -> Ret,
 ) -> Ret {
     // Set panic hook (assumes std is enabled etc.)
     #[cfg(target_arch = "wasm32")]
@@ -329,7 +328,6 @@ pub fn start_noret<Args: BorshDeserialize, Ret: BorshSerialize>(
         crate::set_panic_hook();
     }
     let input = casper_copy_input();
-    dbg!(&input);
     let args: Args = BorshDeserialize::try_from_slice(&input).unwrap();
     func(args)
 }

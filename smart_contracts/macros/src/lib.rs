@@ -139,10 +139,16 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 {
                                     entry_point_requires_state = true;
 
-                                    // &mut self does write updated state
-                                    Some(quote! {
-                                        casper_sdk::host::write_state(&instance).unwrap();
-                                    })
+                                    if receiver.reference.is_some() {
+                                        // &mut self does write updated state
+                                        Some(quote! {
+                                            casper_sdk::host::write_state(&instance).unwrap();
+                                        })
+                                    } else {
+                                        // mut self does not write updated state as the method call
+                                        // will consume self and there's nothing to persist.
+                                        None
+                                    }
                                 }
                                 Some(syn::FnArg::Receiver(receiver))
                                     if receiver.mutability.is_none() =>
@@ -261,7 +267,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 } else {
                                     quote! {
                                         let _ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
-                                            #struct_name::#name(#(#arg_names,)*)
+                                            <#struct_name>::#name(#(#arg_names,)*)
                                         });
                                     }
                                 };

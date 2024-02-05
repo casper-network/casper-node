@@ -135,6 +135,15 @@ impl Harness {
         arg.push_str("extra");
         arg
     }
+
+    pub fn into_modified_greeting(mut self) -> String {
+        self.greeting.push_str("!");
+        self.greeting
+    }
+
+    pub fn into_greeting(self) -> String {
+        self.greeting
+    }
 }
 
 struct TypedCall<Args: BorshSerialize, Ret: BorshDeserialize> {
@@ -454,8 +463,13 @@ mod tests {
                 .iter()
                 .find(|e| e.selector == PUB_CRATE_SELECTOR.get())
                 .is_some(),
-            "This entry point should be part of schema"
+            "This entry point should be part ozf schema"
         );
+    }
+
+    #[test]
+    fn foo() {
+        assert_eq!(Harness::default().into_greeting(), "Default value");
     }
 }
 
