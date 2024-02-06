@@ -798,6 +798,7 @@ dependencies = [
  "borsh",
  "bytes",
  "casper-sdk-sys",
+ "clap 4.3.10",
  "const-fnv1a-hash",
  "ctor 0.2.5",
  "impl-trait-for-tuples",
@@ -805,6 +806,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
+ "thiserror",
  "vm-common",
 ]
 
@@ -1030,6 +1032,7 @@ checksum = "384e169cc618c613d5e3ca6404dda77a8685a63e08660dcc64abaf7da7cb0c7a"
 dependencies = [
  "clap_builder",
  "clap_derive 4.3.2",
+ "once_cell",
 ]
 
 [[package]]

@@ -22,3 +22,9 @@ ctor = "0.2.5"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rand  = "0.8.5"
+clap = { version = "4", optional = true, features = ["derive"] }
+thiserror = { version = "1", optional = true }
+
+[features]
+default = []
+cli = ["clap", "thiserror"]

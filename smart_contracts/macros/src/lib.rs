@@ -72,10 +72,6 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                     other => todo!("{other:?}"),
                 };
-                // todo!("{:?}", &entry_points);
-                // let name = entry_points
-
-                // }
 
                 let mut defs = Vec::new();
 
@@ -86,6 +82,8 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                 let mut manifest_entry_point_enum_variants = Vec::new();
                 let mut manifest_entry_point_enum_match_name = Vec::new();
                 let mut manifest_entry_point_input_data = Vec::new();
+
+                let mut extra_code = Vec::new();
 
                 for entry_point in &mut entry_points.items {
                     let method_attribute;
@@ -331,6 +329,12 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     into_tuple.serialize(writer)
                                 }
                             });
+
+
+                            // let arg_struct = format_ident!("{struct_name}_{name}");
+                            // extra_code.push(quote! {
+                            //     struct #name
+                            // });
 
                             func.clone()
                         }

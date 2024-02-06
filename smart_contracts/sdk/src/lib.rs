@@ -3,6 +3,8 @@
 // #[linkage = "--import-memory"]
 
 pub mod abi;
+#[cfg(feature = "cli")]
+pub mod cli;
 pub mod collections;
 pub mod host;
 pub mod schema;
