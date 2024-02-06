@@ -13,7 +13,10 @@ use serde::Serialize;
 use static_assertions::const_assert;
 use tracing::info;
 
-use casper_types::{BlockHeaderV2, EraId, FinalitySignature, PublicKey, SecretKey, U512};
+use casper_types::{
+    BlockHeaderV2, ChainNameDigest, EraId, FinalitySignature, FinalitySignatureV2, PublicKey,
+    SecretKey, U512,
+};
 
 const MAX_VALIDATOR_MATRIX_ENTRIES: usize = 6;
 const_assert!(MAX_VALIDATOR_MATRIX_ENTRIES % 2 == 0);
@@ -41,6 +44,7 @@ impl SignatureWeight {
 #[derive(Clone, DataSize)]
 pub(crate) struct ValidatorMatrix {
     inner: Arc<RwLock<BTreeMap<EraId, EraValidatorWeights>>>,
+    chainspec_name_hash: ChainNameDigest,
     chainspec_validators: Option<Arc<BTreeMap<PublicKey, U512>>>,
     chainspec_activation_era: EraId,
     #[data_size(skip)]
@@ -54,6 +58,7 @@ pub(crate) struct ValidatorMatrix {
 impl ValidatorMatrix {
     pub(crate) fn new(
         finality_threshold_fraction: Ratio<u64>,
+        chainspec_name_hash: ChainNameDigest,
         chainspec_validators: Option<BTreeMap<PublicKey, U512>>,
         chainspec_activation_era: EraId,
         secret_signing_key: Arc<SecretKey>,
@@ -64,6 +69,7 @@ impl ValidatorMatrix {
         ValidatorMatrix {
             inner,
             finality_threshold_fraction,
+            chainspec_name_hash,
             chainspec_validators: chainspec_validators.map(Arc::new),
             chainspec_activation_era,
             secret_signing_key,
@@ -76,6 +82,8 @@ impl ValidatorMatrix {
     /// Creates a new validator matrix with just a single validator.
     #[cfg(test)]
     pub(crate) fn new_with_validator(secret_signing_key: Arc<SecretKey>) -> Self {
+        use casper_types::Digest;
+
         let public_signing_key = PublicKey::from(&*secret_signing_key);
         let finality_threshold_fraction = Ratio::new(1, 3);
         let era_id = EraId::new(0);
@@ -86,6 +94,7 @@ impl ValidatorMatrix {
         );
         ValidatorMatrix {
             inner: Arc::new(RwLock::new(iter::once((era_id, weights)).collect())),
+            chainspec_name_hash: ChainNameDigest::new(Digest::hash(b"casper-example")),
             chainspec_validators: None,
             chainspec_activation_era: EraId::from(0),
             finality_threshold_fraction,
@@ -272,11 +281,16 @@ impl ValidatorMatrix {
             .is_self_validator_in_era(block_header.era_id())
             .unwrap_or(false)
         {
-            return Some(FinalitySignature::create(
-                block_header.block_hash(),
-                block_header.era_id(),
-                &self.secret_signing_key,
-            ));
+            return Some(
+                FinalitySignatureV2::create(
+                    block_header.block_hash(),
+                    block_header.height(),
+                    block_header.era_id(),
+                    self.chainspec_name_hash,
+                    &self.secret_signing_key,
+                )
+                .into(),
+            );
         }
         None
     }
@@ -287,6 +301,11 @@ impl ValidatorMatrix {
 
     pub(crate) fn eras(&self) -> Vec<EraId> {
         self.read_inner().keys().copied().collect_vec()
+    }
+
+    #[cfg(test)]
+    pub fn chain_name_hash(&self) -> ChainNameDigest {
+        self.chainspec_name_hash
     }
 
     #[cfg(test)]

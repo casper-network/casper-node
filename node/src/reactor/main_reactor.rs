@@ -1035,6 +1035,7 @@ impl reactor::Reactor for MainReactor {
         let (our_secret_key, our_public_key) = config.consensus.load_keys(&root_dir)?;
         let validator_matrix = ValidatorMatrix::new(
             chainspec.core_config.finality_threshold_fraction,
+            chainspec.name_hash(),
             chainspec
                 .protocol_config
                 .global_state_update

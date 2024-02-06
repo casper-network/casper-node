@@ -5,7 +5,8 @@ use itertools::Itertools;
 use tracing::{debug, error, warn};
 
 use casper_types::{
-    ActivationPoint, BlockHash, BlockSignatures, EraId, FinalitySignature, PublicKey, Timestamp,
+    ActivationPoint, BlockHash, BlockSignatures, BlockSignaturesV1, EraId, FinalitySignature,
+    PublicKey, Timestamp,
 };
 
 use crate::{
@@ -241,9 +242,10 @@ impl BlockAcceptor {
             self.touch();
             if let Some(meta_block) = self.meta_block.as_mut() {
                 let mut block_signatures =
-                    BlockSignatures::new(*meta_block.block.hash(), meta_block.block.era_id());
+                    BlockSignaturesV1::new(*meta_block.block.hash(), meta_block.block.era_id());
                 self.signatures.values().for_each(|(signature, _)| {
-                    block_signatures.insert_signature(signature.clone());
+                    block_signatures
+                        .insert_signature(signature.public_key().clone(), *signature.signature());
                 });
                 if meta_block
                     .state
@@ -275,7 +277,7 @@ impl BlockAcceptor {
                     return (
                         ShouldStore::CompletedBlock {
                             meta_block: meta_block.clone(),
-                            block_signatures,
+                            block_signatures: block_signatures.into(),
                         },
                         faulty_senders,
                     );
@@ -295,7 +297,7 @@ impl BlockAcceptor {
                     return (
                         ShouldStore::SufficientlySignedBlock {
                             meta_block: meta_block.clone(),
-                            block_signatures,
+                            block_signatures: block_signatures.into(),
                         },
                         faulty_senders,
                     );

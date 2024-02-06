@@ -23,8 +23,8 @@ use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    ActivationPoint, Block, BlockHash, BlockSignatures, EraId, FinalitySignature, TimeDiff,
-    Timestamp,
+    ActivationPoint, Block, BlockHash, BlockSignatures, BlockSignaturesV1, EraId,
+    FinalitySignature, TimeDiff, Timestamp,
 };
 
 use crate::{
@@ -737,13 +737,14 @@ impl BlockAccumulator {
             ShouldStore::SingleSignature(signature) => {
                 debug!(%signature, "storing finality signature");
                 let mut block_signatures =
-                    BlockSignatures::new(*signature.block_hash(), signature.era_id());
-                block_signatures.insert_signature(signature.clone());
+                    BlockSignaturesV1::new(*signature.block_hash(), signature.era_id());
+                block_signatures
+                    .insert_signature(signature.public_key().clone(), *signature.signature());
                 effect_builder
                     .put_finality_signature_to_storage(signature)
                     .event(move |_| Event::Stored {
                         maybe_meta_block: None,
-                        maybe_block_signatures: Some(block_signatures),
+                        maybe_block_signatures: Some(block_signatures.into()),
                     })
             }
             ShouldStore::Nothing => {

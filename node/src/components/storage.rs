@@ -75,10 +75,10 @@ use casper_types::{
     execution::{
         execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
     },
-    Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, BlockV2, DeployApprovalsHash,
-    DeployHash, Digest, EraId, FinalitySignature, ProtocolVersion, PublicKey, SignedBlockHeader,
-    StoredValue, Timestamp, Transaction, TransactionApprovalsHash, TransactionHash,
-    TransactionHeader, TransactionId, TransactionV1ApprovalsHash, Transfer,
+    Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, BlockSignaturesV1, BlockV2,
+    DeployApprovalsHash, DeployHash, Digest, EraId, FinalitySignature, ProtocolVersion, PublicKey,
+    SignedBlockHeader, StoredValue, Timestamp, Transaction, TransactionApprovalsHash,
+    TransactionHash, TransactionHeader, TransactionId, TransactionV1ApprovalsHash, Transfer,
 };
 
 use crate::{
@@ -164,8 +164,7 @@ pub struct Storage {
     /// The approvals hashes databases.
     approvals_hashes_dbs: VersionedDatabases<BlockHash, ApprovalsHashes>,
     /// The block metadata db.
-    #[data_size(skip)]
-    block_metadata_db: Database,
+    block_metadata_dbs: VersionedDatabases<BlockHash, BlockSignatures>,
     /// The transaction databases.
     transaction_dbs: VersionedDatabases<TransactionHash, Transaction>,
     /// Databases of `ExecutionResult`s indexed by transaction hash for current DB or by deploy
@@ -332,7 +331,8 @@ impl Storage {
         let env = new_environment(total_size, root.as_path())?;
 
         let block_header_dbs = VersionedDatabases::new(&env, "block_header", "block_header_v2")?;
-        let block_metadata_db = env.create_db(Some("block_metadata"), DatabaseFlags::empty())?;
+        let block_metadata_dbs =
+            VersionedDatabases::new(&env, "block_metadata", "block_metadata_v2")?;
         let transaction_dbs = VersionedDatabases::new(&env, "deploys", "transactions")?;
         let execution_result_dbs =
             VersionedDatabases::new(&env, "deploy_metadata", "execution_results")?;
@@ -446,7 +446,7 @@ impl Storage {
             .filter_map(|(body_hash, retain)| (!retain).then_some(body_hash))
             .collect();
         initialize_block_body_dbs(&env, block_body_dbs, deleted_block_body_hashes)?;
-        initialize_block_metadata_db(&env, block_metadata_db, deleted_block_hashes)?;
+        initialize_block_metadata_dbs(&env, block_metadata_dbs, deleted_block_hashes)?;
         initialize_execution_result_dbs(&env, execution_result_dbs, deleted_transaction_hashes)?;
 
         let metrics = registry.map(Metrics::new).transpose()?;
@@ -456,7 +456,7 @@ impl Storage {
             env: Rc::new(env),
             block_header_dbs,
             block_body_dbs,
-            block_metadata_db,
+            block_metadata_dbs,
             approvals_hashes_dbs,
             transaction_dbs,
             execution_result_dbs,
@@ -950,7 +950,7 @@ impl Storage {
                 }
                 let block_signatures = match self.get_block_signatures(&mut txn, &block_hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(block_hash, block.era_id()),
+                    None => BlockSignaturesV1::new(block_hash, block.era_id()).into(),
                 };
                 if block_signatures.is_verified().is_err() {
                     error!(?block, "invalid block signatures for block");
@@ -1002,7 +1002,7 @@ impl Storage {
                 let hash = block.hash();
                 let block_signatures = match self.get_block_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(*hash, block.era_id()),
+                    None => BlockSignaturesV1::new(*hash, block.era_id()).into(),
                 };
                 responder
                     .respond(Some(BlockWithMetadata {
@@ -1033,7 +1033,7 @@ impl Storage {
                 let hash = block.hash();
                 let block_signatures = match self.get_block_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(*hash, block.era_id()),
+                    None => BlockSignaturesV1::new(*hash, block.era_id()).into(),
                 };
                 responder
                     .respond(Some(SignedBlock {
@@ -1063,7 +1063,7 @@ impl Storage {
                 let hash = highest_block.hash();
                 let block_signatures = match self.get_block_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(*hash, highest_block.era_id()),
+                    None => BlockSignaturesV1::new(*hash, highest_block.era_id()).into(),
                 };
                 responder
                     .respond(Some(SignedBlock {
@@ -1084,8 +1084,9 @@ impl Storage {
                     return Ok(responder.respond(false).ignore());
                 }
                 let mut txn = self.env.begin_rw_txn()?;
-                let old_data: Option<BlockSignatures> =
-                    txn.get_value(self.block_metadata_db, signatures.block_hash())?;
+                let old_data: Option<BlockSignatures> = self
+                    .block_metadata_dbs
+                    .get(&mut txn, signatures.block_hash())?;
                 let new_data = match old_data {
                     None => signatures,
                     Some(mut data) => {
@@ -1096,8 +1097,8 @@ impl Storage {
                         data
                     }
                 };
-                let outcome = txn.put_value(
-                    self.block_metadata_db,
+                let outcome = self.block_metadata_dbs.put(
+                    &mut txn,
                     new_data.block_hash(),
                     &new_data,
                     true,
@@ -1279,12 +1280,15 @@ impl Storage {
         signature: Box<FinalitySignature>,
     ) -> Result<bool, FatalStorageError> {
         let mut txn = self.env.begin_rw_txn()?;
-        let mut block_signatures = txn
-            .get_value(self.block_metadata_db, signature.block_hash())?
-            .unwrap_or_else(|| BlockSignatures::new(*signature.block_hash(), signature.era_id()));
-        block_signatures.insert_signature(*signature);
-        let outcome = txn.put_value(
-            self.block_metadata_db,
+        let mut block_signatures = self
+            .block_metadata_dbs
+            .get(&mut txn, signature.block_hash())?
+            .unwrap_or_else(|| {
+                BlockSignaturesV1::new(*signature.block_hash(), signature.era_id()).into()
+            });
+        block_signatures.insert_signature(signature.public_key().clone(), *signature.signature());
+        let outcome = self.block_metadata_dbs.put(
+            &mut txn,
             block_signatures.block_hash(),
             &block_signatures,
             true,
@@ -1562,8 +1566,9 @@ impl Storage {
     ) -> Result<(), FatalStorageError> {
         let mut txn = self.env.begin_rw_txn()?;
         let block_hash = signatures.block_hash();
-        if txn
-            .put_value(self.block_metadata_db, block_hash, signatures, true)
+        if self
+            .block_metadata_dbs
+            .put(&mut txn, block_hash, signatures, true)
             .is_err()
         {
             panic!("write_finality_signatures() failed");
@@ -2046,7 +2051,7 @@ impl Storage {
 
         let block_signatures = match self.get_block_signatures(txn, &block_header_hash)? {
             Some(signatures) => signatures,
-            None => BlockSignatures::new(block_header_hash, block_header.era_id()),
+            None => BlockSignaturesV1::new(block_header_hash, block_header.era_id()).into(),
         };
 
         Ok(Some(SignedBlockHeader::new(block_header, block_signatures)))
@@ -2223,7 +2228,7 @@ impl Storage {
         txn: &mut Tx,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockSignatures>, FatalStorageError> {
-        Ok(txn.get_value(self.block_metadata_db, block_hash)?)
+        Ok(self.block_metadata_dbs.get(txn, block_hash)?)
     }
 
     /// Retrieves a finality signature for a block with a given block hash.
@@ -2234,7 +2239,7 @@ impl Storage {
         public_key: &PublicKey,
     ) -> Result<Option<FinalitySignature>, FatalStorageError> {
         let maybe_signatures: Option<BlockSignatures> =
-            txn.get_value(self.block_metadata_db, block_hash)?;
+            self.block_metadata_dbs.get(txn, block_hash)?;
         Ok(maybe_signatures.and_then(|signatures| signatures.finality_signature(public_key)))
     }
 
@@ -2822,8 +2827,9 @@ impl Storage {
             .env
             .begin_ro_txn()
             .expect("could not create RO transaction");
-        let res = txn
-            .get_value(self.block_metadata_db, &block_hash)
+        let res = self
+            .block_metadata_dbs
+            .get(&mut txn, &block_hash)
             .expect("could not retrieve value from storage");
         txn.commit().expect("Could not commit transaction");
         res
@@ -2865,9 +2871,9 @@ fn initialize_block_body_dbs(
 }
 
 /// Purges stale entries from the block metadata database.
-fn initialize_block_metadata_db(
+fn initialize_block_metadata_dbs(
     env: &Environment,
-    block_metadata_db: Database,
+    block_metadata_dbs: VersionedDatabases<BlockHash, BlockSignatures>,
     deleted_block_hashes: HashSet<BlockHash>,
 ) -> Result<(), FatalStorageError> {
     let block_count_to_be_deleted = deleted_block_hashes.len();
@@ -2877,9 +2883,8 @@ fn initialize_block_metadata_db(
     );
     let mut txn = env.begin_rw_txn()?;
     for block_hash in deleted_block_hashes {
-        match txn.del(block_metadata_db, &block_hash, None) {
-            Ok(()) | Err(lmdb::Error::NotFound) => {}
-            Err(error) => return Err(error.into()),
+        if let Err(error) = block_metadata_dbs.delete(&mut txn, &block_hash) {
+            return Err(error.into());
         }
     }
     txn.commit()?;

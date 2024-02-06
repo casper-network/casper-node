@@ -27,7 +27,7 @@ use tracing::error;
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    Digest, EraId, ProtocolVersion,
+    ChainNameDigest, Digest, EraId, ProtocolVersion,
 };
 pub use accounts_config::{
     AccountConfig, AccountsConfig, AdministratorAccount, DelegatorConfig, GenesisAccount,
@@ -104,6 +104,11 @@ pub struct Chainspec {
 }
 
 impl Chainspec {
+    /// Returns the hash of the chainspec's name.
+    pub fn name_hash(&self) -> ChainNameDigest {
+        ChainNameDigest::new(Digest::hash(self.network_config.name.as_bytes()))
+    }
+
     /// Serializes `self` and hashes the resulting bytes.
     pub fn hash(&self) -> Digest {
         let serialized_chainspec = self.to_bytes().unwrap_or_else(|error| {
