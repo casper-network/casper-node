@@ -278,7 +278,7 @@ use crate::{
     reserve_vec_space,
     storage::Keyspace,
     types::{Address, CallError, Entry, ResultCode},
-    Contract, Selector,
+    Contract, Selector, ToCallData,
 };
 
 pub fn read_vec(key: Keyspace) -> Option<Vec<u8>> {
@@ -356,14 +356,15 @@ impl<Ret: BorshDeserialize> CallResult<Ret> {
     }
 }
 
-pub fn call<Args: BorshSerialize, Ret: BorshDeserialize>(
+pub fn call<CallData: ToCallData, Ret: BorshDeserialize>(
     contract_address: &Address,
     value: u64,
-    selector: Selector,
-    args: Args,
+    call_data: CallData,
 ) -> Result<CallResult<Ret>, CallError> {
-    let input_data = borsh::to_vec(&args).unwrap();
-    let (maybe_data, result_code) = casper_call(contract_address, value, selector, &input_data);
+    let input_data = call_data.input_data().unwrap_or_default();
+
+    let (maybe_data, result_code) =
+        casper_call(contract_address, value, CallData::SELECTOR, &input_data);
     match result_code {
         ResultCode::Success | ResultCode::CalleeReverted => Ok(CallResult {
             data: maybe_data,

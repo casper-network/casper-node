@@ -83,12 +83,20 @@ impl Codegen {
         scope.import("casper_sdk_codegen::support", "IntoResult");
         scope.import("casper_sdk_codegen::support", "IntoOption");
         scope.import("casper_sdk", "Selector");
+        scope.import("casper_sdk", "ToCallData");
 
         let head = self
             .schema
             .definitions
             .first()
             .expect("No definitions found.");
+
+        if !self.schema.definitions.has_definition(&self.schema.state) {
+            panic!(
+                "Missing state definition. Expected to find a definition for {}.",
+                &self.schema.state
+            )
+        };
 
         // Initialize a queue with the first definition
         let mut queue = VecDeque::new();
@@ -521,31 +529,25 @@ impl Codegen {
 
             func.line("let value = 0; // TODO: Transferring values");
 
+            let input_struct_name =
+                format!("{}_{}", slugify_type(&self.schema.state), &entry_point.name);
+
             if entry_point.arguments.is_empty() {
-                func.line(format!(r#"let input_args = ();"#));
-            } else if entry_point.arguments.len() == 1 {
-                func.line(format!(
-                    r#"let input_args = ({arg0},);"#,
-                    arg0 = entry_point.arguments[0].name
-                ));
+                func.line(format!(r#"let call_data = {input_struct_name};"#));
             } else {
-                let input_args = entry_point
-                    .arguments
-                    .iter()
-                    .map(|arg| arg.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                func.line(format!(r#"let input_args = ({input_args});"#));
+                func.line(format!(r#"let call_data = {input_struct_name} {{ "#));
+                for arg in &entry_point.arguments {
+                    func.line(format!("{},", arg.name));
+                }
+                func.line("};");
             }
 
-            func.line(r#"let input_data = borsh::to_vec(&input_args).expect("Serialization to succeed");"#);
-
             if entry_point.flags.contains(EntryPointFlags::CONSTRUCTOR) {
-                if !entry_point.arguments.is_empty() {
-                    func.line(r#"let create_result = C::create(SELECTOR, Some(&input_data))?;"#);
-                } else {
-                    func.line(r#"let create_result = C::create(SELECTOR, None)?;"#);
-                }
+                // if !entry_point.arguments.is_empty() {
+                //     func.line(r#"let create_result = C::create(SELECTOR, Some(&input_data))?;"#);
+                // } else {
+                func.line(r#"let create_result = C::create(call_data)?;"#);
+                // }
 
                 func.line(format!(
                     r#"let result = {struct_name} {{ address: create_result.contract_address }};"#,
@@ -554,7 +556,50 @@ impl Codegen {
                 func.line(format!(r#"Ok(result)"#));
                 continue;
             } else {
-                func.line(r#"casper_sdk::host::call(&self.address, value, SELECTOR, &input_args)"#);
+                func.line(r#"casper_sdk::host::call(&self.address, value, call_data)"#);
+            }
+        }
+
+        for entry_point in &self.schema.entry_points {
+            // Generate arg structure similar to what casper-macros is doing
+            let state_name = slugify_type(&self.schema.state);
+            let struct_name = format!("{}_{}", &state_name, &entry_point.name);
+            let input_struct = scope.new_struct(&struct_name);
+
+            for trait_name in DEFAULT_DERIVED_TRAITS {
+                input_struct.derive(trait_name);
+            }
+
+            for argument in &entry_point.arguments {
+                let mapped_type = self.type_mapping.get(&argument.decl).unwrap_or_else(|| {
+                    panic!(
+                        "Missing type mapping for {} when generating input arg {}",
+                        argument.decl, &struct_name
+                    )
+                });
+                input_struct.push_field(Field::new(&argument.name, Type::new(mapped_type)));
+            }
+
+            let impl_block = scope.new_impl(&struct_name).impl_trait("ToCallData");
+
+            impl_block.associate_const(
+                "SELECTOR",
+                "Selector",
+                format!("Selector::new({})", entry_point.selector),
+                String::new(),
+            );
+
+            let input_data_func = impl_block
+                .new_fn("input_data")
+                .arg_ref_self()
+                .ret(Type::new("Option<Vec<u8>>"));
+
+            if entry_point.arguments.is_empty() {
+                input_data_func.line(r#"None"#);
+            } else {
+                input_data_func
+                        .line(r#"let input_data = borsh::to_vec(&self).expect("Serialization to succeed");"#)
+                        .line(r#"Some(input_data)"#);
             }
         }
 

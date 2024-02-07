@@ -142,6 +142,11 @@ impl Definitions {
     pub fn first(&self) -> Option<(&Declaration, &Definition)> {
         self.0.iter().next()
     }
+
+    /// Returns true if the given declaration has a definition in this set.
+    pub fn has_definition(&self, decl: &Declaration) -> bool {
+        self.0.contains_key(decl)
+    }
 }
 
 impl IntoIterator for Definitions {

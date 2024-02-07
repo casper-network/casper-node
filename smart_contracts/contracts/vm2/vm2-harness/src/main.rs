@@ -17,7 +17,7 @@ use casper_sdk::{
     log, revert,
     sys::CreateResult,
     types::{Address, CallError, ResultCode},
-    Contract, Selector,
+    Contract, Selector, ToCallData,
 };
 
 const INITIAL_GREETING: &str = "This is initial data set from a constructor";
@@ -181,7 +181,7 @@ pub fn call() {
 
     // Constructor without args
 
-    match Harness::create(selector!("initialize"), None) {
+    match Harness::create(Harness_initialize {}) {
         Ok(CreateResult {
             package_address,
             contract_address,
@@ -273,10 +273,9 @@ pub fn call() {
     // Constructor with args
 
     let args = ("World".to_string(),);
-    match Harness::create(
-        selector!("constructor_with_args"),
-        Some(&borsh::to_vec(&args).unwrap()),
-    ) {
+    match Harness::create(Harness_constructor_with_args {
+        who: "World".to_string(),
+    }) {
         Ok(CreateResult {
             package_address,
             contract_address,
@@ -287,10 +286,9 @@ pub fn call() {
             log!("contract_address: {:?}", contract_address);
             log!("version: {:?}", version);
 
-            const GET_GREETING: Selector = selector!("get_greeting");
             let (maybe_data_0, result_code_0) =
-                host::casper_call(&contract_address, 0, GET_GREETING, &[]);
-            log!("{GET_GREETING:?} result={result_code_0:?}");
+                host::casper_call(&contract_address, 0, Harness_get_greeting::SELECTOR, &[]);
+            log!("get_greeting result={result_code_0:?}");
             assert_eq!(
                 borsh::from_slice::<String>(&maybe_data_0.as_ref().expect(
                     "return
@@ -307,14 +305,13 @@ pub fn call() {
 
     let args = ("World".to_string(),);
 
-    let error = Harness::create(
-        selector!("failing_constructor"),
-        Some(&borsh::to_vec(&args).unwrap()),
-    )
+    let error = Harness::create(Harness_failing_constructor {
+        who: "World".to_string(),
+    })
     .expect_err("Constructor that reverts should fail to create");
     assert_eq!(error, CallError::CalleeReverted);
 
-    let error = Harness::create(selector!("trapping_constructor"), None)
+    let error = Harness::create(Harness_trapping_constructor {})
         .expect_err("Constructor that traps should fail to create");
     assert_eq!(error, CallError::CalleeTrapped);
 

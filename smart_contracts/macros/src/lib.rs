@@ -24,9 +24,7 @@ struct MethodAttribute {
 #[proc_macro_derive(Contract)]
 pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
     // Parse the input tokens into a syntax tree
-    // let input = parse_macro_input!(input as DeriveInput);
     let contract = parse_macro_input!(input as DeriveInput);
-    // todo!("{contract:?}")
     let name = &contract.ident;
     let _vis = &contract.vis;
 
@@ -43,8 +41,9 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
                 stringify!(#name)
             }
 
-            fn create(selector: casper_sdk::Selector, input_data: Option<&[u8]>) -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
-                Self::__casper_create(selector, input_data)
+            fn create<T:casper_sdk::ToCallData>(call_data: T) -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
+                let input_data = call_data.input_data();
+                Self::__casper_create(T::SELECTOR, input_data.as_ref().map(|v| v.as_slice()))
             }
 
             fn default_create() -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
@@ -63,6 +62,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
         let item = item.clone();
         match attr {
             proc_macro::TokenTree::Ident(ident) if ident.to_string() == "entry_points" => {
+                // ident.
                 let mut populate_definitions = Vec::new();
 
                 let mut entry_points = parse_macro_input!(item as ItemImpl);
@@ -330,11 +330,46 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 }
                             });
 
+                            match entry_points.self_ty.as_ref() {
+                                Type::Path(ref path) => {
+                                    // let struct_name = path.path
 
-                            // let arg_struct = format_ident!("{struct_name}_{name}");
-                            // extra_code.push(quote! {
-                            //     struct #name
-                            // });
+                                    // let ident = syn::Ident::new(&format!("{}_{}", path.path.,
+                                    // name), syn::export::Span:call_site());
+                                    let ident = syn::Ident::new(
+                                        &format!("{}_{}", path.path.get_ident().unwrap(), name),
+                                        Span::call_site(),
+                                    );
+                                    // let arg_struct = format_ident= !("{}_{name}_args",
+                                    // &path.path);
+
+                                    let input_data_content = if arg_names.is_empty() {
+                                        quote! {
+                                            None
+                                        }
+                                    } else {
+                                        quote! {
+                                            Some(borsh::to_vec(&self).expect("Serialization to succeed"))
+                                        }
+                                    };
+
+                                    extra_code.push(quote! {
+                                        #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
+                                        pub struct #ident {
+                                            #(pub #arg_names: #arg_types,)*
+                                        }
+
+                                        impl casper_sdk::ToCallData for #ident {
+                                            const SELECTOR: casper_sdk::Selector = casper_sdk::Selector::new(#selector);
+
+                                            fn input_data(&self) -> Option<Vec<u8>> {
+                                                #input_data_content
+                                            }
+                                        }
+                                    });
+                                }
+                                _ => todo!("Different self_ty currently unsupported"),
+                            }
 
                             func.clone()
                         }
@@ -493,6 +528,8 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                             casper_sdk::host::casper_create(None, &MANIFEST, None, None)
                         }
                     }
+
+                    #(#extra_code)*
                 };
 
                 return res.into();

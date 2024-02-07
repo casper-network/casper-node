@@ -3,7 +3,7 @@ use casper_sdk::{
     Contract,
 };
 use casper_sdk_codegen::support::IntoResult;
-use vm2_cep18::CEP18;
+use vm2_cep18::contract::CEP18;
 
 mod bindings {
     include!(concat!(env!("OUT_DIR"), "/cep18_schema.rs"));
@@ -22,7 +22,7 @@ fn foo() {
             .transfer([1; 32], 42)
             .expect("Calling transfer entry point should work");
 
-        transfer_call_result.did_revert();
+        assert!(!transfer_call_result.did_revert());
 
         // Actual returned data, deserialized from the returned bytes.
         let transfer_return_value = transfer_call_result.into_return_value();

@@ -59,9 +59,14 @@ pub fn reserve_vec_space(vec: &mut Vec<u8>, size: usize) -> Option<NonNull<u8>> 
     }
 }
 
+pub trait ToCallData {
+    const SELECTOR: Selector;
+    fn input_data(&self) -> Option<Vec<u8>>;
+}
+
 pub trait Contract {
     fn name() -> &'static str;
-    fn create(selector: Selector, input_data: Option<&[u8]>) -> Result<CreateResult, CallError>;
+    fn create<T: ToCallData>(call_data: T) -> Result<CreateResult, CallError>;
     fn default_create() -> Result<CreateResult, CallError>;
 }
 
