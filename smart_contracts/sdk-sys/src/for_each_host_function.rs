@@ -25,7 +25,6 @@ macro_rules! for_each_host_function {
                 alloc: extern "C" fn(usize, *mut core::ffi::c_void) -> *mut u8,
                 alloc_ctx: *const core::ffi::c_void,
             ) -> *mut u8;
-            pub fn casper_copy_output(output_ptr: *const u8, output_len: usize,); // todo
             pub fn casper_create_contract(
                 code_ptr: *const u8,
                 code_size: usize,
@@ -35,7 +34,6 @@ macro_rules! for_each_host_function {
                 input_size: usize,
                 result_ptr: *mut $crate::CreateResult,
             ) -> u32;
-
             pub fn casper_call(
                 // acct_or_contract,
                 address_ptr: *const u8,
