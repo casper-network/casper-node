@@ -251,10 +251,18 @@ impl StoredValue {
         }
     }
 
-    /// Returns the `Package` if this is a `Package` variant.
+    /// Returns the `ContractPackage` if this is a `ContractPackage` variant.
     pub fn into_contract_package(self) -> Option<ContractPackage> {
         match self {
             StoredValue::ContractPackage(contract_package) => Some(contract_package),
+            _ => None,
+        }
+    }
+
+    /// Returns the `Package` if this is a `Package` variant.
+    pub fn into_package(self) -> Option<Package> {
+        match self {
+            StoredValue::Package(package) => Some(package),
             _ => None,
         }
     }

@@ -53,8 +53,9 @@ use casper_types::{
     },
     AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, ByteCodeHash, ByteCodeKind,
     CLTyped, CLValue, Contract, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts,
-    Key, KeyTag, MintCosts, Motes, Package, PackageHash,ProtocolVersion, PublicKey, RefundHandling, StoredValue,
-    SystemContractRegistry, Transfer, TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
+    Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolVersion, PublicKey,
+    RefundHandling, StoredValue, SystemContractRegistry, Transfer, TransferAddr, URef,
+    UpgradeConfig, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 

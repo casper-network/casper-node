@@ -1989,7 +1989,7 @@ impl<REv> EffectBuilder<REv> {
         let query_request = QueryRequest::new(state_root_hash, key, vec![]);
 
         if let QueryResult::Success { value, .. } = self.query_global_state(query_request).await {
-            value.into_contract_package()
+            value.into_package().map(Box::new)
         } else {
             None
         }

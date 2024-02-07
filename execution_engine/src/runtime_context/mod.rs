@@ -35,9 +35,9 @@ use casper_types::{
     system::auction::EraInfo,
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
     ContextAccessRights, DeployHash, EntryPointType, Gas, GrantedAccess, Key, KeyTag, Package,
-    PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, SystemContractRegistry,
-    Transfer,
-    TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
+    PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
+    SystemContractRegistry, Transfer, TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH,
+    KEY_HASH_LENGTH, U512,
 };
 
 use crate::{
@@ -1223,7 +1223,7 @@ where
 
         self.tracking_copy
             .borrow_mut()
-            .get_contract_entity(entity_hash)
+            .get_entity(entity_hash)
             .map_err(Into::into)
     }
 

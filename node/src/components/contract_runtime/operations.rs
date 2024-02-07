@@ -4,9 +4,11 @@ use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state::{
-    self, execution_result::{ExecutionResultAndMessages, ExecutionResults}, step::EvictItem, DeployItem, EngineState,
-    ExecuteRequest, ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, PruneConfig,
-    PruneResult, StepError, StepRequest, StepSuccess,
+    self,
+    execution_result::{ExecutionResultAndMessages, ExecutionResults},
+    step::EvictItem,
+    DeployItem, EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult,
+    GetEraValidatorsRequest, PruneConfig, PruneResult, StepError, StepRequest, StepSuccess,
 };
 use casper_storage::{
     data_access_layer::{DataAccessLayer, QueryRequest, QueryResult},
@@ -644,7 +646,6 @@ fn get_addressable_entity_under_entity_hash<S>(
 ) -> Option<AddressableEntity>
 where
     S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
 {
     let key = Key::addressable_entity_key(package_kind_tag, entity_hash);
     let query_request = QueryRequest::new(state_root_hash, key, vec![]);
@@ -675,7 +676,6 @@ fn get_addressable_entity_under_account_hash<S>(
 ) -> Option<AddressableEntity>
 where
     S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
 {
     let account_key = Key::Account(account_hash);
     let query_request = QueryRequest::new(state_root_hash, account_key, vec![]);

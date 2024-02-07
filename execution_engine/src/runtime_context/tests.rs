@@ -27,8 +27,7 @@ use casper_types::{
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCodeHash, CLValue,
     ContextAccessRights, DeployHash, EntryPointType, EntryPoints, Gas, Key, PackageHash, Phase,
     ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, SystemContractRegistry,
-    Tagged, URef, KEY_HASH_LENGTH,
-    U256, U512,
+    Tagged, URef, KEY_HASH_LENGTH, U256, U512,
 };
 use tempfile::TempDir;
 

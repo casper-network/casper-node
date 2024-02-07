@@ -1,16 +1,16 @@
+use std::str::Utf8Error;
 use thiserror::Error;
 
 use casper_types::{
-    account::Account,
     addressable_entity::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
     bytesrepr,
     execution::TransformError,
-    package::ContractPackageKind,
-    system, AccessRights, ApiError, CLType, CLValueError, ContractHash, ContractPackageHash,
-    ContractVersionKey, ContractWasmHash, Key, StoredValueTypeMismatch, URef,
+    package::PackageKind,
+    system, AccessRights, AddressableEntityHash, ApiError, ByteCodeHash, CLType, CLValueError,
+    EntityVersionKey, Key, PackageHash, StoredValueTypeMismatch, URef,
 };
 
-/// Possible execution errors.
+/// Possible tracking copy errors.
 #[derive(Error, Debug, Clone)]
 #[non_exhaustive]
 pub enum Error {
@@ -50,16 +50,13 @@ pub enum Error {
     /// Unable to find a function.
     #[error("Function not found: {}", _0)]
     FunctionNotFound(String),
-    // /// Parity WASM error.
-    // #[error("{}", _0)]
-    // ParityWasm(elements::Error),
     /// Error optimizing WASM.
     #[error("WASM optimizer error")]
     WasmOptimizer,
     /// Execution exceeded the gas limit.
     #[error("Out of gas error")]
     GasLimit,
-    /// A stored smart contract incorrectly called a ret function.
+    /// A stored smart contract called a ret function.
     #[error("Return")]
     Ret(Vec<URef>),
     /// Reverts execution with a provided status
@@ -111,10 +108,10 @@ pub enum Error {
     UnsupportedWasmStart,
     /// Contract package has no active contract versions.
     #[error("No active contract versions for contract package")]
-    NoActiveContractVersions(ContractPackageHash),
-    /// Invalid contract version supplied.
-    #[error("Invalid contract version: {}", _0)]
-    InvalidContractVersion(ContractVersionKey),
+    NoActiveEntityVersions(PackageHash),
+    /// Invalid entity version supplied.
+    #[error("Invalid entity version: {}", _0)]
+    InvalidEntityVersion(EntityVersionKey),
     /// Contract does not have specified entry point.
     #[error("No such method: {}", _0)]
     NoSuchMethod(String),
@@ -129,16 +126,16 @@ pub enum Error {
     UnexpectedStoredValueVariant,
     /// Error upgrading a locked contract package.
     #[error("A locked contract cannot be upgraded")]
-    LockedContract(ContractPackageHash),
+    LockedEntity(PackageHash),
     /// Unable to find a contract package by a specified hash address.
-    #[error("Invalid contract package: {}", _0)]
-    InvalidContractPackage(ContractPackageHash),
+    #[error("Invalid package: {}", _0)]
+    InvalidPackage(PackageHash),
     /// Unable to find a contract by a specified hash address.
     #[error("Invalid contract: {}", _0)]
-    InvalidContract(ContractHash),
+    InvalidEntity(AddressableEntityHash),
     /// Unable to find the WASM bytes specified by a hash address.
     #[error("Invalid contract WASM: {}", _0)]
-    InvalidContractWasm(ContractWasmHash),
+    InvalidByteCode(ByteCodeHash),
     /// Error calling a smart contract with a missing argument.
     #[error("Missing argument: {name}")]
     MissingArgument {
@@ -165,7 +162,7 @@ pub enum Error {
     MissingRuntimeStack,
     /// Contract is disabled.
     #[error("Contract is disabled")]
-    DisabledContract(ContractHash),
+    DisabledEntity(AddressableEntityHash),
     /// Transform error.
     #[error(transparent)]
     Transform(TransformError),
@@ -174,13 +171,22 @@ pub enum Error {
     UnexpectedKeyVariant(Key),
     /// Invalid Contract package kind.
     #[error("Invalid contract package kind: {0}")]
-    InvalidContractPackageKind(ContractPackageKind),
+    InvalidPackageKind(PackageKind),
     /// Failed to transfer tokens on a private chain.
     #[error("Failed to transfer with unrestricted transfers disabled")]
     DisabledUnrestrictedTransfers,
-    /// Legacy account.
-    #[error("Legacy account")]
-    LegacyAccount(Account),
+    /// Weight of all used associated keys does not meet entity's upgrade threshold.
+    #[error("Deployment authorization failure")]
+    UpgradeAuthorizationFailure,
+    /// The EntryPoints contains an invalid entry.
+    #[error("The EntryPoints contains an invalid entry")]
+    InvalidEntryPointType,
+    /// Invalid message topic operation.
+    #[error("The requested operation is invalid for a message topic")]
+    InvalidMessageTopicOperation,
+    /// Invalid string encoding.
+    #[error("Invalid UTF-8 string encoding: {0}")]
+    InvalidUtf8Encoding(Utf8Error),
 }
 
 impl Error {

@@ -46,7 +46,7 @@ use casper_storage::{
         trie_store::operations::PruneResult as GlobalStatePruneResult,
     },
     system::auction,
-    tracking_copy::{TrackingCopy, TrackingCopyExt},
+    tracking_copy::{TrackingCopy, TrackingCopyExt, TrackingCopyQueryResult},
     AddressGenerator,
 };
 
@@ -68,10 +68,10 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, ApiError, BlockTime, ByteCodeHash,
-    CLValue, ChainspecRegistry, ChecksumRegistry, ContractHash, ContractPackageHash,
-    ContractWasmHash, DeployHash, DeployInfo, Digest, EntryPoints, EraId, ExecutableDeployItem,
-    FeeHandling, Gas, Key, KeyTag, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
-    RuntimeArgs, StoredValue, SystemContractRegistry, URef, UpgradeConfig, U512,
+    CLValue, ChainspecRegistry, ChecksumRegistry, DeployHash, DeployInfo, Digest, EntryPoints,
+    ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Package, PackageHash, Phase,
+    ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, SystemContractRegistry, URef,
+    UpgradeConfig, U512,
 };
 
 use self::transfer::NewTransferTargetMode;
@@ -433,7 +433,9 @@ where
         // 3.1.1.1.1.7 new total validator slots is optional
         if let Some(new_validator_slots) = upgrade_config.new_validator_slots() {
             // 3.1.2.4 if new total validator slots is provided, update auction contract state
-            let auction_contract = tracking_copy.borrow_mut().get_contract(auction_hash)?;
+            let auction_contract = tracking_copy
+                .borrow_mut()
+                .get_addressable_entity(auction_hash)?;
 
             let validator_slots_key = auction_contract
                 .named_keys()
@@ -450,7 +452,9 @@ where
 
         if let Some(new_auction_delay) = upgrade_config.new_auction_delay() {
             debug!(%new_auction_delay, "Auction delay changed as part of the upgrade");
-            let auction_contract = tracking_copy.borrow_mut().get_contract(auction_hash)?;
+            let auction_contract = tracking_copy
+                .borrow_mut()
+                .get_addressable_entity(auction_hash)?;
 
             let auction_delay_key = auction_contract
                 .named_keys()
@@ -464,7 +468,9 @@ where
         }
 
         if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period_millis() {
-            let auction_contract = tracking_copy.borrow_mut().get_contract(auction_hash)?;
+            let auction_contract = tracking_copy
+                .borrow_mut()
+                .get_addressable_entity(auction_hash)?;
 
             let locked_funds_period_key = auction_contract
                 .named_keys()
@@ -485,7 +491,9 @@ where
                 Ratio::new(numer.into(), denom.into())
             };
 
-            let mint_contract = tracking_copy.borrow_mut().get_contract(mint_hash)?;
+            let mint_contract = tracking_copy
+                .borrow_mut()
+                .get_addressable_entity(mint_hash)?;
 
             let locked_funds_period_key = mint_contract
                 .named_keys()
@@ -561,7 +569,9 @@ where
         // We insert the new unbonding delay once the purses to be paid out have been transformed
         // based on the previous unbonding delay.
         if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
-            let auction_contract = tracking_copy.borrow_mut().get_contract(auction_hash)?;
+            let auction_contract = tracking_copy
+                .borrow_mut()
+                .get_addressable_entity(auction_hash)?;
 
             let unbonding_delay_key = auction_contract
                 .named_keys()
@@ -699,7 +709,7 @@ where
                 );
                 info!("Compensating for AddressableEntity move");
                 let result = tracking_copy
-                    .query(self.config(), new_query_key, query_request.path())
+                    .query(new_query_key, query_request.path())
                     .map_err(|err| Error::Exec(err.into()))?;
                 Ok(result.into())
             }
@@ -981,7 +991,7 @@ where
 
         let handle_payment_contract = match tracking_copy
             .borrow_mut()
-            .get_contract(*handle_payment_contract_hash)
+            .get_addressable_entity(*handle_payment_contract_hash)
         {
             Ok(contract) => contract,
             Err(error) => {
@@ -1629,7 +1639,7 @@ where
 
         let handle_payment_contract = match tracking_copy
             .borrow_mut()
-            .get_contract(*handle_payment_contract_hash)
+            .get_addressable_entity(*handle_payment_contract_hash)
         {
             Ok(contract) => contract,
             Err(error) => {
@@ -1795,7 +1805,7 @@ where
 
         let handle_payment_contract = match tracking_copy
             .borrow_mut()
-            .get_contract(*handle_payment_contract_hash)
+            .get_addressable_entity(*handle_payment_contract_hash)
         {
             Ok(contract) => contract,
             Err(error) => {
@@ -2025,7 +2035,7 @@ where
 
             let handle_payment_contract = match finalization_tc
                 .borrow_mut()
-                .get_contract(*handle_payment_contract_hash)
+                .get_addressable_entity(*handle_payment_contract_hash)
             {
                 Ok(info) => info,
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
@@ -2106,7 +2116,7 @@ where
 
                 let handle_payment_contract = tracking_copy
                     .borrow_mut()
-                    .get_contract(handle_payment_hash)?;
+                    .get_addressable_entity(handle_payment_hash)?;
 
                 let accumulation_purse_uref = match handle_payment_contract
                     .named_keys()
@@ -2309,7 +2319,7 @@ where
             tracking_copy
                 .borrow_mut()
                 .get_addressable_entity_by_account_hash(protocol_version, system_account_addr)
-            .map_err(|err| StepError::OtherEngineStateError(Error::TrackingCopy(err)))?
+                .map_err(|err| StepError::OtherEngineStateError(Error::TrackingCopy(err)))?
         };
 
         let authorization_keys = {

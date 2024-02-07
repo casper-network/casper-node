@@ -25,10 +25,7 @@ use casper_wasmi::RuntimeValue;
 
 use casper_storage::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
-    system::{
-        auction::Auction, handle_payment::HandlePayment, mint::Mint,
-        standard_payment::StandardPayment,
-    },
+    system::{auction::Auction, handle_payment::HandlePayment, mint::Mint},
     tracking_copy::TrackingCopyExt,
 };
 use casper_types::{
@@ -569,7 +566,11 @@ where
 
         let mint_hash = self.context.get_system_contract(MINT)?;
         let mint_key = Key::addressable_entity_key(PackageKindTag::System, mint_hash);
-        let mint_contract = self.context.state().borrow_mut().get_contract(mint_hash)?;
+        let mint_contract = self
+            .context
+            .state()
+            .borrow_mut()
+            .get_addressable_entity(mint_hash)?;
         let mut named_keys = mint_contract.named_keys().to_owned();
 
         let runtime_context = self.context.new_from_self(
@@ -701,7 +702,7 @@ where
             .context
             .state()
             .borrow_mut()
-            .get_contract(handle_payment_hash)?;
+            .get_addressable_entity(handle_payment_hash)?;
         let mut named_keys = handle_payment_contract.named_keys().to_owned();
 
         let runtime_context = self.context.new_from_self(
@@ -811,7 +812,7 @@ where
             .context
             .state()
             .borrow_mut()
-            .get_contract(auction_hash)?;
+            .get_addressable_entity(auction_hash)?;
         let mut named_keys = auction_contract.named_keys().to_owned();
 
         let runtime_context = self.context.new_from_self(

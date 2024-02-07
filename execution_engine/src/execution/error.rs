@@ -1,7 +1,6 @@
 //! Execution error and supporting code.
 use std::str::Utf8Error;
 use thiserror::Error;
-use parity_wasm::elements;
 
 use casper_storage::{global_state, tracking_copy::TrackingCopyError};
 

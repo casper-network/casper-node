@@ -525,8 +525,7 @@ impl TestFixture {
         let bids_result = runner
             .main_reactor()
             .contract_runtime
-            .auction_state(*highest_block.state_root_hash())
-            .expect("should have bids result");
+            .auction_state(*highest_block.state_root_hash());
 
         if let GetBidsResult::Success { bids } = bids_result {
             match bids.iter().find(|bid_kind| {

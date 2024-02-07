@@ -12,12 +12,10 @@ use casper_types::{
     execution::Effects,
     package::{EntityVersions, Groups, PackageKind, PackageKindTag, PackageStatus},
     system::{handle_payment::ACCUMULATION_PURSE_KEY, SystemEntityType},
-    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeKind, CLValue,
-    CLValueError, Digest, EntryPoints, FeeHandling, Key, Package, PackageHash, Phase,
+    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeHash, ByteCodeKind,
+    CLValue, CLValueError, Digest, EntryPoints, FeeHandling, Key, Package, PackageHash, Phase,
     ProtocolVersion, PublicKey, StoredValue, URef, U512,
 };
-
-use crate::engine_state::ACCOUNT_WASM_HASH;
 
 use super::EngineConfig;
 
@@ -261,7 +259,7 @@ where
     ) -> Result<(), ProtocolUpgradeError> {
         let mut address_generator = AddressGenerator::new(pre_state_hash.as_ref(), Phase::System);
 
-        let byte_code_hash = *ACCOUNT_BYTE_CODE_HASH;
+        let byte_code_hash = ByteCodeHash::default();
         let entity_hash = AddressableEntityHash::new(address_generator.new_hash_address());
         let package_hash = PackageHash::new(address_generator.new_hash_address());
 

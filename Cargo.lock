@@ -670,7 +670,7 @@ dependencies = [
  "lmdb-rkv",
  "num",
  "num-derive",
- "num-rational 0.4.1",
+ "num-rational",
  "num-traits",
  "once_cell",
  "proptest",
@@ -5862,14 +5862,6 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-serde",
-]
-
-[[package]]
-name = "transfer-basic"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
 ]
 
 [[package]]

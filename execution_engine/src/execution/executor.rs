@@ -208,7 +208,10 @@ impl Executor {
             }
         };
 
-        let contract = match tracking_copy.borrow_mut().get_contract(entity_hash) {
+        let contract = match tracking_copy
+            .borrow_mut()
+            .get_addressable_entity(entity_hash)
+        {
             Ok(contract) => contract,
             Err(error) => return (None, ExecutionResult::precondition_failure(error.into())),
         };
@@ -345,7 +348,7 @@ impl Executor {
         max_stack_height: usize,
     ) -> Result<ExecutionResult, EngineStateError>
     where
-        R: StateReader<Key, StoredValue>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
         R::Error: Into<Error>,
     {
         let payment_amount: U512 = match try_get_amount(&payment_args) {
@@ -448,7 +451,7 @@ impl Executor {
         stack: RuntimeStack,
     ) -> (Option<URef>, ExecutionResult)
     where
-        R: StateReader<Key, StoredValue>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
         R::Error: Into<Error>,
     {
         self.call_system_contract(
@@ -486,7 +489,7 @@ impl Executor {
         spending_limit: U512,
     ) -> (Option<Result<(), u8>>, ExecutionResult)
     where
-        R: StateReader<Key, StoredValue>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
         R::Error: Into<Error>,
     {
         self.call_system_contract(

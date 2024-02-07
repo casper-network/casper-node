@@ -9,9 +9,9 @@ use casper_types::{
     },
     execution::{Effects, Transform, TransformKind},
     handle_stored_dictionary_value,
-    package::{PackageHash, PackageKindTag},
-    AccessRights, AddressableEntity, CLValue, CLValueDictionary, ContractWasmHash, Digest,
-    EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion, StoredValue, URef, U256, U512,
+    package::PackageKindTag,
+    AccessRights, AddressableEntity, ByteCodeHash, CLValue, CLValueDictionary, Digest, EntryPoints,
+    HashAddr, Key, KeyTag, PackageHash, ProtocolVersion, StoredValue, URef, U256, U512,
     UREF_ADDR_LENGTH,
 };
 
@@ -29,12 +29,13 @@ use crate::{
 
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
 
+use casper_types::contracts::ContractHash;
 use once_cell::sync::Lazy;
 
 /// Default contract wasm hash.
 #[cfg(any(feature = "testing", feature = "gens", test))]
-pub static DEFAULT_CONTRACT_WASM_HASH: Lazy<ContractWasmHash> =
-    Lazy::new(|| ContractWasmHash::new(DEFAULT_ADDRESS));
+pub static DEFAULT_BYTE_CODE_HASH: Lazy<ByteCodeHash> =
+    Lazy::new(|| ByteCodeHash::new(DEFAULT_ADDRESS));
 
 struct CountingDb {
     count: Rc<Cell<i32>>,
@@ -197,9 +198,9 @@ fn tracking_copy_add_named_key() {
     let zero_account_hash = AccountHash::new([0u8; ACCOUNT_HASH_LENGTH]);
     // DB now holds an `Account` so that we can test adding a `NamedKey`
     let associated_keys = AssociatedKeys::new(zero_account_hash, Weight::new(1));
-    let contract_wasm_hash = *DEFAULT_CONTRACT_WASM_HASH;
+    let contract_wasm_hash = *DEFAULT_BYTE_CODE_HASH;
     let contract = AddressableEntity::new(
-        ContractPackageHash::new([3u8; 32]),
+        PackageHash::new([3u8; 32]),
         contract_wasm_hash,
         NamedKeys::new(),
         EntryPoints::new_with_default_entry_point(),
@@ -720,10 +721,10 @@ fn validate_query_proof_should_work() {
     let cl_value = CLValue::from_t(account_entity_key).unwrap();
     let account_value = StoredValue::CLValue(cl_value);
     let account_key = Key::Account(account_hash);
-    let contract_wasm_hash = *DEFAULT_CONTRACT_WASM_HASH;
+    let contract_wasm_hash = *DEFAULT_BYTE_CODE_HASH;
 
     let account_contract = StoredValue::AddressableEntity(AddressableEntity::new(
-        ContractPackageHash::new([20; 32]),
+        PackageHash::new([20; 32]),
         contract_wasm_hash,
         NamedKeys::new(),
         EntryPoints::new_with_default_entry_point(),
@@ -769,10 +770,10 @@ fn validate_query_proof_should_work() {
     let main_entity_key: Key =
         Key::addressable_entity_key(PackageKindTag::Account, main_entity_hash);
 
-    let cl_value_2 = CLValue::from_t(main_contract_key).unwrap();
-    let contract_wasm_hash = *DEFAULT_CONTRACT_WASM_HASH;
-    let main_contract = StoredValue::AddressableEntity(AddressableEntity::new(
-        ContractPackageHash::new([21; 32]),
+    let cl_value_2 = CLValue::from_t(main_entity_key).unwrap();
+    let contract_wasm_hash = *DEFAULT_BYTE_CODE_HASH;
+    let main_entity = StoredValue::AddressableEntity(AddressableEntity::new(
+        PackageHash::new([21; 32]),
         contract_wasm_hash,
         named_keys,
         EntryPoints::new_with_default_entry_point(),
@@ -811,7 +812,7 @@ fn validate_query_proof_should_work() {
     let path = &[contract_name, account_name];
 
     let result = tracking_copy
-        .query(main_contract_key, path)
+        .query(main_entity_key, path)
         .expect("should query");
 
     let proofs = if let TrackingCopyQueryResult::Success { proofs, .. } = result {
@@ -821,14 +822,8 @@ fn validate_query_proof_should_work() {
     };
 
     // Happy path
-    validate_query_proof(
-        &root_hash,
-        &proofs,
-        &main_entity_key,
-        path,
-        &account_value,
-    )
-    .expect("should validate");
+    validate_query_proof(&root_hash, &proofs, &main_entity_key, path, &account_value)
+        .expect("should validate");
 
     //TODO! Is this assumption still valid given account indirection.
     // Path should be the same length as the proofs less one (so it should be of length 2)
@@ -950,7 +945,7 @@ fn validate_query_proof_should_work() {
     let misfit_tracking_copy = TrackingCopy::new(misfit_view, super::DEFAULT_MAX_QUERY_DEPTH);
 
     let misfit_result = misfit_tracking_copy
-        .query(main_contract_key, path)
+        .query(main_entity_key, path)
         .expect("should query");
 
     let misfit_proof = if let TrackingCopyQueryResult::Success { proofs, .. } = misfit_result {

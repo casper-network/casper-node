@@ -26,7 +26,7 @@ use crate::{
 
 const BYTE_CODE_MAX_DISPLAY_LEN: usize = 16;
 const KEY_HASH_LENGTH: usize = 32;
-const WASM_STRING_PREFIX: &str = "contract-wasm-";
+const WASM_STRING_PREFIX: &str = "byte-code-";
 
 /// Associated error type of `TryFrom<&[u8]>` for `ByteCodeHash`.
 #[derive(Debug)]
@@ -82,7 +82,7 @@ impl Display for FromStrError {
 
 /// A newtype wrapping a `HashAddr` which is the raw bytes of
 /// the ByteCodeHash
-#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ByteCodeHash(ByteCodeAddr);
 
@@ -115,6 +115,12 @@ impl ByteCodeHash {
             .ok_or(FromStrError::InvalidPrefix)?;
         let bytes = ByteCodeAddr::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
         Ok(ByteCodeHash(bytes))
+    }
+}
+
+impl Default for ByteCodeHash {
+    fn default() -> Self {
+        Self::new([0u8; KEY_HASH_LENGTH])
     }
 }
 
@@ -160,8 +166,8 @@ impl FromBytes for ByteCodeHash {
     }
 }
 
-impl From<[u8; 32]> for ByteCodeHash {
-    fn from(bytes: [u8; 32]) -> Self {
+impl From<[u8; KEY_HASH_LENGTH]> for ByteCodeHash {
+    fn from(bytes: [u8; KEY_HASH_LENGTH]) -> Self {
         ByteCodeHash(bytes)
     }
 }
@@ -418,7 +424,7 @@ mod tests {
 
     #[test]
     fn contract_wasm_hash_from_str() {
-        let byte_code_hash = ByteCodeHash([3; 32]);
+        let byte_code_hash = ByteCodeHash([3; KEY_HASH_LENGTH]);
         let encoded = byte_code_hash.to_formatted_string();
         let decoded = ByteCodeHash::from_formatted_str(&encoded).unwrap();
         assert_eq!(byte_code_hash, decoded);
