@@ -125,7 +125,7 @@ const STORAGE_DB_FILENAME: &str = "storage.lmdb";
 const MAX_TRANSACTIONS: u32 = 1;
 
 /// Maximum number of allowed dbs.
-const MAX_DB_COUNT: u32 = 15;
+const MAX_DB_COUNT: u32 = 16;
 /// Key under which completed blocks are to be stored.
 const COMPLETED_BLOCKS_STORAGE_KEY: &[u8] = b"completed_blocks_disjoint_sequences";
 /// Name of the file created when initializing a force resync.
