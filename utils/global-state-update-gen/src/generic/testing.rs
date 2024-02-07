@@ -5,15 +5,15 @@ use rand::Rng;
 
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
+    addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, NamedKeys, Weight},
     system::auction::{
         BidKind, BidsExt, Delegator, SeigniorageRecipient, SeigniorageRecipients,
         SeigniorageRecipientsSnapshot, UnbondingPurse, UnbondingPurses, ValidatorBid,
         WithdrawPurse, WithdrawPurses,
     },
     testing::TestRng,
-    AccessRights, AddressableEntity, CLValue, ContractPackageHash, ContractWasmHash, EntryPoints,
-    EraId, Key, ProtocolVersion, PublicKey, StoredValue, URef, URefAddr, U512,
+    AccessRights, AddressableEntity, ByteCodeHash, CLValue, EntryPoints, EraId, Key, PackageHash,
+    ProtocolVersion, PublicKey, StoredValue, URef, URefAddr, U512,
 };
 
 use super::{
@@ -60,14 +60,15 @@ impl MockStateReader {
     ) -> Self {
         let main_purse = URef::new(rng.gen(), AccessRights::READ_ADD_WRITE);
         let entity = AddressableEntity::new(
-            ContractPackageHash::new(rng.gen()),
-            ContractWasmHash::new(rng.gen()),
+            PackageHash::new(rng.gen()),
+            ByteCodeHash::new(rng.gen()),
             NamedKeys::new(),
             EntryPoints::new(),
             self.protocol_version,
             main_purse,
             AssociatedKeys::new(account_hash, Weight::new(1)),
             ActionThresholds::default(),
+            MessageTopics::default(),
         );
 
         self.purses.insert(main_purse.addr(), balance);

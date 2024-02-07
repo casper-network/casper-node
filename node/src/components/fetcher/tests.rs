@@ -12,8 +12,8 @@ use tempfile::TempDir;
 use thiserror::Error;
 
 use casper_types::{
-    testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployId,
-    FinalitySignature, Transaction, TransactionHash,
+    testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, FinalitySignature, Transaction,
+    TransactionHash, TransactionId,
 };
 
 use super::*;
@@ -93,13 +93,13 @@ enum Event {
     #[from]
     FakeTransactionAcceptor(transaction_acceptor::Event),
     #[from]
-    DeployFetcher(fetcher::Event<Deploy>),
+    TransactionFetcher(fetcher::Event<Transaction>),
     #[from]
     NetworkRequestMessage(NetworkRequest<Message>),
     #[from]
     StorageRequest(StorageRequest),
     #[from]
-    FetcherRequestDeploy(FetcherRequest<Deploy>),
+    FetcherRequestTransaction(FetcherRequest<Transaction>),
     #[from]
     BlockAccumulatorRequest(BlockAccumulatorRequest),
     #[from]
@@ -166,7 +166,7 @@ struct Reactor {
     network: InMemoryNetwork<Message>,
     storage: Storage,
     fake_transaction_acceptor: FakeTransactionAcceptor,
-    deploy_fetcher: Fetcher<Deploy>,
+    transaction_fetcher: Fetcher<Transaction>,
 }
 
 impl ReactorTrait for Reactor {
@@ -194,9 +194,10 @@ impl ReactorTrait for Reactor {
                 self.fake_transaction_acceptor
                     .handle_event(effect_builder, rng, event),
             ),
-            Event::DeployFetcher(event) => reactor::wrap_effects(
-                Event::DeployFetcher,
-                self.deploy_fetcher.handle_event(effect_builder, rng, event),
+            Event::TransactionFetcher(event) => reactor::wrap_effects(
+                Event::TransactionFetcher,
+                self.transaction_fetcher
+                    .handle_event(effect_builder, rng, event),
             ),
             Event::NetworkRequestMessage(request) => reactor::wrap_effects(
                 Event::Network,
@@ -208,19 +209,18 @@ impl ReactorTrait for Reactor {
                 self.storage
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            Event::FetcherRequestDeploy(request) => reactor::wrap_effects(
-                Event::DeployFetcher,
-                self.deploy_fetcher
+            Event::FetcherRequestTransaction(request) => reactor::wrap_effects(
+                Event::TransactionFetcher,
+                self.transaction_fetcher
                     .handle_event(effect_builder, rng, request.into()),
             ),
             Event::TransactionAcceptorAnnouncement(announcement) => {
-                match fetcher::Event::maybe_from(announcement) {
-                    Some(event) => reactor::wrap_effects(
-                        Event::DeployFetcher,
-                        self.deploy_fetcher.handle_event(effect_builder, rng, event),
-                    ),
-                    None => Effects::new(),
-                }
+                let event = fetcher::Event::from(announcement);
+                reactor::wrap_effects(
+                    Event::TransactionFetcher,
+                    self.transaction_fetcher
+                        .handle_event(effect_builder, rng, event),
+                )
             }
             Event::AcceptTransactionRequest(AcceptTransactionRequest {
                 transaction,
@@ -300,13 +300,13 @@ impl ReactorTrait for Reactor {
         .unwrap();
 
         let fake_transaction_acceptor = FakeTransactionAcceptor::new();
-        let deploy_fetcher =
-            Fetcher::<Deploy>::new("deploy", &cfg.fetcher_config, registry).unwrap();
+        let transaction_fetcher =
+            Fetcher::<Transaction>::new("transaction", &cfg.fetcher_config, registry).unwrap();
         let reactor = Reactor {
             network,
             storage,
             fake_transaction_acceptor,
-            deploy_fetcher,
+            transaction_fetcher,
         };
         Ok((reactor, Effects::new()))
     }
@@ -320,25 +320,26 @@ impl Reactor {
         response: NetResponseIncoming,
     ) -> Effects<Event> {
         match *response.message {
-            NetResponse::Deploy(ref serialized_item) => {
-                let transaction = match bincode::deserialize::<FetchResponse<Deploy, DeployHash>>(
-                    serialized_item,
-                ) {
-                    Ok(FetchResponse::Fetched(deploy)) => Transaction::from(deploy),
-                    Ok(FetchResponse::NotFound(deploy_hash)) => {
+            NetResponse::Transaction(ref serialized_item) => {
+                let transaction = match bincode::deserialize::<
+                    FetchResponse<Transaction, TransactionHash>,
+                >(serialized_item)
+                {
+                    Ok(FetchResponse::Fetched(txn)) => txn,
+                    Ok(FetchResponse::NotFound(txn_hash)) => {
                         return fatal!(
                             effect_builder,
-                            "peer did not have deploy with hash {}: {}",
-                            deploy_hash,
+                            "peer did not have transaction with hash {}: {}",
+                            txn_hash,
                             response.sender,
                         )
                         .ignore();
                     }
-                    Ok(FetchResponse::NotProvided(deploy_hash)) => {
+                    Ok(FetchResponse::NotProvided(txn_hash)) => {
                         return fatal!(
                             effect_builder,
-                            "peer refused to provide deploy with hash {}: {}",
-                            deploy_hash,
+                            "peer refused to provide transaction with hash {}: {}",
+                            txn_hash,
                             response.sender,
                         )
                         .ignore();
@@ -346,7 +347,7 @@ impl Reactor {
                     Err(error) => {
                         return fatal!(
                             effect_builder,
-                            "failed to decode deploy from {}: {}",
+                            "failed to decode transaction from {}: {}",
                             response.sender,
                             error
                         )
@@ -366,7 +367,7 @@ impl Reactor {
             }
             _ => fatal!(
                 effect_builder,
-                "no support for anything but deploy responses in fetcher test"
+                "no support for anything but transaction responses in fetcher test"
             )
             .ignore(),
         }
@@ -379,45 +380,43 @@ impl NetworkedReactor for Reactor {
     }
 }
 
-fn announce_deploy_received(deploy: Deploy) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
-    |effect_builder: EffectBuilder<Event>| {
-        effect_builder
-            .try_accept_transaction(Transaction::from(deploy), None)
-            .ignore()
-    }
+fn announce_transaction_received(
+    txn: Transaction,
+) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
+    |effect_builder: EffectBuilder<Event>| effect_builder.try_accept_transaction(txn, None).ignore()
 }
 
-type FetchedDeployResult = Arc<Mutex<(bool, Option<FetchResult<Deploy>>)>>;
+type FetchedTransactionResult = Arc<Mutex<(bool, Option<FetchResult<Transaction>>)>>;
 
-fn fetch_deploy(
-    deploy_id: DeployId,
+fn fetch_txn(
+    txn_id: TransactionId,
     node_id: NodeId,
-    fetched: FetchedDeployResult,
+    fetched: FetchedTransactionResult,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     move |effect_builder: EffectBuilder<Event>| {
         effect_builder
-            .fetch::<Deploy>(deploy_id, node_id, Box::new(EmptyValidationMetadata))
-            .then(move |deploy| async move {
+            .fetch::<Transaction>(txn_id, node_id, Box::new(EmptyValidationMetadata))
+            .then(move |txn| async move {
                 let mut result = fetched.lock().unwrap();
                 result.0 = true;
-                result.1 = Some(deploy);
+                result.1 = Some(txn);
             })
             .ignore()
     }
 }
 
-/// Store a deploy on a target node.
-async fn store_deploy(
-    deploy: &Deploy,
+/// Store a transaction on a target node.
+async fn store_txn(
+    txn: &Transaction,
     node_id: &NodeId,
     network: &mut TestingNetwork<Reactor>,
     rng: &mut TestRng,
 ) {
     network
-        .process_injected_effect_on(node_id, announce_deploy_received(deploy.clone()))
+        .process_injected_effect_on(node_id, announce_transaction_received(txn.clone()))
         .await;
 
-    // cycle to deploy acceptor announcement
+    // cycle to transaction acceptor announcement
     network
         .crank_until(
             node_id,
@@ -436,22 +435,22 @@ async fn store_deploy(
 }
 
 #[derive(Debug)]
-enum ExpectedFetchedDeployResult {
+enum ExpectedFetchedTransactionResult {
     TimedOut,
     FromStorage {
-        expected_deploy: Box<Deploy>,
+        expected_txn: Box<Transaction>,
     },
     FromPeer {
-        expected_deploy: Box<Deploy>,
+        expected_txn: Box<Transaction>,
         expected_peer: NodeId,
     },
 }
 
 async fn assert_settled(
     node_id: &NodeId,
-    deploy_id: DeployId,
-    expected_result: ExpectedFetchedDeployResult,
-    fetched: FetchedDeployResult,
+    txn_id: TransactionId,
+    expected_result: ExpectedFetchedTransactionResult,
+    fetched: FetchedTransactionResult,
     network: &mut TestingNetwork<Reactor>,
     rng: &mut TestRng,
     timeout: Duration,
@@ -469,38 +468,39 @@ async fn assert_settled(
         .reactor()
         .inner()
         .storage
-        .get_transaction_by_hash(TransactionHash::from(*deploy_id.deploy_hash()));
+        .get_transaction_by_hash(txn_id.transaction_hash());
 
-    // assert_eq!(expected_result.is_some(), maybe_stored_deploy.is_some());
     let actual_fetcher_result = fetched.lock().unwrap().1.clone();
     match (expected_result, actual_fetcher_result, maybe_stored_txn) {
         // Timed-out case: despite the delayed response causing a timeout, the response does arrive,
-        // and the TestDeployAcceptor unconditionally accepts the deploy and stores it. For the
+        // and the TestTransactionAcceptor unconditionally accepts the txn and stores it.  For the
         // test, we don't care whether it was stored or not, just that the TimedOut event fired.
-        (ExpectedFetchedDeployResult::TimedOut, Some(Err(fetcher::Error::TimedOut { .. })), _) => {}
-        // FromStorage case: expect deploy to correspond to item fetched, as well as stored item
         (
-            ExpectedFetchedDeployResult::FromStorage { expected_deploy },
+            ExpectedFetchedTransactionResult::TimedOut,
+            Some(Err(fetcher::Error::TimedOut { .. })),
+            _,
+        ) => {}
+        // FromStorage case: expect txn to correspond to item fetched, as well as stored item.
+        (
+            ExpectedFetchedTransactionResult::FromStorage { expected_txn },
             Some(Ok(FetchedData::FromStorage { item })),
             Some(stored_txn),
-        ) if expected_deploy == item && stored_txn == Transaction::from((*item).clone()) => {}
-        // FromPeer case: deploys should correspond, storage should be present and correspond, and
+        ) if expected_txn == item && stored_txn == *item => {}
+        // FromPeer case: txns should correspond, storage should be present and correspond, and
         // peers should correspond.
         (
-            ExpectedFetchedDeployResult::FromPeer {
-                expected_deploy,
+            ExpectedFetchedTransactionResult::FromPeer {
+                expected_txn,
                 expected_peer,
             },
             Some(Ok(FetchedData::FromPeer { item, peer })),
             Some(stored_txn),
-        ) if expected_deploy == item
-            && stored_txn == Transaction::from((*item).clone())
-            && expected_peer == peer => {}
+        ) if expected_txn == item && stored_txn == *item && expected_peer == peer => {}
         // Sad path case
-        (expected_result, actual_fetcher_result, maybe_stored_deploy) => {
+        (expected_result, actual_fetcher_result, maybe_stored_txn) => {
             panic!(
-                "Expected result type {:?} but found {:?} (stored deploy is {:?})",
-                expected_result, actual_fetcher_result, maybe_stored_deploy
+                "Expected result type {:?} but found {:?} (stored transaction is {:?})",
+                expected_result, actual_fetcher_result, maybe_stored_txn
             )
         }
     }
@@ -518,30 +518,27 @@ async fn should_fetch_from_local() {
         (network, rng, node_ids)
     };
 
-    // Create a random deploy.
-    let deploy = Deploy::random_valid_native_transfer(&mut rng);
+    // Create a random txn.
+    let txn = Transaction::random(&mut rng);
 
-    // Store deploy on a node.
+    // Store txn on a node.
     let node_to_store_on = &node_ids[0];
-    store_deploy(&deploy, node_to_store_on, &mut network, &mut rng).await;
+    store_txn(&txn, node_to_store_on, &mut network, &mut rng).await;
 
-    // Try to fetch the deploy from a node that holds it.
+    // Try to fetch the txn from a node that holds it.
     let node_id = node_ids[0];
-    let deploy_id = deploy.fetch_id();
+    let txn_id = txn.fetch_id();
     let fetched = Arc::new(Mutex::new((false, None)));
     network
-        .process_injected_effect_on(
-            &node_id,
-            fetch_deploy(deploy_id, node_id, Arc::clone(&fetched)),
-        )
+        .process_injected_effect_on(&node_id, fetch_txn(txn_id, node_id, Arc::clone(&fetched)))
         .await;
 
-    let expected_result = ExpectedFetchedDeployResult::FromStorage {
-        expected_deploy: Box::new(deploy),
+    let expected_result = ExpectedFetchedTransactionResult::FromStorage {
+        expected_txn: Box::new(txn),
     };
     assert_settled(
         &node_id,
-        deploy_id,
+        txn_id,
         expected_result,
         fetched,
         &mut network,
@@ -565,32 +562,32 @@ async fn should_fetch_from_peer() {
         (network, rng, node_ids)
     };
 
-    // Create a random deploy.
-    let deploy = Deploy::random_valid_native_transfer(&mut rng);
+    // Create a random txn.
+    let txn = Transaction::random(&mut rng);
 
-    // Store deploy on a node.
-    let node_with_deploy = node_ids[0];
-    store_deploy(&deploy, &node_with_deploy, &mut network, &mut rng).await;
+    // Store txn on a node.
+    let node_with_txn = node_ids[0];
+    store_txn(&txn, &node_with_txn, &mut network, &mut rng).await;
 
-    let node_without_deploy = node_ids[1];
-    let deploy_id = deploy.fetch_id();
+    let node_without_txn = node_ids[1];
+    let txn_id = txn.fetch_id();
     let fetched = Arc::new(Mutex::new((false, None)));
 
-    // Try to fetch the deploy from a node that does not hold it; should get from peer.
+    // Try to fetch the txn from a node that does not hold it; should get from peer.
     network
         .process_injected_effect_on(
-            &node_without_deploy,
-            fetch_deploy(deploy_id, node_with_deploy, Arc::clone(&fetched)),
+            &node_without_txn,
+            fetch_txn(txn_id, node_with_txn, Arc::clone(&fetched)),
         )
         .await;
 
-    let expected_result = ExpectedFetchedDeployResult::FromPeer {
-        expected_deploy: Box::new(deploy),
-        expected_peer: node_with_deploy,
+    let expected_result = ExpectedFetchedTransactionResult::FromPeer {
+        expected_txn: Box::new(txn),
+        expected_peer: node_with_txn,
     };
     assert_settled(
-        &node_without_deploy,
-        deploy_id,
+        &node_without_txn,
+        txn_id,
         expected_result,
         fetched,
         &mut network,
@@ -614,22 +611,22 @@ async fn should_timeout_fetch_from_peer() {
         (network, rng, node_ids)
     };
 
-    // Create a random deploy.
-    let deploy = Deploy::random_valid_native_transfer(&mut rng);
-    let deploy_id = deploy.fetch_id();
+    // Create a random txn.
+    let txn = Transaction::random(&mut rng);
+    let txn_id = txn.fetch_id();
 
     let holding_node = node_ids[0];
     let requesting_node = node_ids[1];
 
-    // Store deploy on holding node.
-    store_deploy(&deploy, &holding_node, &mut network, &mut rng).await;
+    // Store txn on holding node.
+    store_txn(&txn, &holding_node, &mut network, &mut rng).await;
 
-    // Initiate requesting node asking for deploy from holding node.
+    // Initiate requesting node asking for txn from holding node.
     let fetched = Arc::new(Mutex::new((false, None)));
     network
         .process_injected_effect_on(
             &requesting_node,
-            fetch_deploy(deploy_id, holding_node, Arc::clone(&fetched)),
+            fetch_txn(txn_id, holding_node, Arc::clone(&fetched)),
         )
         .await;
 
@@ -677,10 +674,10 @@ async fn should_timeout_fetch_from_peer() {
     testing::advance_time(duration_to_advance).await;
 
     // Settle the network, allowing timeout to avoid panic.
-    let expected_result = ExpectedFetchedDeployResult::TimedOut;
+    let expected_result = ExpectedFetchedTransactionResult::TimedOut;
     assert_settled(
         &requesting_node,
-        deploy_id,
+        txn_id,
         expected_result,
         fetched,
         &mut network,

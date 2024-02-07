@@ -7,8 +7,8 @@ use core::{
 
 use crate::{
     addressable_entity::{
-        self, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, TryFromIntError,
-        TryFromSliceForAccountHashError, UpdateKeyFailure,
+        self, AddKeyFailure, MessageTopicError, RemoveKeyFailure, SetThresholdFailure,
+        TryFromIntError, TryFromSliceForAccountHashError, UpdateKeyFailure,
     },
     bytesrepr,
     system::{auction, handle_payment, mint},
@@ -278,7 +278,7 @@ pub enum ApiError {
     /// assert_eq!(ApiError::from(28), ApiError::InsufficientTotalWeight);
     /// ```
     InsufficientTotalWeight,
-    /// The given `u32` doesn't map to a [`SystemContractType`](crate::system::SystemContractType).
+    /// The given `u32` doesn't map to a [`SystemContractType`](crate::system::SystemEntityType).
     /// ```
     /// # use casper_types::ApiError;
     /// assert_eq!(ApiError::from(29), ApiError::InvalidSystemContract);
@@ -396,6 +396,42 @@ pub enum ApiError {
     /// }
     /// ```
     User(u16),
+    /// The message topic is already registered.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(41), ApiError::MessageTopicAlreadyRegistered);
+    /// ```
+    MessageTopicAlreadyRegistered,
+    /// The maximum number of allowed message topics was exceeded.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(42), ApiError::MaxTopicsNumberExceeded);
+    /// ```
+    MaxTopicsNumberExceeded,
+    /// The maximum size for the topic name was exceeded.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(43), ApiError::MaxTopicNameSizeExceeded);
+    /// ```
+    MaxTopicNameSizeExceeded,
+    /// The message topic is not registered.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(44), ApiError::MessageTopicNotRegistered);
+    /// ```
+    MessageTopicNotRegistered,
+    /// The message topic is full and cannot accept new messages.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(45), ApiError::MessageTopicFull);
+    /// ```
+    MessageTopicFull,
+    /// The message topic is full and cannot accept new messages.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(46), ApiError::MessageTooLarge);
+    /// ```
+    MessageTooLarge,
 }
 
 impl From<bytesrepr::Error> for ApiError {
@@ -499,6 +535,16 @@ impl From<handle_payment::Error> for ApiError {
     }
 }
 
+impl From<MessageTopicError> for ApiError {
+    fn from(error: MessageTopicError) -> Self {
+        match error {
+            MessageTopicError::DuplicateTopic => ApiError::MessageTopicAlreadyRegistered,
+            MessageTopicError::MaxTopicsExceeded => ApiError::MaxTopicsNumberExceeded,
+            MessageTopicError::TopicNameSizeExceeded => ApiError::MaxTopicNameSizeExceeded,
+        }
+    }
+}
+
 impl From<ApiError> for u32 {
     fn from(error: ApiError) -> Self {
         match error {
@@ -542,6 +588,12 @@ impl From<ApiError> for u32 {
             ApiError::MissingSystemContractHash => 38,
             ApiError::ExceededRecursionDepth => 39,
             ApiError::NonRepresentableSerialization => 40,
+            ApiError::MessageTopicAlreadyRegistered => 41,
+            ApiError::MaxTopicsNumberExceeded => 42,
+            ApiError::MaxTopicNameSizeExceeded => 43,
+            ApiError::MessageTopicNotRegistered => 44,
+            ApiError::MessageTopicFull => 45,
+            ApiError::MessageTooLarge => 46,
             ApiError::AuctionError(value) => AUCTION_ERROR_OFFSET + u32::from(value),
             ApiError::ContractHeader(value) => HEADER_ERROR_OFFSET + u32::from(value),
             ApiError::Mint(value) => MINT_ERROR_OFFSET + u32::from(value),
@@ -594,6 +646,12 @@ impl From<u32> for ApiError {
             38 => ApiError::MissingSystemContractHash,
             39 => ApiError::ExceededRecursionDepth,
             40 => ApiError::NonRepresentableSerialization,
+            41 => ApiError::MessageTopicAlreadyRegistered,
+            42 => ApiError::MaxTopicsNumberExceeded,
+            43 => ApiError::MaxTopicNameSizeExceeded,
+            44 => ApiError::MessageTopicNotRegistered,
+            45 => ApiError::MessageTopicFull,
+            46 => ApiError::MessageTooLarge,
             USER_ERROR_MIN..=USER_ERROR_MAX => ApiError::User(value as u16),
             HP_ERROR_MIN..=HP_ERROR_MAX => ApiError::HandlePayment(value as u8),
             MINT_ERROR_MIN..=MINT_ERROR_MAX => ApiError::Mint(value as u8),
@@ -652,6 +710,16 @@ impl Debug for ApiError {
             ApiError::NonRepresentableSerialization => {
                 write!(f, "ApiError::NonRepresentableSerialization")?
             }
+            ApiError::MessageTopicAlreadyRegistered => {
+                write!(f, "ApiError::MessageTopicAlreadyRegistered")?
+            }
+            ApiError::MaxTopicsNumberExceeded => write!(f, "ApiError::MaxTopicsNumberExceeded")?,
+            ApiError::MaxTopicNameSizeExceeded => write!(f, "ApiError::MaxTopicNameSizeExceeded")?,
+            ApiError::MessageTopicNotRegistered => {
+                write!(f, "ApiError::MessageTopicNotRegistered")?
+            }
+            ApiError::MessageTopicFull => write!(f, "ApiError::MessageTopicFull")?,
+            ApiError::MessageTooLarge => write!(f, "ApiError::MessageTooLarge")?,
             ApiError::ExceededRecursionDepth => write!(f, "ApiError::ExceededRecursionDepth")?,
             ApiError::AuctionError(value) => write!(
                 f,
@@ -871,5 +939,11 @@ mod tests {
         round_trip(Err(ApiError::User(u16::MAX)));
         round_trip(Err(ApiError::AuctionError(0)));
         round_trip(Err(ApiError::AuctionError(u8::MAX)));
+        round_trip(Err(ApiError::MessageTopicAlreadyRegistered));
+        round_trip(Err(ApiError::MaxTopicsNumberExceeded));
+        round_trip(Err(ApiError::MaxTopicNameSizeExceeded));
+        round_trip(Err(ApiError::MessageTopicNotRegistered));
+        round_trip(Err(ApiError::MessageTopicFull));
+        round_trip(Err(ApiError::MessageTooLarge));
     }
 }

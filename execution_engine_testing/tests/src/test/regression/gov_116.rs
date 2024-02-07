@@ -1,12 +1,16 @@
 use std::{collections::BTreeSet, iter::FromIterator};
 
+use casper_execution_engine::engine_state::{
+    genesis::ExecConfigBuilder, EngineConfigBuilder, RunGenesisRequest,
+};
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_VALIDATOR_SLOTS, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_VALIDATOR_SLOTS, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_types::{
     runtime_args,
@@ -237,7 +241,48 @@ fn should_not_retain_genesis_validator_slot_protection_after_vesting_period_elap
 #[ignore]
 #[test]
 fn should_retain_genesis_validator_slot_protection() {
-    let mut builder = initialize_builder();
+    const CASPER_VESTING_SCHEDULE_PERIOD_MILLIS: u64 = 91 * DAY_MILLIS;
+    const CASPER_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * DAY_MILLIS;
+    const CASPER_VESTING_BASE: u64 =
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + CASPER_LOCKED_FUNDS_PERIOD_MILLIS;
+
+    let mut builder = {
+        let engine_config = EngineConfigBuilder::default()
+            .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS)
+            .build();
+
+        let run_genesis_request = {
+            let accounts = GENESIS_ACCOUNTS.clone();
+            let exec_config = ExecConfigBuilder::default()
+                .with_accounts(accounts)
+                .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
+                .build();
+
+            RunGenesisRequest::new(
+                *DEFAULT_GENESIS_CONFIG_HASH,
+                *DEFAULT_PROTOCOL_VERSION,
+                exec_config,
+                DEFAULT_CHAINSPEC_REGISTRY.clone(),
+            )
+        };
+
+        let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(engine_config);
+        builder.run_genesis(&run_genesis_request);
+
+        let fund_request = ExecuteRequestBuilder::transfer(
+            *DEFAULT_ACCOUNT_ADDR,
+            runtime_args! {
+                mint::ARG_TARGET => PublicKey::System.to_account_hash(),
+                mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
+                mint::ARG_ID => <Option<u64>>::None,
+            },
+        )
+        .build();
+
+        builder.exec(fund_request).expect_success().commit();
+
+        builder
+    };
 
     let era_validators_1: EraValidators = builder.get_era_validators();
 
@@ -252,7 +297,7 @@ fn should_retain_genesis_validator_slot_protection() {
         "expected validator set should be unchanged"
     );
 
-    builder.run_auction(VESTING_BASE, Vec::new());
+    builder.run_auction(CASPER_VESTING_BASE, Vec::new());
 
     let era_validators_2: EraValidators = builder.get_era_validators();
 
@@ -275,7 +320,7 @@ fn should_retain_genesis_validator_slot_protection() {
 
     builder.exec(add_bid_request).expect_success().commit();
 
-    builder.run_auction(VESTING_BASE + WEEK_MILLIS, Vec::new());
+    builder.run_auction(CASPER_VESTING_BASE + WEEK_MILLIS, Vec::new());
 
     // All genesis validator slots are protected after ~1 week
     let era_validators_3: EraValidators = builder.get_era_validators();
@@ -285,7 +330,10 @@ fn should_retain_genesis_validator_slot_protection() {
     assert_eq!(next_validator_set_3, GENESIS_VALIDATOR_PUBLIC_KEYS.clone());
 
     // After 13 weeks ~ 91 days lowest stake validator is dropped and replaced with higher bid
-    builder.run_auction(VESTING_BASE + VESTING_SCHEDULE_LENGTH_MILLIS, Vec::new());
+    builder.run_auction(
+        CASPER_VESTING_BASE + VESTING_SCHEDULE_LENGTH_MILLIS,
+        Vec::new(),
+    );
 
     let era_validators_4: EraValidators = builder.get_era_validators();
     let (last_era_4, weights_4) = era_validators_4.iter().last().unwrap();

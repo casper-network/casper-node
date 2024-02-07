@@ -7,12 +7,14 @@ use datasize::DataSize;
 use serde::Serialize;
 
 use casper_types::{
-    execution::ExecutionResult, ActivationPoint, Block, BlockHash, BlockV2, DeployHash,
-    DeployHeader, EraId,
+    execution::ExecutionResult, ActivationPoint, Block, BlockHash, BlockV2, EraId, TransactionHash,
+    TransactionHeader,
 };
 
 pub(crate) use merge_mismatch_error::MergeMismatchError;
 pub(crate) use state::State;
+
+use crate::contract_runtime::ExecutionArtifact;
 
 /// A block along with its execution results and state recording which actions have been taken
 /// related to the block.
@@ -30,7 +32,7 @@ pub(crate) enum MetaBlock {
 impl MetaBlock {
     pub(crate) fn new_forward(
         block: Arc<BlockV2>,
-        execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
+        execution_results: Vec<ExecutionArtifact>,
         state: State,
     ) -> Self {
         Self::Forward(ForwardMetaBlock {
@@ -42,7 +44,7 @@ impl MetaBlock {
 
     pub(crate) fn new_historical(
         block: Arc<Block>,
-        execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
+        execution_results: Vec<(TransactionHash, TransactionHeader, ExecutionResult)>,
         state: State,
     ) -> Self {
         Self::Historical(HistoricalMetaBlock {
@@ -93,26 +95,19 @@ impl MetaBlock {
             MetaBlock::Historical(meta_block) => &meta_block.state,
         }
     }
-
-    pub(crate) fn execution_results(&self) -> &Vec<(DeployHash, DeployHeader, ExecutionResult)> {
-        match &self {
-            MetaBlock::Forward(meta_block) => &meta_block.execution_results,
-            MetaBlock::Historical(meta_block) => &meta_block.execution_results,
-        }
-    }
 }
 
 #[derive(Clone, Eq, PartialEq, Serialize, Debug, DataSize)]
 pub(crate) struct ForwardMetaBlock {
     pub(crate) block: Arc<BlockV2>,
-    pub(crate) execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
+    pub(crate) execution_results: Vec<ExecutionArtifact>,
     pub(crate) state: State,
 }
 
 #[derive(Clone, Eq, PartialEq, Serialize, Debug, DataSize)]
 pub(crate) struct HistoricalMetaBlock {
     pub(crate) block: Arc<Block>,
-    pub(crate) execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
+    pub(crate) execution_results: Vec<(TransactionHash, TransactionHeader, ExecutionResult)>,
     pub(crate) state: State,
 }
 
@@ -186,10 +181,11 @@ mod tests {
 
         let block = Arc::new(TestBlockBuilder::new().build(rng));
         let deploy = Deploy::random(rng);
-        let execution_results = vec![(
+        let execution_results = vec![ExecutionArtifact::new(
             *deploy.hash(),
             deploy.take_header(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
+            Vec::new(),
         )];
         let state = State::new_already_stored();
 
@@ -240,10 +236,11 @@ mod tests {
 
         let block = Arc::new(TestBlockBuilder::new().build(rng));
         let deploy = Deploy::random(rng);
-        let execution_results = vec![(
+        let execution_results = vec![ExecutionArtifact::new(
             *deploy.hash(),
             deploy.take_header(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
+            Vec::new(),
         )];
         let state = State::new_not_to_be_gossiped();
 
@@ -277,10 +274,11 @@ mod tests {
                 .build(rng),
         );
         let deploy = Deploy::random(rng);
-        let execution_results = vec![(
+        let execution_results = vec![ExecutionArtifact::new(
             *deploy.hash(),
             deploy.take_header(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
+            Vec::new(),
         )];
         let state = State::new();
 
@@ -309,16 +307,18 @@ mod tests {
 
         let block = Arc::new(TestBlockBuilder::new().build(rng));
         let deploy1 = Deploy::random(rng);
-        let execution_results1 = vec![(
+        let execution_results1 = vec![ExecutionArtifact::new(
             *deploy1.hash(),
             deploy1.take_header(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
+            Vec::new(),
         )];
         let deploy2 = Deploy::random(rng);
-        let execution_results2 = vec![(
+        let execution_results2 = vec![ExecutionArtifact::new(
             *deploy2.hash(),
             deploy2.take_header(),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
+            Vec::new(),
         )];
         let state = State::new();
 

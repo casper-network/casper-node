@@ -52,7 +52,7 @@ fn should_put_system_contract_hashes_to_account_context() {
         named_keys
             .get(MINT)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .expect("should be a hash"),
         builder.get_mint_contract_hash().value(),
         "mint_contract_hash should match"
@@ -61,7 +61,7 @@ fn should_put_system_contract_hashes_to_account_context() {
         named_keys
             .get(HANDLE_PAYMENT)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .expect("should be a hash"),
         builder.get_handle_payment_contract_hash().value(),
         "handle_payment_contract_hash should match"
@@ -70,7 +70,7 @@ fn should_put_system_contract_hashes_to_account_context() {
         named_keys
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .expect("should be a hash"),
         builder.get_auction_contract_hash().value(),
         "auction_contract_hash should match"

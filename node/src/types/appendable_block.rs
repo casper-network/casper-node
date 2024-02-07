@@ -7,9 +7,15 @@ use datasize::DataSize;
 use num_traits::Zero;
 use thiserror::Error;
 
-use casper_types::{DeployFootprint, DeployHash, Gas, PublicKey, Timestamp, TransactionConfig};
+use casper_types::{
+    DeployFootprint, DeployHash, Gas, PublicKey, RewardedSignatures, TimeDiff, Timestamp,
+    TransactionConfig,
+};
 
-use crate::types::{BlockPayload, DeployHashWithApprovals};
+use super::BlockPayload;
+use crate::types::{DeployHashWithApprovals, TransactionHashWithApprovals};
+
+const NO_LEEWAY: TimeDiff = TimeDiff::from_millis(0);
 
 #[derive(Debug, Error)]
 pub(crate) enum AddError {
@@ -32,7 +38,7 @@ pub(crate) enum AddError {
 }
 
 /// A block that is still being added to. It keeps track of and enforces block limits.
-#[derive(Clone, DataSize, Debug)]
+#[derive(Clone, Eq, PartialEq, DataSize, Debug)]
 pub(crate) struct AppendableBlock {
     transaction_config: TransactionConfig,
     deploys: Vec<DeployHashWithApprovals>,
@@ -96,6 +102,7 @@ impl AppendableBlock {
             .header
             .is_valid(
                 &self.transaction_config,
+                NO_LEEWAY,
                 self.timestamp,
                 transfer.deploy_hash(),
             )
@@ -135,6 +142,7 @@ impl AppendableBlock {
             .header
             .is_valid(
                 &self.transaction_config,
+                NO_LEEWAY,
                 self.timestamp,
                 deploy.deploy_hash(),
             )
@@ -175,24 +183,53 @@ impl AppendableBlock {
     pub(crate) fn into_block_payload(
         self,
         accusations: Vec<PublicKey>,
+        rewarded_signatures: RewardedSignatures,
         random_bit: bool,
     ) -> BlockPayload {
         let AppendableBlock {
             deploys, transfers, ..
         } = self;
-        BlockPayload::new(deploys, transfers, accusations, random_bit)
+        BlockPayload::new(
+            transfers
+                .iter()
+                .map(|dhwa| {
+                    TransactionHashWithApprovals::new_deploy(
+                        *dhwa.deploy_hash(),
+                        dhwa.approvals().clone(),
+                    )
+                })
+                .collect(),
+            vec![],
+            vec![],
+            deploys
+                .iter()
+                .map(|dhwa| {
+                    TransactionHashWithApprovals::new_deploy(
+                        *dhwa.deploy_hash(),
+                        dhwa.approvals().clone(),
+                    )
+                })
+                .collect(),
+            accusations,
+            rewarded_signatures,
+            random_bit,
+        )
+    }
+
+    pub(crate) fn timestamp(&self) -> Timestamp {
+        self.timestamp
     }
 
     /// Returns `true` if the number of transfers is already the maximum allowed count, i.e. no
     /// more transfers can be added to this block.
     fn has_max_transfer_count(&self) -> bool {
-        self.transfers.len() == self.transaction_config.block_max_native_count as usize
+        self.transfers.len() == self.transaction_config.block_max_transfer_count as usize
     }
 
     /// Returns `true` if the number of deploys is already the maximum allowed count, i.e. no more
     /// deploys can be added to this block.
     fn has_max_deploy_count(&self) -> bool {
-        self.deploys.len() == self.transaction_config.block_max_deploy_count as usize
+        self.deploys.len() == self.transaction_config.block_max_standard_count as usize
     }
 
     /// Returns `true` if adding the deploy with 'additional_approvals` approvals would exceed the
@@ -202,9 +239,9 @@ impl AppendableBlock {
     fn would_exceed_approval_limits(&self, additional_approvals: usize) -> bool {
         let remaining_approval_slots =
             self.transaction_config.block_max_approval_count as usize - self.total_approvals;
-        let remaining_deploy_slots = self.transaction_config.block_max_native_count as usize
+        let remaining_deploy_slots = self.transaction_config.block_max_transfer_count as usize
             - self.transfers.len()
-            + self.transaction_config.block_max_deploy_count as usize
+            + self.transaction_config.block_max_standard_count as usize
             - self.deploys.len();
         // safe to subtract because the chainspec is validated at load time
         additional_approvals > remaining_approval_slots - remaining_deploy_slots + 1

@@ -2,6 +2,8 @@ pub mod bidding;
 pub mod detail;
 pub mod providers;
 
+use std::collections::BTreeMap;
+
 use num_rational::Ratio;
 use num_traits::{CheckedMul, CheckedSub};
 use tracing::debug;
@@ -143,6 +145,7 @@ pub trait Auction:
         let validator_bid_addr = BidAddr::from(public_key.clone());
         let validator_bid_key = validator_bid_addr.into();
         let mut validator_bid = read_validator_bid(self, &validator_bid_key)?;
+        let initial_amount = validator_bid.staked_amount();
 
         // An attempt to unbond more than is staked results in unbonding the staked amount.
         let unbonding_amount = U512::min(amount, validator_bid.staked_amount());
@@ -162,10 +165,7 @@ pub trait Auction:
 
         debug!(
             "withdrawing bid for {} reducing {} by {} to {}",
-            validator_bid_addr,
-            validator_bid.staked_amount(),
-            unbonding_amount,
-            updated_stake
+            validator_bid_addr, initial_amount, unbonding_amount, updated_stake
         );
         if updated_stake.is_zero() {
             // Unbond all delegators and zero them out
@@ -471,7 +471,6 @@ pub trait Auction:
         let auction_delay = detail::get_auction_delay(self)?;
         let snapshot_size = auction_delay as usize + 1;
         let mut era_id: EraId = detail::get_era_id(self)?;
-        let mut validator_bids = detail::get_validator_bids(self)?;
 
         // Process unbond requests
         detail::process_unbond_requests(
@@ -479,6 +478,8 @@ pub trait Auction:
             max_delegators_per_validator,
             minimum_delegation_amount,
         )?;
+
+        let mut validator_bids = detail::get_validator_bids(self)?;
 
         // Process bids
         let mut bids_modified = false;
@@ -588,95 +589,84 @@ pub trait Auction:
     /// according to `reward_factors` returned by the consensus component.
     // TODO: rework EraInfo and other related structs, methods, etc. to report correct era-end
     // totals of per-block rewards
-    fn distribute(&mut self, proposer: PublicKey) -> Result<(), Error> {
+    fn distribute(&mut self, rewards: BTreeMap<PublicKey, U512>) -> Result<(), Error> {
         if self.get_caller() != PublicKey::System.to_account_hash() {
             return Err(Error::InvalidCaller);
         }
-        if proposer == PublicKey::System {
-            // systemically generated blocks (such as immediate switch blocks at genesis and
-            // upgrade boundaries) do not produce rewards, therefore there is nothing to distribute
-            // and a call to this function is effectively a noop.
-            return Ok(());
-        }
 
         let seigniorage_recipients = self.read_seigniorage_recipients()?;
-
         let mut era_info = EraInfo::new();
         let seigniorage_allocations = era_info.seigniorage_allocations_mut();
 
-        let recipient = seigniorage_recipients
-            .get(&proposer)
-            .ok_or(Error::ValidatorNotFound)?;
+        for (proposer, reward_amount) in rewards
+            .into_iter()
+            .filter(|(key, _amount)| key != &PublicKey::System)
+        {
+            let total_reward = Ratio::from(reward_amount);
+            let recipient = seigniorage_recipients
+                .get(&proposer)
+                .ok_or(Error::ValidatorNotFound)?;
 
-        let total_stake = recipient.total_stake().ok_or(Error::ArithmeticOverflow)?;
-
-        let total_reward = if self.should_compute_rewards() {
-            let base_round_reward = self.read_base_round_reward()?;
-
-            Ratio::from(base_round_reward)
-        } else {
-            Ratio::from(U512::zero())
-        };
-
-        let delegator_total_stake: U512 = recipient
-            .delegator_total_stake()
-            .ok_or(Error::ArithmeticOverflow)?;
-
-        let delegators_part: Ratio<U512> = {
-            let commission_rate = Ratio::new(
-                U512::from(*recipient.delegation_rate()),
-                U512::from(DELEGATION_RATE_DENOMINATOR),
-            );
-            let reward_multiplier: Ratio<U512> = Ratio::new(delegator_total_stake, total_stake);
-            let delegator_reward: Ratio<U512> = total_reward
-                .checked_mul(&reward_multiplier)
+            let total_stake = recipient.total_stake().ok_or(Error::ArithmeticOverflow)?;
+            let delegator_total_stake: U512 = recipient
+                .delegator_total_stake()
                 .ok_or(Error::ArithmeticOverflow)?;
-            let commission: Ratio<U512> = delegator_reward
-                .checked_mul(&commission_rate)
-                .ok_or(Error::ArithmeticOverflow)?;
-            delegator_reward
-                .checked_sub(&commission)
-                .ok_or(Error::ArithmeticOverflow)?
-        };
 
-        let delegator_rewards =
-            recipient
-                .delegator_stake()
+            let delegators_part: Ratio<U512> = {
+                let commission_rate = Ratio::new(
+                    U512::from(*recipient.delegation_rate()),
+                    U512::from(DELEGATION_RATE_DENOMINATOR),
+                );
+                let reward_multiplier: Ratio<U512> = Ratio::new(delegator_total_stake, total_stake);
+                let delegator_reward: Ratio<U512> = total_reward
+                    .checked_mul(&reward_multiplier)
+                    .ok_or(Error::ArithmeticOverflow)?;
+                let commission: Ratio<U512> = delegator_reward
+                    .checked_mul(&commission_rate)
+                    .ok_or(Error::ArithmeticOverflow)?;
+                delegator_reward
+                    .checked_sub(&commission)
+                    .ok_or(Error::ArithmeticOverflow)?
+            };
+
+            let delegator_rewards =
+                recipient
+                    .delegator_stake()
+                    .iter()
+                    .map(|(delegator_key, delegator_stake)| {
+                        let reward_multiplier = Ratio::new(*delegator_stake, delegator_total_stake);
+                        let reward = delegators_part * reward_multiplier;
+                        (delegator_key.clone(), reward)
+                    });
+
+            let delegator_payouts = detail::distribute_delegator_rewards(
+                self,
+                seigniorage_allocations,
+                proposer.clone(),
+                delegator_rewards,
+            )?;
+
+            let total_delegator_payout: U512 = delegator_payouts
                 .iter()
-                .map(|(delegator_key, delegator_stake)| {
-                    let reward_multiplier = Ratio::new(*delegator_stake, delegator_total_stake);
-                    let reward = delegators_part * reward_multiplier;
-                    (delegator_key.clone(), reward)
-                });
+                .map(|(_delegator_hash, amount, _bonding_purse)| *amount)
+                .sum();
 
-        let delegator_payouts = detail::distribute_delegator_rewards(
-            self,
-            seigniorage_allocations,
-            proposer.clone(),
-            delegator_rewards,
-        )?;
+            let validator_reward = reward_amount - total_delegator_payout;
+            let validator_bonding_purse = detail::distribute_validator_rewards(
+                self,
+                seigniorage_allocations,
+                proposer.clone(),
+                validator_reward,
+            )?;
 
-        let total_delegator_payout: U512 = delegator_payouts
-            .iter()
-            .map(|(_delegator_hash, amount, _bonding_purse)| *amount)
-            .sum();
-
-        let validators_part: Ratio<U512> = total_reward - Ratio::from(total_delegator_payout);
-        let validator_reward = validators_part.to_integer();
-        let validator_bonding_purse = detail::distribute_validator_rewards(
-            self,
-            seigniorage_allocations,
-            proposer.clone(),
-            validator_reward,
-        )?;
-
-        // mint new token and put it to the recipients' purses
-        self.mint_into_existing_purse(validator_reward, validator_bonding_purse)
-            .map_err(Error::from)?;
-
-        for (_delegator_account_hash, delegator_payout, bonding_purse) in delegator_payouts {
-            self.mint_into_existing_purse(delegator_payout, bonding_purse)
+            // mint new token and put it to the recipients' purses
+            self.mint_into_existing_purse(validator_reward, validator_bonding_purse)
                 .map_err(Error::from)?;
+
+            for (_delegator_account_hash, delegator_payout, bonding_purse) in delegator_payouts {
+                self.mint_into_existing_purse(delegator_payout, bonding_purse)
+                    .map_err(Error::from)?;
+            }
         }
 
         // record allocations for this era for reporting purposes.

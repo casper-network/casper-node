@@ -16,8 +16,8 @@ use casper_storage::{
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{Bytes, ToBytes},
-    BlockHash, BlockHeader, BlockV2, CLValue, Digest, Key, ProtocolVersion, PublicKey, SecretKey,
-    StoredValue, URef, U512,
+    BlockHash, BlockHeader, BlockHeaderV2, BlockV2, CLValue, Digest, Key, ProtocolVersion,
+    PublicKey, SecretKey, StoredValue, URef, U512,
 };
 
 use crate::{
@@ -33,7 +33,7 @@ use crate::{
 };
 
 static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
-    state_root_hash: *BlockHeader::example().state_root_hash(),
+    state_root_hash: *BlockHeaderV2::example().state_root_hash(),
     key: Key::from_formatted_str(
         "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
     )
@@ -46,7 +46,7 @@ static GET_ITEM_RESULT: Lazy<GetItemResult> = Lazy::new(|| GetItemResult {
     merkle_proof: MERKLE_PROOF.clone(),
 });
 static GET_BALANCE_PARAMS: Lazy<GetBalanceParams> = Lazy::new(|| GetBalanceParams {
-    state_root_hash: *BlockHeader::example().state_root_hash(),
+    state_root_hash: *BlockHeaderV2::example().state_root_hash(),
     purse_uref: "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007"
         .to_string(),
 });
@@ -77,7 +77,7 @@ static GET_ACCOUNT_INFO_RESULT: Lazy<GetAccountInfoResult> = Lazy::new(|| GetAcc
 });
 static GET_DICTIONARY_ITEM_PARAMS: Lazy<GetDictionaryItemParams> =
     Lazy::new(|| GetDictionaryItemParams {
-        state_root_hash: *BlockHeader::example().state_root_hash(),
+        state_root_hash: *BlockHeaderV2::example().state_root_hash(),
         dictionary_identifier: DictionaryIdentifier::URef {
             seed_uref: "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007"
                 .to_string(),
@@ -105,12 +105,12 @@ static QUERY_GLOBAL_STATE_PARAMS: Lazy<QueryGlobalStateParams> =
 static QUERY_GLOBAL_STATE_RESULT: Lazy<QueryGlobalStateResult> =
     Lazy::new(|| QueryGlobalStateResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-        block_header: Some(BlockHeader::example().clone()),
+        block_header: Some(BlockHeaderV2::example().clone().into()),
         stored_value: StoredValue::Account(Account::doc_example().clone()),
         merkle_proof: MERKLE_PROOF.clone(),
     });
 static GET_TRIE_PARAMS: Lazy<GetTrieParams> = Lazy::new(|| GetTrieParams {
-    trie_key: *BlockHeader::example().state_root_hash(),
+    trie_key: *BlockHeaderV2::example().state_root_hash(),
 });
 static GET_TRIE_RESULT: Lazy<GetTrieResult> = Lazy::new(|| GetTrieResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_storage::data_access_layer::QueryResult;
 use casper_types::{
-    Block, BlockHash, BlockHeader, Digest, DigestError, JsonBlockWithSignatures, Key,
+    Block, BlockHash, BlockHeaderV2, Digest, DigestError, JsonBlockWithSignatures, Key,
     ProtocolVersion, Transfer,
 };
 
@@ -47,12 +47,12 @@ static GET_BLOCK_TRANSFERS_RESULT: Lazy<GetBlockTransfersResult> =
     });
 static GET_STATE_ROOT_HASH_PARAMS: Lazy<GetStateRootHashParams> =
     Lazy::new(|| GetStateRootHashParams {
-        block_identifier: BlockIdentifier::Height(BlockHeader::example().height()),
+        block_identifier: BlockIdentifier::Height(BlockHeaderV2::example().height()),
     });
 static GET_STATE_ROOT_HASH_RESULT: Lazy<GetStateRootHashResult> =
     Lazy::new(|| GetStateRootHashResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-        state_root_hash: Some(*BlockHeader::example().state_root_hash()),
+        state_root_hash: Some(*BlockHeaderV2::example().state_root_hash()),
     });
 static GET_ERA_INFO_PARAMS: Lazy<GetEraInfoParams> = Lazy::new(|| GetEraInfoParams {
     block_identifier: BlockIdentifier::Hash(ERA_SUMMARY.block_hash),

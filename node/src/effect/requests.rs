@@ -11,6 +11,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use num_rational::Ratio;
 use serde::Serialize;
 use smallvec::SmallVec;
 use static_assertions::const_assert;
@@ -26,12 +27,13 @@ use casper_storage::{
 use casper_types::{
     addressable_entity::AddressableEntity,
     bytesrepr::Bytes,
+    contract_messages::Messages,
     execution::{ExecutionResult, ExecutionResultV2},
     system::auction::EraValidators,
-    Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, Deploy, DeployHash,
-    DeployHeader, Digest, DisplayIter, EraId, FinalitySignature, FinalitySignatureId, Key,
-    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId,
-    Transfer, URef,
+    Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash, Digest,
+    DisplayIter, EraId, FinalitySignature, FinalitySignatureId, Key, ProtocolVersion, PublicKey,
+    TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer,
+    URef, U512,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -50,20 +52,23 @@ use crate::{
         transaction_acceptor,
         upgrade_watcher::NextUpgrade,
     },
-    contract_runtime::{ContractRuntimeError, SpeculativeExecutionState},
+    contract_runtime::{
+        ContractRuntimeError, RoundSeigniorageRateRequest, SpeculativeExecutionState,
+        TotalSupplyRequest,
+    },
     reactor::main_reactor::ReactorState,
     rpcs::docs::OpenRpcSchema,
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, DeployExecutionInfo,
-        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, LegacyDeploy,
-        MetaBlockState, NodeId, SignedBlock, StatusFeed, TrieOrChunk, TrieOrChunkId,
+        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
+        ExecutableBlock, ExecutionInfo, FinalizedApprovals, LegacyDeploy, MetaBlockState, NodeId,
+        SignedBlock, StatusFeed, TransactionWithFinalizedApprovals, TrieOrChunk, TrieOrChunkId,
     },
     utils::Source,
 };
 
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
-const_assert!(_STORAGE_REQUEST_SIZE < 89);
+const_assert!(_STORAGE_REQUEST_SIZE < 97);
 
 /// A metrics request.
 #[derive(Debug)]
@@ -284,7 +289,7 @@ pub(crate) enum StorageRequest {
         block: Arc<BlockV2>,
         /// Approvals hashes to store.
         approvals_hashes: Box<ApprovalsHashes>,
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        execution_results: HashMap<TransactionHash, ExecutionResult>,
         responder: Responder<bool>,
     },
     /// Retrieve block with given hash.
@@ -317,12 +322,10 @@ pub(crate) enum StorageRequest {
         /// Responder.
         responder: Responder<Option<BlockHeader>>,
     },
-    /// Retrieve the header of the block containing the deploy.
-    GetBlockHeaderForDeploy {
-        /// Hash of the deploy.
-        deploy_hash: DeployHash,
-        /// Responder.
-        responder: Responder<Option<BlockHeader>>,
+    /// Retrieve the era IDs of the blocks in which the given transactions were executed.
+    GetTransactionsEraIds {
+        transaction_hashes: HashSet<TransactionHash>,
+        responder: Responder<HashSet<EraId>>,
     },
     /// Retrieve block header with given hash.
     GetBlockHeader {
@@ -345,6 +348,12 @@ pub(crate) enum StorageRequest {
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
     },
+    GetSwitchBlockHeaderByEra {
+        /// Era ID for which to get the block header.
+        era_id: EraId,
+        /// Responder to call with the result.
+        responder: Responder<Option<BlockHeader>>,
+    },
     /// Retrieve all transfers in a block with given hash.
     GetBlockTransfers {
         /// Hash of block to get transfers of.
@@ -359,12 +368,10 @@ pub(crate) enum StorageRequest {
         /// previously stored.
         responder: Responder<bool>,
     },
-    /// Retrieve deploys with given hashes.
-    GetDeploys {
-        /// Hashes of deploys to be retrieved.
-        deploy_hashes: Vec<DeployHash>,
-        /// Responder to call with the results.
-        responder: Responder<SmallVec<[Option<DeployWithFinalizedApprovals>; 1]>>,
+    /// Retrieve transaction with given hashes.
+    GetTransactions {
+        transaction_hashes: Vec<TransactionHash>,
+        responder: Responder<SmallVec<[Option<TransactionWithFinalizedApprovals>; 1]>>,
     },
     /// Retrieve legacy deploy with given hash.
     GetLegacyDeploy {
@@ -390,14 +397,15 @@ pub(crate) enum StorageRequest {
         /// Hash of block.
         block_hash: Box<BlockHash>,
         block_height: u64,
-        /// Mapping of deploys to execution results of the block.
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        era_id: EraId,
+        /// Mapping of transactions to execution results of the block.
+        execution_results: HashMap<TransactionHash, ExecutionResult>,
         /// Responder to call when done storing.
         responder: Responder<()>,
     },
     GetExecutionResults {
         block_hash: BlockHash,
-        responder: Responder<Option<Vec<(DeployHash, DeployHeader, ExecutionResult)>>>,
+        responder: Responder<Option<Vec<(TransactionHash, TransactionHeader, ExecutionResult)>>>,
     },
     GetBlockExecutionResultsOrChunk {
         /// Request ID.
@@ -406,12 +414,9 @@ pub(crate) enum StorageRequest {
         /// None is returned when we don't have the block in the storage.
         responder: Responder<Option<BlockExecutionResultsOrChunk>>,
     },
-    /// Retrieve deploy and its execution info.
-    GetDeployAndExecutionInfo {
-        /// Hash of deploy to be retrieved.
-        deploy_hash: DeployHash,
-        /// Responder to call with the results.
-        responder: Responder<Option<(DeployWithFinalizedApprovals, Option<DeployExecutionInfo>)>>,
+    GetTransactionAndExecutionInfo {
+        transaction_hash: TransactionHash,
+        responder: Responder<Option<(TransactionWithFinalizedApprovals, Option<ExecutionInfo>)>>,
     },
     /// Retrieve block and its signatures by its hash.
     GetSignedBlockByHash {
@@ -441,6 +446,16 @@ pub(crate) enum StorageRequest {
         only_from_available_block_range: bool,
         /// The responder to call with the results.
         responder: Responder<Option<SignedBlock>>,
+    },
+    /// Retrieve block and its metadata at a given height.
+    GetBlockAndMetadataByHeight {
+        /// The height of the block.
+        block_height: BlockHeight,
+        /// Flag indicating whether storage should check the block availability before trying to
+        /// retrieve it.
+        only_from_available_block_range: bool,
+        /// The responder to call with the results.
+        responder: Responder<Option<BlockWithMetadata>>,
     },
     /// Get the highest block and its signatures.
     GetHighestSignedBlock {
@@ -525,8 +540,14 @@ impl Display for StorageRequest {
             StorageRequest::GetHighestCompleteBlockHeader { .. } => {
                 write!(formatter, "get highest complete block header")
             }
-            StorageRequest::GetBlockHeaderForDeploy { deploy_hash, .. } => {
-                write!(formatter, "get block header for deploy {}", deploy_hash)
+            StorageRequest::GetTransactionsEraIds {
+                transaction_hashes, ..
+            } => {
+                write!(
+                    formatter,
+                    "get era ids for {} transactions",
+                    transaction_hashes.len()
+                )
             }
             StorageRequest::GetBlockHeader { block_hash, .. } => {
                 write!(formatter, "get {}", block_hash)
@@ -534,14 +555,23 @@ impl Display for StorageRequest {
             StorageRequest::GetBlockHeaderByHeight { block_height, .. } => {
                 write!(formatter, "get header for height {}", block_height)
             }
+            StorageRequest::GetSwitchBlockHeaderByEra { era_id, .. } => {
+                write!(formatter, "get header for era {}", era_id)
+            }
             StorageRequest::GetBlockTransfers { block_hash, .. } => {
                 write!(formatter, "get transfers for {}", block_hash)
             }
             StorageRequest::PutTransaction { transaction, .. } => {
                 write!(formatter, "put {}", transaction)
             }
-            StorageRequest::GetDeploys { deploy_hashes, .. } => {
-                write!(formatter, "get {}", DisplayIter::new(deploy_hashes.iter()))
+            StorageRequest::GetTransactions {
+                transaction_hashes, ..
+            } => {
+                write!(
+                    formatter,
+                    "get {}",
+                    DisplayIter::new(transaction_hashes.iter())
+                )
             }
             StorageRequest::GetLegacyDeploy { deploy_hash, .. } => {
                 write!(formatter, "get legacy deploy {}", deploy_hash)
@@ -562,8 +592,14 @@ impl Display for StorageRequest {
                 write!(formatter, "get block execution results or chunk for {}", id)
             }
 
-            StorageRequest::GetDeployAndExecutionInfo { deploy_hash, .. } => {
-                write!(formatter, "get deploy and metadata for {}", deploy_hash)
+            StorageRequest::GetTransactionAndExecutionInfo {
+                transaction_hash, ..
+            } => {
+                write!(
+                    formatter,
+                    "get transaction and metadata for {}",
+                    transaction_hash
+                )
             }
             StorageRequest::GetFinalitySignature { id, .. } => {
                 write!(formatter, "get finality signature {}", id)
@@ -576,6 +612,13 @@ impl Display for StorageRequest {
                     formatter,
                     "get signed block for block with hash: {}",
                     block_hash
+                )
+            }
+            StorageRequest::GetBlockAndMetadataByHeight { block_height, .. } => {
+                write!(
+                    formatter,
+                    "get block and metadata for block at height: {}",
+                    block_height
                 )
             }
             StorageRequest::GetSignedBlockByHeight { block_height, .. } => {
@@ -635,7 +678,7 @@ pub(crate) struct MakeBlockExecutableRequest {
     /// Hash of the block to be made executable.
     pub block_hash: BlockHash,
     /// Responder with the executable block and it's deploys
-    pub responder: Responder<Option<(FinalizedBlock, Vec<Deploy>)>>,
+    pub responder: Responder<Option<ExecutableBlock>>,
 }
 
 impl Display for MakeBlockExecutableRequest {
@@ -835,12 +878,10 @@ impl Display for RestRequest {
 #[derive(Debug, Serialize)]
 #[must_use]
 pub(crate) enum ContractRuntimeRequest {
-    /// A request to enqueue a `FinalizedBlock` for execution.
+    /// A request to enqueue a `ExecutableBlock` for execution.
     EnqueueBlockForExecution {
-        /// A `FinalizedBlock` to enqueue.
-        finalized_block: FinalizedBlock,
-        /// The deploys for that `FinalizedBlock`
-        deploys: Vec<Deploy>,
+        /// A `ExecutableBlock` to enqueue.
+        executable_block: ExecutableBlock,
         /// The key block height for the current protocol version's activation point.
         key_block_height_for_activation_point: u64,
         meta_block_state: MetaBlockState,
@@ -860,6 +901,18 @@ pub(crate) enum ContractRuntimeRequest {
         balance_request: BalanceRequest,
         /// Responder to call with the balance result.
         responder: Responder<BalanceResult>,
+    },
+    /// Get the total supply on the chain.
+    GetTotalSupply {
+        #[serde(skip_serializing)]
+        total_supply_request: TotalSupplyRequest,
+        responder: Responder<Result<U512, engine_state::Error>>,
+    },
+    /// Get the round seigniorage rate.
+    GetRoundSeigniorageRate {
+        #[serde(skip_serializing)]
+        round_seigniorage_rate_request: RoundSeigniorageRateRequest,
+        responder: Responder<Result<Ratio<U512>, engine_state::Error>>,
     },
     /// Returns validator weights.
     GetEraValidators {
@@ -911,14 +964,14 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the result. Contains the hash of the stored trie.
         responder: Responder<Result<Digest, engine_state::Error>>,
     },
-    /// Execute deploys without committing results
-    SpeculativeDeployExecution {
-        /// Hash of a block on top of which to execute the deploy.
+    /// Execute transaction without committing results
+    SpeculativelyExecute {
+        /// Hash of a block on top of which to execute the transaction.
         execution_prestate: SpeculativeExecutionState,
-        /// Deploy to execute.
-        deploy: Arc<Deploy>,
+        /// Transaction to execute.
+        transaction: Box<Transaction>,
         /// Results
-        responder: Responder<Result<Option<ExecutionResultV2>, engine_state::Error>>,
+        responder: Responder<Result<Option<(ExecutionResultV2, Messages)>, engine_state::Error>>,
     },
 }
 
@@ -926,9 +979,9 @@ impl Display for ContractRuntimeRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ContractRuntimeRequest::EnqueueBlockForExecution {
-                finalized_block, ..
+                executable_block, ..
             } => {
-                write!(formatter, "finalized_block: {}", finalized_block)
+                write!(formatter, "executable_block: {}", executable_block)
             }
             ContractRuntimeRequest::Query { query_request, .. } => {
                 write!(formatter, "query request: {:?}", query_request)
@@ -936,6 +989,22 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::GetBalance {
                 balance_request, ..
             } => write!(formatter, "balance request: {:?}", balance_request),
+            ContractRuntimeRequest::GetTotalSupply {
+                total_supply_request,
+                ..
+            } => {
+                write!(formatter, "get total supply: {:?}", total_supply_request)
+            }
+            ContractRuntimeRequest::GetRoundSeigniorageRate {
+                round_seigniorage_rate_request,
+                ..
+            } => {
+                write!(
+                    formatter,
+                    "get round seigniorage rate: {:?}",
+                    round_seigniorage_rate_request
+                )
+            }
             ContractRuntimeRequest::GetEraValidators { request, .. } => {
                 write!(formatter, "get era validators: {:?}", request)
             }
@@ -973,15 +1042,15 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::PutTrie { trie_bytes, .. } => {
                 write!(formatter, "trie: {:?}", trie_bytes)
             }
-            ContractRuntimeRequest::SpeculativeDeployExecution {
+            ContractRuntimeRequest::SpeculativelyExecute {
                 execution_prestate,
-                deploy,
+                transaction,
                 ..
             } => {
                 write!(
                     formatter,
                     "Execute {} on {}",
-                    deploy.hash(),
+                    transaction.hash(),
                     execution_prestate.state_root_hash
                 )
             }
@@ -1047,9 +1116,11 @@ impl Display for SyncGlobalStateRequest {
 }
 
 /// A block validator request.
-#[derive(Debug)]
+#[derive(Debug, DataSize)]
 #[must_use]
 pub(crate) struct BlockValidationRequest {
+    /// The height of the proposed block in the chain.
+    pub(crate) proposed_block_height: u64,
     /// The block to be validated.
     pub(crate) block: ProposedBlock<ClContext>,
     /// The sender of the block, which will be asked to provide all missing deploys.

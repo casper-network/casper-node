@@ -10,6 +10,8 @@ use crate::{
     PublicKey, U512,
 };
 
+use super::ARG_REWARDS_MAP;
+
 /// Creates auction contract entry points.
 pub fn auction_entry_points() -> EntryPoints {
     let mut entry_points = EntryPoints::new();
@@ -19,7 +21,7 @@ pub fn auction_entry_points() -> EntryPoints {
         vec![],
         Option::<ValidatorWeights>::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -32,7 +34,7 @@ pub fn auction_entry_points() -> EntryPoints {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -44,7 +46,7 @@ pub fn auction_entry_points() -> EntryPoints {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -57,7 +59,7 @@ pub fn auction_entry_points() -> EntryPoints {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -70,7 +72,7 @@ pub fn auction_entry_points() -> EntryPoints {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -84,7 +86,7 @@ pub fn auction_entry_points() -> EntryPoints {
         ],
         U512::cl_type(),
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -93,7 +95,7 @@ pub fn auction_entry_points() -> EntryPoints {
         vec![Parameter::new(ARG_ERA_END_TIMESTAMP_MILLIS, u64::cl_type())],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -102,16 +104,19 @@ pub fn auction_entry_points() -> EntryPoints {
         vec![],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(entry_point);
 
     let entry_point = EntryPoint::new(
         METHOD_DISTRIBUTE,
-        vec![Parameter::new(ARG_VALIDATOR, CLType::PublicKey)],
+        vec![Parameter::new(
+            ARG_REWARDS_MAP,
+            CLType::map(CLType::PublicKey, CLType::U512),
+        )],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -120,7 +125,7 @@ pub fn auction_entry_points() -> EntryPoints {
         vec![],
         CLType::U64,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(entry_point);
 
@@ -129,7 +134,7 @@ pub fn auction_entry_points() -> EntryPoints {
         vec![Parameter::new(ARG_VALIDATOR_PUBLIC_KEY, CLType::PublicKey)],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(entry_point);
 

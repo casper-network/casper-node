@@ -32,38 +32,21 @@ use warp::{
     Filter, Reply,
 };
 
-#[cfg(test)]
-use casper_types::{execution::ExecutionResultV2, testing::TestRng, TestBlockBuilder};
 use casper_types::{
+    contract_messages::Messages,
     execution::{Effects, ExecutionResult},
-    Block, BlockHash, Deploy, DeployHash, EraId, FinalitySignature, ProtocolVersion, PublicKey,
-    TimeDiff, Timestamp,
+    Block, BlockHash, EraId, FinalitySignature, InitiatorAddr, ProtocolVersion, PublicKey,
+    TimeDiff, Timestamp, Transaction, TransactionHash,
+};
+#[cfg(test)]
+use casper_types::{
+    execution::ExecutionResultV2, testing::TestRng, Deploy, TestBlockBuilder, TransactionV1Builder,
 };
 
 /// The URL root path.
-pub const SSE_API_ROOT_PATH: &str = "events";
-/// The URL path part to subscribe to all events other than `DeployAccepted`s and
-/// `FinalitySignature`s.
-pub const SSE_API_MAIN_PATH: &str = "main";
-/// The URL path part to subscribe to only `DeployAccepted` events.
-pub const SSE_API_DEPLOYS_PATH: &str = "deploys";
-/// The URL path part to subscribe to only `FinalitySignature` events.
-pub const SSE_API_SIGNATURES_PATH: &str = "sigs";
+pub const SSE_API_PATH: &str = "events";
 /// The URL query string field name.
 pub const QUERY_FIELD: &str = "start_from";
-
-/// The filter associated with `/events/main` path.
-const MAIN_FILTER: [EventFilter; 5] = [
-    EventFilter::BlockAdded,
-    EventFilter::DeployProcessed,
-    EventFilter::DeployExpired,
-    EventFilter::Fault,
-    EventFilter::Step,
-];
-/// The filter associated with `/events/deploys` path.
-const DEPLOYS_FILTER: [EventFilter; 1] = [EventFilter::DeployAccepted];
-/// The filter associated with `/events/sigs` path.
-const SIGNATURES_FILTER: [EventFilter; 1] = [EventFilter::FinalitySignature];
 
 /// The "id" field of the events sent on the event stream to clients.
 pub type Id = u32;
@@ -80,24 +63,24 @@ pub enum SseData {
         block_hash: BlockHash,
         block: Box<Block>,
     },
-    /// The given deploy has been newly-accepted by this node.
-    DeployAccepted {
-        #[schemars(with = "Deploy", description = "a deploy")]
-        deploy: Arc<Deploy>,
+    /// The given transaction has been newly-accepted by this node.
+    TransactionAccepted {
+        #[schemars(with = "Transaction", description = "a transaction")]
+        transaction: Arc<Transaction>,
     },
-    /// The given deploy has been executed, committed and forms part of the given block.
-    DeployProcessed {
-        deploy_hash: Box<DeployHash>,
-        account: Box<PublicKey>,
+    /// The given transaction has been executed, committed and forms part of the given block.
+    TransactionProcessed {
+        transaction_hash: Box<TransactionHash>,
+        initiator_addr: Box<InitiatorAddr>,
         timestamp: Timestamp,
         ttl: TimeDiff,
-        dependencies: Vec<DeployHash>,
         block_hash: Box<BlockHash>,
-        #[data_size(skip)]
+        //#[data_size(skip)]
         execution_result: Box<ExecutionResult>,
+        messages: Messages,
     },
-    /// The given deploy has expired.
-    DeployExpired { deploy_hash: DeployHash },
+    /// The given transaction has expired.
+    TransactionExpired { transaction_hash: TransactionHash },
     /// Generic representation of validator's fault in an era.
     Fault {
         era_id: EraId,
@@ -115,33 +98,8 @@ pub enum SseData {
     Shutdown,
 }
 
-impl SseData {
-    pub(super) fn should_include(&self, filter: &[EventFilter]) -> bool {
-        match self {
-            SseData::ApiVersion(_) | SseData::Shutdown => true,
-            SseData::BlockAdded { .. } => filter.contains(&EventFilter::BlockAdded),
-            SseData::DeployAccepted { .. } => filter.contains(&EventFilter::DeployAccepted),
-            SseData::DeployProcessed { .. } => filter.contains(&EventFilter::DeployProcessed),
-            SseData::DeployExpired { .. } => filter.contains(&EventFilter::DeployExpired),
-            SseData::Fault { .. } => filter.contains(&EventFilter::Fault),
-            SseData::FinalitySignature(_) => filter.contains(&EventFilter::FinalitySignature),
-            SseData::Step { .. } => filter.contains(&EventFilter::Step),
-        }
-    }
-}
-
 #[cfg(test)]
 impl SseData {
-    /// Returns a random `SseData::ApiVersion`.
-    pub(super) fn random_api_version(rng: &mut TestRng) -> Self {
-        let protocol_version = ProtocolVersion::from_parts(
-            rng.gen_range(0..10),
-            rng.gen::<u8>() as u32,
-            rng.gen::<u8>() as u32,
-        );
-        SseData::ApiVersion(protocol_version)
-    }
-
     /// Returns a random `SseData::BlockAdded`.
     pub(super) fn random_block_added(rng: &mut TestRng) -> Self {
         let block = TestBlockBuilder::new().build(rng);
@@ -151,34 +109,55 @@ impl SseData {
         }
     }
 
-    /// Returns a random `SseData::DeployAccepted`, along with the random `Deploy`.
-    pub(super) fn random_deploy_accepted(rng: &mut TestRng) -> (Self, Deploy) {
-        let deploy = Deploy::random(rng);
-        let event = SseData::DeployAccepted {
-            deploy: Arc::new(deploy.clone()),
+    /// Returns a random `SseData::TransactionAccepted`, along with the random `Transaction`.
+    pub(super) fn random_transaction_accepted(rng: &mut TestRng) -> (Self, Transaction) {
+        let txn = Transaction::random(rng);
+        let event = SseData::TransactionAccepted {
+            transaction: Arc::new(txn.clone()),
         };
-        (event, deploy)
+        (event, txn)
     }
 
-    /// Returns a random `SseData::DeployProcessed`.
-    pub(super) fn random_deploy_processed(rng: &mut TestRng) -> Self {
-        let deploy = Deploy::random(rng);
-        SseData::DeployProcessed {
-            deploy_hash: Box::new(*deploy.hash()),
-            account: Box::new(deploy.header().account().clone()),
-            timestamp: deploy.header().timestamp(),
-            ttl: deploy.header().ttl(),
-            dependencies: deploy.header().dependencies().clone(),
+    /// Returns a random `SseData::TransactionProcessed`.
+    pub(super) fn random_transaction_processed(rng: &mut TestRng) -> Self {
+        let txn = Transaction::random(rng);
+        let (timestamp, ttl) = match &txn {
+            Transaction::Deploy(deploy) => (deploy.timestamp(), deploy.ttl()),
+            Transaction::V1(txn) => (txn.timestamp(), txn.ttl()),
+        };
+        let message_count = rng.gen_range(0..6);
+        let messages = std::iter::repeat_with(|| rng.gen())
+            .take(message_count)
+            .collect();
+
+        SseData::TransactionProcessed {
+            transaction_hash: Box::new(txn.hash()),
+            initiator_addr: Box::new(txn.initiator_addr()),
+            timestamp,
+            ttl,
             block_hash: Box::new(BlockHash::random(rng)),
             execution_result: Box::new(ExecutionResult::from(ExecutionResultV2::random(rng))),
+            messages,
         }
     }
 
-    /// Returns a random `SseData::DeployExpired`
-    pub(super) fn random_deploy_expired(rng: &mut TestRng) -> Self {
-        let deploy = crate::testing::create_expired_deploy(Timestamp::now(), rng);
-        SseData::DeployExpired {
-            deploy_hash: *deploy.hash(),
+    /// Returns a random `SseData::TransactionExpired`
+    pub(super) fn random_transaction_expired(rng: &mut TestRng) -> Self {
+        let timestamp = Timestamp::now() - TimeDiff::from_seconds(20);
+        let ttl = TimeDiff::from_seconds(10);
+        let txn = if rng.gen() {
+            Transaction::from(Deploy::random_with_timestamp_and_ttl(rng, timestamp, ttl))
+        } else {
+            let txn = TransactionV1Builder::new_random(rng)
+                .with_timestamp(timestamp)
+                .with_ttl(ttl)
+                .build()
+                .unwrap();
+            Transaction::from(txn)
+        };
+
+        SseData::TransactionExpired {
+            transaction_hash: txn.hash(),
         }
     }
 
@@ -215,8 +194,8 @@ impl SseData {
 
 #[derive(Serialize)]
 #[serde(rename_all = "PascalCase")]
-pub(super) struct DeployAccepted {
-    pub(super) deploy_accepted: Arc<Deploy>,
+pub(super) struct TransactionAccepted {
+    pub(super) transaction_accepted: Arc<Transaction>,
 }
 
 /// The components of a single SSE.
@@ -260,27 +239,11 @@ pub(super) struct NewSubscriberInfo {
     pub(super) initial_events_sender: mpsc::UnboundedSender<ServerSentEvent>,
 }
 
-/// A filter for event types a client has subscribed to receive.
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
-pub(super) enum EventFilter {
-    BlockAdded,
-    DeployAccepted,
-    DeployProcessed,
-    DeployExpired,
-    Fault,
-    FinalitySignature,
-    Step,
-}
-
-/// Filters the `event`, mapping it to a warp event, or `None` if it should be filtered out.
-async fn filter_map_server_sent_event(
+/// Maps the `event` to a warp event, or `None` if it's a malformed event (ie.: `ApiVersion` event
+/// with `id` set or event other than `ApiVersion` without `id`)
+async fn map_server_sent_event(
     event: &ServerSentEvent,
-    event_filter: &[EventFilter],
 ) -> Option<Result<WarpServerSentEvent, RecvError>> {
-    if !event.data.should_include(event_filter) {
-        return None;
-    }
-
     let id = match event.id {
         Some(id) => {
             if matches!(&event.data, &SseData::ApiVersion { .. }) {
@@ -307,8 +270,8 @@ async fn filter_map_server_sent_event(
             }))),
 
         &SseData::BlockAdded { .. }
-        | &SseData::DeployProcessed { .. }
-        | &SseData::DeployExpired { .. }
+        | &SseData::TransactionProcessed { .. }
+        | &SseData::TransactionExpired { .. }
         | &SseData::Fault { .. }
         | &SseData::Step { .. }
         | &SseData::FinalitySignature(_)
@@ -320,25 +283,15 @@ async fn filter_map_server_sent_event(
             })
             .id(id))),
 
-        SseData::DeployAccepted { deploy } => Some(Ok(WarpServerSentEvent::default()
-            .json_data(&DeployAccepted {
-                deploy_accepted: deploy.clone(),
+        SseData::TransactionAccepted { transaction } => Some(Ok(WarpServerSentEvent::default()
+            .json_data(&TransactionAccepted {
+                transaction_accepted: Arc::clone(transaction),
             })
             .unwrap_or_else(|error| {
                 warn!(%error, "failed to jsonify sse event");
                 WarpServerSentEvent::default()
             })
             .id(event.id.unwrap().to_string()))),
-    }
-}
-
-/// Converts the final URL path element to a slice of `EventFilter`s.
-pub(super) fn get_filter(path_param: &str) -> Option<&'static [EventFilter]> {
-    match path_param {
-        SSE_API_MAIN_PATH => Some(&MAIN_FILTER[..]),
-        SSE_API_DEPLOYS_PATH => Some(&DEPLOYS_FILTER[..]),
-        SSE_API_SIGNATURES_PATH => Some(&SIGNATURES_FILTER[..]),
-        _ => None,
     }
 }
 
@@ -367,11 +320,8 @@ fn parse_query(query: HashMap<String, String>) -> Result<Option<Id>, Response> {
 /// Creates a 404 response with a useful error message in the body.
 fn create_404() -> Response {
     let mut response = Response::new(Body::from(format!(
-        "invalid path: expected '/{root}/{main}', '/{root}/{deploys}' or '/{root}/{sigs}'\n",
-        root = SSE_API_ROOT_PATH,
-        main = SSE_API_MAIN_PATH,
-        deploys = SSE_API_DEPLOYS_PATH,
-        sigs = SSE_API_SIGNATURES_PATH
+        "invalid path: expected '/{root}'\n",
+        root = SSE_API_PATH,
     )));
     *response.status_mut() = StatusCode::NOT_FOUND;
     response
@@ -414,8 +364,7 @@ impl ChannelsAndFilter {
         // new client subscription.
         let (new_subscriber_info_sender, new_subscriber_info_receiver) = mpsc::unbounded_channel();
 
-        let serve = move |path_param: String,
-                          query: HashMap<String, String>,
+        let serve = move |query: HashMap<String, String>,
                           maybe_remote_address: Option<SocketAddr>| {
             let remote_address = match maybe_remote_address {
                 Some(address) => address.to_string(),
@@ -431,12 +380,6 @@ impl ChannelsAndFilter {
                 );
                 return create_503();
             }
-
-            // If `path_param` is not a valid string, return a 404.
-            let event_filter = match get_filter(path_param.as_str()) {
-                Some(filter) => filter,
-                None => return create_404(),
-            };
 
             let start_from = match parse_query(query) {
                 Ok(maybe_id) => maybe_id,
@@ -465,15 +408,13 @@ impl ChannelsAndFilter {
             sse::reply(sse::keep_alive().stream(stream_to_client(
                 initial_events_receiver,
                 ongoing_events_receiver,
-                event_filter,
                 remote_address,
             )))
             .into_response()
         };
 
         let sse_filter = warp::get()
-            .and(path(SSE_API_ROOT_PATH))
-            .and(path::param::<String>())
+            .and(path(SSE_API_PATH))
             .and(path::end())
             .and(warp::query())
             .and(addr::remote())
@@ -506,7 +447,6 @@ impl ChannelsAndFilter {
 fn stream_to_client(
     initial_events: mpsc::UnboundedReceiver<ServerSentEvent>,
     ongoing_events: broadcast::Receiver<BroadcastChannelMessage>,
-    event_filter: &'static [EventFilter],
     remote_address: String,
 ) -> impl Stream<Item = Result<WarpServerSentEvent, RecvError>> + 'static {
     // Keep a record of the IDs of the events delivered via the `initial_events` receiver.
@@ -556,7 +496,7 @@ fn stream_to_client(
         .chain(ongoing_stream)
         .filter_map(move |result| async move {
             match result {
-                Ok(event) => filter_map_server_sent_event(&event, event_filter).await,
+                Ok(event) => map_server_sent_event(&event).await,
                 Err(error) => Some(Err(error)),
             }
         })
@@ -571,212 +511,27 @@ mod tests {
     use super::*;
     use crate::logging;
 
-    async fn should_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
-        assert!(
-            filter_map_server_sent_event(event, filter).await.is_none(),
-            "should filter out {:?} with {:?}",
-            event,
-            filter
-        );
-    }
-
-    async fn should_not_filter_out(event: &ServerSentEvent, filter: &'static [EventFilter]) {
-        assert!(
-            filter_map_server_sent_event(event, filter).await.is_some(),
-            "should not filter out {:?} with {:?}",
-            event,
-            filter
-        );
-    }
-
-    /// This test checks that events with correct IDs (i.e. all types have an ID except for
-    /// `ApiVersion`) are filtered properly.
+    /// This test checks that events from the initial stream which are duplicated in the
+    /// ongoing stream are filtered out.
     #[tokio::test]
-    async fn should_filter_events_with_valid_ids() {
-        let _ = logging::init();
-        let mut rng = crate::new_rng();
-
-        let api_version = ServerSentEvent {
-            id: None,
-            data: SseData::random_api_version(&mut rng),
-        };
-        let block_added = ServerSentEvent {
-            id: Some(rng.gen()),
-            data: SseData::random_block_added(&mut rng),
-        };
-        let (sse_data, deploy) = SseData::random_deploy_accepted(&mut rng);
-        let deploy_accepted = ServerSentEvent {
-            id: Some(rng.gen()),
-            data: sse_data,
-        };
-        let mut deploys = HashMap::new();
-        let _ = deploys.insert(*deploy.hash(), deploy);
-        let deploy_processed = ServerSentEvent {
-            id: Some(rng.gen()),
-            data: SseData::random_deploy_processed(&mut rng),
-        };
-        let deploy_expired = ServerSentEvent {
-            id: Some(rng.gen()),
-            data: SseData::random_deploy_expired(&mut rng),
-        };
-        let fault = ServerSentEvent {
-            id: Some(rng.gen()),
-            data: SseData::random_fault(&mut rng),
-        };
-        let finality_signature = ServerSentEvent {
-            id: Some(rng.gen()),
-            data: SseData::random_finality_signature(&mut rng),
-        };
-        let step = ServerSentEvent {
-            id: Some(rng.gen()),
-            data: SseData::random_step(&mut rng),
-        };
-        let shutdown = ServerSentEvent {
-            id: Some(rng.gen()),
-            data: SseData::Shutdown,
-        };
-
-        // `EventFilter::Main` should only filter out `DeployAccepted`s and `FinalitySignature`s.
-        should_not_filter_out(&api_version, &MAIN_FILTER[..]).await;
-        should_not_filter_out(&block_added, &MAIN_FILTER[..]).await;
-        should_not_filter_out(&deploy_processed, &MAIN_FILTER[..]).await;
-        should_not_filter_out(&deploy_expired, &MAIN_FILTER[..]).await;
-        should_not_filter_out(&fault, &MAIN_FILTER[..]).await;
-        should_not_filter_out(&step, &MAIN_FILTER[..]).await;
-        should_not_filter_out(&shutdown, &MAIN_FILTER).await;
-
-        should_filter_out(&deploy_accepted, &MAIN_FILTER[..]).await;
-        should_filter_out(&finality_signature, &MAIN_FILTER[..]).await;
-
-        // `EventFilter::DeployAccepted` should filter out everything except `ApiVersion`s and
-        // `DeployAccepted`s.
-        should_not_filter_out(&api_version, &DEPLOYS_FILTER[..]).await;
-        should_not_filter_out(&deploy_accepted, &DEPLOYS_FILTER[..]).await;
-        should_not_filter_out(&shutdown, &DEPLOYS_FILTER[..]).await;
-
-        should_filter_out(&block_added, &DEPLOYS_FILTER[..]).await;
-        should_filter_out(&deploy_processed, &DEPLOYS_FILTER[..]).await;
-        should_filter_out(&deploy_expired, &DEPLOYS_FILTER[..]).await;
-        should_filter_out(&fault, &DEPLOYS_FILTER[..]).await;
-        should_filter_out(&finality_signature, &DEPLOYS_FILTER[..]).await;
-        should_filter_out(&step, &DEPLOYS_FILTER[..]).await;
-
-        // `EventFilter::Signatures` should filter out everything except `ApiVersion`s and
-        // `FinalitySignature`s.
-        should_not_filter_out(&api_version, &SIGNATURES_FILTER[..]).await;
-        should_not_filter_out(&finality_signature, &SIGNATURES_FILTER[..]).await;
-        should_not_filter_out(&shutdown, &SIGNATURES_FILTER[..]).await;
-
-        should_filter_out(&block_added, &SIGNATURES_FILTER[..]).await;
-        should_filter_out(&deploy_accepted, &SIGNATURES_FILTER[..]).await;
-        should_filter_out(&deploy_processed, &SIGNATURES_FILTER[..]).await;
-        should_filter_out(&deploy_expired, &SIGNATURES_FILTER[..]).await;
-        should_filter_out(&fault, &SIGNATURES_FILTER[..]).await;
-        should_filter_out(&step, &SIGNATURES_FILTER[..]).await;
-    }
-
-    /// This test checks that events with incorrect IDs (i.e. no types have an ID except for
-    /// `ApiVersion`) are filtered out.
-    #[tokio::test]
-    async fn should_filter_events_with_invalid_ids() {
-        let _ = logging::init();
-        let mut rng = crate::new_rng();
-
-        let malformed_api_version = ServerSentEvent {
-            id: Some(rng.gen()),
-            data: SseData::random_api_version(&mut rng),
-        };
-        let malformed_block_added = ServerSentEvent {
-            id: None,
-            data: SseData::random_block_added(&mut rng),
-        };
-        let (sse_data, deploy) = SseData::random_deploy_accepted(&mut rng);
-        let malformed_deploy_accepted = ServerSentEvent {
-            id: None,
-            data: sse_data,
-        };
-        let mut deploys = HashMap::new();
-        let _ = deploys.insert(*deploy.hash(), deploy);
-        let malformed_deploy_processed = ServerSentEvent {
-            id: None,
-            data: SseData::random_deploy_processed(&mut rng),
-        };
-        let malformed_deploy_expired = ServerSentEvent {
-            id: None,
-            data: SseData::random_deploy_expired(&mut rng),
-        };
-        let malformed_fault = ServerSentEvent {
-            id: None,
-            data: SseData::random_fault(&mut rng),
-        };
-        let malformed_finality_signature = ServerSentEvent {
-            id: None,
-            data: SseData::random_finality_signature(&mut rng),
-        };
-        let malformed_step = ServerSentEvent {
-            id: None,
-            data: SseData::random_step(&mut rng),
-        };
-        let malformed_shutdown = ServerSentEvent {
-            id: None,
-            data: SseData::Shutdown,
-        };
-
-        for filter in &[
-            &MAIN_FILTER[..],
-            &DEPLOYS_FILTER[..],
-            &SIGNATURES_FILTER[..],
-        ] {
-            should_filter_out(&malformed_api_version, filter).await;
-            should_filter_out(&malformed_block_added, filter).await;
-            should_filter_out(&malformed_deploy_accepted, filter).await;
-            should_filter_out(&malformed_deploy_processed, filter).await;
-            should_filter_out(&malformed_deploy_expired, filter).await;
-            should_filter_out(&malformed_fault, filter).await;
-            should_filter_out(&malformed_finality_signature, filter).await;
-            should_filter_out(&malformed_step, filter).await;
-            should_filter_out(&malformed_shutdown, filter).await;
-        }
-    }
-
-    async fn should_filter_duplicate_events(path_filter: &str) {
-        // Returns `count` random SSE events, all of a single variant defined by `path_filter`.  The
-        // events will have sequential IDs starting from `start_id`, and if the path filter
-        // indicates the events should be deploy-accepted ones, the corresponding random deploys
-        // will be inserted into `deploys`.
-        fn make_random_events(
-            rng: &mut TestRng,
-            start_id: Id,
-            count: usize,
-            path_filter: &str,
-            deploys: &mut HashMap<DeployHash, Deploy>,
-        ) -> Vec<ServerSentEvent> {
+    async fn should_filter_duplicate_events() {
+        // Returns `count` SSE events. The events will have sequential IDs starting from `start_id`.
+        fn make_events(rng: &mut TestRng, start_id: Id, count: usize) -> Vec<ServerSentEvent> {
             (start_id..(start_id + count as u32))
-                .map(|id| {
-                    let data = match path_filter {
-                        SSE_API_MAIN_PATH => SseData::random_block_added(rng),
-                        SSE_API_DEPLOYS_PATH => {
-                            let (event, deploy) = SseData::random_deploy_accepted(rng);
-                            assert!(deploys.insert(*deploy.hash(), deploy).is_none());
-                            event
-                        }
-                        SSE_API_SIGNATURES_PATH => SseData::random_finality_signature(rng),
-                        _ => unreachable!(),
-                    };
-                    ServerSentEvent { id: Some(id), data }
+                .map(|id| ServerSentEvent {
+                    id: Some(id),
+                    data: SseData::random_finality_signature(rng),
                 })
                 .collect()
         }
 
-        // Returns `NUM_ONGOING_EVENTS` random SSE events for the ongoing stream containing
-        // duplicates taken from the end of the initial stream.  Allows for the full initial stream
-        // to be duplicated except for its first event (the `ApiVersion` one) which has no ID.
+        // Returns `NUM_ONGOING_EVENTS` SSE events containing duplicates taken from the end of the
+        // initial stream.  Allows for the full initial stream to be duplicated except for
+        // its first event (the `ApiVersion` one) which has no ID.
         fn make_ongoing_events(
             rng: &mut TestRng,
             duplicate_count: usize,
             initial_events: &[ServerSentEvent],
-            path_filter: &str,
-            deploys: &mut HashMap<DeployHash, Deploy>,
         ) -> Vec<ServerSentEvent> {
             assert!(duplicate_count < initial_events.len());
             let initial_skip_count = initial_events.len() - duplicate_count;
@@ -786,13 +541,7 @@ mod tests {
                 .iter()
                 .skip(initial_skip_count)
                 .cloned()
-                .chain(make_random_events(
-                    rng,
-                    unique_start_id,
-                    unique_count,
-                    path_filter,
-                    deploys,
-                ))
+                .chain(make_events(rng, unique_start_id, unique_count))
                 .collect()
         }
 
@@ -805,30 +554,16 @@ mod tests {
         let _ = logging::init();
         let mut rng = crate::new_rng();
 
-        let mut deploys = HashMap::new();
-
         let initial_events: Vec<ServerSentEvent> =
             iter::once(ServerSentEvent::initial_event(ProtocolVersion::V1_0_0))
-                .chain(make_random_events(
-                    &mut rng,
-                    0,
-                    NUM_INITIAL_EVENTS,
-                    path_filter,
-                    &mut deploys,
-                ))
+                .chain(make_events(&mut rng, 0, NUM_INITIAL_EVENTS))
                 .collect();
 
         // Run three cases; where only a single event is duplicated, where five are duplicated, and
         // where the whole initial stream (except the `ApiVersion`) is duplicated.
         for duplicate_count in &[1, 5, NUM_INITIAL_EVENTS] {
             // Create the events with the requisite duplicates at the start of the collection.
-            let ongoing_events = make_ongoing_events(
-                &mut rng,
-                *duplicate_count,
-                &initial_events,
-                path_filter,
-                &mut deploys,
-            );
+            let ongoing_events = make_ongoing_events(&mut rng, *duplicate_count, &initial_events);
 
             let (initial_events_sender, initial_events_receiver) = mpsc::unbounded_channel();
             let (ongoing_events_sender, ongoing_events_receiver) =
@@ -851,7 +586,6 @@ mod tests {
             let received_events: Vec<Result<WarpServerSentEvent, RecvError>> = stream_to_client(
                 initial_events_receiver,
                 ongoing_events_receiver,
-                get_filter(path_filter).unwrap(),
                 "127.0.0.1:3456".to_string(),
             )
             .collect()
@@ -874,14 +608,7 @@ mod tests {
                 received_events.iter().zip(deduplicated_events.iter())
             {
                 let received_event = received_event.as_ref().unwrap();
-
-                let expected_data_string = match &deduplicated_event.data {
-                    SseData::DeployAccepted { deploy } => serde_json::to_string(&DeployAccepted {
-                        deploy_accepted: deploy.clone(),
-                    })
-                    .unwrap(),
-                    data => serde_json::to_string(&data).unwrap(),
-                };
+                let expected_data_string = serde_json::to_string(&deduplicated_event.data).unwrap();
 
                 let expected_id_string = if let Some(id) = deduplicated_event.id {
                     format!("\nid:{}", id)
@@ -895,26 +622,5 @@ mod tests {
                 assert_eq!(received_event.to_string().trim(), expected_string)
             }
         }
-    }
-
-    /// This test checks that main events from the initial stream which are duplicated in the
-    /// ongoing stream are filtered out.
-    #[tokio::test]
-    async fn should_filter_duplicate_main_events() {
-        should_filter_duplicate_events(SSE_API_MAIN_PATH).await
-    }
-
-    /// This test checks that deploy-accepted events from the initial stream which are duplicated in
-    /// the ongoing stream are filtered out.
-    #[tokio::test]
-    async fn should_filter_duplicate_deploys_events() {
-        should_filter_duplicate_events(SSE_API_DEPLOYS_PATH).await
-    }
-
-    /// This test checks that signature events from the initial stream which are duplicated in the
-    /// ongoing stream are filtered out.
-    #[tokio::test]
-    async fn should_filter_duplicate_signature_events() {
-        should_filter_duplicate_events(SSE_API_SIGNATURES_PATH).await
     }
 }

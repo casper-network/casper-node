@@ -11,7 +11,7 @@ use std::{
 use fake_instant::FakeClock as Instant;
 use futures::future::{BoxFuture, FutureExt};
 use serde::Serialize;
-use tokio::time;
+use tokio::time::{self, error::Elapsed};
 use tracing::{debug, error_span};
 use tracing_futures::Instrument;
 
@@ -327,6 +327,24 @@ where
 
     /// Runs the main loop of every reactor until `condition` is true.
     ///
+    /// Returns an error if the `condition` is not reached inside of `within`.
+    ///
+    /// Panics if any node returns an exit code.  To settle on an exit code, use `settle_on_exit`
+    /// instead.
+    pub(crate) async fn try_settle_on<F>(
+        &mut self,
+        rng: &mut TestRng,
+        condition: F,
+        within: Duration,
+    ) -> Result<(), Elapsed>
+    where
+        F: Fn(&Nodes<R>) -> bool,
+    {
+        time::timeout(within, self.settle_on_indefinitely(rng, condition)).await
+    }
+
+    /// Runs the main loop of every reactor until `condition` is true.
+    ///
     /// Panics if the `condition` is not reached inside of `within`, or if any node returns an exit
     /// code.
     ///
@@ -335,9 +353,14 @@ where
     where
         F: Fn(&Nodes<R>) -> bool,
     {
-        time::timeout(within, self.settle_on_indefinitely(rng, condition))
+        self.try_settle_on(rng, condition, within)
             .await
-            .unwrap_or_else(|_| panic!("network did not settle on condition within {:?}", within))
+            .unwrap_or_else(|_| {
+                panic!(
+                    "network did not settle on condition within {} seconds",
+                    within.as_secs_f64()
+                )
+            })
     }
 
     async fn settle_on_indefinitely<F>(&mut self, rng: &mut TestRng, condition: F)

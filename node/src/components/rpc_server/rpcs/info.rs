@@ -6,11 +6,12 @@ use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{debug, error};
 
 use casper_types::{
     execution::{ExecutionResult, ExecutionResultV2},
-    Block, ChainspecRawBytes, Deploy, DeployHash, EraId, ProtocolVersion, PublicKey,
+    Block, ChainspecRawBytes, Deploy, DeployHash, EraId, ProtocolVersion, PublicKey, Transaction,
+    TransactionHash,
 };
 
 use super::{
@@ -21,7 +22,10 @@ use crate::{
     components::consensus::ValidatorChange,
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::{DeployExecutionInfo, GetStatusResult, PeersMap},
+    types::{
+        DeployWithFinalizedApprovals, ExecutionInfo, GetStatusResult, PeersMap,
+        TransactionWithFinalizedApprovals, VariantMismatch,
+    },
 };
 
 static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
@@ -31,9 +35,22 @@ static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
 static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     deploy: Deploy::doc_example().clone(),
-    execution_info: Some(DeployExecutionInfo {
+    execution_info: Some(ExecutionInfo {
         block_hash: *Block::example().hash(),
-        block_height: Block::example().header().height(),
+        block_height: Block::example().clone_header().height(),
+        execution_result: Some(ExecutionResult::from(ExecutionResultV2::example().clone())),
+    }),
+});
+static GET_TRANSACTION_PARAMS: Lazy<GetTransactionParams> = Lazy::new(|| GetTransactionParams {
+    transaction_hash: Transaction::doc_example().hash(),
+    finalized_approvals: true,
+});
+static GET_TRANSACTION_RESULT: Lazy<GetTransactionResult> = Lazy::new(|| GetTransactionResult {
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    transaction: Transaction::doc_example().clone(),
+    execution_info: Some(ExecutionInfo {
+        block_hash: *Block::example().hash(),
+        block_height: Block::example().height(),
         execution_result: Some(ExecutionResult::from(ExecutionResultV2::example().clone())),
     }),
 });
@@ -67,7 +84,8 @@ pub struct GetDeployParams {
     pub finalized_approvals: bool,
 }
 
-/// The default for `GetDeployParams::finalized_approvals`.
+/// The default for `GetDeployParams::finalized_approvals` and
+/// `GetTransactionParams::finalized_approvals`.
 fn finalized_approvals_default() -> bool {
     false
 }
@@ -89,7 +107,7 @@ pub struct GetDeployResult {
     pub deploy: Deploy,
     /// Execution info, if available.
     #[serde(skip_serializing_if = "Option::is_none", flatten)]
-    pub execution_info: Option<DeployExecutionInfo>,
+    pub execution_info: Option<ExecutionInfo>,
 }
 
 impl DocExample for GetDeployResult {
@@ -112,29 +130,127 @@ impl RpcWithParams for GetDeploy {
         api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
-        match effect_builder
-            .get_deploy_and_execution_info_from_storage(params.deploy_hash)
+        let txn_hash = TransactionHash::from(params.deploy_hash);
+        let (txn_with_finalized_approvals, execution_info) = match effect_builder
+            .get_transaction_and_execution_info_from_storage(txn_hash)
             .await
         {
-            Some((deploy_with_finalized_approvals, execution_info)) => {
-                let deploy = if params.finalized_approvals {
-                    deploy_with_finalized_approvals.into_naive()
+            Some(value) => value,
+            None => {
+                let message = format!(
+                    "failed to get {} and execution info from storage",
+                    params.deploy_hash
+                );
+                debug!("{}", message);
+                return Err(Error::new(ErrorCode::NoSuchDeploy, message));
+            }
+        };
+
+        let deploy_with_finalized_approvals = match txn_with_finalized_approvals {
+            TransactionWithFinalizedApprovals::Deploy {
+                deploy,
+                finalized_approvals,
+            } => DeployWithFinalizedApprovals::new(deploy, finalized_approvals),
+            other => {
+                let message = format!(
+                    "internal error: failed to get {} and execution info from storage: {}",
+                    params.deploy_hash,
+                    VariantMismatch(Box::new((txn_hash, other)))
+                );
+                error!("{}", message);
+                return Err(Error::new(ErrorCode::VariantMismatch, message));
+            }
+        };
+
+        let deploy = if params.finalized_approvals {
+            deploy_with_finalized_approvals.into_naive()
+        } else {
+            deploy_with_finalized_approvals.discard_finalized_approvals()
+        };
+        Ok(Self::ResponseResult {
+            api_version,
+            deploy,
+            execution_info,
+        })
+    }
+}
+
+/// Params for "info_get_transaction" RPC request.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetTransactionParams {
+    /// The transaction hash.
+    pub transaction_hash: TransactionHash,
+    /// Whether to return the transaction with the finalized approvals substituted. If `false` or
+    /// omitted, returns the transaction with the approvals that were originally received by the
+    /// node.
+    #[serde(default = "finalized_approvals_default")]
+    pub finalized_approvals: bool,
+}
+
+impl DocExample for GetTransactionParams {
+    fn doc_example() -> &'static Self {
+        &GET_TRANSACTION_PARAMS
+    }
+}
+
+/// Result for "info_get_transaction" RPC response.
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetTransactionResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ProtocolVersion,
+    /// The transaction.
+    pub transaction: Transaction,
+    /// Execution info, if available.
+    #[serde(skip_serializing_if = "Option::is_none", flatten)]
+    pub execution_info: Option<ExecutionInfo>,
+}
+
+impl DocExample for GetTransactionResult {
+    fn doc_example() -> &'static Self {
+        &GET_TRANSACTION_RESULT
+    }
+}
+
+/// "info_get_transaction" RPC.
+pub struct GetTransaction {}
+
+#[async_trait]
+impl RpcWithParams for GetTransaction {
+    const METHOD: &'static str = "info_get_transaction";
+    type RequestParams = GetTransactionParams;
+    type ResponseResult = GetTransactionResult;
+
+    async fn do_handle_request<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        api_version: ProtocolVersion,
+        params: Self::RequestParams,
+    ) -> Result<Self::ResponseResult, Error> {
+        match effect_builder
+            .get_transaction_and_execution_info_from_storage(params.transaction_hash)
+            .await
+        {
+            Some((txn_with_finalized_approvals, execution_info)) => {
+                let transaction = if params.finalized_approvals {
+                    txn_with_finalized_approvals.into_naive()
                 } else {
-                    deploy_with_finalized_approvals.discard_finalized_approvals()
+                    txn_with_finalized_approvals.discard_finalized_approvals()
                 };
                 Ok(Self::ResponseResult {
                     api_version,
-                    deploy,
+                    transaction,
                     execution_info,
                 })
             }
             None => {
                 let message = format!(
                     "failed to get {} and execution info from storage",
-                    params.deploy_hash
+                    params.transaction_hash
                 );
-                info!("{}", message);
-                Err(Error::new(ErrorCode::NoSuchDeploy, message))
+                debug!("{}", message);
+                Err(Error::new(ErrorCode::NoSuchTransaction, message))
             }
         }
     }

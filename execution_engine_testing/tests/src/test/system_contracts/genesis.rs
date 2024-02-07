@@ -13,8 +13,8 @@ use casper_execution_engine::engine_state::{
     run_genesis_request::RunGenesisRequest,
 };
 use casper_types::{
-    account::AccountHash, system::auction::DelegationRate, GenesisAccount, GenesisValidator, Motes,
-    ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
+    account::AccountHash, package::PackageKindTag, system::auction::DelegationRate, GenesisAccount,
+    GenesisValidator, Key, Motes, ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
 };
 
 const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];
@@ -95,10 +95,14 @@ fn should_run_genesis() {
     assert_eq!(account_1_balance_actual, U512::from(ACCOUNT_1_BALANCE));
     assert_eq!(account_2_balance_actual, U512::from(ACCOUNT_2_BALANCE));
 
-    let mint_contract_hash = builder.get_mint_contract_hash();
-    let handle_payment_contract_hash = builder.get_handle_payment_contract_hash();
+    let mint_contract_key =
+        Key::addressable_entity_key(PackageKindTag::System, builder.get_mint_contract_hash());
+    let handle_payment_contract_key = Key::addressable_entity_key(
+        PackageKindTag::System,
+        builder.get_handle_payment_contract_hash(),
+    );
 
-    let result = builder.query(None, mint_contract_hash.into(), &[]);
+    let result = builder.query(None, mint_contract_key, &[]);
     if let Ok(StoredValue::AddressableEntity(_)) = result {
         // Contract exists at mint contract hash
     } else {
@@ -106,7 +110,7 @@ fn should_run_genesis() {
     }
 
     if let Ok(StoredValue::AddressableEntity(_)) =
-        builder.query(None, handle_payment_contract_hash.into(), &[])
+        builder.query(None, handle_payment_contract_key, &[])
     {
         // Contract exists at handle payment contract hash
     } else {

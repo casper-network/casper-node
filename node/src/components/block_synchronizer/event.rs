@@ -5,7 +5,7 @@ use either::Either;
 use serde::Serialize;
 
 use casper_execution_engine::engine_state;
-use casper_types::{Block, BlockHash, BlockHeader, Deploy, Digest, FinalitySignature};
+use casper_types::{Block, BlockHash, BlockHeader, Digest, FinalitySignature, Transaction};
 
 use super::GlobalStateSynchronizerEvent;
 use crate::{
@@ -15,7 +15,7 @@ use crate::{
     },
     effect::requests::BlockSynchronizerRequest,
     types::{
-        ApprovalsHashes, BlockExecutionResultsOrChunk, FinalizedBlock, LegacyDeploy, NodeId,
+        ApprovalsHashes, BlockExecutionResultsOrChunk, ExecutableBlock, LegacyDeploy, NodeId,
         SyncLeap,
     },
 };
@@ -29,7 +29,7 @@ pub(crate) enum Event {
     #[from]
     MadeFinalizedBlock {
         block_hash: BlockHash,
-        result: Option<(FinalizedBlock, Vec<Deploy>)>,
+        result: Option<ExecutableBlock>,
     },
     MarkBlockExecutionEnqueued(BlockHash),
     MarkBlockExecuted(BlockHash),
@@ -59,7 +59,7 @@ pub(crate) enum Event {
     },
     DeployFetched {
         block_hash: BlockHash,
-        result: Either<FetchResult<LegacyDeploy>, FetchResult<Deploy>>,
+        result: Either<FetchResult<LegacyDeploy>, FetchResult<Transaction>>,
     },
     ExecutionResultsFetched {
         block_hash: BlockHash,

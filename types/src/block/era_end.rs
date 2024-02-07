@@ -1,167 +1,133 @@
+mod era_end_v1;
+mod era_end_v2;
+
 use alloc::{collections::BTreeMap, vec::Vec};
 use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(feature = "json-schema")]
-use once_cell::sync::Lazy;
-#[cfg(feature = "json-schema")]
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "json-schema")]
-use serde_map_to_array::KeyValueJsonSchema;
-use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
-use super::EraReport;
-#[cfg(feature = "json-schema")]
-use crate::SecretKey;
 use crate::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    PublicKey, U512,
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    PublicKey, Rewards, U512,
 };
+pub use era_end_v1::{EraEndV1, EraReport};
+pub use era_end_v2::EraEndV2;
 
-#[cfg(feature = "json-schema")]
-static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
-    let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
-    let public_key_1 = PublicKey::from(&secret_key_1);
-    let next_era_validator_weights = {
-        let mut next_era_validator_weights: BTreeMap<PublicKey, U512> = BTreeMap::new();
-        next_era_validator_weights.insert(public_key_1, U512::from(123));
-        next_era_validator_weights.insert(
-            PublicKey::from(
-                &SecretKey::ed25519_from_bytes([5u8; SecretKey::ED25519_LENGTH]).unwrap(),
-            ),
-            U512::from(456),
-        );
-        next_era_validator_weights.insert(
-            PublicKey::from(
-                &SecretKey::ed25519_from_bytes([6u8; SecretKey::ED25519_LENGTH]).unwrap(),
-            ),
-            U512::from(789),
-        );
-        next_era_validator_weights
-    };
+const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 
-    let era_report = EraReport::example().clone();
-    EraEnd::new(era_report, next_era_validator_weights)
-});
+/// Tag for block body v1.
+pub const ERA_END_V1_TAG: u8 = 0;
+/// Tag for block body v2.
+pub const ERA_END_V2_TAG: u8 = 1;
 
-/// Information related to the end of an era, and validator weights for the following era.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+/// The versioned era end of a block, storing the data for a switch block.
+/// It encapsulates different variants of the EraEnd struct.
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct EraEnd {
-    /// Equivocation, reward and validator inactivity information.
-    pub(super) era_report: EraReport<PublicKey>,
-    /// The validators for the upcoming era and their respective weights.
-    #[serde(with = "BTreeMapToArray::<PublicKey, U512, NextEraValidatorLabels>")]
-    pub(super) next_era_validator_weights: BTreeMap<PublicKey, U512>,
+#[cfg_attr(any(feature = "testing", test), derive(PartialEq))]
+#[derive(Clone, Hash, Serialize, Deserialize, Debug)]
+pub enum EraEnd {
+    /// The legacy, initial version of the body portion of a block.
+    V1(EraEndV1),
+    /// The version 2 of the body portion of a block, which includes the
+    /// `past_finality_signatures`.
+    V2(EraEndV2),
 }
 
 impl EraEnd {
-    /// Returns equivocation, reward and validator inactivity information.
-    pub fn era_report(&self) -> &EraReport<PublicKey> {
-        &self.era_report
-    }
-
-    /// Returns the validators for the upcoming era and their respective weights.
-    pub fn next_era_validator_weights(&self) -> &BTreeMap<PublicKey, U512> {
-        &self.next_era_validator_weights
-    }
-
-    // This method is not intended to be used by third party crates.
-    #[doc(hidden)]
-    pub fn new(
-        era_report: EraReport<PublicKey>,
-        next_era_validator_weights: BTreeMap<PublicKey, U512>,
-    ) -> Self {
-        EraEnd {
-            era_report,
-            next_era_validator_weights,
+    /// Retrieves the deploy hashes within the block.
+    pub fn equivocators(&self) -> &[PublicKey] {
+        match self {
+            EraEnd::V1(v1) => v1.equivocators(),
+            EraEnd::V2(v2) => v2.equivocators(),
         }
     }
 
-    // This method is not intended to be used by third party crates.
-    #[doc(hidden)]
-    #[cfg(feature = "json-schema")]
-    pub fn example() -> &'static Self {
-        &ERA_END
-    }
-}
-
-impl ToBytes for EraEnd {
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.era_report.write_bytes(writer)?;
-        self.next_era_validator_weights.write_bytes(writer)
+    /// Retrieves the transfer hashes within the block.
+    pub fn inactive_validators(&self) -> &[PublicKey] {
+        match self {
+            EraEnd::V1(v1) => v1.inactive_validators(),
+            EraEnd::V2(v2) => v2.inactive_validators(),
+        }
     }
 
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
+    /// Returns the deploy and transfer hashes in the order in which they were executed.
+    pub fn next_era_validator_weights(&self) -> &BTreeMap<PublicKey, U512> {
+        match self {
+            EraEnd::V1(v1) => v1.next_era_validator_weights(),
+            EraEnd::V2(v2) => v2.next_era_validator_weights(),
+        }
     }
 
-    fn serialized_length(&self) -> usize {
-        self.era_report.serialized_length() + self.next_era_validator_weights.serialized_length()
-    }
-}
-
-impl FromBytes for EraEnd {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (era_report, remainder) = EraReport::<PublicKey>::from_bytes(bytes)?;
-        let (next_era_validator_weights, remainder) =
-            BTreeMap::<PublicKey, U512>::from_bytes(remainder)?;
-        let era_end = EraEnd {
-            era_report,
-            next_era_validator_weights,
-        };
-        Ok((era_end, remainder))
+    /// Returns the deploy and transfer hashes in the order in which they were executed.
+    pub fn rewards(&self) -> Rewards {
+        match self {
+            EraEnd::V1(v1) => Rewards::V1(v1.rewards()),
+            EraEnd::V2(v2) => Rewards::V2(v2.rewards()),
+        }
     }
 }
 
 impl Display for EraEnd {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "era end: {} ", self.era_report)
+        match self {
+            EraEnd::V1(v1) => Display::fmt(&v1, formatter),
+            EraEnd::V2(v2) => Display::fmt(&v2, formatter),
+        }
     }
 }
 
-struct NextEraValidatorLabels;
-
-impl KeyValueLabels for NextEraValidatorLabels {
-    const KEY: &'static str = "validator";
-    const VALUE: &'static str = "weight";
+impl From<EraEndV1> for EraEnd {
+    fn from(era_end: EraEndV1) -> Self {
+        EraEnd::V1(era_end)
+    }
 }
 
-#[cfg(feature = "json-schema")]
-impl KeyValueJsonSchema for NextEraValidatorLabels {
-    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("ValidatorWeight");
-    const JSON_SCHEMA_KV_DESCRIPTION: Option<&'static str> = Some(
-        "A validator's public key paired with its weight, i.e. the total number of \
-        motes staked by it and its delegators.",
-    );
-    const JSON_SCHEMA_KEY_DESCRIPTION: Option<&'static str> = Some("The validator's public key.");
-    const JSON_SCHEMA_VALUE_DESCRIPTION: Option<&'static str> = Some("The validator's weight.");
+impl From<EraEndV2> for EraEnd {
+    fn from(era_end: EraEndV2) -> Self {
+        EraEnd::V2(era_end)
+    }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{testing::TestRng, TestBlockBuilder};
+impl ToBytes for EraEnd {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        match self {
+            EraEnd::V1(v1) => {
+                buffer.insert(0, ERA_END_V1_TAG);
+                buffer.extend(v1.to_bytes()?);
+            }
+            EraEnd::V2(v2) => {
+                buffer.insert(0, ERA_END_V2_TAG);
+                buffer.extend(v2.to_bytes()?);
+            }
+        }
+        Ok(buffer)
+    }
 
-    #[test]
-    fn bytesrepr_roundtrip() {
-        let rng = &mut TestRng::new();
-        let block = {
-            let mut block = TestBlockBuilder::new().build(rng);
+    fn serialized_length(&self) -> usize {
+        TAG_LENGTH
+            + match self {
+                EraEnd::V1(v1) => v1.serialized_length(),
+                EraEnd::V2(v2) => v2.serialized_length(),
+            }
+    }
+}
 
-            let next_era_weights = (0..6)
-                .map(|index| (PublicKey::random(rng), U512::from(index)))
-                .collect();
-            block.header.era_end = Some(EraEnd::new(EraReport::random(rng), next_era_weights));
-
-            block
-        };
-
-        bytesrepr::test_serialization_roundtrip(block.era_end().unwrap());
+impl FromBytes for EraEnd {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            ERA_END_V1_TAG => {
+                let (body, remainder): (EraEndV1, _) = FromBytes::from_bytes(remainder)?;
+                Ok((Self::V1(body), remainder))
+            }
+            ERA_END_V2_TAG => {
+                let (body, remainder): (EraEndV2, _) = FromBytes::from_bytes(remainder)?;
+                Ok((Self::V2(body), remainder))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
     }
 }

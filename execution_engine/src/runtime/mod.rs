@@ -6,7 +6,6 @@ mod handle_payment_internal;
 mod host_function_flag;
 mod mint_internal;
 pub mod stack;
-mod standard_payment_internal;
 mod utils;
 mod wasm_prep;
 
@@ -17,9 +16,12 @@ use std::{
     iter::FromIterator,
 };
 
-use parity_wasm::elements::Module;
+use casper_wasm::elements::Module;
+use casper_wasmi::{MemoryRef, Trap, TrapCode};
 use tracing::error;
-use wasmi::{MemoryRef, Trap, TrapKind};
+
+#[cfg(feature = "test-support")]
+use casper_wasmi::RuntimeValue;
 
 use casper_storage::{
     global_state::{error::Error as GlobalStateError, state::StateReader},
@@ -33,27 +35,32 @@ use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
         self, ActionThresholds, ActionType, AddKeyFailure, AddressableEntity, AssociatedKeys,
-        ContractHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys,
+        EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, MessageTopics, NamedKeys,
         Parameter, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
         DEFAULT_ENTRY_POINT_NAME,
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    package::{ContractPackageKind, ContractPackageStatus},
+    contract_messages::{
+        Message, MessageAddr, MessageChecksum, MessagePayload, MessageTopicSummary,
+    },
+    contracts::ContractPackage,
+    crypto,
+    package::{PackageKind, PackageKindTag, PackageStatus},
     system::{
         self,
         auction::{self, EraInfo},
-        handle_payment, mint, standard_payment, CallStackElement, SystemContractType, AUCTION,
-        HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
+        handle_payment, mint, CallStackElement, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
+        STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, CLTyped, CLValue, ContextAccessRights, ContractPackageHash,
-    ContractVersion, ContractVersionKey, ContractVersions, ContractWasm, DeployHash, Gas,
-    GrantedAccess, Group, Groups, HostFunction, HostFunctionCost, Key, NamedArg, Package, Phase,
-    PublicKey, RuntimeArgs, StoredValue, Transfer, TransferResult, TransferredTo, URef,
-    DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
+    AccessRights, AddressableEntityHash, ApiError, ByteCode, ByteCodeHash, ByteCodeKind, CLTyped,
+    CLValue, ContextAccessRights, ContractWasm, DeployHash, EntityVersion, EntityVersionKey,
+    EntityVersions, Gas, GrantedAccess, Group, Groups, HostFunction, HostFunctionCost, Key,
+    NamedArg, Package, PackageHash, Phase, PublicKey, RuntimeArgs, StoredValue, Tagged, Transfer,
+    TransferResult, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
 use crate::{
-    engine_state::ACCOUNT_WASM_HASH,
+    engine_state::ACCOUNT_BYTE_CODE_HASH,
     execution::{self, Error},
     runtime::host_function_flag::HostFunctionFlag,
     runtime_context::RuntimeContext,
@@ -64,13 +71,14 @@ pub use wasm_prep::{
     DEFAULT_MAX_PARAMETER_COUNT, DEFAULT_MAX_TABLE_SIZE,
 };
 
+#[derive(Debug)]
 enum CallContractIdentifier {
     Contract {
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
     },
     ContractPackage {
-        contract_package_hash: ContractPackageHash,
-        version: Option<ContractVersion>,
+        contract_package_hash: PackageHash,
+        version: Option<EntityVersion>,
     },
 }
 
@@ -187,39 +195,76 @@ where
         self.context.charge_system_contract_call(amount)
     }
 
-    /// Returns bytes from the WASM memory instance.
-    fn bytes_from_mem(&self, ptr: u32, size: usize) -> Result<Vec<u8>, Error> {
+    fn checked_memory_slice<Ret>(
+        &self,
+        offset: usize,
+        size: usize,
+        func: impl FnOnce(&[u8]) -> Ret,
+    ) -> Result<Ret, Error> {
+        // This is mostly copied from a private function `MemoryInstance::checked_memory_region`
+        // that calls a user defined function with a validated slice of memory. This allows
+        // usage patterns that does not involve copying data onto heap first i.e. deserialize
+        // values without copying data first, etc.
+        // NOTE: Depending on the VM backend used in future, this may change, as not all VMs may
+        // support direct memory access.
         self.try_get_memory()?
-            .get(ptr, size)
-            .map_err(Into::<Error>::into)
+            .with_direct_access(|buffer| {
+                let end = offset.checked_add(size).ok_or_else(|| {
+                    casper_wasmi::Error::Memory(format!(
+                        "trying to access memory block of size {} from offset {}",
+                        size, offset
+                    ))
+                })?;
+
+                if end > buffer.len() {
+                    return Err(casper_wasmi::Error::Memory(format!(
+                        "trying to access region [{}..{}] in memory [0..{}]",
+                        offset,
+                        end,
+                        buffer.len(),
+                    )));
+                }
+
+                Ok(func(&buffer[offset..end]))
+            })
+            .map_err(Into::into)
+    }
+
+    /// Returns bytes from the WASM memory instance.
+    #[inline]
+    fn bytes_from_mem(&self, ptr: u32, size: usize) -> Result<Vec<u8>, Error> {
+        self.checked_memory_slice(ptr as usize, size, |data| data.to_vec())
     }
 
     /// Returns a deserialized type from the WASM memory instance.
+    #[inline]
     fn t_from_mem<T: FromBytes>(&self, ptr: u32, size: u32) -> Result<T, Error> {
-        let bytes = self.bytes_from_mem(ptr, size as usize)?;
-        bytesrepr::deserialize(bytes).map_err(Into::into)
+        let result = self.checked_memory_slice(ptr as usize, size as usize, |data| {
+            bytesrepr::deserialize_from_slice(data)
+        })?;
+        Ok(result?)
     }
 
     /// Reads key (defined as `key_ptr` and `key_size` tuple) from Wasm memory.
+    #[inline]
     fn key_from_mem(&mut self, key_ptr: u32, key_size: u32) -> Result<Key, Error> {
-        let bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
-        bytesrepr::deserialize(bytes).map_err(Into::into)
+        self.t_from_mem(key_ptr, key_size)
     }
 
     /// Reads `CLValue` (defined as `cl_value_ptr` and `cl_value_size` tuple) from Wasm memory.
+    #[inline]
     fn cl_value_from_mem(
         &mut self,
         cl_value_ptr: u32,
         cl_value_size: u32,
     ) -> Result<CLValue, Error> {
-        let bytes = self.bytes_from_mem(cl_value_ptr, cl_value_size as usize)?;
-        bytesrepr::deserialize(bytes).map_err(Into::into)
+        self.t_from_mem(cl_value_ptr, cl_value_size)
     }
 
     /// Returns a deserialized string from the WASM memory instance.
+    #[inline]
     fn string_from_mem(&self, ptr: u32, size: u32) -> Result<String, Trap> {
-        let bytes = self.bytes_from_mem(ptr, size as usize)?;
-        bytesrepr::deserialize(bytes).map_err(|e| Error::BytesRepr(e).into())
+        self.t_from_mem(ptr, size).map_err(Trap::from)
     }
 
     fn get_module_from_entry_points(
@@ -234,8 +279,7 @@ where
 
     #[allow(clippy::wrong_self_convention)]
     fn is_valid_uref(&self, uref_ptr: u32, uref_size: u32) -> Result<bool, Trap> {
-        let bytes = self.bytes_from_mem(uref_ptr, uref_size as usize)?;
-        let uref: URef = bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?;
+        let uref: URef = self.t_from_mem(uref_ptr, uref_size)?;
         Ok(self.context.validate_uref(&uref).is_ok())
     }
 
@@ -443,18 +487,15 @@ where
     /// type is `Trap`, indicating that this function will always kill the current Wasm instance.
     fn ret(&mut self, value_ptr: u32, value_size: usize) -> Trap {
         self.host_buffer = None;
-        let memory = match self.try_get_memory() {
-            Ok(memory) => memory,
-            Err(error) => return Trap::from(error),
-        };
-        let mem_get = memory
-            .get(value_ptr, value_size)
-            .map_err(|e| Error::Interpreter(e.into()));
+
+        let mem_get =
+            self.checked_memory_slice(value_ptr as usize, value_size, |data| data.to_vec());
+
         match mem_get {
             Ok(buf) => {
                 // Set the result field in the runtime and return the proper element of the `Error`
                 // enum indicating that the reason for exiting the module was a call to ret.
-                self.host_buffer = bytesrepr::deserialize(buf).ok();
+                self.host_buffer = bytesrepr::deserialize_from_slice(buf).ok();
 
                 let urefs = match &self.host_buffer {
                     Some(buf) => utils::extract_urefs(buf),
@@ -477,13 +518,8 @@ where
     }
 
     /// Checks if a [`Key`] is a system contract.
-    fn is_system_contract(&self, key: Key) -> Result<bool, Error> {
-        let contract_hash = match key.into_hash() {
-            Some(contract_hash_bytes) => ContractHash::new(contract_hash_bytes),
-            None => return Ok(false),
-        };
-
-        self.context.is_system_contract(&contract_hash)
+    fn is_system_contract(&self, entity_hash: AddressableEntityHash) -> Result<bool, Error> {
+        self.context.is_system_addressable_entity(&entity_hash)
     }
 
     fn get_named_argument<T: FromBytes + CLTyped>(
@@ -532,13 +568,13 @@ where
         let gas_counter = self.gas_counter();
 
         let mint_hash = self.context.get_system_contract(MINT)?;
-        let base_key = Key::from(mint_hash);
+        let mint_key = Key::addressable_entity_key(PackageKindTag::System, mint_hash);
         let mint_contract = self.context.state().borrow_mut().get_contract(mint_hash)?;
         let mut named_keys = mint_contract.named_keys().to_owned();
 
         let runtime_context = self.context.new_from_self(
-            base_key,
-            EntryPointType::Contract,
+            mint_key,
+            EntryPointType::AddressableEntity,
             &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
@@ -659,7 +695,8 @@ where
         let gas_counter = self.gas_counter();
 
         let handle_payment_hash = self.context.get_system_contract(HANDLE_PAYMENT)?;
-        let base_key = Key::from(handle_payment_hash);
+        let handle_payment_key =
+            Key::addressable_entity_key(PackageKindTag::System, handle_payment_hash);
         let handle_payment_contract = self
             .context
             .state()
@@ -668,8 +705,8 @@ where
         let mut named_keys = handle_payment_contract.named_keys().to_owned();
 
         let runtime_context = self.context.new_from_self(
-            base_key,
-            EntryPointType::Contract,
+            handle_payment_key,
+            EntryPointType::AddressableEntity,
             &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
@@ -745,18 +782,18 @@ where
         Ok(ret)
     }
 
-    /// Calls host standard payment contract.
-    pub(crate) fn call_host_standard_payment(&mut self, stack: RuntimeStack) -> Result<(), Error> {
-        // NOTE: This method (unlike other call_host_* methods) already runs on its own runtime
-        // context.
-        self.stack = Some(stack);
-        let gas_counter = self.gas_counter();
-        let amount: U512 =
-            Self::get_named_argument(self.context.args(), standard_payment::ARG_AMOUNT)?;
-        let result = self.pay(amount).map_err(Self::reverter);
-        self.set_gas_counter(gas_counter);
-        result
-    }
+    // /// Calls host standard payment contract.
+    // pub(crate) fn call_host_standard_payment(&mut self, stack: RuntimeStack) -> Result<(), Error>
+    // {     // NOTE: This method (unlike other call_host_* methods) already runs on its own
+    // runtime     // context.
+    //     self.stack = Some(stack);
+    //     let gas_counter = self.gas_counter();
+    //     let amount: U512 =
+    //         Self::get_named_argument(self.context.args(), standard_payment::ARG_AMOUNT)?;
+    //     let result = self.pay(amount).map_err(Self::reverter);
+    //     self.set_gas_counter(gas_counter);
+    //     result
+    // }
 
     /// Calls host auction contract.
     fn call_host_auction(
@@ -769,7 +806,7 @@ where
         let gas_counter = self.gas_counter();
 
         let auction_hash = self.context.get_system_contract(AUCTION)?;
-        let entity_address = Key::from(auction_hash);
+        let auction_key = Key::addressable_entity_key(PackageKindTag::System, auction_hash);
         let auction_contract = self
             .context
             .state()
@@ -778,8 +815,8 @@ where
         let mut named_keys = auction_contract.named_keys().to_owned();
 
         let runtime_context = self.context.new_from_self(
-            entity_address,
-            EntryPointType::Contract,
+            auction_key,
+            EntryPointType::AddressableEntity,
             &mut named_keys,
             access_rights,
             runtime_args.to_owned(),
@@ -935,8 +972,8 @@ where
                 runtime
                     .context
                     .charge_gas(auction_costs.distribute.into())?;
-                let proposer = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
-                runtime.distribute(proposer).map_err(Self::reverter)?;
+                let rewards = Self::get_named_argument(runtime_args, auction::ARG_REWARDS_MAP)?;
+                runtime.distribute(rewards).map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
 
@@ -988,12 +1025,13 @@ where
     /// Call a contract by pushing a stack element onto the frame.
     pub(crate) fn call_contract_with_stack(
         &mut self,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
         entry_point_name: &str,
         args: RuntimeArgs,
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
         self.stack = Some(stack);
+
         self.call_contract(contract_hash, entry_point_name, args)
     }
 
@@ -1005,6 +1043,8 @@ where
         let protocol_version = self.context.protocol_version();
         let engine_config = self.context.engine_config();
         let wasm_config = engine_config.wasm_config();
+        #[cfg(feature = "test-support")]
+        let max_stack_height = wasm_config.max_stack_height;
         let module = wasm_prep::preprocess(*wasm_config, module_bytes)?;
         let (instance, memory) =
             utils::instance_and_memory(module.clone(), protocol_version, engine_config)?;
@@ -1030,6 +1070,9 @@ where
             }
         };
 
+        #[cfg(feature = "test-support")]
+        dump_runtime_stack_info(instance, max_stack_height);
+
         if let Some(host_error) = error.as_host_error() {
             // If the "error" was in fact a trap caused by calling `ret` then
             // this is normal operation and we should return the value captured
@@ -1049,7 +1092,7 @@ where
     /// Calls contract living under a `key`, with supplied `args`.
     pub fn call_contract(
         &mut self,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
         entry_point_name: &str,
         args: RuntimeArgs,
     ) -> Result<CLValue, Error> {
@@ -1063,8 +1106,8 @@ where
     /// types given in the contract header.
     pub fn call_versioned_contract(
         &mut self,
-        contract_package_hash: ContractPackageHash,
-        contract_version: Option<ContractVersion>,
+        contract_package_hash: PackageHash,
+        contract_version: Option<EntityVersion>,
         entry_point_name: String,
         args: RuntimeArgs,
     ) -> Result<CLValue, Error> {
@@ -1078,29 +1121,34 @@ where
 
     fn get_context_key_for_contract_call(
         &self,
-        contract_hash: ContractHash,
+        entity_hash: AddressableEntityHash,
         entry_point: &EntryPoint,
-    ) -> Result<Key, Error> {
+    ) -> Result<AddressableEntityHash, Error> {
         let current = self.context.entry_point_type();
         let next = entry_point.entry_point_type();
         match (current, next) {
-            (EntryPointType::Contract, EntryPointType::Session) => {
+            (EntryPointType::AddressableEntity, EntryPointType::Session) => {
                 // Session code can't be called from Contract code for security reasons.
                 Err(Error::InvalidContext)
             }
-            (EntryPointType::Install, EntryPointType::Session) => {
+            (EntryPointType::Factory, EntryPointType::Session) => {
                 // Session code can't be called from Installer code for security reasons.
                 Err(Error::InvalidContext)
             }
             (EntryPointType::Session, EntryPointType::Session) => {
                 // Session code called from session reuses current base key
-                Ok(self.context.get_entity_address())
+                match self.context.get_entity_key().into_entity_hash() {
+                    Some(entity_hash) => Ok(entity_hash),
+                    None => Err(Error::InvalidEntity(entity_hash)),
+                }
             }
-            (EntryPointType::Session, EntryPointType::Contract)
-            | (EntryPointType::Contract, EntryPointType::Contract) => Ok(contract_hash.into()),
+            (EntryPointType::Session, EntryPointType::AddressableEntity)
+            | (EntryPointType::AddressableEntity, EntryPointType::AddressableEntity) => {
+                Ok(entity_hash)
+            }
             _ => {
                 // Any other combination (installer, normal, etc.) is a contract context.
-                Ok(contract_hash.into())
+                Ok(entity_hash)
             }
         }
     }
@@ -1127,76 +1175,111 @@ where
         entry_point_name: &str,
         args: RuntimeArgs,
     ) -> Result<CLValue, Error> {
-        let (contract, contract_hash, contract_package) = match identifier {
-            CallContractIdentifier::Contract { contract_hash } => {
-                let contract_key = contract_hash.into();
-                let contract: AddressableEntity = self.context.read_gs_typed(&contract_key)?;
-                let contract_package_key = Key::from(contract.contract_package_hash());
-                let contract_package: Package =
-                    self.context.read_gs_typed(&contract_package_key)?;
+        let (entity, entity_hash, package) = match identifier {
+            CallContractIdentifier::Contract {
+                contract_hash: entity_hash,
+            } => {
+                let entity_key = if self.context.is_system_addressable_entity(&entity_hash)? {
+                    Key::addressable_entity_key(PackageKindTag::System, entity_hash)
+                } else {
+                    Key::contract_entity_key(entity_hash)
+                };
+
+                let entity = if let Some(StoredValue::AddressableEntity(entity)) =
+                    self.context.read_gs(&entity_key)?
+                {
+                    entity
+                } else {
+                    self.migrate_contract_and_contract_package(entity_hash)?
+                };
+
+                let package = Key::from(entity.package_hash());
+
+                let package: Package = self.context.read_gs_typed(&package)?;
 
                 // System contract hashes are disabled at upgrade point
-                let is_calling_system_contract = self.is_system_contract(contract_key)?;
+                let is_calling_system_contract = self.is_system_contract(entity_hash)?;
 
                 // Check if provided contract hash is disabled
-                let is_contract_enabled = contract_package.is_contract_enabled(&contract_hash);
+                let is_contract_enabled = package.is_entity_enabled(&entity_hash);
 
                 if !is_calling_system_contract && !is_contract_enabled {
-                    return Err(Error::DisabledContract(contract_hash));
+                    return Err(Error::DisabledEntity(entity_hash));
                 }
 
-                (contract, contract_hash, contract_package)
+                (entity, entity_hash, package)
             }
             CallContractIdentifier::ContractPackage {
                 contract_package_hash,
                 version,
             } => {
-                let contract_package_key = Key::from(contract_package_hash);
-                let contract_package: Package =
-                    self.context.read_gs_typed(&contract_package_key)?;
+                let package = self.context.get_package(contract_package_hash)?;
 
                 let contract_version_key = match version {
-                    Some(version) => ContractVersionKey::new(
+                    Some(version) => EntityVersionKey::new(
                         self.context.protocol_version().value().major,
                         version,
                     ),
-                    None => match contract_package.current_contract_version() {
+                    None => match package.current_entity_version() {
                         Some(v) => v,
                         None => {
-                            return Err(Error::NoActiveContractVersions(contract_package_hash));
+                            return Err(Error::NoActiveEntityVersions(contract_package_hash));
                         }
                     },
                 };
-                let contract_hash = contract_package
-                    .lookup_contract_hash(contract_version_key)
+                let entity_hash = package
+                    .lookup_entity_hash(contract_version_key)
                     .copied()
-                    .ok_or(Error::InvalidContractVersion(contract_version_key))?;
+                    .ok_or(Error::InvalidEntityVersion(contract_version_key))?;
 
-                let contract_key = contract_hash.into();
-                let contract: AddressableEntity = self.context.read_gs_typed(&contract_key)?;
+                let entity_key = if self.context.is_system_addressable_entity(&entity_hash)? {
+                    Key::addressable_entity_key(PackageKindTag::System, entity_hash)
+                } else {
+                    Key::contract_entity_key(entity_hash)
+                };
 
-                (contract, contract_hash, contract_package)
+                let entity = if let Some(StoredValue::AddressableEntity(entity)) =
+                    self.context.read_gs(&entity_key)?
+                {
+                    entity
+                } else {
+                    self.migrate_contract_and_contract_package(entity_hash)?
+                };
+
+                (entity, entity_hash, package)
             }
         };
 
-        if let ContractPackageKind::Account(_) = contract_package.get_package_kind() {
+        if let PackageKind::Account(_) = package.get_package_kind() {
             return Err(Error::InvalidContext);
         }
 
-        let entry_point = contract
+        let protocol_version = self.context.protocol_version();
+
+        // Check for major version compatibility before calling
+        if !entity.is_compatible_protocol_version(protocol_version) {
+            return Err(Error::IncompatibleProtocolMajorVersion {
+                actual: entity.protocol_version().value().major,
+                expected: protocol_version.value().major,
+            });
+        }
+
+        let entry_point = entity
             .entry_point(entry_point_name)
             .cloned()
             .ok_or_else(|| Error::NoSuchMethod(entry_point_name.to_owned()))?;
+
+        let entry_point_type = entry_point.entry_point_type();
+
+        if entry_point_type.is_invalid_context() {
+            return Err(Error::InvalidContext);
+        }
 
         // Get contract entry point hash
         // if public, allowed
         // if not public, restricted to user group access
         // if abstract, not allowed
-        self.validate_entry_point_access(
-            &contract_package,
-            entry_point_name,
-            entry_point.access(),
-        )?;
+        self.validate_entry_point_access(&package, entry_point_name, entry_point.access())?;
 
         if self.context.engine_config().strict_argument_checking() {
             let entry_point_args_lookup: BTreeMap<&str, &Parameter> = entry_point
@@ -1232,79 +1315,37 @@ where
             .engine_config()
             .administrative_accounts()
             .is_empty()
-            && !contract_package.is_contract_enabled(&contract_hash)
-            && !self.context.is_system_contract(&contract_hash)?
+            && !package.is_entity_enabled(&entity_hash)
+            && !self.context.is_system_addressable_entity(&entity_hash)?
         {
-            return Err(Error::DisabledContract(contract_hash));
+            return Err(Error::DisabledEntity(entity_hash));
         }
 
         // if session the caller's context
         // else the called contract's context
-        let context_key = self.get_context_key_for_contract_call(contract_hash, &entry_point)?;
-        let protocol_version = self.context.protocol_version();
+        let context_entity_hash =
+            self.get_context_key_for_contract_call(entity_hash, &entry_point)?;
 
-        // Check for major version compatibility before calling
-        if !contract.is_compatible_protocol_version(protocol_version) {
-            return Err(Error::IncompatibleProtocolMajorVersion {
-                actual: contract.protocol_version().value().major,
-                expected: protocol_version.value().major,
-            });
-        }
-
-        let (mut named_keys, mut access_rights) = match entry_point.entry_point_type() {
-            EntryPointType::Session => (
-                self.context.entity().named_keys().clone(),
-                self.context.entity().extract_access_rights(contract_hash),
-            ),
-            EntryPointType::Contract | EntryPointType::Install => (
-                contract.named_keys().clone(),
-                contract.extract_access_rights(contract_hash),
-            ),
+        let (should_attenuate_urefs, should_validate_urefs) = {
+            // Determines if this call originated from the system account based on a first
+            // element of the call stack.
+            let is_system_account =
+                self.context.get_caller() == PublicKey::System.to_account_hash();
+            // Is the immediate caller a system contract, such as when the auction calls the mint.
+            let is_caller_system_contract =
+                self.is_system_contract(self.context.access_rights().context_key())?;
+            // Checks if the contract we're about to call is a system contract.
+            let is_calling_system_contract = self.is_system_contract(context_entity_hash)?;
+            // uref attenuation is necessary in the following circumstances:
+            //   the originating account (aka the caller) is not the system account and
+            //   the immediate caller is either a normal account or a normal contract and
+            //   the target contract about to be called is a normal contract
+            let should_attenuate_urefs =
+                !is_system_account && !is_caller_system_contract && !is_calling_system_contract;
+            let should_validate_urefs = !is_caller_system_contract || !is_calling_system_contract;
+            (should_attenuate_urefs, should_validate_urefs)
         };
-
-        let stack = {
-            let mut stack = self.try_get_stack()?.clone();
-
-            let call_stack_element = match entry_point.entry_point_type() {
-                EntryPointType::Session => {
-                    let account_hash = self.context().get_caller();
-
-                    CallStackElement::stored_session(
-                        account_hash,
-                        contract.contract_package_hash(),
-                        contract_hash,
-                    )
-                }
-                EntryPointType::Contract => CallStackElement::stored_contract(
-                    contract.contract_package_hash(),
-                    contract_hash,
-                ),
-                EntryPointType::Install => CallStackElement::stored_contract(
-                    contract.contract_package_hash(),
-                    contract_hash,
-                ),
-            };
-            stack.push(call_stack_element)?;
-
-            stack
-        };
-
-        // Determines if this call originated from the system account based on a first
-        // element of the call stack.
-        let is_system_account = self.context.get_caller() == PublicKey::System.to_account_hash();
-        // Is the immediate caller a system contract, such as when the auction calls the mint.
-        let is_caller_system_contract =
-            self.is_system_contract(self.context.access_rights().context_key())?;
-        // Checks if the contract we're about to call is a system contract.
-        let is_calling_system_contract = self.is_system_contract(context_key)?;
-        // uref attenuation is necessary in the following circumstances:
-        //   the originating account (aka the caller) is not the system account and
-        //   the immediate caller is either a normal account or a normal contract and
-        //   the target contract about to be called is a normal contract
-        let should_attenuate_urefs =
-            !is_system_account && !is_caller_system_contract && !is_calling_system_contract;
-
-        let context_args = if should_attenuate_urefs {
+        let runtime_args = if should_attenuate_urefs {
             // Main purse URefs should be attenuated only when a non-system contract is executed by
             // a non-system account to avoid possible phishing attack scenarios.
             utils::attenuate_uref_in_args(
@@ -1318,9 +1359,9 @@ where
 
         let extended_access_rights = {
             let mut all_urefs = vec![];
-            for arg in context_args.to_values() {
+            for arg in runtime_args.to_values() {
                 let urefs = utils::extract_urefs(arg)?;
-                if !is_caller_system_contract || !is_calling_system_contract {
+                if should_validate_urefs {
                     for uref in &urefs {
                         self.context.validate_uref(uref)?;
                     }
@@ -1330,158 +1371,177 @@ where
             all_urefs
         };
 
-        access_rights.extend(&extended_access_rights);
+        let access_rights = {
+            let mut access_rights = entity.extract_access_rights(entity_hash);
+            access_rights.extend(&extended_access_rights);
+            access_rights
+        };
 
-        if let ContractPackageKind::System(system_contract_type) =
-            contract_package.get_package_kind()
-        {
+        let stack = {
+            let mut stack = self.try_get_stack()?.clone();
+
+            stack.push(CallStackElement::stored_contract(
+                entity.package_hash(),
+                entity_hash,
+            ))?;
+
+            stack
+        };
+
+        if let PackageKind::System(system_contract_type) = package.get_package_kind() {
+            let entry_point_name = entry_point.name();
+
             match system_contract_type {
-                SystemContractType::Mint => {
+                SystemEntityType::Mint => {
                     return self.call_host_mint(
-                        entry_point.name(),
-                        &context_args,
+                        entry_point_name,
+                        &runtime_args,
                         access_rights,
                         stack,
                     );
                 }
-                SystemContractType::HandlePayment => {
+                SystemEntityType::HandlePayment => {
                     return self.call_host_handle_payment(
-                        entry_point.name(),
-                        &context_args,
+                        entry_point_name,
+                        &runtime_args,
                         access_rights,
                         stack,
                     );
                 }
-                SystemContractType::StandardPayment => {}
-                SystemContractType::Auction => {
+                SystemEntityType::Auction => {
                     return self.call_host_auction(
-                        entry_point.name(),
-                        &context_args,
+                        entry_point_name,
+                        &runtime_args,
                         access_rights,
                         stack,
                     );
                 }
+                // Not callable
+                SystemEntityType::StandardPayment => {}
             }
         }
 
         let module: Module = {
-            let wasm_key = contract.contract_wasm_key();
+            let byte_code_addr = entity.byte_code_addr();
 
-            let contract_wasm: ContractWasm = match self.context.read_gs(&wasm_key)? {
-                Some(StoredValue::ContractWasm(contract_wasm)) => contract_wasm,
-                Some(_) => return Err(Error::InvalidContractWasm(contract.contract_wasm_hash())),
-                None => return Err(Error::KeyNotFound(context_key)),
+            let byte_code_key = match package.get_package_kind() {
+                PackageKind::System(_) | PackageKind::Account(_) => {
+                    Key::ByteCode(ByteCodeKind::Empty, byte_code_addr)
+                }
+                PackageKind::SmartContract => {
+                    Key::ByteCode(ByteCodeKind::V1CasperWasm, byte_code_addr)
+                }
             };
 
-            parity_wasm::deserialize_buffer(contract_wasm.bytes())?
+            let byte_code: ByteCode = match self.context.read_gs(&byte_code_key)? {
+                Some(StoredValue::ByteCode(byte_code)) => byte_code,
+                Some(_) => return Err(Error::InvalidByteCode(entity.byte_code_hash())),
+                None => return Err(Error::KeyNotFound(byte_code_key)),
+            };
+
+            casper_wasm::deserialize_buffer(byte_code.bytes())?
         };
 
+        let mut named_keys = entity.take_named_keys();
+
+        let package_tag = package.get_package_kind().tag();
+
+        let context_entity_key = Key::addressable_entity_key(package_tag, entity_hash);
+
         let context = self.context.new_from_self(
-            context_key,
+            context_entity_key,
             entry_point.entry_point_type(),
             &mut named_keys,
             access_rights,
-            context_args,
+            runtime_args,
         );
-        let protocol_version = self.context.protocol_version();
+
         let (instance, memory) = utils::instance_and_memory(
             module.clone(),
-            protocol_version,
+            self.context.protocol_version(),
             self.context.engine_config(),
         )?;
         let runtime = &mut Runtime::new_invocation_runtime(self, context, module, memory, stack);
-
         let result = instance.invoke_export(entry_point.name(), &[], runtime);
-
         // The `runtime`'s context was initialized with our counter from before the call and any gas
         // charged by the sub-call was added to its counter - so let's copy the correct value of the
-        // counter from there to our counter.
+        // counter from there to our counter. Do the same for the message cost tracking.
         self.context.set_gas_counter(runtime.context.gas_counter());
+        self.context
+            .set_emit_message_cost(runtime.context.emit_message_cost());
+        let transfers = self.context.transfers_mut();
+        *transfers = runtime.context.transfers().to_owned();
 
-        {
-            let transfers = self.context.transfers_mut();
-            *transfers = runtime.context.transfers().to_owned();
-        }
-
-        let error = match result {
-            Err(error) => error,
-            // If `Ok` and the `host_buffer` is `None`, the contract's execution succeeded but did
-            // not explicitly call `runtime::ret()`.  Treat as though the execution returned the
-            // unit type `()` as per Rust functions which don't specify a return value.
+        return match result {
             Ok(_) => {
-                if self.context.entry_point_type() == EntryPointType::Session
-                    && runtime.context.entry_point_type() == EntryPointType::Session
-                {
-                    // Overwrites parent's named keys with child's new named key but only when
-                    // running session code.
-                    *self.context.named_keys_mut() = runtime.context.named_keys().clone();
-                }
+                // If `Ok` and the `host_buffer` is `None`, the contract's execution succeeded but
+                // did not explicitly call `runtime::ret()`.  Treat as though the
+                // execution returned the unit type `()` as per Rust functions which
+                // don't specify a return value.
                 self.context
                     .set_remaining_spending_limit(runtime.context.remaining_spending_limit());
-                return Ok(runtime.take_host_buffer().unwrap_or(CLValue::from_t(())?));
+                Ok(runtime.take_host_buffer().unwrap_or(CLValue::from_t(())?))
+            }
+            Err(error) => {
+                #[cfg(feature = "test-support")]
+                dump_runtime_stack_info(
+                    instance,
+                    self.context.engine_config().wasm_config().max_stack_height,
+                );
+                if let Some(host_error) = error.as_host_error() {
+                    // If the "error" was in fact a trap caused by calling `ret` then this is normal
+                    // operation and we should return the value captured in the Runtime result
+                    // field.
+                    let downcasted_error = host_error.downcast_ref::<Error>();
+                    match downcasted_error {
+                        Some(Error::Ret(ref ret_urefs)) => {
+                            // Insert extra urefs returned from call.
+                            // Those returned URef's are guaranteed to be valid as they were already
+                            // validated in the `ret` call inside context we ret from.
+                            self.context.access_rights_extend(ret_urefs);
+
+                            // Stored contracts are expected to always call a `ret` function,
+                            // otherwise it's an error.
+                            return runtime.take_host_buffer().ok_or(Error::ExpectedReturnValue);
+                        }
+                        Some(error) => return Err(error.clone()),
+                        None => return Err(Error::Interpreter(host_error.to_string())),
+                    }
+                }
+                Err(Error::Interpreter(error.into()))
             }
         };
-
-        if let Some(host_error) = error.as_host_error() {
-            // If the "error" was in fact a trap caused by calling `ret` then this is normal
-            // operation and we should return the value captured in the Runtime result field.
-            let downcasted_error = host_error.downcast_ref::<Error>();
-            match downcasted_error {
-                Some(Error::Ret(ref ret_urefs)) => {
-                    // Insert extra urefs returned from call.
-                    // Those returned URef's are guaranteed to be valid as they were already
-                    // validated in the `ret` call inside context we ret from.
-                    self.context.access_rights_extend(ret_urefs);
-
-                    if self.context.entry_point_type() == EntryPointType::Session
-                        && runtime.context.entry_point_type() == EntryPointType::Session
-                    {
-                        // Overwrites parent's named keys with child's new named keys but only when
-                        // running session code.
-                        *self.context.named_keys_mut() = runtime.context.named_keys().clone();
-                    }
-
-                    // Stored contracts are expected to always call a `ret` function, otherwise it's
-                    // an error.
-                    return runtime.take_host_buffer().ok_or(Error::ExpectedReturnValue);
-                }
-                Some(error) => return Err(error.clone()),
-                None => return Err(Error::Interpreter(host_error.to_string())),
-            }
-        }
-
-        Err(Error::Interpreter(error.into()))
     }
 
     fn call_contract_host_buffer(
         &mut self,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
         entry_point_name: &str,
-        args_bytes: Vec<u8>,
+        args_bytes: &[u8],
         result_size_ptr: u32,
     ) -> Result<Result<(), ApiError>, Error> {
         // Exit early if the host buffer is already occupied
         if let Err(err) = self.check_host_buffer() {
             return Ok(Err(err));
         }
-        let args: RuntimeArgs = bytesrepr::deserialize(args_bytes)?;
+        let args: RuntimeArgs = bytesrepr::deserialize_from_slice(args_bytes)?;
         let result = self.call_contract(contract_hash, entry_point_name, args)?;
         self.manage_call_contract_host_buffer(result_size_ptr, result)
     }
 
     fn call_versioned_contract_host_buffer(
         &mut self,
-        contract_package_hash: ContractPackageHash,
-        contract_version: Option<ContractVersion>,
+        contract_package_hash: PackageHash,
+        contract_version: Option<EntityVersion>,
         entry_point_name: String,
-        args_bytes: Vec<u8>,
+        args_bytes: &[u8],
         result_size_ptr: u32,
     ) -> Result<Result<(), ApiError>, Error> {
         // Exit early if the host buffer is already occupied
         if let Err(err) = self.check_host_buffer() {
             return Ok(Err(err));
         }
-        let args: RuntimeArgs = bytesrepr::deserialize(args_bytes)?;
+        let args: RuntimeArgs = bytesrepr::deserialize_from_slice(args_bytes)?;
         let result = self.call_versioned_contract(
             contract_package_hash,
             contract_version,
@@ -1577,13 +1637,13 @@ where
 
     fn create_contract_package(
         &mut self,
-        is_locked: ContractPackageStatus,
-        contract_package_kind: ContractPackageKind,
+        is_locked: PackageStatus,
+        contract_package_kind: PackageKind,
     ) -> Result<(Package, URef), Error> {
         let access_key = self.context.new_unit_uref()?;
         let contract_package = Package::new(
             access_key,
-            ContractVersions::new(),
+            EntityVersions::new(),
             BTreeSet::new(),
             Groups::new(),
             is_locked,
@@ -1595,20 +1655,20 @@ where
 
     fn create_contract_package_at_hash(
         &mut self,
-        lock_status: ContractPackageStatus,
-        contract_package_kind: ContractPackageKind,
+        lock_status: PackageStatus,
+        contract_package_kind: PackageKind,
     ) -> Result<([u8; 32], [u8; 32]), Error> {
         let addr = self.context.new_hash_address()?;
         let (contract_package, access_key) =
             self.create_contract_package(lock_status, contract_package_kind)?;
         self.context
-            .metered_write_gs_unsafe(Key::Hash(addr), contract_package)?;
+            .metered_write_gs_unsafe(Key::Package(addr), contract_package)?;
         Ok((addr, access_key.addr()))
     }
 
     fn create_contract_user_group(
         &mut self,
-        contract_package_hash: ContractPackageHash,
+        contract_package_hash: PackageHash,
         label: String,
         num_new_urefs: u32,
         mut existing_urefs: BTreeSet<URef>,
@@ -1677,120 +1737,145 @@ where
         Ok(Ok(()))
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn add_contract_version(
+    fn add_session_version(
         &mut self,
-        package_hash: ContractPackageHash,
         entry_points: EntryPoints,
-        mut named_keys: NamedKeys,
-        output_ptr: u32,
-        output_size: usize,
-        bytes_written_ptr: u32,
-        version_ptr: u32,
     ) -> Result<Result<(), ApiError>, Error> {
-        self.context.validate_key(&Key::from(package_hash))?;
+        let package_hash = self.context.entity().package_hash();
 
-        let mut package: Package = self.context.get_validated_package(package_hash)?;
+        let package = self.context.get_package(package_hash)?;
 
-        if package.get_package_kind() != ContractPackageKind::Wasm {
+        if !package.is_account_kind() {
             return Err(Error::InvalidContext);
         }
 
-        let version = package.current_contract_version();
+        let byte_code_hash = self.context.new_hash_address()?;
 
-        // Return an error if the contract is locked and has some version associated with it.
-        if package.is_locked() && version.is_some() {
-            return Err(Error::LockedContract(package_hash));
+        let byte_code = {
+            let module_bytes = self.get_module_from_entry_points(&entry_points)?;
+            ByteCode::new(ByteCodeKind::V1CasperWasm, module_bytes)
+        };
+
+        let entity_hash =
+            if let Some(entity_hash) = self.context.get_entity_key().into_entity_hash() {
+                entity_hash
+            } else {
+                return Err(Error::UnexpectedKeyVariant(self.context.get_entity_key()));
+            };
+
+        let entity = self.context.entity().clone();
+
+        let updated_session_entity =
+            entity.update_session_entity(ByteCodeHash::new(byte_code_hash), entry_points);
+
+        self.context.metered_write_gs_unsafe(
+            Key::ByteCode(ByteCodeKind::V1CasperWasm, byte_code_hash),
+            byte_code,
+        )?;
+
+        let package_kind = package.get_package_kind();
+
+        self.context.metered_write_gs_unsafe(
+            Key::AddressableEntity(package_kind.tag(), entity_hash.value()),
+            updated_session_entity,
+        )?;
+
+        self.context
+            .metered_write_gs_unsafe(package_hash, package)?;
+
+        Ok(Ok(()))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn add_contract_version(
+        &mut self,
+        package_hash: PackageHash,
+        version_ptr: u32,
+        entry_points: EntryPoints,
+        mut named_keys: NamedKeys,
+        output_ptr: u32,
+    ) -> Result<Result<(), ApiError>, Error> {
+        if entry_points.contains_stored_session() {
+            return Err(Error::InvalidEntryPointType);
         }
 
-        let contract_wasm_hash = self.context.new_hash_address()?;
-        let contract_wasm = {
-            let module_bytes = self.get_module_from_entry_points(&entry_points)?;
-            ContractWasm::new(module_bytes)
-        };
+        let mut package = self.context.get_package(package_hash)?;
+
+        if package.get_package_kind() != PackageKind::SmartContract {
+            return Err(Error::InvalidContext);
+        }
+
+        // Return an error if the contract is locked and has some version associated with it.
+        if package.is_locked() {
+            return Err(Error::LockedEntity(package_hash));
+        }
+
+        let (main_purse, previous_named_keys, action_thresholds, associated_keys, message_topics) =
+            self.new_version_entity_parts(&package)?;
+
+        // TODO: EE-1032 - Implement different ways of carrying on existing named keys.
+        named_keys.append(previous_named_keys);
+
+        let byte_code_hash = self.context.new_hash_address()?;
 
         let entity_hash = self.context.new_hash_address()?;
 
         let protocol_version = self.context.protocol_version();
-        let major = protocol_version.value().major;
 
-        // TODO: EE-1032 - Implement different ways of carrying on existing named keys
-        if let Some(previous_contract_hash) = package.current_contract_hash() {
-            let previous_contract: AddressableEntity =
-                self.context.read_gs_typed(&previous_contract_hash.into())?;
+        let insert_contract_result =
+            package.insert_entity_version(protocol_version.value().major, entity_hash.into());
 
-            let previous_named_keys = previous_contract.take_named_keys();
-            named_keys.append(previous_named_keys);
-        }
-
-        let (main_purse, associated_keys, action_thresholds) = match package.current_contract_hash()
-        {
-            Some(previous_contract_hash) => {
-                let previous_contract: AddressableEntity =
-                    self.context.read_gs_typed(&previous_contract_hash.into())?;
-                let previous_named_keys = previous_contract.named_keys().clone();
-                named_keys.append(previous_named_keys);
-                (
-                    previous_contract.main_purse(),
-                    previous_contract.associated_keys().clone(),
-                    previous_contract.action_thresholds().clone(),
-                )
-            }
-            None => (
-                self.create_purse()?,
-                AssociatedKeys::default(),
-                ActionThresholds::default(),
-            ),
+        let byte_code = {
+            let module_bytes = self.get_module_from_entry_points(&entry_points)?;
+            ByteCode::new(ByteCodeKind::V1CasperWasm, module_bytes)
         };
+
+        self.context.metered_write_gs_unsafe(
+            Key::ByteCode(ByteCodeKind::V1CasperWasm, byte_code_hash),
+            byte_code,
+        )?;
+
+        let entity_key = Key::AddressableEntity(PackageKindTag::SmartContract, entity_hash);
 
         let entity = AddressableEntity::new(
             package_hash,
-            contract_wasm_hash.into(),
+            byte_code_hash.into(),
             named_keys,
             entry_points,
             protocol_version,
             main_purse,
             associated_keys,
             action_thresholds,
+            message_topics.clone(),
         );
 
-        let insert_contract_result = package.insert_contract_version(major, entity_hash.into());
-
-        self.context
-            .metered_write_gs_unsafe(Key::Hash(contract_wasm_hash), contract_wasm)?;
-        self.context
-            .metered_write_gs_unsafe(Key::Hash(entity_hash), entity)?;
+        self.context.metered_write_gs_unsafe(entity_key, entity)?;
         self.context
             .metered_write_gs_unsafe(package_hash, package)?;
 
-        // return contract key to caller
+        for (_, topic_hash) in message_topics.iter() {
+            let topic_key = Key::message_topic(entity_hash.into(), *topic_hash);
+            let summary = StoredValue::MessageTopic(MessageTopicSummary::new(
+                0,
+                self.context.get_blocktime(),
+            ));
+            self.context.metered_write_gs_unsafe(topic_key, summary)?;
+        }
+
+        // set return values to buffer
         {
-            let key_bytes = match entity_hash.to_bytes() {
+            let hash_bytes = match entity_hash.to_bytes() {
                 Ok(bytes) => bytes,
                 Err(error) => return Ok(Err(error.into())),
             };
 
-            // `output_size` must be >= actual length of serialized Key bytes
-            if output_size < key_bytes.len() {
-                return Ok(Err(ApiError::BufferTooSmall));
-            }
-
-            // Set serialized Key bytes into the output buffer
-            if let Err(error) = self.try_get_memory()?.set(output_ptr, &key_bytes) {
+            // Set serialized hash bytes into the output buffer
+            if let Err(error) = self.try_get_memory()?.set(output_ptr, &hash_bytes) {
                 return Err(Error::Interpreter(error.into()));
             }
 
-            // SAFETY: For all practical purposes following conversion is assumed to be safe
-            let bytes_size: u32 = key_bytes
-                .len()
-                .try_into()
-                .expect("Serialized value should fit within the limit");
-            let size_bytes = bytes_size.to_le_bytes(); // Wasm is little-endian
-            if let Err(error) = self.try_get_memory()?.set(bytes_written_ptr, &size_bytes) {
-                return Err(Error::Interpreter(error.into()));
-            }
-
-            let version_value: u32 = insert_contract_result.contract_version();
+            // Set version into VM shared memory
+            let version_value: u32 = insert_contract_result.entity_version();
             let version_bytes = version_value.to_le_bytes();
             if let Err(error) = self.try_get_memory()?.set(version_ptr, &version_bytes) {
                 return Err(Error::Interpreter(error.into()));
@@ -1800,10 +1885,78 @@ where
         Ok(Ok(()))
     }
 
+    fn new_version_entity_parts(
+        &mut self,
+        package: &Package,
+    ) -> Result<
+        (
+            URef,
+            NamedKeys,
+            ActionThresholds,
+            AssociatedKeys,
+            MessageTopics,
+        ),
+        Error,
+    > {
+        if let Some(previous_entity_key) = package.previous_entity_key() {
+            let (mut previous_entity, requires_purse_creation) =
+                self.context.get_contract_entity(previous_entity_key)?;
+
+            let action_thresholds = previous_entity.action_thresholds().clone();
+
+            let associated_keys = previous_entity.associated_keys().clone();
+
+            if !previous_entity.can_upgrade_with(self.context.authorization_keys()) {
+                // Check if the calling entity must be grandfathered into the new
+                // addressable entity format
+                let account_hash = self.context.get_caller();
+
+                if self.context.validate_uref(&package.access_key()).is_ok()
+                    && !associated_keys.contains_key(&account_hash)
+                {
+                    previous_entity.add_associated_key(
+                        account_hash,
+                        *action_thresholds.upgrade_management(),
+                    )?;
+                } else {
+                    return Err(Error::UpgradeAuthorizationFailure);
+                }
+            }
+
+            let main_purse = if !requires_purse_creation {
+                self.create_purse()?
+            } else {
+                previous_entity.main_purse()
+            };
+
+            let associated_keys = previous_entity.associated_keys().clone();
+
+            let previous_message_topics = previous_entity.message_topics().clone();
+
+            let previous_named_keys = previous_entity.take_named_keys();
+
+            return Ok((
+                main_purse,
+                previous_named_keys,
+                action_thresholds,
+                associated_keys,
+                previous_message_topics,
+            ));
+        }
+
+        Ok((
+            self.create_purse()?,
+            NamedKeys::new(),
+            ActionThresholds::default(),
+            AssociatedKeys::new(self.context.get_caller(), Weight::new(1)),
+            MessageTopics::default(),
+        ))
+    }
+
     fn disable_contract_version(
         &mut self,
-        contract_package_hash: ContractPackageHash,
-        contract_hash: ContractHash,
+        contract_package_hash: PackageHash,
+        contract_hash: AddressableEntityHash,
     ) -> Result<Result<(), ApiError>, Error> {
         let contract_package_key = contract_package_hash.into();
         self.context.validate_key(&contract_package_key)?;
@@ -1812,10 +1965,10 @@ where
             self.context.get_validated_package(contract_package_hash)?;
 
         if contract_package.is_locked() {
-            return Err(Error::LockedContract(contract_package_hash));
+            return Err(Error::LockedEntity(contract_package_hash));
         }
 
-        if let Err(err) = contract_package.disable_contract_version(contract_hash) {
+        if let Err(err) = contract_package.disable_entity_version(contract_hash) {
             return Ok(Err(err.into()));
         }
 
@@ -1827,8 +1980,8 @@ where
 
     fn enable_contract_version(
         &mut self,
-        contract_package_hash: ContractPackageHash,
-        contract_hash: ContractHash,
+        contract_package_hash: PackageHash,
+        contract_hash: AddressableEntityHash,
     ) -> Result<Result<(), ApiError>, Error> {
         let contract_package_key = contract_package_hash.into();
         self.context.validate_key(&contract_package_key)?;
@@ -1837,7 +1990,7 @@ where
             self.context.get_validated_package(contract_package_hash)?;
 
         if contract_package.is_locked() {
-            return Err(Error::LockedContract(contract_package_hash));
+            return Err(Error::LockedEntity(contract_package_hash));
         }
 
         if let Err(err) = contract_package.enable_version(contract_hash) {
@@ -1892,7 +2045,7 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<(), Error> {
-        if self.context.get_entity_address() != Key::from(self.context.get_system_contract(MINT)?) {
+        if self.context.get_entity_key() != self.context.get_system_entity_key(MINT)? {
             return Err(Error::InvalidContext);
         }
 
@@ -1922,9 +2075,7 @@ where
             return Err(Error::InvalidContext);
         }
 
-        if self.context.get_entity_address()
-            != Key::from(self.context.get_system_contract(AUCTION)?)
-        {
+        if self.context.get_entity_key() != self.context.get_system_entity_key(AUCTION)? {
             return Err(Error::InvalidContext);
         }
 
@@ -2038,7 +2189,7 @@ where
             let source_serialized = self.bytes_from_mem(account_hash_ptr, account_hash_size)?;
             // Account hash deserialized
             let source: AccountHash =
-                bytesrepr::deserialize(source_serialized).map_err(Error::BytesRepr)?;
+                bytesrepr::deserialize_from_slice(source_serialized).map_err(Error::BytesRepr)?;
             source
         };
         let weight = Weight::new(weight_value);
@@ -2069,7 +2220,7 @@ where
             let source_serialized = self.bytes_from_mem(account_hash_ptr, account_hash_size)?;
             // Account hash deserialized
             let source: AccountHash =
-                bytesrepr::deserialize(source_serialized).map_err(Error::BytesRepr)?;
+                bytesrepr::deserialize_from_slice(source_serialized).map_err(Error::BytesRepr)?;
             source
         };
 
@@ -2095,7 +2246,7 @@ where
             let source_serialized = self.bytes_from_mem(account_hash_ptr, account_hash_size)?;
             // Account hash deserialized
             let source: AccountHash =
-                bytesrepr::deserialize(source_serialized).map_err(Error::BytesRepr)?;
+                bytesrepr::deserialize_from_slice(source_serialized).map_err(Error::BytesRepr)?;
             source
         };
         let weight = Weight::new(weight_value);
@@ -2134,35 +2285,35 @@ where
                     Err(error) => Err(error.into()),
                 }
             }
-            Err(_) => Err(Trap::new(TrapKind::Unreachable)),
+            Err(_) => Err(Trap::Code(TrapCode::Unreachable)),
         }
     }
 
     /// Looks up the public mint contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_mint_contract(&self) -> Result<ContractHash, Error> {
+    fn get_mint_contract(&self) -> Result<AddressableEntityHash, Error> {
         self.context.get_system_contract(MINT)
     }
 
     /// Looks up the public handle payment contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_handle_payment_contract(&self) -> Result<ContractHash, Error> {
+    fn get_handle_payment_contract(&self) -> Result<AddressableEntityHash, Error> {
         self.context.get_system_contract(HANDLE_PAYMENT)
     }
 
     /// Looks up the public standard payment contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_standard_payment_contract(&self) -> Result<ContractHash, Error> {
+    fn get_standard_payment_contract(&self) -> Result<AddressableEntityHash, Error> {
         self.context.get_system_contract(STANDARD_PAYMENT)
     }
 
     /// Looks up the public auction contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_auction_contract(&self) -> Result<ContractHash, Error> {
+    fn get_auction_contract(&self) -> Result<AddressableEntityHash, Error> {
         self.context.get_system_contract(AUCTION)
     }
 
@@ -2170,7 +2321,7 @@ where
     /// contract key
     fn mint_read_base_round_reward(
         &mut self,
-        mint_contract_hash: ContractHash,
+        mint_contract_hash: AddressableEntityHash,
     ) -> Result<U512, Error> {
         let gas_counter = self.gas_counter();
         let call_result = self.call_contract(
@@ -2186,7 +2337,11 @@ where
 
     /// Calls the `mint` method on the mint contract at the given mint
     /// contract key
-    fn mint_mint(&mut self, mint_contract_hash: ContractHash, amount: U512) -> Result<URef, Error> {
+    fn mint_mint(
+        &mut self,
+        mint_contract_hash: AddressableEntityHash,
+        amount: U512,
+    ) -> Result<URef, Error> {
         let gas_counter = self.gas_counter();
         let runtime_args = {
             let mut runtime_args = RuntimeArgs::new();
@@ -2204,7 +2359,7 @@ where
     /// contract key
     fn mint_reduce_total_supply(
         &mut self,
-        mint_contract_hash: ContractHash,
+        mint_contract_hash: AddressableEntityHash,
         amount: U512,
     ) -> Result<(), Error> {
         let gas_counter = self.gas_counter();
@@ -2226,7 +2381,7 @@ where
 
     /// Calls the "create" method on the mint contract at the given mint
     /// contract key
-    fn mint_create(&mut self, mint_contract_hash: ContractHash) -> Result<URef, Error> {
+    fn mint_create(&mut self, mint_contract_hash: AddressableEntityHash) -> Result<URef, Error> {
         let result =
             self.call_contract(mint_contract_hash, mint::METHOD_CREATE, RuntimeArgs::new());
         let purse = result?.into_t()?;
@@ -2242,7 +2397,7 @@ where
     /// contract key
     fn mint_transfer(
         &mut self,
-        mint_contract_hash: ContractHash,
+        mint_contract_hash: AddressableEntityHash,
         to: Option<AccountHash>,
         source: URef,
         target: URef,
@@ -2321,17 +2476,17 @@ where
         match result? {
             Ok(()) => {
                 let protocol_version = self.context.protocol_version();
-                let contract_wasm_hash = *ACCOUNT_WASM_HASH;
-                let contract_hash = ContractHash::new(self.context.new_hash_address()?);
-                let contract_package_hash =
-                    ContractPackageHash::new(self.context.new_hash_address()?);
+                let contract_wasm_hash = *ACCOUNT_BYTE_CODE_HASH;
+                let entity_hash = AddressableEntityHash::new(self.context.new_hash_address()?);
+                let package_hash = PackageHash::new(self.context.new_hash_address()?);
                 let main_purse = target_purse;
                 let associated_keys = AssociatedKeys::new(target, Weight::new(1));
                 let named_keys = NamedKeys::new();
                 let entry_points = EntryPoints::new();
+                let message_topics = MessageTopics::default();
 
-                let contract = AddressableEntity::new(
-                    contract_package_hash,
+                let entity = AddressableEntity::new(
+                    package_hash,
                     contract_wasm_hash,
                     named_keys,
                     entry_points,
@@ -2339,38 +2494,35 @@ where
                     main_purse,
                     associated_keys,
                     ActionThresholds::default(),
+                    message_topics,
                 );
 
                 let access_key = self.context.new_unit_uref()?;
-                let contract_package = {
-                    let mut contract_package = Package::new(
+                let package = {
+                    let mut package = Package::new(
                         access_key,
-                        ContractVersions::default(),
+                        EntityVersions::default(),
                         BTreeSet::default(),
                         Groups::default(),
-                        ContractPackageStatus::Locked,
-                        ContractPackageKind::Account(target),
+                        PackageStatus::Locked,
+                        PackageKind::Account(target),
                     );
-                    contract_package
-                        .insert_contract_version(protocol_version.value().major, contract_hash);
-                    contract_package
+                    package.insert_entity_version(protocol_version.value().major, entity_hash);
+                    package
                 };
 
-                let contract_key: Key = contract_hash.into();
+                let entity_key: Key =
+                    Key::addressable_entity_key(package.get_package_kind().tag(), entity_hash);
 
-                self.context.metered_write_gs_unsafe(
-                    contract_key,
-                    StoredValue::AddressableEntity(contract),
-                )?;
+                self.context
+                    .metered_write_gs_unsafe(entity_key, StoredValue::AddressableEntity(entity))?;
 
-                let contract_package_key: Key = contract_package_hash.into();
+                let contract_package_key: Key = package_hash.into();
 
-                self.context.metered_write_gs_unsafe(
-                    contract_package_key,
-                    StoredValue::ContractPackage(contract_package),
-                )?;
+                self.context
+                    .metered_write_gs_unsafe(contract_package_key, StoredValue::Package(package))?;
 
-                let contract_by_account = CLValue::from_t(contract_key)?;
+                let contract_by_account = CLValue::from_t(entity_key)?;
 
                 let target_key = Key::Account(target);
 
@@ -2438,19 +2590,21 @@ where
             }
             Some(StoredValue::CLValue(account)) => {
                 // Attenuate the target main purse
-                let contract_key = CLValue::into_t::<Key>(account)?;
-                let contract_hash =
-                    if let Some(contract_hash) = contract_key.into_hash().map(ContractHash::new) {
-                        contract_hash
-                    } else {
-                        return Err(Error::UnexpectedKeyVariant(contract_key));
-                    };
-                let target_uref = if let Some(StoredValue::AddressableEntity(contract)) =
-                    self.context.read_gs(&contract_hash.into())?
+                let entity_key = CLValue::into_t::<Key>(account)?;
+                let target_uref = if let Some(StoredValue::AddressableEntity(entity)) =
+                    self.context.read_gs(&entity_key)?
                 {
-                    contract.main_purse_add_only()
+                    entity.main_purse_add_only()
                 } else {
-                    return Err(Error::InvalidContract(contract_hash));
+                    let contract_hash = if let Some(entity_hash) = entity_key
+                        .into_entity_addr()
+                        .map(AddressableEntityHash::new)
+                    {
+                        entity_hash
+                    } else {
+                        return Err(Error::UnexpectedKeyVariant(entity_key));
+                    };
+                    return Err(Error::InvalidEntity(contract_hash));
                 };
 
                 if source.with_access_rights(AccessRights::ADD) == target_uref {
@@ -2571,7 +2725,7 @@ where
 
         let purse: URef = {
             let bytes = self.bytes_from_mem(purse_ptr, purse_size)?;
-            match bytesrepr::deserialize(bytes) {
+            match bytesrepr::deserialize_from_slice(bytes) {
                 Ok(purse) => purse,
                 Err(error) => return Ok(Err(error.into())),
             }
@@ -2609,14 +2763,14 @@ where
         dest_ptr: u32,
         _dest_size: u32,
     ) -> Result<Result<(), ApiError>, Trap> {
-        let contract_hash: ContractHash = match SystemContractType::try_from(system_contract_index)
-        {
-            Ok(SystemContractType::Mint) => self.get_mint_contract()?,
-            Ok(SystemContractType::HandlePayment) => self.get_handle_payment_contract()?,
-            Ok(SystemContractType::StandardPayment) => self.get_standard_payment_contract()?,
-            Ok(SystemContractType::Auction) => self.get_auction_contract()?,
-            Err(error) => return Ok(Err(error)),
-        };
+        let contract_hash: AddressableEntityHash =
+            match SystemEntityType::try_from(system_contract_index) {
+                Ok(SystemEntityType::Mint) => self.get_mint_contract()?,
+                Ok(SystemEntityType::HandlePayment) => self.get_handle_payment_contract()?,
+                Ok(SystemEntityType::StandardPayment) => self.get_standard_payment_contract()?,
+                Ok(SystemEntityType::Auction) => self.get_auction_contract()?,
+                Err(error) => return Ok(Err(error)),
+            };
 
         match self.try_get_memory()?.set(dest_ptr, contract_hash.as_ref()) {
             Ok(_) => Ok(Ok(())),
@@ -2796,7 +2950,7 @@ where
     /// Remove a user group from access to a contract
     fn remove_contract_user_group(
         &mut self,
-        package_key: ContractPackageHash,
+        package_key: PackageHash,
         label: Group,
     ) -> Result<Result<(), ApiError>, Error> {
         let mut package: Package = self.context.get_validated_package(package_key)?;
@@ -2811,11 +2965,12 @@ where
 
         // Remove group if it is not referenced by at least one entry_point in active versions.
         let versions = package.versions();
-        for contract_hash in versions.contract_hashes() {
+        for entity_hash in versions.contract_hashes() {
             let entry_points = {
-                let contract: AddressableEntity =
-                    self.context.read_gs_typed(&Key::from(*contract_hash))?;
-                contract.entry_points().clone().take_entry_points()
+                let entity: AddressableEntity = self.context.read_gs_typed(
+                    &Key::addressable_entity_key(package.get_package_kind().tag(), *entity_hash),
+                )?;
+                entity.entry_points().clone().take_entry_points()
             };
             for entry_point in entry_points {
                 match entry_point.access() {
@@ -2914,8 +3069,7 @@ where
         urefs_ptr: u32,
         urefs_size: u32,
     ) -> Result<Result<(), ApiError>, Error> {
-        let contract_package_hash: ContractPackageHash =
-            self.t_from_mem(package_ptr, package_size)?;
+        let contract_package_hash: PackageHash = self.t_from_mem(package_ptr, package_size)?;
         let label: String = self.t_from_mem(label_ptr, label_size)?;
         let urefs: BTreeSet<URef> = self.t_from_mem(urefs_ptr, urefs_size)?;
 
@@ -3003,13 +3157,13 @@ where
         }
 
         let uref: URef = self.t_from_mem(uref_ptr, uref_size)?;
-        let dictionary_item_key_bytes = self.bytes_from_mem(
-            dictionary_item_key_bytes_ptr,
+        let dictionary_item_key = self.checked_memory_slice(
+            dictionary_item_key_bytes_ptr as usize,
             dictionary_item_key_bytes_size as usize,
+            |utf8_bytes| std::str::from_utf8(utf8_bytes).map(ToOwned::to_owned),
         )?;
 
-        let dictionary_item_key = if let Ok(item_key) = String::from_utf8(dictionary_item_key_bytes)
-        {
+        let dictionary_item_key = if let Ok(item_key) = dictionary_item_key {
             item_key
         } else {
             return Ok(Err(ApiError::InvalidDictionaryItemKey));
@@ -3083,12 +3237,16 @@ where
         value_size: u32,
     ) -> Result<Result<(), ApiError>, Trap> {
         let uref: URef = self.t_from_mem(uref_ptr, uref_size)?;
-        let dictionary_item_key_bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
-        if dictionary_item_key_bytes.len() > DICTIONARY_ITEM_KEY_MAX_LENGTH {
-            return Ok(Err(ApiError::DictionaryItemKeyExceedsLength));
-        }
-        let dictionary_item_key = if let Ok(item_key) = String::from_utf8(dictionary_item_key_bytes)
-        {
+        let dictionary_item_key_bytes = {
+            if (key_size as usize) > DICTIONARY_ITEM_KEY_MAX_LENGTH {
+                return Ok(Err(ApiError::DictionaryItemKeyExceedsLength));
+            }
+            self.checked_memory_slice(key_ptr as usize, key_size as usize, |data| {
+                std::str::from_utf8(data).map(ToOwned::to_owned)
+            })?
+        };
+
+        let dictionary_item_key = if let Ok(item_key) = dictionary_item_key_bytes {
             item_key
         } else {
             return Ok(Err(ApiError::InvalidDictionaryItemKey));
@@ -3121,10 +3279,10 @@ where
                 // This case can happen during genesis where we're setting up purses for accounts.
                 Ok(account_hash == &PublicKey::System.to_account_hash())
             }
-            CallStackElement::StoredSession { contract_hash, .. }
-            | CallStackElement::StoredContract { contract_hash, .. } => {
-                Ok(self.context.is_system_contract(contract_hash)?)
-            }
+            CallStackElement::AddressableEntity {
+                entity_hash: contract_hash,
+                ..
+            } => Ok(self.context.is_system_addressable_entity(contract_hash)?),
         }
     }
 
@@ -3180,50 +3338,149 @@ where
 
     pub(crate) fn migrate_contract_and_contract_package(
         &mut self,
-        contract_hash: ContractHash,
-    ) -> Result<(), Error> {
-        let contract_key: Key = contract_hash.into();
-        let maybe_legacy_contract = self.context.read_gs(&contract_key)?;
+        contract_hash: AddressableEntityHash,
+    ) -> Result<AddressableEntity, Error> {
+        let maybe_legacy_contract = self.context.read_gs(&Key::Hash(contract_hash.value()))?;
         match maybe_legacy_contract {
             Some(StoredValue::Contract(contract)) => {
                 let contract_package_key = Key::Hash(contract.contract_package_hash().value());
 
-                let mut legacy_contract_package: Package =
+                let legacy_contract_package: ContractPackage =
                     self.context.read_gs_typed(&contract_package_key)?;
-                // Update the contract package from Legacy to Wasm
-                legacy_contract_package.update_package_kind(ContractPackageKind::Wasm);
-                legacy_contract_package.insert_contract_version(
-                    self.context.protocol_version().value().major,
-                    contract_hash,
-                );
 
-                if legacy_contract_package.is_legacy() {
-                    return Err(Error::InvalidContractPackageKind(
-                        legacy_contract_package.get_package_kind(),
-                    ));
-                }
+                let package: Package = legacy_contract_package.into();
+
+                let access_uref = &package.access_key();
+
+                let package_key = Key::Package(contract.contract_package_hash().value());
+
+                let package_kind = package.get_package_kind();
 
                 self.context
-                    .metered_write_gs(contract_package_key, legacy_contract_package)?;
+                    .metered_write_gs_unsafe(package_key, StoredValue::Package(package))?;
 
                 let entity_main_purse = self.create_purse()?;
 
+                let associated_keys = if self.context.validate_uref(access_uref).is_ok() {
+                    AssociatedKeys::new(self.context.get_caller(), Weight::new(1))
+                } else {
+                    AssociatedKeys::default()
+                };
+
                 let updated_entity = AddressableEntity::new(
-                    contract.contract_package_hash(),
-                    contract.contract_wasm_hash(),
+                    PackageHash::new(contract.contract_package_hash().value()),
+                    ByteCodeHash::new(contract.contract_wasm_hash().value()),
                     contract.named_keys().clone(),
                     contract.entry_points().clone(),
                     self.context.protocol_version(),
                     entity_main_purse,
-                    AssociatedKeys::default(),
+                    associated_keys,
                     ActionThresholds::default(),
+                    MessageTopics::default(),
                 );
 
-                self.context.metered_write_gs(contract_key, updated_entity)
+                let previous_wasm = self.context.read_gs_typed::<ContractWasm>(&Key::Hash(
+                    contract.contract_wasm_hash().value(),
+                ))?;
+
+                let byte_code_key =
+                    Key::byte_code_key(ByteCodeKind::V1CasperWasm, updated_entity.byte_code_addr());
+
+                let byte_code: ByteCode = previous_wasm.into();
+
+                self.context
+                    .metered_write_gs_unsafe(byte_code_key, StoredValue::ByteCode(byte_code))?;
+
+                let entity_key = Key::AddressableEntity(package_kind.tag(), contract_hash.value());
+
+                self.context
+                    .metered_write_gs_unsafe(entity_key, updated_entity.clone())?;
+                Ok(updated_entity)
             }
-            Some(StoredValue::AddressableEntity(_)) => Ok(()),
             Some(_) => Err(Error::UnexpectedStoredValueVariant),
-            None => Err(Error::InvalidContract(contract_hash)),
+            None => Err(Error::InvalidEntity(contract_hash)),
         }
     }
+
+    fn add_message_topic(&mut self, topic_name: &str) -> Result<Result<(), ApiError>, Error> {
+        let topic_hash = crypto::blake2b(topic_name).into();
+
+        self.context
+            .add_message_topic(topic_name, topic_hash)
+            .map(|ret| ret.map_err(ApiError::from))
+    }
+
+    fn emit_message(
+        &mut self,
+        topic_name: &str,
+        message: MessagePayload,
+    ) -> Result<Result<(), ApiError>, Trap> {
+        let entity_addr = self
+            .context
+            .get_entity_key()
+            .into_entity_hash()
+            .ok_or(Error::InvalidContext)?;
+
+        let topic_name_hash = crypto::blake2b(topic_name).into();
+        let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash));
+
+        // Check if the topic exists and get the summary.
+        let Some(StoredValue::MessageTopic(prev_topic_summary)) =
+            self.context.read_gs(&topic_key)? else {
+            return Ok(Err(ApiError::MessageTopicNotRegistered));
+        };
+
+        let current_blocktime = self.context.get_blocktime();
+        let message_index = if prev_topic_summary.blocktime() != current_blocktime {
+            for index in 1..prev_topic_summary.message_count() {
+                self.context
+                    .prune_gs_unsafe(Key::message(entity_addr, topic_name_hash, index));
+            }
+            0
+        } else {
+            prev_topic_summary.message_count()
+        };
+
+        let Some(message_count) = message_index.checked_add(1) else {
+            return Ok(Err(ApiError::MessageTopicFull));
+        };
+        let new_topic_summary = MessageTopicSummary::new(message_count, current_blocktime);
+
+        let message_key = Key::message(entity_addr, topic_name_hash, message_index);
+        let message_checksum = MessageChecksum(crypto::blake2b(
+            message.to_bytes().map_err(Error::BytesRepr)?,
+        ));
+
+        self.context.metered_emit_message(
+            topic_key,
+            new_topic_summary,
+            message_key,
+            message_checksum,
+            Message::new(
+                entity_addr,
+                message,
+                topic_name.to_string(),
+                topic_name_hash,
+                message_index,
+            ),
+        )?;
+        Ok(Ok(()))
+    }
+}
+
+#[cfg(feature = "test-support")]
+fn dump_runtime_stack_info(instance: casper_wasmi::ModuleRef, max_stack_height: u32) {
+    let globals = instance.globals();
+    let Some(current_runtime_call_stack_height) = globals.last()
+    else {
+        return;
+    };
+
+    if let RuntimeValue::I32(current_runtime_call_stack_height) =
+        current_runtime_call_stack_height.get()
+    {
+        if current_runtime_call_stack_height > max_stack_height as i32 {
+            eprintln!("runtime stack overflow, current={current_runtime_call_stack_height}, max={max_stack_height}");
+        }
+    };
 }

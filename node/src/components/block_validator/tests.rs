@@ -4,17 +4,24 @@ use std::{
     time::Duration,
 };
 
-use casper_types::{
-    bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng,
-    Chainspec, ChainspecRawBytes, ExecutableDeployItem, RuntimeArgs, SecretKey, TimeDiff, U512,
-};
 use derive_more::From;
 use itertools::Itertools;
+use rand::Rng;
+
+use casper_types::{
+    bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng,
+    Chainspec, ChainspecRawBytes, Deploy, DeployHash, ExecutableDeployItem, RuntimeArgs, SecretKey,
+    TimeDiff, Transaction, TransactionHash, U512,
+};
 
 use crate::{
-    components::{consensus::BlockContext, fetcher},
+    components::{
+        consensus::BlockContext,
+        fetcher::{self, FetchItem},
+    },
+    effect::announcements::FatalAnnouncement,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
-    types::{BlockPayload, DeployHashWithApprovals},
+    types::{BlockPayload, ValidatorMatrix},
     utils::{self, Loadable},
 };
 
@@ -25,9 +32,13 @@ enum ReactorEvent {
     #[from]
     BlockValidator(Event),
     #[from]
-    Fetcher(FetcherRequest<LegacyDeploy>),
+    TransactionFetcher(FetcherRequest<Transaction>),
+    #[from]
+    FinalitySigFetcher(FetcherRequest<FinalitySignature>),
     #[from]
     Storage(StorageRequest),
+    #[from]
+    FatalAnnouncement(FatalAnnouncement),
 }
 
 impl From<BlockValidationRequest> for ReactorEvent {
@@ -38,12 +49,14 @@ impl From<BlockValidationRequest> for ReactorEvent {
 
 struct MockReactor {
     scheduler: &'static Scheduler<ReactorEvent>,
+    validator_matrix: ValidatorMatrix,
 }
 
 impl MockReactor {
-    fn new() -> Self {
+    fn new(rng: &mut TestRng) -> Self {
         MockReactor {
-            scheduler: utils::leak(Scheduler::new(QueueKind::weights())),
+            scheduler: utils::leak(Scheduler::new(QueueKind::weights(), None)),
+            validator_matrix: ValidatorMatrix::new_with_validator(Arc::new(SecretKey::random(rng))),
         }
     }
 
@@ -63,7 +76,7 @@ impl MockReactor {
     ) {
         while !deploys_to_fetch.is_empty() || !deploys_to_not_fetch.is_empty() {
             let ((_ancestor, reactor_event), _) = self.scheduler.pop().await;
-            if let ReactorEvent::Fetcher(FetcherRequest {
+            if let ReactorEvent::TransactionFetcher(FetcherRequest {
                 id,
                 peer,
                 validation_metadata: _,
@@ -72,15 +85,18 @@ impl MockReactor {
             {
                 if let Some((position, _)) = deploys_to_fetch
                     .iter()
-                    .find_position(|deploy| *deploy.hash() == id)
+                    .find_position(|&deploy| Transaction::Deploy(deploy.clone()).fetch_id() == id)
                 {
                     let deploy = deploys_to_fetch.remove(position);
                     let response = FetchedData::FromPeer {
-                        item: Box::new(LegacyDeploy::from(deploy)),
+                        item: Box::new(Transaction::Deploy(deploy)),
                         peer,
                     };
                     responder.respond(Ok(response)).await;
-                } else if deploys_to_not_fetch.remove(&id) {
+                } else if deploys_to_not_fetch.remove(&match id.transaction_hash() {
+                    TransactionHash::Deploy(deploy_hash) => deploy_hash,
+                    TransactionHash::V1(_) => unreachable!("only fetching deploys for now"),
+                }) {
                     responder
                         .respond(Err(fetcher::Error::Absent {
                             id: Box::new(id),
@@ -97,19 +113,29 @@ impl MockReactor {
     }
 }
 
-fn new_proposed_block(
+pub(super) fn new_proposed_block(
     timestamp: Timestamp,
-    deploys: Vec<DeployHashWithApprovals>,
-    transfers: Vec<DeployHashWithApprovals>,
+    transfer: Vec<TransactionHashWithApprovals>,
+    staking: Vec<TransactionHashWithApprovals>,
+    install_upgrade: Vec<TransactionHashWithApprovals>,
+    standard: Vec<TransactionHashWithApprovals>,
 ) -> ProposedBlock<ClContext> {
     // Accusations and ancestors are empty, and the random bit is always true:
     // These values are not checked by the block validator.
     let block_context = BlockContext::new(timestamp, vec![]);
-    let block_payload = BlockPayload::new(deploys, transfers, vec![], true);
+    let block_payload = BlockPayload::new(
+        transfer,
+        staking,
+        install_upgrade,
+        standard,
+        vec![],
+        Default::default(),
+        true,
+    );
     ProposedBlock::new(Arc::new(block_payload), block_context)
 }
 
-fn new_deploy(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Deploy {
+pub(super) fn new_deploy(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Deploy {
     let secret_key = SecretKey::random(rng);
     let chain_name = "chain".to_string();
     let payment = ExecutableDeployItem::ModuleBytes {
@@ -136,7 +162,7 @@ fn new_deploy(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Deploy 
     )
 }
 
-fn new_transfer(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Deploy {
+pub(super) fn new_transfer(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Deploy {
     let secret_key = SecretKey::random(rng);
     let chain_name = "chain".to_string();
     let payment = ExecutableDeployItem::ModuleBytes {
@@ -170,32 +196,50 @@ async fn validate_block(
     transfers: Vec<Deploy>,
 ) -> bool {
     // Assemble the block to be validated.
-    let deploys_for_block = deploys
-        .iter()
-        .map(DeployHashWithApprovals::from)
-        .collect_vec();
     let transfers_for_block = transfers
         .iter()
-        .map(DeployHashWithApprovals::from)
+        .map(|deploy| TransactionHashWithApprovals::from(&Transaction::Deploy(deploy.clone())))
         .collect_vec();
-    let proposed_block = new_proposed_block(timestamp, deploys_for_block, transfers_for_block);
+    let standard_for_block = deploys
+        .iter()
+        .map(|deploy| TransactionHashWithApprovals::from(&Transaction::Deploy(deploy.clone())))
+        .collect_vec();
+    let proposed_block = new_proposed_block(
+        timestamp,
+        transfers_for_block,
+        vec![],
+        vec![],
+        standard_for_block,
+    );
 
     // Create the reactor and component.
-    let reactor = MockReactor::new();
+    let reactor = MockReactor::new(rng);
     let effect_builder = EffectBuilder::new(EventQueueHandle::without_shutdown(reactor.scheduler));
     let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-    let mut block_validator = BlockValidator::new(Arc::new(chainspec));
+    let mut block_validator = BlockValidator::new(
+        Arc::new(chainspec),
+        reactor.validator_matrix.clone(),
+        Config::default(),
+    );
 
     // Pass the block to the component. This future will eventually resolve to the result, i.e.
     // whether the block is valid or not.
     let bob_node_id = NodeId::random(rng);
-    let validation_result =
-        tokio::spawn(effect_builder.validate_block(bob_node_id, proposed_block.clone()));
+    let block_height = rng.gen_range(0..1000);
+    let validation_result = tokio::spawn(effect_builder.validate_block(
+        bob_node_id,
+        block_height,
+        proposed_block.clone(),
+    ));
     let event = reactor.expect_block_validator_event().await;
     let effects = block_validator.handle_event(effect_builder, rng, event);
 
     // If validity could already be determined, the effect will be the validation response.
-    if block_validator.validation_states.is_empty() {
+    if block_validator
+        .validation_states
+        .values()
+        .all(BlockValidationState::completed)
+    {
         assert_eq!(1, effects.len());
         for effect in effects {
             tokio::spawn(effect).await.unwrap(); // Response.
@@ -311,6 +355,7 @@ async fn transfer_deploy_mixup_and_replay() {
 /// Verifies that the block validator fetches from multiple peers.
 #[tokio::test]
 async fn should_fetch_from_multiple_peers() {
+    let _ = crate::logging::init();
     tokio::time::timeout(Duration::from_secs(5), async move {
         let peer_count = 3;
         let mut rng = TestRng::new();
@@ -323,47 +368,62 @@ async fn should_fetch_from_multiple_peers() {
             .collect_vec();
 
         // Assemble the block to be validated.
-        let deploys_for_block = deploys
-            .iter()
-            .map(|deploy| DeployHashWithApprovals::new(*deploy.hash(), deploy.approvals().clone()))
-            .collect_vec();
         let transfers_for_block = transfers
             .iter()
-            .map(|deploy| DeployHashWithApprovals::new(*deploy.hash(), deploy.approvals().clone()))
+            .map(|deploy| TransactionHashWithApprovals::from(&Transaction::Deploy(deploy.clone())))
             .collect_vec();
-        let proposed_block =
-            new_proposed_block(1100.into(), deploys_for_block, transfers_for_block);
+        let standard_for_block = deploys
+            .iter()
+            .map(|deploy| TransactionHashWithApprovals::from(&Transaction::Deploy(deploy.clone())))
+            .collect_vec();
+        let proposed_block = new_proposed_block(
+            1100.into(),
+            transfers_for_block,
+            vec![],
+            vec![],
+            standard_for_block,
+        );
 
         // Create the reactor and component.
-        let reactor = MockReactor::new();
+        let reactor = MockReactor::new(&mut rng);
         let effect_builder =
             EffectBuilder::new(EventQueueHandle::without_shutdown(reactor.scheduler));
         let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-        let mut block_validator = BlockValidator::new(Arc::new(chainspec));
+        let mut block_validator = BlockValidator::new(
+            Arc::new(chainspec),
+            reactor.validator_matrix.clone(),
+            Config::default(),
+        );
 
         // Have a validation request for each one of the peers. These futures will eventually all
         // resolve to the same result, i.e. whether the block is valid or not.
         let validation_results = (0..peer_count)
             .map(|_| {
                 let node_id = NodeId::random(&mut rng);
-                tokio::spawn(effect_builder.validate_block(node_id, proposed_block.clone()))
+                let block_height = rng.gen_range(0..1000);
+                tokio::spawn(effect_builder.validate_block(
+                    node_id,
+                    block_height,
+                    proposed_block.clone(),
+                ))
             })
             .collect_vec();
 
         let mut fetch_effects = VecDeque::new();
-        for _ in 0..peer_count {
+        for index in 0..peer_count {
             let event = reactor.expect_block_validator_event().await;
-            fetch_effects.push_back(block_validator.handle_event(effect_builder, &mut rng, event));
+            let effects = block_validator.handle_event(effect_builder, &mut rng, event);
+            if index == 0 {
+                assert_eq!(effects.len(), 6);
+                fetch_effects.extend(effects);
+            } else {
+                assert!(effects.is_empty());
+            }
         }
 
-        // The effects are requests to fetch the block's deploys.  There are six fetch requests per
-        // peer: only handle the first set of six for now.
-        let fetch_results = fetch_effects
-            .pop_front()
-            .unwrap()
-            .into_iter()
-            .map(tokio::spawn)
-            .collect_vec();
+        // The effects are requests to fetch the block's deploys.  There are six fetch requests, all
+        // using the first peer.
+        let fetch_results = fetch_effects.drain(..).map(tokio::spawn).collect_vec();
 
         // Provide the first deploy and transfer on first asking.
         let deploys_to_fetch = vec![deploys[0].clone(), transfers[0].clone()];
@@ -379,77 +439,85 @@ async fn should_fetch_from_multiple_peers() {
             .expect_fetch_deploys(deploys_to_fetch, deploys_to_not_fetch)
             .await;
 
+        let mut missing = vec![];
         for fetch_result in fetch_results {
             let mut events = fetch_result.await.unwrap();
             assert_eq!(1, events.len());
-            // The event should be `DeployFound` or `DeployMissing`.
+            // The event should be `DeployFetched`.
             let event = events.pop().unwrap();
-            // No further effect should be created at this stage as the block still cannot be
-            // validated and all fetching is enqueued when the initial validation requests are made.
+            // New fetch requests will be made using a different peer for all deploys not already
+            // registered as fetched.
             let effects = block_validator.handle_event(effect_builder, &mut rng, event);
-            assert!(effects.is_empty());
+            if !effects.is_empty() {
+                assert!(missing.is_empty());
+                missing = block_validator
+                    .validation_states
+                    .values()
+                    .next()
+                    .unwrap()
+                    .missing_hashes();
+            }
+            fetch_effects.extend(effects);
         }
 
-        // Handle the second set of six fetch requests now.
-        let fetch_results = fetch_effects
-            .pop_front()
-            .unwrap()
-            .into_iter()
-            .map(tokio::spawn)
-            .collect_vec();
+        // Handle the second set of fetch requests now.
+        let fetch_results = fetch_effects.drain(..).map(tokio::spawn).collect_vec();
 
-        // Provide the first and second deploys and transfers on second asking.
-        let deploys_to_fetch = vec![
-            deploys[0].clone(),
-            deploys[1].clone(),
-            transfers[0].clone(),
-            transfers[1].clone(),
-        ];
+        // Provide the first and second deploys and transfers which haven't already been fetched on
+        // second asking.
+        let deploys_to_fetch = vec![&deploys[0], &deploys[1], &transfers[0], &transfers[1]]
+            .into_iter()
+            .filter(|deploy| missing.contains(deploy.hash()))
+            .cloned()
+            .collect();
         let deploys_to_not_fetch = vec![*deploys[2].hash(), *transfers[2].hash()]
             .into_iter()
+            .filter(|deploy_hash| missing.contains(deploy_hash))
             .collect();
         reactor
             .expect_fetch_deploys(deploys_to_fetch, deploys_to_not_fetch)
             .await;
 
+        missing.clear();
         for fetch_result in fetch_results {
             let mut events = fetch_result.await.unwrap();
             assert_eq!(1, events.len());
-            // The event should be `DeployFound` or `DeployMissing`.
+            // The event should be `DeployFetched`.
             let event = events.pop().unwrap();
-            // No further effect should be created at this stage as the block still cannot be
-            // validated and all fetching is enqueued when the initial validation requests are made.
+            // New fetch requests will be made using a different peer for all deploys not already
+            // registered as fetched.
             let effects = block_validator.handle_event(effect_builder, &mut rng, event);
-            assert!(effects.is_empty());
+            if !effects.is_empty() {
+                assert!(missing.is_empty());
+                missing = block_validator
+                    .validation_states
+                    .values()
+                    .next()
+                    .unwrap()
+                    .missing_hashes();
+            }
+            fetch_effects.extend(effects);
         }
 
-        // Handle the final set of six fetch requests now.
-        let fetch_results = fetch_effects
-            .pop_front()
-            .unwrap()
-            .into_iter()
-            .map(tokio::spawn)
-            .collect_vec();
+        // Handle the final set of fetch requests now.
+        let fetch_results = fetch_effects.into_iter().map(tokio::spawn).collect_vec();
 
-        // Provide the first and third deploys and transfers on third asking.
-        let deploys_to_fetch = vec![
-            deploys[0].clone(),
-            deploys[2].clone(),
-            transfers[0].clone(),
-            transfers[2].clone(),
-        ];
-        let deploys_to_not_fetch = vec![*deploys[1].hash(), *transfers[1].hash()]
-            .into_iter()
+        // Provide all deploys and transfers not already fetched on third asking.
+        let deploys_to_fetch = deploys
+            .iter()
+            .chain(transfers.iter())
+            .filter(|deploy| missing.contains(deploy.hash()))
+            .cloned()
             .collect();
         reactor
-            .expect_fetch_deploys(deploys_to_fetch, deploys_to_not_fetch)
+            .expect_fetch_deploys(deploys_to_fetch, HashSet::new())
             .await;
 
         let mut effects = Effects::new();
         for fetch_result in fetch_results {
             let mut events = fetch_result.await.unwrap();
             assert_eq!(1, events.len());
-            // The event should be `DeployFound` or `DeployMissing`.
+            // The event should be `DeployFetched`.
             let event = events.pop().unwrap();
             // Once the block is deemed valid (i.e. when the final missing deploy is successfully
             // fetched) the effects will be three validation responses.

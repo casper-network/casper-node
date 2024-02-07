@@ -1,3 +1,4 @@
+mod config;
 mod error;
 mod event;
 mod metrics;
@@ -12,11 +13,15 @@ use tracing::{debug, error, trace};
 use casper_execution_engine::engine_state::MAX_PAYMENT;
 use casper_storage::data_access_layer::BalanceRequest;
 use casper_types::{
-    account::AccountHash, addressable_entity::AddressableEntity, package::Package,
-    system::auction::ARG_AMOUNT, BlockHeader, Chainspec, ContractHash, ContractIdentifier,
-    ContractPackageHash, ContractPackageIdentifier, ContractVersion, ContractVersionKey,
-    DirectCallV1, ExecutableDeployItem, ExecutableDeployItemIdentifier, Key, ProtocolVersion,
-    Transaction, TransactionConfig, TransactionV1Kind, UserlandTransactionV1, U512,
+    account::AccountHash,
+    addressable_entity::AddressableEntity,
+    contracts::ContractHash,
+    package::{Package, PackageKindTag},
+    system::auction::ARG_AMOUNT,
+    AddressableEntityHash, AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr,
+    EntityVersion, EntityVersionKey, ExecutableDeployItem, ExecutableDeployItemIdentifier,
+    InitiatorAddr, Key, PackageAddr, PackageHash, PackageIdentifier, ProtocolVersion, Transaction,
+    TransactionConfig, TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget, U512,
 };
 
 use crate::{
@@ -32,6 +37,7 @@ use crate::{
     NodeRng,
 };
 
+pub(crate) use config::Config;
 pub(crate) use error::{DeployParameterFailure, Error, ParameterFailure};
 pub(crate) use event::{Event, EventMetadata};
 
@@ -69,6 +75,7 @@ impl<REv> ReactorEventT for REv where
 /// newly-accepted `Transaction`.
 #[derive(Debug, DataSize)]
 pub struct TransactionAcceptor {
+    acceptor_config: Config,
     chain_name: String,
     protocol_version: ProtocolVersion,
     config: TransactionConfig,
@@ -80,6 +87,7 @@ pub struct TransactionAcceptor {
 
 impl TransactionAcceptor {
     pub(crate) fn new(
+        acceptor_config: Config,
         chainspec: &Chainspec,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
@@ -90,6 +98,7 @@ impl TransactionAcceptor {
             .map(|public_key| public_key.to_account_hash())
             .collect();
         Ok(TransactionAcceptor {
+            acceptor_config,
             chain_name: chainspec.network_config.name.clone(),
             protocol_version: chainspec.protocol_version(),
             config: chainspec.transaction_config,
@@ -116,6 +125,7 @@ impl TransactionAcceptor {
                     &self.chain_name,
                     &self.config,
                     self.max_associated_keys,
+                    self.acceptor_config.timestamp_leeway,
                     event_metadata.verification_start_timestamp,
                 )
                 .map_err(Error::from),
@@ -124,10 +134,12 @@ impl TransactionAcceptor {
                     &self.chain_name,
                     &self.config,
                     self.max_associated_keys,
+                    self.acceptor_config.timestamp_leeway,
                     event_metadata.verification_start_timestamp,
                 )
                 .map_err(Error::from),
         };
+
         if let Err(error) = is_config_compliant {
             return self.reject_transaction(effect_builder, *event_metadata, error);
         }
@@ -151,8 +163,13 @@ impl TransactionAcceptor {
         // If this has been received from the speculative exec server, use the block specified in
         // the request, otherwise use the highest complete block.
         if let Source::SpeculativeExec(block_header) = &event_metadata.source {
-            let account_hash = event_metadata.transaction.account().to_account_hash();
-            let account_key = Key::from(account_hash);
+            let account_key = match event_metadata.transaction.initiator_addr() {
+                InitiatorAddr::PublicKey(public_key) => Key::from(public_key.to_account_hash()),
+                InitiatorAddr::AccountHash(account_hash) => Key::from(account_hash),
+                InitiatorAddr::EntityAddr(entity_addr) => {
+                    Key::AddressableEntity(PackageKindTag::Account, entity_addr)
+                }
+            };
             let block_header = block_header.clone();
             return effect_builder
                 .get_addressable_entity(*block_header.state_root_hash(), account_key)
@@ -191,8 +208,13 @@ impl TransactionAcceptor {
         };
 
         if event_metadata.source.is_client() {
-            let account_hash = event_metadata.transaction.account().to_account_hash();
-            let account_key = Key::from(account_hash);
+            let account_key = match event_metadata.transaction.initiator_addr() {
+                InitiatorAddr::PublicKey(public_key) => Key::from(public_key.to_account_hash()),
+                InitiatorAddr::AccountHash(account_hash) => Key::from(account_hash),
+                InitiatorAddr::EntityAddr(entity_addr) => {
+                    Key::AddressableEntity(PackageKindTag::Account, entity_addr)
+                }
+            };
             effect_builder
                 .get_addressable_entity(*block_header.state_root_hash(), account_key)
                 .event(move |maybe_entity| Event::GetAddressableEntityResult {
@@ -214,10 +236,10 @@ impl TransactionAcceptor {
     ) -> Effects<Event> {
         match maybe_entity {
             None => {
-                let public_key = event_metadata.transaction.account().clone();
+                let initiator_addr = event_metadata.transaction.initiator_addr();
                 let error = Error::parameter_failure(
                     &block_header,
-                    ParameterFailure::NoSuchAddressableEntity { public_key },
+                    ParameterFailure::NoSuchAddressableEntity { initiator_addr },
                 );
                 self.reject_transaction(effect_builder, *event_metadata, error)
             }
@@ -260,20 +282,20 @@ impl TransactionAcceptor {
         }
         match maybe_balance {
             None => {
-                let public_key = event_metadata.transaction.account().clone();
+                let initiator_addr = event_metadata.transaction.initiator_addr();
                 let error = Error::parameter_failure(
                     &block_header,
-                    ParameterFailure::UnknownBalance { public_key },
+                    ParameterFailure::UnknownBalance { initiator_addr },
                 );
                 self.reject_transaction(effect_builder, *event_metadata, error)
             }
             Some(balance) => {
                 let has_minimum_balance = balance >= *MAX_PAYMENT;
                 if !has_minimum_balance {
-                    let public_key = event_metadata.transaction.account().clone();
+                    let initiator_addr = event_metadata.transaction.initiator_addr();
                     let error = Error::parameter_failure(
                         &block_header,
-                        ParameterFailure::InsufficientBalance { public_key },
+                        ParameterFailure::InsufficientBalance { initiator_addr },
                     );
                     self.reject_transaction(effect_builder, *event_metadata, error)
                 } else {
@@ -306,12 +328,16 @@ impl TransactionAcceptor {
             // validation).
             ExecutableDeployItemIdentifier::Module
             | ExecutableDeployItemIdentifier::Transfer
-            | ExecutableDeployItemIdentifier::Contract(ContractIdentifier::Name(_))
-            | ExecutableDeployItemIdentifier::Package(ContractPackageIdentifier::Name { .. }) => {
+            | ExecutableDeployItemIdentifier::AddressableEntity(
+                AddressableEntityIdentifier::Name(_),
+            )
+            | ExecutableDeployItemIdentifier::Package(PackageIdentifier::Name { .. }) => {
                 self.verify_body(effect_builder, event_metadata, block_header)
             }
-            ExecutableDeployItemIdentifier::Contract(ContractIdentifier::Hash(contract_hash)) => {
-                let query_key = Key::from(contract_hash);
+            ExecutableDeployItemIdentifier::AddressableEntity(
+                AddressableEntityIdentifier::Hash(contract_hash),
+            ) => {
+                let query_key = Key::from(ContractHash::new(contract_hash.value()));
                 effect_builder
                     .get_addressable_entity(*block_header.state_root_hash(), query_key)
                     .event(move |maybe_contract| Event::GetContractResult {
@@ -323,12 +349,9 @@ impl TransactionAcceptor {
                     })
             }
             ExecutableDeployItemIdentifier::Package(
-                ref contract_package_identifier @ ContractPackageIdentifier::Hash {
-                    contract_package_hash,
-                    ..
-                },
+                ref contract_package_identifier @ PackageIdentifier::Hash { package_hash, .. },
             ) => {
-                let key = Key::from(contract_package_hash);
+                let key = Key::from(package_hash);
                 let maybe_package_version = contract_package_identifier.version();
                 effect_builder
                     .get_package(*block_header.state_root_hash(), key)
@@ -336,8 +359,8 @@ impl TransactionAcceptor {
                         event_metadata,
                         block_header,
                         is_payment: true,
-                        package_hash: contract_package_hash,
-                        maybe_contract_version: maybe_package_version,
+                        package_hash,
+                        maybe_package_version,
                         maybe_package,
                     })
             }
@@ -412,38 +435,39 @@ impl TransactionAcceptor {
             // validation).
             ExecutableDeployItemIdentifier::Module
             | ExecutableDeployItemIdentifier::Transfer
-            | ExecutableDeployItemIdentifier::Contract(ContractIdentifier::Name(_))
-            | ExecutableDeployItemIdentifier::Package(ContractPackageIdentifier::Name { .. }) => {
+            | ExecutableDeployItemIdentifier::AddressableEntity(
+                AddressableEntityIdentifier::Name(_),
+            )
+            | ExecutableDeployItemIdentifier::Package(PackageIdentifier::Name { .. }) => {
                 self.validate_transaction_cryptography(effect_builder, event_metadata)
             }
-            ExecutableDeployItemIdentifier::Contract(ContractIdentifier::Hash(contract_hash)) => {
-                let key = Key::from(contract_hash);
+            ExecutableDeployItemIdentifier::AddressableEntity(
+                AddressableEntityIdentifier::Hash(entity_hash),
+            ) => {
+                let key = Key::from(ContractHash::new(entity_hash.value()));
                 effect_builder
                     .get_addressable_entity(*block_header.state_root_hash(), key)
                     .event(move |maybe_contract| Event::GetContractResult {
                         event_metadata,
                         block_header,
                         is_payment: false,
-                        contract_hash,
+                        contract_hash: entity_hash,
                         maybe_contract,
                     })
             }
             ExecutableDeployItemIdentifier::Package(
-                ref package_identifier @ ContractPackageIdentifier::Hash {
-                    contract_package_hash,
-                    ..
-                },
+                ref package_identifier @ PackageIdentifier::Hash { package_hash, .. },
             ) => {
-                let key = Key::from(contract_package_hash);
-                let maybe_contract_version = package_identifier.version();
+                let key = Key::from(package_hash);
+                let maybe_package_version = package_identifier.version();
                 effect_builder
                     .get_package(*block_header.state_root_hash(), key)
                     .event(move |maybe_package| Event::GetPackageResult {
                         event_metadata,
                         block_header,
                         is_payment: false,
-                        package_hash: contract_package_hash,
-                        maybe_contract_version,
+                        package_hash,
+                        maybe_package_version,
                         maybe_package,
                     })
             }
@@ -457,8 +481,8 @@ impl TransactionAcceptor {
         block_header: Box<BlockHeader>,
     ) -> Effects<Event> {
         enum NextStep {
-            GetContract(ContractHash),
-            GetPackage(ContractPackageHash, Option<ContractVersion>),
+            GetContract(EntityAddr),
+            GetPackage(PackageAddr, Option<EntityVersion>),
             CryptoValidation,
         }
 
@@ -474,52 +498,50 @@ impl TransactionAcceptor {
                     Error::ExpectedTransactionV1,
                 );
             }
-            Transaction::V1(txn) => match txn.body() {
-                TransactionV1Kind::Userland(UserlandTransactionV1::DirectCall(
-                    DirectCallV1::StoredContractByHash { hash, .. },
-                )) => NextStep::GetContract(*hash),
-                TransactionV1Kind::Userland(UserlandTransactionV1::DirectCall(
-                    DirectCallV1::StoredVersionedContractByHash { hash, version, .. },
-                )) => NextStep::GetPackage(*hash, *version),
-                TransactionV1Kind::Userland(UserlandTransactionV1::DirectCall(
-                    DirectCallV1::StoredContractByName { .. },
-                ))
-                | TransactionV1Kind::Userland(UserlandTransactionV1::DirectCall(
-                    DirectCallV1::StoredVersionedContractByName { .. },
-                ))
-                | TransactionV1Kind::Userland(UserlandTransactionV1::Standard { .. })
-                | TransactionV1Kind::Userland(UserlandTransactionV1::InstallerUpgrader {
-                    ..
-                })
-                | TransactionV1Kind::Userland(UserlandTransactionV1::Noop { .. })
-                | TransactionV1Kind::Userland(UserlandTransactionV1::Closed { .. })
-                | TransactionV1Kind::Native(_) => NextStep::CryptoValidation,
+            Transaction::V1(txn) => match txn.target() {
+                TransactionTarget::Stored { id, .. } => match id {
+                    TransactionInvocationTarget::InvocableEntity(entity_addr) => {
+                        NextStep::GetContract(*entity_addr)
+                    }
+                    TransactionInvocationTarget::Package { addr, version } => {
+                        NextStep::GetPackage(*addr, *version)
+                    }
+                    TransactionInvocationTarget::InvocableEntityAlias(_)
+                    | TransactionInvocationTarget::PackageAlias { .. } => {
+                        NextStep::CryptoValidation
+                    }
+                },
+                TransactionTarget::Native | TransactionTarget::Session { .. } => {
+                    NextStep::CryptoValidation
+                }
             },
         };
 
         match next_step {
-            NextStep::GetContract(contract_hash) => {
-                let key = Key::from(contract_hash);
+            NextStep::GetContract(entity_addr) => {
+                // Use `Key::Hash` variant so that we try to retrieve the entity as either an
+                // AddressableEntity, or fall back to retrieving an un-migrated Contract.
+                let key = Key::Hash(entity_addr);
                 effect_builder
                     .get_addressable_entity(*block_header.state_root_hash(), key)
                     .event(move |maybe_contract| Event::GetContractResult {
                         event_metadata,
                         block_header,
                         is_payment: false,
-                        contract_hash,
+                        contract_hash: AddressableEntityHash::new(entity_addr),
                         maybe_contract,
                     })
             }
-            NextStep::GetPackage(package_hash, maybe_contract_version) => {
-                let key = Key::from(package_hash);
+            NextStep::GetPackage(package_addr, maybe_package_version) => {
+                let key = Key::Package(package_addr);
                 effect_builder
                     .get_package(*block_header.state_root_hash(), key)
                     .event(move |maybe_package| Event::GetPackageResult {
                         event_metadata,
                         block_header,
                         is_payment: false,
-                        package_hash,
-                        maybe_contract_version,
+                        package_hash: PackageHash::new(package_addr),
+                        maybe_package_version,
                         maybe_package,
                     })
             }
@@ -535,7 +557,7 @@ impl TransactionAcceptor {
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
         is_payment: bool,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
         maybe_contract: Option<AddressableEntity>,
     ) -> Effects<Event> {
         let contract = match maybe_contract {
@@ -556,7 +578,15 @@ impl TransactionAcceptor {
                 error!("should not fetch a contract to validate payment logic for transaction v1s");
                 None
             }
-            Transaction::V1(txn) => txn.body().entry_point_name(),
+            Transaction::V1(txn) => match txn.entry_point() {
+                TransactionEntryPoint::Custom(name) => Some(name.as_str()),
+                TransactionEntryPoint::Transfer
+                | TransactionEntryPoint::AddBid
+                | TransactionEntryPoint::WithdrawBid
+                | TransactionEntryPoint::Delegate
+                | TransactionEntryPoint::Undelegate
+                | TransactionEntryPoint::Redelegate => None,
+            },
         };
 
         if let Some(entry_point_name) = maybe_entry_point_name {
@@ -584,9 +614,9 @@ impl TransactionAcceptor {
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
         is_payment: bool,
-        package_hash: ContractPackageHash,
-        maybe_contract_version: Option<ContractVersion>,
-        maybe_package: Option<Package>,
+        package_hash: PackageHash,
+        maybe_contract_version: Option<EntityVersion>,
+        maybe_package: Option<Box<Package>>,
     ) -> Effects<Event> {
         let package = match maybe_package {
             Some(package) => package,
@@ -612,10 +642,10 @@ impl TransactionAcceptor {
         };
 
         let contract_version_key =
-            ContractVersionKey::new(self.protocol_version.value().major, contract_version);
-        match package.lookup_contract_hash(contract_version_key) {
+            EntityVersionKey::new(self.protocol_version.value().major, contract_version);
+        match package.lookup_entity_hash(contract_version_key) {
             Some(&contract_hash) => {
-                let key = Key::from(contract_hash);
+                let key = Key::from(ContractHash::new(contract_hash.value()));
                 effect_builder
                     .get_addressable_entity(*block_header.state_root_hash(), key)
                     .event(move |maybe_contract| Event::GetContractResult {
@@ -838,7 +868,7 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 block_header,
                 is_payment,
                 package_hash,
-                maybe_contract_version,
+                maybe_package_version,
                 maybe_package,
             } => self.handle_get_package_result(
                 effect_builder,
@@ -846,7 +876,7 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
                 block_header,
                 is_payment,
                 package_hash,
-                maybe_contract_version,
+                maybe_package_version,
                 maybe_package,
             ),
             Event::PutToStorageResult {

@@ -10,6 +10,7 @@ use std::error::Error as StdError;
 use datasize::DataSize;
 use serde::Serialize;
 
+use super::super::TransactionEntryPoint;
 #[cfg(doc)]
 use super::TransactionV1;
 use crate::{crypto, CLType, TimeDiff, Timestamp, U512};
@@ -43,6 +44,8 @@ pub enum TransactionV1ConfigFailure {
     TimestampInFuture {
         /// The node's timestamp when validating the transaction.
         validation_timestamp: Timestamp,
+        /// Any configured leeway added to `validation_timestamp`.
+        timestamp_leeway: TimeDiff,
         /// The transaction's timestamp.
         got: Timestamp,
     },
@@ -112,6 +115,18 @@ pub enum TransactionV1ConfigFailure {
         attempted: U512,
     },
 
+    /// The entry point for this transaction target cannot not be `TransactionEntryPoint::Custom`.
+    EntryPointCannotBeCustom {
+        /// The invalid entry point.
+        entry_point: TransactionEntryPoint,
+    },
+
+    /// The entry point for this transaction target must be `TransactionEntryPoint::Custom`.
+    EntryPointMustBeCustom {
+        /// The invalid entry point.
+        entry_point: TransactionEntryPoint,
+    },
+
     /// The transaction has empty module bytes.
     EmptyModuleBytes,
 }
@@ -136,12 +151,13 @@ impl Display for TransactionV1ConfigFailure {
             }
             TransactionV1ConfigFailure::TimestampInFuture {
                 validation_timestamp,
+                timestamp_leeway,
                 got,
             } => {
                 write!(
                     formatter,
                     "timestamp of {got} is later than node's validation timestamp of \
-                    {validation_timestamp}"
+                    {validation_timestamp} plus leeway of {timestamp_leeway}"
                 )
             }
             TransactionV1ConfigFailure::InvalidBodyHash => {
@@ -210,6 +226,12 @@ impl Display for TransactionV1ConfigFailure {
                     "insufficient transfer amount; minimum: {minimum} attempted: {attempted}"
                 )
             }
+            TransactionV1ConfigFailure::EntryPointCannotBeCustom { entry_point } => {
+                write!(formatter, "entry point cannot be custom: {entry_point}")
+            }
+            TransactionV1ConfigFailure::EntryPointMustBeCustom { entry_point } => {
+                write!(formatter, "entry point must be custom: {entry_point}")
+            }
             TransactionV1ConfigFailure::EmptyModuleBytes => {
                 write!(formatter, "the transaction has empty module bytes")
             }
@@ -241,6 +263,8 @@ impl StdError for TransactionV1ConfigFailure {
             | TransactionV1ConfigFailure::MissingArg { .. }
             | TransactionV1ConfigFailure::UnexpectedArgType { .. }
             | TransactionV1ConfigFailure::InsufficientTransferAmount { .. }
+            | TransactionV1ConfigFailure::EntryPointCannotBeCustom { .. }
+            | TransactionV1ConfigFailure::EntryPointMustBeCustom { .. }
             | TransactionV1ConfigFailure::EmptyModuleBytes => None,
         }
     }

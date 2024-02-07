@@ -26,13 +26,12 @@ use derive_more::From;
 use futures::channel::oneshot;
 use once_cell::sync::Lazy;
 use rand::Rng;
-use schemars::schema::RootSchema;
 use serde_json::Value;
 use tempfile::TempDir;
 use tokio::runtime::{self, Runtime};
 use tracing::{debug, warn};
 
-use casper_types::{testing::TestRng, Deploy, TimeDiff, Timestamp};
+use casper_types::testing::TestRng;
 
 use crate::{
     components::Component,
@@ -73,6 +72,35 @@ const TEST_PORT_RANGE: Range<u16> = 60001..60998;
 
 /// Random offset + stride for port generation.
 const TEST_PORT_STRIDE: u16 = 29;
+
+macro_rules! map {
+    () => { std::collections::BTreeMap::new() };
+    ( $first_key:expr => $first_value:expr $( , $key:expr => $value:expr )* $(,)? ) => {{
+        let mut map = std::collections::BTreeMap::new();
+        // There is no reason to add twice the same key.
+        // Since it's used for testing, we can panic in such a case:
+        assert!(map.insert($first_key, $first_value).is_none());
+        $(
+            assert!(map.insert($key, $value).is_none());
+        )*
+        map
+    }};
+}
+macro_rules! set {
+    () => { std::collections::BTreeSet::new() };
+    ( $first_value:expr $( , $value:expr )* $(,)? ) => {{
+        let mut set = std::collections::BTreeSet::new();
+        // There is no reason to add twice the same key.
+        // Since it's used for testing, we can panic in such a case:
+        assert!(set.insert($first_value));
+        $(
+            assert!(set.insert($value));
+        )*
+        set
+    }}
+}
+pub(crate) use map;
+pub(crate) use set;
 
 /// Create an unused port on localhost.
 ///
@@ -137,7 +165,7 @@ pub(crate) struct ComponentHarnessBuilder<REv: 'static> {
     _phantom: PhantomData<REv>,
 }
 
-impl<REv: 'static> ComponentHarnessBuilder<REv> {
+impl<REv: 'static + Debug> ComponentHarnessBuilder<REv> {
     /// Builds a component harness instance.
     ///
     /// # Panics
@@ -173,7 +201,7 @@ impl<REv: 'static> ComponentHarnessBuilder<REv> {
 
         let rng = self.rng.unwrap_or_else(TestRng::new);
 
-        let scheduler = Box::leak(Box::new(Scheduler::new(QueueKind::weights())));
+        let scheduler = Box::leak(Box::new(Scheduler::new(QueueKind::weights(), None)));
         let event_queue_handle = EventQueueHandle::without_shutdown(scheduler);
         let effect_builder = EffectBuilder::new(event_queue_handle);
         let runtime = runtime::Builder::new_multi_thread()
@@ -291,6 +319,10 @@ impl<REv: 'static> ComponentHarness<REv> {
                     ControlAnnouncement::QueueDumpRequest { .. } => {
                         panic!("queue dumps are not supported in the test harness")
                     }
+                    ControlAnnouncement::ActivateFailpoint { .. } => {
+                        panic!("currently no failpoint activations implemented in test harness")
+                        // TODO: forward to component instead
+                    },
                 }
             }
 
@@ -313,7 +345,7 @@ impl<REv: 'static> ComponentHarness<REv> {
     }
 }
 
-impl<REv: 'static> Default for ComponentHarness<REv> {
+impl<REv: 'static + Debug> Default for ComponentHarness<REv> {
     fn default() -> Self {
         Self::builder().build()
     }
@@ -362,45 +394,12 @@ pub(crate) async fn advance_time(duration: time::Duration) {
     debug!("advanced time by {} secs", duration.as_secs());
 }
 
-/// Creates a test deploy created at given instant and with given ttl.
-pub(crate) fn create_test_deploy(
-    created_ago: TimeDiff,
-    ttl: TimeDiff,
-    now: Timestamp,
-    test_rng: &mut TestRng,
-) -> Deploy {
-    Deploy::random_with_timestamp_and_ttl(test_rng, now - created_ago, ttl)
-}
-
-/// Creates a random deploy that is considered expired.
-pub(crate) fn create_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> Deploy {
-    create_test_deploy(
-        TimeDiff::from_seconds(20),
-        TimeDiff::from_seconds(10),
-        now,
-        test_rng,
-    )
-}
-
-// TODO - remove `allow` once used in tests again.
-#[allow(dead_code)]
-/// Creates a random deploy that is considered not expired.
-pub(crate) fn create_not_expired_deploy(now: Timestamp, test_rng: &mut TestRng) -> Deploy {
-    create_test_deploy(
-        TimeDiff::from_seconds(20),
-        TimeDiff::from_seconds(60),
-        now,
-        test_rng,
-    )
-}
-
-/// Assert that the file at `schema_path` matches the provided `RootSchema`, which can be derived
+/// Assert that the file at `schema_path` matches the provided `actual_schema`, which can be derived
 /// from `schemars::schema_for!` or `schemars::schema_for_value!`, for example. This method will
 /// create a temporary file with the actual schema and print the location if it fails.
-pub fn assert_schema(schema_path: &str, actual_schema: RootSchema) {
-    let expected_schema = fs::read_to_string(schema_path).unwrap();
+pub fn assert_schema(schema_path: String, actual_schema: String) {
+    let expected_schema = fs::read_to_string(&schema_path).unwrap();
     let expected_schema: Value = serde_json::from_str(&expected_schema).unwrap();
-    let actual_schema = serde_json::to_string_pretty(&actual_schema).unwrap();
     let mut temp_file = tempfile::Builder::new()
         .suffix(".json")
         .tempfile_in(env!("OUT_DIR"))

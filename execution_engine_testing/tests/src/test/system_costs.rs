@@ -16,10 +16,11 @@ use casper_types::{
         handle_payment, mint, AUCTION,
     },
     AuctionCosts, BrTableCost, ControlFlowCosts, EraId, Gas, GenesisAccount, GenesisValidator,
-    HandlePaymentCosts, HostFunction, HostFunctionCost, HostFunctionCosts, MintCosts, Motes,
-    OpcodeCosts, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StandardPaymentCosts,
-    StorageCosts, SystemConfig, WasmConfig, DEFAULT_ADD_BID_COST, DEFAULT_MAX_STACK_HEIGHT,
-    DEFAULT_TRANSFER_COST, DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY, U512,
+    HandlePaymentCosts, HostFunction, HostFunctionCost, HostFunctionCosts, MessageLimits,
+    MintCosts, Motes, OpcodeCosts, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey,
+    StandardPaymentCosts, StorageCosts, SystemConfig, WasmConfig, DEFAULT_ADD_BID_COST,
+    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_TRANSFER_COST, DEFAULT_WASMLESS_TRANSFER_COST,
+    DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
 use crate::wasm_utils;
@@ -88,7 +89,7 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .unwrap()
             .into(),
         auction::METHOD_ADD_BID,
@@ -131,7 +132,7 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .unwrap()
             .into(),
         auction::METHOD_WITHDRAW_BID,
@@ -228,7 +229,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .unwrap()
             .into(),
         auction::METHOD_ADD_BID,
@@ -266,7 +267,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .unwrap()
             .into(),
         auction::METHOD_WITHDRAW_BID,
@@ -346,7 +347,7 @@ fn delegate_and_undelegate_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .unwrap()
             .into(),
         auction::METHOD_DELEGATE,
@@ -389,7 +390,7 @@ fn delegate_and_undelegate_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .unwrap()
             .into(),
         auction::METHOD_REDELEGATE,
@@ -421,7 +422,7 @@ fn delegate_and_undelegate_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .unwrap()
             .into(),
         auction::METHOD_UNDELEGATE,
@@ -545,7 +546,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .unwrap()
             .into(),
         auction::METHOD_DELEGATE,
@@ -581,7 +582,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .unwrap()
             .into(),
         auction::METHOD_REDELEGATE,
@@ -607,7 +608,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_entity_addr()
             .unwrap()
             .into(),
         auction::METHOD_UNDELEGATE,
@@ -812,7 +813,7 @@ fn should_charge_for_erroneous_system_contract_calls() {
         builder.exec(exec_request).commit();
 
         let _error = builder
-            .get_last_exec_results()
+            .get_last_exec_result()
             .expect("should have results")
             .get(0)
             .expect("should have first result")
@@ -924,50 +925,8 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     // This will verify that user pays for the transfer host function _only_ while host does not
     // additionally charge for calling mint's "transfer" entrypoint under the hood.
     let new_host_function_costs = HostFunctionCosts {
-        read_value: HostFunction::fixed(0),
-        dictionary_get: HostFunction::fixed(0),
-        write: HostFunction::fixed(0),
-        dictionary_put: HostFunction::fixed(0),
-        add: HostFunction::fixed(0),
-        new_uref: HostFunction::fixed(0),
-        load_named_keys: HostFunction::fixed(0),
-        ret: HostFunction::fixed(0),
-        get_key: HostFunction::fixed(0),
-        has_key: HostFunction::fixed(0),
-        put_key: HostFunction::fixed(0),
-        remove_key: HostFunction::fixed(0),
-        revert: HostFunction::fixed(0),
-        is_valid_uref: HostFunction::fixed(0),
-        add_associated_key: HostFunction::fixed(0),
-        remove_associated_key: HostFunction::fixed(0),
-        update_associated_key: HostFunction::fixed(0),
-        set_action_threshold: HostFunction::fixed(0),
-        get_caller: HostFunction::fixed(0),
-        get_blocktime: HostFunction::fixed(0),
-        create_purse: HostFunction::fixed(0),
-        transfer_to_account: HostFunction::fixed(0),
-        transfer_from_purse_to_account: HostFunction::fixed(0),
-        transfer_from_purse_to_purse: HostFunction::fixed(0),
-        get_balance: HostFunction::fixed(0),
-        get_phase: HostFunction::fixed(0),
-        get_system_contract: HostFunction::fixed(0),
-        get_main_purse: HostFunction::fixed(0),
-        read_host_buffer: HostFunction::fixed(0),
-        create_contract_package_at_hash: HostFunction::fixed(0),
-        create_contract_user_group: HostFunction::fixed(0),
-        add_contract_version: HostFunction::fixed(0),
-        disable_contract_version: HostFunction::fixed(0),
         call_contract: HostFunction::fixed(UPDATED_CALL_CONTRACT_COST),
-        call_versioned_contract: HostFunction::fixed(0),
-        get_named_arg_size: HostFunction::fixed(0),
-        get_named_arg: HostFunction::fixed(0),
-        remove_contract_user_group: HostFunction::fixed(0),
-        provision_contract_user_group_uref: HostFunction::fixed(0),
-        remove_contract_user_group_urefs: HostFunction::fixed(0),
-        print: HostFunction::fixed(0),
-        blake2b: HostFunction::fixed(0),
-        random_bytes: HostFunction::fixed(0),
-        enable_contract_version: HostFunction::fixed(0),
+        ..Zero::zero()
     };
 
     let new_wasm_config = WasmConfig::new(
@@ -976,6 +935,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         new_opcode_costs,
         new_storage_costs,
         new_host_function_costs,
+        MessageLimits::default(),
     );
 
     let new_wasmless_transfer_cost = 0;

@@ -64,7 +64,7 @@ pub struct CoreConfig {
     /// The period in which genesis validator's bid is released over time after it's unlocked.
     pub vesting_schedule_period: TimeDiff,
 
-    /// The delay in number of eras for paying out the the unbonding amount.
+    /// The delay in number of eras for paying out the unbonding amount.
     pub unbonding_delay: u64,
 
     /// Round seigniorage rate represented as a fractional number.
@@ -105,7 +105,7 @@ pub struct CoreConfig {
     pub finality_signature_proportion: Ratio<u64>,
 
     /// Lookback interval indicating which past block we are looking at to reward.
-    pub rewards_lag: u64,
+    pub signature_rewards_max_delay: u64,
     /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
     /// `false`. Setting up this option makes sense only for private chains where validator set
     /// rotation is unnecessary.
@@ -114,7 +114,7 @@ pub struct CoreConfig {
     pub allow_unrestricted_transfers: bool,
     /// If set to false then consensus doesn't compute rewards and always uses 0.
     pub compute_rewards: bool,
-    /// Administrative accounts are valid option for for a private chain only.
+    /// Administrative accounts are a valid option for a private chain only.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub administrators: BTreeSet<PublicKey>,
     /// Refund handling.
@@ -129,6 +129,22 @@ impl CoreConfig {
     pub fn recent_era_count(&self) -> u64 {
         // Safe to use naked `-` operation assuming `CoreConfig::is_valid()` has been checked.
         self.unbonding_delay - self.auction_delay
+    }
+
+    /// The proportion of the total rewards going to block production.
+    pub fn production_rewards_proportion(&self) -> Ratio<u64> {
+        Ratio::new(1, 1) - self.finality_signature_proportion
+    }
+
+    /// The finder's fee, *i.e.* the proportion of the total rewards going to the validator
+    /// collecting the finality signatures which is the validator producing the block.
+    pub fn collection_rewards_proportion(&self) -> Ratio<u64> {
+        self.finders_fee * self.finality_signature_proportion
+    }
+
+    /// The proportion of the total rewards going to finality signatures collection.
+    pub fn contribution_rewards_proportion(&self) -> Ratio<u64> {
+        (Ratio::new(1, 1) - self.finders_fee) * self.finality_signature_proportion
     }
 }
 
@@ -161,7 +177,7 @@ impl CoreConfig {
         let consensus_protocol = rng.gen();
         let finders_fee = Ratio::new(rng.gen_range(1..100), 100);
         let finality_signature_proportion = Ratio::new(rng.gen_range(1..100), 100);
-        let rewards_lag = rng.gen_range(1..10);
+        let signature_rewards_max_delay = rng.gen_range(1..10);
         let allow_auction_bids = rng.gen();
         let allow_unrestricted_transfers = rng.gen();
         let compute_rewards = rng.gen();
@@ -203,7 +219,7 @@ impl CoreConfig {
             max_delegators_per_validator: 0,
             finders_fee,
             finality_signature_proportion,
-            rewards_lag,
+            signature_rewards_max_delay,
             allow_auction_bids,
             administrators,
             allow_unrestricted_transfers,
@@ -242,7 +258,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.max_delegators_per_validator.to_bytes()?);
         buffer.extend(self.finders_fee.to_bytes()?);
         buffer.extend(self.finality_signature_proportion.to_bytes()?);
-        buffer.extend(self.rewards_lag.to_bytes()?);
+        buffer.extend(self.signature_rewards_max_delay.to_bytes()?);
         buffer.extend(self.allow_auction_bids.to_bytes()?);
         buffer.extend(self.allow_unrestricted_transfers.to_bytes()?);
         buffer.extend(self.compute_rewards.to_bytes()?);
@@ -277,7 +293,7 @@ impl ToBytes for CoreConfig {
             + self.max_delegators_per_validator.serialized_length()
             + self.finders_fee.serialized_length()
             + self.finality_signature_proportion.serialized_length()
-            + self.rewards_lag.serialized_length()
+            + self.signature_rewards_max_delay.serialized_length()
             + self.allow_auction_bids.serialized_length()
             + self.allow_unrestricted_transfers.serialized_length()
             + self.compute_rewards.serialized_length()
@@ -312,7 +328,7 @@ impl FromBytes for CoreConfig {
         let (max_delegators_per_validator, remainder) = FromBytes::from_bytes(remainder)?;
         let (finders_fee, remainder) = Ratio::from_bytes(remainder)?;
         let (finality_signature_proportion, remainder) = Ratio::from_bytes(remainder)?;
-        let (rewards_lag, remainder) = u64::from_bytes(remainder)?;
+        let (signature_rewards_max_delay, remainder) = u64::from_bytes(remainder)?;
         let (allow_auction_bids, remainder) = FromBytes::from_bytes(remainder)?;
         let (allow_unrestricted_transfers, remainder) = FromBytes::from_bytes(remainder)?;
         let (compute_rewards, remainder) = bool::from_bytes(remainder)?;
@@ -342,7 +358,7 @@ impl FromBytes for CoreConfig {
             max_delegators_per_validator,
             finders_fee,
             finality_signature_proportion,
-            rewards_lag,
+            signature_rewards_max_delay,
             allow_auction_bids,
             allow_unrestricted_transfers,
             compute_rewards,

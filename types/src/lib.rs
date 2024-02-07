@@ -28,12 +28,14 @@ pub mod addressable_entity;
 pub mod api_error;
 mod block;
 mod block_time;
+mod byte_code;
 pub mod bytesrepr;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 mod chainspec;
 pub mod checksummed_hex;
 mod cl_type;
 mod cl_value;
+pub mod contract_messages;
 mod contract_wasm;
 pub mod contracts;
 pub mod crypto;
@@ -78,25 +80,25 @@ pub use access_rights::{
 };
 #[doc(inline)]
 pub use addressable_entity::{
-    AddressableEntity, ContractHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
-    Parameter,
+    AddressableEntity, AddressableEntityHash, EntryPoint, EntryPointAccess, EntryPointType,
+    EntryPoints, Parameter,
 };
 #[doc(inline)]
 pub use api_error::ApiError;
 #[cfg(all(feature = "std", feature = "json-schema"))]
 pub use block::JsonBlockWithSignatures;
 pub use block::{
-    Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHashAndHeight, BlockHeader,
-    BlockSignatures, BlockSignaturesMergeError, BlockV1, BlockV2, BlockValidationError, EraEnd,
-    EraReport, FinalitySignature, FinalitySignatureId, SignedBlockHeader,
-    SignedBlockHeaderValidationError,
+    Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHeader, BlockHeaderV1,
+    BlockHeaderV2, BlockSignatures, BlockSignaturesMergeError, BlockV1, BlockV2,
+    BlockValidationError, EraEnd, EraEndV1, EraEndV2, EraReport, FinalitySignature,
+    FinalitySignatureId, RewardedSignatures, Rewards, SignedBlockHeader,
+    SignedBlockHeaderValidationError, SingleBlockRewardedSignatures,
 };
 #[cfg(any(feature = "testing", test))]
-pub use block::{FromTestBlockBuilder, TestBlockBuilder};
+pub use block::{TestBlockBuilder, TestBlockV1Builder};
 
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
-#[cfg(feature = "std")]
-pub use chainspec::DEFAULT_HOST_FUNCTION_NEW_DICTIONARY;
+pub use byte_code::{ByteCode, ByteCodeHash, ByteCodeKind};
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{
     AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,
@@ -104,9 +106,10 @@ pub use chainspec::{
     ControlFlowCosts, CoreConfig, DelegatorConfig, DeployConfig, FeeHandling, GenesisAccount,
     GenesisValidator, GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError,
     HandlePaymentCosts, HighwayConfig, HostFunction, HostFunctionCost, HostFunctionCosts,
-    LegacyRequiredFinality, MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig, RefundHandling,
-    StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig, TransactionV1Config,
-    UpgradeConfig, ValidatorConfig, WasmConfig,
+    LegacyRequiredFinality, MessageLimits, MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig,
+    RefundHandling, StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig,
+    TransactionV1Config, UpgradeConfig, ValidatorConfig, WasmConfig,
+    DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{
@@ -131,7 +134,7 @@ pub use cl_value::{
     handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError, ChecksumRegistry,
     DictionaryValue as CLValueDictionary, SystemContractRegistry,
 };
-pub use contract_wasm::{ContractWasm, ContractWasmHash};
+pub use contract_wasm::ContractWasm;
 #[doc(inline)]
 pub use contracts::Contract;
 pub use crypto::*;
@@ -146,13 +149,14 @@ pub use gas::Gas;
 pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]
 pub use key::{
-    DictionaryAddr, FromStrError as KeyFromStrError, HashAddr, Key, KeyTag, BLAKE2B_DIGEST_LENGTH,
-    DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
+    ByteCodeAddr, DictionaryAddr, EntityAddr, FromStrError as KeyFromStrError, HashAddr, Key,
+    KeyTag, PackageAddr, BLAKE2B_DIGEST_LENGTH, DICTIONARY_ITEM_KEY_MAX_LENGTH,
+    KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
 };
 pub use motes::Motes;
+#[doc(inline)]
 pub use package::{
-    ContractPackageHash, ContractVersion, ContractVersionKey, ContractVersions, Group, Groups,
-    Package,
+    EntityVersion, EntityVersionKey, EntityVersions, Group, Groups, Package, PackageHash,
 };
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
@@ -162,20 +166,17 @@ pub use tagged::Tagged;
 #[cfg(any(feature = "std", test))]
 pub use timestamp::serde_option_time_diff;
 pub use timestamp::{TimeDiff, Timestamp};
-#[doc(inline)]
-pub use transaction::runtime_args::{NamedArg, RuntimeArgs};
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-pub use transaction::TestTransactionV1Builder;
 pub use transaction::{
-    runtime_args, AuctionTransactionV1, ContractIdentifier, ContractPackageIdentifier, Deploy,
-    DeployApproval, DeployApprovalsHash, DeployConfigurationFailure, DeployDecodeFromJsonError,
-    DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash, DeployHeader, DeployId,
-    DirectCallV1, ExecutableDeployItem, ExecutableDeployItemIdentifier, NativeTransactionV1,
-    PricingModeV1, Transaction, TransactionApprovalsHash, TransactionHash, TransactionId,
-    TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash, TransactionV1ConfigFailure,
-    TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
-    TransactionV1Hash, TransactionV1Header, TransactionV1Kind, TransferTarget,
-    UserlandTransactionV1,
+    AddressableEntityIdentifier, Deploy, DeployApproval, DeployApprovalsHash, DeployConfigFailure,
+    DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash,
+    DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, InitiatorAddr,
+    NamedArg, PackageIdentifier, PricingMode, RuntimeArgs, Transaction, TransactionApprovalsHash,
+    TransactionEntryPoint, TransactionHash, TransactionHeader, TransactionId,
+    TransactionInvocationTarget, TransactionRuntime, TransactionScheduling, TransactionSessionKind,
+    TransactionTarget, TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash,
+    TransactionV1Body, TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError,
+    TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
+    TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction::{

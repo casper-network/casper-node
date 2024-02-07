@@ -1,6 +1,6 @@
 //! A library to support testing of Wasm smart contracts for use on the Casper Platform.
 
-#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/5.0.0")]
+#![doc(html_root_url = "https://docs.rs/casper-engine-test-support/6.0.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon_48.png",
     html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png",
@@ -49,16 +49,14 @@ pub use step_request_builder::StepRequestBuilder;
 pub use upgrade_request_builder::UpgradeRequestBuilder;
 pub use wasm_test_builder::{LmdbWasmTestBuilder, WasmTestBuilder};
 
-const DAY_MILLIS: u64 = 24 * 60 * 60 * 1000;
-
 /// Default number of validator slots.
 pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 /// Default auction delay.
 pub const DEFAULT_AUCTION_DELAY: u64 = 1;
-/// Default lock-in period of 90 days
-pub const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * DAY_MILLIS;
-/// Default length of total vesting schedule of 91 days.
-pub const DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS: u64 = 91 * DAY_MILLIS;
+/// Default lock-in period is currently zero.
+pub const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 0;
+/// Default length of total vesting schedule is currently zero.
+pub const DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS: u64 = 0;
 
 /// Default number of eras that need to pass to be able to withdraw unbonded funds.
 pub const DEFAULT_UNBONDING_DELAY: u64 = 7;
@@ -66,11 +64,11 @@ pub const DEFAULT_UNBONDING_DELAY: u64 = 7;
 /// Round seigniorage rate represented as a fraction of the total supply.
 ///
 /// Annual issuance: 8%
-/// Minimum round length: 2^15 ms
+/// Minimum round length: 2^14 ms
 /// Ticks per year: 31536000000
 ///
-/// (1+0.08)^((2^15)/31536000000)-1 is expressed as a fractional number below.
-pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(7, 87535408);
+/// (1+0.08)^((2^14)/31536000000)-1 is expressed as a fractional number below.
+pub const DEFAULT_ROUND_SEIGNIORAGE_RATE: Ratio<u64> = Ratio::new_raw(7, 175070816);
 
 /// Default chain name.
 pub const DEFAULT_CHAIN_NAME: &str = "casper-execution-engine-testing";

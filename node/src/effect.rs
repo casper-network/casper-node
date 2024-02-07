@@ -108,6 +108,7 @@ use std::{
 
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
+use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use serde::{Serialize, Serializer};
 use smallvec::{smallvec, SmallVec};
@@ -124,12 +125,13 @@ use casper_storage::{
 
 use casper_types::{
     bytesrepr::Bytes,
+    contract_messages::Messages,
     execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},
     package::Package,
     system::auction::EraValidators,
     AddressableEntity, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes,
-    Deploy, DeployHash, DeployHeader, Digest, EraId, FinalitySignature, FinalitySignatureId, Key,
-    PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId, Transfer, U512,
+    DeployHash, Digest, EraId, FinalitySignature, FinalitySignatureId, Key, PublicKey, TimeDiff,
+    Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer, U512,
 };
 
 use crate::{
@@ -147,13 +149,17 @@ use crate::{
         transaction_acceptor,
         upgrade_watcher::NextUpgrade,
     },
-    contract_runtime::SpeculativeExecutionState,
+    contract_runtime::{
+        RoundSeigniorageRateRequest, SpeculativeExecutionState, TotalSupplyRequest,
+    },
+    failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, DeployExecutionInfo,
-        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, LegacyDeploy, MetaBlock,
-        MetaBlockState, NodeId, SignedBlock, TrieOrChunk, TrieOrChunkId,
+        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
+        ExecutableBlock, ExecutionInfo, FinalizedApprovals, FinalizedBlock, LegacyDeploy,
+        MetaBlock, MetaBlockState, NodeId, SignedBlock, TransactionWithFinalizedApprovals,
+        TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -875,15 +881,14 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
-    /// Request that a block be made executable (i.e. produce a FinalizedBlock plus any Deploys),
-    /// if able to.
+    /// Request that a block be made executable, if able to: `ExecutableBlock`.
     ///
     /// Completion means that the block can be enqueued for processing by the execution engine via
     /// the contract_runtime component.
     pub(crate) async fn make_block_executable(
         self,
         block_hash: BlockHash,
-    ) -> Option<(FinalizedBlock, Vec<Deploy>)>
+    ) -> Option<ExecutableBlock>
     where
         REv: From<MakeBlockExecutableRequest>,
     {
@@ -1098,7 +1103,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         block: Arc<BlockV2>,
         approvals_hashes: Box<ApprovalsHashes>,
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        execution_results: HashMap<TransactionHash, ExecutionResult>,
     ) -> bool
     where
         REv: From<StorageRequest>,
@@ -1201,6 +1206,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn get_switch_block_header_by_era_id_from_storage(
+        self,
+        era_id: EraId,
+    ) -> Option<BlockHeader>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetSwitchBlockHeaderByEra { era_id, responder },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
     /// Gets the requested signature for a given block hash.
     pub(crate) async fn get_signature_from_storage(
         self,
@@ -1224,7 +1243,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_execution_results_from_storage(
         self,
         block_hash: BlockHash,
-    ) -> Option<Vec<(DeployHash, DeployHeader, ExecutionResult)>>
+    ) -> Option<Vec<(TransactionHash, TransactionHeader, ExecutionResult)>>
     where
         REv: From<StorageRequest>,
     {
@@ -1306,17 +1325,18 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests the header of the block containing the given deploy.
-    pub(crate) async fn get_block_header_for_deploy_from_storage(
+    /// Returns the era IDs of the blocks in which the given transactions were executed.  If none
+    /// of the transactions have been executed yet, an empty set will be returned.
+    pub(crate) async fn get_transactions_era_ids(
         self,
-        deploy_hash: DeployHash,
-    ) -> Option<BlockHeader>
+        transaction_hashes: HashSet<TransactionHash>,
+    ) -> HashSet<EraId>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetBlockHeaderForDeploy {
-                deploy_hash,
+            |responder| StorageRequest::GetTransactionsEraIds {
+                transaction_hashes,
                 responder,
             },
             QueueKind::FromStorage,
@@ -1469,20 +1489,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested deploys from the deploy store.
+    /// Gets the requested transactions from storage.
     ///
-    /// Returns the "original" deploys, which are the first received by the node, along with a
+    /// Returns the "original" transactions, which are the first received by the node, along with a
     /// potentially different set of approvals used during execution of the recorded block.
-    pub(crate) async fn get_deploys_from_storage(
+    pub(crate) async fn get_transactions_from_storage(
         self,
-        deploy_hashes: Vec<DeployHash>,
-    ) -> SmallVec<[Option<DeployWithFinalizedApprovals>; 1]>
+        transaction_hashes: Vec<TransactionHash>,
+    ) -> SmallVec<[Option<TransactionWithFinalizedApprovals>; 1]>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetDeploys {
-                deploy_hashes,
+            |responder| StorageRequest::GetTransactions {
+                transaction_hashes,
                 responder,
             },
             QueueKind::FromStorage,
@@ -1511,7 +1531,7 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested transaction from storage by DeployId.
+    /// Gets the requested transaction from storage by TransactionId.
     ///
     /// Returns the "original" transaction, which is the first received by the node, along with a
     /// potentially different set of approvals used during execution of the recorded block.
@@ -1552,7 +1572,8 @@ impl<REv> EffectBuilder<REv> {
         self,
         block_hash: BlockHash,
         block_height: u64,
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        era_id: EraId,
+        execution_results: HashMap<TransactionHash, ExecutionResult>,
     ) where
         REv: From<StorageRequest>,
     {
@@ -1560,6 +1581,7 @@ impl<REv> EffectBuilder<REv> {
             |responder| StorageRequest::PutExecutionResults {
                 block_hash: Box::new(block_hash),
                 block_height,
+                era_id,
                 execution_results,
                 responder,
             },
@@ -1568,17 +1590,17 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested deploys from the deploy store.
-    pub(crate) async fn get_deploy_and_execution_info_from_storage(
+    /// Gets the requested transaction and associated execution info if available.
+    pub(crate) async fn get_transaction_and_execution_info_from_storage(
         self,
-        deploy_hash: DeployHash,
-    ) -> Option<(DeployWithFinalizedApprovals, Option<DeployExecutionInfo>)>
+        transaction_hash: TransactionHash,
+    ) -> Option<(TransactionWithFinalizedApprovals, Option<ExecutionInfo>)>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetDeployAndExecutionInfo {
-                deploy_hash,
+            |responder| StorageRequest::GetTransactionAndExecutionInfo {
+                transaction_hash,
                 responder,
             },
             QueueKind::FromStorage,
@@ -1604,6 +1626,45 @@ impl<REv> EffectBuilder<REv> {
             QueueKind::FromStorage,
         )
         .await
+    }
+
+    /// Gets the requested block and its finality signatures.
+    pub(crate) async fn get_block_at_height_with_metadata_from_storage(
+        self,
+        block_height: u64,
+        only_from_available_block_range: bool,
+    ) -> Option<BlockWithMetadata>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockAndMetadataByHeight {
+                block_height,
+                only_from_available_block_range,
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
+    pub(crate) async fn collect_past_blocks_with_metadata(
+        self,
+        range: std::ops::Range<u64>,
+        only_from_available_block_range: bool,
+    ) -> Vec<Option<BlockWithMetadata>>
+    where
+        REv: From<StorageRequest>,
+    {
+        futures::future::join_all(range.into_iter().map(|block_height| {
+            self.get_block_at_height_with_metadata_from_storage(
+                block_height,
+                only_from_available_block_range,
+            )
+        }))
+        .await
+        .into_iter()
+        .collect()
     }
 
     /// Gets the requested finality signature from storage.
@@ -1730,8 +1791,7 @@ impl<REv> EffectBuilder<REv> {
     /// Enqueues a finalized block execution.
     pub(crate) async fn enqueue_block_for_execution(
         self,
-        finalized_block: FinalizedBlock,
-        deploys: Vec<Deploy>,
+        executable_block: ExecutableBlock,
         meta_block_state: MetaBlockState,
     ) where
         REv: From<StorageRequest> + From<ContractRuntimeRequest>,
@@ -1752,8 +1812,7 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 ContractRuntimeRequest::EnqueueBlockForExecution {
-                    finalized_block,
-                    deploys,
+                    executable_block,
                     key_block_height_for_activation_point,
                     meta_block_state,
                 },
@@ -1767,6 +1826,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn validate_block(
         self,
         sender: NodeId,
+        proposed_block_height: u64,
         block: ProposedBlock<ClContext>,
     ) -> bool
     where
@@ -1774,6 +1834,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| BlockValidationRequest {
+                proposed_block_height,
                 block,
                 sender,
                 responder,
@@ -1921,7 +1982,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Retrieves a `Package` from under the given key in global state if present.
-    pub(crate) async fn get_package(self, state_root_hash: Digest, key: Key) -> Option<Package>
+    pub(crate) async fn get_package(self, state_root_hash: Digest, key: Key) -> Option<Box<Package>>
     where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1961,6 +2022,50 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ContractRuntimeRequest::GetEraValidators { request, responder },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
+    /// Returns the total supply from the given `root_hash`.
+    ///
+    /// This operation is read only.
+    #[allow(unused)] //TODO remove in the next ticket implementation.
+    pub(crate) async fn get_total_supply(
+        self,
+        state_hash: Digest,
+    ) -> Result<U512, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        let total_supply_request = TotalSupplyRequest::new(state_hash);
+        self.make_request(
+            move |responder| ContractRuntimeRequest::GetTotalSupply {
+                total_supply_request,
+                responder,
+            },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
+    /// Returns the seigniorage rate from the given `root_hash`.
+    ///
+    /// This operation is read only.
+    #[allow(unused)] //TODO remove in the next ticket implementation.
+    pub(crate) async fn get_round_seigniorage_rate(
+        self,
+        state_hash: Digest,
+    ) -> Result<Ratio<U512>, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        let round_seigniorage_rate_request = RoundSeigniorageRateRequest::new(state_hash);
+        self.make_request(
+            move |responder| ContractRuntimeRequest::GetRoundSeigniorageRate {
+                round_seigniorage_rate_request,
+                responder,
+            },
             QueueKind::ContractRuntime,
         )
         .await
@@ -2056,6 +2161,19 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    /// Activates/deactivates a failpoint from a given activation.
+    pub(crate) async fn activate_failpoint(self, activation: FailpointActivation)
+    where
+        REv: From<ControlAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                ControlAnnouncement::ActivateFailpoint { activation },
+                QueueKind::Control,
+            )
+            .await;
+    }
+
     /// Announce that the node be shut down due to a request from a user.
     pub(crate) async fn announce_user_shutdown_request(self)
     where
@@ -2138,20 +2256,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Requests execution of a single deploy, without commiting its effects.
-    /// Inteded to be used for debugging & discovery purposes.
-    pub(crate) async fn speculative_execute_deploy(
+    /// Requests execution of a single transaction, without committing its effects.  Intended to be
+    /// used for debugging & discovery purposes.
+    pub(crate) async fn speculatively_execute(
         self,
         execution_prestate: SpeculativeExecutionState,
-        deploy: Arc<Deploy>,
-    ) -> Result<Option<ExecutionResultV2>, engine_state::Error>
+        transaction: Box<Transaction>,
+    ) -> Result<Option<(ExecutionResultV2, Messages)>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::SpeculativeDeployExecution {
+            |responder| ContractRuntimeRequest::SpeculativelyExecute {
                 execution_prestate,
-                deploy,
+                transaction,
                 responder,
             },
             QueueKind::ContractRuntime,

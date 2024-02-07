@@ -23,6 +23,7 @@ use crate::global_state::{
 use casper_types::{
     addressable_entity::NamedKeys,
     bytesrepr::{self},
+    contract_messages::{Message, Messages},
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
     handle_stored_dictionary_value, CLType, CLValue, CLValueError, Digest, Key, KeyTag,
     StoredValue, StoredValueTypeMismatch, Tagged, U512,
@@ -228,6 +229,7 @@ pub struct TrackingCopy<R> {
     cache: TrackingCopyCache<HeapSize>,
     effects: Effects,
     max_query_depth: u64,
+    messages: Messages,
 }
 
 /// Result of executing an "add" operation on a value in the state.
@@ -270,6 +272,7 @@ where
             cache: TrackingCopyCache::new(1024 * 16, HeapSize),
             effects: Effects::new(),
             max_query_depth,
+            messages: Vec::new(),
         }
     }
 
@@ -364,6 +367,24 @@ where
         self.effects.push(transform);
     }
 
+    /// Caches the emitted message and writes the message topic summary under the specified key.
+    ///
+    /// This function does not check the types for the key and the value so the caller should
+    /// correctly set the type. The `message_topic_key` should be of the `Key::MessageTopic`
+    /// variant and the `message_topic_summary` should be of the `StoredValue::Message` variant.
+    pub fn emit_message(
+        &mut self,
+        message_topic_key: Key,
+        message_topic_summary: StoredValue,
+        message_key: Key,
+        message_value: StoredValue,
+        message: Message,
+    ) {
+        self.write(message_key, message_value);
+        self.write(message_topic_key, message_topic_summary);
+        self.messages.push(message);
+    }
+
     /// Prunes a `key`.
     pub fn prune(&mut self, key: Key) {
         let normalized_key = key.normalize();
@@ -450,6 +471,11 @@ where
             Err(TransformError::Serialization(error)) => Ok(AddResult::Serialization(error)),
             Err(transform_error) => Ok(AddResult::Transform(transform_error)),
         }
+    }
+
+    /// Returns a copy of the messages cached by this instance.
+    pub fn messages(&self) -> Messages {
+        self.messages.clone()
     }
 
     /// Calling `query()` avoids calling into `self.cache`, so this will not return any values
@@ -552,11 +578,17 @@ where
                         return Ok(query.into_not_found_result(&msg_prefix));
                     }
                 }
+                StoredValue::ContractWasm(_) => {
+                    return Ok(query.into_not_found_result("ContractWasm value found."));
+                }
                 StoredValue::ContractPackage(_) => {
                     return Ok(query.into_not_found_result("ContractPackage value found."));
                 }
-                StoredValue::ContractWasm(_) => {
-                    return Ok(query.into_not_found_result("ContractWasm value found."));
+                StoredValue::Package(_) => {
+                    return Ok(query.into_not_found_result("Package value found."));
+                }
+                StoredValue::ByteCode(_) => {
+                    return Ok(query.into_not_found_result("ByteCode value found."));
                 }
                 StoredValue::Transfer(_) => {
                     return Ok(query.into_not_found_result("Transfer value found."));
@@ -578,6 +610,12 @@ where
                 }
                 StoredValue::Unbonding(_) => {
                     return Ok(query.into_not_found_result("UnbondingPurses value found."));
+                }
+                StoredValue::MessageTopic(_) => {
+                    return Ok(query.into_not_found_result("MessageTopic value found."));
+                }
+                StoredValue::Message(_) => {
+                    return Ok(query.into_not_found_result("Message value found."));
                 }
             }
         }

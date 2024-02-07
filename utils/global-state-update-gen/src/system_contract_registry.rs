@@ -7,7 +7,7 @@ use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_types::{
     bytesrepr::FromBytes,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
-    CLValue, ContractHash, Key, StoredValue, SystemContractRegistry, KEY_HASH_LENGTH,
+    AddressableEntityHash, CLValue, Key, StoredValue, SystemContractRegistry, KEY_HASH_LENGTH,
 };
 
 use crate::utils::{hash_from_str, print_entry};
@@ -61,32 +61,34 @@ fn generate_system_contract_registry_using_protocol_data(data_dir: &Path) {
         .len()
         .saturating_sub(4 * KEY_HASH_LENGTH);
     let remainder = &serialized_protocol_data[start_index..];
-    let (mint_hash, remainder) = ContractHash::from_bytes(remainder).unwrap_or_else(|error| {
-        panic!(
-            "failed to parse mint hash: {:?}\nraw_bytes: {:?}",
-            error, serialized_protocol_data
-        )
-    });
-    let (handle_payment_hash, remainder) =
-        ContractHash::from_bytes(remainder).unwrap_or_else(|error| {
+    let (mint_hash, remainder) =
+        AddressableEntityHash::from_bytes(remainder).unwrap_or_else(|error| {
+            panic!(
+                "failed to parse mint hash: {:?}\nraw_bytes: {:?}",
+                error, serialized_protocol_data
+            )
+        });
+    let (handle_payment_hash, remainder) = AddressableEntityHash::from_bytes(remainder)
+        .unwrap_or_else(|error| {
             panic!(
                 "failed to parse handle_payment hash: {:?}\nraw_bytes: {:?}",
                 error, serialized_protocol_data
             )
         });
-    let (standard_payment_hash, remainder) =
-        ContractHash::from_bytes(remainder).unwrap_or_else(|error| {
+    let (standard_payment_hash, remainder) = AddressableEntityHash::from_bytes(remainder)
+        .unwrap_or_else(|error| {
             panic!(
                 "failed to parse standard_payment hash: {:?}\nraw_bytes: {:?}",
                 error, serialized_protocol_data
             )
         });
-    let (auction_hash, remainder) = ContractHash::from_bytes(remainder).unwrap_or_else(|error| {
-        panic!(
-            "failed to parse auction hash: {:?}\nraw_bytes: {:?}",
-            error, serialized_protocol_data
-        )
-    });
+    let (auction_hash, remainder) =
+        AddressableEntityHash::from_bytes(remainder).unwrap_or_else(|error| {
+            panic!(
+                "failed to parse auction hash: {:?}\nraw_bytes: {:?}",
+                error, serialized_protocol_data
+            )
+        });
     assert!(remainder.is_empty());
 
     let mut registry = SystemContractRegistry::new();
@@ -107,13 +109,11 @@ fn generate_system_contract_registry_using_global_state(data_dir: &Path, state_h
 
     let mint_hash = builder.get_system_mint_hash();
     let handle_payment_hash = builder.get_system_handle_payment_hash();
-    let standard_payment_hash = builder.get_system_standard_payment_hash();
     let auction_hash = builder.get_system_auction_hash();
 
     let mut registry = SystemContractRegistry::new();
     registry.insert(MINT.to_string(), mint_hash);
     registry.insert(HANDLE_PAYMENT.to_string(), handle_payment_hash);
-    registry.insert(STANDARD_PAYMENT.to_string(), standard_payment_hash);
     registry.insert(AUCTION.to_string(), auction_hash);
 
     print_entry(

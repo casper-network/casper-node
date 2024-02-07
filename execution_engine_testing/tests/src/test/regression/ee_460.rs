@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{execution::TransformKind, runtime_args, U512};
+use casper_types::{execution::TransformKind, package::PackageKindTag, runtime_args, Key, U512};
 
 const CONTRACT_EE_460_REGRESSION: &str = "ee_460_regression.wasm";
 
@@ -28,13 +28,14 @@ fn should_run_ee_460_no_side_effects_on_error_regression() {
     // mint uref, which should mean no new purses are created in case of
     // transfer error. This is considered sufficient cause to confirm that the
     // mint uref is left untouched.
-    let mint_contract_uref = builder.get_mint_contract_hash();
+    let mint_entity_key =
+        Key::addressable_entity_key(PackageKindTag::System, builder.get_mint_contract_hash());
 
     let effects = &builder.get_effects()[0];
     let mint_transforms = effects
         .transforms()
         .iter()
-        .find(|transform| transform.key() == &mint_contract_uref.into())
+        .find(|transform| transform.key() == &mint_entity_key)
         // Skips the Identity writes introduced since payment code execution for brevity of the
         // check
         .filter(|transform| transform.kind() != &TransformKind::Identity);

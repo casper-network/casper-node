@@ -35,6 +35,7 @@ pub(super) enum KeepUpInstruction {
     Fatal(String),
 }
 
+#[derive(Debug, Clone, Copy)]
 enum SyncBackInstruction {
     Sync {
         sync_hash: BlockHash,
@@ -43,6 +44,7 @@ enum SyncBackInstruction {
     Syncing,
     TtlSynced,
     GenesisSynced,
+    NoSync,
 }
 
 impl Display for SyncBackInstruction {
@@ -54,6 +56,7 @@ impl Display for SyncBackInstruction {
             SyncBackInstruction::Syncing => write!(f, "syncing"),
             SyncBackInstruction::TtlSynced => write!(f, "ttl reached"),
             SyncBackInstruction::GenesisSynced => write!(f, "genesis reached"),
+            SyncBackInstruction::NoSync => write!(f, "configured to not sync"),
         }
     }
 }
@@ -125,6 +128,11 @@ impl MainReactor {
             if genesis_timestamp > Timestamp::now() {
                 return None;
             }
+        }
+
+        if self.sync_handling.is_no_sync() {
+            // node is not permitted to be a validator with no_sync behavior.
+            return None;
         }
 
         if self.block_synchronizer.forward_progress().is_active() {
@@ -275,12 +283,14 @@ impl MainReactor {
         debug!(?sync_back_progress, "KeepUp: historical sync back progress");
         self.update_last_progress(&sync_back_progress, true);
         match self.sync_back_instruction(&sync_back_progress) {
-            Ok(Some(sync_back_instruction)) => match sync_back_instruction {
-                SyncBackInstruction::TtlSynced | SyncBackInstruction::GenesisSynced => {
+            Ok(Some(sbi @ sync_back_instruction)) => match sync_back_instruction {
+                SyncBackInstruction::NoSync
+                | SyncBackInstruction::GenesisSynced
+                | SyncBackInstruction::TtlSynced => {
                     // we don't need to sync any historical blocks currently, so we clear both the
                     // historical synchronizer and the sync back leap activity since they will not
                     // be required anymore
-                    debug!("KeepUp: synced to TTL or Genesis");
+                    debug!("KeepUp: {}", sbi);
                     self.block_synchronizer.purge_historical();
                     self.sync_leaper.purge();
                     None
@@ -629,11 +639,17 @@ impl MainReactor {
         &self,
         highest_orphaned_block_header: &BlockHeader,
     ) -> Result<Option<SyncBackInstruction>, String> {
+        // if we're configured to not sync, don't sync.
+        if self.sync_handling.is_no_sync() {
+            return Ok(Some(SyncBackInstruction::NoSync));
+        }
+
+        // if we've reached genesis, there's nothing left to sync.
         if highest_orphaned_block_header.is_genesis() {
             return Ok(Some(SyncBackInstruction::GenesisSynced));
         }
 
-        if self.sync_to_genesis {
+        if self.sync_handling.is_sync_to_genesis() {
             return Ok(None);
         }
 
@@ -686,7 +702,7 @@ impl MainReactor {
                         ?highest_orphaned_block_header,
                         "KeepUp: historical sync in genesis era attempting correction for unmatrixed genesis validators"
                     );
-                    return Ok((switch.header().block_hash(), switch.header().era_id()));
+                    return Ok((*switch.hash(), switch.era_id()));
                 }
                 Ok(None) => return Err(
                     "In genesis era with no genesis validators and missing next era switch block"
@@ -828,19 +844,19 @@ mod tests {
             .era(100)
             .height(1000)
             .switch_block(true)
-            .build(rng);
+            .build_versioned(rng);
 
         let latest_orphaned_block = TestBlockBuilder::new()
             .era(0)
             .height(0)
             .switch_block(true)
-            .build(rng);
+            .build_versioned(rng);
 
         assert_eq!(latest_orphaned_block.height(), 0);
         assert_eq!(
             synced_to_ttl(
-                latest_switch_block.header(),
-                latest_orphaned_block.header(),
+                &latest_switch_block.clone_header(),
+                &latest_orphaned_block.clone_header(),
                 MAX_TTL
             ),
             Ok(true)

@@ -150,6 +150,14 @@ impl CLType {
     pub fn is_option(&self) -> bool {
         matches!(self, Self::Option(..))
     }
+
+    /// Creates a `CLType::Map`.
+    pub fn map(key: CLType, value: CLType) -> Self {
+        CLType::Map {
+            key: Box::new(key),
+            value: Box::new(value),
+        }
+    }
 }
 
 /// Returns the `CLType` describing a "named key" on the system, i.e. a `(String, Key)`.

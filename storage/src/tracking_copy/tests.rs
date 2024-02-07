@@ -4,10 +4,12 @@ use assert_matches::assert_matches;
 
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
-    addressable_entity::{ActionThresholds, AssociatedKeys, ContractHash, NamedKeys, Weight},
+    addressable_entity::{
+        ActionThresholds, AddressableEntityHash, AssociatedKeys, MessageTopics, NamedKeys, Weight,
+    },
     execution::{Effects, Transform, TransformKind},
     handle_stored_dictionary_value,
-    package::ContractPackageHash,
+    package::{PackageHash, PackageKindTag},
     AccessRights, AddressableEntity, CLValue, CLValueDictionary, ContractWasmHash, Digest,
     EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion, StoredValue, URef, U256, U512,
     UREF_ADDR_LENGTH,
@@ -205,6 +207,7 @@ fn tracking_copy_add_named_key() {
         URef::new([0u8; 32], AccessRights::READ_ADD_WRITE),
         associated_keys,
         Default::default(),
+        MessageTopics::default(),
     );
 
     let db = CountingDb::new_init(StoredValue::AddressableEntity(contract));
@@ -672,6 +675,7 @@ fn query_for_circular_references_should_fail() {
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
+        MessageTopics::default(),
     ));
 
     let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
@@ -710,9 +714,10 @@ fn validate_query_proof_should_work() {
     // create account
     let account_hash = AccountHash::new([3; 32]);
     let fake_purse = URef::new([4; 32], AccessRights::READ_ADD_WRITE);
-    let account_contract_hash = ContractHash::new([30; 32]);
-    let account_contract_key: Key = account_contract_hash.into();
-    let cl_value = CLValue::from_t(account_contract_key).unwrap();
+    let account_entity_hash = AddressableEntityHash::new([30; 32]);
+    let account_entity_key: Key =
+        Key::addressable_entity_key(PackageKindTag::Account, account_entity_hash);
+    let cl_value = CLValue::from_t(account_entity_key).unwrap();
     let account_value = StoredValue::CLValue(cl_value);
     let account_key = Key::Account(account_hash);
     let contract_wasm_hash = *DEFAULT_CONTRACT_WASM_HASH;
@@ -726,6 +731,7 @@ fn validate_query_proof_should_work() {
         fake_purse,
         AssociatedKeys::new(account_hash, Weight::new(1)),
         ActionThresholds::default(),
+        MessageTopics::default(),
     ));
 
     // create contract that refers to that account
@@ -745,6 +751,7 @@ fn validate_query_proof_should_work() {
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
+        MessageTopics::default(),
     ));
     let contract_key = Key::Hash([5; 32]);
 
@@ -758,8 +765,9 @@ fn validate_query_proof_should_work() {
         tmp
     };
 
-    let main_contract_hash = ContractHash::new([81; 32]);
-    let main_contract_key: Key = main_contract_hash.into();
+    let main_entity_hash = AddressableEntityHash::new([81; 32]);
+    let main_entity_key: Key =
+        Key::addressable_entity_key(PackageKindTag::Account, main_entity_hash);
 
     let cl_value_2 = CLValue::from_t(main_contract_key).unwrap();
     let contract_wasm_hash = *DEFAULT_CONTRACT_WASM_HASH;
@@ -772,6 +780,7 @@ fn validate_query_proof_should_work() {
         fake_purse,
         AssociatedKeys::new(account_hash, Weight::new(1)),
         ActionThresholds::default(),
+        MessageTopics::default(),
     ));
 
     let main_account_value = StoredValue::CLValue(cl_value_2);
@@ -785,9 +794,9 @@ fn validate_query_proof_should_work() {
     // persist them
     let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
         (contract_key, contract_value.to_owned()),
-        (account_contract_key, account_contract.to_owned()),
+        (account_entity_key, account_contract.to_owned()),
         (account_key, account_value.to_owned()),
-        (main_contract_key, main_contract.to_owned()),
+        (main_entity_key, main_entity.to_owned()),
         (main_account_key, main_account_value.to_owned()),
         (uref_key, uref_value),
     ]);
@@ -815,7 +824,7 @@ fn validate_query_proof_should_work() {
     validate_query_proof(
         &root_hash,
         &proofs,
-        &main_contract_key,
+        &main_entity_key,
         path,
         &account_value,
     )
@@ -824,7 +833,7 @@ fn validate_query_proof_should_work() {
     //TODO! Is this assumption still valid given account indirection.
     // Path should be the same length as the proofs less one (so it should be of length 2)
     assert_eq!(
-        validate_query_proof(&root_hash, &proofs, &main_contract_key, &[], &account_value),
+        validate_query_proof(&root_hash, &proofs, &main_entity_key, &[], &account_value),
         Err(ValidationError::PathLengthDifferentThanProofLessOne)
     );
 
@@ -833,7 +842,7 @@ fn validate_query_proof_should_work() {
         validate_query_proof(
             &root_hash,
             &proofs,
-            &main_contract_key,
+            &main_entity_key,
             path,
             &main_account_value
         ),
@@ -851,7 +860,7 @@ fn validate_query_proof_should_work() {
         validate_query_proof(
             &Digest::hash([]),
             &proofs,
-            &main_contract_key,
+            &main_entity_key,
             path,
             &account_value
         ),
@@ -863,7 +872,7 @@ fn validate_query_proof_should_work() {
         validate_query_proof(
             &root_hash,
             &proofs,
-            &main_contract_key,
+            &main_entity_key,
             &[
                 "a non-existent path key 1".to_string(),
                 "a non-existent path key 2".to_string()
@@ -881,8 +890,6 @@ fn validate_query_proof_should_work() {
         panic!("query was not successful: {:?}", misfit_result)
     };
 
-    println!("Validating the injected proof");
-
     // Proof has been subject to an injection
     assert_eq!(
         validate_query_proof(
@@ -892,7 +899,7 @@ fn validate_query_proof_should_work() {
                 misfit_proof.to_owned(),
                 proofs[2].to_owned()
             ],
-            &main_contract_key,
+            &main_entity_key,
             path,
             &account_contract
         ),
@@ -931,7 +938,7 @@ fn validate_query_proof_should_work() {
         state::lmdb::make_temporary_global_state([
             (account_key, account_value.to_owned()),
             (contract_key, contract_value),
-            (main_contract_key, main_contract),
+            (main_entity_key, main_entity),
             (main_account_key, main_account_value),
         ]);
 
@@ -957,7 +964,7 @@ fn validate_query_proof_should_work() {
         validate_query_proof(
             &root_hash,
             &[proofs[0].to_owned(), misfit_proof, proofs[2].to_owned()],
-            &main_contract_key,
+            &main_entity_key,
             path,
             &account_value
         ),
@@ -983,14 +990,14 @@ fn get_keys_should_return_keys_in_the_account_keyspace() {
     // account 1
     let account_1_hash = AccountHash::new([1; 32]);
 
-    let account_cl_value = CLValue::from_t(ContractHash::new([20; 32])).unwrap();
+    let account_cl_value = CLValue::from_t(AddressableEntityHash::new([20; 32])).unwrap();
     let account_1_value = StoredValue::CLValue(account_cl_value);
     let account_1_key = Key::Account(account_1_hash);
 
     // account 2
     let account_2_hash = AccountHash::new([2; 32]);
 
-    let fake_account_cl_value = CLValue::from_t(ContractHash::new([21; 32])).unwrap();
+    let fake_account_cl_value = CLValue::from_t(AddressableEntityHash::new([21; 32])).unwrap();
     let account_2_value = StoredValue::CLValue(fake_account_cl_value);
     let account_2_key = Key::Account(account_2_hash);
 
@@ -1026,7 +1033,7 @@ fn get_keys_should_return_keys_in_the_uref_keyspace() {
     // account
     let account_hash = AccountHash::new([1; 32]);
 
-    let account_cl_value = CLValue::from_t(ContractHash::new([20; 32])).unwrap();
+    let account_cl_value = CLValue::from_t(AddressableEntityHash::new([20; 32])).unwrap();
     let account_value = StoredValue::CLValue(account_cl_value);
     let account_key = Key::Account(account_hash);
 
@@ -1118,7 +1125,7 @@ fn get_keys_should_handle_reads_from_empty_trie() {
     // persist account
     let account_hash = AccountHash::new([1; 32]);
 
-    let account_value = CLValue::from_t(ContractHash::new([10; 32])).unwrap();
+    let account_value = CLValue::from_t(AddressableEntityHash::new([10; 32])).unwrap();
     let account_value = StoredValue::CLValue(account_value);
     let account_key = Key::Account(account_hash);
     tracking_copy.write(account_key, account_value);
@@ -1179,6 +1186,7 @@ fn query_with_large_depth_with_fixed_path_should_fail() {
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
+            MessageTopics::default(),
         ));
         pairs.push((contract_key, contract));
         contract_keys.push(contract_key);
@@ -1239,6 +1247,7 @@ fn query_with_large_depth_with_urefs_should_fail() {
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
+        MessageTopics::default(),
     ));
     let contract_key = Key::Hash([0; 32]);
     pairs.push((contract_key, contract));

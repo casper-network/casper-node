@@ -25,7 +25,7 @@ pub extern "C" fn call() {
         )],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
 
     let n: u32 = runtime::get_named_arg("n");
@@ -37,7 +37,10 @@ pub extern "C" fn call() {
 
     let (contract_hash, _contract_version) =
         storage::new_locked_contract(entry_points, Some(named_keys), None, None);
-    runtime::put_key("ordered-transforms-contract-hash", contract_hash.into());
+    runtime::put_key(
+        "ordered-transforms-contract-hash",
+        Key::contract_entity_key(contract_hash),
+    );
 }
 
 #[no_mangle]

@@ -6,12 +6,13 @@ use core::mem::MaybeUninit;
 use casper_types::{
     account::AccountHash,
     api_error, bytesrepr,
+    package::PackageKindTag,
     system::{
         auction::{self, EraInfo},
-        SystemContractType,
+        SystemEntityType,
     },
-    ApiError, ContractHash, EraId, HashAddr, PublicKey, TransferResult, TransferredTo, URef, U512,
-    UREF_SERIALIZED_LENGTH,
+    AddressableEntityHash, ApiError, EraId, HashAddr, Key, PublicKey, TransferResult,
+    TransferredTo, URef, U512, UREF_SERIALIZED_LENGTH,
 };
 
 use crate::{
@@ -20,11 +21,11 @@ use crate::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 
-fn get_system_contract(system_contract: SystemContractType) -> ContractHash {
+fn get_system_contract(system_contract: SystemEntityType) -> AddressableEntityHash {
     let system_contract_index = system_contract.into();
-    let contract_hash: ContractHash = {
+    let contract_hash: AddressableEntityHash = {
         let result = {
-            let mut hash_data_raw: HashAddr = ContractHash::default().value();
+            let mut hash_data_raw: HashAddr = AddressableEntityHash::default().value();
             let value = unsafe {
                 ext_ffi::casper_get_system_contract(
                     system_contract_index,
@@ -46,29 +47,57 @@ fn get_system_contract(system_contract: SystemContractType) -> ContractHash {
 /// Returns a read-only pointer to the Mint contract.
 ///
 /// Any failure will trigger [`revert`](runtime::revert) with an appropriate [`ApiError`].
-pub fn get_mint() -> ContractHash {
-    get_system_contract(SystemContractType::Mint)
+pub fn get_mint() -> AddressableEntityHash {
+    get_system_contract(SystemEntityType::Mint)
+}
+
+/// Returns a read-only pointer to the Mint contract as a Key.
+///
+/// Any failure will trigger [`revert`](runtime::revert) with an appropriate [`ApiError`].
+pub fn get_mint_key() -> Key {
+    Key::addressable_entity_key(PackageKindTag::System, get_mint())
 }
 
 /// Returns a read-only pointer to the Handle Payment contract.
 ///
 /// Any failure will trigger [`revert`](runtime::revert) with an appropriate [`ApiError`].
-pub fn get_handle_payment() -> ContractHash {
-    get_system_contract(SystemContractType::HandlePayment)
+pub fn get_handle_payment() -> AddressableEntityHash {
+    get_system_contract(SystemEntityType::HandlePayment)
+}
+
+/// Returns a read-only pointer to the Handle Payment contract as a Key.
+///
+/// Any failure will trigger [`revert`](runtime::revert) with an appropriate [`ApiError`].
+pub fn get_handle_payment_key() -> Key {
+    Key::addressable_entity_key(PackageKindTag::System, get_handle_payment())
 }
 
 /// Returns a read-only pointer to the Standard Payment contract.
 ///
 /// Any failure will trigger [`revert`](runtime::revert) with an appropriate [`ApiError`].
-pub fn get_standard_payment() -> ContractHash {
-    get_system_contract(SystemContractType::StandardPayment)
+pub fn get_standard_payment() -> AddressableEntityHash {
+    get_system_contract(SystemEntityType::StandardPayment)
+}
+
+/// Returns a read-only pointer to the Standard Payment contract as a Key.
+///
+/// Any failure will trigger [`revert`](runtime::revert) with an appropriate [`ApiError`].
+pub fn get_standard_payment_key() -> Key {
+    Key::addressable_entity_key(PackageKindTag::System, get_standard_payment())
 }
 
 /// Returns a read-only pointer to the Auction contract.
 ///
 /// Any failure will trigger [`revert`](runtime::revert) with appropriate [`ApiError`].
-pub fn get_auction() -> ContractHash {
-    get_system_contract(SystemContractType::Auction)
+pub fn get_auction() -> AddressableEntityHash {
+    get_system_contract(SystemEntityType::Auction)
+}
+
+/// Returns a read-only pointer to the Auction contract as a Key.
+///
+/// Any failure will trigger [`revert`](runtime::revert) with an appropriate [`ApiError`].
+pub fn get_auction_key() -> Key {
+    Key::addressable_entity_key(PackageKindTag::System, get_auction())
 }
 
 /// Creates a new empty purse and returns its [`URef`].

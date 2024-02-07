@@ -1,7 +1,7 @@
 use prometheus::Registry;
 use rand::Rng;
 
-use casper_types::{testing::TestRng, EraId, TestBlockBuilder, TimeDiff};
+use casper_types::{testing::TestRng, EraId, TestBlockBuilder, TimeDiff, Transaction};
 
 use super::*;
 use crate::{
@@ -83,27 +83,39 @@ fn assert_container_sizes(
     expected_dead: usize,
     expected_held: usize,
 ) {
-    assert_eq!(deploy_buffer.buffer.len(), expected_buffer);
-    assert_eq!(deploy_buffer.dead.len(), expected_dead);
+    assert_eq!(
+        deploy_buffer.buffer.len(),
+        expected_buffer,
+        "wrong `buffer` length"
+    );
+    assert_eq!(
+        deploy_buffer.dead.len(),
+        expected_dead,
+        "wrong `dead` length"
+    );
     assert_eq!(
         deploy_buffer
             .hold
             .values()
             .map(|deploys| deploys.len())
             .sum::<usize>(),
-        expected_held
+        expected_held,
+        "wrong `hold` length"
     );
     assert_eq!(
         deploy_buffer.metrics.total_deploys.get(),
-        expected_buffer as i64
+        expected_buffer as i64,
+        "wrong `metrics.total_deploys`"
     );
     assert_eq!(
         deploy_buffer.metrics.held_deploys.get(),
-        expected_held as i64
+        expected_held as i64,
+        "wrong `metrics.held_deploys`"
     );
     assert_eq!(
         deploy_buffer.metrics.dead_deploys.get(),
-        expected_dead as i64
+        expected_dead as i64,
+        "wrong `metrics.dead_deploys`"
     );
 }
 
@@ -159,6 +171,10 @@ fn register_block_with_valid_deploys() {
     .unwrap();
 
     let deploys = create_valid_deploys(&mut rng, 10, DeployType::Random, None, None);
+    let txns: Vec<_> = deploys
+        .iter()
+        .map(|deploy| Transaction::from(deploy.clone()))
+        .collect();
     let era_id = EraId::new(rng.gen_range(0..6));
     let height = era_id.value() * 10 + rng.gen_range(0..10);
     let is_switch = rng.gen_bool(0.1);
@@ -166,7 +182,7 @@ fn register_block_with_valid_deploys() {
         .era(era_id)
         .height(height)
         .switch_block(is_switch)
-        .deploys(deploys.iter())
+        .transactions(&txns)
         .build(&mut rng);
 
     deploy_buffer.register_block(&block);
@@ -184,7 +200,11 @@ fn register_finalized_block_with_valid_deploys() {
     .unwrap();
 
     let deploys = create_valid_deploys(&mut rng, 10, DeployType::Random, None, None);
-    let block = FinalizedBlock::random(&mut rng, deploys.iter());
+    let txns: Vec<_> = deploys
+        .iter()
+        .map(|deploy| Transaction::from(deploy.clone()))
+        .collect();
+    let block = FinalizedBlock::random(&mut rng, &txns);
 
     deploy_buffer.register_block_finalized(&block);
     assert_container_sizes(&deploy_buffer, deploys.len(), deploys.len(), 0);
@@ -209,7 +229,11 @@ fn get_proposable_deploys() {
 
     // Create a block with some deploys and register it with the deploy_buffer
     let block_deploys = create_valid_deploys(&mut rng, 10, DeployType::Random, None, None);
-    let block = FinalizedBlock::random(&mut rng, block_deploys.iter());
+    let txns: Vec<_> = block_deploys
+        .iter()
+        .map(|deploy| Transaction::from(deploy.clone()))
+        .collect();
+    let block = FinalizedBlock::random(&mut rng, &txns);
     deploy_buffer.register_block_finalized(&block);
     assert_container_sizes(
         &deploy_buffer,
@@ -255,8 +279,10 @@ fn get_proposable_deploys() {
 fn get_appendable_block_with_native_transfers() {
     let mut rng = TestRng::new();
     let transaction_config = TransactionConfig {
-        block_max_deploy_count: 10,
-        block_max_native_count: 200,
+        block_max_transfer_count: 200,
+        block_max_staking_count: 0,
+        block_max_install_upgrade_count: 0,
+        block_max_standard_count: 10,
         block_max_approval_count: 210,
         ..Default::default()
     };
@@ -266,7 +292,7 @@ fn get_appendable_block_with_native_transfers() {
         &mut rng,
         &mut deploy_buffer,
         DeployType::Transfer,
-        transaction_config.block_max_native_count as usize,
+        transaction_config.block_max_transfer_count as usize,
     );
 }
 
@@ -274,8 +300,10 @@ fn get_appendable_block_with_native_transfers() {
 fn get_appendable_block_with_standard_deploys() {
     let mut rng = TestRng::new();
     let transaction_config = TransactionConfig {
-        block_max_deploy_count: 10,
-        block_max_native_count: 200,
+        block_max_transfer_count: 200,
+        block_max_staking_count: 0,
+        block_max_install_upgrade_count: 0,
+        block_max_standard_count: 10,
         block_max_approval_count: 210,
         ..Default::default()
     };
@@ -285,7 +313,7 @@ fn get_appendable_block_with_standard_deploys() {
         &mut rng,
         &mut deploy_buffer,
         DeployType::Standard,
-        transaction_config.block_max_deploy_count as usize,
+        transaction_config.block_max_standard_count as usize,
     );
 }
 
@@ -293,8 +321,10 @@ fn get_appendable_block_with_standard_deploys() {
 fn get_appendable_block_with_random_deploys() {
     let mut rng = TestRng::new();
     let transaction_config = TransactionConfig {
-        block_max_deploy_count: 10,
-        block_max_native_count: 200,
+        block_max_transfer_count: 200,
+        block_max_staking_count: 0,
+        block_max_install_upgrade_count: 0,
+        block_max_standard_count: 10,
         block_max_approval_count: 210,
         ..Default::default()
     };
@@ -304,7 +334,8 @@ fn get_appendable_block_with_random_deploys() {
         &mut rng,
         &mut deploy_buffer,
         DeployType::Random,
-        transaction_config.block_max_native_count as usize,
+        (transaction_config.block_max_transfer_count + transaction_config.block_max_standard_count)
+            as usize,
     );
 }
 
@@ -354,6 +385,10 @@ fn register_deploys_and_blocks() {
 
     // register a block with deploys
     let block_deploys = create_valid_deploys(&mut rng, 5, DeployType::Random, None, None);
+    let txns: Vec<_> = block_deploys
+        .iter()
+        .map(|deploy| Transaction::from(deploy.clone()))
+        .collect();
     let era = rng.gen_range(0..6);
     let height = era * 10 + rng.gen_range(0..10);
     let is_switch = rng.gen_bool(0.1);
@@ -362,7 +397,7 @@ fn register_deploys_and_blocks() {
         .era(era)
         .height(height)
         .switch_block(is_switch)
-        .deploys(block_deploys.iter())
+        .transactions(&txns)
         .build(&mut rng);
 
     deploy_buffer.register_block(&block);
@@ -417,24 +452,29 @@ fn register_deploys_and_blocks() {
 
     // test if deploys held for proposed blocks which did not get finalized in time
     // are eligible again
+    let count = rng.gen_range(0..11);
+    let txns: Vec<_> = std::iter::repeat_with(|| Transaction::Deploy(Deploy::random(&mut rng)))
+        .take(count)
+        .collect();
     let block = FinalizedBlock::random_with_specifics(
         &mut rng,
         EraId::from(2),
         25,
         false,
         pre_proposal_timestamp,
-        None,
+        &txns,
     );
     deploy_buffer.register_block_finalized(&block);
     assert_container_sizes(
         &deploy_buffer,
-        block_deploys.len() + valid_deploys.len() + block.deploy_and_transfer_hashes().count(),
-        block_deploys.len() + block.deploy_and_transfer_hashes().count(),
+        block_deploys.len() + valid_deploys.len() + block.all_transactions().count(),
+        block_deploys.len() + block.all_transactions().count(),
         0,
     );
 }
 
 /// Event for the mock reactor.
+#[derive(Debug)]
 enum ReactorEvent {
     DeployBufferAnnouncement(DeployBufferAnnouncement),
     Event(Event),
@@ -459,7 +499,7 @@ struct MockReactor {
 impl MockReactor {
     fn new() -> Self {
         MockReactor {
-            scheduler: utils::leak(Scheduler::new(QueueKind::weights())),
+            scheduler: utils::leak(Scheduler::new(QueueKind::weights(), None)),
         }
     }
 
@@ -515,10 +555,14 @@ async fn expire_deploys_and_check_announcement() {
 
     // include the last expired deploy in a block and register it
     let era = rng.gen_range(0..6);
+    let expired_txns: Vec<_> = expired_deploys
+        .iter()
+        .map(|deploy| Transaction::from(deploy.clone()))
+        .collect();
     let block = TestBlockBuilder::new()
         .era(era)
         .height(era * 10 + rng.gen_range(0..10))
-        .deploys(expired_deploys.last())
+        .transactions(expired_txns.last())
         .build(&mut rng);
 
     deploy_buffer.register_block(&block);

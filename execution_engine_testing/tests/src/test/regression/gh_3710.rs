@@ -167,15 +167,19 @@ where
     }
 }
 
-fn distribute_rewards<S>(builder: &mut WasmTestBuilder<S>, block_height: u64, proposer: &PublicKey)
-where
+fn distribute_rewards<S>(
+    builder: &mut WasmTestBuilder<S>,
+    block_height: u64,
+    proposer: &PublicKey,
+    amount: U512,
+) where
     S: StateProvider + CommitProvider,
 {
     builder
         .distribute(
             None,
             ProtocolVersion::V1_0_0,
-            proposer.clone(),
+            &IntoIterator::into_iter([(proposer.clone(), amount)]).collect(),
             block_height,
             0,
         )
@@ -189,7 +193,7 @@ fn gh_3710_should_produce_era_summary_in_a_step() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     add_validator_and_wait_for_rotation(&mut builder, &DEFAULT_ACCOUNT_PUBLIC_KEY);
-    distribute_rewards(&mut builder, 1, &DEFAULT_ACCOUNT_PUBLIC_KEY);
+    distribute_rewards(&mut builder, 1, &DEFAULT_ACCOUNT_PUBLIC_KEY, 0.into());
 
     let era_info_keys = builder.get_keys(KeyTag::EraInfo).unwrap();
     assert_eq!(era_info_keys, Vec::new());
@@ -202,7 +206,7 @@ fn gh_3710_should_produce_era_summary_in_a_step() {
 
     // Reward another validator to observe that the summary changes.
     add_validator_and_wait_for_rotation(&mut builder, &DEFAULT_PROPOSER_PUBLIC_KEY);
-    distribute_rewards(&mut builder, 2, &DEFAULT_PROPOSER_PUBLIC_KEY);
+    distribute_rewards(&mut builder, 2, &DEFAULT_PROPOSER_PUBLIC_KEY, 1.into());
 
     let era_summary_2 = builder
         .query(None, Key::EraSummary, &[])
@@ -228,8 +232,12 @@ fn gh_3710_should_produce_era_summary_in_a_step() {
 mod fixture {
     use std::collections::BTreeMap;
 
-    use casper_engine_test_support::{DEFAULT_ACCOUNT_PUBLIC_KEY, PRODUCTION_RUN_GENESIS_REQUEST};
+    use casper_engine_test_support::{
+        ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
+        PRODUCTION_RUN_GENESIS_REQUEST,
+    };
     use casper_types::{
+        runtime_args,
         system::auction::{EraInfo, SeigniorageAllocation},
         EraId, Key, KeyTag, StoredValue, U512,
     };
@@ -239,8 +247,35 @@ mod fixture {
 
     #[ignore = "RUN_FIXTURE_GENERATORS env var should be enabled"]
     #[test]
+    fn generate_call_stack_fixture() {
+        const CALL_STACK_FIXTURE: &str = "call_stack_fixture";
+        const CONTRACT_RECURSIVE_SUBCALL: &str = "get_call_stack_recursive_subcall.wasm";
+
+        if !lmdb_fixture::is_fixture_generator_enabled() {
+            println!("Enable the RUN_FIXTURE_GENERATORS variable");
+            return;
+        }
+
+        let genesis_request = PRODUCTION_RUN_GENESIS_REQUEST.clone();
+
+        lmdb_fixture::generate_fixture(CALL_STACK_FIXTURE, genesis_request, |builder| {
+            let execute_request = ExecuteRequestBuilder::standard(
+                *DEFAULT_ACCOUNT_ADDR,
+                CONTRACT_RECURSIVE_SUBCALL,
+                runtime_args! {},
+            )
+            .build();
+
+            builder.exec(execute_request).expect_success().commit();
+        })
+        .unwrap();
+    }
+
+    #[ignore = "RUN_FIXTURE_GENERATORS env var should be enabled"]
+    #[test]
     fn generate_era_info_bloat_fixture() {
         if !lmdb_fixture::is_fixture_generator_enabled() {
+            println!("Enable the RUN_FIXTURE_GENERATORS variable");
             return;
         }
         // To generate this fixture again you have to re-run this code release-1.4.13.
@@ -249,7 +284,7 @@ mod fixture {
             super::add_validator_and_wait_for_rotation(builder, &DEFAULT_ACCOUNT_PUBLIC_KEY);
 
             // N more eras that pays out rewards
-            super::distribute_rewards(builder, 0, &DEFAULT_ACCOUNT_PUBLIC_KEY);
+            super::distribute_rewards(builder, 0, &DEFAULT_ACCOUNT_PUBLIC_KEY, 0.into());
 
             let last_era_info = EraId::new(builder.get_auction_delay() + FIXTURE_N_ERAS as u64);
             let last_era_info_key = Key::EraInfo(last_era_info);

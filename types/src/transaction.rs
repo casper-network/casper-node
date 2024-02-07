@@ -1,9 +1,21 @@
-#[cfg(any(feature = "std", test))]
-mod account_and_secret_key;
+mod addressable_entity_identifier;
 mod deploy;
+mod initiator_addr;
+#[cfg(any(feature = "std", test))]
+mod initiator_addr_and_secret_key;
+mod package_identifier;
+mod pricing_mode;
+mod runtime_args;
 mod transaction_approvals_hash;
+mod transaction_entry_point;
 mod transaction_hash;
+mod transaction_header;
 mod transaction_id;
+mod transaction_invocation_target;
+mod transaction_runtime;
+mod transaction_scheduling;
+mod transaction_session_kind;
+mod transaction_target;
 mod transaction_v1;
 
 use alloc::{collections::BTreeSet, vec::Vec};
@@ -12,42 +24,83 @@ use core::fmt::{self, Debug, Display, Formatter};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
+use once_cell::sync::Lazy;
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use rand::Rng;
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use crate::testing::TestRng;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, PublicKey, Timestamp,
+    Digest, Timestamp,
 };
-#[cfg(any(feature = "std", test))]
-use account_and_secret_key::AccountAndSecretKey;
+#[cfg(feature = "json-schema")]
+use crate::{account::ACCOUNT_HASH_LENGTH, SecretKey, TimeDiff, URef};
+pub use addressable_entity_identifier::AddressableEntityIdentifier;
 pub use deploy::{
-    runtime_args, ContractIdentifier, ContractPackageIdentifier, Deploy, DeployApproval,
-    DeployApprovalsHash, DeployConfigurationFailure, DeployDecodeFromJsonError, DeployError,
-    DeployExcessiveSizeError, DeployFootprint, DeployHash, DeployHeader, DeployId,
+    Deploy, DeployApproval, DeployApprovalsHash, DeployConfigFailure, DeployDecodeFromJsonError,
+    DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash, DeployHeader, DeployId,
     ExecutableDeployItem, ExecutableDeployItemIdentifier, TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use deploy::{DeployBuilder, DeployBuilderError};
+pub use initiator_addr::InitiatorAddr;
+#[cfg(any(feature = "std", test))]
+use initiator_addr_and_secret_key::InitiatorAddrAndSecretKey;
+pub use package_identifier::PackageIdentifier;
+pub use pricing_mode::PricingMode;
+pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use transaction_approvals_hash::TransactionApprovalsHash;
+pub use transaction_entry_point::TransactionEntryPoint;
 pub use transaction_hash::TransactionHash;
+pub use transaction_header::TransactionHeader;
 pub use transaction_id::TransactionId;
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-pub use transaction_v1::TestTransactionV1Builder;
+pub use transaction_invocation_target::TransactionInvocationTarget;
+pub use transaction_runtime::TransactionRuntime;
+pub use transaction_scheduling::TransactionScheduling;
+pub use transaction_session_kind::TransactionSessionKind;
+pub use transaction_target::TransactionTarget;
 pub use transaction_v1::{
-    AuctionTransactionV1, DirectCallV1, NativeTransactionV1, PricingModeV1, TransactionV1,
-    TransactionV1Approval, TransactionV1ApprovalsHash, TransactionV1ConfigFailure,
-    TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
-    TransactionV1Hash, TransactionV1Header, TransactionV1Kind, UserlandTransactionV1,
+    TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash, TransactionV1Body,
+    TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError, TransactionV1Error,
+    TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1::{TransactionV1Builder, TransactionV1BuilderError};
 
 const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;
+
+#[cfg(feature = "json-schema")]
+pub(super) static TRANSACTION: Lazy<Transaction> = Lazy::new(|| {
+    let secret_key = SecretKey::example();
+    let source = URef::from_formatted_str(
+        "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007",
+    )
+    .unwrap();
+    let target = URef::from_formatted_str(
+        "uref-1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b-000",
+    )
+    .unwrap();
+    let to = Some(AccountHash::new([40; ACCOUNT_HASH_LENGTH]));
+    let id = Some(999);
+
+    let v1_txn = TransactionV1Builder::new_transfer(source, target, 30_000_000_000_u64, to, id)
+        .unwrap()
+        .with_chain_name("casper-example")
+        .with_timestamp(*Timestamp::example())
+        .with_ttl(TimeDiff::from_seconds(3_600))
+        .with_secret_key(secret_key)
+        .build()
+        .unwrap();
+    Transaction::V1(v1_txn)
+});
 
 /// A versioned wrapper for a transaction or deploy.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
@@ -62,6 +115,7 @@ pub enum Transaction {
     /// A deploy.
     Deploy(Deploy),
     /// A version 1 transaction.
+    #[cfg_attr(any(feature = "std", test), serde(rename = "Version1"))]
     V1(TransactionV1),
 }
 
@@ -72,6 +126,17 @@ impl Transaction {
             Transaction::Deploy(deploy) => TransactionHash::from(*deploy.hash()),
             Transaction::V1(txn) => TransactionHash::from(*txn.hash()),
         }
+    }
+
+    /// Returns the computed approvals hash identifying this transaction's approvals.
+    pub fn compute_approvals_hash(&self) -> Result<TransactionApprovalsHash, bytesrepr::Error> {
+        let approvals_hash = match self {
+            Transaction::Deploy(deploy) => {
+                TransactionApprovalsHash::Deploy(deploy.compute_approvals_hash()?)
+            }
+            Transaction::V1(txn) => TransactionApprovalsHash::V1(txn.compute_approvals_hash()?),
+        };
+        Ok(approvals_hash)
     }
 
     /// Returns the computed `TransactionId` uniquely identifying this transaction and its
@@ -97,11 +162,11 @@ impl Transaction {
         }
     }
 
-    /// Returns the public key of the account providing the context in which to run the transaction.
-    pub fn account(&self) -> &PublicKey {
+    /// Returns the address of the initiator of the transaction.
+    pub fn initiator_addr(&self) -> InitiatorAddr {
         match self {
-            Transaction::Deploy(deploy) => deploy.account(),
-            Transaction::V1(txn) => txn.account(),
+            Transaction::Deploy(deploy) => InitiatorAddr::PublicKey(deploy.account().clone()),
+            Transaction::V1(txn) => txn.initiator_addr().clone(),
         }
     }
 
@@ -134,6 +199,23 @@ impl Transaction {
                 .iter()
                 .map(|approval| approval.signer().to_account_hash())
                 .collect(),
+        }
+    }
+
+    // This method is not intended to be used by third party crates.
+    #[doc(hidden)]
+    #[cfg(feature = "json-schema")]
+    pub fn example() -> &'static Self {
+        &TRANSACTION
+    }
+
+    /// Returns a random, valid but possibly expired transaction.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        if rng.gen() {
+            Transaction::Deploy(Deploy::random_valid_native_transfer(rng))
+        } else {
+            Transaction::V1(TransactionV1::random(rng))
         }
     }
 }

@@ -21,6 +21,7 @@ pub enum TransactionApprovalsHash {
     /// A deploy approvals hash.
     Deploy(DeployApprovalsHash),
     /// A version 1 transaction approvals hash.
+    #[serde(rename = "Version1")]
     V1(TransactionV1ApprovalsHash),
 }
 

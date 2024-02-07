@@ -8,9 +8,12 @@ use casper_execution_engine::engine_state::{
     Error as EngineStateError, GetEraValidatorsError, StepError,
 };
 use casper_storage::global_state::error::Error as GlobalStateError;
-use casper_types::{bytesrepr, CLValueError, EraReport, PublicKey, U512};
+use casper_types::{bytesrepr, CLValueError, PublicKey, U512};
 
-use crate::{components::contract_runtime::ExecutionPreState, types::FinalizedBlock};
+use crate::{
+    components::contract_runtime::ExecutionPreState,
+    types::{ExecutableBlock, InternalEraReport},
+};
 
 /// An error returned from mis-configuring the contract runtime component.
 #[derive(Debug, Error)]
@@ -34,12 +37,12 @@ pub enum BlockExecutionError {
     /// block. These must agree and this error will be thrown if they do not.
     #[error(
         "block's height does not agree with execution pre-state. \
-         block: {finalized_block:?}, \
+         block: {executable_block:?}, \
          execution pre-state: {execution_pre_state:?}"
     )]
     WrongBlockHeight {
         /// The finalized block the system attempted to execute.
-        finalized_block: Box<FinalizedBlock>,
+        executable_block: Box<ExecutableBlock>,
         /// The state of the block chain prior to block execution that was to be used.
         execution_pre_state: Box<ExecutionPreState>,
     },
@@ -76,7 +79,7 @@ pub enum BlockExecutionError {
     )]
     FailedToCreateEraEnd {
         /// An optional `EraReport` we tried to use to construct an `EraEnd`.
-        maybe_era_report: Option<Box<EraReport<PublicKey>>>,
+        maybe_era_report: Option<InternalEraReport>,
         /// An optional map of the next era validator weights used to construct an `EraEnd`.
         maybe_next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
     },

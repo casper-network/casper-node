@@ -8,9 +8,10 @@ use casper_types::{
     addressable_entity::NamedKeys,
     api_error,
     bytesrepr::{self, FromBytes},
-    package::ContractVersion,
+    contract_messages::{MessagePayload, MessageTopicOperation},
+    package::EntityVersion,
     system::CallStackElement,
-    ApiError, BlockTime, CLTyped, CLValue, ContractHash, ContractPackageHash, Key, Phase,
+    AddressableEntityHash, ApiError, BlockTime, CLTyped, CLValue, Key, PackageHash, Phase,
     RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH, BLOCKTIME_SERIALIZED_LENGTH, PHASE_SERIALIZED_LENGTH,
 };
 
@@ -47,7 +48,7 @@ pub fn revert<T: Into<ApiError>>(error: T) -> ! {
 /// stored contract calls [`revert`], then execution stops and `call_contract` doesn't return.
 /// Otherwise `call_contract` returns `()`.
 pub fn call_contract<T: CLTyped + FromBytes>(
-    contract_hash: ContractHash,
+    contract_hash: AddressableEntityHash,
     entry_point_name: &str,
     runtime_args: RuntimeArgs,
 ) -> T {
@@ -83,8 +84,8 @@ pub fn call_contract<T: CLTyped + FromBytes>(
 /// `call_versioned_contract`.  If the stored contract calls [`revert`], then execution stops and
 /// `call_versioned_contract` doesn't return. Otherwise `call_versioned_contract` returns `()`.
 pub fn call_versioned_contract<T: CLTyped + FromBytes>(
-    contract_package_hash: ContractPackageHash,
-    contract_version: Option<ContractVersion>,
+    contract_package_hash: PackageHash,
+    contract_version: Option<EntityVersion>,
     entry_point_name: &str,
     runtime_args: RuntimeArgs,
 ) -> T {
@@ -402,6 +403,47 @@ pub fn get_call_stack() -> Vec<CallStackElement> {
     }
     let bytes = read_host_buffer(result_size).unwrap_or_revert();
     bytesrepr::deserialize(bytes).unwrap_or_revert()
+}
+
+/// Manages a message topic.
+pub fn manage_message_topic(
+    topic_name: &str,
+    operation: MessageTopicOperation,
+) -> Result<(), ApiError> {
+    if topic_name.is_empty() {
+        return Err(ApiError::InvalidArgument);
+    }
+
+    let (operation_ptr, operation_size, _bytes) = contract_api::to_ptr(operation);
+    let result = unsafe {
+        ext_ffi::casper_manage_message_topic(
+            topic_name.as_ptr(),
+            topic_name.len(),
+            operation_ptr,
+            operation_size,
+        )
+    };
+    api_error::result_from(result)
+}
+
+/// Emits a message on a topic.
+pub fn emit_message(topic_name: &str, message: &MessagePayload) -> Result<(), ApiError> {
+    if topic_name.is_empty() {
+        return Err(ApiError::InvalidArgument);
+    }
+
+    let (message_ptr, message_size, _bytes) = contract_api::to_ptr(message);
+
+    let result = unsafe {
+        ext_ffi::casper_emit_message(
+            topic_name.as_ptr(),
+            topic_name.len(),
+            message_ptr,
+            message_size,
+        )
+    };
+
+    api_error::result_from(result)
 }
 
 #[cfg(feature = "test-support")]

@@ -1,31 +1,23 @@
-mod auction_transaction_v1;
-mod direct_call_v1;
 mod errors_v1;
-mod native_transaction_v1;
-mod pricing_mode_v1;
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-mod test_transaction_v1_builder;
 mod transaction_v1_approval;
 mod transaction_v1_approvals_hash;
+mod transaction_v1_body;
 #[cfg(any(feature = "std", test))]
 mod transaction_v1_builder;
 mod transaction_v1_hash;
 mod transaction_v1_header;
-mod transaction_v1_kind;
-mod userland_transaction_v1;
 
-use alloc::{collections::BTreeSet, string::ToString, vec::Vec};
+#[cfg(any(feature = "std", test))]
+use alloc::string::ToString;
+use alloc::{collections::BTreeSet, vec::Vec};
 use core::{
     cmp,
     fmt::{self, Debug, Display, Formatter},
     hash,
-    marker::PhantomData,
 };
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(feature = "json-schema")]
-use once_cell::sync::Lazy;
 #[cfg(any(feature = "once_cell", test))]
 use once_cell::sync::OnceCell;
 #[cfg(feature = "json-schema")]
@@ -35,63 +27,29 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 #[cfg(any(feature = "std", test))]
-use super::AccountAndSecretKey;
-#[cfg(feature = "json-schema")]
-use crate::account::{AccountHash, ACCOUNT_HASH_LENGTH};
+use super::InitiatorAddrAndSecretKey;
+use super::{
+    InitiatorAddr, PricingMode, TransactionEntryPoint, TransactionScheduling, TransactionTarget,
+};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
-#[cfg(feature = "json-schema")]
-use crate::URef;
+#[cfg(any(feature = "std", test))]
+use crate::TransactionConfig;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, CLTyped, CLValueError, Digest, DisplayIter, PublicKey, RuntimeArgs, SecretKey,
-    TimeDiff, Timestamp,
+    crypto, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp,
 };
-#[cfg(any(feature = "std", test))]
-use crate::{CLValue, TransactionConfig};
-pub use auction_transaction_v1::AuctionTransactionV1;
-pub use direct_call_v1::DirectCallV1;
 pub use errors_v1::{
     DecodeFromJsonErrorV1 as TransactionV1DecodeFromJsonError, ErrorV1 as TransactionV1Error,
     ExcessiveSizeErrorV1 as TransactionV1ExcessiveSizeError, TransactionV1ConfigFailure,
 };
-pub use native_transaction_v1::NativeTransactionV1;
-pub use pricing_mode_v1::PricingModeV1;
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-pub use test_transaction_v1_builder::TestTransactionV1Builder;
 pub use transaction_v1_approval::TransactionV1Approval;
 pub use transaction_v1_approvals_hash::TransactionV1ApprovalsHash;
+pub use transaction_v1_body::TransactionV1Body;
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1_builder::{TransactionV1Builder, TransactionV1BuilderError};
 pub use transaction_v1_hash::TransactionV1Hash;
 pub use transaction_v1_header::TransactionV1Header;
-pub use transaction_v1_kind::TransactionV1Kind;
-pub use userland_transaction_v1::UserlandTransactionV1;
-
-#[cfg(feature = "json-schema")]
-static TRANSACTION: Lazy<TransactionV1> = Lazy::new(|| {
-    let secret_key = SecretKey::example();
-    let source = URef::from_formatted_str(
-        "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007",
-    )
-    .unwrap();
-    let target = URef::from_formatted_str(
-        "uref-1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b-000",
-    )
-    .unwrap();
-    let to = Some(AccountHash::new([40; ACCOUNT_HASH_LENGTH]));
-    let id = Some(999);
-
-    TransactionV1::build(
-        *Timestamp::example(),
-        TimeDiff::from_seconds(3_600),
-        PricingModeV1::GasPriceMultiplier(1),
-        String::from("casper-example"),
-        None,
-        TransactionV1Kind::new_transfer(source, target, 30_000_000_000_u64, to, id).unwrap(),
-        AccountAndSecretKey::SecretKey(secret_key),
-    )
-});
 
 /// A unit of work sent by a client to the network, which when executed can cause global state to
 /// be altered.
@@ -115,8 +73,7 @@ static TRANSACTION: Lazy<TransactionV1> = Lazy::new(|| {
 pub struct TransactionV1 {
     hash: TransactionV1Hash,
     header: TransactionV1Header,
-    payment: Option<u64>,
-    body: TransactionV1Kind,
+    body: TransactionV1Body,
     approvals: BTreeSet<TransactionV1Approval>,
     #[cfg_attr(any(all(feature = "std", feature = "once_cell"), test), serde(skip))]
     #[cfg_attr(
@@ -130,39 +87,41 @@ pub struct TransactionV1 {
 impl TransactionV1 {
     /// Called by the `TransactionBuilder` to construct a new `TransactionV1`.
     #[cfg(any(feature = "std", test))]
-    fn build(
+    pub(super) fn build(
+        chain_name: String,
         timestamp: Timestamp,
         ttl: TimeDiff,
-        pricing_mode: PricingModeV1,
-        chain_name: String,
-        payment: Option<u64>,
-        body: TransactionV1Kind,
-        account_and_secret_key: AccountAndSecretKey,
+        body: TransactionV1Body,
+        pricing_mode: PricingMode,
+        payment_amount: Option<u64>,
+        initiator_addr_and_secret_key: InitiatorAddrAndSecretKey,
     ) -> TransactionV1 {
-        let account = account_and_secret_key.account();
+        let initiator_addr = initiator_addr_and_secret_key.initiator_addr();
         let body_hash = Digest::hash(
             body.to_bytes()
                 .unwrap_or_else(|error| panic!("should serialize body: {}", error)),
         );
-        let header =
-            TransactionV1Header::new(account, timestamp, ttl, pricing_mode, body_hash, chain_name);
+        let header = TransactionV1Header::new(
+            chain_name,
+            timestamp,
+            ttl,
+            body_hash,
+            pricing_mode,
+            payment_amount,
+            initiator_addr,
+        );
 
-        let hash = TransactionV1Hash::new(Digest::hash(
-            header
-                .to_bytes()
-                .unwrap_or_else(|error| panic!("should serialize header: {}", error)),
-        ));
+        let hash = header.compute_hash();
         let mut transaction = TransactionV1 {
             hash,
             header,
-            payment,
             body,
             approvals: BTreeSet::new(),
             #[cfg(any(feature = "once_cell", test))]
             is_verified: OnceCell::new(),
         };
 
-        if let Some(secret_key) = account_and_secret_key.secret_key() {
+        if let Some(secret_key) = initiator_addr_and_secret_key.secret_key() {
             transaction.sign(secret_key);
         }
         transaction
@@ -173,9 +132,9 @@ impl TransactionV1 {
         &self.hash
     }
 
-    /// Returns the public key of the account providing the context in which to run the transaction.
-    pub fn account(&self) -> &PublicKey {
-        self.header.account()
+    /// Returns the name of the chain the transaction should be executed on.
+    pub fn chain_name(&self) -> &str {
+        self.header.chain_name()
     }
 
     /// Returns the creation timestamp of the transaction.
@@ -196,13 +155,18 @@ impl TransactionV1 {
     }
 
     /// Returns the pricing mode for the transaction.
-    pub fn pricing_mode(&self) -> &PricingModeV1 {
+    pub fn pricing_mode(&self) -> &PricingMode {
         self.header.pricing_mode()
     }
 
-    /// Returns the name of the chain the transaction should be executed on.
-    pub fn chain_name(&self) -> &str {
-        self.header.chain_name()
+    /// Returns the payment amount for the transaction.
+    pub fn payment_amount(&self) -> Option<u64> {
+        self.header.payment_amount()
+    }
+
+    /// Returns the address of the initiator of the transaction.
+    pub fn initiator_addr(&self) -> &InitiatorAddr {
+        self.header.initiator_addr()
     }
 
     /// Returns a reference to the header of this transaction.
@@ -215,13 +179,28 @@ impl TransactionV1 {
         self.header
     }
 
-    /// Returns the payment of this transaction.
-    pub fn payment(&self) -> Option<u64> {
-        self.payment
+    /// Returns the runtime args of the transaction.
+    pub fn args(&self) -> &RuntimeArgs {
+        self.body.args()
     }
 
-    /// Returns the `TransactionKind` of this transaction.
-    pub fn body(&self) -> &TransactionV1Kind {
+    /// Returns the target of the transaction.
+    pub fn target(&self) -> &TransactionTarget {
+        self.body.target()
+    }
+
+    /// Returns the entry point of the transaction.
+    pub fn entry_point(&self) -> &TransactionEntryPoint {
+        self.body.entry_point()
+    }
+
+    /// Returns the scheduling kind of the transaction.
+    pub fn scheduling(&self) -> &TransactionScheduling {
+        self.body.scheduling()
+    }
+
+    /// Returns the body of this transaction.
+    pub fn body(&self) -> &TransactionV1Body {
         &self.body
     }
 
@@ -325,6 +304,7 @@ impl TransactionV1 {
         chain_name: &str,
         config: &TransactionConfig,
         max_associated_keys: u32,
+        timestamp_leeway: TimeDiff,
         at: Timestamp,
     ) -> Result<(), TransactionV1ConfigFailure> {
         self.is_valid_size(config.max_transaction_size)?;
@@ -343,7 +323,7 @@ impl TransactionV1 {
             });
         }
 
-        header.is_valid(config, at, &self.hash)?;
+        header.is_valid(config, timestamp_leeway, at, &self.hash)?;
 
         if self.approvals.len() > max_associated_keys as usize {
             debug!(
@@ -358,7 +338,7 @@ impl TransactionV1 {
             });
         }
 
-        if let Some(payment) = self.payment {
+        if let Some(payment) = self.payment_amount() {
             if payment > config.block_gas_limit {
                 debug!(
                     amount = %payment,
@@ -372,26 +352,7 @@ impl TransactionV1 {
             }
         }
 
-        let args_length = self.body.args().serialized_length();
-        if args_length > config.transaction_v1_config.max_args_length as usize {
-            debug!(
-                args_length,
-                max_args_length = config.transaction_v1_config.max_args_length,
-                "transaction runtime args excessive size"
-            );
-            return Err(TransactionV1ConfigFailure::ExcessiveArgsLength {
-                max_length: config.transaction_v1_config.max_args_length as usize,
-                got: args_length,
-            });
-        }
-
-        self.body.has_valid_args(config)?;
-
-        if self.body.module_bytes_is_present_but_empty() {
-            return Err(TransactionV1ConfigFailure::EmptyModuleBytes);
-        }
-
-        Ok(())
+        self.body.is_valid(config)
     }
 
     // This method is not intended to be used by third party crates.
@@ -406,18 +367,11 @@ impl TransactionV1 {
 
     /// Returns a random, valid but possibly expired transaction.
     ///
-    /// Note that the [`TestTransactionV1Builder`] can be used to create a random transaction with
+    /// Note that the [`TransactionV1Builder`] can be used to create a random transaction with
     /// more specific values.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        TestTransactionV1Builder::new(rng).build()
-    }
-
-    // This method is not intended to be used by third party crates.
-    #[doc(hidden)]
-    #[cfg(feature = "json-schema")]
-    pub fn example() -> &'static Self {
-        &TRANSACTION
+        TransactionV1Builder::new_random(rng).build().unwrap()
     }
 
     /// Turns `self` into an invalid transaction by clearing the `chain_name`, invalidating the
@@ -440,7 +394,6 @@ impl hash::Hash for TransactionV1 {
         let TransactionV1 {
             hash,
             header,
-            payment,
             body,
             approvals,
             #[cfg(any(feature = "once_cell", test))]
@@ -448,7 +401,6 @@ impl hash::Hash for TransactionV1 {
         } = self;
         hash.hash(state);
         header.hash(state);
-        payment.hash(state);
         body.hash(state);
         approvals.hash(state);
     }
@@ -460,7 +412,6 @@ impl PartialEq for TransactionV1 {
         let TransactionV1 {
             hash,
             header,
-            payment,
             body,
             approvals,
             #[cfg(any(feature = "once_cell", test))]
@@ -468,7 +419,6 @@ impl PartialEq for TransactionV1 {
         } = self;
         *hash == other.hash
             && *header == other.header
-            && *payment == other.payment
             && *body == other.body
             && *approvals == other.approvals
     }
@@ -480,7 +430,6 @@ impl Ord for TransactionV1 {
         let TransactionV1 {
             hash,
             header,
-            payment,
             body,
             approvals,
             #[cfg(any(feature = "once_cell", test))]
@@ -488,7 +437,6 @@ impl Ord for TransactionV1 {
         } = self;
         hash.cmp(&other.hash)
             .then_with(|| header.cmp(&other.header))
-            .then_with(|| payment.cmp(&other.payment))
             .then_with(|| body.cmp(&other.body))
             .then_with(|| approvals.cmp(&other.approvals))
     }
@@ -504,7 +452,6 @@ impl ToBytes for TransactionV1 {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.hash.write_bytes(writer)?;
         self.header.write_bytes(writer)?;
-        self.payment.write_bytes(writer)?;
         self.body.write_bytes(writer)?;
         self.approvals.write_bytes(writer)
     }
@@ -518,7 +465,6 @@ impl ToBytes for TransactionV1 {
     fn serialized_length(&self) -> usize {
         self.hash.serialized_length()
             + self.header.serialized_length()
-            + self.payment.serialized_length()
             + self.body.serialized_length()
             + self.approvals.serialized_length()
     }
@@ -528,13 +474,11 @@ impl FromBytes for TransactionV1 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (hash, remainder) = TransactionV1Hash::from_bytes(bytes)?;
         let (header, remainder) = TransactionV1Header::from_bytes(remainder)?;
-        let (payment, remainder) = Option::<u64>::from_bytes(remainder)?;
-        let (body, remainder) = TransactionV1Kind::from_bytes(remainder)?;
+        let (body, remainder) = TransactionV1Body::from_bytes(remainder)?;
         let (approvals, remainder) = BTreeSet::<TransactionV1Approval>::from_bytes(remainder)?;
         let transaction = TransactionV1 {
             hash,
             header,
-            payment,
             body,
             approvals,
             #[cfg(any(feature = "once_cell", test))]
@@ -548,106 +492,12 @@ impl Display for TransactionV1 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "transaction-v1[{}, {}, payment: {}, body: {}, approvals: {}]",
-            self.hash,
+            "transaction-v1[{}, {}, approvals: {}]",
             self.header,
-            if let Some(payment) = self.payment {
-                payment.to_string()
-            } else {
-                "none".to_string()
-            },
             self.body,
             DisplayIter::new(self.approvals.iter())
         )
     }
-}
-
-struct RequiredArg<T> {
-    name: &'static str,
-    _phantom: PhantomData<T>,
-}
-
-impl<T> RequiredArg<T> {
-    const fn new(name: &'static str) -> Self {
-        Self {
-            name,
-            _phantom: PhantomData,
-        }
-    }
-
-    #[cfg(any(feature = "std", test))]
-    fn get(&self, args: &RuntimeArgs) -> Result<T, TransactionV1ConfigFailure>
-    where
-        T: CLTyped + FromBytes,
-    {
-        let cl_value = args.get(self.name).ok_or_else(|| {
-            debug!("missing required runtime argument '{}'", self.name);
-            TransactionV1ConfigFailure::MissingArg {
-                arg_name: self.name.to_string(),
-            }
-        })?;
-        parse_cl_value(cl_value, self.name)
-    }
-
-    fn insert(&self, args: &mut RuntimeArgs, value: T) -> Result<(), CLValueError>
-    where
-        T: CLTyped + ToBytes,
-    {
-        args.insert(self.name, value)
-    }
-}
-
-struct OptionalArg<T> {
-    name: &'static str,
-    _phantom: PhantomData<T>,
-}
-
-impl<T> OptionalArg<T> {
-    const fn new(name: &'static str) -> Self {
-        Self {
-            name,
-            _phantom: PhantomData,
-        }
-    }
-
-    #[cfg(any(feature = "std", test))]
-    fn get(&self, args: &RuntimeArgs) -> Result<Option<T>, TransactionV1ConfigFailure>
-    where
-        T: CLTyped + FromBytes,
-    {
-        let cl_value = match args.get(self.name) {
-            Some(value) => value,
-            None => return Ok(None),
-        };
-        let value = parse_cl_value(cl_value, self.name)?;
-        Ok(value)
-    }
-
-    fn insert(&self, args: &mut RuntimeArgs, value: T) -> Result<(), CLValueError>
-    where
-        T: CLTyped + ToBytes,
-    {
-        args.insert(self.name, Some(value))
-    }
-}
-
-#[cfg(any(feature = "std", test))]
-fn parse_cl_value<T: CLTyped + FromBytes>(
-    cl_value: &CLValue,
-    arg_name: &str,
-) -> Result<T, TransactionV1ConfigFailure> {
-    cl_value.to_t::<T>().map_err(|_| {
-        debug!(
-            "expected runtime argument '{arg_name}' to be of type {}, but is {}",
-            T::cl_type(),
-            cl_value.cl_type()
-        );
-        TransactionV1ConfigFailure::UnexpectedArgType {
-            arg_name: arg_name.to_string(),
-            expected: T::cl_type(),
-            got: cl_value.cl_type().clone(),
-        }
-    })
 }
 
 #[cfg(test)]
@@ -755,9 +605,10 @@ mod tests {
     #[test]
     fn not_valid_due_to_empty_approvals() {
         let rng = &mut TestRng::new();
-        let transaction = TestTransactionV1Builder::new(rng)
-            .with_secret_key(None)
-            .build();
+        let transaction = TransactionV1Builder::new_random(rng)
+            .with_no_secret_key()
+            .build()
+            .unwrap();
         assert!(transaction.approvals.is_empty());
         check_is_not_valid(transaction, TransactionV1ConfigFailure::EmptyApprovals)
     }
@@ -765,18 +616,22 @@ mod tests {
     #[test]
     fn not_valid_due_to_invalid_approval() {
         let rng = &mut TestRng::new();
-        let transaction = TestTransactionV1Builder::new(rng)
+        let transaction = TransactionV1Builder::new_random(rng)
             .with_invalid_approval(rng)
-            .build();
+            .build()
+            .unwrap();
 
         // The expected index for the invalid approval will be the first index at which there is an
         // approval where the signer is not the account holder.
-        let account_holder = transaction.account();
+        let account_holder = match transaction.initiator_addr() {
+            InitiatorAddr::PublicKey(public_key) => public_key.clone(),
+            InitiatorAddr::AccountHash(_) | InitiatorAddr::EntityAddr(_) => unreachable!(),
+        };
         let expected_index = transaction
             .approvals
             .iter()
             .enumerate()
-            .find(|(_, approval)| approval.signer() != account_holder)
+            .find(|(_, approval)| approval.signer() != &account_holder)
             .map(|(index, _)| index)
             .unwrap();
         check_is_not_valid(
@@ -792,9 +647,10 @@ mod tests {
     fn is_config_compliant() {
         let rng = &mut TestRng::new();
         let chain_name = "net-1";
-        let transaction = TestTransactionV1Builder::new(rng)
+        let transaction = TransactionV1Builder::new_random(rng)
             .with_chain_name(chain_name)
-            .build();
+            .build()
+            .unwrap();
 
         let transaction_config = TransactionConfig::default();
         let current_timestamp = transaction.timestamp();
@@ -803,6 +659,7 @@ mod tests {
                 chain_name,
                 &transaction_config,
                 MAX_ASSOCIATED_KEYS,
+                TimeDiff::default(),
                 current_timestamp,
             )
             .expect("should be acceptable");
@@ -815,9 +672,10 @@ mod tests {
         let wrong_chain_name = "net-2";
         let transaction_config = TransactionConfig::default();
 
-        let transaction = TestTransactionV1Builder::new(rng)
+        let transaction = TransactionV1Builder::new_random(rng)
             .with_chain_name(wrong_chain_name)
-            .build();
+            .build()
+            .unwrap();
 
         let expected_error = TransactionV1ConfigFailure::InvalidChainName {
             expected: expected_chain_name.to_string(),
@@ -830,6 +688,7 @@ mod tests {
                 expected_chain_name,
                 &transaction_config,
                 MAX_ASSOCIATED_KEYS,
+                TimeDiff::default(),
                 current_timestamp
             ),
             Err(expected_error)
@@ -846,10 +705,11 @@ mod tests {
         let chain_name = "net-1";
         let transaction_config = TransactionConfig::default();
         let ttl = transaction_config.max_ttl + TimeDiff::from(Duration::from_secs(1));
-        let transaction = TestTransactionV1Builder::new(rng)
+        let transaction = TransactionV1Builder::new_random(rng)
             .with_ttl(ttl)
             .with_chain_name(chain_name)
-            .build();
+            .build()
+            .unwrap();
 
         let expected_error = TransactionV1ConfigFailure::ExcessiveTimeToLive {
             max_ttl: transaction_config.max_ttl,
@@ -862,6 +722,7 @@ mod tests {
                 chain_name,
                 &transaction_config,
                 MAX_ASSOCIATED_KEYS,
+                TimeDiff::default(),
                 current_timestamp
             ),
             Err(expected_error)
@@ -877,14 +738,17 @@ mod tests {
         let rng = &mut TestRng::new();
         let chain_name = "net-1";
         let transaction_config = TransactionConfig::default();
-        let transaction = TestTransactionV1Builder::new(rng)
-            .with_chain_name(chain_name)
-            .build();
+        let leeway = TimeDiff::from_seconds(2);
 
-        let current_timestamp = transaction.timestamp() - TimeDiff::from_seconds(1);
+        let transaction = TransactionV1Builder::new_random(rng)
+            .with_chain_name(chain_name)
+            .build()
+            .unwrap();
+        let current_timestamp = transaction.timestamp() - leeway - TimeDiff::from_seconds(1);
 
         let expected_error = TransactionV1ConfigFailure::TimestampInFuture {
             validation_timestamp: current_timestamp,
+            timestamp_leeway: leeway,
             got: transaction.timestamp(),
         };
 
@@ -893,6 +757,7 @@ mod tests {
                 chain_name,
                 &transaction_config,
                 MAX_ASSOCIATED_KEYS,
+                leeway,
                 current_timestamp
             ),
             Err(expected_error)
@@ -908,9 +773,10 @@ mod tests {
         let rng = &mut TestRng::new();
         let chain_name = "net-1";
         let transaction_config = TransactionConfig::default();
-        let mut transaction = TestTransactionV1Builder::new(rng)
+        let mut transaction = TransactionV1Builder::new_random(rng)
             .with_chain_name(chain_name)
-            .build();
+            .build()
+            .unwrap();
 
         for _ in 0..MAX_ASSOCIATED_KEYS {
             transaction.sign(&SecretKey::random(rng));
@@ -928,6 +794,7 @@ mod tests {
                 chain_name,
                 &transaction_config,
                 MAX_ASSOCIATED_KEYS,
+                TimeDiff::default(),
                 current_timestamp
             ),
             Err(expected_error)

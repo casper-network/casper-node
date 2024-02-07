@@ -13,11 +13,11 @@ use serde_json::{json, Value};
 use casper_types::ProtocolVersion;
 
 use super::{
-    account::PutDeploy,
+    account::{PutDeploy, PutTransaction},
     chain::{
         GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetEraSummary, GetStateRootHash,
     },
-    info::{GetChainspec, GetDeploy, GetPeers, GetStatus, GetValidatorChanges},
+    info::{GetChainspec, GetDeploy, GetPeers, GetStatus, GetTransaction, GetValidatorChanges},
     state::{
         GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, GetItem, QueryBalance,
         QueryGlobalState,
@@ -27,7 +27,7 @@ use super::{
 use crate::effect::EffectBuilder;
 
 pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
-    ProtocolVersion::from_parts(1, 5, 2);
+    ProtocolVersion::from_parts(1, 5, 3);
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
@@ -65,8 +65,16 @@ pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
         },
     };
 
-    schema.push_with_params::<PutDeploy>("receives a Deploy to be executed by the network");
-    schema.push_with_params::<GetDeploy>("returns a Deploy from the network");
+    schema.push_with_params::<PutDeploy>(
+        "receives a Deploy to be executed by the network (DEPRECATED: use \
+        `account_put_transaction` instead)",
+    );
+    schema
+        .push_with_params::<PutTransaction>("receives a Transaction to be executed by the network");
+    schema.push_with_params::<GetDeploy>(
+        "returns a Deploy from the network (DEPRECATED: use `info_get_transaction` instead)",
+    );
+    schema.push_with_params::<GetTransaction>("returns a Transaction from the network");
     schema.push_with_params::<GetAccountInfo>("returns an Account from the network");
     schema.push_with_params::<GetDictionaryItem>("returns an item from a Dictionary");
     schema.push_with_params::<QueryGlobalState>(
@@ -456,7 +464,9 @@ impl RpcWithoutParams for ListRpcs {
 }
 
 mod doc_example_impls {
-    use casper_types::{account::Account, Deploy, EraEnd, EraReport, PublicKey, Timestamp};
+    use casper_types::{
+        account::Account, Deploy, EraEndV1, EraEndV2, EraReport, PublicKey, Timestamp, Transaction,
+    };
 
     use super::DocExample;
 
@@ -466,15 +476,27 @@ mod doc_example_impls {
         }
     }
 
+    impl DocExample for Transaction {
+        fn doc_example() -> &'static Self {
+            Transaction::example()
+        }
+    }
+
     impl DocExample for Account {
         fn doc_example() -> &'static Self {
             Account::example()
         }
     }
 
-    impl DocExample for EraEnd {
+    impl DocExample for EraEndV1 {
         fn doc_example() -> &'static Self {
-            EraEnd::example()
+            EraEndV1::example()
+        }
+    }
+
+    impl DocExample for EraEndV2 {
+        fn doc_example() -> &'static Self {
+            EraEndV2::example()
         }
     }
 

@@ -6,7 +6,10 @@ extern crate alloc;
 use alloc::{boxed::Box, string::ToString, vec};
 
 use casper_contract::contract_api::{runtime, storage};
-use casper_types::{CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter};
+use casper_types::{
+    package::PackageKindTag, CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
+    Key, Parameter,
+};
 
 use get_call_stack_recursive_subcall::{
     ARG_CALLS, ARG_CURRENT_DEPTH, CONTRACT_NAME, CONTRACT_PACKAGE_NAME,
@@ -35,7 +38,7 @@ pub extern "C" fn call() {
             ],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
         let forwarder_session_entry_point = EntryPoint::new(
             METHOD_FORWARDER_SESSION_NAME.to_string(),
@@ -59,5 +62,8 @@ pub extern "C" fn call() {
         Some(PACKAGE_ACCESS_KEY_NAME.to_string()),
     );
 
-    runtime::put_key(CONTRACT_NAME, contract_hash.into());
+    runtime::put_key(
+        CONTRACT_NAME,
+        Key::addressable_entity_key(PackageKindTag::SmartContract, contract_hash),
+    );
 }

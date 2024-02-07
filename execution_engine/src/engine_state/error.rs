@@ -7,8 +7,8 @@ use casper_storage::{
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{
-    account::AccountHash, bytesrepr, system::mint, ApiError, ContractPackageHash, Digest, Key,
-    KeyTag, ProtocolVersion,
+    account::AccountHash, bytesrepr, system::mint, ApiError, Digest, Key, KeyTag, PackageHash,
+    ProtocolVersion,
 };
 
 use crate::{
@@ -35,7 +35,7 @@ pub enum Error {
     WasmPreprocessing(#[from] PreprocessingError),
     /// WASM serialization error.
     #[error("Wasm serialization error: {0:?}")]
-    WasmSerialization(#[from] parity_wasm::SerializationError),
+    WasmSerialization(#[from] casper_wasm::SerializationError),
     /// Contract execution error.
     #[error(transparent)]
     Exec(execution::Error),
@@ -110,7 +110,7 @@ pub enum Error {
     MissingContractByAccountHash(AccountHash),
     /// Failed to retrieve the entity's package
     #[error("Failed to retrieve the entity package as {0}")]
-    MissingEntityPackage(ContractPackageHash),
+    MissingEntityPackage(PackageHash),
     /// Failed to retrieve accumulation purse from handle payment system contract.
     #[error("Failed to retrieve accumulation purse from the handle payment contract")]
     FailedToRetrieveAccumulationPurse,

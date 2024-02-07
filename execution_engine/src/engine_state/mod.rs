@@ -14,9 +14,10 @@ mod transfer;
 pub mod upgrade;
 
 use itertools::Itertools;
+
 use std::{
     cell::RefCell,
-    collections::{btree_map::Entry, BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet},
     convert::TryFrom,
     rc::Rc,
 };
@@ -24,7 +25,7 @@ use std::{
 use num_rational::Ratio;
 use num_traits::Zero;
 use once_cell::sync::Lazy;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 pub use casper_storage::data_access_layer::get_bids::{
     GetBidsError, GetBidsRequest, GetBidsResult,
@@ -48,28 +49,29 @@ use casper_storage::{
     tracking_copy::{TrackingCopy, TrackingCopyExt},
     AddressGenerator,
 };
+
 use casper_types::{
     account::{Account, AccountHash},
-    addressable_entity::{AssociatedKeys, NamedKeys},
+    addressable_entity::{AssociatedKeys, MessageTopics, NamedKeys},
     bytesrepr::ToBytes,
     execution::Effects,
-    package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
+    package::{EntityVersions, Groups, PackageKind, PackageKindTag, PackageStatus},
     system::{
         auction::{
-            BidAddr, BidKind, EraValidators, UnbondingPurse, ValidatorBid, WithdrawPurse,
-            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, ARG_VALIDATOR,
-            ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY, ERA_ID_KEY, LOCKED_FUNDS_PERIOD_KEY,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+            BidAddr, BidKind, EraValidators, ValidatorBid, ARG_ERA_END_TIMESTAMP_MILLIS,
+            ARG_EVICTED_VALIDATORS, ARG_REWARDS_MAP, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
+            LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY,
+            VALIDATOR_SLOTS_KEY,
         },
         handle_payment::{self, ACCUMULATION_PURSE_KEY},
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
-        AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
+        AUCTION, HANDLE_PAYMENT, MINT,
     },
-    AccessRights, AddressableEntity, ApiError, BlockTime, CLValue, ChainspecRegistry,
-    ChecksumRegistry, ContractHash, ContractPackageHash, ContractWasmHash, DeployHash, DeployInfo,
-    Digest, EntryPoints, EraId, ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes,
-    Package, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, SystemContractRegistry,
-    URef, UpgradeConfig, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, ApiError, BlockTime, ByteCodeHash,
+    CLValue, ChainspecRegistry, ChecksumRegistry, ContractHash, ContractPackageHash,
+    ContractWasmHash, DeployHash, DeployInfo, Digest, EntryPoints, EraId, ExecutableDeployItem,
+    FeeHandling, Gas, Key, KeyTag, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
+    RuntimeArgs, StoredValue, SystemContractRegistry, URef, UpgradeConfig, U512,
 };
 
 use self::transfer::NewTransferTargetMode;
@@ -87,7 +89,7 @@ pub use self::{
     genesis::{ExecConfig, GenesisConfig, GenesisSuccess},
     prune::{PruneConfig, PruneResult},
     run_genesis_request::RunGenesisRequest,
-    step::{SlashItem, StepError, StepRequest, StepSuccess},
+    step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::UpgradeSuccess,
 };
@@ -114,8 +116,8 @@ pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
 pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
 
 /// A special contract wasm hash for contracts representing Accounts.
-pub static ACCOUNT_WASM_HASH: Lazy<ContractWasmHash> =
-    Lazy::new(|| ContractWasmHash::new(DEFAULT_ADDRESS));
+pub static ACCOUNT_BYTE_CODE_HASH: Lazy<ByteCodeHash> =
+    Lazy::new(|| ByteCodeHash::new(DEFAULT_ADDRESS));
 
 /// Gas/motes conversion rate of wasmless transfer cost is always 1 regardless of what user wants to
 /// pay.
@@ -342,7 +344,7 @@ where
             return Err(Error::InvalidProtocolVersion(new_protocol_version));
         }
 
-        let registry = if let Ok(registry) = tracking_copy.borrow_mut().get_system_contracts() {
+        let mut registry = if let Ok(registry) = tracking_copy.borrow_mut().get_system_contracts() {
             registry
         } else {
             // Check the upgrade config for the registry
@@ -368,22 +370,35 @@ where
             }
         };
 
-        let mint_hash = registry.get(MINT).ok_or_else(|| {
+        let mint_hash = *registry.get(MINT).ok_or_else(|| {
             error!("Missing system mint contract hash");
             Error::MissingSystemContractHash(MINT.to_string())
         })?;
-        let auction_hash = registry.get(AUCTION).ok_or_else(|| {
+        let auction_hash = *registry.get(AUCTION).ok_or_else(|| {
             error!("Missing system auction contract hash");
             Error::MissingSystemContractHash(AUCTION.to_string())
         })?;
-        let standard_payment_hash = registry.get(STANDARD_PAYMENT).ok_or_else(|| {
-            error!("Missing system standard payment contract hash");
-            Error::MissingSystemContractHash(STANDARD_PAYMENT.to_string())
-        })?;
-        let handle_payment_hash = registry.get(HANDLE_PAYMENT).ok_or_else(|| {
+
+        let handle_payment_hash = *registry.get(HANDLE_PAYMENT).ok_or_else(|| {
             error!("Missing system handle payment contract hash");
             Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
         })?;
+
+        if let Some(standard_payment_hash) = registry.remove_standard_payment() {
+            // Write the chainspec registry to global state
+            let cl_value_chainspec_registry =
+                CLValue::from_t(registry).map_err(|error| Error::Bytesrepr(error.to_string()))?;
+
+            tracking_copy.borrow_mut().write(
+                Key::SystemContractRegistry,
+                StoredValue::CLValue(cl_value_chainspec_registry),
+            );
+
+            // Prune away standard payment from global state.
+            tracking_copy
+                .borrow_mut()
+                .prune(Key::Hash(standard_payment_hash.value()));
+        };
 
         // Write the chainspec registry to global state
         let cl_value_chainspec_registry =
@@ -406,22 +421,19 @@ where
         system_upgrader.migrate_system_account(pre_state_hash)?;
 
         system_upgrader
-            .create_accumulation_purse_if_required(handle_payment_hash, &self.config)
+            .create_accumulation_purse_if_required(&handle_payment_hash, &self.config)
             .map_err(Error::ProtocolUpgrade)?;
 
         system_upgrader
-            .refresh_system_contracts(
-                mint_hash,
-                auction_hash,
-                handle_payment_hash,
-                standard_payment_hash,
-            )
+            .refresh_system_contracts(&mint_hash, &auction_hash, &handle_payment_hash)
             .map_err(Error::ProtocolUpgrade)?;
+
+        // Prune away the standard payment record.
 
         // 3.1.1.1.1.7 new total validator slots is optional
         if let Some(new_validator_slots) = upgrade_config.new_validator_slots() {
             // 3.1.2.4 if new total validator slots is provided, update auction contract state
-            let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
+            let auction_contract = tracking_copy.borrow_mut().get_contract(auction_hash)?;
 
             let validator_slots_key = auction_contract
                 .named_keys()
@@ -438,7 +450,7 @@ where
 
         if let Some(new_auction_delay) = upgrade_config.new_auction_delay() {
             debug!(%new_auction_delay, "Auction delay changed as part of the upgrade");
-            let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
+            let auction_contract = tracking_copy.borrow_mut().get_contract(auction_hash)?;
 
             let auction_delay_key = auction_contract
                 .named_keys()
@@ -452,7 +464,7 @@ where
         }
 
         if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period_millis() {
-            let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
+            let auction_contract = tracking_copy.borrow_mut().get_contract(auction_hash)?;
 
             let locked_funds_period_key = auction_contract
                 .named_keys()
@@ -473,7 +485,7 @@ where
                 Ratio::new(numer.into(), denom.into())
             };
 
-            let mint_contract = tracking_copy.borrow_mut().get_contract(*mint_hash)?;
+            let mint_contract = tracking_copy.borrow_mut().get_contract(mint_hash)?;
 
             let locked_funds_period_key = mint_contract
                 .named_keys()
@@ -546,92 +558,10 @@ where
             tracking_copy.borrow_mut().write(*key, value.clone());
         }
 
-        // This is a one time data transformation which will be removed
-        // in a following upgrade.
-        // TODO: CRef={https://github.com/casper-network/casper-node/issues/2479}
-        {
-            let withdraw_keys = tracking_copy
-                .borrow_mut()
-                .get_keys(&KeyTag::Withdraw)
-                .map_err(|_| Error::FailedToGetKeys(KeyTag::Withdraw))?;
-
-            let (unbonding_delay, current_era_id) = {
-                let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
-
-                let unbonding_delay_key = auction_contract
-                    .named_keys()
-                    .get(UNBONDING_DELAY_KEY)
-                    .expect("unbonding_delay key must exist in auction contract's named keys");
-                let delay = tracking_copy
-                    .borrow_mut()
-                    .read(unbonding_delay_key)
-                    .map_err(Into::<Error>::into)?
-                    .ok_or(Error::FailedToRetrieveUnbondingDelay)?
-                    .into_cl_value()
-                    .ok_or_else(|| Error::Bytesrepr("unbonding_delay".to_string()))?
-                    .into_t::<u64>()
-                    .map_err(execution::Error::from)?;
-
-                let era_id_key = auction_contract
-                    .named_keys()
-                    .get(ERA_ID_KEY)
-                    .expect("era_id key must exist in auction contract's named keys");
-
-                let era_id = tracking_copy
-                    .borrow_mut()
-                    .read(era_id_key)
-                    .map_err(Into::<Error>::into)?
-                    .ok_or(Error::FailedToRetrieveEraId)?
-                    .into_cl_value()
-                    .ok_or_else(|| Error::Bytesrepr("era_id".to_string()))?
-                    .into_t::<EraId>()
-                    .map_err(execution::Error::from)?;
-
-                (delay, era_id)
-            };
-
-            for key in withdraw_keys {
-                // Transform only those withdraw purses that are still to be
-                // processed in the unbonding queue.
-                let withdraw_purses = tracking_copy
-                    .borrow_mut()
-                    .read(&key)
-                    .map_err(|_| Error::FailedToGetKeys(KeyTag::Withdraw))?
-                    .ok_or(Error::FailedToGetStoredWithdraws)?
-                    .into_withdraw()
-                    .ok_or(Error::FailedToGetWithdrawPurses)?;
-
-                // Ensure that sufficient balance exists for all unbond purses that are to be
-                // migrated.
-                Self::fail_upgrade_if_withdraw_purses_lack_sufficient_balance(
-                    &withdraw_purses,
-                    &tracking_copy,
-                )?;
-
-                let unbonding_purses: Vec<UnbondingPurse> = withdraw_purses
-                    .into_iter()
-                    .filter_map(|purse| {
-                        if purse.era_of_creation() + unbonding_delay >= current_era_id {
-                            return Some(UnbondingPurse::from(purse));
-                        }
-                        None
-                    })
-                    .collect();
-
-                let unbonding_key = key
-                    .withdraw_to_unbond()
-                    .ok_or_else(|| Error::Bytesrepr("unbond".to_string()))?;
-
-                tracking_copy
-                    .borrow_mut()
-                    .write(unbonding_key, StoredValue::Unbonding(unbonding_purses));
-            }
-        }
-
         // We insert the new unbonding delay once the purses to be paid out have been transformed
         // based on the previous unbonding delay.
         if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
-            let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
+            let auction_contract = tracking_copy.borrow_mut().get_contract(auction_hash)?;
 
             let unbonding_delay_key = auction_contract
                 .named_keys()
@@ -755,10 +685,27 @@ where
 
         let tracking_copy = tracking_copy.borrow();
 
-        Ok(tracking_copy
-            .query(query_request.key(), query_request.path())
-            .map_err(|err| Error::Exec(err.into()))?
-            .into())
+        match tracking_copy.query(query_request.key(), query_request.path()) {
+            Ok(TrackingCopyQueryResult::ValueNotFound(result_string)) => {
+                let key = query_request.key();
+
+                if !key.is_system_key() {
+                    return Ok(TrackingCopyQueryResult::ValueNotFound(result_string).into());
+                }
+
+                let new_query_key = Key::Hash(
+                    key.into_entity_addr()
+                        .ok_or_else(|| Error::InvalidKeyVariant)?,
+                );
+                info!("Compensating for AddressableEntity move");
+                let result = tracking_copy
+                    .query(self.config(), new_query_key, query_request.path())
+                    .map_err(|err| Error::Exec(err.into()))?;
+                Ok(result.into())
+            }
+            Ok(result) => Ok(result.into()),
+            Err(error) => Err(Error::Exec(error.into())),
+        }
     }
 
     /// Runs a deploy execution request.
@@ -810,7 +757,7 @@ where
         account_hash: AccountHash,
         authorization_keys: &BTreeSet<AccountHash>,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-    ) -> Result<(AddressableEntity, ContractHash), Error> {
+    ) -> Result<(AddressableEntity, AddressableEntityHash), Error> {
         let entity_record = match tracking_copy
             .borrow_mut()
             .get_addressable_entity_by_account_hash(protocol_version, account_hash)
@@ -819,7 +766,7 @@ where
             Err(_) => return Err(Error::MissingContractByAccountHash(account_hash)),
         };
 
-        let entity_hash: ContractHash = match tracking_copy
+        let entity_hash: AddressableEntityHash = match tracking_copy
             .borrow_mut()
             .get_entity_hash_by_account_hash(account_hash)
         {
@@ -860,16 +807,16 @@ where
         let mut generator =
             AddressGenerator::new(account.main_purse().addr().as_ref(), Phase::System);
 
-        let contract_wasm_hash = *ACCOUNT_WASM_HASH;
-        let contract_hash = ContractHash::new(generator.new_hash_address());
-        let contract_package_hash = ContractPackageHash::new(generator.new_hash_address());
+        let contract_wasm_hash = *ACCOUNT_BYTE_CODE_HASH;
+        let entity_hash = AddressableEntityHash::new(generator.new_hash_address());
+        let package_hash = PackageHash::new(generator.new_hash_address());
 
         let entry_points = EntryPoints::new();
 
         let associated_keys = AssociatedKeys::from(account.associated_keys().clone());
 
         let entity = AddressableEntity::new(
-            contract_package_hash,
+            package_hash,
             contract_wasm_hash,
             account.named_keys().clone(),
             entry_points,
@@ -877,32 +824,31 @@ where
             account.main_purse(),
             associated_keys,
             account.action_thresholds().clone().into(),
+            MessageTopics::default(),
         );
 
         let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
 
-        let contract_package = {
-            let mut contract_package = Package::new(
+        let package = {
+            let mut package = Package::new(
                 access_key,
-                ContractVersions::default(),
+                EntityVersions::default(),
                 BTreeSet::default(),
                 Groups::default(),
-                ContractPackageStatus::Locked,
-                ContractPackageKind::Account(account_hash),
+                PackageStatus::Locked,
+                PackageKind::Account(account_hash),
             );
-            contract_package.insert_contract_version(protocol_version.value().major, contract_hash);
-            contract_package
+            package.insert_entity_version(protocol_version.value().major, entity_hash);
+            package
         };
 
-        let contract_key: Key = contract_hash.into();
+        let entity_key: Key = Key::addressable_entity_key(PackageKindTag::Account, entity_hash);
 
+        tracking_copy.borrow_mut().write(entity_key, entity.into());
         tracking_copy
             .borrow_mut()
-            .write(contract_key, entity.into());
-        tracking_copy
-            .borrow_mut()
-            .write(contract_package_hash.into(), contract_package.into());
-        let contract_by_account = match CLValue::from_t(contract_key) {
+            .write(package_hash.into(), package.into());
+        let contract_by_account = match CLValue::from_t(entity_key) {
             Ok(cl_value) => cl_value,
             Err(_) => return Err(Error::Bytesrepr("Failed to convert to CLValue".to_string())),
         };
@@ -960,15 +906,15 @@ where
     /// Return the package kind.
     pub fn get_entity_package_kind(
         &self,
-        entity_package_address: ContractPackageHash,
+        entity_package_address: PackageHash,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-    ) -> Result<ContractPackageKind, Error> {
+    ) -> Result<PackageKind, Error> {
         let entity_package = match tracking_copy
             .borrow_mut()
             .read(&entity_package_address.into())
             .map_err(Into::<Error>::into)?
         {
-            Some(StoredValue::ContractPackage(entity_package)) => entity_package,
+            Some(StoredValue::Package(entity_package)) => entity_package,
             Some(_) | None => return Err(Error::MissingEntityPackage(entity_package_address)),
         };
 
@@ -1018,12 +964,11 @@ where
             Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
         };
 
-        let package_kind = match self
-            .get_entity_package_kind(entity.contract_package_hash(), Rc::clone(&tracking_copy))
-        {
-            Ok(package_kind) => package_kind,
-            Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
-        };
+        let package_kind =
+            match self.get_entity_package_kind(entity.package_hash(), Rc::clone(&tracking_copy)) {
+                Ok(package_kind) => package_kind,
+                Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
+            };
 
         let system_contract_registry = tracking_copy.borrow_mut().get_system_contracts()?;
 
@@ -1071,7 +1016,7 @@ where
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
             };
 
-        let proposer_main_purse_balance_key = {
+        let rewards_target_purse_balance_key = {
             match tracking_copy
                 .borrow_mut()
                 .get_purse_balance_key(rewards_target_purse.into())
@@ -1126,7 +1071,7 @@ where
             account_main_purse_balance,
             wasmless_transfer_gas_cost,
             account_main_purse_balance_key,
-            proposer_main_purse_balance_key,
+            rewards_target_purse_balance_key,
         ) {
             Ok(execution_result) => execution_result,
             Err(error) => ExecutionResult::precondition_failure(error),
@@ -1134,7 +1079,6 @@ where
 
         // All wasmless transfer preconditions are met.
         // Any error that occurs in logic below this point would result in a charge for user error.
-
         let mut runtime_args_builder =
             TransferRuntimeArgsBuilder::new(deploy_item.session.args().clone());
 
@@ -1187,12 +1131,13 @@ where
             }
             NewTransferTargetMode::CreateAccount(account_hash) => {
                 let create_purse_stack = self.get_new_system_call_stack();
+
                 let (maybe_uref, execution_result): (Option<URef>, ExecutionResult) = executor
                     .call_system_contract(
                         DirectSystemContractCall::CreatePurse,
                         RuntimeArgs::new(), // mint create takes no arguments
                         &entity,
-                        package_kind.clone(),
+                        package_kind,
                         authorization_keys.clone(),
                         account_hash,
                         blocktime,
@@ -1289,7 +1234,7 @@ where
                     DirectSystemContractCall::GetPaymentPurse,
                     RuntimeArgs::default(),
                     &entity,
-                    package_kind.clone(),
+                    package_kind,
                     authorization_keys.clone(),
                     account_hash,
                     blocktime,
@@ -1333,7 +1278,7 @@ where
                     DirectSystemContractCall::Transfer,
                     runtime_args,
                     &entity,
-                    package_kind.clone(),
+                    package_kind,
                     authorization_keys.clone(),
                     account_hash,
                     blocktime,
@@ -1490,7 +1435,7 @@ where
                     DirectSystemContractCall::FinalizePayment,
                     handle_payment_args,
                     &system_addressable_entity,
-                    ContractPackageKind::Account(PublicKey::System.to_account_hash()),
+                    PackageKind::Account(PublicKey::System.to_account_hash()),
                     authorization_keys,
                     PublicKey::System.to_account_hash(),
                     blocktime,
@@ -1592,12 +1537,12 @@ where
                 &authorization_keys,
                 Rc::clone(&tracking_copy),
             ) {
-                Ok((contract, contract_hash)) => (contract, contract_hash),
+                Ok((addressable_entity, entity_hash)) => (addressable_entity, entity_hash),
                 Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
             }
         };
 
-        let package_address = entity.contract_package_hash();
+        let package_address = entity.package_hash();
         let package_kind =
             match self.get_entity_package_kind(package_address, Rc::clone(&tracking_copy)) {
                 Ok(package_kind) => package_kind,
@@ -1709,6 +1654,26 @@ where
         // [`ExecutionResultBuilder`] handles merging of multiple execution results
         let mut execution_result_builder = execution_result::ExecutionResultBuilder::new();
 
+        let rewards_target_purse =
+            match self.get_rewards_purse(protocol_version, proposer, prestate_hash) {
+                Ok(target_purse) => target_purse,
+                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
+            };
+
+        let rewards_target_purse_balance_key = {
+            // Get reward purse Key from handle payment contract
+            // payment_code_spec_6: system contract validity
+            match tracking_copy
+                .borrow_mut()
+                .get_purse_balance_key(rewards_target_purse.into())
+            {
+                Ok(key) => key,
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(error.into()));
+                }
+            }
+        };
+
         // Execute provided payment code
         let payment_result = {
             // payment_code_spec_1: init pay environment w/ gas limit == (max_payment_cost /
@@ -1740,13 +1705,10 @@ where
 
             if payment.is_standard_payment(phase) {
                 // Todo potentially could be moved to Executor::Exec
-                executor.exec_standard_payment(
+                match executor.exec_standard_payment(
                     payment_args,
-                    entity_hash.into(),
                     &entity,
-                    package_kind.clone(),
-                    &mut payment_named_keys,
-                    payment_access_rights,
+                    package_kind,
                     authorization_keys.clone(),
                     account_hash,
                     blocktime,
@@ -1754,9 +1716,13 @@ where
                     payment_gas_limit,
                     protocol_version,
                     Rc::clone(&tracking_copy),
-                    phase,
-                    payment_stack,
-                )
+                    self.config.max_runtime_call_stack_height() as usize,
+                ) {
+                    Ok(payment_result) => payment_result,
+                    Err(error) => {
+                        return Ok(ExecutionResult::precondition_failure(error));
+                    }
+                }
             } else {
                 let payment_execution_kind = match ExecutionKind::new(
                     Rc::clone(&tracking_copy),
@@ -1775,7 +1741,7 @@ where
                     payment_args,
                     entity_hash,
                     &entity,
-                    package_kind.clone(),
+                    package_kind,
                     &mut payment_named_keys,
                     payment_access_rights,
                     authorization_keys.clone(),
@@ -1791,26 +1757,6 @@ where
             }
         };
         log_execution_result("payment result", &payment_result);
-
-        let rewards_target_purse =
-            match self.get_rewards_purse(protocol_version, proposer, prestate_hash) {
-                Ok(target_purse) => target_purse,
-                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
-            };
-
-        let rewards_target_purse_balance_key = {
-            // Get reward purse Key from handle payment contract
-            // payment_code_spec_6: system contract validity
-            match tracking_copy
-                .borrow_mut()
-                .get_purse_balance_key(rewards_target_purse.into())
-            {
-                Ok(key) => key,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
-            }
-        };
 
         // If provided wasm file was malformed, we should charge.
         if should_charge_for_errors_in_wasm(&payment_result) {
@@ -2099,7 +2045,7 @@ where
                     DirectSystemContractCall::FinalizePayment,
                     handle_payment_args,
                     &system_addressable_entity,
-                    ContractPackageKind::Account(system_account_hash),
+                    PackageKind::Account(system_account_hash),
                     authorization_keys,
                     system_account_hash,
                     blocktime,
@@ -2247,9 +2193,11 @@ where
             .copied()
             .ok_or_else(|| Error::MissingSystemContractHash(AUCTION.to_string()))?;
 
+        let auction_key = Key::addressable_entity_key(PackageKindTag::System, auction_hash);
+
         let query_request = QueryRequest::new(
             state_root_hash,
-            auction_hash.into(),
+            auction_key,
             vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()],
         );
 
@@ -2343,7 +2291,7 @@ where
         &self,
         pre_state_hash: Digest,
         protocol_version: ProtocolVersion,
-        proposer: PublicKey,
+        rewards: &BTreeMap<PublicKey, U512>,
         next_block_height: u64,
         time: u64,
     ) -> Result<Digest, StepError> {
@@ -2353,17 +2301,16 @@ where
             Err(error) => return Err(StepError::OtherEngineStateError(error)),
         };
 
-        let mut runtime_args = RuntimeArgs::new();
-        runtime_args.insert(ARG_VALIDATOR, proposer)?;
-
         let executor = Executor::new(self.config().clone());
 
-        let system_account_addr = PublicKey::System.to_account_hash();
+        let virtual_system_contract_by_account = {
+            let system_account_addr = PublicKey::System.to_account_hash();
 
-        let virtual_system_contract_by_account = tracking_copy
-            .borrow_mut()
-            .get_addressable_entity_by_account_hash(protocol_version, system_account_addr)
-            .map_err(|err| StepError::OtherEngineStateError(Error::TrackingCopy(err)))?;
+            tracking_copy
+                .borrow_mut()
+                .get_addressable_entity_by_account_hash(protocol_version, system_account_addr)
+            .map_err(|err| StepError::OtherEngineStateError(Error::TrackingCopy(err)))?
+        };
 
         let authorization_keys = {
             let mut ret = BTreeSet::new();
@@ -2380,52 +2327,61 @@ where
             DeployHash::new(Digest::hash(&bytes))
         };
 
-        let distribute_accumulated_fees_stack = self.get_new_system_call_stack();
         let system_account_hash = PublicKey::System.to_account_hash();
-        let (_, execution_result): (Option<()>, ExecutionResult) = executor.call_system_contract(
-            DirectSystemContractCall::DistributeAccumulatedFees,
-            RuntimeArgs::default(),
-            &virtual_system_contract_by_account,
-            ContractPackageKind::Account(system_account_hash),
-            authorization_keys.clone(),
-            system_account_hash,
-            BlockTime::default(),
-            deploy_hash,
-            gas_limit,
-            protocol_version,
-            Rc::clone(&tracking_copy),
-            Phase::Session,
-            distribute_accumulated_fees_stack,
-            // There should be no tokens transferred during rewards distribution.
-            U512::zero(),
-        );
 
-        if let Some(exec_error) = execution_result.take_error() {
-            return Err(StepError::DistributeAccumulatedFeesError(exec_error));
+        {
+            let distribute_accumulated_fees_stack = self.get_new_system_call_stack();
+            let (_, execution_result): (Option<()>, ExecutionResult) = executor
+                .call_system_contract(
+                    DirectSystemContractCall::DistributeAccumulatedFees,
+                    RuntimeArgs::default(),
+                    &virtual_system_contract_by_account,
+                    PackageKind::Account(system_account_hash),
+                    authorization_keys.clone(),
+                    system_account_hash,
+                    BlockTime::default(),
+                    deploy_hash,
+                    gas_limit,
+                    protocol_version,
+                    Rc::clone(&tracking_copy),
+                    Phase::Session,
+                    distribute_accumulated_fees_stack,
+                    // There should be no tokens transferred during rewards distribution.
+                    U512::zero(),
+                );
+
+            if let Some(exec_error) = execution_result.take_error() {
+                return Err(StepError::DistributeAccumulatedFeesError(exec_error));
+            }
         }
 
-        let distribute_rewards_stack = self.get_new_system_call_stack();
+        {
+            let mut runtime_args = RuntimeArgs::new();
+            runtime_args.insert(ARG_REWARDS_MAP, rewards)?;
+            let distribute_rewards_stack = self.get_new_system_call_stack();
 
-        let (_, execution_result): (Option<()>, ExecutionResult) = executor.call_system_contract(
-            DirectSystemContractCall::DistributeRewards,
-            runtime_args,
-            &virtual_system_contract_by_account,
-            ContractPackageKind::Account(system_account_hash),
-            authorization_keys,
-            system_account_hash,
-            BlockTime::default(),
-            deploy_hash,
-            gas_limit,
-            protocol_version,
-            Rc::clone(&tracking_copy),
-            Phase::Session,
-            distribute_rewards_stack,
-            // There should be no tokens transferred during rewards distribution.
-            U512::zero(),
-        );
+            let (_, execution_result): (Option<()>, ExecutionResult) = executor
+                .call_system_contract(
+                    DirectSystemContractCall::DistributeRewards,
+                    runtime_args,
+                    &virtual_system_contract_by_account,
+                    PackageKind::Account(system_account_hash),
+                    authorization_keys,
+                    system_account_hash,
+                    BlockTime::default(),
+                    deploy_hash,
+                    gas_limit,
+                    protocol_version,
+                    Rc::clone(&tracking_copy),
+                    Phase::Session,
+                    distribute_rewards_stack,
+                    // There should be no tokens transferred during rewards distribution.
+                    U512::zero(),
+                );
 
-        if let Some(exec_error) = execution_result.take_error() {
-            return Err(StepError::DistributeError(exec_error));
+            if let Some(exec_error) = execution_result.take_error() {
+                return Err(StepError::DistributeError(exec_error));
+            }
         }
 
         let effects = tracking_copy.borrow().effects();
@@ -2490,7 +2446,7 @@ where
                     DirectSystemContractCall::Slash,
                     slash_args,
                     &system_addressable_entity,
-                    ContractPackageKind::Account(system_account_hash),
+                    PackageKind::Account(system_account_hash),
                     authorization_keys.clone(),
                     system_account_hash,
                     BlockTime::default(),
@@ -2531,7 +2487,7 @@ where
             DirectSystemContractCall::RunAuction,
             run_auction_args,
             &system_addressable_entity,
-            ContractPackageKind::Account(system_account_hash),
+            PackageKind::Account(system_account_hash),
             authorization_keys,
             system_account_hash,
             BlockTime::default(),
@@ -2578,7 +2534,7 @@ where
 
         let account_addr = public_key.to_account_hash();
 
-        let contract_hash = match tracking_copy
+        let entity_hash = match tracking_copy
             .borrow_mut()
             .get_entity_hash_by_account_hash(account_addr)
         {
@@ -2586,9 +2542,16 @@ where
             Err(error) => return Err(error.into()),
         };
 
-        let account = match tracking_copy.borrow_mut().get_contract(contract_hash) {
-            Ok(contract) => contract,
-            Err(error) => return Err(error.into()),
+        let account = match tracking_copy
+            .borrow_mut()
+            .read(&Key::addressable_entity_key(
+                PackageKindTag::Account,
+                entity_hash,
+            ))
+            .map_err(|_| Error::InvalidKeyVariant)?
+        {
+            Some(StoredValue::AddressableEntity(account)) => account,
+            Some(_) | None => return Err(Error::InvalidKeyVariant),
         };
 
         let main_purse_balance_key = {
@@ -2635,7 +2598,7 @@ where
     }
 
     /// Returns mint system contract hash.
-    pub fn get_system_mint_hash(&self, state_hash: Digest) -> Result<ContractHash, Error> {
+    pub fn get_system_mint_hash(&self, state_hash: Digest) -> Result<AddressableEntityHash, Error> {
         let registry = self.get_system_contract_registry(state_hash)?;
         let mint_hash = registry.get(MINT).ok_or_else(|| {
             error!("Missing system mint contract hash");
@@ -2645,7 +2608,10 @@ where
     }
 
     /// Returns auction system contract hash.
-    pub fn get_system_auction_hash(&self, state_hash: Digest) -> Result<ContractHash, Error> {
+    pub fn get_system_auction_hash(
+        &self,
+        state_hash: Digest,
+    ) -> Result<AddressableEntityHash, Error> {
         let registry = self.get_system_contract_registry(state_hash)?;
         let auction_hash = registry.get(AUCTION).ok_or_else(|| {
             error!("Missing system auction contract hash");
@@ -2655,23 +2621,16 @@ where
     }
 
     /// Returns handle payment system contract hash.
-    pub fn get_handle_payment_hash(&self, state_hash: Digest) -> Result<ContractHash, Error> {
+    pub fn get_handle_payment_hash(
+        &self,
+        state_hash: Digest,
+    ) -> Result<AddressableEntityHash, Error> {
         let registry = self.get_system_contract_registry(state_hash)?;
         let handle_payment = registry.get(HANDLE_PAYMENT).ok_or_else(|| {
             error!("Missing system handle payment contract hash");
             Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
         })?;
         Ok(*handle_payment)
-    }
-
-    /// Returns standard payment system contract hash.
-    pub fn get_standard_payment_hash(&self, state_hash: Digest) -> Result<ContractHash, Error> {
-        let registry = self.get_system_contract_registry(state_hash)?;
-        let standard_payment = registry.get(STANDARD_PAYMENT).ok_or_else(|| {
-            error!("Missing system standard payment contract hash");
-            Error::MissingSystemContractHash(STANDARD_PAYMENT.to_string())
-        })?;
-        Ok(*standard_payment)
     }
 
     fn get_new_system_call_stack(&self) -> RuntimeStack {
@@ -2709,48 +2668,6 @@ where
         let maybe_proof = tracking_copy.borrow_mut().reader().read_with_proof(&key)?;
         maybe_proof.ok_or(Error::MissingChecksumRegistry)
     }
-
-    /// As the name suggests, used to ensure commit_upgrade fails if we lack sufficient balances.
-    fn fail_upgrade_if_withdraw_purses_lack_sufficient_balance(
-        withdraw_purses: &[WithdrawPurse],
-        tracking_copy: &Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-    ) -> Result<(), Error> {
-        let mut balances = BTreeMap::new();
-        for purse in withdraw_purses.iter() {
-            match balances.entry(*purse.bonding_purse()) {
-                Entry::Vacant(entry) => {
-                    entry.insert(*purse.amount());
-                }
-                Entry::Occupied(mut entry) => {
-                    let value = entry.get_mut();
-                    let new_val = value.checked_add(*purse.amount()).ok_or_else(|| {
-                        Error::Mint("overflowed a u512 during unbond migration".into())
-                    })?;
-                    *value = new_val;
-                }
-            }
-        }
-        for (unbond_purse_uref, unbond_amount) in balances {
-            let key = match tracking_copy
-                .borrow_mut()
-                .get_purse_balance_key(unbond_purse_uref.into())
-            {
-                Ok(key) => key,
-                Err(_) => return Err(Error::Mint("purse balance not found".into())),
-            };
-            let current_balance = tracking_copy.borrow_mut().get_purse_balance(key)?.value();
-
-            if unbond_amount > current_balance {
-                // If we don't have enough balance to migrate, the only thing we can do
-                // is to fail the upgrade.
-                error!(%current_balance, %unbond_purse_uref, %unbond_amount, "commit_upgrade failed during migration - insufficient in purse to unbond");
-                return Err(Error::Mint(
-                    "insufficient balance detected while migrating unbond purses".into(),
-                ));
-            }
-        }
-        Ok(())
-    }
 }
 
 fn log_execution_result(preamble: &'static str, result: &ExecutionResult) {
@@ -2760,11 +2677,13 @@ fn log_execution_result(preamble: &'static str, result: &ExecutionResult) {
             transfers,
             cost,
             effects,
+            messages,
         } => {
             debug!(
                 %cost,
                 transfer_count = %transfers.len(),
                 transforms_count = %effects.len(),
+                messages_count = %messages.len(),
                 "{}: execution success",
                 preamble
             );
@@ -2774,12 +2693,14 @@ fn log_execution_result(preamble: &'static str, result: &ExecutionResult) {
             transfers,
             cost,
             effects,
+            messages,
         } => {
             debug!(
                 %error,
                 %cost,
                 transfer_count = %transfers.len(),
                 transforms_count = %effects.len(),
+                messages_count = %messages.len(),
                 "{}: execution failure",
                 preamble
             );
@@ -2794,11 +2715,12 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
             transfers: _,
             cost: _,
             effects: _,
+            messages: _,
         } => match error {
             Error::Exec(err) => match err {
                 ExecError::WasmPreprocessing(_) | ExecError::UnsupportedWasmStart => true,
                 ExecError::Storage(_)
-                | ExecError::InvalidContractWasm(_)
+                | ExecError::InvalidByteCode(_)
                 | ExecError::WasmOptimizer
                 | ExecError::ParityWasm(_)
                 | ExecError::Interpreter(_)
@@ -2821,21 +2743,22 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::SetThresholdFailure(_)
                 | ExecError::SystemContract(_)
                 | ExecError::DeploymentAuthorizationFailure
+                | ExecError::UpgradeAuthorizationFailure
                 | ExecError::ExpectedReturnValue
                 | ExecError::UnexpectedReturnValue
                 | ExecError::InvalidContext
                 | ExecError::IncompatibleProtocolMajorVersion { .. }
                 | ExecError::CLValue(_)
                 | ExecError::HostBufferEmpty
-                | ExecError::NoActiveContractVersions(_)
-                | ExecError::InvalidContractVersion(_)
+                | ExecError::NoActiveEntityVersions(_)
+                | ExecError::InvalidEntityVersion(_)
                 | ExecError::NoSuchMethod(_)
                 | ExecError::TemplateMethod(_)
                 | ExecError::KeyIsNotAURef(_)
                 | ExecError::UnexpectedStoredValueVariant
-                | ExecError::LockedContract(_)
-                | ExecError::InvalidContractPackage(_)
-                | ExecError::InvalidContract(_)
+                | ExecError::LockedEntity(_)
+                | ExecError::InvalidPackage(_)
+                | ExecError::InvalidEntity(_)
                 | ExecError::MissingArgument { .. }
                 | ExecError::DictionaryItemKeyExceedsLength
                 | ExecError::MissingSystemContractRegistry
@@ -2843,11 +2766,14 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::RuntimeStackOverflow
                 | ExecError::ValueTooLarge
                 | ExecError::MissingRuntimeStack
-                | ExecError::DisabledContract(_)
+                | ExecError::DisabledEntity(_)
                 | ExecError::UnexpectedKeyVariant(_)
-                | ExecError::InvalidContractPackageKind(_)
+                | ExecError::InvalidPackageKind(_)
                 | ExecError::TrackingCopy(_)
-                | ExecError::Transform(_) => false,
+                | ExecError::Transform(_)
+                | ExecError::InvalidEntryPointType
+                | ExecError::InvalidMessageTopicOperation
+                | ExecError::InvalidUtf8Encoding(_) => false,
                 ExecError::DisabledUnrestrictedTransfers => false,
             },
             Error::WasmPreprocessing(_) => true,

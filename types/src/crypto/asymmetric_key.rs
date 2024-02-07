@@ -40,6 +40,8 @@ use rand::{Rng, RngCore};
 #[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+#[cfg(feature = "json-schema")]
+use serde_json::json;
 #[cfg(any(feature = "std", test))]
 use untrusted::Input;
 
@@ -697,6 +699,38 @@ impl From<&SecretKey> for PublicKey {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
+impl PartialEq for SecretKey {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::System, Self::System) => true,
+            (Self::Ed25519(k1), Self::Ed25519(k2)) => k1.to_bytes() == k2.to_bytes(),
+            (Self::Secp256k1(k1), Self::Secp256k1(k2)) => k1.to_bytes() == k2.to_bytes(),
+            _ => false,
+        }
+    }
+}
+#[cfg(any(feature = "testing", test))]
+impl Eq for SecretKey {}
+
+#[cfg(any(feature = "testing", test))]
+impl Ord for SecretKey {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (Self::System, Self::System) => Ordering::Equal,
+            (Self::Ed25519(k1), Self::Ed25519(k2)) => k1.to_bytes().cmp(&k2.to_bytes()),
+            (Self::Secp256k1(k1), Self::Secp256k1(k2)) => k1.to_bytes().cmp(&k2.to_bytes()),
+            (k1, k2) => k1.variant_name().cmp(k2.variant_name()),
+        }
+    }
+}
+#[cfg(any(feature = "testing", test))]
+impl PartialOrd for SecretKey {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl From<&PublicKey> for Vec<u8> {
     fn from(public_key: &PublicKey) -> Self {
         match public_key {
@@ -853,6 +887,27 @@ impl JsonSchema for PublicKey {
         schema_object.metadata().description = Some(
             "Hex-encoded cryptographic public key, including the algorithm tag prefix.".to_string(),
         );
+        schema_object.metadata().examples = vec![
+            json!({
+                "name": "SystemPublicKey",
+                "description": "A pseudo public key, used for example when the system proposes an \
+                immediate switch block after a network upgrade rather than a specific validator. \
+                Its hex-encoded value is always '00', as is the corresponding pseudo signature's",
+                "value": "00"
+            }),
+            json!({
+                "name": "Ed25519PublicKey",
+                "description": "An Ed25519 public key. Its hex-encoded value begins '01' and is \
+                followed by 64 characters",
+                "value": "018a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+            }),
+            json!({
+                "name": "Secp256k1PublicKey",
+                "description": "A secp256k1 public key. Its hex-encoded value begins '02' and is \
+                followed by 66 characters",
+                "value": "0203408e9526316fd1f8def480dd45b2cc72ffd732771c9ceb5d92ffa4051e6ee084"
+            }),
+        ];
         schema_object.into()
     }
 }

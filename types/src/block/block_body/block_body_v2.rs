@@ -10,8 +10,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    block::RewardedSignatures,
     bytesrepr::{self, FromBytes, ToBytes},
-    DeployHash, Digest, PublicKey,
+    Digest, PublicKey, TransactionHash,
 };
 
 /// The body portion of a block. Version 2.
@@ -21,10 +22,16 @@ use crate::{
 pub struct BlockBodyV2 {
     /// The public key of the validator which proposed the block.
     pub(super) proposer: PublicKey,
-    /// The deploy hashes of the non-transfer deploys within the block.
-    pub(super) deploy_hashes: Vec<DeployHash>,
-    /// The deploy hashes of the transfers within the block.
-    pub(super) transfer_hashes: Vec<DeployHash>,
+    /// The hashes of the transfer transactions within the block.
+    pub(super) transfer: Vec<TransactionHash>,
+    /// The hashes of the non-transfer, native transactions within the block.
+    pub(super) staking: Vec<TransactionHash>,
+    /// The hashes of the installer/upgrader transactions within the block.
+    pub(super) install_upgrade: Vec<TransactionHash>,
+    /// The hashes of all other transactions within the block.
+    pub(super) standard: Vec<TransactionHash>,
+    /// List of identifiers for finality signatures for a particular past block.
+    pub(super) rewarded_signatures: RewardedSignatures,
     #[serde(skip)]
     #[cfg_attr(
         all(any(feature = "once_cell", test), feature = "datasize"),
@@ -35,16 +42,22 @@ pub struct BlockBodyV2 {
 }
 
 impl BlockBodyV2 {
-    /// Constructs a new `BlockBody`.
+    /// Constructs a new `BlockBodyV2`.
     pub(crate) fn new(
         proposer: PublicKey,
-        deploy_hashes: Vec<DeployHash>,
-        transfer_hashes: Vec<DeployHash>,
+        transfer: Vec<TransactionHash>,
+        staking: Vec<TransactionHash>,
+        install_upgrade: Vec<TransactionHash>,
+        standard: Vec<TransactionHash>,
+        rewarded_signatures: RewardedSignatures,
     ) -> Self {
         BlockBodyV2 {
             proposer,
-            deploy_hashes,
-            transfer_hashes,
+            transfer,
+            staking,
+            install_upgrade,
+            standard,
+            rewarded_signatures,
             #[cfg(any(feature = "once_cell", test))]
             hash: OnceCell::new(),
         }
@@ -55,21 +68,32 @@ impl BlockBodyV2 {
         &self.proposer
     }
 
-    /// Returns the deploy hashes of the non-transfer deploys within the block.
-    pub fn deploy_hashes(&self) -> &[DeployHash] {
-        &self.deploy_hashes
+    /// Returns the hashes of the transfer transactions within the block.
+    pub fn transfer(&self) -> impl Iterator<Item = &TransactionHash> {
+        self.transfer.iter()
     }
 
-    /// Returns the deploy hashes of the transfers within the block.
-    pub fn transfer_hashes(&self) -> &[DeployHash] {
-        &self.transfer_hashes
+    /// Returns the hashes of the non-transfer, native transactions within the block.
+    pub fn staking(&self) -> impl Iterator<Item = &TransactionHash> {
+        self.staking.iter()
     }
 
-    /// Returns the deploy and transfer hashes in the order in which they were executed.
-    pub fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
-        self.deploy_hashes()
-            .iter()
-            .chain(self.transfer_hashes().iter())
+    /// Returns the hashes of the installer/upgrader transactions within the block.
+    pub fn install_upgrade(&self) -> impl Iterator<Item = &TransactionHash> {
+        self.install_upgrade.iter()
+    }
+
+    /// Returns the hashes of all other transactions within the block.
+    pub fn standard(&self) -> impl Iterator<Item = &TransactionHash> {
+        self.standard.iter()
+    }
+
+    /// Returns all of the transaction hashes in the order in which they were executed.
+    pub fn all_transactions(&self) -> impl Iterator<Item = &TransactionHash> {
+        self.transfer()
+            .chain(self.staking())
+            .chain(self.install_upgrade())
+            .chain(self.standard())
     }
 
     /// Returns the body hash, i.e. the hash of the body's serialized bytes.
@@ -87,6 +111,11 @@ impl BlockBodyV2 {
             .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
         Digest::hash(serialized_body)
     }
+
+    /// Return the list of identifiers for finality signatures for a particular past block.
+    pub fn rewarded_signatures(&self) -> &RewardedSignatures {
+        &self.rewarded_signatures
+    }
 }
 
 impl PartialEq for BlockBodyV2 {
@@ -95,19 +124,28 @@ impl PartialEq for BlockBodyV2 {
         #[cfg(any(feature = "once_cell", test))]
         let BlockBodyV2 {
             proposer,
-            deploy_hashes,
-            transfer_hashes,
+            transfer,
+            staking,
+            install_upgrade,
+            standard,
+            rewarded_signatures,
             hash: _,
         } = self;
         #[cfg(not(any(feature = "once_cell", test)))]
         let BlockBodyV2 {
             proposer,
-            deploy_hashes,
-            transfer_hashes,
+            transfer,
+            staking,
+            install_upgrade,
+            standard,
+            rewarded_signatures,
         } = self;
         *proposer == other.proposer
-            && *deploy_hashes == other.deploy_hashes
-            && *transfer_hashes == other.transfer_hashes
+            && *transfer == other.transfer
+            && *staking == other.staking
+            && *install_upgrade == other.install_upgrade
+            && *standard == other.standard
+            && *rewarded_signatures == other.rewarded_signatures
     }
 }
 
@@ -115,10 +153,13 @@ impl Display for BlockBodyV2 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "block body proposed by {}, {} deploys, {} transfers",
+            "block body proposed by {}, {} transfers, {} non-transfer-native, {} \
+            installer/upgraders, {} others",
             self.proposer,
-            self.deploy_hashes.len(),
-            self.transfer_hashes.len(),
+            self.transfer.len(),
+            self.staking.len(),
+            self.install_upgrade.len(),
+            self.standard.len()
         )
     }
 }
@@ -126,8 +167,11 @@ impl Display for BlockBodyV2 {
 impl ToBytes for BlockBodyV2 {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.proposer.write_bytes(writer)?;
-        self.deploy_hashes.write_bytes(writer)?;
-        self.transfer_hashes.write_bytes(writer)?;
+        self.transfer.write_bytes(writer)?;
+        self.staking.write_bytes(writer)?;
+        self.install_upgrade.write_bytes(writer)?;
+        self.standard.write_bytes(writer)?;
+        self.rewarded_signatures.write_bytes(writer)?;
         Ok(())
     }
 
@@ -139,20 +183,29 @@ impl ToBytes for BlockBodyV2 {
 
     fn serialized_length(&self) -> usize {
         self.proposer.serialized_length()
-            + self.deploy_hashes.serialized_length()
-            + self.transfer_hashes.serialized_length()
+            + self.transfer.serialized_length()
+            + self.staking.serialized_length()
+            + self.install_upgrade.serialized_length()
+            + self.standard.serialized_length()
+            + self.rewarded_signatures.serialized_length()
     }
 }
 
 impl FromBytes for BlockBodyV2 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (proposer, bytes) = PublicKey::from_bytes(bytes)?;
-        let (deploy_hashes, bytes) = Vec::<DeployHash>::from_bytes(bytes)?;
-        let (transfer_hashes, bytes) = Vec::<DeployHash>::from_bytes(bytes)?;
+        let (transfer, bytes) = Vec::<TransactionHash>::from_bytes(bytes)?;
+        let (staking, bytes) = Vec::<TransactionHash>::from_bytes(bytes)?;
+        let (install_upgrade, bytes) = Vec::<TransactionHash>::from_bytes(bytes)?;
+        let (standard, bytes) = Vec::<TransactionHash>::from_bytes(bytes)?;
+        let (rewarded_signatures, bytes) = RewardedSignatures::from_bytes(bytes)?;
         let body = BlockBodyV2 {
             proposer,
-            deploy_hashes,
-            transfer_hashes,
+            transfer,
+            staking,
+            install_upgrade,
+            standard,
+            rewarded_signatures,
             #[cfg(any(feature = "once_cell", test))]
             hash: OnceCell::new(),
         };

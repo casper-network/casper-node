@@ -1,4 +1,7 @@
-use std::{collections::BTreeSet, convert::TryInto};
+use std::{
+    collections::BTreeSet,
+    convert::{TryFrom, TryInto},
+};
 
 use crate::{
     global_state::{
@@ -9,10 +12,12 @@ use crate::{
 
 use casper_types::{
     account::AccountHash,
-    package::{ContractPackageKind, ContractPackageStatus},
-    AccessRights, AddressableEntity, CLValue, ChecksumRegistry, ContractHash, ContractPackageHash,
-    ContractVersions, ContractWasm, ContractWasmHash, EntryPoints, Groups, Key, Motes, Package,
-    Phase, ProtocolVersion, StoredValue, StoredValueTypeMismatch, SystemContractRegistry, URef,
+    addressable_entity::MessageTopics,
+    bytesrepr,
+    package::{EntityVersions, Groups, PackageKind, PackageKindTag, PackageStatus},
+    AccessRights, AddressableEntity, AddressableEntityHash, ChecksumRegistry,CLValue, EntryPoints,
+    Key, Motes, Package, PackageHash, Phase, ProtocolVersion, StoredValue, StoredValueTypeMismatch,
+    SystemContractRegistry, URef,
 };
 
 use crate::tracking_copy::{TrackingCopy, TrackingCopyError};
@@ -26,7 +31,7 @@ pub trait TrackingCopyExt<R> {
     fn get_entity_hash_by_account_hash(
         &mut self,
         account_hash: AccountHash,
-    ) -> Result<ContractHash, Self::Error>;
+    ) -> Result<AddressableEntityHash, Self::Error>;
 
     /// Gets the entity for a given account by its account address
     fn get_addressable_entity_by_account_hash(
@@ -63,23 +68,24 @@ pub trait TrackingCopyExt<R> {
         balance_key: Key,
     ) -> Result<(Motes, TrieMerkleProof<Key, StoredValue>), Self::Error>;
 
-    /// Gets a contract by Key.
-    fn get_contract_wasm(
-        &mut self,
-        contract_wasm_hash: ContractWasmHash,
-    ) -> Result<ContractWasm, Self::Error>;
+    // /// Gets a contract by Key.
+    // fn get_byte_code(&mut self, contract_wasm_hash: ByteCodeHash) -> Result<ByteCode,
+    // Self::Error>;
 
     /// Gets an addressable entity  by Key.
     fn get_contract(
         &mut self,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
     ) -> Result<AddressableEntity, Self::Error>;
 
-    /// Gets a contract package by Key.
-    fn get_contract_package(
+    /// Gets a package by Key.
+    fn get_package(&mut self, contract_package_hash: PackageHash) -> Result<Package, Self::Error>;
+
+    /// Gets an entity by Key.
+    fn get_contract_entity(
         &mut self,
-        contract_package_hash: ContractPackageHash,
-    ) -> Result<Package, Self::Error>;
+        entity_hash: AddressableEntityHash,
+    ) -> Result<(AddressableEntity, bool), Self::Error>;
 
     /// Gets the system contract registry.
     fn get_system_contracts(&mut self) -> Result<SystemContractRegistry, Self::Error>;
@@ -97,17 +103,15 @@ where
     fn get_entity_hash_by_account_hash(
         &mut self,
         account_hash: AccountHash,
-    ) -> Result<ContractHash, Self::Error> {
+    ) -> Result<AddressableEntityHash, Self::Error> {
         let account_key = Key::Account(account_hash);
         match self.get(&account_key)? {
             Some(StoredValue::CLValue(cl_value)) => {
-                let contract_hash = CLValue::into_t::<Key>(cl_value)?;
-                let contract_hash = contract_hash
-                    .into_hash()
-                    .map(ContractHash::new)
-                    .expect("must convert to contract hash");
+                let entity_key = CLValue::into_t::<Key>(cl_value)?;
+                let entity_hash = AddressableEntityHash::try_from(entity_key)
+                    .map_err(|_| execution::Error::BytesRepr(bytesrepr::Error::Formatting))?;
 
-                Ok(contract_hash)
+                Ok(entity_hash)
             }
             Some(other) => Err(TrackingCopyError::TypeMismatch(
                 StoredValueTypeMismatch::new("CLValue".to_string(), other.type_name()),
@@ -138,7 +142,7 @@ where
                 let entry_points = EntryPoints::new();
 
                 let entity = AddressableEntity::new(
-                    contract_package_hash,
+                    package_hash,
                     contract_wasm_hash,
                     account.named_keys().clone(),
                     entry_points,
@@ -146,6 +150,7 @@ where
                     account.main_purse(),
                     account.associated_keys().clone().into(),
                     account.action_thresholds().clone().into(),
+                    MessageTopics::default(),
                 );
 
                 let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
@@ -153,23 +158,23 @@ where
                 let contract_package = {
                     let mut contract_package = Package::new(
                         access_key,
-                        ContractVersions::default(),
+                        EntityVersions::default(),
                         BTreeSet::default(),
                         Groups::default(),
-                        ContractPackageStatus::Locked,
-                        ContractPackageKind::Account(account_hash),
+                        PackageStatus::Locked,
+                        PackageKind::Account(account_hash),
                     );
                     contract_package
-                        .insert_contract_version(protocol_version.value().major, contract_hash);
+                        .insert_entity_version(protocol_version.value().major, entity_hash);
                     contract_package
                 };
 
-                let contract_key: Key = contract_hash.into();
+                let entity_key = Key::addressable_entity_key(PackageKindTag::Account, entity_hash);
 
-                self.write(contract_key, StoredValue::AddressableEntity(entity.clone()));
-                self.write(contract_package_hash.into(), contract_package.into());
+                self.write(entity_key, StoredValue::AddressableEntity(entity.clone()));
+                self.write(package_hash.into(), contract_package.into());
 
-                let contract_by_account = match CLValue::from_t(contract_key) {
+                let contract_by_account = match CLValue::from_t(entity_key) {
                     Ok(cl_value) => cl_value,
                     Err(error) => return Err(TrackingCopyError::CLValue(error)),
                 };
@@ -186,6 +191,7 @@ where
             }
             None => return Err(TrackingCopyError::KeyNotFound(account_key)),
         };
+
         match self.get(&contract_key)? {
             Some(StoredValue::AddressableEntity(contract)) => Ok(contract),
             Some(other) => Err(TrackingCopyError::TypeMismatch(
@@ -285,18 +291,18 @@ where
     /// Gets a contract header by Key
     fn get_contract(
         &mut self,
-        contract_hash: ContractHash,
+        entity_hash: AddressableEntityHash,
     ) -> Result<AddressableEntity, Self::Error> {
-        let key = contract_hash.into();
+        let package_kind_tag = if self.get_system_contracts()?.has_contract_hash(&entity_hash) {
+            PackageKindTag::System
+        } else {
+            PackageKindTag::SmartContract
+        };
+
+        let key = Key::addressable_entity_key(package_kind_tag, entity_hash);
 
         match self.read(&key)? {
             Some(StoredValue::AddressableEntity(entity)) => Ok(entity),
-            Some(StoredValue::Contract(contract)) => {
-                let contract_key: Key = contract_hash.into();
-                let entity: AddressableEntity = contract.into();
-                self.write(contract_key, StoredValue::AddressableEntity(entity.clone()));
-                Ok(entity)
-            }
             Some(other) => Err(TrackingCopyError::TypeMismatch(
                 StoredValueTypeMismatch::new(
                     "AddressableEntity or Contract".to_string(),
@@ -307,17 +313,53 @@ where
         }
     }
 
-    fn get_contract_package(
-        &mut self,
-        contract_package_hash: ContractPackageHash,
-    ) -> Result<Package, Self::Error> {
-        let key = contract_package_hash.into();
+    fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Self::Error> {
+        let key = package_hash.into();
         match self.read(&key)? {
-            Some(StoredValue::ContractPackage(contract_package)) => Ok(contract_package),
-            Some(other) => Err(TrackingCopyError::TypeMismatch(
-                StoredValueTypeMismatch::new("ContractPackage".to_string(), other.type_name()),
+            Some(StoredValue::Package(contract_package)) => Ok(contract_package),
+            Some(other) => Err(execution::Error::TypeMismatch(
+                StoredValueTypeMismatch::new("Package".to_string(), other.type_name()),
             )),
-            None => Err(TrackingCopyError::KeyNotFound(key)),
+            None => match self
+                .read(&Key::Hash(package_hash.value()))
+                .map_err(Into::into)?
+            {
+                Some(StoredValue::ContractPackage(contract_package)) => {
+                    let package: Package = contract_package.into();
+                    self.write(
+                        Key::Package(package_hash.value()),
+                        StoredValue::Package(package.clone()),
+                    );
+                    Ok(package)
+                }
+                Some(other) => Err(TrackingCopyError::TypeMismatch(
+                    StoredValueTypeMismatch::new("ContractPackage".to_string(), other.type_name()),
+                )),
+                None => Err(execution::Error::KeyNotFound(key)),
+            },
+        }
+    }
+
+    fn get_contract_entity(
+        &mut self,
+        entity_hash: AddressableEntityHash,
+    ) -> Result<(AddressableEntity, bool), Self::Error> {
+        let key = Key::contract_entity_key(entity_hash);
+        match self.read(&key).map_err(Into::into)? {
+            Some(StoredValue::AddressableEntity(entity)) => Ok((entity, false)),
+            Some(other) => Err(execution::Error::TypeMismatch(
+                StoredValueTypeMismatch::new("AddressableEntity".to_string(), other.type_name()),
+            )),
+            None => match self
+                .read(&Key::Hash(entity_hash.value()))
+                .map_err(Into::into)?
+            {
+                Some(StoredValue::Contract(contract)) => Ok((contract.into(), true)),
+                Some(other) => Err(execution::Error::TypeMismatch(
+                    StoredValueTypeMismatch::new("Contract".to_string(), other.type_name()),
+                )),
+                None => Err(TrackingCopyError::KeyNotFound(key)),
+            },
         }
     }
 

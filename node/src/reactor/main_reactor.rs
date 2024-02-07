@@ -27,7 +27,8 @@ use tracing::{debug, error, info, warn};
 
 use casper_types::{
     Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, DeployId, EraId, FinalitySignature,
-    PublicKey, TimeDiff, Timestamp, Transaction, TransactionId, U512,
+    PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId,
+    U512,
 };
 
 #[cfg(test)]
@@ -66,6 +67,7 @@ use crate::{
         requests::{AcceptTransactionRequest, ChainspecRawBytesRequest},
         EffectBuilder, EffectExt, Effects, GossipTarget,
     },
+    failpoints::FailpointActivation,
     fatal,
     protocol::Message,
     reactor::{
@@ -74,7 +76,9 @@ use crate::{
         main_reactor::{fetchers::Fetchers, upgrade_shutdown::SignatureGossipTracker},
         EventQueueHandle, QueueKind,
     },
-    types::{ForwardMetaBlock, MetaBlock, MetaBlockState, TrieOrChunk, ValidatorMatrix},
+    types::{
+        ForwardMetaBlock, MetaBlock, MetaBlockState, SyncHandling, TrieOrChunk, ValidatorMatrix,
+    },
     utils::{Source, WithDir},
     NodeRng,
 };
@@ -188,7 +192,7 @@ pub(crate) struct MainReactor {
     shutdown_for_upgrade_timeout: TimeDiff,
     switched_to_shutdown_for_upgrade: Timestamp,
     upgrade_timeout: TimeDiff,
-    sync_to_genesis: bool,
+    sync_handling: SyncHandling,
     signature_gossip_tracker: SignatureGossipTracker,
 }
 
@@ -738,22 +742,15 @@ impl reactor::Reactor for MainReactor {
                             }),
                         ));
                         // notify event stream
-                        match &*transaction {
-                            Transaction::Deploy(deploy) => {
-                                effects.extend(self.dispatch_event(
-                                    effect_builder,
-                                    rng,
-                                    MainEvent::EventStreamServer(
-                                        event_stream_server::Event::DeployAccepted(Arc::new(
-                                            deploy.clone(),
-                                        )),
-                                    ),
-                                ));
-                            }
-                            Transaction::V1(_txn) => {
-                                todo!("avoid match on `transaction` once sse handles transactions");
-                            }
-                        }
+                        effects.extend(self.dispatch_event(
+                            effect_builder,
+                            rng,
+                            MainEvent::EventStreamServer(
+                                event_stream_server::Event::TransactionAccepted(Arc::clone(
+                                    &transaction,
+                                )),
+                            ),
+                        ));
                     }
                     Source::SpeculativeExec(_) => {
                         error!(
@@ -835,9 +832,10 @@ impl reactor::Reactor for MainReactor {
             MainEvent::DeployBufferAnnouncement(DeployBufferAnnouncement::DeploysExpired(
                 hashes,
             )) => {
-                let reactor_event = MainEvent::EventStreamServer(
-                    event_stream_server::Event::DeploysExpired(hashes),
-                );
+                let reactor_event =
+                    MainEvent::EventStreamServer(event_stream_server::Event::TransactionsExpired(
+                        hashes.into_iter().map(TransactionHash::Deploy).collect(),
+                    ));
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
 
@@ -994,8 +992,8 @@ impl reactor::Reactor for MainReactor {
             | MainEvent::LegacyDeployFetcherRequest(..)
             | MainEvent::BlockFetcher(..)
             | MainEvent::BlockFetcherRequest(..)
-            | MainEvent::DeployFetcher(..)
-            | MainEvent::DeployFetcherRequest(..)
+            | MainEvent::TransactionFetcher(..)
+            | MainEvent::TransactionFetcherRequest(..)
             | MainEvent::BlockHeaderFetcher(..)
             | MainEvent::BlockHeaderFetcherRequest(..)
             | MainEvent::TrieOrChunkFetcher(..)
@@ -1063,39 +1061,17 @@ impl reactor::Reactor for MainReactor {
             config.node.force_resync,
         )?;
 
-        let max_delegators_per_validator =
-            if chainspec.core_config.max_delegators_per_validator == 0 {
-                None
-            } else {
-                Some(chainspec.core_config.max_delegators_per_validator)
-            };
-
         let contract_runtime = ContractRuntime::new(
-            protocol_version,
             storage.root_path(),
             &config.contract_runtime,
-            chainspec.wasm_config,
-            chainspec.system_costs_config,
-            chainspec.core_config.max_associated_keys,
-            chainspec.core_config.max_runtime_call_stack_height,
-            chainspec.core_config.minimum_delegation_amount,
-            chainspec.protocol_config.activation_point,
-            chainspec.core_config.prune_batch_size,
-            chainspec.core_config.strict_argument_checking,
-            chainspec.core_config.vesting_schedule_period.millis(),
-            max_delegators_per_validator,
+            chainspec.clone(),
             registry,
-            chainspec.core_config.administrators.clone(),
-            chainspec.core_config.allow_auction_bids,
-            chainspec.core_config.allow_unrestricted_transfers,
-            chainspec.core_config.refund_handling,
-            chainspec.core_config.fee_handling,
         )?;
 
         let network = Network::new(
             config.network.clone(),
             network_identity,
-            Some((our_secret_key.clone(), our_public_key.clone())),
+            Some((our_secret_key, our_public_key)),
             registry,
             chainspec.as_ref(),
             validator_matrix.clone(),
@@ -1154,8 +1130,7 @@ impl reactor::Reactor for MainReactor {
         // consensus
         let consensus = EraSupervisor::new(
             storage.root_path(),
-            our_secret_key,
-            our_public_key,
+            validator_matrix.clone(),
             config.consensus,
             chainspec.clone(),
             registry,
@@ -1178,10 +1153,15 @@ impl reactor::Reactor for MainReactor {
             validator_matrix.clone(),
             registry,
         )?;
-        let block_validator = BlockValidator::new(Arc::clone(&chainspec));
+        let block_validator = BlockValidator::new(
+            Arc::clone(&chainspec),
+            validator_matrix.clone(),
+            config.block_validator,
+        );
         let upgrade_watcher =
             UpgradeWatcher::new(chainspec.as_ref(), config.upgrade_watcher, &root_dir)?;
-        let transaction_acceptor = TransactionAcceptor::new(chainspec.as_ref(), registry)?;
+        let transaction_acceptor =
+            TransactionAcceptor::new(config.transaction_acceptor, chainspec.as_ref(), registry)?;
         let deploy_buffer =
             DeployBuffer::new(chainspec.transaction_config, config.deploy_buffer, registry)?;
 
@@ -1224,7 +1204,7 @@ impl reactor::Reactor for MainReactor {
             control_logic_default_delay: config.node.control_logic_default_delay,
             trusted_hash,
             validator_matrix,
-            sync_to_genesis: config.node.sync_to_genesis,
+            sync_handling: config.node.sync_handling,
             signature_gossip_tracker: SignatureGossipTracker::new(),
             shutdown_for_upgrade_timeout: config.node.shutdown_for_upgrade_timeout,
             switched_to_shutdown_for_upgrade: Timestamp::from(0),
@@ -1241,6 +1221,15 @@ impl reactor::Reactor for MainReactor {
         self.memory_metrics.estimate(self);
         self.event_queue_metrics
             .record_event_queue_counts(&event_queue_handle)
+    }
+
+    fn activate_failpoint(&mut self, activation: &FailpointActivation) {
+        if activation.key().starts_with("consensus") {
+            <EraSupervisor as Component<MainEvent>>::activate_failpoint(
+                &mut self.consensus,
+                activation,
+            );
+        }
     }
 }
 
@@ -1434,6 +1423,26 @@ impl MainReactor {
 
         if meta_block
             .mut_state()
+            .register_as_validator_notified()
+            .was_updated()
+        {
+            debug!(
+                "MetaBlock: notifying block validator: {} {}",
+                meta_block.height(),
+                meta_block.hash(),
+            );
+            effects.extend(reactor::wrap_effects(
+                MainEvent::BlockValidator,
+                self.block_validator.handle_event(
+                    effect_builder,
+                    rng,
+                    block_validator::Event::BlockStored(meta_block.height()),
+                ),
+            ));
+        }
+
+        if meta_block
+            .mut_state()
             .register_as_consensus_notified()
             .was_updated()
         {
@@ -1451,7 +1460,7 @@ impl MainReactor {
                             effect_builder,
                             rng,
                             consensus::Event::BlockAdded {
-                                header: Box::new(fwd_meta_block.block.header().clone()),
+                                header: Box::new(fwd_meta_block.block.header().clone().into()),
                                 header_hash: *fwd_meta_block.block.hash(),
                             },
                         ),
@@ -1467,7 +1476,7 @@ impl MainReactor {
                             effect_builder,
                             rng,
                             consensus::Event::BlockAdded {
-                                header: Box::new(historical_meta_block.block.header().clone()),
+                                header: Box::new(historical_meta_block.block.clone_header()),
                                 header_hash: *historical_meta_block.block.hash(),
                             },
                         ),
@@ -1478,6 +1487,7 @@ impl MainReactor {
 
         if let MetaBlock::Forward(forward_meta_block) = &meta_block {
             let block = forward_meta_block.block.clone();
+            let execution_results = forward_meta_block.execution_results.clone();
 
             if meta_block
                 .mut_state()
@@ -1491,7 +1501,7 @@ impl MainReactor {
                 );
                 let meta_block = ForwardMetaBlock {
                     block,
-                    execution_results: meta_block.execution_results().clone(),
+                    execution_results,
                     state: *meta_block.state(),
                 };
                 effects.extend(reactor::wrap_effects(
@@ -1605,19 +1615,44 @@ impl MainReactor {
             ),
         ));
 
-        for (deploy_hash, deploy_header, execution_result) in meta_block.execution_results().clone()
-        {
-            let event = event_stream_server::Event::DeployProcessed {
-                deploy_hash,
-                deploy_header: Box::new(deploy_header),
-                block_hash: meta_block.hash(),
-                execution_result: Box::new(execution_result),
-            };
-            effects.extend(reactor::wrap_effects(
-                MainEvent::EventStreamServer,
-                self.event_stream_server
-                    .handle_event(effect_builder, rng, event),
-            ));
+        match &meta_block {
+            MetaBlock::Forward(fwd_meta_block) => {
+                for exec_artifact in fwd_meta_block.execution_results.iter() {
+                    let event = event_stream_server::Event::TransactionProcessed {
+                        transaction_hash: TransactionHash::Deploy(exec_artifact.deploy_hash),
+                        transaction_header: Box::new(TransactionHeader::Deploy(
+                            exec_artifact.deploy_header.clone(),
+                        )),
+                        block_hash: *fwd_meta_block.block.hash(),
+                        execution_result: Box::new(exec_artifact.execution_result.clone()),
+                        messages: exec_artifact.messages.clone(),
+                    };
+
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::EventStreamServer,
+                        self.event_stream_server
+                            .handle_event(effect_builder, rng, event),
+                    ));
+                }
+            }
+            MetaBlock::Historical(historical_meta_block) => {
+                for (transaction_hash, transaction_header, execution_result) in
+                    historical_meta_block.execution_results.iter()
+                {
+                    let event = event_stream_server::Event::TransactionProcessed {
+                        transaction_hash: *transaction_hash,
+                        transaction_header: Box::new(transaction_header.clone()),
+                        block_hash: *historical_meta_block.block.hash(),
+                        execution_result: Box::new(execution_result.clone()),
+                        messages: Vec::new(),
+                    };
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::EventStreamServer,
+                        self.event_stream_server
+                            .handle_event(effect_builder, rng, event),
+                    ));
+                }
+            }
         }
 
         debug!(

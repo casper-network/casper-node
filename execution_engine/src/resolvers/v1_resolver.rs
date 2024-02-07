@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use wasmi::{
+use casper_wasmi::{
     memory_units::Pages, Error as InterpreterError, FuncInstance, FuncRef, MemoryDescriptor,
     MemoryInstance, MemoryRef, ModuleImportResolver, Signature, ValueType,
 };
@@ -160,9 +160,9 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
                 Signature::new(&[ValueType::I32; 8][..], Some(ValueType::I32)),
                 FunctionIndex::CreateContractUserGroup.into(),
             ),
-            "casper_add_contract_version" => FuncInstance::alloc_host(
-                Signature::new(&[ValueType::I32; 10][..], Some(ValueType::I32)),
-                FunctionIndex::AddContractVersion.into(),
+            "casper_add_package_version" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 9][..], Some(ValueType::I32)),
+                FunctionIndex::AddPackageVersion.into(),
             ),
             "casper_disable_contract_version" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
@@ -244,6 +244,18 @@ impl ModuleImportResolver for RuntimeModuleImportResolver {
             "casper_enable_contract_version" => FuncInstance::alloc_host(
                 Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
                 FunctionIndex::EnableContractVersion.into(),
+            ),
+            "casper_add_session_logic" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 2][..], Some(ValueType::I32)),
+                FunctionIndex::AddSessionVersion.into(),
+            ),
+            "casper_manage_message_topic" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
+                FunctionIndex::ManageMessageTopic.into(),
+            ),
+            "casper_emit_message" => FuncInstance::alloc_host(
+                Signature::new(&[ValueType::I32; 4][..], Some(ValueType::I32)),
+                FunctionIndex::EmitMessage.into(),
             ),
             _ => {
                 return Err(InterpreterError::Function(format!(

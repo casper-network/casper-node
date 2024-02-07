@@ -12,10 +12,10 @@ use casper_contract::{
 };
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
-    package::CONTRACT_INITIAL_VERSION,
+    package::ENTITY_INITIAL_VERSION,
     runtime_args,
     system::{handle_payment, standard_payment},
-    CLType, CLTyped, ContractPackageHash, Key, Parameter, RuntimeArgs, URef, U512,
+    CLType, CLTyped, Key, PackageHash, Parameter, RuntimeArgs, URef, U512,
 };
 
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
@@ -40,8 +40,8 @@ pub extern "C" fn restricted_contract() {}
 #[no_mangle]
 pub extern "C" fn restricted_session_caller() {
     let package_hash: Key = runtime::get_named_arg(ARG_PACKAGE_HASH);
-    let contract_version = Some(CONTRACT_INITIAL_VERSION);
-    let contract_package_hash = package_hash.into_hash().unwrap_or_revert().into();
+    let contract_version = Some(ENTITY_INITIAL_VERSION);
+    let contract_package_hash = package_hash.into_entity_addr().unwrap_or_revert().into();
     runtime::call_versioned_contract(
         contract_package_hash,
         contract_version,
@@ -52,8 +52,8 @@ pub extern "C" fn restricted_session_caller() {
 
 fn contract_caller() {
     let package_hash: Key = runtime::get_named_arg(ARG_PACKAGE_HASH);
-    let contract_version = Some(CONTRACT_INITIAL_VERSION);
-    let contract_package_hash = package_hash.into_hash().unwrap_or_revert().into();
+    let contract_version = Some(ENTITY_INITIAL_VERSION);
+    let contract_package_hash = package_hash.into_package_hash().unwrap_or_revert();
     let runtime_args = runtime_args! {};
     runtime::call_versioned_contract(
         contract_package_hash,
@@ -104,7 +104,7 @@ pub extern "C" fn call_restricted_entry_points() {
     uncallable_contract();
 }
 
-fn create_group(package_hash: ContractPackageHash) -> URef {
+fn create_group(package_hash: PackageHash) -> URef {
     let new_uref_1 = storage::new_uref(());
     runtime::put_key("saved_uref", new_uref_1.into());
 
@@ -134,7 +134,7 @@ fn create_entry_points_1() -> EntryPoints {
         Vec::new(),
         CLType::I32,
         EntryPointAccess::groups(&["Group 1"]),
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(restricted_contract);
 
@@ -152,7 +152,7 @@ fn create_entry_points_1() -> EntryPoints {
         Vec::new(),
         CLType::I32,
         EntryPointAccess::groups(&["Group 1"]),
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(restricted_contract);
 
@@ -165,7 +165,7 @@ fn create_entry_points_1() -> EntryPoints {
         EntryPointAccess::Public,
         // NOTE: Public contract authorizes any contract call, because this contract has groups
         // uref in its named keys
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(unrestricted_contract_caller);
 
@@ -238,7 +238,7 @@ fn create_entry_points_1() -> EntryPoints {
     entry_points
 }
 
-fn install_version_1(contract_package_hash: ContractPackageHash, restricted_uref: URef) {
+fn install_version_1(contract_package_hash: PackageHash, restricted_uref: URef) {
     let contract_named_keys = {
         let contract_variable = storage::new_uref(0);
 

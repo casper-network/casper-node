@@ -7,7 +7,8 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
-    addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, ContractHash, RuntimeArgs, U512,
+    addressable_entity::DEFAULT_ENTRY_POINT_NAME, package::PackageKindTag, runtime_args,
+    AddressableEntityHash, ByteCodeKind, Key, RuntimeArgs, U512,
 };
 
 const CONTRACT_COUNTER_FACTORY: &str = "counter_factory.wasm";
@@ -87,17 +88,25 @@ fn should_not_call_undefined_entrypoints_on_factory() {
 fn contract_factory_wasm_should_have_expected_exports() {
     let (builder, contract_hash) = setup();
 
+    let factory_contract_entity_key =
+        Key::addressable_entity_key(PackageKindTag::SmartContract, contract_hash);
+
     let factory_contract = builder
-        .query(None, contract_hash.into(), &[])
+        .query(None, factory_contract_entity_key, &[])
         .expect("should have contract")
         .as_addressable_entity()
         .cloned()
         .expect("should be contract");
 
+    let factory_contract_byte_code_key = Key::byte_code_key(
+        ByteCodeKind::V1CasperWasm,
+        factory_contract.byte_code_addr(),
+    );
+
     let factory_contract_wasm = builder
-        .query(None, factory_contract.contract_wasm_key(), &[])
+        .query(None, factory_contract_byte_code_key, &[])
         .expect("should have contract wasm")
-        .as_contract_wasm()
+        .as_byte_code()
         .cloned()
         .expect("should have wasm");
 
@@ -151,7 +160,7 @@ fn should_install_and_use_factory_pattern() {
         .named_keys()
         .get(NEW_COUNTER_1_NAME)
         .expect("new counter should exist")
-        .into_contract_hash()
+        .into_entity_hash()
         .unwrap();
 
     let new_counter_1_contract = builder
@@ -162,7 +171,7 @@ fn should_install_and_use_factory_pattern() {
         .named_keys()
         .get(NEW_COUNTER_2_NAME)
         .expect("new counter should exist")
-        .into_contract_hash()
+        .into_entity_hash()
         .unwrap();
 
     let _new_counter_2_contract = builder
@@ -170,9 +179,16 @@ fn should_install_and_use_factory_pattern() {
         .expect("should have contract instance");
 
     let counter_1_wasm = builder
-        .query(None, new_counter_1_contract.contract_wasm_key(), &[])
+        .query(
+            None,
+            Key::byte_code_key(
+                ByteCodeKind::V1CasperWasm,
+                new_counter_1_contract.byte_code_addr(),
+            ),
+            &[],
+        )
         .expect("should have contract wasm")
-        .as_contract_wasm()
+        .as_byte_code()
         .cloned()
         .expect("should have wasm");
 
@@ -206,7 +222,7 @@ fn should_install_and_use_factory_pattern() {
     builder.exec(decrement_request).commit().expect_success();
 }
 
-fn setup() -> (LmdbWasmTestBuilder, ContractHash) {
+fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -219,16 +235,14 @@ fn setup() -> (LmdbWasmTestBuilder, ContractHash) {
 
     builder.exec(exec_request).commit().expect_success();
 
-    let account_entity_hash = builder
-        .get_contract_hash_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have account");
     let account = builder
-        .get_addressable_entity(account_entity_hash)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have entity for account");
+
     let contract_hash_key = account
         .named_keys()
         .get("factory_hash")
         .expect("should have factory hash");
 
-    (builder, contract_hash_key.into_contract_hash().unwrap())
+    (builder, contract_hash_key.into_entity_hash().unwrap())
 }

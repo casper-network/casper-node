@@ -25,11 +25,11 @@ pub fn delegate() {
     }
 
     let contract_hash = runtime::get_key(HASH_KEY_NAME)
-        .and_then(Key::into_hash)
+        .and_then(Key::into_entity_hash)
         .unwrap_or_revert();
 
     runtime::call_contract(
-        contract_hash.into(),
+        contract_hash,
         ENTRYPOINT,
         runtime_args! {
             ARG_SOURCE => source,
