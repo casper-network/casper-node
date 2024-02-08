@@ -204,11 +204,11 @@ impl Stub {
         Ok(0)
     }
 
-    fn casper_print(&self, msg_ptr: *const u8, msg_size: usize) -> Result<i32, NativeTrap> {
+    fn casper_print(&self, msg_ptr: *const u8, msg_size: usize) -> Result<(), NativeTrap> {
         let msg_bytes = unsafe { slice::from_raw_parts(msg_ptr, msg_size) };
         let msg = std::str::from_utf8(msg_bytes).expect("Valid UTF-8 string");
         println!("💻 {msg}");
-        Ok(0)
+        Ok(())
     }
 
     fn casper_return(
@@ -580,7 +580,7 @@ mod symbols {
     }
 
     #[no_mangle]
-    pub extern "C" fn casper_print(msg_ptr: *const u8, msg_size: usize) -> i32 {
+    pub extern "C" fn casper_print(msg_ptr: *const u8, msg_size: usize) {
         let _name = "casper_print";
         let _args = (&msg_ptr, &msg_size);
         let _call_result = with_stub(|stub| stub.casper_print(msg_ptr, msg_size));

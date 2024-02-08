@@ -48,23 +48,18 @@ pub(crate) fn casper_write<S: Storage>(
     value_ptr: u32,
     value_size: u32,
 ) -> i32 {
-    let key = caller
-        .memory_read(key_ptr, key_size.try_into().unwrap())
-        .expect("should read key bytes");
+    let key = caller.memory_read(key_ptr, key_size.try_into().unwrap())?;
 
     let mut prefixed = caller.context().address.to_vec();
     prefixed.extend(key);
 
-    let value = caller
-        .memory_read(value_ptr, value_size.try_into().unwrap())
-        .expect("should read value bytes");
+    let value = caller.memory_read(value_ptr, value_size.try_into().unwrap())?;
 
     // Write data to key value storage
     caller
         .context()
         .storage
-        .write(key_space, &prefixed, value_tag, &value)
-        .unwrap();
+        .write(key_space, &prefixed, value_tag, &value)?;
 
     0
 }
@@ -73,13 +68,11 @@ pub(crate) fn casper_print<S: Storage>(
     caller: impl Caller<S>,
     message_ptr: u32,
     message_size: u32,
-) -> i32 {
-    let vec = caller
-        .memory_read(message_ptr, message_size.try_into().unwrap())
-        .expect("should work");
+) -> VMResult<()> {
+    let vec = caller.memory_read(message_ptr, message_size.try_into().unwrap())?;
     let msg = String::from_utf8_lossy(&vec);
     eprintln!("⛓️ {msg}");
-    0
+    Ok(())
 }
 
 /// Write value under a key.
@@ -92,9 +85,7 @@ pub(crate) fn casper_read<S: Storage>(
     cb_alloc: u32,
     alloc_ctx: u32,
 ) -> Result<i32, VMError> {
-    let key = caller
-        .memory_read(key_ptr, key_size.try_into().unwrap())
-        .expect("should read key bytes");
+    let key = caller.memory_read(key_ptr, key_size.try_into().unwrap())?;
 
     let mut prefixed = caller.context().address.to_vec();
     prefixed.extend(key);
@@ -115,9 +106,9 @@ pub(crate) fn casper_read<S: Storage>(
             };
 
             let read_info_bytes = safe_transmute::transmute_one_to_bytes(&read_info);
-            caller.memory_write(info_ptr, read_info_bytes).unwrap();
+            caller.memory_write(info_ptr, read_info_bytes)?;
             if out_ptr != 0 {
-                caller.memory_write(out_ptr, &entry.data).unwrap();
+                caller.memory_write(out_ptr, &entry.data)?;
             }
             Ok(0)
         }
@@ -143,7 +134,7 @@ pub(crate) fn casper_copy_input<S: Storage>(
     if out_ptr == 0 {
         Ok(out_ptr)
     } else {
-        caller.memory_write(out_ptr, &input).unwrap();
+        caller.memory_write(out_ptr, &input)?;
         Ok(out_ptr + (input.len() as u32))
     }
 }
@@ -155,7 +146,7 @@ pub(crate) fn casper_return<S: Storage>(
     data_ptr: u32,
     data_len: u32,
 ) -> VMResult<()> {
-    let flags = ReturnFlags::from_bits(flags).expect("should be valid flags"); // SAFETY: All unknown bits should be preserved.
+    let flags = ReturnFlags::from_bits_retain(flags);
     let data = if data_ptr == 0 {
         None
     } else {
@@ -180,8 +171,7 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
     let code = if code_ptr != 0 {
         caller
             .memory_read(code_ptr, code_len as usize)
-            .map(Bytes::from)
-            .unwrap()
+            .map(Bytes::from)?
     } else {
         caller.bytecode()
     };
@@ -197,9 +187,7 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
         Some(input_data)
     };
 
-    let manifest = caller
-        .memory_read(manifest_ptr, mem::size_of::<Manifest>())
-        .unwrap();
+    let manifest = caller.memory_read(manifest_ptr, mem::size_of::<Manifest>())?;
     let bytes = manifest.as_slice();
 
     let manifest = match safe_transmute::transmute_one::<Manifest>(bytes) {
@@ -209,12 +197,10 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
         }
     };
 
-    let entry_points_bytes = caller
-        .memory_read(
-            manifest.entry_points_ptr,
-            (manifest.entry_points_size as usize) * mem::size_of::<EntryPoint>(),
-        )
-        .unwrap();
+    let entry_points_bytes = caller.memory_read(
+        manifest.entry_points_ptr,
+        (manifest.entry_points_size as usize) * mem::size_of::<EntryPoint>(),
+    )?;
 
     let entry_points =
         match safe_transmute::transmute_many::<EntryPoint, SingleManyGuard>(&entry_points_bytes) {
@@ -226,12 +212,10 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
         let mut vec = Vec::new();
 
         for entry_point in entry_points {
-            let params_bytes = caller
-                .memory_read(
-                    entry_point.params_ptr,
-                    (entry_point.params_size as usize) * mem::size_of::<Param>(),
-                )
-                .unwrap();
+            let params_bytes = caller.memory_read(
+                entry_point.params_ptr,
+                (entry_point.params_size as usize) * mem::size_of::<Param>(),
+            )?;
 
             let mut params_vec = Vec::new();
 
@@ -253,9 +237,7 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
                 };
 
             for param in params {
-                let name = caller
-                    .memory_read(param.name_ptr, param.name_len as usize)
-                    .unwrap();
+                let name = caller.memory_read(param.name_ptr, param.name_len as usize)?;
                 params_vec.push(storage::Param { name: name.into() });
             }
 
@@ -367,7 +349,6 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
                 match host_result {
                     Ok(()) => return_data,
                     error @ Err(_) => {
-                        dbg!(&error);
                         // If the constructor failed, we have to return the error to the caller.
                         return Ok(error);
                     }
@@ -382,7 +363,6 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
     };
 
     if let Some(state) = initial_state {
-        eprintln!("Storing initial state after calling constructor {state:?}");
         caller
             .context()
             .storage
@@ -409,9 +389,7 @@ pub(crate) fn casper_create_contract<S: Storage + 'static>(
         "Sanity check", // NOTE: Remove these guards with sufficient test coverage
     );
 
-    caller
-        .memory_write(result_ptr, create_result_bytes)
-        .unwrap();
+    caller.memory_write(result_ptr, create_result_bytes)?;
 
     Ok(Ok(()))
 }
@@ -438,11 +416,8 @@ pub(crate) fn casper_call<S: Storage + 'static>(
     // it's invalid, return error. 4. Output data is captured by calling `cb_alloc`.
     // let vm = VM::new();
     // vm.
-    let address = caller.memory_read(address_ptr, address_len as _).unwrap();
-    let input_data = caller
-        .memory_read(input_ptr, input_len as _)
-        .unwrap()
-        .into();
+    let address = caller.memory_read(address_ptr, address_len as _)?;
+    let input_data = caller.memory_read(input_ptr, input_len as _)?.into();
 
     let contract = caller.context().storage.read_contract(&address).unwrap();
 
@@ -472,14 +447,10 @@ pub(crate) fn casper_call<S: Storage + 'static>(
                 .try_into_remaining()
                 .expect("should be remaining");
 
-            // let wasm_callbacks = Arc::new(WasmCallbacks::default());
-            // let cloned = Arc::clone(&wasm_callbacks);
-
             let new_config = ConfigBuilder::new()
                 .with_gas_limit(gas_limit)
                 .with_memory_limit(current_config.memory_limit)
                 .with_input(input_data)
-                // .with_callback(cloned)
                 .build();
 
             let mut new_instance = vm
@@ -571,9 +542,7 @@ pub(crate) fn casper_env_read<S: Storage>(
     // in the future.
 
     let size: usize = env_path_length.try_into().unwrap();
-    let env_path_bytes = caller
-        .memory_read(env_path, size * 8)
-        .expect("should read name bytes");
+    let env_path_bytes = caller.memory_read(env_path, size * 8)?;
 
     let path = match safe_transmute::transmute_many::<u64, SingleManyGuard>(&env_path_bytes) {
         Ok(env_path) => env_path,
@@ -602,7 +571,7 @@ pub(crate) fn casper_env_read<S: Storage>(
         if out_ptr == 0 {
             Ok(out_ptr)
         } else {
-            caller.memory_write(out_ptr, &data).unwrap();
+            caller.memory_write(out_ptr, &data)?;
             Ok(out_ptr + (data.len() as u32))
         }
     } else {
@@ -621,7 +590,7 @@ pub(crate) fn casper_env_caller<S: Storage>(
     } else {
         let dest_len = dest_len as usize;
         data = &data[0..cmp::min(32, dest_len as usize)];
-        caller.memory_write(dest_ptr, &data).unwrap();
+        caller.memory_write(dest_ptr, &data)?;
         Ok(dest_ptr + (data.len() as u32))
     }
 }

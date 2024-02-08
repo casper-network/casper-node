@@ -62,7 +62,6 @@ struct MockStorage {
     code: Arc<RwLock<BTreeMap<Address, Bytes>>>,
     packages: Arc<RwLock<BTreeMap<Address, Package>>>,
     contracts: Arc<RwLock<BTreeMap<Address, Contract>>>,
-    // contracts: Arc<RwLock<BTreeMap<Bytes>
 }
 
 /// VM execute request specifies execution context, the wasm bytes, and other necessary information
@@ -84,7 +83,6 @@ impl Storage for MockStorage {
     ) -> Result<(), storage::Error> {
         let key_bytes = Bytes::copy_from_slice(key);
         let value_bytes = Bytes::copy_from_slice(value);
-        // self.journal.push(JournalEntry::Write(key_bytes.clone(), value_bytes.clone()));
         self.db
             .write()
             .unwrap()
@@ -95,8 +93,6 @@ impl Storage for MockStorage {
     }
 
     fn read(&self, key_tag: u64, key: &[u8]) -> Result<Option<Entry>, storage::Error> {
-        // let key_bytes = Bytes::copy_from_slice(key);
-        // self.journal.push(JournalEntry::Read(key_bytes.clone()));
         match self
             .db
             .read()

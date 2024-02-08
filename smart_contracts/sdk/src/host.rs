@@ -16,7 +16,7 @@ pub enum Error {
 }
 
 pub fn casper_print(msg: &str) {
-    let _ = unsafe { casper_sdk_sys::casper_print(msg.as_ptr(), msg.len()) };
+    unsafe { casper_sdk_sys::casper_print(msg.as_ptr(), msg.len()) };
 }
 
 pub enum Alloc<F: FnOnce(usize) -> Option<ptr::NonNull<u8>>> {
