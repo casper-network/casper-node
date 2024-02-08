@@ -104,8 +104,6 @@ pub struct WasmTestBuilder<S> {
     system_account: Option<AddressableEntity>,
     /// Scratch global state used for in-memory execution and commit optimization.
     scratch_engine_state: Option<EngineState<ScratchGlobalState>>,
-    /// System contract registry.
-    system_contract_registry: Option<SystemContractRegistry>,
     /// Global state dir, for implementations that define one.
     global_state_dir: Option<PathBuf>,
     /// Temporary directory, for implementation that uses one.
@@ -133,7 +131,6 @@ impl<S> Clone for WasmTestBuilder<S> {
             genesis_effects: self.genesis_effects.clone(),
             system_account: self.system_account.clone(),
             scratch_engine_state: None,
-            system_contract_registry: self.system_contract_registry.clone(),
             global_state_dir: self.global_state_dir.clone(),
             temp_dir: self.temp_dir.clone(),
         }
@@ -189,13 +186,6 @@ impl LmdbWasmTestBuilder {
         }) = result
         {
             self.post_state_hash = Some(post_state_hash);
-
-            if let Ok(StoredValue::CLValue(cl_registry)) =
-                self.query(self.post_state_hash, Key::SystemContractRegistry, &[])
-            {
-                let registry = CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
-                self.system_contract_registry = Some(registry);
-            }
         }
 
         self.upgrade_results.push(result);
@@ -247,7 +237,6 @@ impl LmdbWasmTestBuilder {
             system_account: None,
             genesis_effects: None,
             scratch_engine_state: None,
-            system_contract_registry: None,
             global_state_dir: Some(global_state_dir),
             temp_dir: None,
         }
@@ -368,7 +357,7 @@ impl LmdbWasmTestBuilder {
 
         let post_state_hash = mode.post_state_hash();
 
-        let mut builder = WasmTestBuilder {
+        let builder = WasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
@@ -379,15 +368,9 @@ impl LmdbWasmTestBuilder {
             genesis_effects: None,
             system_account: None,
             scratch_engine_state: None,
-            system_contract_registry: None,
             global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
             temp_dir: None,
         };
-
-        if let Some(post_state_hash) = post_state_hash {
-            builder.system_contract_registry =
-                builder.query_system_contract_registry(Some(post_state_hash));
-        }
 
         builder
     }
@@ -572,22 +555,6 @@ where
             )
             .expect("Unable to get genesis response");
 
-        let empty_path: Vec<String> = vec![];
-
-        self.system_contract_registry = match self.query(
-            Some(post_state_hash),
-            Key::SystemContractRegistry,
-            &empty_path,
-        ) {
-            Ok(StoredValue::CLValue(cl_registry)) => {
-                let system_contract_registry =
-                    CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
-                Some(system_contract_registry)
-            }
-            Ok(_) => panic!("Failed to get system registry"),
-            Err(err) => panic!("{}", err),
-        };
-
         self.genesis_hash = Some(post_state_hash);
         self.post_state_hash = Some(post_state_hash);
         self.system_account = self.get_entity_by_account_hash(*SYSTEM_ADDR);
@@ -596,7 +563,7 @@ where
     }
 
     fn query_system_contract_registry(
-        &mut self,
+        &self,
         post_state_hash: Option<Digest>,
     ) -> Option<SystemContractRegistry> {
         match self.query(post_state_hash, Key::SystemContractRegistry, &[]) {
@@ -674,7 +641,6 @@ where
     pub fn total_supply(&self, maybe_post_state: Option<Digest>) -> U512 {
         let mint_entity_hash = self
             .get_system_entity_hash(MINT)
-            .cloned()
             .expect("should have mint_contract_hash");
 
         let mint_key = Key::addressable_entity_key(PackageKindTag::System, mint_entity_hash);
@@ -817,8 +783,6 @@ where
         }) = result
         {
             self.post_state_hash = Some(post_state_hash);
-            self.system_contract_registry =
-                self.query_system_contract_registry(Some(post_state_hash));
         }
 
         self.upgrade_results.push(result);
@@ -956,7 +920,6 @@ where
     /// Returns the [`AddressableEntityHash`] of the mint, panics if it can't be found.
     pub fn get_mint_contract_hash(&self) -> AddressableEntityHash {
         self.get_system_entity_hash(MINT)
-            .cloned()
             .expect("Unable to obtain mint contract. Please run genesis first.")
     }
 
@@ -964,7 +927,6 @@ where
     /// be found.
     pub fn get_handle_payment_contract_hash(&self) -> AddressableEntityHash {
         self.get_system_entity_hash(HANDLE_PAYMENT)
-            .cloned()
             .expect("Unable to obtain handle payment contract. Please run genesis first.")
     }
 
@@ -972,21 +934,19 @@ where
     /// be found.
     pub fn get_standard_payment_contract_hash(&self) -> AddressableEntityHash {
         self.get_system_entity_hash(STANDARD_PAYMENT)
-            .cloned()
             .expect("Unable to obtain standard payment contract. Please run genesis first.")
     }
 
-    fn get_system_entity_hash(&self, contract_name: &str) -> Option<&AddressableEntityHash> {
-        self.system_contract_registry
-            .as_ref()
-            .and_then(|registry| registry.get(contract_name))
+    fn get_system_entity_hash(&self, contract_name: &str) -> Option<AddressableEntityHash> {
+        self.query_system_contract_registry(self.post_state_hash)?
+            .get(contract_name)
+            .copied()
     }
 
     /// Returns the [`AddressableEntityHash`] of the "auction" contract, panics if it can't be
     /// found.
     pub fn get_auction_contract_hash(&self) -> AddressableEntityHash {
         self.get_system_entity_hash(AUCTION)
-            .cloned()
             .expect("Unable to obtain auction contract. Please run genesis first.")
     }
 
@@ -1056,7 +1016,6 @@ where
         let handle_payment_contract = Key::addressable_entity_key(
             PackageKindTag::System,
             self.get_system_entity_hash(HANDLE_PAYMENT)
-                .cloned()
                 .expect("should have handle payment contract uref"),
         );
         self.query(None, handle_payment_contract, &[])
@@ -1278,13 +1237,7 @@ where
     pub fn get_era_validators(&mut self) -> EraValidators {
         let state_hash = self.get_post_state_hash();
         let request = EraValidatorsRequest::new(state_hash, *DEFAULT_PROTOCOL_VERSION);
-        let system_contract_registry = self
-            .system_contract_registry
-            .clone()
-            .expect("System contract registry not found. Please run genesis first.");
-        let result = self
-            .engine_state
-            .get_era_validators(Some(system_contract_registry), request);
+        let result = self.engine_state.get_era_validators(request);
 
         if let EraValidatorsResult::Success { era_validators } = result {
             era_validators

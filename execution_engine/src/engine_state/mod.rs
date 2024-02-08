@@ -2186,20 +2186,16 @@ where
     /// uses queries rather than execution to get the snapshot.
     pub fn get_era_validators(
         &self,
-        system_contract_registry: Option<SystemContractRegistry>,
         get_era_validators_request: EraValidatorsRequest,
     ) -> EraValidatorsResult {
         let state_root_hash = get_era_validators_request.state_hash();
 
-        let system_contract_registry = match system_contract_registry {
-            Some(system_contract_registry) => system_contract_registry,
-            None => match self.get_system_contract_registry(state_root_hash) {
-                Ok(system_contract_registry) => system_contract_registry,
-                Err(error) => {
-                    error!(%state_root_hash, %error, "auction not found");
-                    return EraValidatorsResult::AuctionNotFound;
-                }
-            },
+        let system_contract_registry = match self.get_system_contract_registry(state_root_hash) {
+            Ok(system_contract_registry) => system_contract_registry,
+            Err(error) => {
+                error!(%state_root_hash, %error, "auction not found");
+                return EraValidatorsResult::AuctionNotFound;
+            }
         };
 
         let query_request = match system_contract_registry.get(AUCTION).copied() {

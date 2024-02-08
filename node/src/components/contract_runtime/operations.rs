@@ -229,14 +229,8 @@ pub fn execute_finalized_block(
             state_root_hash =
                 engine_state.write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
 
-            // In this flow we execute using a recent state root hash where the system contract
-            // registry is guaranteed to exist.
-            let system_contract_registry = None;
-
-            let era_validators_result = engine_state.get_era_validators(
-                system_contract_registry,
-                EraValidatorsRequest::new(state_root_hash, protocol_version),
-            );
+            let era_validators_result = engine_state
+                .get_era_validators(EraValidatorsRequest::new(state_root_hash, protocol_version));
 
             let upcoming_era_validators = match era_validators_result {
                 EraValidatorsResult::AuctionNotFound => {
