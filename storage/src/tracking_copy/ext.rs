@@ -15,7 +15,7 @@ use casper_types::{
     addressable_entity::{EntityKindTag, MessageTopics, NamedKeyAddr, NamedKeys},
     bytesrepr,
     package::{EntityVersions, Groups, PackageStatus},
-    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeHash, ByteCodeKind,
+    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeHash,
     CLValue, ChecksumRegistry, EntityAddr, EntityKind, EntryPoints, Key, KeyTag, Motes, Package,
     PackageHash, Phase, ProtocolVersion, StoredValue, StoredValueTypeMismatch,
     SystemContractRegistry, URef,
@@ -288,7 +288,7 @@ where
     }
 
     fn get_byte_code(&mut self, byte_code_hash: ByteCodeHash) -> Result<ByteCode, Self::Error> {
-        let key = Key::ByteCode(ByteCodeKind::V1CasperWasm, byte_code_hash.value());
+        let key = Key::ByteCode(ByteCodeAddr::V1CasperWasm(byte_code_hash.value()));
         match self.get(&key)? {
             Some(StoredValue::ByteCode(byte_code)) => Ok(byte_code),
             Some(other) => Err(TrackingCopyError::TypeMismatch(
@@ -333,7 +333,7 @@ where
                 Key::NamedKey(entry_addr)
             };
 
-            let cl_value = CLValue::from_t(*key).map_err(execution::Error::CLValue)?;
+            let cl_value = CLValue::from_t(*key).map_err(TrackingCopyError::CLValue)?;
 
             self.write(entry_key, StoredValue::CLValue(cl_value))
         }
@@ -347,7 +347,7 @@ where
             .map_err(Self::Error::BytesRepr)?;
 
         let mut ret: BTreeSet<Key> = BTreeSet::new();
-        let keys = self.reader.keys_with_prefix(&prefix).map_err(Into::into)?;
+        let keys = self.reader.keys_with_prefix(&prefix)?;
         let pruned = &self.cache.prunes_cached;
         // don't include keys marked for pruning
         for key in keys {
@@ -374,14 +374,14 @@ where
         let mut named_keys = NamedKeys::new();
 
         for entry_key in ret.iter() {
-            match self.read(entry_key).map_err(Into::into)? {
+            match self.read(entry_key)? {
                 Some(StoredValue::NamedKey(named_key)) => {
-                    let key = named_key.get_key().map_err(execution::Error::CLValue)?;
-                    let name = named_key.get_name().map_err(execution::Error::CLValue)?;
+                    let key = named_key.get_key().map_err(TrackingCopyError::CLValue)?;
+                    let name = named_key.get_name().map_err(TrackingCopyError::CLValue)?;
                     named_keys.insert(name, key);
                 }
                 Some(other) => {
-                    return Err(execution::Error::TypeMismatch(
+                    return Err(TrackingCopyError::TypeMismatch(
                         StoredValueTypeMismatch::new("CLValue".to_string(), other.type_name()),
                     ))
                 }
@@ -389,14 +389,14 @@ where
                     Some(StoredValue::NamedKey(named_key_value)) => {
                         let key = named_key_value
                             .get_key()
-                            .map_err(execution::Error::CLValue)?;
+                            .map_err(TrackingCopyError::CLValue)?;
                         let name = named_key_value
                             .get_name()
-                            .map_err(execution::Error::CLValue)?;
+                            .map_err(TrackingCopyError::CLValue)?;
                         named_keys.insert(name, key);
                     }
                     Some(_) | None => {
-                        return Err(execution::Error::KeyNotFound(*entry_key));
+                        return Err(TrackingCopyError::KeyNotFound(*entry_key));
                     }
                 },
             };

@@ -16,9 +16,8 @@ use casper_types::{
     package::{EntityVersions, Groups, PackageStatus},
     system::{handle_payment::ACCUMULATION_PURSE_KEY, SystemEntityType},
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeHash,
-    ByteCodeKind, ByteCodeKind, CLValue, CLValueError, Digest, EntityAddr, EntryPoints,
-    FeeHandling, Key, Package, PackageHash, Phase, ProtocolVersion, PublicKey, StoredValue, URef,
-    U512,
+    ByteCodeKind, CLValue, CLValueError, Digest, EntityAddr, EntryPoints, FeeHandling, Key,
+    Package, PackageHash, Phase, ProtocolVersion, PublicKey, StoredValue, URef, U512,
 };
 
 use super::EngineConfig;

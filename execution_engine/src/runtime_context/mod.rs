@@ -1,6 +1,5 @@
 //! The context of execution of WASM code.
 
-pub(crate) mod dictionary;
 #[cfg(test)]
 mod tests;
 
@@ -31,17 +30,16 @@ use casper_types::{
         Message, MessageAddr, MessageChecksum, MessageTopicSummary, Messages, TopicNameHash,
     },
     execution::Effects,
+    handle_stored_dictionary_value,
     system::auction::EraInfo,
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
-    ContextAccessRights, DeployHash, EntityAddr, EntryPointType, Gas, GrantedAccess, Key, KeyTag,
-    Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
-    SystemContractRegistry, Transfer, TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH,
-    KEY_HASH_LENGTH, U512,
+    CLValueDictionary, ContextAccessRights, DeployHash, EntityAddr, EntryPointType, Gas,
+    GrantedAccess, Key, KeyTag, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
+    RuntimeArgs, StoredValue, SystemContractRegistry, Transfer, TransferAddr, URef, URefAddr,
+    DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
-use crate::{
-    engine_state::EngineConfig, execution::Error, runtime_context::dictionary::DictionaryValue,
-};
+use crate::{engine_state::EngineConfig, execution::Error};
 
 /// Number of bytes returned from the `random_bytes` function.
 pub const RANDOM_BYTES_COUNT: usize = 32;
@@ -456,7 +454,7 @@ where
         let maybe_stored_value = self.tracking_copy.borrow_mut().read(key)?;
 
         let stored_value = match maybe_stored_value {
-            Some(stored_value) => dictionary::handle_stored_value(*key, stored_value)?,
+            Some(stored_value) => handle_stored_dictionary_value(*key, stored_value)?,
             None => return Ok(None),
         };
 
@@ -1303,7 +1301,7 @@ where
             .map_err(Into::<Error>::into)?;
 
         if let Some(stored_value) = maybe_stored_value {
-            let stored_value = dictionary::handle_stored_value(dictionary_key, stored_value)?;
+            let stored_value = handle_stored_dictionary_value(dictionary_key, stored_value)?;
             let cl_value = CLValue::try_from(stored_value).map_err(Error::TypeMismatch)?;
             Ok(Some(cl_value))
         } else {
@@ -1330,7 +1328,7 @@ where
         self.validate_cl_value(&cl_value)?;
 
         let wrapped_cl_value = {
-            let dictionary_value = DictionaryValue::new(
+            let dictionary_value = CLValueDictionary::new(
                 cl_value,
                 seed_uref.addr().to_vec(),
                 dictionary_item_key_bytes.to_vec(),
