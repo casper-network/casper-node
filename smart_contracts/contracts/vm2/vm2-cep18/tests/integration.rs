@@ -44,7 +44,4 @@ fn foo() {
     });
 
     assert_eq!(ret, Ok(()));
-
-    let foo: Result<(), u64> = Err(1); //
-    dbg!(&borsh::to_vec(&foo).unwrap());
 }
