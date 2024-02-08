@@ -717,13 +717,13 @@ fn setup() -> (LmdbWasmTestBuilder, TestContext) {
     builder.exec(install_request).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let gh_2280_regression = account
         .named_keys()
         .get(HASH_KEY_NAME)
         .cloned()
-        .and_then(Key::into_entity_addr)
+        .and_then(Key::into_entity_hash_addr)
         .map(AddressableEntityHash::new)
         .expect("should have key");
 

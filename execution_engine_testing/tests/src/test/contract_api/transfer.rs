@@ -174,9 +174,9 @@ fn should_transfer_from_purse_to_public_key() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
-    let default_account_purse = default_account.main_purse();
+    let default_account_purse = default_account.entity().main_purse();
 
     // Check genesis account balance
     let initial_account_balance = builder.get_purse_balance(default_account_purse);

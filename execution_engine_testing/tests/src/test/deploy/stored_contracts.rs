@@ -1,15 +1,14 @@
 use assert_matches::assert_matches;
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    DeployItemBuilder, EntityWithNamedKeys, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_ACCOUNT_KEY, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
     account::AccountHash,
     package::{EntityVersion, ENTITY_INITIAL_VERSION},
-    runtime_args, AddressableEntity, EntityVersionKey, EraId, PackageHash, ProtocolVersion,
-    RuntimeArgs, U512,
+    runtime_args, EntityVersionKey, EraId, PackageHash, ProtocolVersion, RuntimeArgs, U512,
 };
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
@@ -39,7 +38,7 @@ fn make_upgrade_request(new_protocol_version: ProtocolVersion) -> UpgradeRequest
 
 fn install_custom_payment(
     builder: &mut LmdbWasmTestBuilder,
-) -> (AddressableEntity, PackageHash, U512) {
+) -> (EntityWithNamedKeys, PackageHash, U512) {
     // store payment contract
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -51,7 +50,7 @@ fn install_custom_payment(
     builder.exec(exec_request).commit();
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     // check account named keys
@@ -145,13 +144,13 @@ fn should_fail_if_calling_non_existent_entry_point() {
     builder.exec(exec_request).commit();
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract associated with default account");
     let stored_payment_contract_hash = default_account
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
         .expect("should have standard_payment named key")
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .expect("standard_payment should be an uref");
 
     // next make another deploy that attempts to use the stored payment logic
@@ -407,7 +406,7 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
     builder.exec(exec_request).commit();
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
 
     assert!(
@@ -487,13 +486,13 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
     builder.exec(exec_request).commit();
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract associated with default account");
     let stored_payment_contract_hash = default_account
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
         .expect("should have standard_payment named key")
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .expect("standard_payment should be an uref");
 
     //
@@ -576,7 +575,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     builder.exec(exec_request).commit();
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract associated with default account");
     assert!(
         default_account
@@ -589,7 +588,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
         .expect("should have standard_payment named key")
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .expect("standard_payment should be an uref");
     //
     // upgrade with new wasm costs with modified mint for given version
@@ -664,7 +663,7 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
     builder.exec(exec_request_1).commit();
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
     assert!(
         default_account
@@ -774,13 +773,13 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
 
     // query both stored contracts by their named keys
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
     let test_payment_stored_hash = default_account
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
         .expect("standard_payment should be present in named keys")
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .expect("standard_payment named key should be hash");
 
     let exec_request_stored_payment = {
@@ -872,13 +871,13 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
 
     // query both stored contracts by their named keys
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
     let test_payment_stored_hash = default_account
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
         .expect("standard_payment should be present in named keys")
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .expect("standard_payment named key should be hash");
 
     let exec_request_stored_payment = {

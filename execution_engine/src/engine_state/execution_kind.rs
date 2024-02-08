@@ -89,8 +89,9 @@ impl ExecutionKind {
                 })?;
 
                 let entity_hash = match entity_key {
-                    Key::Hash(hash) | Key::AddressableEntity(_, hash) => {
-                        AddressableEntityHash::new(hash)
+                    Key::Hash(hash) => AddressableEntityHash::new(hash),
+                    Key::AddressableEntity(entity_addr) => {
+                        AddressableEntityHash::new(entity_addr.value())
                     }
                     _ => return Err(Error::InvalidKeyVariant),
                 };

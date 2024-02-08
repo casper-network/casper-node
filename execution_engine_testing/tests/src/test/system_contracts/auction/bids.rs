@@ -24,8 +24,8 @@ use casper_execution_engine::{
 use casper_types::{
     self,
     account::AccountHash,
+    addressable_entity::EntityKindTag,
     api_error::ApiError,
-    package::PackageKindTag,
     runtime_args,
     system::{
         self,
@@ -35,8 +35,8 @@ use casper_types::{
             ARG_PUBLIC_KEY, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
-    EraId, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion, PublicKey, SecretKey,
-    U256, U512,
+    EntityAddr, EraId, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion, PublicKey,
+    SecretKey, U256, U512,
 };
 
 const ARG_TARGET: &str = "target";
@@ -395,7 +395,7 @@ fn should_run_delegate_and_undelegate() {
     );
     assert_eq!(*active_bid.delegation_rate(), ADD_BID_DELEGATION_RATE_1);
 
-    let auction_key = Key::addressable_entity_key(PackageKindTag::System, auction_hash);
+    let auction_key = Key::addressable_entity_key(EntityKindTag::System, auction_hash);
 
     let auction_stored_value = builder
         .query(None, auction_key, &[])
@@ -597,7 +597,7 @@ fn should_calculate_era_validators() {
 
     builder.exec(add_bid_request_1).commit().expect_success();
 
-    let pre_era_id: EraId = builder.get_value(auction_hash, ERA_ID_KEY);
+    let pre_era_id: EraId = builder.get_value(EntityAddr::System(auction_hash.value()), ERA_ID_KEY);
     assert_eq!(pre_era_id, EraId::from(0));
 
     builder.run_auction(
@@ -605,7 +605,8 @@ fn should_calculate_era_validators() {
         Vec::new(),
     );
 
-    let post_era_id: EraId = builder.get_value(auction_hash, ERA_ID_KEY);
+    let post_era_id: EraId =
+        builder.get_value(EntityAddr::System(auction_hash.value()), ERA_ID_KEY);
     assert_eq!(post_era_id, EraId::from(1));
 
     let era_validators: EraValidators = builder.get_era_validators();

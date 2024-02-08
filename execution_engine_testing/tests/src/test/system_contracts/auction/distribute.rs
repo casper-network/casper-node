@@ -21,7 +21,7 @@ use casper_types::{
         ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_REWARDS_MAP, ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR,
         METHOD_DISTRIBUTE, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    EraId, Key, ProtocolVersion, PublicKey, SecretKey, U512,
+    EntityAddr, EraId, Key, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
@@ -3367,8 +3367,10 @@ fn delegator_full_unbond_during_first_reward_era() {
     // the delegator is scheduled to receive rewards this era.
 
     let auction_hash = builder.get_auction_contract_hash();
-    let seigniorage_snapshot: SeigniorageRecipientsSnapshot =
-        builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
+    let seigniorage_snapshot: SeigniorageRecipientsSnapshot = builder.get_value(
+        EntityAddr::System(auction_hash.value()),
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+    );
 
     let validator_seigniorage = seigniorage_snapshot
         .get(&builder.get_era())

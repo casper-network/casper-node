@@ -48,19 +48,17 @@ fn should_run_named_keys_contract() {
 
     run_command(&mut builder, COMMAND_CREATE_UREF1);
 
-    let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have account");
-    assert!(account.named_keys().contains(KEY1));
-    assert!(!account.named_keys().contains(KEY2));
+    let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+    assert!(named_keys.contains(KEY1));
+    assert!(!named_keys.contains(KEY2));
 
     run_command(&mut builder, COMMAND_CREATE_UREF2);
 
-    let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have account");
-    let uref1 = *account.named_keys().get(KEY1).expect("should have key");
-    let uref2 = *account.named_keys().get(KEY2).expect("should have key");
+    let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+    let uref1 = *named_keys.get(KEY1).expect("should have key");
+    let uref2 = *named_keys.get(KEY2).expect("should have key");
     let value1: String = read_value(&mut builder, uref1);
     let value2: U512 = read_value(&mut builder, uref2);
     assert_eq!(value1, "Hello, world!");
@@ -70,37 +68,33 @@ fn should_run_named_keys_contract() {
 
     run_command(&mut builder, COMMAND_REMOVE_UREF1);
 
-    let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have account");
-    assert!(!account.named_keys().contains(KEY1));
-    assert!(account.named_keys().contains(KEY2));
+    let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+    assert!(!named_keys.contains(KEY1));
+    assert!(named_keys.contains(KEY2));
 
     run_command(&mut builder, COMMAND_TEST_READ_UREF2);
 
     run_command(&mut builder, COMMAND_INCREASE_UREF2);
 
-    let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have account");
-    let uref2 = *account.named_keys().get(KEY2).expect("should have key");
+    let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+    let uref2 = *named_keys.get(KEY2).expect("should have key");
     let value2: U512 = read_value(&mut builder, uref2);
     assert_eq!(value2, U512::zero());
 
     run_command(&mut builder, COMMAND_OVERWRITE_UREF2);
 
-    let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have account");
-    let uref2 = *account.named_keys().get(KEY2).expect("should have key");
+    let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+    let uref2 = *named_keys.get(KEY2).expect("should have key");
     let value2: U512 = read_value(&mut builder, uref2);
     assert_eq!(value2, U512::from(EXPECTED_UREF_VALUE));
 
     run_command(&mut builder, COMMAND_REMOVE_UREF2);
 
-    let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have account");
-    assert!(!account.named_keys().contains(KEY1));
-    assert!(!account.named_keys().contains(KEY2));
+    let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+    assert!(!named_keys.contains(KEY1));
+    assert!(!named_keys.contains(KEY2));
 }

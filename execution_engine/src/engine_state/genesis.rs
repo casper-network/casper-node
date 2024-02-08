@@ -19,9 +19,13 @@ use casper_storage::{
     global_state::state::StateProvider, tracking_copy::TrackingCopy, AddressGenerator,
 };
 use casper_types::{
-    addressable_entity::{ActionThresholds, MessageTopics, NamedKeys},
+    addressable_entity::{
+        ActionThresholds, EntityKind, EntityKindTag, MessageTopics, NamedKeyAddr, NamedKeyValue,
+        NamedKeys,
+    },
+    bytesrepr,
     execution::Effects,
-    package::{EntityVersions, Groups, PackageKind, PackageStatus},
+    package::{EntityVersions, Groups, PackageStatus},
     system::{
         auction::{
             self, BidAddr, BidKind, DelegationRate, Delegator, SeigniorageRecipient,
@@ -35,9 +39,10 @@ use casper_types::{
         SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, ByteCode,
-    ByteCodeHash, ByteCodeKind, CLValue, Chainspec, ChainspecRegistry, Digest, EntryPoints, EraId,
-    FeeHandling, GenesisAccount, Key, Motes, Package, PackageHash, Phase, ProtocolVersion,
-    PublicKey, RefundHandling, StoredValue, SystemConfig, Tagged, URef, WasmConfig, U512,
+    ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, Chainspec, ChainspecRegistry, Digest,
+    EntityAddr, EntryPoints, EraId, FeeHandling, GenesisAccount, Key, Motes, Package, PackageHash,
+    Phase, ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemConfig, Tagged, URef,
+    WasmConfig, U512,
 };
 
 use crate::{
@@ -547,6 +552,8 @@ pub enum GenesisError {
     ///
     /// This error can occur only on some private chains.
     DuplicatedAdministratorEntry,
+    /// A bytesrepr Error.
+    Bytesrepr(bytesrepr::Error),
 }
 
 pub(crate) struct GenesisInstaller<S>
@@ -593,7 +600,7 @@ where
         let system_account_addr = PublicKey::System.to_account_hash();
 
         self.store_addressable_entity(
-            PackageKind::Account(system_account_addr),
+            EntityKind::Account(system_account_addr),
             NO_WASM,
             None,
             None,
@@ -659,7 +666,7 @@ where
         let contract_hash = self.store_system_contract(
             named_keys,
             entry_points,
-            PackageKind::System(SystemEntityType::Mint),
+            EntityKind::System(SystemEntityType::Mint),
         )?;
 
         {
@@ -705,7 +712,7 @@ where
         let contract_hash = self.store_system_contract(
             named_keys,
             entry_points,
-            PackageKind::System(SystemEntityType::HandlePayment),
+            EntityKind::System(SystemEntityType::HandlePayment),
         )?;
 
         self.store_system_contract_registry(HANDLE_PAYMENT, contract_hash)?;
@@ -973,7 +980,7 @@ where
         let contract_hash = self.store_system_contract(
             named_keys,
             entry_points,
-            PackageKind::System(SystemEntityType::Auction),
+            EntityKind::System(SystemEntityType::Auction),
         )?;
 
         self.store_system_contract_registry(AUCTION, contract_hash)?;
@@ -1021,7 +1028,7 @@ where
             };
 
             self.store_addressable_entity(
-                PackageKind::Account(account.account_hash()),
+                EntityKind::Account(account.account_hash()),
                 NO_WASM,
                 None,
                 None,
@@ -1093,7 +1100,7 @@ where
         &self,
         named_keys: NamedKeys,
         entry_points: EntryPoints,
-        contract_package_kind: PackageKind,
+        contract_package_kind: EntityKind,
     ) -> Result<AddressableEntityHash, Box<GenesisError>> {
         self.store_addressable_entity(
             contract_package_kind,
@@ -1106,7 +1113,7 @@ where
 
     fn store_addressable_entity(
         &self,
-        package_kind: PackageKind,
+        entity_kind: EntityKind,
         no_wasm: bool,
         maybe_named_keys: Option<NamedKeys>,
         maybe_entry_points: Option<EntryPoints>,
@@ -1118,7 +1125,7 @@ where
         } else {
             ByteCodeHash::new(self.address_generator.borrow_mut().new_hash_address())
         };
-        let entity_hash = if package_kind.is_system_account() {
+        let entity_hash = if entity_kind.is_system_account() {
             let entity_hash_addr = PublicKey::System.to_account_hash().value();
             AddressableEntityHash::new(entity_hash_addr)
         } else {
@@ -1128,8 +1135,8 @@ where
         let package_hash = PackageHash::new(self.address_generator.borrow_mut().new_hash_address());
 
         let byte_code = ByteCode::new(ByteCodeKind::Empty, vec![]);
-        let associated_keys = package_kind.associated_keys();
-        let maybe_account_hash = package_kind.maybe_account_hash();
+        let associated_keys = entity_kind.associated_keys();
+        let maybe_account_hash = entity_kind.maybe_account_hash();
         let named_keys = maybe_named_keys.unwrap_or_default();
         let entry_points = match maybe_entry_points {
             Some(entry_points) => entry_points,
@@ -1142,16 +1149,18 @@ where
             }
         };
 
+        self.store_system_contract_named_keys(entity_hash, named_keys)?;
+
         let entity = AddressableEntity::new(
             package_hash,
             byte_code_hash,
-            named_keys,
             entry_points,
             protocol_version,
             main_purse,
             associated_keys,
             ActionThresholds::default(),
             MessageTopics::default(),
+            entity_kind,
         );
 
         let access_key = self
@@ -1167,19 +1176,26 @@ where
                 BTreeSet::default(),
                 Groups::default(),
                 PackageStatus::default(),
-                package_kind,
             );
             package.insert_entity_version(protocol_version.value().major, entity_hash);
             package
         };
 
-        let byte_code_key = Key::ByteCode(ByteCodeKind::Empty, byte_code_hash.value());
+        let byte_code_key = Key::ByteCode(ByteCodeAddr::Empty);
 
         self.tracking_copy
             .borrow_mut()
             .write(byte_code_key, StoredValue::ByteCode(byte_code));
 
-        let entity_key = Key::AddressableEntity(package_kind.tag(), entity_hash.value());
+        let entity_addr = match entity_kind.tag() {
+            EntityKindTag::System => EntityAddr::new_system_entity_addr(entity_hash.value()),
+            EntityKindTag::Account => EntityAddr::new_account_entity_addr(entity_hash.value()),
+            EntityKindTag::SmartContract => {
+                EntityAddr::new_contract_entity_addr(entity_hash.value())
+            }
+        };
+
+        let entity_key: Key = entity_addr.into();
 
         self.tracking_copy
             .borrow_mut()
@@ -1200,6 +1216,30 @@ where
         }
 
         Ok(entity_hash)
+    }
+
+    fn store_system_contract_named_keys(
+        &self,
+        contract_hash: AddressableEntityHash,
+        named_keys: NamedKeys,
+    ) -> Result<(), Box<GenesisError>> {
+        let entity_addr = EntityAddr::new_system_entity_addr(contract_hash.value());
+
+        for (string, key) in named_keys.iter() {
+            let named_key_entry = NamedKeyAddr::new_from_string(entity_addr, string.clone())
+                .map_err(GenesisError::Bytesrepr)?;
+
+            let named_key_value = NamedKeyValue::from_concrete_values(*key, string.clone())
+                .map_err(|error| GenesisError::CLValue(error.to_string()))?;
+
+            let entry_key = Key::NamedKey(named_key_entry);
+
+            self.tracking_copy
+                .borrow_mut()
+                .write(entry_key, StoredValue::NamedKey(named_key_value));
+        }
+
+        Ok(())
     }
 
     fn store_system_contract_registry(
@@ -1252,6 +1292,7 @@ where
         chainspec_registry: ChainspecRegistry,
     ) -> Result<(), Box<GenesisError>> {
         // Setup system account
+
         self.setup_system_account()?;
 
         // Create mint

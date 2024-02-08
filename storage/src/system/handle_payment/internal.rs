@@ -14,7 +14,7 @@ use super::{
 };
 
 /// Returns the purse for accepting payment for transactions.
-pub fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef, Error> {
+pub fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &mut R) -> Result<URef, Error> {
     match runtime_provider.get_key(PAYMENT_PURSE_KEY) {
         Some(Key::URef(uref)) => Ok(uref),
         Some(_) => Err(Error::PaymentPurseKeyUnexpectedType),
@@ -34,7 +34,9 @@ pub fn set_refund<R: RuntimeProvider>(runtime_provider: &mut R, purse: URef) -> 
 }
 
 /// Returns the currently set refund purse.
-pub fn get_refund_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<Option<URef>, Error> {
+pub fn get_refund_purse<R: RuntimeProvider>(
+    runtime_provider: &mut R,
+) -> Result<Option<URef>, Error> {
     match runtime_provider.get_key(REFUND_PURSE_KEY) {
         Some(Key::URef(uref)) => Ok(Some(uref)),
         Some(_) => Err(Error::RefundPurseKeyUnexpectedType),

@@ -25,7 +25,7 @@ fn get_payment_purse() -> URef {
 
 fn get_entity_hash_name() -> AddressableEntityHash {
     runtime::get_key(HASH_KEY_NAME)
-        .and_then(Key::into_entity_addr)
+        .and_then(Key::into_entity_hash_addr)
         .map(AddressableEntityHash::new)
         .unwrap_or_revert()
 }

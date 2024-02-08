@@ -1,4 +1,6 @@
 use once_cell::sync::Lazy;
+use rand::Rng;
+use tempfile::TempDir;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
@@ -11,8 +13,6 @@ use casper_types::{
     system::mint::{ARG_AMOUNT, ARG_ID, ARG_TARGET},
     PublicKey, RuntimeArgs, SecretKey, U512,
 };
-use rand::Rng;
-use tempfile::TempDir;
 
 static TRANSFER_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
 

@@ -1,41 +1,34 @@
-use std::{cell::Cell, collections::BTreeMap, iter, rc::Rc};
+use std::{cell::Cell, rc::Rc};
 
 use assert_matches::assert_matches;
 
 use casper_types::{
-    account::{AccountHash, ACCOUNT_HASH_LENGTH},
+    account::AccountHash,
     addressable_entity::{
-        ActionThresholds, AddressableEntityHash, AssociatedKeys, MessageTopics, NamedKeys, Weight,
+        ActionThresholds, AddressableEntityHash, AssociatedKeys, MessageTopics, NamedKeyAddr,
+        NamedKeyValue, NamedKeys, Weight,
     },
     execution::{Effects, Transform, TransformKind},
-    handle_stored_dictionary_value,
-    package::PackageKindTag,
-    AccessRights, AddressableEntity, ByteCodeHash, CLValue, CLValueDictionary, Digest, EntryPoints,
-    HashAddr, Key, KeyTag, PackageHash, ProtocolVersion, StoredValue, URef, U256, U512,
-    UREF_ADDR_LENGTH,
+    gens::*,
+    handle_stored_dictionary_value, AccessRights, AddressableEntity, ByteCodeHash, CLValue,
+    CLValueDictionary, CLValueError, EntityAddr, EntityKind, EntryPoints, HashAddr, Key, KeyTag,
+    PackageHash, ProtocolVersion, StoredValue, URef, U256, U512, UREF_ADDR_LENGTH,
 };
 
 use super::{
-    meter::count_meter::Count, AddResult, TrackingCopyCache, TrackingCopyError,
-    TrackingCopyQueryResult, ValidationError,
+    meter::count_meter::Count, TrackingCopyCache, TrackingCopyError, TrackingCopyQueryResult,
 };
 use crate::{
     global_state::{
         state::{self, StateProvider, StateReader},
         trie::merkle_proof::TrieMerkleProof,
     },
-    tracking_copy::{validate_query_proof, TrackingCopy},
+    tracking_copy::{self, TrackingCopy},
 };
 
-const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
-
+use crate::global_state::DEFAULT_MAX_QUERY_DEPTH;
 use casper_types::contracts::ContractHash;
-use once_cell::sync::Lazy;
-
-/// Default contract wasm hash.
-#[cfg(any(feature = "testing", feature = "gens", test))]
-pub static DEFAULT_BYTE_CODE_HASH: Lazy<ByteCodeHash> =
-    Lazy::new(|| ByteCodeHash::new(DEFAULT_ADDRESS));
+use proptest::proptest;
 
 struct CountingDb {
     count: Rc<Cell<i32>>,
@@ -47,13 +40,6 @@ impl CountingDb {
         CountingDb {
             count: counter,
             value: None,
-        }
-    }
-
-    fn new_init(v: StoredValue) -> CountingDb {
-        CountingDb {
-            count: Rc::new(Cell::new(0)),
-            value: Some(v),
         }
     }
 }
@@ -94,7 +80,7 @@ fn effects(transform_keys_and_kinds: Vec<(Key, TransformKind)>) -> Effects {
 fn tracking_copy_new() {
     let counter = Rc::new(Cell::new(0));
     let db = CountingDb::new(counter);
-    let tc = TrackingCopy::new(db, super::DEFAULT_MAX_QUERY_DEPTH);
+    let tc = TrackingCopy::new(db, DEFAULT_MAX_QUERY_DEPTH);
 
     assert!(tc.effects.is_empty());
 }
@@ -103,7 +89,7 @@ fn tracking_copy_new() {
 fn tracking_copy_caching() {
     let counter = Rc::new(Cell::new(0));
     let db = CountingDb::new(Rc::clone(&counter));
-    let mut tc = TrackingCopy::new(db, super::DEFAULT_MAX_QUERY_DEPTH);
+    let mut tc = TrackingCopy::new(db, DEFAULT_MAX_QUERY_DEPTH);
     let k = Key::Hash([0u8; 32]);
 
     let zero = StoredValue::CLValue(CLValue::from_t(0_i32).unwrap());
@@ -123,7 +109,7 @@ fn tracking_copy_caching() {
 fn tracking_copy_read() {
     let counter = Rc::new(Cell::new(0));
     let db = CountingDb::new(Rc::clone(&counter));
-    let mut tc = TrackingCopy::new(db, super::DEFAULT_MAX_QUERY_DEPTH);
+    let mut tc = TrackingCopy::new(db, DEFAULT_MAX_QUERY_DEPTH);
     let k = Key::Hash([0u8; 32]);
 
     let zero = StoredValue::CLValue(CLValue::from_t(0_i32).unwrap());
@@ -138,7 +124,7 @@ fn tracking_copy_read() {
 fn tracking_copy_write() {
     let counter = Rc::new(Cell::new(0));
     let db = CountingDb::new(Rc::clone(&counter));
-    let mut tc = TrackingCopy::new(db, super::DEFAULT_MAX_QUERY_DEPTH);
+    let mut tc = TrackingCopy::new(db, DEFAULT_MAX_QUERY_DEPTH);
     let k = Key::Hash([0u8; 32]);
 
     let one = StoredValue::CLValue(CLValue::from_t(1_i32).unwrap());
@@ -172,7 +158,7 @@ fn tracking_copy_write() {
 fn tracking_copy_add_i32() {
     let counter = Rc::new(Cell::new(0));
     let db = CountingDb::new(counter);
-    let mut tc = TrackingCopy::new(db, super::DEFAULT_MAX_QUERY_DEPTH);
+    let mut tc = TrackingCopy::new(db, DEFAULT_MAX_QUERY_DEPTH);
     let k = Key::Hash([0u8; 32]);
 
     let three = StoredValue::CLValue(CLValue::from_t(3_i32).unwrap());
@@ -194,82 +180,10 @@ fn tracking_copy_add_i32() {
 }
 
 #[test]
-fn tracking_copy_add_named_key() {
-    let zero_account_hash = AccountHash::new([0u8; ACCOUNT_HASH_LENGTH]);
-    // DB now holds an `Account` so that we can test adding a `NamedKey`
-    let associated_keys = AssociatedKeys::new(zero_account_hash, Weight::new(1));
-    let contract_wasm_hash = *DEFAULT_BYTE_CODE_HASH;
-    let contract = AddressableEntity::new(
-        PackageHash::new([3u8; 32]),
-        contract_wasm_hash,
-        NamedKeys::new(),
-        EntryPoints::new_with_default_entry_point(),
-        ProtocolVersion::V1_0_0,
-        URef::new([0u8; 32], AccessRights::READ_ADD_WRITE),
-        associated_keys,
-        Default::default(),
-        MessageTopics::default(),
-    );
-
-    let db = CountingDb::new_init(StoredValue::AddressableEntity(contract));
-    let mut tc = TrackingCopy::new(db, super::DEFAULT_MAX_QUERY_DEPTH);
-    let k = Key::Hash([0u8; 32]);
-    let u1 = Key::URef(URef::new([1u8; 32], AccessRights::READ_WRITE));
-    let u2 = Key::URef(URef::new([2u8; 32], AccessRights::READ_WRITE));
-
-    let name1 = "test".to_string();
-    let named_key = StoredValue::CLValue(CLValue::from_t((name1.clone(), u1)).unwrap());
-    let name2 = "test2".to_string();
-    let other_named_key = StoredValue::CLValue(CLValue::from_t((name2.clone(), u2)).unwrap());
-    let mut map = NamedKeys::new();
-    map.insert(name1.clone(), u1);
-
-    // adding the wrong type should fail
-    let failed_add = tc.add(k, StoredValue::CLValue(CLValue::from_t(3_i32).unwrap()));
-    assert_matches!(failed_add, Ok(AddResult::TypeMismatch(_)));
-    assert!(tc.effects.is_empty());
-
-    // adding correct type works
-    let add = tc.add(k, named_key);
-    assert_matches!(add, Ok(_));
-    assert_eq!(
-        tc.effects,
-        effects(vec![(
-            k,
-            TransformKind::AddKeys(NamedKeys::from(
-                iter::once((name1.clone(), u1)).collect::<BTreeMap<_, _>>()
-            ))
-        )])
-    );
-
-    // adding again updates the values
-    map.insert(name2.clone(), u2);
-    let add = tc.add(k, other_named_key);
-    assert_matches!(add, Ok(_));
-    assert_eq!(
-        tc.effects,
-        effects(vec![
-            (
-                k,
-                TransformKind::AddKeys(NamedKeys::from(
-                    iter::once((name1, u1)).collect::<BTreeMap<_, _>>()
-                ))
-            ),
-            (
-                k,
-                TransformKind::AddKeys(NamedKeys::from(
-                    iter::once((name2, u2)).collect::<BTreeMap<_, _>>()
-                ))
-            )
-        ])
-    );
-}
-
-#[test]
 fn tracking_copy_rw() {
     let counter = Rc::new(Cell::new(0));
     let db = CountingDb::new(counter);
-    let mut tc = TrackingCopy::new(db, super::DEFAULT_MAX_QUERY_DEPTH);
+    let mut tc = TrackingCopy::new(db, DEFAULT_MAX_QUERY_DEPTH);
     let k = Key::Hash([0u8; 32]);
 
     // reading then writing should update the op
@@ -289,7 +203,7 @@ fn tracking_copy_rw() {
 fn tracking_copy_ra() {
     let counter = Rc::new(Cell::new(0));
     let db = CountingDb::new(counter);
-    let mut tc = TrackingCopy::new(db, super::DEFAULT_MAX_QUERY_DEPTH);
+    let mut tc = TrackingCopy::new(db, DEFAULT_MAX_QUERY_DEPTH);
     let k = Key::Hash([0u8; 32]);
 
     // reading then adding should update the op
@@ -309,7 +223,7 @@ fn tracking_copy_ra() {
 fn tracking_copy_aw() {
     let counter = Rc::new(Cell::new(0));
     let db = CountingDb::new(counter);
-    let mut tc = TrackingCopy::new(db, super::DEFAULT_MAX_QUERY_DEPTH);
+    let mut tc = TrackingCopy::new(db, DEFAULT_MAX_QUERY_DEPTH);
     let k = Key::Hash([0u8; 32]);
 
     // adding then writing should update the op
@@ -333,7 +247,7 @@ fn should_return_value_not_found() {
 
     let missing_key = Key::Dictionary([2u8; 32]);
     let empty_path = Vec::new();
-    let tc = TrackingCopy::new(view, super::DEFAULT_MAX_QUERY_DEPTH);
+    let tc = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
     let result = tc.query(missing_key, &empty_path);
     assert_matches!(result, Ok(TrackingCopyQueryResult::ValueNotFound(_)));
 }
@@ -349,7 +263,7 @@ fn should_find_existing_entry() {
         state::lmdb::make_temporary_global_state([(foo_key, stored_val.clone())]);
 
     let view = gs.checkout(root_hash).unwrap().unwrap();
-    let tc = TrackingCopy::new(view, super::DEFAULT_MAX_QUERY_DEPTH);
+    let tc = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
     let empty_path = Vec::new();
     let query_result = tc.query(foo_key, &empty_path);
     if let Ok(TrackingCopyQueryResult::Success { value, .. }) = query_result {
@@ -379,7 +293,7 @@ fn should_query_empty_path() {
         state::lmdb::make_temporary_global_state([(dictionary_key, stored_value.clone())]);
 
     let view = gs.checkout(root_hash).unwrap().unwrap();
-    let tc = TrackingCopy::new(view, super::DEFAULT_MAX_QUERY_DEPTH);
+    let tc = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
     let empty_path = Vec::new();
     let query_result = tc.query(dictionary_key, &empty_path);
     let dictionary_stored_value = handle_stored_dictionary_value(dictionary_key, stored_value)
@@ -421,7 +335,7 @@ fn should_traverse_contract_pathing() {
         (contract_key, stored_contract),
     ]);
     let view = gs.checkout(root_hash).unwrap().unwrap();
-    let tc = TrackingCopy::new(view, super::DEFAULT_MAX_QUERY_DEPTH);
+    let tc = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
     let path = vec![account_alias];
     if let Ok(TrackingCopyQueryResult::Success { value, .. }) = tc.query(contract_key, &path) {
         assert_eq!(value, stored_account, "should find expected account");
@@ -460,7 +374,7 @@ fn should_traverse_account_pathing() {
         (contract_key, stored_contract.clone()),
     ]);
     let view = gs.checkout(root_hash).unwrap().unwrap();
-    let tc = TrackingCopy::new(view, super::DEFAULT_MAX_QUERY_DEPTH);
+    let tc = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
     let path = vec![contract_alias];
     if let Ok(TrackingCopyQueryResult::Success { value, .. }) = tc.query(account_key, &path) {
         assert_eq!(value, stored_contract, "should find expected contract");
@@ -527,7 +441,7 @@ fn should_traverse_all_paths() {
         (misc_uref_key, misc_stored_value.clone()),
     ]);
     let view = gs.checkout(root_hash).unwrap().unwrap();
-    let tc = TrackingCopy::new(view, super::DEFAULT_MAX_QUERY_DEPTH);
+    let tc = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
 
     fn unpack(
         result: Result<TrackingCopyQueryResult, TrackingCopyError>,
@@ -605,6 +519,164 @@ fn should_traverse_all_paths() {
         "unexpected stored value"
     );
 }
+fn handle_stored_value_into(
+    key: Key,
+    stored_value: StoredValue,
+) -> Result<StoredValue, CLValueError> {
+    match (key, stored_value) {
+        (Key::Dictionary(_), StoredValue::CLValue(cl_value)) => {
+            let wrapped_dictionary_value =
+                CLValueDictionary::new(cl_value, vec![0; 32], vec![255; 32]);
+            let wrapped_cl_value = CLValue::from_t(wrapped_dictionary_value)?;
+            Ok(StoredValue::CLValue(wrapped_cl_value))
+        }
+        (_, stored_value) => Ok(stored_value),
+    }
+}
+
+proptest! {
+    #[test]
+    fn query_contract_state(
+        k in key_arb(), // key state is stored at
+        v in stored_value_arb(), // value in contract state
+        name in "\\PC*", // human-readable name for state
+        missing_name in "\\PC*",
+        hash in u8_slice_32(), // hash for contract key
+    ) {
+        let mut named_keys = NamedKeys::new();
+        named_keys.insert(name.clone(), k);
+        let contract =
+            StoredValue::AddressableEntity(AddressableEntity::new(
+            [2; 32].into(),
+            [3; 32].into(),
+            EntryPoints::new(),
+            ProtocolVersion::V1_0_0,
+            URef::default(),
+            AssociatedKeys::default(),
+            ActionThresholds::default(),
+            MessageTopics::default(),
+            EntityKind::SmartContract
+        ));
+        let contract_key = Key::AddressableEntity(EntityAddr::SmartContract(hash));
+
+        let value = handle_stored_value_into(k, v.clone()).unwrap();
+
+        let named_key = Key::NamedKey( NamedKeyAddr::new_from_string(EntityAddr::SmartContract(hash), name.clone()).unwrap());
+        let named_value = StoredValue::NamedKey(NamedKeyValue::from_concrete_values(k, name.clone()).unwrap());
+
+        let (gs, root_hash, _tempdir) = state::lmdb::make_temporary_global_state(
+            [(k, value), (named_key, named_value) ,(contract_key, contract)]
+        );
+        let view = gs.checkout(root_hash).unwrap().unwrap();
+        let tc = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
+        let path = vec!(name.clone());
+        if let Ok(TrackingCopyQueryResult::Success { value, .. }) = tc.query( contract_key, &path) {
+            assert_eq!(v, value);
+        } else {
+            panic!("Query failed when it should not have!");
+        }
+
+        if missing_name != name {
+            let result = tc.query(contract_key, &[missing_name]);
+            assert_matches!(result, Ok(TrackingCopyQueryResult::ValueNotFound(_)));
+        }
+    }
+
+    #[test]
+    fn query_account_state(
+        k in key_arb(), // key state is stored at
+        v in stored_value_arb(), // value in account state
+        name in "\\PC*", // human-readable name for state
+        missing_name in "\\PC*",
+        pk in account_hash_arb(), // account hash
+        address in account_hash_arb(), // address for account hash
+    ) {
+        let purse = URef::new([0u8; 32], AccessRights::READ_ADD_WRITE);
+        let associated_keys = AssociatedKeys::new(pk, Weight::new(1));
+        let entity = AddressableEntity::new(
+            PackageHash::new([1u8;32]),
+            ByteCodeHash::default(),
+            EntryPoints::new_with_default_entry_point(),
+            ProtocolVersion::V1_0_0,
+            purse,
+            associated_keys,
+            ActionThresholds::default(),
+            MessageTopics::default(),
+            EntityKind::Account(address)
+        );
+
+        let account_key = Key::AddressableEntity(EntityAddr::Account([9;32]));
+        let value = handle_stored_value_into(k, v.clone()).unwrap();
+
+        let named_key = Key::NamedKey( NamedKeyAddr::new_from_string(EntityAddr::Account([9;32]), name.clone()).unwrap());
+        let named_value = StoredValue::NamedKey(NamedKeyValue::from_concrete_values(k, name.clone()).unwrap());
+
+        let (gs, root_hash, _tempdir) = state::lmdb::make_temporary_global_state(
+            [(k, value), (named_key, named_value),(account_key, entity.into())],
+        );
+        let view = gs.checkout(root_hash).unwrap().unwrap();
+        let tc = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
+        let path = vec!(name.clone());
+        if let Ok(TrackingCopyQueryResult::Success { value, .. }) = tc.query(account_key, &path) {
+            assert_eq!(v, value);
+        } else {
+            panic!("Query failed when it should not have!");
+        }
+
+        if missing_name != name {
+            let result = tc.query( account_key, &[missing_name]);
+            assert_matches!(result, Ok(TrackingCopyQueryResult::ValueNotFound(_)));
+        }
+    }
+
+    #[test]
+    fn query_path(
+        k in key_arb(), // key state is stored at
+        v in stored_value_arb(), // value in contract state
+        state_name in "\\PC*", // human-readable name for state
+        _pk in account_hash_arb(), // account hash
+        hash in u8_slice_32(), // hash for contract key
+    ) {
+        // create contract which knows about value
+        let mut contract_named_keys = NamedKeys::new();
+        contract_named_keys.insert(state_name.clone(), k);
+        let contract =
+            StoredValue::AddressableEntity(AddressableEntity::new(
+            [2; 32].into(),
+            [3; 32].into(),
+            EntryPoints::new(),
+            ProtocolVersion::V1_0_0,
+            URef::default(),
+            AssociatedKeys::default(),
+            ActionThresholds::default(),
+            MessageTopics::default(),
+            EntityKind::SmartContract
+        ));
+        let contract_key = Key::AddressableEntity(EntityAddr::SmartContract(hash));
+        let contract_named_key = NamedKeyAddr::new_from_string(EntityAddr::SmartContract(hash), state_name.clone())
+         .unwrap();
+
+        let contract_value = NamedKeyValue::from_concrete_values(k, state_name.clone()).unwrap();
+
+        let value = handle_stored_value_into(k, v.clone()).unwrap();
+
+        let (gs, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
+            (k, value),
+            (contract_key, contract),
+            (Key::NamedKey(contract_named_key), StoredValue::NamedKey(contract_value))
+        ]);
+        let view = gs.checkout(root_hash).unwrap().unwrap();
+        let tc = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
+        let path = vec!(state_name);
+
+        let results =  tc.query( contract_key, &path);
+        if let Ok(TrackingCopyQueryResult::Success { value, .. }) = results {
+            assert_eq!(v, value);
+        } else {
+            panic!("Query failed when it should not have!");
+        }
+    }
+}
 
 #[test]
 fn cache_reads_invalidation() {
@@ -662,7 +734,7 @@ fn query_for_circular_references_should_fail() {
 
     // create contract with this self-referential key in its named keys, and also a key referring to
     // itself in its named keys.
-    let contract_key = Key::Hash([1; 32]);
+    let contract_key = Key::AddressableEntity(EntityAddr::SmartContract([1; 32]));
     let contract_name = "contract".to_string();
     let mut named_keys = NamedKeys::new();
     named_keys.insert(key_name.clone(), cl_value_key);
@@ -670,21 +742,39 @@ fn query_for_circular_references_should_fail() {
     let contract = StoredValue::AddressableEntity(AddressableEntity::new(
         [2; 32].into(),
         [3; 32].into(),
-        named_keys,
         EntryPoints::new(),
         ProtocolVersion::V1_0_0,
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
         MessageTopics::default(),
+        EntityKind::SmartContract,
     ));
+
+    let name_key_cl_value = Key::NamedKey(
+        NamedKeyAddr::new_from_string(EntityAddr::SmartContract([1; 32]), "key".to_string())
+            .unwrap(),
+    );
+    let key_value = StoredValue::NamedKey(
+        NamedKeyValue::from_concrete_values(cl_value_key, "key".to_string()).unwrap(),
+    );
+
+    let name_key_contract = Key::NamedKey(
+        NamedKeyAddr::new_from_string(EntityAddr::SmartContract([1; 32]), "contract".to_string())
+            .unwrap(),
+    );
+    let key_value_contract = StoredValue::NamedKey(
+        NamedKeyValue::from_concrete_values(contract_key, "contract".to_string()).unwrap(),
+    );
 
     let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
         (cl_value_key, cl_value),
         (contract_key, contract),
+        (name_key_cl_value, key_value),
+        (name_key_contract, key_value_contract),
     ]);
     let view = global_state.checkout(root_hash).unwrap().unwrap();
-    let tracking_copy = TrackingCopy::new(view, super::DEFAULT_MAX_QUERY_DEPTH);
+    let tracking_copy = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
 
     // query for the self-referential key (second path element of arbitrary value required to cause
     // iteration _into_ the self-referential key)
@@ -712,108 +802,62 @@ fn query_for_circular_references_should_fail() {
 
 #[test]
 fn validate_query_proof_should_work() {
-    // create account
-    let account_hash = AccountHash::new([3; 32]);
-    let fake_purse = URef::new([4; 32], AccessRights::READ_ADD_WRITE);
-    let account_entity_hash = AddressableEntityHash::new([30; 32]);
-    let account_entity_key: Key =
-        Key::addressable_entity_key(PackageKindTag::Account, account_entity_hash);
-    let cl_value = CLValue::from_t(account_entity_key).unwrap();
-    let account_value = StoredValue::CLValue(cl_value);
-    let account_key = Key::Account(account_hash);
-    let contract_wasm_hash = *DEFAULT_BYTE_CODE_HASH;
-
-    let account_contract = StoredValue::AddressableEntity(AddressableEntity::new(
+    let a_e_key = Key::AddressableEntity(EntityAddr::Account([30; 32]));
+    let a_e = StoredValue::AddressableEntity(AddressableEntity::new(
         PackageHash::new([20; 32]),
-        contract_wasm_hash,
-        NamedKeys::new(),
+        ByteCodeHash::default(),
         EntryPoints::new_with_default_entry_point(),
         ProtocolVersion::V1_0_0,
-        fake_purse,
-        AssociatedKeys::new(account_hash, Weight::new(1)),
+        URef::default(),
+        AssociatedKeys::new(AccountHash::new([3; 32]), Weight::new(1)),
         ActionThresholds::default(),
         MessageTopics::default(),
+        EntityKind::Account(AccountHash::new([3; 32])),
     ));
 
-    // create contract that refers to that account
-    let account_name = "account".to_string();
-    let named_keys = {
-        let mut tmp = NamedKeys::new();
-        tmp.insert(account_name.clone(), account_key);
-        tmp
-    };
-
-    let contract_value = StoredValue::AddressableEntity(AddressableEntity::new(
+    let c_e_key = Key::AddressableEntity(EntityAddr::SmartContract([5; 32]));
+    let c_e = StoredValue::AddressableEntity(AddressableEntity::new(
         [2; 32].into(),
         [3; 32].into(),
-        named_keys,
         EntryPoints::new(),
         ProtocolVersion::V1_0_0,
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
         MessageTopics::default(),
+        EntityKind::SmartContract,
     ));
-    let contract_key = Key::Hash([5; 32]);
 
-    // create account that refers to that contract
-    let account_hash = AccountHash::new([7; 32]);
-    let fake_purse = URef::new([6; 32], AccessRights::READ_ADD_WRITE);
-    let contract_name = "contract".to_string();
-    let named_keys = {
-        let mut tmp = NamedKeys::new();
-        tmp.insert(contract_name.clone(), contract_key);
-        tmp
+    let c_nk = "abc".to_string();
+
+    let (nk, nkv) = {
+        let named_key_addr =
+            NamedKeyAddr::new_from_string(a_e_key.as_entity_addr().unwrap(), c_nk.clone())
+                .expect("must create named key entry");
+        (
+            Key::NamedKey(named_key_addr),
+            StoredValue::NamedKey(
+                NamedKeyValue::from_concrete_values(c_e_key, c_nk.clone()).unwrap(),
+            ),
+        )
     };
 
-    let main_entity_hash = AddressableEntityHash::new([81; 32]);
-    let main_entity_key: Key =
-        Key::addressable_entity_key(PackageKindTag::Account, main_entity_hash);
-
-    let cl_value_2 = CLValue::from_t(main_entity_key).unwrap();
-    let contract_wasm_hash = *DEFAULT_BYTE_CODE_HASH;
-    let main_entity = StoredValue::AddressableEntity(AddressableEntity::new(
-        PackageHash::new([21; 32]),
-        contract_wasm_hash,
-        named_keys,
-        EntryPoints::new_with_default_entry_point(),
-        ProtocolVersion::V1_0_0,
-        fake_purse,
-        AssociatedKeys::new(account_hash, Weight::new(1)),
-        ActionThresholds::default(),
-        MessageTopics::default(),
-    ));
-
-    let main_account_value = StoredValue::CLValue(cl_value_2);
-    let main_account_key = Key::Account(account_hash);
-
-    // random value for proof injection attack
-    let cl_value = CLValue::from_t(U512::zero()).expect("should convert");
-    let uref_value = StoredValue::CLValue(cl_value);
-    let uref_key = Key::URef(URef::new([8; 32], AccessRights::READ_ADD_WRITE));
+    let initial_data = vec![(a_e_key, a_e), (c_e_key, c_e.clone()), (nk, nkv)];
 
     // persist them
-    let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
-        (contract_key, contract_value.to_owned()),
-        (account_entity_key, account_contract.to_owned()),
-        (account_key, account_value.to_owned()),
-        (main_entity_key, main_entity.to_owned()),
-        (main_account_key, main_account_value.to_owned()),
-        (uref_key, uref_value),
-    ]);
+    let (global_state, root_hash, _tempdir) =
+        state::lmdb::make_temporary_global_state(initial_data);
 
     let view = global_state
         .checkout(root_hash)
         .expect("should checkout")
         .expect("should have view");
 
-    let tracking_copy = TrackingCopy::new(view, super::DEFAULT_MAX_QUERY_DEPTH);
+    let tracking_copy = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
 
-    let path = &[contract_name, account_name];
+    let path = &[c_nk];
 
-    let result = tracking_copy
-        .query(main_entity_key, path)
-        .expect("should query");
+    let result = tracking_copy.query(a_e_key, path).expect("should query");
 
     let proofs = if let TrackingCopyQueryResult::Success { proofs, .. } = result {
         proofs
@@ -821,163 +865,11 @@ fn validate_query_proof_should_work() {
         panic!("query was not successful: {:?}", result)
     };
 
+    let expected_key_trace = &[a_e_key, nk, c_e_key];
+
     // Happy path
-    validate_query_proof(&root_hash, &proofs, &main_entity_key, path, &account_value)
+    tracking_copy::validate_query_merkle_proof(&root_hash, &proofs, expected_key_trace, &c_e)
         .expect("should validate");
-
-    //TODO! Is this assumption still valid given account indirection.
-    // Path should be the same length as the proofs less one (so it should be of length 2)
-    assert_eq!(
-        validate_query_proof(&root_hash, &proofs, &main_entity_key, &[], &account_value),
-        Err(ValidationError::PathLengthDifferentThanProofLessOne)
-    );
-
-    // Find an unexpected value after tracing the proof
-    assert_eq!(
-        validate_query_proof(
-            &root_hash,
-            &proofs,
-            &main_entity_key,
-            path,
-            &main_account_value
-        ),
-        Err(ValidationError::UnexpectedValue)
-    );
-
-    // Wrong key provided for the first entry in the proof
-    assert_eq!(
-        validate_query_proof(&root_hash, &proofs, &account_key, path, &account_value),
-        Err(ValidationError::UnexpectedKey)
-    );
-
-    // Bad proof hash
-    assert_eq!(
-        validate_query_proof(
-            &Digest::hash([]),
-            &proofs,
-            &main_entity_key,
-            path,
-            &account_value
-        ),
-        Err(ValidationError::InvalidProofHash)
-    );
-
-    // Provided path contains an unexpected key
-    assert_eq!(
-        validate_query_proof(
-            &root_hash,
-            &proofs,
-            &main_entity_key,
-            &[
-                "a non-existent path key 1".to_string(),
-                "a non-existent path key 2".to_string()
-            ],
-            &account_value
-        ),
-        Err(ValidationError::PathCold)
-    );
-
-    let misfit_result = tracking_copy.query(uref_key, &[]).expect("should query");
-
-    let misfit_proof = if let TrackingCopyQueryResult::Success { proofs, .. } = misfit_result {
-        proofs[0].to_owned()
-    } else {
-        panic!("query was not successful: {:?}", misfit_result)
-    };
-
-    // Proof has been subject to an injection
-    assert_eq!(
-        validate_query_proof(
-            &root_hash,
-            &[
-                proofs[1].to_owned(),
-                misfit_proof.to_owned(),
-                proofs[2].to_owned()
-            ],
-            &main_entity_key,
-            path,
-            &account_contract
-        ),
-        Err(ValidationError::UnexpectedKey)
-    );
-
-    // Proof has been subject to an injection
-    assert_eq!(
-        validate_query_proof(
-            &root_hash,
-            &[
-                misfit_proof.to_owned(),
-                proofs[1].to_owned(),
-                proofs[2].to_owned()
-            ],
-            &uref_key.normalize(),
-            path,
-            &account_value
-        ),
-        Err(ValidationError::PathCold)
-    );
-
-    // Proof has been subject to an injection
-    assert_eq!(
-        validate_query_proof(
-            &root_hash,
-            &[misfit_proof, proofs[1].to_owned(), proofs[2].to_owned()],
-            &uref_key.normalize(),
-            path,
-            &account_value
-        ),
-        Err(ValidationError::PathCold)
-    );
-
-    let (misfit_global_state, misfit_root_hash, _tempdir) =
-        state::lmdb::make_temporary_global_state([
-            (account_key, account_value.to_owned()),
-            (contract_key, contract_value),
-            (main_entity_key, main_entity),
-            (main_account_key, main_account_value),
-        ]);
-
-    let misfit_view = misfit_global_state
-        .checkout(misfit_root_hash)
-        .expect("should checkout")
-        .expect("should have view");
-
-    let misfit_tracking_copy = TrackingCopy::new(misfit_view, super::DEFAULT_MAX_QUERY_DEPTH);
-
-    let misfit_result = misfit_tracking_copy
-        .query(main_entity_key, path)
-        .expect("should query");
-
-    let misfit_proof = if let TrackingCopyQueryResult::Success { proofs, .. } = misfit_result {
-        proofs[1].to_owned()
-    } else {
-        panic!("query was not successful: {:?}", misfit_result)
-    };
-
-    // Proof has been subject to an injection
-    assert_eq!(
-        validate_query_proof(
-            &root_hash,
-            &[proofs[0].to_owned(), misfit_proof, proofs[2].to_owned()],
-            &main_entity_key,
-            path,
-            &account_value
-        ),
-        Err(ValidationError::InvalidProofHash)
-    );
-
-    let main_account_query_result = misfit_tracking_copy
-        .query(main_account_key, &[])
-        .expect("should query");
-
-    match main_account_query_result {
-        TrackingCopyQueryResult::Success { value, .. } => assert!(
-            value.as_cl_value().is_some(),
-            "Expected CLValue under main account key, got {:?}",
-            value
-        ),
-        result => panic!("Expected query success, got {:?}", result),
-    }
 }
 
 #[test]
@@ -1013,7 +905,7 @@ fn get_keys_should_return_keys_in_the_account_keyspace() {
         .expect("should checkout")
         .expect("should have view");
 
-    let mut tracking_copy = TrackingCopy::new(view, super::DEFAULT_MAX_QUERY_DEPTH);
+    let mut tracking_copy = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
 
     let key_set = tracking_copy.get_keys(&KeyTag::Account).unwrap();
 
@@ -1054,7 +946,7 @@ fn get_keys_should_return_keys_in_the_uref_keyspace() {
         .expect("should checkout")
         .expect("should have view");
 
-    let mut tracking_copy = TrackingCopy::new(view, super::DEFAULT_MAX_QUERY_DEPTH);
+    let mut tracking_copy = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
 
     let key_set = tracking_copy.get_keys(&KeyTag::URef).unwrap();
 
@@ -1087,7 +979,7 @@ fn get_keys_should_handle_reads_from_empty_trie() {
         .expect("should checkout")
         .expect("should have view");
 
-    let mut tracking_copy = TrackingCopy::new(view, super::DEFAULT_MAX_QUERY_DEPTH);
+    let mut tracking_copy = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
 
     let key_set = tracking_copy.get_keys(&KeyTag::URef).unwrap();
 
@@ -1162,26 +1054,34 @@ fn query_with_large_depth_with_fixed_path_should_fail() {
 
     // create a long chain of contract at address X with a named key that points to a contract X+1
     // which has a size that exceeds configured max query depth.
-    for value in 1..=super::DEFAULT_MAX_QUERY_DEPTH {
-        let contract_key = Key::Hash(val_to_hashaddr(value));
-        let next_contract_key = Key::Hash(val_to_hashaddr(value + 1));
+    for value in 1..=DEFAULT_MAX_QUERY_DEPTH {
+        let contract_addr = EntityAddr::SmartContract(val_to_hashaddr(value));
+        let contract_key = Key::AddressableEntity(contract_addr);
+        let next_contract_key =
+            Key::AddressableEntity(EntityAddr::SmartContract(val_to_hashaddr(value + 1)));
         let contract_name = format!("contract{}", value);
 
-        let named_keys = {
-            let mut named_keys = NamedKeys::new();
-            named_keys.insert(contract_name.clone(), next_contract_key);
-            named_keys
-        };
+        let named_key =
+            NamedKeyAddr::new_from_string(contract_addr, contract_name.clone()).unwrap();
+
+        let named_key_value =
+            NamedKeyValue::from_concrete_values(next_contract_key, contract_name.clone()).unwrap();
+
+        pairs.push((
+            Key::NamedKey(named_key),
+            StoredValue::NamedKey(named_key_value),
+        ));
+
         let contract = StoredValue::AddressableEntity(AddressableEntity::new(
             val_to_hashaddr(PACKAGE_OFFSET + value).into(),
             val_to_hashaddr(WASM_OFFSET + value).into(),
-            named_keys,
             EntryPoints::new(),
             ProtocolVersion::V1_0_0,
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
             MessageTopics::default(),
+            EntityKind::SmartContract,
         ));
         pairs.push((contract_key, contract));
         contract_keys.push(contract_key);
@@ -1191,7 +1091,7 @@ fn query_with_large_depth_with_fixed_path_should_fail() {
     let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state(pairs);
 
     let view = global_state.checkout(root_hash).unwrap().unwrap();
-    let tracking_copy = TrackingCopy::new(view, super::DEFAULT_MAX_QUERY_DEPTH);
+    let tracking_copy = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
 
     let contract_key = contract_keys[0];
     let result = tracking_copy.query(contract_key, &path);
@@ -1199,7 +1099,7 @@ fn query_with_large_depth_with_fixed_path_should_fail() {
     assert!(
         matches!(result, Ok(TrackingCopyQueryResult::DepthLimit {
         depth
-    }) if depth == super::DEFAULT_MAX_QUERY_DEPTH),
+    }) if depth == DEFAULT_MAX_QUERY_DEPTH),
         "{:?}",
         result
     );
@@ -1216,7 +1116,7 @@ fn query_with_large_depth_with_urefs_should_fail() {
 
     // create a long chain of urefs at address X with a uref that points to a uref X+1
     // which has a size that exceeds configured max query depth.
-    for value in 1..=super::DEFAULT_MAX_QUERY_DEPTH {
+    for value in 1..=DEFAULT_MAX_QUERY_DEPTH {
         let uref_addr = val_to_hashaddr(value);
         let uref = Key::URef(URef::new(uref_addr, AccessRights::READ));
 
@@ -1228,29 +1128,36 @@ fn query_with_large_depth_with_urefs_should_fail() {
         uref_keys.push(uref);
     }
 
-    let named_keys = {
-        let mut named_keys = NamedKeys::new();
-        named_keys.insert(root_key_name.clone(), uref_keys[0]);
-        named_keys
-    };
+    let contract_addr = EntityAddr::SmartContract([0; 32]);
+
+    let named_key = NamedKeyAddr::new_from_string(contract_addr, root_key_name.clone()).unwrap();
+
+    let named_key_value =
+        NamedKeyValue::from_concrete_values(uref_keys[0], root_key_name.clone()).unwrap();
+
+    pairs.push((
+        Key::NamedKey(named_key),
+        StoredValue::NamedKey(named_key_value),
+    ));
+
     let contract = StoredValue::AddressableEntity(AddressableEntity::new(
         val_to_hashaddr(PACKAGE_OFFSET).into(),
         val_to_hashaddr(WASM_OFFSET).into(),
-        named_keys,
         EntryPoints::new(),
         ProtocolVersion::V1_0_0,
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
         MessageTopics::default(),
+        EntityKind::SmartContract,
     ));
-    let contract_key = Key::Hash([0; 32]);
+    let contract_key = Key::AddressableEntity(contract_addr);
     pairs.push((contract_key, contract));
 
     let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state(pairs);
 
     let view = global_state.checkout(root_hash).unwrap().unwrap();
-    let tracking_copy = TrackingCopy::new(view, super::DEFAULT_MAX_QUERY_DEPTH);
+    let tracking_copy = TrackingCopy::new(view, DEFAULT_MAX_QUERY_DEPTH);
 
     // query for the beginning of a long chain of urefs
     // (second path element of arbitrary value required to cause iteration _into_ the nested key)
@@ -1260,7 +1167,7 @@ fn query_with_large_depth_with_urefs_should_fail() {
     assert!(
         matches!(result, Ok(TrackingCopyQueryResult::DepthLimit {
         depth
-    }) if depth == super::DEFAULT_MAX_QUERY_DEPTH),
+    }) if depth == DEFAULT_MAX_QUERY_DEPTH),
         "{:?}",
         result
     );
