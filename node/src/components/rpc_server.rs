@@ -25,7 +25,7 @@ use futures::join;
 use tracing::{error, info, warn};
 
 use casper_storage::data_access_layer::{
-    BalanceRequest, BalanceResult, EraValidatorsResult, GetBidsRequest, QueryRequest, QueryResult,
+    BalanceRequest, BalanceResult, BidsRequest, EraValidatorsResult, QueryRequest, QueryResult,
 };
 use casper_types::{Digest, Key, ProtocolVersion, URef};
 
@@ -273,7 +273,7 @@ where
                     state_root_hash,
                     responder,
                 }) => {
-                    let get_bids_request = GetBidsRequest::new(state_root_hash);
+                    let get_bids_request = BidsRequest::new(state_root_hash);
                     effect_builder
                         .get_bids(get_bids_request)
                         .event(move |result| Event::GetBidsResult {

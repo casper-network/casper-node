@@ -19,7 +19,7 @@ use static_assertions::const_assert;
 use casper_execution_engine::engine_state::{self};
 use casper_storage::{
     data_access_layer::{
-        get_bids::{GetBidsRequest, GetBidsResult},
+        get_bids::{BidsRequest, BidsResult},
         BalanceRequest, BalanceResult, EraValidatorsRequest, EraValidatorsResult, QueryRequest,
         QueryResult,
     },
@@ -767,7 +767,7 @@ pub(crate) enum RpcRequest {
         /// The global state hash.
         state_root_hash: Digest,
         /// Responder to call with the result.
-        responder: Responder<GetBidsResult>,
+        responder: Responder<BidsResult>,
     },
 
     /// Query the global state at the given root hash.
@@ -925,9 +925,9 @@ pub(crate) enum ContractRuntimeRequest {
     GetBids {
         /// Get bids request.
         #[serde(skip_serializing)]
-        get_bids_request: GetBidsRequest,
+        request: BidsRequest,
         /// Responder to call with the result.
-        responder: Responder<GetBidsResult>,
+        responder: Responder<BidsResult>,
     },
     /// Returns the value of the execution results checksum stored in the ChecksumRegistry for the
     /// given state root hash.
@@ -1008,7 +1008,8 @@ impl Display for ContractRuntimeRequest {
                 write!(formatter, "get era validators: {:?}", request)
             }
             ContractRuntimeRequest::GetBids {
-                get_bids_request, ..
+                request: get_bids_request,
+                ..
             } => {
                 write!(formatter, "get bids request: {:?}", get_bids_request)
             }

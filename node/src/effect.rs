@@ -118,7 +118,7 @@ use tracing::{debug, error, warn};
 use casper_execution_engine::engine_state::{self};
 use casper_storage::{
     data_access_layer::{
-        BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
+        BalanceRequest, BalanceResult, BidsRequest, BidsResult, QueryRequest, QueryResult,
     },
     global_state::trie::TrieRaw,
 };
@@ -2072,13 +2072,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests a query be executed on the Contract Runtime component.
-    pub(crate) async fn get_bids(self, get_bids_request: GetBidsRequest) -> GetBidsResult
+    pub(crate) async fn get_bids(self, get_bids_request: BidsRequest) -> BidsResult
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
             |responder| ContractRuntimeRequest::GetBids {
-                get_bids_request,
+                request: get_bids_request,
                 responder,
             },
             QueueKind::ContractRuntime,

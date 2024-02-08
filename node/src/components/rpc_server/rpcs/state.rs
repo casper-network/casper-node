@@ -10,7 +10,7 @@ use tracing::{debug, error, info, warn};
 
 use casper_json_rpc::ReservedErrorCode;
 use casper_storage::{
-    data_access_layer::{get_bids::GetBidsResult, BalanceResult, EraValidatorsResult, QueryResult},
+    data_access_layer::{get_bids::BidsResult, BalanceResult, EraValidatorsResult, QueryResult},
     global_state::trie::merkle_proof::TrieMerkleProof,
 };
 use casper_types::{
@@ -373,8 +373,8 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .await;
 
         let bids = match get_bids_result {
-            GetBidsResult::Success { bids } => bids,
-            GetBidsResult::RootNotFound => {
+            BidsResult::Success { bids } => bids,
+            BidsResult::RootNotFound => {
                 error!(
                     block_hash=?block.hash(),
                     ?state_root_hash,
@@ -388,7 +388,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
                     ),
                 ));
             }
-            GetBidsResult::Failure(error) => {
+            BidsResult::Failure(error) => {
                 error!(
                     block_hash=?block.hash(),
                     ?state_root_hash,

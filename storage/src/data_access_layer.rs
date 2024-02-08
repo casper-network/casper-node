@@ -16,7 +16,7 @@ pub mod query;
 
 pub use balance::{BalanceRequest, BalanceResult};
 pub use era_validators::{EraValidatorsRequest, EraValidatorsResult};
-pub use get_bids::{GetBidsError, GetBidsRequest, GetBidsResult};
+pub use get_bids::{BidsRequest, BidsResult};
 pub use query::{QueryRequest, QueryResult};
 
 pub struct Block {

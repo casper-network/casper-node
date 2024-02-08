@@ -26,12 +26,10 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 use tracing::{debug, error, trace, warn};
 
-pub use casper_storage::data_access_layer::get_bids::{
-    GetBidsError, GetBidsRequest, GetBidsResult,
-};
 use casper_storage::{
     data_access_layer::{
         balance::BalanceResult,
+        get_bids::{BidsRequest, BidsResult},
         query::{QueryRequest, QueryResult},
         DataAccessLayer, EraValidatorsRequest, EraValidatorsResult,
     },
@@ -2241,7 +2239,7 @@ where
     }
 
     /// Gets current bids from the auction system.
-    pub fn get_bids(&self, get_bids_request: GetBidsRequest) -> GetBidsResult {
+    pub fn get_bids(&self, get_bids_request: BidsRequest) -> BidsResult {
         let state_root_hash = get_bids_request.state_hash();
         let tracking_copy = match self.state.checkout(state_root_hash) {
             Ok(ret) => match ret {
@@ -2249,16 +2247,16 @@ where
                     tracking_copy,
                     self.config.max_query_depth,
                 ))),
-                None => return GetBidsResult::RootNotFound,
+                None => return BidsResult::RootNotFound,
             },
-            Err(err) => return GetBidsResult::Failure(GetBidsError::GlobalState(err)),
+            Err(err) => return BidsResult::Failure(TrackingCopyError::Storage(err)),
         };
 
         let mut tc = tracking_copy.borrow_mut();
 
         let bid_keys = match tc.get_keys(&KeyTag::BidAddr) {
             Ok(ret) => ret,
-            Err(err) => return GetBidsResult::Failure(GetBidsError::TrackingCopyError(err)),
+            Err(err) => return BidsResult::Failure(err),
         };
 
         let mut bids = vec![];
@@ -2269,18 +2267,14 @@ where
                         bids.push(bid_kind);
                     }
                     Some(_) => {
-                        return GetBidsResult::Failure(GetBidsError::InvalidStoredValueVariant(
-                            *key,
-                        ))
+                        return BidsResult::Failure(TrackingCopyError::UnexpectedStoredValueVariant)
                     }
-                    None => return GetBidsResult::Failure(GetBidsError::MissingBid(*key)),
+                    None => return BidsResult::Failure(TrackingCopyError::MissingBid(*key)),
                 },
-                Err(error) => {
-                    return GetBidsResult::Failure(GetBidsError::TrackingCopyError(error))
-                }
+                Err(error) => return BidsResult::Failure(error),
             }
         }
-        GetBidsResult::Success { bids }
+        BidsResult::Success { bids }
     }
 
     /// Distribute block rewards.

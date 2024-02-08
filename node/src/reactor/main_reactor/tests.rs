@@ -11,7 +11,7 @@ use tempfile::TempDir;
 use tokio::time::{self, error::Elapsed};
 use tracing::{error, info};
 
-use casper_execution_engine::engine_state::{GetBidsRequest, GetBidsResult};
+use casper_execution_engine::engine_state::{BidsRequest, BidsResult};
 use casper_storage::global_state::state::{StateProvider, StateReader};
 use casper_types::{
     execution::{ExecutionResult, ExecutionResultV2, Transform, TransformKind},
@@ -527,7 +527,7 @@ impl TestFixture {
             .contract_runtime
             .auction_state(*highest_block.state_root_hash());
 
-        if let GetBidsResult::Success { bids } = bids_result {
+        if let BidsResult::Success { bids } = bids_result {
             match bids.iter().find(|bid_kind| {
                 &bid_kind.validator_public_key() == validator_public_key
                     && bid_kind.delegator_public_key().as_ref() == delegator_public_key
@@ -739,9 +739,9 @@ impl SwitchBlocks {
     fn bids(&self, nodes: &Nodes, era_number: u64) -> Vec<BidKind> {
         let state_root_hash = *self.headers[era_number as usize].state_root_hash();
         for runner in nodes.values() {
-            let request = GetBidsRequest::new(state_root_hash);
+            let request = BidsRequest::new(state_root_hash);
             let engine_state = runner.main_reactor().contract_runtime().engine_state();
-            if let GetBidsResult::Success { bids } = engine_state.get_bids(request) {
+            if let BidsResult::Success { bids } = engine_state.get_bids(request) {
                 return bids;
             }
         }

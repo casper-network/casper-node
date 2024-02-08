@@ -6,7 +6,7 @@ use std::{
 use derive_more::From;
 
 use casper_storage::data_access_layer::{
-    BalanceResult, EraValidatorsResult, GetBidsResult, QueryResult,
+    BalanceResult, BidsResult, EraValidatorsResult, QueryResult,
 };
 use casper_types::{BlockHash, Transfer};
 
@@ -34,8 +34,8 @@ pub(crate) enum Event {
         main_responder: Responder<EraValidatorsResult>,
     },
     GetBidsResult {
-        result: GetBidsResult,
-        main_responder: Responder<GetBidsResult>,
+        result: BidsResult,
+        main_responder: Responder<BidsResult>,
     },
     GetPeersResult {
         peers: BTreeMap<NodeId, String>,

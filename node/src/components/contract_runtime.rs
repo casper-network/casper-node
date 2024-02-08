@@ -30,7 +30,7 @@ use thiserror::Error;
 use tracing::{debug, error, info, trace};
 
 #[cfg(test)]
-use casper_execution_engine::engine_state::{GetBidsRequest, GetBidsResult};
+use casper_execution_engine::engine_state::{BidsRequest, BidsResult};
 
 use casper_execution_engine::engine_state::{
     self, genesis::GenesisError, DeployItem, EngineConfigBuilder, EngineState, GenesisSuccess,
@@ -732,9 +732,9 @@ impl ContractRuntime {
 
     /// Returns auction state, for testing only.
     #[cfg(test)]
-    pub(crate) fn auction_state(&self, root_hash: Digest) -> GetBidsResult {
+    pub(crate) fn auction_state(&self, root_hash: Digest) -> BidsResult {
         let engine_state = Arc::clone(&self.engine_state);
-        let get_bids_request = GetBidsRequest::new(root_hash);
+        let get_bids_request = BidsRequest::new(root_hash);
         engine_state.get_bids(get_bids_request)
     }
 
@@ -856,6 +856,22 @@ impl ContractRuntime {
                     metrics
                         .get_era_validators
                         .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "balance result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::GetBids {
+                request: bids_request,
+                responder,
+            } => {
+                trace!(?bids_request, "get bids request");
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let result = data_access_layer.bids(bids_request);
+                    metrics.get_bids.observe(start.elapsed().as_secs_f64());
                     trace!(?result, "balance result");
                     responder.respond(result).await
                 }
@@ -989,22 +1005,6 @@ impl ContractRuntime {
                     .exec_queue_size
                     .set(self.exec_queue.len().try_into().unwrap_or(i64::MIN));
                 effects
-            }
-            ContractRuntimeRequest::GetBids {
-                get_bids_request,
-                responder,
-            } => {
-                trace!(?get_bids_request, "get bids request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let start = Instant::now();
-                    let result = engine_state.get_bids(get_bids_request);
-                    metrics.get_bids.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "get bids result");
-                    responder.respond(result).await
-                }
-                .ignore()
             }
             ContractRuntimeRequest::GetExecutionResultsChecksum {
                 state_root_hash,

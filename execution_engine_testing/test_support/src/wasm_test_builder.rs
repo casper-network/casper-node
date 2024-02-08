@@ -19,9 +19,10 @@ use casper_execution_engine::engine_state::{
     execution_result::ExecutionResult,
     run_genesis_request::RunGenesisRequest,
     step::{StepRequest, StepSuccess},
-    EngineConfig, EngineConfigBuilder, EngineState, Error, GenesisSuccess, GetBidsRequest,
-    PruneConfig, PruneResult, StepError, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
+    EngineConfig, EngineConfigBuilder, EngineState, Error, GenesisSuccess, PruneConfig,
+    PruneResult, StepError, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
 };
+use casper_storage::data_access_layer::BidsRequest;
 use casper_storage::{
     data_access_layer::{
         BalanceResult, BlockStore, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult,
@@ -1254,7 +1255,7 @@ where
 
     /// Gets [`Vec<BidKind>`].
     pub fn get_bids(&mut self) -> Vec<BidKind> {
-        let get_bids_request = GetBidsRequest::new(self.get_post_state_hash());
+        let get_bids_request = BidsRequest::new(self.get_post_state_hash());
 
         let get_bids_result = self.engine_state.get_bids(get_bids_request);
 

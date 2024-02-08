@@ -15,7 +15,7 @@ use casper_types::{
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
     package::PackageKindTag,
     system::{auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, AUCTION},
-    Digest, Key, StoredValue,
+    Digest, Key, KeyTag, StoredValue,
 };
 
 #[cfg(test)]
@@ -23,8 +23,8 @@ pub use self::lmdb::make_temporary_global_state;
 
 use crate::{
     data_access_layer::{
-        era_validators::EraValidatorsResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
-        QueryRequest, QueryResult,
+        era_validators::EraValidatorsResult, BalanceRequest, BalanceResult, BidsRequest,
+        BidsResult, EraValidatorsRequest, QueryRequest, QueryResult,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -197,6 +197,37 @@ pub trait StateProvider {
 
         let era_validators = auction::detail::era_validators_from_snapshot(snapshot);
         EraValidatorsResult::Success { era_validators }
+    }
+
+    fn bids(&self, bids_request: BidsRequest) -> BidsResult {
+        let state_root_hash = bids_request.state_hash();
+        let mut tc = match self.tracking_copy(state_root_hash) {
+            Ok(Some(tc)) => tc,
+            Ok(None) => return BidsResult::RootNotFound,
+            Err(err) => return BidsResult::Failure(TrackingCopyError::Storage(err)),
+        };
+
+        let bid_keys = match tc.get_keys(&KeyTag::BidAddr) {
+            Ok(ret) => ret,
+            Err(err) => return BidsResult::Failure(err),
+        };
+
+        let mut bids = vec![];
+        for key in bid_keys.iter() {
+            match tc.get(key) {
+                Ok(ret) => match ret {
+                    Some(StoredValue::BidKind(bid_kind)) => {
+                        bids.push(bid_kind);
+                    }
+                    Some(_) => {
+                        return BidsResult::Failure(TrackingCopyError::UnexpectedStoredValueVariant)
+                    }
+                    None => return BidsResult::Failure(TrackingCopyError::MissingBid(*key)),
+                },
+                Err(error) => return BidsResult::Failure(error),
+            }
+        }
+        BidsResult::Success { bids }
     }
 
     /// Returns an empty root hash.
