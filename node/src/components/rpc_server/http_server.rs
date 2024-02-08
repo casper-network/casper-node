@@ -5,12 +5,12 @@ use casper_types::ProtocolVersion;
 
 use super::{
     rpcs::{
-        account::PutDeploy,
+        account::{PutDeploy, PutTransaction},
         chain::{
             GetBlock, GetBlockTransfers, GetEraInfoBySwitchBlock, GetEraSummary, GetStateRootHash,
         },
         docs::ListRpcs,
-        info::{GetChainspec, GetDeploy, GetPeers, GetStatus, GetValidatorChanges},
+        info::{GetChainspec, GetDeploy, GetPeers, GetStatus, GetTransaction, GetValidatorChanges},
         state::{
             GetAccountInfo, GetAuctionInfo, GetBalance, GetDictionaryItem, GetItem, GetTrie,
             QueryBalance, QueryGlobalState,
@@ -37,6 +37,7 @@ pub(super) async fn run<REv: ReactorEventT>(
 ) {
     let mut handlers = RequestHandlersBuilder::new();
     PutDeploy::register_as_handler(effect_builder, api_version, &mut handlers);
+    PutTransaction::register_as_handler(effect_builder, api_version, &mut handlers);
     GetBlock::register_as_handler(effect_builder, api_version, &mut handlers);
     GetBlockTransfers::register_as_handler(effect_builder, api_version, &mut handlers);
     GetStateRootHash::register_as_handler(effect_builder, api_version, &mut handlers);
@@ -45,6 +46,7 @@ pub(super) async fn run<REv: ReactorEventT>(
     GetBalance::register_as_handler(effect_builder, api_version, &mut handlers);
     GetAccountInfo::register_as_handler(effect_builder, api_version, &mut handlers);
     GetDeploy::register_as_handler(effect_builder, api_version, &mut handlers);
+    GetTransaction::register_as_handler(effect_builder, api_version, &mut handlers);
     GetPeers::register_as_handler(effect_builder, api_version, &mut handlers);
     GetStatus::register_as_handler(effect_builder, api_version, &mut handlers);
     GetEraInfoBySwitchBlock::register_as_handler(effect_builder, api_version, &mut handlers);

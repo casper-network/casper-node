@@ -1,7 +1,7 @@
 use std::time::Duration;
 use tracing::{debug, error, info, trace};
 
-use casper_types::{BlockHash, BlockHeader, Digest, EraId, EraReport, PublicKey, Timestamp};
+use casper_types::{BlockHash, BlockHeader, Digest, EraId, PublicKey, Timestamp};
 
 use crate::{
     components::{
@@ -17,7 +17,7 @@ use crate::{
         upgrading_instruction::UpgradingInstruction, utils, validate::ValidateInstruction,
         MainEvent, MainReactor, ReactorState,
     },
-    types::{BlockPayload, FinalizedBlock, MetaBlockState},
+    types::{BlockPayload, ExecutableBlock, FinalizedBlock, InternalEraReport, MetaBlockState},
     NodeRng,
 };
 
@@ -363,20 +363,22 @@ impl MainReactor {
         // have this behavior.
         let genesis_switch_block = FinalizedBlock::new(
             BlockPayload::default(),
-            Some(EraReport::default()),
+            Some(InternalEraReport::default()),
             genesis_timestamp,
             era_id,
             genesis_block_height,
             PublicKey::System,
         );
 
-        // this genesis block has no deploys, and will get
+        // this genesis block has no transactions, and will get
         // handed off to be stored & marked complete after
         // sufficient finality signatures have been collected.
         let effects = effect_builder
             .enqueue_block_for_execution(
-                genesis_switch_block,
-                vec![],
+                ExecutableBlock::from_finalized_block_and_transactions(
+                    genesis_switch_block,
+                    vec![],
+                ),
                 MetaBlockState::new_not_to_be_gossiped(),
             )
             .ignore();
@@ -440,7 +442,7 @@ impl MainReactor {
 
                     let finalized_block = FinalizedBlock::new(
                         BlockPayload::default(),
-                        Some(EraReport::default()),
+                        Some(InternalEraReport::default()),
                         header.timestamp(),
                         header.next_block_era_id(),
                         next_block_height,
@@ -448,8 +450,10 @@ impl MainReactor {
                     );
                     Ok(effect_builder
                         .enqueue_block_for_execution(
-                            finalized_block,
-                            vec![],
+                            ExecutableBlock::from_finalized_block_and_transactions(
+                                finalized_block,
+                                vec![],
+                            ),
                             MetaBlockState::new_not_to_be_gossiped(),
                         )
                         .ignore())

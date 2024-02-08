@@ -1,15 +1,19 @@
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
+use tracing::error;
+
+use casper_types::Chainspec;
 
 use crate::{
     logging::LoggingConfig, types::NodeConfig, BlockAccumulatorConfig, BlockSynchronizerConfig,
-    ConsensusConfig, ContractRuntimeConfig, DeployBufferConfig, DiagnosticsPortConfig,
-    EventStreamServerConfig, FetcherConfig, GossipConfig, NetworkConfig, RestServerConfig,
-    RpcServerConfig, SpeculativeExecConfig, StorageConfig, UpgradeWatcherConfig,
+    BlockValidatorConfig, ConsensusConfig, ContractRuntimeConfig, DeployBufferConfig,
+    DiagnosticsPortConfig, EventStreamServerConfig, FetcherConfig, GossipConfig, NetworkConfig,
+    RestServerConfig, RpcServerConfig, SpeculativeExecConfig, StorageConfig,
+    TransactionAcceptorConfig, UpgradeWatcherConfig,
 };
 
 /// Root configuration.
-#[derive(DataSize, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, DataSize, Debug, Default, Serialize, Deserialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -37,6 +41,8 @@ pub struct Config {
     pub fetcher: FetcherConfig,
     /// Config values for the contract runtime.
     pub contract_runtime: ContractRuntimeConfig,
+    /// Config values for the transaction acceptor.
+    pub transaction_acceptor: TransactionAcceptorConfig,
     /// Config values for the deploy buffer.
     pub deploy_buffer: DeployBufferConfig,
     /// Config values for the diagnostics port.
@@ -45,6 +51,27 @@ pub struct Config {
     pub block_accumulator: BlockAccumulatorConfig,
     /// Config values for the block synchronizer.
     pub block_synchronizer: BlockSynchronizerConfig,
+    /// Config values for the block validator.
+    pub block_validator: BlockValidatorConfig,
     /// Config values for the upgrade watcher.
     pub upgrade_watcher: UpgradeWatcherConfig,
+}
+
+impl Config {
+    /// This modifies `self` so that all configured options are within the bounds set in the
+    /// provided chainspec.
+    pub(crate) fn ensure_valid(&mut self, chainspec: &Chainspec) {
+        if self.transaction_acceptor.timestamp_leeway
+            > chainspec.transaction_config.max_timestamp_leeway
+        {
+            error!(
+                configured_timestamp_leeway = %self.transaction_acceptor.timestamp_leeway,
+                max_timestamp_leeway = %chainspec.transaction_config.max_timestamp_leeway,
+                "setting value for 'transaction_acceptor.timestamp_leeway' to maximum permitted by \
+                chainspec 'transaction_config.max_timestamp_leeway'",
+            );
+            self.transaction_acceptor.timestamp_leeway =
+                chainspec.transaction_config.max_timestamp_leeway;
+        }
+    }
 }

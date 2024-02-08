@@ -1,3 +1,5 @@
+use core::fmt::{self, Debug, Display, Formatter};
+
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
@@ -11,65 +13,12 @@ use crate::bytesrepr::Bytes;
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct ChainspecRawBytes {
-    #[cfg_attr(
-        feature = "json-schema",
-        schemars(
-            with = "String",
-            description = "Hex-encoded raw bytes of the current chainspec.toml file."
-        )
-    )]
+    /// Raw bytes of the current chainspec.toml file.
     chainspec_bytes: Bytes,
-    #[cfg_attr(
-        feature = "json-schema",
-        schemars(
-            with = "String",
-            description = "Hex-encoded raw bytes of the current genesis accounts.toml file."
-        )
-    )]
+    /// Raw bytes of the current genesis accounts.toml file.
     maybe_genesis_accounts_bytes: Option<Bytes>,
-    #[cfg_attr(
-        feature = "json-schema",
-        schemars(
-            with = "String",
-            description = "Hex-encoded raw bytes of the current global_state.toml file."
-        )
-    )]
+    /// Raw bytes of the current global_state.toml file.
     maybe_global_state_bytes: Option<Bytes>,
-}
-
-impl std::fmt::Debug for ChainspecRawBytes {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let genesis_accounts_bytes_owned: Bytes;
-        let global_state_bytes_owned: Bytes;
-        f.debug_struct("ChainspecRawBytes")
-            .field(
-                "chainspec_bytes",
-                &self.chainspec_bytes[0..16].to_ascii_uppercase(),
-            )
-            .field(
-                "maybe_genesis_accounts_bytes",
-                match self.maybe_genesis_accounts_bytes.as_ref() {
-                    Some(genesis_accounts_bytes) => {
-                        genesis_accounts_bytes_owned =
-                            genesis_accounts_bytes[0..16].to_ascii_uppercase().into();
-                        &genesis_accounts_bytes_owned
-                    }
-                    None => &self.maybe_genesis_accounts_bytes,
-                },
-            )
-            .field(
-                "maybe_global_state_bytes",
-                match self.maybe_global_state_bytes.as_ref() {
-                    Some(global_state_bytes) => {
-                        global_state_bytes_owned =
-                            global_state_bytes[0..16].to_ascii_uppercase().into();
-                        &global_state_bytes_owned
-                    }
-                    None => &self.maybe_global_state_bytes,
-                },
-            )
-            .finish()
-    }
 }
 
 impl ChainspecRawBytes {
@@ -105,5 +54,61 @@ impl ChainspecRawBytes {
             Some(bytes) => Some(bytes.as_slice()),
             None => None,
         }
+    }
+}
+
+impl Debug for ChainspecRawBytes {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let genesis_accounts_bytes_owned: Bytes;
+        let global_state_bytes_owned: Bytes;
+        f.debug_struct("ChainspecRawBytes")
+            .field(
+                "chainspec_bytes",
+                &self.chainspec_bytes[0..16].to_ascii_uppercase(),
+            )
+            .field(
+                "maybe_genesis_accounts_bytes",
+                match self.maybe_genesis_accounts_bytes.as_ref() {
+                    Some(genesis_accounts_bytes) => {
+                        genesis_accounts_bytes_owned =
+                            genesis_accounts_bytes[0..16].to_ascii_uppercase().into();
+                        &genesis_accounts_bytes_owned
+                    }
+                    None => &self.maybe_genesis_accounts_bytes,
+                },
+            )
+            .field(
+                "maybe_global_state_bytes",
+                match self.maybe_global_state_bytes.as_ref() {
+                    Some(global_state_bytes) => {
+                        global_state_bytes_owned =
+                            global_state_bytes[0..16].to_ascii_uppercase().into();
+                        &global_state_bytes_owned
+                    }
+                    None => &self.maybe_global_state_bytes,
+                },
+            )
+            .finish()
+    }
+}
+
+impl Display for ChainspecRawBytes {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(
+            formatter,
+            "{}",
+            String::from_utf8_lossy(&self.chainspec_bytes)
+        )?;
+        if let Some(genesis_accounts_bytes) = &self.maybe_genesis_accounts_bytes {
+            write!(
+                formatter,
+                "{}",
+                String::from_utf8_lossy(genesis_accounts_bytes)
+            )?;
+        }
+        if let Some(global_state_bytes) = &self.maybe_global_state_bytes {
+            write!(formatter, "{}", String::from_utf8_lossy(global_state_bytes))?;
+        }
+        Ok(())
     }
 }

@@ -8,11 +8,11 @@
 //! While the [`main`](fn.main.html) function is the central entrypoint for the node application,
 //! its core event loop is found inside the [reactor](reactor/index.html).
 
-#![doc(html_root_url = "https://docs.rs/casper-node/1.5.2")]
+#![doc(html_root_url = "https://docs.rs/casper-node/1.5.3")]
 #![doc(
-    html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
-    html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
-    test(attr(forbid(warnings)))
+    html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon_48.png",
+    html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png",
+    test(attr(deny(warnings)))
 )]
 #![warn(
     missing_docs,
@@ -27,6 +27,9 @@ pub(crate) mod components;
 mod config_migration;
 mod data_migration;
 pub(crate) mod effect;
+#[cfg_attr(not(feature = "failpoints"), path = "failpoints_disabled.rs")]
+pub(crate) mod failpoints;
+
 pub mod logging;
 pub(crate) mod protocol;
 pub(crate) mod reactor;
@@ -51,6 +54,7 @@ use tracing::warn;
 pub(crate) use components::{
     block_accumulator::Config as BlockAccumulatorConfig,
     block_synchronizer::Config as BlockSynchronizerConfig,
+    block_validator::Config as BlockValidatorConfig,
     consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
     deploy_buffer::Config as DeployBufferConfig,
@@ -61,10 +65,11 @@ pub(crate) use components::{
     network::Config as NetworkConfig,
     rest_server::Config as RestServerConfig,
     rpc_server::{Config as RpcServerConfig, SpeculativeExecConfig},
+    transaction_acceptor::Config as TransactionAcceptorConfig,
     upgrade_watcher::Config as UpgradeWatcherConfig,
 };
 pub use components::{
-    contract_runtime,
+    consensus, contract_runtime,
     rpc_server::rpcs,
     storage::{self, Config as StorageConfig},
 };

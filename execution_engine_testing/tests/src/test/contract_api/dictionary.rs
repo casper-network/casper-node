@@ -9,8 +9,9 @@ use casper_execution_engine::{
     execution::Error,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, AccessRights, ApiError, CLType, CLValue,
-    ContractHash, GenesisAccount, Key, Motes, RuntimeArgs, StoredValue, U512,
+    account::AccountHash, package::PackageKindTag, runtime_args, system::mint, AccessRights,
+    AddressableEntityHash, ApiError, CLType, CLValue, GenesisAccount, Key, Motes, RuntimeArgs,
+    StoredValue, U512,
 };
 use std::{convert::TryFrom, path::PathBuf};
 
@@ -23,7 +24,7 @@ const DICTIONARY_READ: &str = "dictionary_read.wasm";
 const READ_FROM_KEY: &str = "read_from_key.wasm";
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 
-fn setup() -> (LmdbWasmTestBuilder, ContractHash) {
+fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
     let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
@@ -52,26 +53,23 @@ fn setup() -> (LmdbWasmTestBuilder, ContractHash) {
         .commit()
         .expect_success();
 
-    let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+    let contract = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
-    assert!(account
+    assert!(contract
         .named_keys()
-        .contains_key(dictionary::MALICIOUS_KEY_NAME));
-    assert!(account
-        .named_keys()
-        .contains_key(dictionary::DICTIONARY_REF));
+        .contains(dictionary::MALICIOUS_KEY_NAME));
+    assert!(contract.named_keys().contains(dictionary::DICTIONARY_REF));
 
-    let contract_hash = account
+    let entity_hash = contract
         .named_keys()
         .get(dictionary::CONTRACT_HASH_NAME)
         .cloned()
-        .and_then(Key::into_hash)
-        .map(ContractHash::new)
+        .and_then(Key::into_entity_hash)
         .expect("should have hash");
 
-    (builder, contract_hash)
+    (builder, entity_hash)
 }
 
 fn query_dictionary_item(
@@ -83,13 +81,35 @@ fn query_dictionary_item(
     let empty_path = vec![];
     let dictionary_key_bytes = dictionary_item_key.as_bytes();
     let address = match key {
-        Key::Account(_) | Key::Hash(_) => {
+        Key::Account(_) => {
+            if dictionary_name.is_none() {
+                return Err("No dictionary name was provided".to_string());
+            }
+            let stored_value = builder.query(None, key, &[])?;
+            if let StoredValue::CLValue(cl_value) = stored_value {
+                let entity_hash: AddressableEntityHash = CLValue::into_t::<Key>(cl_value)
+                    .expect("must convert to contract hash")
+                    .into_entity_hash()
+                    .expect("must convert to contract hash");
+
+                let entity_key = Key::addressable_entity_key(PackageKindTag::Account, entity_hash);
+
+                return query_dictionary_item(
+                    builder,
+                    entity_key,
+                    dictionary_name,
+                    dictionary_item_key,
+                );
+            } else {
+                return Err("Provided base key is not an account".to_string());
+            }
+        }
+        Key::AddressableEntity(..) => {
             if let Some(name) = dictionary_name {
                 let stored_value = builder.query(None, key, &[])?;
 
                 let named_keys = match &stored_value {
-                    StoredValue::Account(account) => account.named_keys(),
-                    StoredValue::Contract(contract) => contract.named_keys(),
+                    StoredValue::AddressableEntity(contract) => contract.named_keys(),
                     _ => {
                         return Err(
                             "Provided base key is nether an account or a contract".to_string()
@@ -135,7 +155,7 @@ fn should_modify_with_owned_access_rights() {
     .build();
 
     let contract = builder
-        .get_contract(contract_hash)
+        .get_addressable_entity(contract_hash)
         .expect("should have account");
 
     let stored_dictionary_key = contract
@@ -211,9 +231,7 @@ fn should_not_write_with_read_access_rights() {
 
     builder.exec(call_request).commit();
 
-    let exec_results = builder
-        .get_last_exec_results()
-        .expect("should have results");
+    let exec_results = builder.get_last_exec_result().expect("should have results");
     assert_eq!(exec_results.len(), 1);
     let error = exec_results[0].as_error().expect("should have error");
     assert!(
@@ -265,9 +283,7 @@ fn should_not_read_with_write_access_rights() {
 
     builder.exec(call_request).commit();
 
-    let exec_results = builder
-        .get_last_exec_results()
-        .expect("should have results");
+    let exec_results = builder.get_last_exec_result().expect("should have results");
 
     assert_eq!(exec_results.len(), 1);
     let error = exec_results[0].as_error().expect("should have error");
@@ -302,7 +318,7 @@ fn should_write_with_write_access_rights() {
     builder.exec(call_request).commit();
 
     let contract = builder
-        .get_contract(contract_hash)
+        .get_addressable_entity(contract_hash)
         .expect("should have account");
 
     let stored_dictionary_key = contract
@@ -327,7 +343,7 @@ fn should_not_write_with_forged_uref() {
     let (mut builder, contract_hash) = setup();
 
     let contract = builder
-        .get_contract(contract_hash)
+        .get_addressable_entity(contract_hash)
         .expect("should have account");
 
     let stored_dictionary_key = contract
@@ -351,9 +367,7 @@ fn should_not_write_with_forged_uref() {
 
     builder.exec(call_request).commit();
 
-    let exec_results = builder
-        .get_last_exec_results()
-        .expect("should have results");
+    let exec_results = builder.get_last_exec_result().expect("should have results");
     assert_eq!(exec_results.len(), 1);
     let error = exec_results[0].as_error().expect("should have error");
     assert!(
@@ -372,7 +386,7 @@ fn should_not_write_with_forged_uref() {
 fn should_fail_put_with_invalid_dictionary_item_key() {
     let (mut builder, contract_hash) = setup();
     let contract = builder
-        .get_contract(contract_hash)
+        .get_addressable_entity(contract_hash)
         .expect("should have account");
 
     let _stored_dictionary_key = contract
@@ -391,9 +405,7 @@ fn should_fail_put_with_invalid_dictionary_item_key() {
     .build();
 
     builder.exec(call_request).commit();
-    let exec_results = builder
-        .get_last_exec_results()
-        .expect("should have results");
+    let exec_results = builder.get_last_exec_result().expect("should have results");
     assert_eq!(exec_results.len(), 1);
     let error = exec_results[0].as_error().expect("should have error");
     assert!(
@@ -411,7 +423,7 @@ fn should_fail_put_with_invalid_dictionary_item_key() {
 fn should_fail_get_with_invalid_dictionary_item_key() {
     let (mut builder, contract_hash) = setup();
     let contract = builder
-        .get_contract(contract_hash)
+        .get_addressable_entity(contract_hash)
         .expect("should have account");
 
     let _stored_dictionary_key = contract
@@ -430,9 +442,7 @@ fn should_fail_get_with_invalid_dictionary_item_key() {
     .build();
 
     builder.exec(call_request).commit();
-    let exec_results = builder
-        .get_last_exec_results()
-        .expect("should have results");
+    let exec_results = builder.get_last_exec_result().expect("should have results");
     assert_eq!(exec_results.len(), 1);
     let error = exec_results[0].as_error().expect("should have error");
     assert!(
@@ -473,9 +483,7 @@ fn dictionary_put_should_fail_with_large_item_key() {
 
     builder.exec(fund_request).commit().expect_success();
     builder.exec(install_contract_request).commit();
-    let exec_results = builder
-        .get_last_exec_results()
-        .expect("should have results");
+    let exec_results = builder.get_last_exec_result().expect("should have results");
     assert_eq!(exec_results.len(), 1);
     let error = exec_results[0].as_error().expect("should have error");
     assert!(
@@ -516,9 +524,7 @@ fn dictionary_get_should_fail_with_large_item_key() {
 
     builder.exec(fund_request).commit().expect_success();
     builder.exec(install_contract_request).commit();
-    let exec_results = builder
-        .get_last_exec_results()
-        .expect("should have results");
+    let exec_results = builder.get_last_exec_result().expect("should have results");
     assert_eq!(exec_results.len(), 1);
     let error = exec_results[0].as_error().expect("should have error");
     assert!(
@@ -566,15 +572,16 @@ fn should_query_dictionary_items_with_test_builder() {
     builder.exec(exec_request).commit().expect_success();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
-    let contract_hash = default_account
+
+    let entity_hash = default_account
         .named_keys()
         .get(dictionary::CONTRACT_HASH_NAME)
         .expect("should have contract")
-        .into_hash()
-        .map(ContractHash::new)
+        .into_entity_hash()
         .expect("should have hash");
+
     let dictionary_uref = default_account
         .named_keys()
         .get(dictionary::DICTIONARY_REF)
@@ -614,7 +621,7 @@ fn should_query_dictionary_items_with_test_builder() {
         // Query through contract's named keys
         let queried_value = query_dictionary_item(
             &builder,
-            Key::from(contract_hash),
+            Key::addressable_entity_key(PackageKindTag::SmartContract, entity_hash),
             Some(dictionary::DICTIONARY_NAME.to_string()),
             dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
         )

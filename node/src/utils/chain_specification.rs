@@ -1,13 +1,15 @@
+pub(crate) mod error;
+pub(crate) mod parse_toml;
+
 use num_rational::Ratio;
 use tracing::{error, info, warn};
 
 use casper_types::{
     system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, Chainspec, ConsensusProtocolName, CoreConfig,
-    DeployConfig, ProtocolConfig, TimeDiff,
+    ProtocolConfig, TimeDiff, TransactionConfig,
 };
 
-pub(crate) mod error;
-pub(crate) mod parse_toml;
+use crate::components::network;
 
 /// Returns `false` and logs errors if the values set in the config don't make sense.
 #[tracing::instrument(ret, level = "info", skip(chainspec), fields(hash=%chainspec.hash()))]
@@ -52,9 +54,10 @@ pub fn validate_chainspec(chainspec: &Chainspec) -> bool {
         }
     }
 
-    validate_protocol_config(&chainspec.protocol_config)
+    network::within_message_size_limit_tolerance(chainspec)
+        && validate_protocol_config(&chainspec.protocol_config)
         && validate_core_config(&chainspec.core_config)
-        && validate_deploy_config(&chainspec.deploy_config)
+        && validate_transaction_config(&chainspec.transaction_config)
 }
 
 /// Checks whether the values set in the config make sense and returns `false` if they don't.
@@ -93,6 +96,23 @@ pub(crate) fn validate_core_config(core_config: &CoreConfig) -> bool {
         return false;
     }
 
+    if core_config.finality_signature_proportion <= Ratio::new(0, 1)
+        || core_config.finality_signature_proportion >= Ratio::new(1, 1)
+    {
+        error!(
+            fsp = %core_config.finality_signature_proportion,
+            "finality signature proportion is not in the range (0, 1)",
+        );
+        return false;
+    }
+    if core_config.finders_fee <= Ratio::new(0, 1) || core_config.finders_fee >= Ratio::new(1, 1) {
+        error!(
+            fsp = %core_config.finders_fee,
+            "finder's fee proportion is not in the range (0, 1)",
+        );
+        return false;
+    }
+
     if core_config.vesting_schedule_period > TimeDiff::from_millis(VESTING_SCHEDULE_LENGTH_MILLIS) {
         error!(
             vesting_schedule_millis = core_config.vesting_schedule_period.millis(),
@@ -105,15 +125,17 @@ pub(crate) fn validate_core_config(core_config: &CoreConfig) -> bool {
     true
 }
 
-/// Validates `DeployConfig` parameters
-pub(crate) fn validate_deploy_config(deploy_config: &DeployConfig) -> bool {
-    // the total number of deploys + transfers should not exceed the number of approvals because
-    // each deploy or transfer needs at least one approval to be valid
-    if let Some(total_deploy_and_transfer_slots) = deploy_config
-        .block_max_deploy_count
-        .checked_add(deploy_config.block_max_transfer_count)
+/// Validates `TransactionConfig` parameters
+pub(crate) fn validate_transaction_config(transaction_config: &TransactionConfig) -> bool {
+    // The total number of transactions should not exceed the number of approvals because each
+    // transaction needs at least one approval to be valid.
+    if let Some(total_txn_slots) = transaction_config
+        .block_max_transfer_count
+        .checked_add(transaction_config.block_max_staking_count)
+        .and_then(|total| total.checked_add(transaction_config.block_max_install_upgrade_count))
+        .and_then(|total| total.checked_add(transaction_config.block_max_standard_count))
     {
-        deploy_config.block_max_approval_count >= total_deploy_and_transfer_slots
+        transaction_config.block_max_approval_count >= total_txn_slots
     } else {
         false
     }
@@ -128,15 +150,14 @@ mod tests {
 
     use casper_types::{
         bytesrepr::FromBytes, ActivationPoint, BrTableCost, ChainspecRawBytes, ControlFlowCosts,
-        CoreConfig, DeployConfig, EraId, GlobalStateUpdate, HighwayConfig, HostFunction,
-        HostFunctionCosts, Motes, OpcodeCosts, ProtocolConfig, ProtocolVersion, StorageCosts,
-        StoredValue, TimeDiff, Timestamp, WasmConfig, U512,
+        CoreConfig, EraId, GlobalStateUpdate, HighwayConfig, HostFunction, HostFunctionCosts,
+        MessageLimits, Motes, OpcodeCosts, ProtocolConfig, ProtocolVersion, StorageCosts,
+        StoredValue, TestBlockBuilder, TimeDiff, Timestamp, TransactionConfig, WasmConfig, U512,
     };
 
     use super::*;
     use crate::{
         testing::init_logging,
-        types::TestBlockBuilder,
         utils::{Loadable, RESOURCES_PATH},
     };
 
@@ -209,7 +230,7 @@ mod tests {
             read_host_buffer: HostFunction::new(126, [0, 1, 2]),
             create_contract_package_at_hash: HostFunction::new(106, [0, 1]),
             create_contract_user_group: HostFunction::new(107, [0, 1, 2, 3, 4, 5, 6, 7]),
-            add_contract_version: HostFunction::new(102, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]),
+            add_contract_version: HostFunction::new(102, [0, 1, 2, 3, 4, 5, 6, 7, 8]),
             disable_contract_version: HostFunction::new(109, [0, 1, 2, 3]),
             call_contract: HostFunction::new(104, [0, 1, 2, 3, 4, 5, 6]),
             call_versioned_contract: HostFunction::new(105, [0, 1, 2, 3, 4, 5, 6, 7, 8]),
@@ -221,6 +242,12 @@ mod tests {
             print: HostFunction::new(123, [0, 1]),
             blake2b: HostFunction::new(133, [0, 1, 2, 3]),
             random_bytes: HostFunction::new(123, [0, 1]),
+            enable_contract_version: HostFunction::new(142, [0, 1, 2, 3]),
+            // TODO: Update this cost.
+            add_session_version: HostFunction::default(),
+            manage_message_topic: HostFunction::new(100, [0, 1, 2, 4]),
+            emit_message: HostFunction::new(100, [0, 1, 2, 3]),
+            cost_increase_per_message: 50,
         });
     static EXPECTED_GENESIS_WASM_COSTS: Lazy<WasmConfig> = Lazy::new(|| {
         WasmConfig::new(
@@ -229,6 +256,7 @@ mod tests {
             EXPECTED_GENESIS_COSTS,
             EXPECTED_GENESIS_STORAGE_COSTS,
             *EXPECTED_GENESIS_HOST_FUNCTION_COSTS,
+            MessageLimits::default(),
         )
     });
 
@@ -242,9 +270,9 @@ mod tests {
     }
 
     #[test]
-    fn deploy_config_toml_roundtrip() {
+    fn transaction_config_toml_roundtrip() {
         let mut rng = crate::new_rng();
-        let config = DeployConfig::random(&mut rng);
+        let config = TransactionConfig::random(&mut rng);
         let encoded = toml::to_string_pretty(&config).unwrap();
         let decoded = toml::from_str(&encoded).unwrap();
         assert_eq!(config, decoded);
@@ -354,38 +382,43 @@ mod tests {
     }
 
     #[test]
-    fn should_have_valid_deploy_counts() {
-        let deploy_config = DeployConfig {
+    fn should_have_valid_transaction_counts() {
+        let transaction_config = TransactionConfig {
             block_max_approval_count: 100,
-            block_max_deploy_count: 100,
             block_max_transfer_count: 100,
+            block_max_staking_count: 1,
             ..Default::default()
         };
         assert!(
-            !validate_deploy_config(&deploy_config),
-            "max approval count that is not at least equal to deploy + transfer count should be invalid"
+            !validate_transaction_config(&transaction_config),
+            "max approval count that is not at least equal to sum of `block_max_[txn type]_count`s \
+            should be invalid"
         );
 
-        let deploy_config = DeployConfig {
+        let transaction_config = TransactionConfig {
             block_max_approval_count: 200,
-            block_max_deploy_count: 100,
             block_max_transfer_count: 100,
+            block_max_staking_count: 50,
+            block_max_install_upgrade_count: 25,
+            block_max_standard_count: 25,
             ..Default::default()
         };
         assert!(
-            validate_deploy_config(&deploy_config),
-            "max approval count equal to deploy + transfer count should be valid"
+            validate_transaction_config(&transaction_config),
+            "max approval count equal to sum of `block_max_[txn type]_count`s should be valid"
         );
 
-        let deploy_config = DeployConfig {
+        let transaction_config = TransactionConfig {
             block_max_approval_count: 200,
-            block_max_deploy_count: 10,
             block_max_transfer_count: 100,
+            block_max_staking_count: 50,
+            block_max_install_upgrade_count: 25,
+            block_max_standard_count: 24,
             ..Default::default()
         };
         assert!(
-            validate_deploy_config(&deploy_config),
-            "max approval count greater than deploy + transfer count should be valid"
+            validate_transaction_config(&transaction_config),
+            "max approval count greater than sum of `block_max_[txn type]_count`s should be valid"
         );
     }
 
@@ -508,7 +541,6 @@ mod tests {
         assert!(validate_chainspec(&chainspec));
     }
 
-    #[allow(deprecated)]
     fn check_spec(spec: Chainspec, is_first_version: bool) {
         if is_first_version {
             assert_eq!(
@@ -583,17 +615,17 @@ mod tests {
         );
 
         assert_eq!(
-            spec.deploy_config.max_payment_cost,
+            spec.transaction_config.deploy_config.max_payment_cost,
             Motes::new(U512::from(9))
         );
         assert_eq!(
-            spec.deploy_config.max_ttl,
+            spec.transaction_config.max_ttl,
             TimeDiff::from_seconds(26_300_160)
         );
-        assert_eq!(spec.deploy_config.max_dependencies, 11);
-        assert_eq!(spec.deploy_config.max_block_size, 12);
-        assert_eq!(spec.deploy_config.block_max_deploy_count, 125);
-        assert_eq!(spec.deploy_config.block_gas_limit, 13);
+        assert_eq!(spec.transaction_config.deploy_config.max_dependencies, 11);
+        assert_eq!(spec.transaction_config.max_block_size, 12);
+        assert_eq!(spec.transaction_config.block_max_transfer_count, 125);
+        assert_eq!(spec.transaction_config.block_gas_limit, 13);
 
         assert_eq!(spec.wasm_config, *EXPECTED_GENESIS_WASM_COSTS);
     }

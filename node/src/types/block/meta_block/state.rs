@@ -40,6 +40,7 @@ pub(crate) struct State {
     pub(super) consensus_notified: bool,
     pub(super) accumulator_notified: bool,
     pub(super) synchronizer_notified: bool,
+    pub(super) validator_notified: bool,
     pub(super) sufficient_finality: bool,
     pub(super) marked_complete: bool,
     pub(super) all_actions_done: bool,
@@ -79,6 +80,7 @@ impl State {
             consensus_notified: false,
             accumulator_notified: true,
             synchronizer_notified: true,
+            validator_notified: false,
             sufficient_finality: true,
             marked_complete: true,
             all_actions_done: false,
@@ -155,6 +157,12 @@ impl State {
         outcome
     }
 
+    pub(crate) fn register_as_validator_notified(&mut self) -> StateChange {
+        let outcome = StateChange::from(self.validator_notified);
+        self.validator_notified = true;
+        outcome
+    }
+
     pub(crate) fn register_has_sufficient_finality(&mut self) -> StateChange {
         let outcome = StateChange::from(self.sufficient_finality);
         self.sufficient_finality = true;
@@ -184,6 +192,7 @@ impl State {
             ref mut consensus_notified,
             ref mut accumulator_notified,
             ref mut synchronizer_notified,
+            ref mut validator_notified,
             ref mut sufficient_finality,
             ref mut marked_complete,
             ref mut all_actions_done,
@@ -198,6 +207,7 @@ impl State {
         *consensus_notified |= other.consensus_notified;
         *accumulator_notified |= other.accumulator_notified;
         *synchronizer_notified |= other.synchronizer_notified;
+        *validator_notified |= other.validator_notified;
         *sufficient_finality |= other.sufficient_finality;
         *marked_complete |= other.marked_complete;
         *all_actions_done |= other.all_actions_done;
@@ -215,6 +225,7 @@ impl State {
             && self.consensus_notified
             && self.accumulator_notified
             && self.synchronizer_notified
+            && self.validator_notified
             && self.sufficient_finality
             && self.marked_complete
     }
@@ -241,6 +252,7 @@ mod tests {
             consensus_notified: true,
             accumulator_notified: true,
             synchronizer_notified: true,
+            validator_notified: true,
             sufficient_finality: true,
             marked_complete: true,
             all_actions_done: true,

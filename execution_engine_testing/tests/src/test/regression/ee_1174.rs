@@ -10,7 +10,7 @@ use casper_types::{
         self,
         auction::{self, DelegationRate},
     },
-    ApiError, RuntimeArgs, U512,
+    ApiError, U512,
 };
 
 const LARGE_DELEGATION_RATE: DelegationRate = 101;
@@ -42,7 +42,7 @@ fn should_run_ee_1174_delegation_rate_too_high() {
     builder.exec(add_bid_request).commit();
 
     let error = builder
-        .get_last_exec_results()
+        .get_last_exec_result()
         .expect("should have results")
         .get(0)
         .expect("should have first result")

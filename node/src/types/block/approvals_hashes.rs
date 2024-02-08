@@ -4,60 +4,96 @@ use std::{
 };
 
 use datasize::DataSize;
-use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tracing::error;
 
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
-use casper_types::{bytesrepr, ApprovalsHash, DeployId, Digest, Key, StoredValue};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    Block, BlockHash, BlockV1, BlockV2, DeployApprovalsHash, DeployId, Digest, Key, StoredValue,
+    TransactionApprovalsHash, TransactionHash, TransactionId,
+};
 
-use super::{Block, BlockHash};
 use crate::{
     components::{
         contract_runtime::APPROVALS_CHECKSUM_NAME,
         fetcher::{FetchItem, Tag},
     },
-    types,
-    utils::ds,
+    types::{self, VariantMismatch},
 };
+
+const V1_TAG: u8 = 0;
+const V2_TAG: u8 = 1;
 
 /// The data which is gossiped by validators to non-validators upon creation of a new block.
 #[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct ApprovalsHashes {
-    /// Hash of the block that contains deploys that are relevant to the approvals.
-    block_hash: BlockHash,
-    /// The set of all deploys' finalized approvals' hashes.
-    approvals_hashes: Vec<ApprovalsHash>,
-    /// The Merkle proof of the checksum registry containing the checksum of
-    /// the finalized approvals.
-    #[data_size(skip)]
-    merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
-    #[serde(skip)]
-    #[data_size(with = ds::once_cell)]
-    is_verified: OnceCell<Result<(), ApprovalsHashesValidationError>>,
+pub(crate) enum ApprovalsHashes {
+    #[serde(rename = "Version1")]
+    V1 {
+        /// Hash of the block that contains deploys that are relevant to the approvals.
+        block_hash: BlockHash,
+        /// The set of all deploys' finalized approvals' hashes.
+        approvals_hashes: Vec<DeployApprovalsHash>,
+        /// The Merkle proof of the checksum registry containing the checksum of the finalized
+        /// approvals.
+        #[data_size(skip)]
+        merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
+    },
+    #[serde(rename = "Version2")]
+    V2 {
+        /// Hash of the block that contains transactions that are relevant to the approvals.
+        block_hash: BlockHash,
+        /// The set of all transactions' finalized approvals' hashes.
+        approvals_hashes: Vec<TransactionApprovalsHash>,
+        /// The Merkle proof of the checksum registry containing the checksum of the finalized
+        /// approvals.
+        #[data_size(skip)]
+        merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
+    },
 }
 
 impl ApprovalsHashes {
-    pub(crate) fn new(
-        block_hash: &BlockHash,
-        approvals_hashes: Vec<ApprovalsHash>,
+    pub(crate) fn new_v1(
+        block_hash: BlockHash,
+        approvals_hashes: Vec<DeployApprovalsHash>,
         merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
     ) -> Self {
-        Self {
-            block_hash: *block_hash,
+        Self::V1 {
+            block_hash,
             approvals_hashes,
             merkle_proof_approvals,
-            is_verified: OnceCell::new(),
+        }
+    }
+
+    pub(crate) fn new_v2(
+        block_hash: BlockHash,
+        approvals_hashes: Vec<TransactionApprovalsHash>,
+        merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
+    ) -> Self {
+        Self::V2 {
+            block_hash,
+            approvals_hashes,
+            merkle_proof_approvals,
         }
     }
 
     fn verify(&self, block: &Block) -> Result<(), ApprovalsHashesValidationError> {
-        if *self.merkle_proof_approvals.key() != Key::ChecksumRegistry {
+        let merkle_proof_approvals = match self {
+            ApprovalsHashes::V1 {
+                merkle_proof_approvals,
+                ..
+            } => merkle_proof_approvals,
+            ApprovalsHashes::V2 {
+                merkle_proof_approvals,
+                ..
+            } => merkle_proof_approvals,
+        };
+        if *merkle_proof_approvals.key() != Key::ChecksumRegistry {
             return Err(ApprovalsHashesValidationError::InvalidKeyType);
         }
 
-        let proof_state_root_hash = self
-            .merkle_proof_approvals
+        let proof_state_root_hash = merkle_proof_approvals
             .compute_state_hash()
             .map_err(ApprovalsHashesValidationError::TrieMerkleProof)?;
 
@@ -68,8 +104,7 @@ impl ApprovalsHashes {
             });
         }
 
-        let value_in_proof = self
-            .merkle_proof_approvals
+        let value_in_proof = merkle_proof_approvals
             .value()
             .as_cl_value()
             .and_then(|cl_value| cl_value.clone().into_t().ok())
@@ -78,9 +113,13 @@ impl ApprovalsHashes {
             })
             .ok_or(ApprovalsHashesValidationError::InvalidChecksumRegistry)?;
 
-        let computed_approvals_checksum =
-            types::compute_approvals_checksum(self.deploy_ids(block).collect())
-                .map_err(ApprovalsHashesValidationError::ApprovalsChecksum)?;
+        let computed_approvals_checksum = match block {
+            Block::V1(v1_block) => compute_legacy_approvals_checksum(self.deploy_ids(v1_block)?)?,
+            Block::V2(v2_block) => {
+                types::compute_approvals_checksum(self.transaction_ids(v2_block)?)
+                    .map_err(ApprovalsHashesValidationError::ApprovalsChecksum)?
+            }
+        };
 
         if value_in_proof != computed_approvals_checksum {
             return Err(ApprovalsHashesValidationError::ApprovalsChecksumMismatch {
@@ -92,22 +131,92 @@ impl ApprovalsHashes {
         Ok(())
     }
 
-    pub(crate) fn deploy_ids<'a>(
-        &'a self,
-        block: &'a Block,
-    ) -> impl Iterator<Item = DeployId> + 'a {
-        block
+    pub(crate) fn deploy_ids(
+        &self,
+        v1_block: &BlockV1,
+    ) -> Result<Vec<DeployId>, ApprovalsHashesValidationError> {
+        let deploy_approvals_hashes = match self {
+            ApprovalsHashes::V1 {
+                approvals_hashes, ..
+            } => approvals_hashes,
+            txn_approvals_hashes => {
+                let mismatch =
+                    VariantMismatch(Box::new((txn_approvals_hashes.clone(), v1_block.clone())));
+                return Err(mismatch.into());
+            }
+        };
+        Ok(v1_block
             .deploy_and_transfer_hashes()
-            .zip(&self.approvals_hashes)
-            .map(|(deploy_hash, approvals_hash)| DeployId::new(*deploy_hash, *approvals_hash))
+            .zip(deploy_approvals_hashes)
+            .map(|(deploy_hash, deploy_approvals_hash)| {
+                DeployId::new(*deploy_hash, *deploy_approvals_hash)
+            })
+            .collect())
     }
 
-    pub(crate) fn approvals_hashes(&self) -> &[ApprovalsHash] {
-        self.approvals_hashes.as_ref()
+    pub fn transaction_ids(
+        &self,
+        v2_block: &BlockV2,
+    ) -> Result<Vec<TransactionId>, ApprovalsHashesValidationError> {
+        let txn_approvals_hashes = match self {
+            ApprovalsHashes::V2 {
+                approvals_hashes, ..
+            } => approvals_hashes,
+            deploy_approvals_hashes => {
+                let mismatch = VariantMismatch(Box::new((
+                    deploy_approvals_hashes.clone(),
+                    v2_block.clone(),
+                )));
+                return Err(mismatch.into());
+            }
+        };
+
+        v2_block
+            .all_transactions()
+            .zip(txn_approvals_hashes)
+            .map(
+                |(txn_hash, txn_approvals_hash)| match (txn_hash, txn_approvals_hash) {
+                    (
+                        TransactionHash::Deploy(deploy_hash),
+                        TransactionApprovalsHash::Deploy(deploy_approvals_hash),
+                    ) => Ok(TransactionId::new_deploy(
+                        *deploy_hash,
+                        *deploy_approvals_hash,
+                    )),
+                    (
+                        TransactionHash::V1(v1_hash),
+                        TransactionApprovalsHash::V1(v1_approvals_hash),
+                    ) => Ok(TransactionId::new_v1(*v1_hash, *v1_approvals_hash)),
+                    (txn_hash, txn_approvals_hash) => {
+                        let mismatch = VariantMismatch(Box::new((*txn_hash, *txn_approvals_hash)));
+                        Err(mismatch.into())
+                    }
+                },
+            )
+            .collect()
     }
 
     pub(crate) fn block_hash(&self) -> &BlockHash {
-        &self.block_hash
+        match self {
+            ApprovalsHashes::V1 { block_hash, .. } => block_hash,
+            ApprovalsHashes::V2 { block_hash, .. } => block_hash,
+        }
+    }
+
+    pub(crate) fn approvals_hashes(&self) -> Vec<TransactionApprovalsHash> {
+        match self {
+            ApprovalsHashes::V1 {
+                approvals_hashes, ..
+            } => approvals_hashes
+                .iter()
+                .map(|deploy_approvals_hash| {
+                    TransactionApprovalsHash::Deploy(*deploy_approvals_hash)
+                })
+                .collect(),
+            ApprovalsHashes::V2 {
+                approvals_hashes, ..
+            } => approvals_hashes.clone(),
+        }
     }
 }
 
@@ -119,22 +228,125 @@ impl FetchItem for ApprovalsHashes {
     const TAG: Tag = Tag::ApprovalsHashes;
 
     fn fetch_id(&self) -> Self::Id {
-        self.block_hash
+        *self.block_hash()
     }
 
     fn validate(&self, block: &Block) -> Result<(), Self::ValidationError> {
-        self.is_verified.get_or_init(|| self.verify(block)).clone()
+        self.verify(block)
     }
 }
 
 impl Display for ApprovalsHashes {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "approvals hashes for {}", self.block_hash)
+        write!(f, "approvals hashes for {}", self.block_hash())
     }
 }
 
+impl ToBytes for ApprovalsHashes {
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            ApprovalsHashes::V1 {
+                block_hash,
+                approvals_hashes,
+                merkle_proof_approvals,
+            } => {
+                V1_TAG.write_bytes(writer)?;
+                block_hash.write_bytes(writer)?;
+                approvals_hashes.write_bytes(writer)?;
+                merkle_proof_approvals.write_bytes(writer)
+            }
+            ApprovalsHashes::V2 {
+                block_hash,
+                approvals_hashes,
+                merkle_proof_approvals,
+            } => {
+                V2_TAG.write_bytes(writer)?;
+                block_hash.write_bytes(writer)?;
+                approvals_hashes.write_bytes(writer)?;
+                merkle_proof_approvals.write_bytes(writer)
+            }
+        }
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+            + match self {
+                ApprovalsHashes::V1 {
+                    block_hash,
+                    approvals_hashes,
+                    merkle_proof_approvals,
+                } => {
+                    block_hash.serialized_length()
+                        + approvals_hashes.serialized_length()
+                        + merkle_proof_approvals.serialized_length()
+                }
+                ApprovalsHashes::V2 {
+                    block_hash,
+                    approvals_hashes,
+                    merkle_proof_approvals,
+                } => {
+                    block_hash.serialized_length()
+                        + approvals_hashes.serialized_length()
+                        + merkle_proof_approvals.serialized_length()
+                }
+            }
+    }
+}
+
+impl FromBytes for ApprovalsHashes {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            V1_TAG => {
+                let (block_hash, remainder) = BlockHash::from_bytes(remainder)?;
+                let (approvals_hashes, remainder) =
+                    Vec::<DeployApprovalsHash>::from_bytes(remainder)?;
+                let (merkle_proof_approvals, remainder) =
+                    TrieMerkleProof::<Key, StoredValue>::from_bytes(remainder)?;
+                let v1_approvals_hashes = ApprovalsHashes::V1 {
+                    block_hash,
+                    approvals_hashes,
+                    merkle_proof_approvals,
+                };
+                Ok((v1_approvals_hashes, remainder))
+            }
+            V2_TAG => {
+                let (block_hash, remainder) = BlockHash::from_bytes(remainder)?;
+                let (approvals_hashes, remainder) =
+                    Vec::<TransactionApprovalsHash>::from_bytes(remainder)?;
+                let (merkle_proof_approvals, remainder) =
+                    TrieMerkleProof::<Key, StoredValue>::from_bytes(remainder)?;
+                let v2_approvals_hashes = ApprovalsHashes::V2 {
+                    block_hash,
+                    approvals_hashes,
+                    merkle_proof_approvals,
+                };
+                Ok((v2_approvals_hashes, remainder))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+/// Returns the hash of the bytesrepr-encoded deploy_ids, as used until the `Block` enum became
+/// available.
+pub(crate) fn compute_legacy_approvals_checksum(
+    deploy_ids: Vec<DeployId>,
+) -> Result<Digest, ApprovalsHashesValidationError> {
+    let bytes = deploy_ids
+        .into_bytes()
+        .map_err(ApprovalsHashesValidationError::ApprovalsChecksum)?;
+    Ok(Digest::hash(bytes))
+}
+
 /// An error that can arise when validating `ApprovalsHashes`.
-#[derive(Error, Clone, Debug, PartialEq, Eq, DataSize)]
+#[derive(Error, Debug, DataSize)]
 #[non_exhaustive]
 pub(crate) enum ApprovalsHashesValidationError {
     /// The key provided in the proof is not a `Key::ChecksumRegistry`.
@@ -166,12 +378,14 @@ pub(crate) enum ApprovalsHashesValidationError {
         computed_approvals_checksum: Digest,
         value_in_proof: Digest,
     },
+
+    #[error(transparent)]
+    #[data_size(skip)]
+    VariantMismatch(#[from] VariantMismatch),
 }
 
 mod specimen_support {
     use std::collections::BTreeMap;
-
-    use once_cell::sync::OnceCell;
 
     use casper_storage::global_state::trie::{
         merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
@@ -208,11 +422,10 @@ mod specimen_support {
                 // 2^64/2^13 = 2^51, so 51 items:
                 vec_of_largest_specimen(estimator, 51, cache).into(),
             );
-            ApprovalsHashes {
+            ApprovalsHashes::V2 {
                 block_hash: LargestSpecimen::largest_specimen(estimator, cache),
                 approvals_hashes: vec_prop_specimen(estimator, "approvals_hashes", cache),
                 merkle_proof_approvals,
-                is_verified: OnceCell::with_value(Ok(())), // Not serialized, so we do not care
             }
         }
     }

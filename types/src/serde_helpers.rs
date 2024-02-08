@@ -5,12 +5,39 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 
 use crate::Digest;
 
-pub(crate) mod contract_hash_as_digest {
+pub(crate) mod raw_32_byte_array {
     use super::*;
-    use crate::ContractHash;
 
     pub(crate) fn serialize<S: Serializer>(
-        contract_hash: &ContractHash,
+        array: &[u8; 32],
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            base16::encode_lower(array).serialize(serializer)
+        } else {
+            array.serialize(serializer)
+        }
+    }
+
+    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<[u8; 32], D::Error> {
+        if deserializer.is_human_readable() {
+            let hex_string = String::deserialize(deserializer)?;
+            let bytes = base16::decode(hex_string.as_bytes()).map_err(SerdeError::custom)?;
+            <[u8; 32]>::try_from(bytes.as_ref()).map_err(SerdeError::custom)
+        } else {
+            <[u8; 32]>::deserialize(deserializer)
+        }
+    }
+}
+
+pub(crate) mod contract_hash_as_digest {
+    use super::*;
+    use crate::AddressableEntityHash;
+
+    pub(crate) fn serialize<S: Serializer>(
+        contract_hash: &AddressableEntityHash,
         serializer: S,
     ) -> Result<S::Ok, S::Error> {
         Digest::from(contract_hash.value()).serialize(serializer)
@@ -18,18 +45,18 @@ pub(crate) mod contract_hash_as_digest {
 
     pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
-    ) -> Result<ContractHash, D::Error> {
+    ) -> Result<AddressableEntityHash, D::Error> {
         let digest = Digest::deserialize(deserializer)?;
-        Ok(ContractHash::new(digest.value()))
+        Ok(AddressableEntityHash::new(digest.value()))
     }
 }
 
 pub(crate) mod contract_package_hash_as_digest {
     use super::*;
-    use crate::ContractPackageHash;
+    use crate::PackageHash;
 
     pub(crate) fn serialize<S: Serializer>(
-        contract_package_hash: &ContractPackageHash,
+        contract_package_hash: &PackageHash,
         serializer: S,
     ) -> Result<S::Ok, S::Error> {
         Digest::from(contract_package_hash.value()).serialize(serializer)
@@ -37,9 +64,9 @@ pub(crate) mod contract_package_hash_as_digest {
 
     pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
-    ) -> Result<ContractPackageHash, D::Error> {
+    ) -> Result<PackageHash, D::Error> {
         let digest = Digest::deserialize(deserializer)?;
-        Ok(ContractPackageHash::new(digest.value()))
+        Ok(PackageHash::new(digest.value()))
     }
 }
 

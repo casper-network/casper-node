@@ -10,7 +10,9 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error};
 
-use casper_types::{bytesrepr, BlockHash, ChunkWithProof, DeployHash, Digest, ExecutionResult};
+use casper_types::{
+    bytesrepr, execution::ExecutionResult, BlockHash, ChunkWithProof, Digest, TransactionHash,
+};
 
 use super::block_acquisition::Acceptance;
 use crate::types::{BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, ValueOrChunk};
@@ -199,7 +201,7 @@ pub(super) enum ExecutionResultsAcquisition {
     Complete {
         block_hash: BlockHash,
         checksum: ExecutionResultsChecksum,
-        results: HashMap<DeployHash, ExecutionResult>,
+        results: HashMap<TransactionHash, ExecutionResult>,
     },
 }
 
@@ -277,7 +279,7 @@ impl ExecutionResultsAcquisition {
     pub(super) fn apply_block_execution_results_or_chunk(
         self,
         block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
-        deploy_hashes: Vec<DeployHash>,
+        transaction_hashes: Vec<TransactionHash>,
     ) -> Result<(Self, Acceptance), Error> {
         let block_hash = *block_execution_results_or_chunk.block_hash();
         let value = block_execution_results_or_chunk.into_value();
@@ -399,18 +401,21 @@ impl ExecutionResultsAcquisition {
             }
         };
 
-        if deploy_hashes.len() != execution_results.len() {
+        if transaction_hashes.len() != execution_results.len() {
             debug!(
                 %block_hash,
                 "apply_block_execution_results_or_chunk: Error::ExecutionResultToDeployHashLengthDiscrepancy"
             );
             return Err(Error::ExecutionResultToDeployHashLengthDiscrepancy {
                 block_hash,
-                expected: deploy_hashes.len(),
+                expected: transaction_hashes.len(),
                 actual: execution_results.len(),
             });
         }
-        let results = deploy_hashes.into_iter().zip(execution_results).collect();
+        let results = transaction_hashes
+            .into_iter()
+            .zip(execution_results)
+            .collect();
         debug!(
             %block_hash,
             "apply_block_execution_results_or_chunk: returning ExecutionResultsAcquisition::Complete"

@@ -2,7 +2,7 @@
 
 extern crate alloc;
 
-use alloc::{boxed::Box, string::String, vec, vec::Vec};
+use alloc::{boxed::Box, collections::BTreeMap, string::String, vec, vec::Vec};
 use core::iter;
 
 use rand::{distributions::Alphanumeric, rngs::SmallRng, Rng, SeedableRng};
@@ -12,11 +12,11 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    account::{AccountHash, ActionType, Weight},
+    account::AccountHash,
+    addressable_entity::{ActionType, NamedKeys, Weight},
     bytesrepr::Bytes,
-    contracts::NamedKeys,
-    runtime_args, ApiError, BlockTime, CLType, CLValue, ContractHash, ContractVersion, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter, Phase, RuntimeArgs, U512,
+    runtime_args, AddressableEntityHash, ApiError, BlockTime, CLType, CLValue, EntityVersion,
+    EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter, Phase, U512,
 };
 
 const MIN_FUNCTION_NAME_LENGTH: usize = 1;
@@ -68,9 +68,9 @@ fn create_random_names(rng: &mut SmallRng) -> impl Iterator<Item = String> + '_ 
 
 fn truncate_named_keys(named_keys: NamedKeys, rng: &mut SmallRng) -> NamedKeys {
     let truncated_len = rng.gen_range(1..=named_keys.len());
-    let mut vec = named_keys.into_iter().collect::<Vec<_>>();
+    let mut vec = named_keys.into_inner().into_iter().collect::<Vec<_>>();
     vec.truncate(truncated_len);
-    vec.into_iter().collect()
+    NamedKeys::from(vec.into_iter().collect::<BTreeMap<_, _>>())
 }
 
 // Executes the named key functions from the `runtime` module and most of the functions from the
@@ -216,7 +216,7 @@ pub extern "C" fn call() {
 fn store_function(
     entry_point_name: &str,
     named_keys: Option<NamedKeys>,
-) -> (ContractHash, ContractVersion) {
+) -> (AddressableEntityHash, EntityVersion) {
     let entry_points = {
         let mut entry_points = EntryPoints::new();
 
@@ -228,7 +228,7 @@ fn store_function(
             ],
             CLType::Unit,
             EntryPointAccess::Public,
-            EntryPointType::Contract,
+            EntryPointType::AddressableEntity,
         );
 
         entry_points.add_entry_point(entry_point);

@@ -7,9 +7,8 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, AccessRights, Contract, ContractHash,
-    DeployHash, PublicKey, RuntimeArgs, SecretKey, Transfer, TransferAddr,
-    DEFAULT_WASMLESS_TRANSFER_COST, U512,
+    account::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntity, DeployHash,
+    PublicKey, SecretKey, Transfer, TransferAddr, DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -78,11 +77,11 @@ fn should_record_wasmless_transfer() {
     builder.exec(transfer_request).commit().expect_success();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let alice_account = builder
-        .get_account(*ALICE_ADDR)
+        .get_entity_by_account_hash(*ALICE_ADDR)
         .expect("should have Alice's account");
 
     let alice_attenuated_main_purse = alice_account
@@ -144,11 +143,11 @@ fn should_record_wasm_transfer() {
     builder.exec(transfer_request).commit().expect_success();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let alice_account = builder
-        .get_account(*ALICE_ADDR)
+        .get_entity_by_account_hash(*ALICE_ADDR)
         .expect("should have Alice's account");
 
     let alice_attenuated_main_purse = alice_account
@@ -210,11 +209,11 @@ fn should_record_wasm_transfer_with_id() {
     builder.exec(transfer_request).commit().expect_success();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let alice_account = builder
-        .get_account(*ALICE_ADDR)
+        .get_entity_by_account_hash(*ALICE_ADDR)
         .expect("should have Alice's account");
 
     let alice_attenuated_main_purse = alice_account
@@ -286,19 +285,19 @@ fn should_record_wasm_transfers() {
     builder.exec(transfer_request).commit().expect_success();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let alice_account = builder
-        .get_account(*ALICE_ADDR)
+        .get_entity_by_account_hash(*ALICE_ADDR)
         .expect("should have Alice's account");
 
     let bob_account = builder
-        .get_account(*BOB_ADDR)
+        .get_entity_by_account_hash(*BOB_ADDR)
         .expect("should have Bob's account");
 
     let carol_account = builder
-        .get_account(*CAROL_ADDR)
+        .get_entity_by_account_hash(*CAROL_ADDR)
         .expect("should have Carol's account");
 
     let alice_attenuated_main_purse = alice_account
@@ -433,32 +432,37 @@ fn should_record_wasm_transfers_with_subcall() {
     builder.exec(transfer_request).commit().expect_success();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
-    let contract_hash = default_account.named_keys()[HASH_KEY_NAME]
-        .into_hash()
-        .map(ContractHash::new)
+    let entity_hash = default_account
+        .named_keys()
+        .get(HASH_KEY_NAME)
+        .unwrap()
+        .into_entity_hash()
         .expect("should have contract hash");
 
-    let contract: Contract = builder
-        .get_contract(contract_hash)
+    let contract: AddressableEntity = builder
+        .get_addressable_entity(entity_hash)
         .expect("should have stored contract");
 
-    let contract_purse = contract.named_keys()[PURSE_NAME]
+    let contract_purse = contract
+        .named_keys()
+        .get(PURSE_NAME)
+        .unwrap()
         .into_uref()
         .expect("should have purse");
 
     let alice_account = builder
-        .get_account(*ALICE_ADDR)
+        .get_entity_by_account_hash(*ALICE_ADDR)
         .expect("should have Alice's account");
 
     let bob_account = builder
-        .get_account(*BOB_ADDR)
+        .get_entity_by_account_hash(*BOB_ADDR)
         .expect("should have Bob's account");
 
     let carol_account = builder
-        .get_account(*CAROL_ADDR)
+        .get_entity_by_account_hash(*CAROL_ADDR)
         .expect("should have Carol's account");
 
     let alice_attenuated_main_purse = alice_account

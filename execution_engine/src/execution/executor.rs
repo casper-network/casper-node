@@ -1,17 +1,24 @@
-use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
+use std::{cell::RefCell, collections::BTreeSet, convert::TryFrom, rc::Rc};
 
 use casper_storage::global_state::state::StateReader;
+
 use casper_types::{
-    account::{Account, AccountHash},
+    account::AccountHash,
+    addressable_entity::NamedKeys,
     bytesrepr::FromBytes,
-    contracts::NamedKeys,
+    package::PackageKind,
     system::{auction, handle_payment, mint, AUCTION, HANDLE_PAYMENT, MINT},
-    BlockTime, CLTyped, ContextAccessRights, DeployHash, EntryPointType, Gas, Key, Phase,
-    ProtocolVersion, RuntimeArgs, StoredValue, U512,
+    AddressableEntity, AddressableEntityHash, ApiError, BlockTime, CLTyped, ContextAccessRights,
+    DeployHash, EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, Tagged,
+    URef, U512,
 };
 
+use crate::engine_state::TransferArgs;
+
 use crate::{
-    engine_state::{execution_kind::ExecutionKind, EngineConfig, ExecutionResult},
+    engine_state::{
+        execution_kind::ExecutionKind, EngineConfig, Error as EngineStateError, ExecutionResult,
+    },
     execution::{address_generator::AddressGenerator, Error},
     runtime::{Runtime, RuntimeStack},
     runtime_context::RuntimeContext,
@@ -44,10 +51,13 @@ impl Executor {
         &self,
         execution_kind: ExecutionKind,
         args: RuntimeArgs,
-        account: &Account,
+        entity_hash: AddressableEntityHash,
+        entity: &AddressableEntity,
+        package_kind: PackageKind,
         named_keys: &mut NamedKeys,
         access_rights: ContextAccessRights,
         authorization_keys: BTreeSet<AccountHash>,
+        account_hash: AccountHash,
         blocktime: BlockTime,
         deploy_hash: DeployHash,
         gas_limit: Gas,
@@ -72,32 +82,36 @@ impl Executor {
             Rc::new(RefCell::new(generator))
         };
 
+        let entity_key = Key::addressable_entity_key(package_kind.tag(), entity_hash);
+
         let context = self.create_runtime_context(
-            EntryPointType::Session,
-            args.clone(),
             named_keys,
-            access_rights,
-            Key::from(account.account_hash()),
-            account,
+            entity,
+            entity_key,
             authorization_keys,
-            blocktime,
-            deploy_hash,
-            gas_limit,
+            access_rights,
+            package_kind,
+            account_hash,
             address_generator,
-            protocol_version,
             tracking_copy,
+            blocktime,
+            protocol_version,
+            deploy_hash,
             phase,
+            args.clone(),
+            gas_limit,
             spending_limit,
+            EntryPointType::Session,
         );
 
-        let mut runtime = Runtime::new(self.config, context);
+        let mut runtime = Runtime::new(context);
 
         let result = match execution_kind {
             ExecutionKind::Module(module_bytes) => {
                 runtime.execute_module_bytes(&module_bytes, stack)
             }
             ExecutionKind::Contract {
-                contract_hash,
+                entity_hash: contract_hash,
                 entry_point_name,
             } => {
                 // These args are passed through here as they are required to construct the new
@@ -109,88 +123,17 @@ impl Executor {
 
         match result {
             Ok(_) => ExecutionResult::Success {
-                execution_journal: runtime.context().execution_journal(),
+                effects: runtime.context().effects(),
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
+                messages: runtime.context().messages(),
             },
             Err(error) => ExecutionResult::Failure {
                 error: error.into(),
-                execution_journal: runtime.context().execution_journal(),
+                effects: runtime.context().effects(),
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
-            },
-        }
-    }
-
-    /// Executes standard payment code natively.
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn exec_standard_payment<R>(
-        &self,
-        payment_args: RuntimeArgs,
-        payment_base_key: Key,
-        account: &Account,
-        payment_named_keys: &mut NamedKeys,
-        access_rights: ContextAccessRights,
-        authorization_keys: BTreeSet<AccountHash>,
-        blocktime: BlockTime,
-        deploy_hash: DeployHash,
-        payment_gas_limit: Gas,
-        protocol_version: ProtocolVersion,
-        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-        phase: Phase,
-        stack: RuntimeStack,
-    ) -> ExecutionResult
-    where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<Error>,
-    {
-        let spending_limit: U512 = match try_get_amount(&payment_args) {
-            Ok(spending_limit) => spending_limit,
-            Err(error) => {
-                return ExecutionResult::precondition_failure(error.into());
-            }
-        };
-
-        let address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_ref(), phase);
-            Rc::new(RefCell::new(generator))
-        };
-
-        let runtime_context = self.create_runtime_context(
-            EntryPointType::Session,
-            payment_args,
-            payment_named_keys,
-            access_rights,
-            payment_base_key,
-            account,
-            authorization_keys,
-            blocktime,
-            deploy_hash,
-            payment_gas_limit,
-            address_generator,
-            protocol_version,
-            Rc::clone(&tracking_copy),
-            phase,
-            spending_limit,
-        );
-
-        let execution_journal = tracking_copy.borrow().execution_journal();
-
-        // Standard payment is executed in the calling account's context; the stack already
-        // captures that.
-        let mut runtime = Runtime::new(self.config, runtime_context);
-
-        match runtime.call_host_standard_payment(stack) {
-            Ok(()) => ExecutionResult::Success {
-                execution_journal: runtime.context().execution_journal(),
-                transfers: runtime.context().transfers().to_owned(),
-                cost: runtime.context().gas_counter(),
-            },
-            Err(error) => ExecutionResult::Failure {
-                execution_journal,
-                error: error.into(),
-                transfers: runtime.context().transfers().to_owned(),
-                cost: runtime.context().gas_counter(),
+                messages: runtime.context().messages(),
             },
         }
     }
@@ -202,8 +145,10 @@ impl Executor {
         &self,
         direct_system_contract_call: DirectSystemContractCall,
         runtime_args: RuntimeArgs,
-        account: &Account,
+        entity: &AddressableEntity,
+        package_kind: PackageKind,
         authorization_keys: BTreeSet<AccountHash>,
+        account_hash: AccountHash,
         blocktime: BlockTime,
         deploy_hash: DeployHash,
         gas_limit: Gas,
@@ -233,11 +178,12 @@ impl Executor {
 
         // Snapshot of effects before execution, so in case of error only nonce update
         // can be returned.
-        let execution_journal = tracking_copy.borrow().execution_journal();
+        let effects = tracking_copy.borrow().effects();
+        let messages = tracking_copy.borrow().messages();
 
         let entry_point_name = direct_system_contract_call.entry_point_name();
 
-        let contract_hash = match direct_system_contract_call {
+        let entity_hash = match direct_system_contract_call {
             DirectSystemContractCall::Slash
             | DirectSystemContractCall::RunAuction
             | DirectSystemContractCall::DistributeRewards => {
@@ -253,7 +199,8 @@ impl Executor {
                 *mint_hash
             }
             DirectSystemContractCall::FinalizePayment
-            | DirectSystemContractCall::GetPaymentPurse => {
+            | DirectSystemContractCall::GetPaymentPurse
+            | DirectSystemContractCall::DistributeAccumulatedFees => {
                 let handle_payment_hash = system_contract_registry
                     .get(HANDLE_PAYMENT)
                     .expect("should have handle payment");
@@ -261,34 +208,36 @@ impl Executor {
             }
         };
 
-        let contract = match tracking_copy.borrow_mut().get_contract(contract_hash) {
+        let contract = match tracking_copy.borrow_mut().get_contract(entity_hash) {
             Ok(contract) => contract,
             Err(error) => return (None, ExecutionResult::precondition_failure(error.into())),
         };
 
         let mut named_keys = contract.named_keys().clone();
-        let access_rights = contract.extract_access_rights(contract_hash);
-        let base_key = Key::from(contract_hash);
+        let access_rights = contract.extract_access_rights(entity_hash);
+        let entity_address = Key::addressable_entity_key(package_kind.tag(), entity_hash);
 
         let runtime_context = self.create_runtime_context(
-            EntryPointType::Contract,
-            runtime_args.clone(),
             &mut named_keys,
-            access_rights,
-            base_key,
-            account,
+            entity,
+            entity_address,
             authorization_keys,
-            blocktime,
-            deploy_hash,
-            gas_limit,
+            access_rights,
+            package_kind,
+            account_hash,
             address_generator,
-            protocol_version,
             tracking_copy,
+            blocktime,
+            protocol_version,
+            deploy_hash,
             phase,
+            runtime_args.clone(),
+            gas_limit,
             remaining_spending_limit,
+            EntryPointType::AddressableEntity,
         );
 
-        let mut runtime = Runtime::new(self.config, runtime_context);
+        let mut runtime = Runtime::new(runtime_context);
 
         // DO NOT alter this logic to call a system contract directly (such as via mint_internal,
         // etc). Doing so would bypass necessary context based security checks in some use cases. It
@@ -296,29 +245,32 @@ impl Executor {
         // contracts, to force all such security checks for usage via the executor into a single
         // execution path.
         let result =
-            runtime.call_contract_with_stack(contract_hash, entry_point_name, runtime_args, stack);
+            runtime.call_contract_with_stack(entity_hash, entry_point_name, runtime_args, stack);
 
         match result {
             Ok(value) => match value.into_t() {
                 Ok(ret) => ExecutionResult::Success {
-                    execution_journal: runtime.context().execution_journal(),
+                    effects: runtime.context().effects(),
                     transfers: runtime.context().transfers().to_owned(),
                     cost: runtime.context().gas_counter(),
+                    messages: runtime.context().messages(),
                 }
                 .take_with_ret(ret),
                 Err(error) => ExecutionResult::Failure {
-                    execution_journal,
+                    effects,
                     error: Error::CLValue(error).into(),
                     transfers: runtime.context().transfers().to_owned(),
                     cost: runtime.context().gas_counter(),
+                    messages,
                 }
                 .take_without_ret(),
             },
             Err(error) => ExecutionResult::Failure {
-                execution_journal,
+                effects,
                 error: error.into(),
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
+                messages,
             }
             .take_without_ret(),
         }
@@ -328,21 +280,23 @@ impl Executor {
     #[allow(clippy::too_many_arguments)]
     fn create_runtime_context<'a, R>(
         &self,
-        entry_point_type: EntryPointType,
-        runtime_args: RuntimeArgs,
         named_keys: &'a mut NamedKeys,
-        access_rights: ContextAccessRights,
-        base_key: Key,
-        account: &'a Account,
+        entity: &'a AddressableEntity,
+        entity_key: Key,
         authorization_keys: BTreeSet<AccountHash>,
-        blocktime: BlockTime,
-        deploy_hash: DeployHash,
-        gas_limit: Gas,
+        access_rights: ContextAccessRights,
+        package_kind: PackageKind,
+        account_hash: AccountHash,
         address_generator: Rc<RefCell<AddressGenerator>>,
-        protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
+        blocktime: BlockTime,
+        protocol_version: ProtocolVersion,
+        deploy_hash: DeployHash,
         phase: Phase,
+        runtime_args: RuntimeArgs,
+        gas_limit: Gas,
         remaining_spending_limit: U512,
+        entry_point_type: EntryPointType,
     ) -> RuntimeContext<'a, R>
     where
         R: StateReader<Key, StoredValue>,
@@ -352,24 +306,205 @@ impl Executor {
         let transfers = Vec::default();
 
         RuntimeContext::new(
-            tracking_copy,
-            entry_point_type,
             named_keys,
-            access_rights,
-            runtime_args,
+            entity,
+            entity_key,
             authorization_keys,
-            account,
-            base_key,
+            access_rights,
+            package_kind,
+            account_hash,
+            address_generator,
+            tracking_copy,
+            self.config.clone(),
+            blocktime,
+            protocol_version,
+            deploy_hash,
+            phase,
+            runtime_args,
+            gas_limit,
+            gas_counter,
+            transfers,
+            remaining_spending_limit,
+            entry_point_type,
+        )
+    }
+
+    /// Executes standard payment code natively.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn exec_standard_payment<R>(
+        &self,
+        payment_args: RuntimeArgs,
+        entity: &AddressableEntity,
+        package_kind: PackageKind,
+        authorization_keys: BTreeSet<AccountHash>,
+        account_hash: AccountHash,
+        blocktime: BlockTime,
+        deploy_hash: DeployHash,
+        payment_gas_limit: Gas,
+        protocol_version: ProtocolVersion,
+        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
+        max_stack_height: usize,
+    ) -> Result<ExecutionResult, EngineStateError>
+    where
+        R: StateReader<Key, StoredValue>,
+        R::Error: Into<Error>,
+    {
+        let payment_amount: U512 = match try_get_amount(&payment_args) {
+            Ok(payment_amount) => payment_amount,
+            Err(error) => {
+                return Ok(ExecutionResult::precondition_failure(error.into()));
+            }
+        };
+
+        let get_payment_purse_stack = RuntimeStack::new_system_call_stack(max_stack_height);
+
+        let (maybe_purse, get_payment_result) = self.get_payment_purse(
+            entity,
+            package_kind,
+            authorization_keys.clone(),
+            account_hash,
+            blocktime,
+            deploy_hash,
+            payment_gas_limit,
+            protocol_version,
+            Rc::clone(&tracking_copy),
+            get_payment_purse_stack,
+        );
+
+        if get_payment_result.as_error().is_some() {
+            return Ok(get_payment_result);
+        }
+
+        let payment_purse = match maybe_purse {
+            Some(payment_purse) => payment_purse,
+            None => return Err(EngineStateError::reverter(ApiError::HandlePayment(12))),
+        };
+
+        let runtime_args = {
+            let transfer_args = TransferArgs::new(
+                None,
+                entity.main_purse(),
+                payment_purse,
+                payment_amount,
+                None,
+            );
+
+            match RuntimeArgs::try_from(transfer_args) {
+                Ok(runtime_args) => runtime_args,
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(
+                        Error::CLValue(error).into(),
+                    ))
+                }
+            }
+        };
+
+        let transfer_stack = RuntimeStack::new_system_call_stack(max_stack_height);
+
+        let (transfer_result, payment_result) = self.invoke_mint_to_transfer(
+            runtime_args,
+            entity,
+            package_kind,
+            authorization_keys,
+            account_hash,
+            blocktime,
+            deploy_hash,
+            payment_gas_limit,
+            protocol_version,
+            Rc::clone(&tracking_copy),
+            transfer_stack,
+            payment_amount,
+        );
+
+        if payment_result.as_error().is_some() {
+            return Ok(payment_result);
+        }
+
+        let transfer_result = match transfer_result {
+            Some(Ok(())) => Ok(()),
+            Some(Err(mint_error)) => match mint::Error::try_from(mint_error) {
+                Ok(mint_error) => Err(EngineStateError::reverter(mint_error)),
+                Err(_) => Err(EngineStateError::reverter(ApiError::Transfer)),
+            },
+            None => Err(EngineStateError::reverter(ApiError::Transfer)),
+        };
+
+        transfer_result?;
+
+        Ok(payment_result)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn get_payment_purse<R>(
+        &self,
+        entity: &AddressableEntity,
+        package_kind: PackageKind,
+        authorization_keys: BTreeSet<AccountHash>,
+        account_hash: AccountHash,
+        blocktime: BlockTime,
+        deploy_hash: DeployHash,
+        payment_gas_limit: Gas,
+        protocol_version: ProtocolVersion,
+        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
+        stack: RuntimeStack,
+    ) -> (Option<URef>, ExecutionResult)
+    where
+        R: StateReader<Key, StoredValue>,
+        R::Error: Into<Error>,
+    {
+        self.call_system_contract(
+            DirectSystemContractCall::GetPaymentPurse,
+            RuntimeArgs::new(),
+            entity,
+            package_kind,
+            authorization_keys,
+            account_hash,
+            blocktime,
+            deploy_hash,
+            payment_gas_limit,
+            protocol_version,
+            Rc::clone(&tracking_copy),
+            Phase::Payment,
+            stack,
+            U512::zero(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn invoke_mint_to_transfer<R>(
+        &self,
+        runtime_args: RuntimeArgs,
+        entity: &AddressableEntity,
+        package_kind: PackageKind,
+        authorization_keys: BTreeSet<AccountHash>,
+        account_hash: AccountHash,
+        blocktime: BlockTime,
+        deploy_hash: DeployHash,
+        gas_limit: Gas,
+        protocol_version: ProtocolVersion,
+        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
+        stack: RuntimeStack,
+        spending_limit: U512,
+    ) -> (Option<Result<(), u8>>, ExecutionResult)
+    where
+        R: StateReader<Key, StoredValue>,
+        R::Error: Into<Error>,
+    {
+        self.call_system_contract(
+            DirectSystemContractCall::Transfer,
+            runtime_args,
+            entity,
+            package_kind,
+            authorization_keys,
+            account_hash,
             blocktime,
             deploy_hash,
             gas_limit,
-            gas_counter,
-            address_generator,
             protocol_version,
-            phase,
-            self.config,
-            transfers,
-            remaining_spending_limit,
+            Rc::clone(&tracking_copy),
+            Phase::Payment,
+            stack,
+            spending_limit,
         )
     }
 }
@@ -388,8 +523,10 @@ pub(crate) enum DirectSystemContractCall {
     CreatePurse,
     /// Calls mint's `transfer` entry point.
     Transfer,
-    /// Calls handle payment's `
+    /// Calls handle payment's `get_payment_purse` entry point.
     GetPaymentPurse,
+    /// Calls handle payment's `distribute_accumulated_fees` entry point.
+    DistributeAccumulatedFees,
 }
 
 impl DirectSystemContractCall {
@@ -402,6 +539,9 @@ impl DirectSystemContractCall {
             DirectSystemContractCall::CreatePurse => mint::METHOD_CREATE,
             DirectSystemContractCall::Transfer => mint::METHOD_TRANSFER,
             DirectSystemContractCall::GetPaymentPurse => handle_payment::METHOD_GET_PAYMENT_PURSE,
+            DirectSystemContractCall::DistributeAccumulatedFees => {
+                handle_payment::METHOD_DISTRIBUTE_ACCUMULATED_FEES
+            }
         }
     }
 }

@@ -102,10 +102,14 @@ function _step_05() {
 
     local AUCTION_INFO="$(get_auction_state_at_block_1)"
 
-    if [ "$AUCTION_INFO" != "$HISTORIC_AUCTION_INFO" ]; then
+    # The format of `bids` array has changed at node 2.0.  Compare the era validators only.
+    local HISTORIC_VALIDATORS="$(echo "$HISTORIC_AUCTION_INFO" | jq .era_validators)"
+    local VALIDATORS="$(echo "$AUCTION_INFO" | jq .era_validators)"
+
+    if [ "$VALIDATORS" != "$HISTORIC_VALIDATORS" ]; then
       log "Error auction info does not match"
-      echo "$AUCTION_INFO"
-      echo "$HISTORIC_AUCTION_INFO"
+      echo "$VALIDATORS"
+      echo "$HISTORIC_VALIDATORS"
       exit 1
     fi
 
@@ -140,18 +144,9 @@ function _step_07()
 # identifier.
 # Globals:
 #   NCTL - path to nctl home directory.
-# Arguments:
-#   Node ordinal identifier.
-#   Block identifier.
 ######################################
 function get_auction_state_at_block_1() {
-    local NODE_ID=${1}
-    local BLOCK_ID=${2:-""}
-
-    $(get_path_to_client) get-auction-info \
-        --node-address "$(get_node_address_rpc "$NODE_ID")" \
-        --block-identifier 1 \
-        | jq '.result.auction_state'
+    nctl-view-chain-auction-info block-height=1 | jq '.auction_state'
 }
 
 # ----------------------------------------------------------------

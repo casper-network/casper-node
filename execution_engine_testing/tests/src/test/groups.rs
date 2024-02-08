@@ -3,16 +3,15 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
-    account::AccountHash, contracts::CONTRACT_INITIAL_VERSION, runtime_args, Key, RuntimeArgs, U512,
+    account::AccountHash, package::ENTITY_INITIAL_VERSION, runtime_args, Key, RuntimeArgs, U512,
 };
 
-use crate::wasm_utils;
+use crate::{lmdb_fixture, wasm_utils};
 
-const CONTRACT_GROUPS: &str = "groups.wasm";
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
 const PACKAGE_ACCESS_KEY: &str = "package_access_key";
 const RESTRICTED_SESSION: &str = "restricted_session";
@@ -29,33 +28,25 @@ const CALL_RESTRICTED_ENTRY_POINTS: &str = "call_restricted_entry_points";
 const ARG_AMOUNT: &str = "amount";
 const ARG_TARGET: &str = "target";
 
+const GROUPS_FIXTURE: &str = "groups";
+
 static TRANSFER_1_AMOUNT: Lazy<U512> =
     Lazy::new(|| U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE) + 1000);
+
+fn setup_from_lmdb_fixture() -> LmdbWasmTestBuilder {
+    let (builder, _, _) = lmdb_fixture::builder_from_global_state_fixture(GROUPS_FIXTURE);
+
+    builder
+}
 
 #[ignore]
 #[test]
 fn should_call_group_restricted_session() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract");
 
     let _package_hash = account
         .named_keys()
@@ -66,61 +57,31 @@ fn should_call_group_restricted_session() {
         .get(PACKAGE_ACCESS_KEY)
         .expect("should have package hash");
 
-    let exec_request_2 = {
-        // This inserts package as an argument because this test
-        // can work from different accounts which might not have the same keys in their session
-        // code.
-        let args = runtime_args! {};
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_versioned_contract_by_name(
-                PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
-                RESTRICTED_SESSION,
-                args,
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([3; 32])
-            .build();
+    // This inserts package as an argument because this test
+    // can work from different accounts which might not have the same keys in their session
+    // code.
+    let exec_request_2 = ExecuteRequestBuilder::versioned_contract_call_by_name(
+        *DEFAULT_ACCOUNT_ADDR,
+        PACKAGE_HASH_KEY,
+        Some(ENTITY_INITIAL_VERSION),
+        RESTRICTED_SESSION,
+        runtime_args! {},
+    )
+    .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    builder.exec(exec_request_2).expect_failure();
 
-    builder.exec(exec_request_2).expect_success().commit();
-
-    let _account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
 }
 
 #[ignore]
 #[test]
 fn should_call_group_restricted_session_caller() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
 
     let package_hash = account
         .named_keys()
@@ -131,47 +92,28 @@ fn should_call_group_restricted_session_caller() {
         .get(PACKAGE_ACCESS_KEY)
         .expect("should have package hash");
 
-    let exec_request_2 = {
-        let args = runtime_args! {
-            PACKAGE_HASH_ARG => *package_hash,
-        };
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_versioned_contract_by_name(
-                PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
-                RESTRICTED_SESSION_CALLER,
-                args,
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([3; 32])
-            .build();
+    // This inserts package as an argument because this test
+    // can work from different accounts which might not have the same keys in their session
+    // code.
+    let exec_request_2 = ExecuteRequestBuilder::versioned_contract_call_by_name(
+        *DEFAULT_ACCOUNT_ADDR,
+        PACKAGE_HASH_KEY,
+        Some(ENTITY_INITIAL_VERSION),
+        RESTRICTED_SESSION,
+        runtime_args! {
+            PACKAGE_HASH_ARG => package_hash.into_package_hash()
+        },
+    )
+    .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
-    builder.exec(exec_request_2).expect_success().commit();
+    builder.exec(exec_request_2).expect_failure();
 
-    let _account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+    builder.assert_error(Error::Exec(execution::Error::InvalidContext));
 }
 
 #[test]
 #[ignore]
 fn should_not_call_restricted_session_from_wrong_account() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -179,21 +121,13 @@ fn should_not_call_restricted_session_from_wrong_account() {
     )
     .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
 
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
-
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
     let package_hash = account
         .named_keys()
         .get(PACKAGE_HASH_KEY)
@@ -208,8 +142,8 @@ fn should_not_call_restricted_session_from_wrong_account() {
         let deploy = DeployItemBuilder::new()
             .with_address(ACCOUNT_1_ADDR)
             .with_stored_versioned_contract_by_hash(
-                package_hash.into_hash().expect("should be hash"),
-                Some(CONTRACT_INITIAL_VERSION),
+                package_hash.into_package_addr().expect("should be hash"),
+                Some(ENTITY_INITIAL_VERSION),
                 RESTRICTED_SESSION,
                 args,
             )
@@ -226,12 +160,12 @@ fn should_not_call_restricted_session_from_wrong_account() {
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
-        .as_account()
+        .as_cl_value()
         .cloned()
         .expect("should be account");
 
     let response = builder
-        .get_last_exec_results()
+        .get_last_exec_result()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -242,15 +176,6 @@ fn should_not_call_restricted_session_from_wrong_account() {
 #[test]
 #[ignore]
 fn should_not_call_restricted_session_caller_from_wrong_account() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -258,20 +183,13 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
     )
     .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
 
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
 
     let package_hash = account
         .named_keys()
@@ -289,8 +207,8 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
         let deploy = DeployItemBuilder::new()
             .with_address(ACCOUNT_1_ADDR)
             .with_stored_versioned_contract_by_hash(
-                package_hash.into_hash().expect("should be hash"),
-                Some(CONTRACT_INITIAL_VERSION),
+                package_hash.into_package_addr().expect("should be hash"),
+                Some(ENTITY_INITIAL_VERSION),
                 RESTRICTED_SESSION_CALLER,
                 args,
             )
@@ -307,12 +225,12 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
-        .as_account()
+        .as_cl_value()
         .cloned()
         .expect("should be account");
 
     let response = builder
-        .get_last_exec_results()
+        .get_last_exec_result()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -323,27 +241,11 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
 #[ignore]
 #[test]
 fn should_call_group_restricted_contract() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
 
     let package_hash = account
         .named_keys()
@@ -365,7 +267,7 @@ fn should_call_group_restricted_contract() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 RESTRICTED_CONTRACT,
                 args,
             )
@@ -382,7 +284,7 @@ fn should_call_group_restricted_contract() {
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
-        .as_account()
+        .as_cl_value()
         .cloned()
         .expect("should be account");
 }
@@ -390,14 +292,6 @@ fn should_call_group_restricted_contract() {
 #[ignore]
 #[test]
 fn should_not_call_group_restricted_contract_from_wrong_account() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -405,19 +299,12 @@ fn should_not_call_group_restricted_contract_from_wrong_account() {
     )
     .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
 
     let package_hash = account
         .named_keys()
@@ -438,8 +325,8 @@ fn should_not_call_group_restricted_contract_from_wrong_account() {
         let deploy = DeployItemBuilder::new()
             .with_address(ACCOUNT_1_ADDR)
             .with_stored_versioned_contract_by_hash(
-                package_hash.into_hash().expect("should be hash"),
-                Some(CONTRACT_INITIAL_VERSION),
+                package_hash.into_package_addr().expect("should be hash"),
+                Some(ENTITY_INITIAL_VERSION),
                 RESTRICTED_CONTRACT,
                 args,
             )
@@ -454,7 +341,7 @@ fn should_not_call_group_restricted_contract_from_wrong_account() {
     builder.exec(exec_request_3).commit();
 
     let response = builder
-        .get_last_exec_results()
+        .get_last_exec_result()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -465,27 +352,11 @@ fn should_not_call_group_restricted_contract_from_wrong_account() {
 #[ignore]
 #[test]
 fn should_call_group_unrestricted_contract_caller() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
 
     let package_hash = account
         .named_keys()
@@ -504,7 +375,7 @@ fn should_call_group_unrestricted_contract_caller() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 UNRESTRICTED_CONTRACT_CALLER,
                 args,
             )
@@ -520,7 +391,7 @@ fn should_call_group_unrestricted_contract_caller() {
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
-        .as_account()
+        .as_cl_value()
         .cloned()
         .expect("should be account");
 }
@@ -528,12 +399,6 @@ fn should_call_group_unrestricted_contract_caller() {
 #[ignore]
 #[test]
 fn should_call_unrestricted_contract_caller_from_different_account() {
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -541,19 +406,12 @@ fn should_call_unrestricted_contract_caller_from_different_account() {
     )
     .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
 
     let package_hash = account
         .named_keys()
@@ -564,28 +422,21 @@ fn should_call_unrestricted_contract_caller_from_different_account() {
         .get(PACKAGE_ACCESS_KEY)
         .expect("should have package hash");
 
-    let exec_request_3 = {
-        // This inserts package as an argument because this test
-        // can work from different accounts which might not have the same keys in their session
-        // code.
-        let args = runtime_args! {
+    // This inserts package as an argument because this test
+    // can work from different accounts which might not have the same keys in their session
+    // code.
+    let exec_request_3 = ExecuteRequestBuilder::versioned_contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        package_hash
+            .into_package_hash()
+            .expect("must have package hash"),
+        Some(ENTITY_INITIAL_VERSION),
+        UNRESTRICTED_CONTRACT_CALLER,
+        runtime_args! {
             PACKAGE_HASH_ARG => *package_hash,
-        };
-        let deploy = DeployItemBuilder::new()
-            .with_address(ACCOUNT_1_ADDR)
-            .with_stored_versioned_contract_by_hash(
-                package_hash.into_hash().expect("should be hash"),
-                Some(CONTRACT_INITIAL_VERSION),
-                UNRESTRICTED_CONTRACT_CALLER,
-                args,
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[ACCOUNT_1_ADDR])
-            .with_deploy_hash([3; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+        },
+    )
+    .build();
 
     builder.exec(exec_request_3).expect_success().commit();
 }
@@ -593,14 +444,6 @@ fn should_call_unrestricted_contract_caller_from_different_account() {
 #[ignore]
 #[test]
 fn should_call_group_restricted_contract_as_session() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -608,19 +451,12 @@ fn should_call_group_restricted_contract_as_session() {
     )
     .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
 
     let package_hash = account
         .named_keys()
@@ -631,43 +467,30 @@ fn should_call_group_restricted_contract_as_session() {
         .get(PACKAGE_ACCESS_KEY)
         .expect("should have package hash");
 
-    let exec_request_3 = {
-        // This inserts package as an argument because this test
-        // can work from different accounts which might not have the same keys in their session
-        // code.
-        let args = runtime_args! {
+    // This inserts package as an argument because this test
+    // can work from different accounts which might not have the same keys in their session
+    // code.
+    let exec_request_3 = ExecuteRequestBuilder::versioned_contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        package_hash
+            .into_package_hash()
+            .expect("must convert to package hash"),
+        Some(ENTITY_INITIAL_VERSION),
+        RESTRICTED_CONTRACT_CALLER_AS_SESSION,
+        runtime_args! {
             PACKAGE_HASH_ARG => *package_hash,
-        };
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_versioned_contract_by_hash(
-                package_hash.into_hash().expect("should be hash"),
-                Some(CONTRACT_INITIAL_VERSION),
-                RESTRICTED_CONTRACT_CALLER_AS_SESSION,
-                args,
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([4; 32])
-            .build();
+        },
+    )
+    .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    builder.exec(exec_request_3).expect_failure();
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
 }
 
 #[ignore]
 #[test]
 fn should_call_group_restricted_contract_as_session_from_wrong_account() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -675,19 +498,12 @@ fn should_call_group_restricted_contract_as_session_from_wrong_account() {
     )
     .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
 
     let package_hash = account
         .named_keys()
@@ -698,33 +514,26 @@ fn should_call_group_restricted_contract_as_session_from_wrong_account() {
         .get(PACKAGE_ACCESS_KEY)
         .expect("should have package hash");
 
-    let exec_request_3 = {
-        // This inserts package as an argument because this test
-        // can work from different accounts which might not have the same keys in their session
-        // code.
-        let args = runtime_args! {
+    // This inserts package as an argument because this test
+    // can work from different accounts which might not have the same keys in their session
+    // code.
+    let exec_request_3 = ExecuteRequestBuilder::versioned_contract_call_by_hash(
+        ACCOUNT_1_ADDR,
+        package_hash
+            .into_package_hash()
+            .expect("must convert to package hash"),
+        Some(ENTITY_INITIAL_VERSION),
+        RESTRICTED_CONTRACT_CALLER_AS_SESSION,
+        runtime_args! {
             PACKAGE_HASH_ARG => *package_hash,
-        };
-        let deploy = DeployItemBuilder::new()
-            .with_address(ACCOUNT_1_ADDR)
-            .with_stored_versioned_contract_by_hash(
-                package_hash.into_hash().expect("should be hash"),
-                Some(CONTRACT_INITIAL_VERSION),
-                RESTRICTED_CONTRACT_CALLER_AS_SESSION,
-                args,
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[ACCOUNT_1_ADDR])
-            .with_deploy_hash([4; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+        },
+    )
+    .build();
 
     builder.exec(exec_request_3).commit();
 
     let response = builder
-        .get_last_exec_results()
+        .get_last_exec_result()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -735,27 +544,11 @@ fn should_call_group_restricted_contract_as_session_from_wrong_account() {
 #[ignore]
 #[test]
 fn should_not_call_uncallable_contract_from_deploy() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
 
     let package_hash = account
         .named_keys()
@@ -777,7 +570,7 @@ fn should_not_call_uncallable_contract_from_deploy() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 UNCALLABLE_SESSION,
                 args,
             )
@@ -791,7 +584,7 @@ fn should_not_call_uncallable_contract_from_deploy() {
 
     builder.exec(exec_request_2).commit();
     let response = builder
-        .get_last_exec_results()
+        .get_last_exec_result()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -806,7 +599,7 @@ fn should_not_call_uncallable_contract_from_deploy() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 CALL_RESTRICTED_ENTRY_POINTS,
                 args,
             )
@@ -818,33 +611,19 @@ fn should_not_call_uncallable_contract_from_deploy() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder.exec(exec_request_3).expect_failure();
+
+    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
 }
 
 #[ignore]
 #[test]
 fn should_not_call_uncallable_session_from_deploy() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
 
     let package_hash = account
         .named_keys()
@@ -866,7 +645,7 @@ fn should_not_call_uncallable_session_from_deploy() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 UNCALLABLE_CONTRACT,
                 args,
             )
@@ -880,7 +659,7 @@ fn should_not_call_uncallable_session_from_deploy() {
 
     builder.exec(exec_request_2).commit();
     let response = builder
-        .get_last_exec_results()
+        .get_last_exec_result()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -895,7 +674,7 @@ fn should_not_call_uncallable_session_from_deploy() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 CALL_RESTRICTED_ENTRY_POINTS,
                 args,
             )
@@ -906,7 +685,9 @@ fn should_not_call_uncallable_session_from_deploy() {
 
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
-    builder.exec(exec_request_3).expect_success().commit();
+    builder.exec(exec_request_3).expect_failure();
+
+    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
 }
 
 #[test]
@@ -915,34 +696,19 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
     // This test calls a stored payment code that is restricted with a group access using an account
     // that does not have any of the group urefs in context.
 
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
-
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
         runtime_args! { ARG_TARGET => ACCOUNT_1_ADDR, ARG_AMOUNT => *TRANSFER_1_AMOUNT },
     )
     .build();
-
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
 
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
 
     let package_hash = account
         .named_keys()
@@ -962,9 +728,9 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
             .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
             .with_stored_versioned_payment_contract_by_hash(
                 package_hash
-                    .into_hash()
+                    .into_package_addr()
                     .expect("must have created package hash"),
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 "restricted_standard_payment",
                 args,
             )
@@ -980,12 +746,12 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
-        .as_account()
+        .as_cl_value()
         .cloned()
         .expect("should be account");
 
     let response = builder
-        .get_last_exec_results()
+        .get_last_exec_result()
         .expect("should have last response");
     assert_eq!(response.len(), 1);
     let exec_response = response.last().expect("should have response");
@@ -998,12 +764,6 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
 fn should_call_group_restricted_stored_payment_code() {
     // This test calls a stored payment code that is restricted with a group access using an account
     // that contains urefs from the group.
-    let exec_request_1 = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_GROUPS,
-        RuntimeArgs::default(),
-    )
-    .build();
 
     let exec_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1012,20 +772,13 @@ fn should_call_group_restricted_stored_payment_code() {
     )
     .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    builder.exec(exec_request_1).expect_success().commit();
+    let mut builder = setup_from_lmdb_fixture();
 
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
 
     let package_hash = account
         .named_keys()
@@ -1046,9 +799,9 @@ fn should_call_group_restricted_stored_payment_code() {
             // .with_stored_versioned_contract_by_name(name, version, entry_point, args)
             .with_stored_versioned_payment_contract_by_hash(
                 package_hash
-                    .into_hash()
+                    .into_package_addr()
                     .expect("must have created package hash"),
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 "restricted_standard_payment",
                 args,
             )
@@ -1059,5 +812,7 @@ fn should_call_group_restricted_stored_payment_code() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder.exec(exec_request_3).expect_failure();
+
+    builder.assert_error(Error::Exec(execution::Error::InvalidContext));
 }

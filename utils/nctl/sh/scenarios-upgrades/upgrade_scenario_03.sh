@@ -333,40 +333,32 @@ function _step_14()
     local NODE_PATH
     local HEX
     local AUCTION_INFO_FOR_HEX
-    local INACTIVE_STATUS
-    local STAKED_AMOUNT
 
     NODE_PATH=$(get_path_to_node "$NODE_ID")
     HEX=$(cat "$NODE_PATH"/keys/public_key_hex | tr '[:upper:]' '[:lower:]')
     AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.public_key | ascii_downcase == $node_hex)')
 
-    INACTIVE_STATUS=$(echo "$AUCTION_INFO_FOR_HEX" | grep 'inactive' | grep 'true' | sed 's/^ *//g')
-    STAKED_AMOUNT=$(echo "$AUCTION_INFO_FOR_HEX" | grep 'staked_amount' | awk '{print $2}' | tr -d '[:punct:]')
+    log_step_upgrades 14 "Asserting node-$NODE_ID does not have a bid record after full unbond"
 
-    log_step_upgrades 14 "Asserting node-$NODE_ID is NOT a validator"
-
-    if [ ! -z "$INACTIVE_STATUS" ]; then
-        log "... node-$NODE_ID found as inactive! [expected]"
-        log "... public_key_hex: $HEX"
-        log "... $INACTIVE_STATUS"
-    else
+    if [ ! -z "$AUCTION_INFO_FOR_HEX" ]; then
         log "ERROR: node-$NODE_ID found as active!"
+        log "... public_key_hex: $HEX"
         echo "$AUCTION_INFO_FOR_HEX"
         exit 1
-    fi
-
-    if [ "$STAKED_AMOUNT" = "0" ]; then
-        log "... staked_amount: $STAKED_AMOUNT"
     else
-        log "ERROR: node-$NODE_ID still has $STAKED_AMOUNT staked!"
-        echo "$AUCTION_INFO_FOR_HEX"
-        exit 1
+        log "... node-$NODE_ID bid does not exist [expected]"
+        log "... public_key_hex: $HEX"
     fi
 
+    # if reached, this is an empty string...
+    # probably don't need to return this, but the original
+    # logic echo'd back in both the success and fail cases
+    # so matching that for now as unraveling this isn't
+    # critical path right now
     echo "$AUCTION_INFO_FOR_HEX"
 }
 
-# Step 07: Assert USER_ID is NOT a delegatee
+# Step 15: Assert USER_ID is NOT a delegatee
 function _step_15()
 {
     local USER_ID=${1:-'7'}
@@ -376,9 +368,9 @@ function _step_15()
 
     USER_PATH=$(get_path_to_user "$USER_ID")
     HEX=$(cat "$USER_PATH"/public_key_hex | tr '[:upper:]' '[:lower:]')
-    AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.bid.delegators[].public_key | ascii_downcase == $node_hex)')
+    AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.bid.delegators[].delegator_public_key | ascii_downcase == $node_hex)')
 
-    log_step_upgrades 15 "Asserting user-$USER_ID is NOT a delegatee"
+    log_step_upgrades 15 "Asserting user-$USER_ID does not have a bid record after full undelegate"
 
     if [ ! -z "$AUCTION_INFO_FOR_HEX" ]; then
         log "ERROR: user-$USER_ID found in auction info delegators!"
@@ -386,7 +378,7 @@ function _step_15()
         echo "$AUCTION_INFO_FOR_HEX"
         exit 1
     else
-        log "... Could not find $HEX in auction info delegators! [expected]"
+        log "... Delegator bid not found for $HEX [expected]"
     fi
 }
 

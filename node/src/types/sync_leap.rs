@@ -389,26 +389,36 @@ impl FetchItem for SyncLeap {
 
 mod specimen_support {
     use crate::utils::specimen::{
-        estimator_max_rounds_per_era, vec_of_largest_specimen, vec_prop_specimen, Cache,
-        LargestSpecimen, SizeEstimator,
+        estimator_max_rounds_per_era, vec_of_largest_specimen, vec_prop_specimen,
+        BlockHeaderWithoutEraEnd, Cache, LargestSpecimen, SizeEstimator,
     };
 
     use super::{SyncLeap, SyncLeapIdentifier};
 
     impl LargestSpecimen for SyncLeap {
         fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            // Will at most contain as many blocks as a single era. And how many blocks can
+            // there be in an era is determined by the chainspec: it's the
+            // maximum of minimum_era_height and era_duration / minimum_block_time
+            let count = estimator_max_rounds_per_era(estimator).saturating_sub(1);
+
+            let non_switch_block_ancestors: Vec<BlockHeaderWithoutEraEnd> =
+                vec_of_largest_specimen(estimator, count, cache);
+
+            let mut trusted_ancestor_headers =
+                vec![LargestSpecimen::largest_specimen(estimator, cache)];
+            trusted_ancestor_headers.extend(
+                non_switch_block_ancestors
+                    .into_iter()
+                    .map(BlockHeaderWithoutEraEnd::into_block_header),
+            );
+
+            let signed_block_headers = vec_prop_specimen(estimator, "recent_era_count", cache);
             SyncLeap {
                 trusted_ancestor_only: LargestSpecimen::largest_specimen(estimator, cache),
                 trusted_block_header: LargestSpecimen::largest_specimen(estimator, cache),
-                // Will at most contain as many blocks as a single era. And how many blocks can
-                // there be in an era is determined by the chainspec: it's the
-                // maximum of minimum_era_height and era_duration / minimum_block_time
-                trusted_ancestor_headers: vec_of_largest_specimen(
-                    estimator,
-                    estimator_max_rounds_per_era(estimator),
-                    cache,
-                ),
-                signed_block_headers: vec_prop_specimen(estimator, "recent_era_count", cache),
+                trusted_ancestor_headers,
+                signed_block_headers,
             }
         }
     }
@@ -441,8 +451,9 @@ mod tests {
 
     use casper_types::{
         crypto, testing::TestRng, ActivationPoint, Block, BlockHash, BlockHeader, BlockSignatures,
-        DeployHash, EraEnd, EraId, EraReport, FinalitySignature, GlobalStateUpdate, ProtocolConfig,
-        ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, Timestamp, U512,
+        BlockV2, EraEndV2, EraId, FinalitySignature, GlobalStateUpdate, ProtocolConfig,
+        ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TestBlockBuilder, Timestamp,
+        TransactionHash, TransactionV1Hash, U512,
     };
 
     use super::SyncLeap;
@@ -451,39 +462,18 @@ mod tests {
         types::{
             sync_leap::SyncLeapValidationError,
             sync_leap_validation_metadata::SyncLeapValidationMetaData, EraValidatorWeights,
-            SyncLeapIdentifier, TestBlockBuilder,
+            SyncLeapIdentifier,
         },
         utils::BlockSignatureError,
     };
 
-    fn random_block_at_height(rng: &mut TestRng, height: u64) -> Block {
-        TestBlockBuilder::new()
-            .height(height)
-            .switch_block(rng.gen())
-            .build(rng)
-    }
-
-    fn random_switch_block_at_height_and_era_and_version(
-        rng: &mut TestRng,
-        height: u64,
-        era_id: EraId,
-        protocol_version: ProtocolVersion,
-    ) -> Block {
-        TestBlockBuilder::new()
-            .era(era_id)
-            .height(height)
-            .protocol_version(protocol_version)
-            .switch_block(true)
-            .build(rng)
-    }
-
     fn make_signed_block_header_from_height(
         height: usize,
-        test_chain: &[Block],
+        test_chain: &[BlockV2],
         validators: &[ValidatorSpec],
         add_proofs: bool,
     ) -> SignedBlockHeader {
-        let header = test_chain.get(height).unwrap().header().clone();
+        let header = Block::from(test_chain.get(height).unwrap()).clone_header();
         make_signed_block_header_from_header(&header, validators, add_proofs)
     }
 
@@ -513,17 +503,17 @@ mod tests {
 
     fn make_test_sync_leap_with_chain(
         validators: &[ValidatorSpec],
-        test_chain: &[Block],
+        test_chain: &[BlockV2],
         query: usize,
         trusted_ancestor_headers: &[usize],
         signed_block_headers: &[usize],
         add_proofs: bool,
     ) -> SyncLeap {
-        let trusted_block_header = test_chain.get(query).unwrap().header().clone();
+        let trusted_block_header = Block::from(test_chain.get(query).unwrap()).clone_header();
 
         let trusted_ancestor_headers: Vec<_> = trusted_ancestor_headers
             .iter()
-            .map(|height| test_chain.get(*height).unwrap().header().clone())
+            .map(|height| Block::from(test_chain.get(*height).unwrap()).clone_header())
             .collect();
 
         let signed_block_headers: Vec<_> = signed_block_headers
@@ -659,11 +649,11 @@ mod tests {
         let validation_metadata = test_sync_leap_validation_metadata();
 
         // Trusted ancestors can't be empty when trusted block height is greater than 0.
-        let block = random_block_at_height(&mut rng, 1);
+        let block = TestBlockBuilder::new().height(1).build(&mut rng);
 
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
-            trusted_block_header: block.take_header(),
+            trusted_block_header: block.take_header().into(),
             trusted_ancestor_headers: Default::default(),
             signed_block_headers: Default::default(),
         };
@@ -675,11 +665,11 @@ mod tests {
 
         // When trusted block height is 0, validation should not fail due trusted ancestors being
         // empty.
-        let block = random_block_at_height(&mut rng, 0);
+        let block = TestBlockBuilder::new().height(0).build(&mut rng);
 
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
-            trusted_block_header: block.take_header(),
+            trusted_block_header: block.take_header().into(),
             trusted_ancestor_headers: Default::default(),
             signed_block_headers: Default::default(),
         };
@@ -701,18 +691,15 @@ mod tests {
         // Max allowed size should NOT trigger the `TooManySwitchBlocks` error.
         let generated_block_count = max_allowed_size;
 
-        let block = random_block_at_height(&mut rng, 0);
+        let block = TestBlockBuilder::new().height(0).build_versioned(&mut rng);
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
-            trusted_block_header: block.take_header(),
+            trusted_block_header: block.clone_header(),
             trusted_ancestor_headers: Default::default(),
             signed_block_headers: iter::repeat_with(|| {
-                let block = TestBlockBuilder::new().build(&mut rng);
+                let block = TestBlockBuilder::new().build_versioned(&mut rng);
                 let hash = block.hash();
-                SignedBlockHeader::new(
-                    block.header().clone(),
-                    BlockSignatures::new(*hash, 0.into()),
-                )
+                SignedBlockHeader::new(block.clone_header(), BlockSignatures::new(*hash, 0.into()))
             })
             .take(generated_block_count as usize)
             .collect(),
@@ -726,18 +713,15 @@ mod tests {
         // Generating one more block should trigger the `TooManySwitchBlocks` error.
         let generated_block_count = max_allowed_size + 1;
 
-        let block = random_block_at_height(&mut rng, 0);
+        let block = TestBlockBuilder::new().height(0).build_versioned(&mut rng);
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
             trusted_block_header: block.take_header(),
             trusted_ancestor_headers: Default::default(),
             signed_block_headers: iter::repeat_with(|| {
-                let block = TestBlockBuilder::new().build(&mut rng);
+                let block = TestBlockBuilder::new().build_versioned(&mut rng);
                 let hash = block.hash();
-                SignedBlockHeader::new(
-                    block.header().clone(),
-                    BlockSignatures::new(*hash, 0.into()),
-                )
+                SignedBlockHeader::new(block.clone_header(), BlockSignatures::new(*hash, 0.into()))
             })
             .take(generated_block_count as usize)
             .collect(),
@@ -758,13 +742,14 @@ mod tests {
         // expected to be sorted backwards (from the most recent ancestor back to the switch block).
         // Therefore, the generated blocks should cause the `TrustedAncestorsNotSorted` error to be
         // triggered.
-        let block = random_block_at_height(&mut rng, 0);
+        let block = TestBlockBuilder::new().height(0).build(&mut rng);
         let block_iterator =
             TestBlockIterator::new(block.clone(), &mut rng, None, None, Default::default());
+        let block = Block::from(block);
 
         let trusted_ancestor_headers = block_iterator
             .take(3)
-            .map(|block| block.take_header())
+            .map(|block| block.take_header().into())
             .collect();
 
         let sync_leap = SyncLeap {
@@ -781,15 +766,16 @@ mod tests {
 
         // Single trusted ancestor header it should never trigger the `TrustedAncestorsNotSorted`
         // error.
-        let block = random_block_at_height(&mut rng, 0);
+        let block = TestBlockBuilder::new().height(0).build(&mut rng);
         let block_iterator =
             TestBlockIterator::new(block.clone(), &mut rng, None, None, Default::default());
 
         let trusted_ancestor_headers = block_iterator
             .take(1)
-            .map(|block| block.take_header())
+            .map(|block| block.take_header().into())
             .collect();
 
+        let block = Block::from(block);
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
             trusted_block_header: block.take_header(),
@@ -811,7 +797,7 @@ mod tests {
         // Make sure `TestBlockIterator` creates no switch blocks.
         let switch_blocks = None;
 
-        let block = random_block_at_height(&mut rng, 0);
+        let block = TestBlockBuilder::new().height(0).build(&mut rng);
         let block_iterator = TestBlockIterator::new(
             block.clone(),
             &mut rng,
@@ -822,12 +808,13 @@ mod tests {
 
         let trusted_ancestor_headers: Vec<_> = block_iterator
             .take(3)
-            .map(|block| block.take_header())
+            .map(|block| block.take_header().into())
             .collect::<Vec<_>>()
             .into_iter()
             .rev()
             .collect();
 
+        let block = Block::from(block);
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
             trusted_block_header: block.take_header(),
@@ -967,9 +954,9 @@ mod tests {
 
         // Add single orphaned block. Signatures are cloned from a legit block to avoid bailing on
         // the signature validation check.
-        let orphaned_block = TestBlockBuilder::new().build(&mut rng);
+        let orphaned_block = TestBlockBuilder::new().build_versioned(&mut rng);
         let orphaned_signed_block_header = SignedBlockHeader::new(
-            orphaned_block.header().clone(),
+            orphaned_block.clone_header(),
             sync_leap
                 .signed_block_headers
                 .first()
@@ -1141,29 +1128,43 @@ mod tests {
     fn should_return_headers() {
         let mut rng = TestRng::new();
 
-        let trusted_block = TestBlockBuilder::new().switch_block(false).build(&mut rng);
+        let trusted_block = TestBlockBuilder::new()
+            .switch_block(false)
+            .build_versioned(&mut rng);
 
-        let trusted_ancestor_1 = TestBlockBuilder::new().switch_block(true).build(&mut rng);
-        let trusted_ancestor_2 = TestBlockBuilder::new().switch_block(false).build(&mut rng);
-        let trusted_ancestor_3 = TestBlockBuilder::new().switch_block(false).build(&mut rng);
+        let trusted_ancestor_1 = TestBlockBuilder::new()
+            .switch_block(true)
+            .build_versioned(&mut rng);
+        let trusted_ancestor_2 = TestBlockBuilder::new()
+            .switch_block(false)
+            .build_versioned(&mut rng);
+        let trusted_ancestor_3 = TestBlockBuilder::new()
+            .switch_block(false)
+            .build_versioned(&mut rng);
 
-        let signed_block_1 = TestBlockBuilder::new().switch_block(true).build(&mut rng);
-        let signed_block_2 = TestBlockBuilder::new().switch_block(true).build(&mut rng);
-        let signed_block_3 = TestBlockBuilder::new().switch_block(false).build(&mut rng);
+        let signed_block_1 = TestBlockBuilder::new()
+            .switch_block(true)
+            .build_versioned(&mut rng);
+        let signed_block_2 = TestBlockBuilder::new()
+            .switch_block(true)
+            .build_versioned(&mut rng);
+        let signed_block_3 = TestBlockBuilder::new()
+            .switch_block(false)
+            .build_versioned(&mut rng);
         let signed_block_header_1 =
-            make_signed_block_header_from_header(signed_block_1.header(), &[], false);
+            make_signed_block_header_from_header(&signed_block_1.clone_header(), &[], false);
         let signed_block_header_2 =
-            make_signed_block_header_from_header(signed_block_2.header(), &[], false);
+            make_signed_block_header_from_header(&signed_block_2.clone_header(), &[], false);
         let signed_block_header_3 =
-            make_signed_block_header_from_header(signed_block_3.header(), &[], false);
+            make_signed_block_header_from_header(&signed_block_3.clone_header(), &[], false);
 
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
-            trusted_block_header: trusted_block.header().clone(),
+            trusted_block_header: trusted_block.clone_header(),
             trusted_ancestor_headers: vec![
-                trusted_ancestor_1.header().clone(),
-                trusted_ancestor_2.header().clone(),
-                trusted_ancestor_3.header().clone(),
+                trusted_ancestor_1.clone_header(),
+                trusted_ancestor_2.clone_header(),
+                trusted_ancestor_3.clone_header(),
             ],
             signed_block_headers: vec![
                 signed_block_header_1,
@@ -1195,29 +1196,43 @@ mod tests {
     fn should_return_switch_block_headers() {
         let mut rng = TestRng::new();
 
-        let trusted_block = TestBlockBuilder::new().switch_block(false).build(&mut rng);
+        let trusted_block = TestBlockBuilder::new()
+            .switch_block(false)
+            .build_versioned(&mut rng);
 
-        let trusted_ancestor_1 = TestBlockBuilder::new().switch_block(true).build(&mut rng);
-        let trusted_ancestor_2 = TestBlockBuilder::new().switch_block(false).build(&mut rng);
-        let trusted_ancestor_3 = TestBlockBuilder::new().switch_block(false).build(&mut rng);
+        let trusted_ancestor_1 = TestBlockBuilder::new()
+            .switch_block(true)
+            .build_versioned(&mut rng);
+        let trusted_ancestor_2 = TestBlockBuilder::new()
+            .switch_block(false)
+            .build_versioned(&mut rng);
+        let trusted_ancestor_3 = TestBlockBuilder::new()
+            .switch_block(false)
+            .build_versioned(&mut rng);
 
-        let signed_block_1 = TestBlockBuilder::new().switch_block(true).build(&mut rng);
-        let signed_block_2 = TestBlockBuilder::new().switch_block(true).build(&mut rng);
-        let signed_block_3 = TestBlockBuilder::new().switch_block(false).build(&mut rng);
+        let signed_block_1 = TestBlockBuilder::new()
+            .switch_block(true)
+            .build_versioned(&mut rng);
+        let signed_block_2 = TestBlockBuilder::new()
+            .switch_block(true)
+            .build_versioned(&mut rng);
+        let signed_block_3 = TestBlockBuilder::new()
+            .switch_block(false)
+            .build_versioned(&mut rng);
         let signed_block_header_1 =
-            make_signed_block_header_from_header(signed_block_1.header(), &[], false);
+            make_signed_block_header_from_header(&signed_block_1.clone_header(), &[], false);
         let signed_block_header_2 =
-            make_signed_block_header_from_header(signed_block_2.header(), &[], false);
+            make_signed_block_header_from_header(&signed_block_2.clone_header(), &[], false);
         let signed_block_header_3 =
-            make_signed_block_header_from_header(signed_block_3.header(), &[], false);
+            make_signed_block_header_from_header(&signed_block_3.clone_header(), &[], false);
 
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
-            trusted_block_header: trusted_block.header().clone(),
+            trusted_block_header: trusted_block.clone_header(),
             trusted_ancestor_headers: vec![
-                trusted_ancestor_1.header().clone(),
-                trusted_ancestor_2.header().clone(),
-                trusted_ancestor_3.header().clone(),
+                trusted_ancestor_1.clone_header(),
+                trusted_ancestor_2.clone_header(),
+                trusted_ancestor_3.clone_header(),
             ],
             signed_block_headers: vec![
                 signed_block_header_1.clone(),
@@ -1241,14 +1256,16 @@ mod tests {
         assert_eq!(expected_headers, actual_headers);
 
         // Also test when the trusted block is a switch block.
-        let trusted_block = TestBlockBuilder::new().switch_block(true).build(&mut rng);
+        let trusted_block = TestBlockBuilder::new()
+            .switch_block(true)
+            .build_versioned(&mut rng);
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
-            trusted_block_header: trusted_block.header().clone(),
+            trusted_block_header: trusted_block.clone_header(),
             trusted_ancestor_headers: vec![
-                trusted_ancestor_1.header().clone(),
-                trusted_ancestor_2.header().clone(),
-                trusted_ancestor_3.header().clone(),
+                trusted_ancestor_1.clone_header(),
+                trusted_ancestor_2.clone_header(),
+                trusted_ancestor_3.clone_header(),
             ],
             signed_block_headers: vec![
                 signed_block_header_1,
@@ -1796,7 +1813,9 @@ mod tests {
     fn era_validator_weights_without_genesis_without_upgrade() {
         let mut rng = TestRng::new();
 
-        let trusted_block = TestBlockBuilder::new().switch_block(false).build(&mut rng);
+        let trusted_block = TestBlockBuilder::new()
+            .switch_block(false)
+            .build_versioned(&mut rng);
 
         let version = ProtocolVersion::from_parts(1, 5, 0);
 
@@ -1810,7 +1829,7 @@ mod tests {
 
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
-            trusted_block_header: trusted_block.header().clone(),
+            trusted_block_header: trusted_block.clone_header(),
             trusted_ancestor_headers: vec![],
             signed_block_headers: vec![
                 signed_block_header_1,
@@ -1821,7 +1840,7 @@ mod tests {
 
         let fault_tolerance_fraction = Ratio::new_raw(1, 3);
 
-        // Assert only if correct eras are selected, since the the
+        // Assert only if correct eras are selected, since the
         // `should_return_era_validator_weights_for_correct_sync_leap` test already covers the
         // actual weight validation.
 
@@ -1846,7 +1865,9 @@ mod tests {
     fn era_validator_weights_without_genesis_with_switch_block_preceding_immediate_switch_block() {
         let mut rng = TestRng::new();
 
-        let trusted_block = TestBlockBuilder::new().switch_block(false).build(&mut rng);
+        let trusted_block = TestBlockBuilder::new()
+            .switch_block(false)
+            .build_versioned(&mut rng);
 
         let version_1 = ProtocolVersion::from_parts(1, 4, 0);
         let version_2 = ProtocolVersion::from_parts(1, 5, 0);
@@ -1861,7 +1882,7 @@ mod tests {
 
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
-            trusted_block_header: trusted_block.header().clone(),
+            trusted_block_header: trusted_block.clone_header(),
             trusted_ancestor_headers: vec![],
             signed_block_headers: vec![
                 signed_block_header_1,
@@ -1872,7 +1893,7 @@ mod tests {
 
         let fault_tolerance_fraction = Ratio::new_raw(1, 3);
 
-        // Assert only if correct eras are selected, since the the
+        // Assert only if correct eras are selected, since the
         // `should_return_era_validator_weights_for_correct_sync_leap` test already covers the
         // actual weight validation.
 
@@ -1924,7 +1945,9 @@ mod tests {
     fn era_validator_weights_with_genesis_without_upgrade() {
         let mut rng = TestRng::new();
 
-        let trusted_block = TestBlockBuilder::new().switch_block(false).build(&mut rng);
+        let trusted_block = TestBlockBuilder::new()
+            .switch_block(false)
+            .build_versioned(&mut rng);
 
         let version = ProtocolVersion::from_parts(1, 5, 0);
 
@@ -1938,7 +1961,7 @@ mod tests {
 
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
-            trusted_block_header: trusted_block.header().clone(),
+            trusted_block_header: trusted_block.clone_header(),
             trusted_ancestor_headers: vec![],
             signed_block_headers: vec![
                 signed_block_header_1,
@@ -1976,31 +1999,31 @@ mod tests {
         (era_2, height_2, version_2): (u64, u64, ProtocolVersion),
         (era_3, height_3, version_3): (u64, u64, ProtocolVersion),
     ) -> (SignedBlockHeader, SignedBlockHeader, SignedBlockHeader) {
-        let signed_block_1 = random_switch_block_at_height_and_era_and_version(
-            rng,
-            height_1,
-            era_1.into(),
-            version_1,
-        );
-        let signed_block_2 = random_switch_block_at_height_and_era_and_version(
-            rng,
-            height_2,
-            era_2.into(),
-            version_2,
-        );
-        let signed_block_3 = random_switch_block_at_height_and_era_and_version(
-            rng,
-            height_3,
-            era_3.into(),
-            version_3,
-        );
+        let signed_block_1 = TestBlockBuilder::new()
+            .height(height_1)
+            .era(era_1)
+            .protocol_version(version_1)
+            .switch_block(true)
+            .build_versioned(rng);
+        let signed_block_2 = TestBlockBuilder::new()
+            .height(height_2)
+            .era(era_2)
+            .protocol_version(version_2)
+            .switch_block(true)
+            .build_versioned(rng);
+        let signed_block_3 = TestBlockBuilder::new()
+            .height(height_3)
+            .era(era_3)
+            .protocol_version(version_3)
+            .switch_block(true)
+            .build_versioned(rng);
 
         let signed_block_header_1 =
-            make_signed_block_header_from_header(signed_block_1.header(), &[], false);
+            make_signed_block_header_from_header(&signed_block_1.clone_header(), &[], false);
         let signed_block_header_2 =
-            make_signed_block_header_from_header(signed_block_2.header(), &[], false);
+            make_signed_block_header_from_header(&signed_block_2.clone_header(), &[], false);
         let signed_block_header_3 =
-            make_signed_block_header_from_header(signed_block_3.header(), &[], false);
+            make_signed_block_header_from_header(&signed_block_3.clone_header(), &[], false);
         (
             signed_block_header_1,
             signed_block_header_2,
@@ -2039,7 +2062,7 @@ mod tests {
     // cause the 2nd and 4th blocks to be switch blocks. Validators for all eras are filled from
     // the `validators` parameter.
     pub(crate) struct TestChainSpec<'a> {
-        block: Block,
+        block: BlockV2,
         rng: &'a mut TestRng,
         switch_block_indices: Option<Vec<u64>>,
         upgrades_indices: Option<Vec<u64>>,
@@ -2105,7 +2128,7 @@ mod tests {
     }
 
     pub(crate) struct TestBlockIterator<'a> {
-        block: Block,
+        block: BlockV2,
         protocol_version: ProtocolVersion,
         rng: &'a mut TestRng,
         switch_block_indices: Option<Vec<u64>>,
@@ -2116,7 +2139,7 @@ mod tests {
 
     impl<'a> TestBlockIterator<'a> {
         pub fn new(
-            block: Block,
+            block: BlockV2,
             rng: &'a mut TestRng,
             switch_block_indices: Option<Vec<u64>>,
             upgrades_indices: Option<Vec<u64>>,
@@ -2136,7 +2159,7 @@ mod tests {
     }
 
     impl<'a> Iterator for TestBlockIterator<'a> {
-        type Item = Block;
+        type Item = BlockV2;
 
         fn next(&mut self) -> Option<Self::Item> {
             let (is_successor_of_switch_block, is_upgrade, maybe_validators) = match &self
@@ -2202,23 +2225,42 @@ mod tests {
                 );
             }
 
-            let era_end = maybe_validators
-                .map(|validators| EraEnd::new(EraReport::random(self.rng), validators));
+            let era_end = maybe_validators.map(|validators| {
+                let rnd = EraEndV2::random(self.rng);
+                EraEndV2::new(
+                    Vec::from(rnd.equivocators()),
+                    Vec::from(rnd.inactive_validators()),
+                    validators,
+                    rnd.rewards().clone(),
+                )
+            });
             let next_block_era_id = if is_successor_of_switch_block {
                 self.block.era_id().successor()
             } else {
                 self.block.era_id()
             };
             let count = self.rng.gen_range(0..6);
-            let deploy_hashes = iter::repeat_with(|| DeployHash::random(self.rng))
-                .take(count)
-                .collect();
+            let transfer_hashes =
+                iter::repeat_with(|| TransactionHash::V1(TransactionV1Hash::random(self.rng)))
+                    .take(count)
+                    .collect();
             let count = self.rng.gen_range(0..6);
-            let transfer_hashes = iter::repeat_with(|| DeployHash::random(self.rng))
-                .take(count)
-                .collect();
+            let staking_hashes =
+                iter::repeat_with(|| TransactionHash::V1(TransactionV1Hash::random(self.rng)))
+                    .take(count)
+                    .collect();
+            let count = self.rng.gen_range(0..6);
+            let install_upgrade_hashes =
+                iter::repeat_with(|| TransactionHash::V1(TransactionV1Hash::random(self.rng)))
+                    .take(count)
+                    .collect();
+            let count = self.rng.gen_range(0..6);
+            let standard_hashes =
+                iter::repeat_with(|| TransactionHash::V1(TransactionV1Hash::random(self.rng)))
+                    .take(count)
+                    .collect();
 
-            let next = Block::new(
+            let next = BlockV2::new(
                 *self.block.hash(),
                 *self.block.accumulated_seed(),
                 *self.block.state_root_hash(),
@@ -2229,8 +2271,11 @@ mod tests {
                 self.block.height() + 1,
                 self.protocol_version,
                 PublicKey::random(self.rng),
-                deploy_hashes,
                 transfer_hashes,
+                staking_hashes,
+                install_upgrade_hashes,
+                standard_hashes,
+                Default::default(),
             );
 
             self.block = next.clone();
@@ -2243,7 +2288,7 @@ mod tests {
         let mut rng = TestRng::new();
         let mut test_block = TestChainSpec::new(&mut rng, None, None, &[]);
         let mut block_batch = test_block.iter().take(100);
-        let mut parent_block: Block = block_batch.next().unwrap();
+        let mut parent_block: BlockV2 = block_batch.next().unwrap();
         for current_block in block_batch {
             assert_eq!(
                 current_block.height(),

@@ -15,10 +15,17 @@ use std::any::TypeId;
 use lmdb::{Database, RwTransaction, Transaction, WriteFlags};
 use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
+use tracing::warn;
 
+use crate::{
+    storage::deploy_metadata_v1::DeployMetadataV1,
+    types::{ApprovalsHashes, FinalizedApprovals},
+};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
+    execution::ExecutionResult,
     system::auction::UnbondingPurse,
+    BlockBody, BlockHeader, BlockSignatures, Deploy, DeployHash, Transfer,
 };
 
 const UNBONDING_PURSE_V2_MAGIC_BYTES: &[u8] = &[121, 17, 133, 179, 91, 63, 69, 222];
@@ -98,11 +105,17 @@ pub(super) trait TransactionExt {
 
     /// Helper function to load a value from a database using the `bytesrepr` `ToBytes`/`FromBytes`
     /// serialization.
-    fn get_value_bytesrepr<K: AsRef<[u8]>, V: FromBytes>(
+    fn get_value_bytesrepr<K: ToBytes, V: FromBytes>(
         &mut self,
         db: Database,
         key: &K,
     ) -> Result<Option<V>, LmdbExtError>;
+
+    fn value_exists_bytesrepr<K: ToBytes>(
+        &mut self,
+        db: Database,
+        key: &K,
+    ) -> Result<bool, LmdbExtError>;
 }
 
 /// Additional methods on write transactions.
@@ -126,7 +139,7 @@ pub(super) trait WriteTransactionExt {
     /// Returns `true` if the value has actually been written, `false` if the key already existed.
     ///
     /// Setting `overwrite` to true will cause the value to always be written instead.
-    fn put_value_bytesrepr<K: AsRef<[u8]>, V: ToBytes>(
+    fn put_value_bytesrepr<K: ToBytes, V: ToBytes>(
         &mut self,
         db: Database,
         key: &K,
@@ -167,15 +180,30 @@ where
     }
 
     #[inline]
-    fn get_value_bytesrepr<K: AsRef<[u8]>, V: FromBytes>(
+    fn get_value_bytesrepr<K: ToBytes, V: FromBytes>(
         &mut self,
         db: Database,
         key: &K,
     ) -> Result<Option<V>, LmdbExtError> {
-        match self.get(db, key) {
+        let serialized_key = serialize_bytesrepr(key)?;
+        match self.get(db, &serialized_key) {
             // Deserialization failures are likely due to storage corruption.
             Ok(raw) => deserialize_bytesrepr(raw).map(Some),
             Err(lmdb::Error::NotFound) => Ok(None),
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    #[inline]
+    fn value_exists_bytesrepr<K: ToBytes>(
+        &mut self,
+        db: Database,
+        key: &K,
+    ) -> Result<bool, LmdbExtError> {
+        let serialized_key = serialize_bytesrepr(key)?;
+        match self.get(db, &serialized_key) {
+            Ok(_raw) => Ok(true),
+            Err(lmdb::Error::NotFound) => Ok(false),
             Err(err) => Err(err.into()),
         }
     }
@@ -235,14 +263,15 @@ impl WriteTransactionExt for RwTransaction<'_> {
         }
     }
 
-    fn put_value_bytesrepr<K: AsRef<[u8]>, V: ToBytes>(
+    fn put_value_bytesrepr<K: ToBytes, V: ToBytes>(
         &mut self,
         db: Database,
         key: &K,
         value: &V,
         overwrite: bool,
     ) -> Result<bool, LmdbExtError> {
-        let buffer = serialize_bytesrepr(value)?;
+        let serialized_key = serialize_bytesrepr(key)?;
+        let serialized_value = serialize_bytesrepr(value)?;
 
         let flags = if overwrite {
             WriteFlags::empty()
@@ -250,7 +279,7 @@ impl WriteTransactionExt for RwTransaction<'_> {
             WriteFlags::NO_OVERWRITE
         };
 
-        match self.put(db, key, &buffer, flags) {
+        match self.put(db, &serialized_key, &serialized_value, flags) {
             Ok(()) => Ok(true),
             // If we did not add the value due to it already existing, just return `false`.
             Err(lmdb::Error::KeyExist) => Ok(false),
@@ -261,8 +290,40 @@ impl WriteTransactionExt for RwTransaction<'_> {
 
 /// Deserializes from a buffer.
 #[inline(always)]
-pub(super) fn deserialize<T: DeserializeOwned>(raw: &[u8]) -> Result<T, LmdbExtError> {
-    bincode::deserialize(raw).map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))
+pub(super) fn deserialize<T: DeserializeOwned + 'static>(raw: &[u8]) -> Result<T, LmdbExtError> {
+    match bincode::deserialize(raw) {
+        Ok(value) => Ok(value),
+        Err(err) => {
+            // unfortunately, type_name is unstable
+            let type_name = {
+                if TypeId::of::<DeployMetadataV1>() == TypeId::of::<T>() {
+                    "DeployMetadataV1".to_string()
+                } else if TypeId::of::<BlockHeader>() == TypeId::of::<T>() {
+                    "BlockHeader".to_string()
+                } else if TypeId::of::<BlockBody>() == TypeId::of::<T>() {
+                    "BlockBody".to_string()
+                } else if TypeId::of::<BlockSignatures>() == TypeId::of::<T>() {
+                    "BlockSignatures".to_string()
+                } else if TypeId::of::<DeployHash>() == TypeId::of::<T>() {
+                    "DeployHash".to_string()
+                } else if TypeId::of::<Deploy>() == TypeId::of::<T>() {
+                    "Deploy".to_string()
+                } else if TypeId::of::<ApprovalsHashes>() == TypeId::of::<T>() {
+                    "ApprovalsHashes".to_string()
+                } else if TypeId::of::<FinalizedApprovals>() == TypeId::of::<T>() {
+                    "FinalizedApprovals".to_string()
+                } else if TypeId::of::<ExecutionResult>() == TypeId::of::<T>() {
+                    "ExecutionResult".to_string()
+                } else if TypeId::of::<Vec<Transfer>>() == TypeId::of::<T>() {
+                    "Transfers".to_string()
+                } else {
+                    format!("{:?}", TypeId::of::<T>())
+                }
+            };
+            warn!(?err, ?raw, "{}: bincode deserialization failed", type_name);
+            Err(LmdbExtError::DataCorrupted(Box::new(err)))
+        }
+    }
 }
 
 /// Returns `true` if the specified bytes represent the legacy version of `UnbondingPurse`.
@@ -278,7 +339,7 @@ fn is_legacy(raw: &[u8]) -> bool {
 /// In order for the latter scenario to work, the raw bytes stream is extended with
 /// bytes that represent the `None` serialized with `bincode` - these bytes simulate
 /// the existence of the `new_validator` field added to the `UnbondingPurse` struct.
-pub(super) fn deserialize_unbonding_purse<T: DeserializeOwned>(
+pub(super) fn deserialize_unbonding_purse<T: DeserializeOwned + 'static>(
     raw: &[u8],
 ) -> Result<T, LmdbExtError> {
     const BINCODE_ENCODED_NONE: [u8; 4] = [0; 4];

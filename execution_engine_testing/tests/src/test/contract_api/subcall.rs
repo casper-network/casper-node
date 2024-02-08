@@ -5,7 +5,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    contracts::CONTRACT_INITIAL_VERSION, runtime_args, RuntimeArgs, StorageCosts, U512,
+    package::ENTITY_INITIAL_VERSION, runtime_args, RuntimeArgs, StorageCosts, U512,
 };
 
 const ARG_TARGET: &str = "target_contract";
@@ -200,14 +200,14 @@ fn expensive_subcall_should_cost_more() {
         .commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
     let expensive_calculation_contract_hash = account
         .named_keys()
         .get(EXPENSIVE_CALCULATION_KEY)
         .expect("should get expensive_calculation contract hash")
-        .into_hash()
+        .into_entity_hash()
         .expect("should get hash");
 
     // execute the contracts via subcalls
@@ -215,7 +215,7 @@ fn expensive_subcall_should_cost_more() {
     let call_do_nothing_request = ExecuteRequestBuilder::versioned_contract_call_by_name(
         *DEFAULT_ACCOUNT_ADDR,
         DO_NOTHING_PACKAGE_HASH_KEY_NAME,
-        Some(CONTRACT_INITIAL_VERSION),
+        Some(ENTITY_INITIAL_VERSION),
         ENTRY_FUNCTION_NAME,
         RuntimeArgs::new(),
     )
@@ -223,7 +223,7 @@ fn expensive_subcall_should_cost_more() {
 
     let call_expensive_calculation_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
-        expensive_calculation_contract_hash.into(),
+        expensive_calculation_contract_hash,
         "calculate",
         RuntimeArgs::default(),
     )

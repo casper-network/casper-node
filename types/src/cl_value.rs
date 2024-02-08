@@ -1,6 +1,3 @@
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use alloc::{string::String, vec::Vec};
 use core::fmt::{self, Display, Formatter};
 
@@ -84,6 +81,20 @@ impl CLValue {
             cl_type: T::cl_type(),
             bytes: bytes.into(),
         })
+    }
+
+    /// Converts `self` into its underlying type.
+    pub fn to_t<T: CLTyped + FromBytes>(&self) -> Result<T, CLValueError> {
+        let expected = T::cl_type();
+
+        if self.cl_type == expected {
+            Ok(bytesrepr::deserialize_from_slice(&self.bytes)?)
+        } else {
+            Err(CLValueError::Type(CLTypeMismatch {
+                expected,
+                found: self.cl_type.clone(),
+            }))
+        }
     }
 
     /// Consumes and converts `self` back into its underlying type.
@@ -392,31 +403,31 @@ mod tests {
             let key_account = Key::Account(AccountHash::new([1; ACCOUNT_HASH_LENGTH]));
             check_to_json(
                 key_account,
-                r#"{"cl_type":"Key","parsed":{"Account":"account-hash-0101010101010101010101010101010101010101010101010101010101010101"}}"#,
+                r#"{"cl_type":"Key","parsed":"account-hash-0101010101010101010101010101010101010101010101010101010101010101"}"#,
             );
 
             let key_hash = Key::Hash([2; KEY_HASH_LENGTH]);
             check_to_json(
                 key_hash,
-                r#"{"cl_type":"Key","parsed":{"Hash":"hash-0202020202020202020202020202020202020202020202020202020202020202"}}"#,
+                r#"{"cl_type":"Key","parsed":"hash-0202020202020202020202020202020202020202020202020202020202020202"}"#,
             );
 
             let key_uref = Key::URef(URef::new([3; UREF_ADDR_LENGTH], AccessRights::READ));
             check_to_json(
                 key_uref,
-                r#"{"cl_type":"Key","parsed":{"URef":"uref-0303030303030303030303030303030303030303030303030303030303030303-001"}}"#,
+                r#"{"cl_type":"Key","parsed":"uref-0303030303030303030303030303030303030303030303030303030303030303-001"}"#,
             );
 
             let key_transfer = Key::Transfer(TransferAddr::new([4; TRANSFER_ADDR_LENGTH]));
             check_to_json(
                 key_transfer,
-                r#"{"cl_type":"Key","parsed":{"Transfer":"transfer-0404040404040404040404040404040404040404040404040404040404040404"}}"#,
+                r#"{"cl_type":"Key","parsed":"transfer-0404040404040404040404040404040404040404040404040404040404040404"}"#,
             );
 
             let key_deploy_info = Key::DeployInfo(DeployHash::from_raw([5; Digest::LENGTH]));
             check_to_json(
                 key_deploy_info,
-                r#"{"cl_type":"Key","parsed":{"DeployInfo":"deploy-0505050505050505050505050505050505050505050505050505050505050505"}}"#,
+                r#"{"cl_type":"Key","parsed":"deploy-0505050505050505050505050505050505050505050505050505050505050505"}"#,
             );
         }
 
@@ -614,31 +625,31 @@ mod tests {
             let key_account = Key::Account(AccountHash::new([1; ACCOUNT_HASH_LENGTH]));
             check_to_json(
                 Some(key_account),
-                r#"{"cl_type":{"Option":"Key"},"parsed":{"Account":"account-hash-0101010101010101010101010101010101010101010101010101010101010101"}}"#,
+                r#"{"cl_type":{"Option":"Key"},"parsed":"account-hash-0101010101010101010101010101010101010101010101010101010101010101"}"#,
             );
 
             let key_hash = Key::Hash([2; KEY_HASH_LENGTH]);
             check_to_json(
                 Some(key_hash),
-                r#"{"cl_type":{"Option":"Key"},"parsed":{"Hash":"hash-0202020202020202020202020202020202020202020202020202020202020202"}}"#,
+                r#"{"cl_type":{"Option":"Key"},"parsed":"hash-0202020202020202020202020202020202020202020202020202020202020202"}"#,
             );
 
             let key_uref = Key::URef(URef::new([3; UREF_ADDR_LENGTH], AccessRights::READ));
             check_to_json(
                 Some(key_uref),
-                r#"{"cl_type":{"Option":"Key"},"parsed":{"URef":"uref-0303030303030303030303030303030303030303030303030303030303030303-001"}}"#,
+                r#"{"cl_type":{"Option":"Key"},"parsed":"uref-0303030303030303030303030303030303030303030303030303030303030303-001"}"#,
             );
 
             let key_transfer = Key::Transfer(TransferAddr::new([4; TRANSFER_ADDR_LENGTH]));
             check_to_json(
                 Some(key_transfer),
-                r#"{"cl_type":{"Option":"Key"},"parsed":{"Transfer":"transfer-0404040404040404040404040404040404040404040404040404040404040404"}}"#,
+                r#"{"cl_type":{"Option":"Key"},"parsed":"transfer-0404040404040404040404040404040404040404040404040404040404040404"}"#,
             );
 
             let key_deploy_info = Key::DeployInfo(DeployHash::from_raw([5; Digest::LENGTH]));
             check_to_json(
                 Some(key_deploy_info),
-                r#"{"cl_type":{"Option":"Key"},"parsed":{"DeployInfo":"deploy-0505050505050505050505050505050505050505050505050505050505050505"}}"#,
+                r#"{"cl_type":{"Option":"Key"},"parsed":"deploy-0505050505050505050505050505050505050505050505050505050505050505"}"#,
             );
 
             check_to_json(
@@ -1086,19 +1097,19 @@ mod tests {
             let key = Key::Hash([2; KEY_HASH_LENGTH]);
             check_to_json(
                 Result::<Key, i32>::Ok(key),
-                r#"{"cl_type":{"Result":{"ok":"Key","err":"I32"}},"parsed":{"Ok":{"Hash":"hash-0202020202020202020202020202020202020202020202020202020202020202"}}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Key","err":"I32"}},"parsed":{"Ok":"hash-0202020202020202020202020202020202020202020202020202020202020202"}}"#,
             );
             check_to_json(
                 Result::<Key, u32>::Ok(key),
-                r#"{"cl_type":{"Result":{"ok":"Key","err":"U32"}},"parsed":{"Ok":{"Hash":"hash-0202020202020202020202020202020202020202020202020202020202020202"}}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Key","err":"U32"}},"parsed":{"Ok":"hash-0202020202020202020202020202020202020202020202020202020202020202"}}"#,
             );
             check_to_json(
                 Result::<Key, ()>::Ok(key),
-                r#"{"cl_type":{"Result":{"ok":"Key","err":"Unit"}},"parsed":{"Ok":{"Hash":"hash-0202020202020202020202020202020202020202020202020202020202020202"}}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Key","err":"Unit"}},"parsed":{"Ok":"hash-0202020202020202020202020202020202020202020202020202020202020202"}}"#,
             );
             check_to_json(
                 Result::<Key, String>::Ok(key),
-                r#"{"cl_type":{"Result":{"ok":"Key","err":"String"}},"parsed":{"Ok":{"Hash":"hash-0202020202020202020202020202020202020202020202020202020202020202"}}}"#,
+                r#"{"cl_type":{"Result":{"ok":"Key","err":"String"}},"parsed":{"Ok":"hash-0202020202020202020202020202020202020202020202020202020202020202"}}"#,
             );
             check_to_json(
                 Result::<Key, i32>::Err(-1),

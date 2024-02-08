@@ -23,7 +23,7 @@ use std::{
 
 use anyhow::Error;
 use datasize::DataSize;
-use futures::FutureExt;
+use futures::{Future, FutureExt};
 use itertools::Itertools;
 use prometheus::Registry;
 use rand::Rng;
@@ -31,8 +31,8 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
-    AsymmetricType, BlockHash, BlockHeader, Chainspec, ConsensusProtocolName, Deploy, DeployHash,
-    Digest, DisplayIter, EraId, EraReport, PublicKey, SecretKey, TimeDiff, Timestamp,
+    AsymmetricType, BlockHash, BlockHeader, Chainspec, ConsensusProtocolName, Digest, DisplayIter,
+    EraId, PublicKey, RewardedSignatures, TimeDiff, Timestamp, Transaction, TransactionHash,
 };
 
 use crate::{
@@ -55,15 +55,20 @@ use crate::{
         requests::{BlockValidationRequest, ContractRuntimeRequest, StorageRequest},
         AutoClosingResponder, EffectBuilder, EffectExt, Effects, Responder,
     },
+    failpoints::Failpoint,
     fatal, protocol,
-    types::{DeployOrTransferHash, FinalizedApprovals, FinalizedBlock, MetaBlockState, NodeId},
+    types::{
+        create_single_block_rewarded_signatures, BlockWithMetadata, ExecutableBlock,
+        FinalizedApprovals, FinalizedBlock, InternalEraReport, MetaBlockState, NodeId,
+        TypedTransactionHash, ValidatorMatrix,
+    },
     NodeRng,
 };
 
 pub use self::era::Era;
-use crate::components::consensus::error::CreateNewEraError;
+use crate::{components::consensus::error::CreateNewEraError, types::TransactionHashWithApprovals};
 
-use super::traits::ConsensusNetworkMessage;
+use super::{traits::ConsensusNetworkMessage, BlockContext};
 
 /// The delay in milliseconds before we shutdown after the number of faulty validators exceeded the
 /// fault tolerance threshold.
@@ -94,8 +99,7 @@ pub struct EraSupervisor {
     /// Since eras at or before the most recent activation point are never instantiated, shortly
     /// after that there can temporarily be fewer than three entries in the map.
     open_eras: BTreeMap<EraId, Era>,
-    secret_signing_key: Arc<SecretKey>,
-    public_signing_key: PublicKey,
+    validator_matrix: ValidatorMatrix,
     chainspec: Arc<Chainspec>,
     config: Config,
     /// The height of the next block to be finalized.
@@ -112,6 +116,9 @@ pub struct EraSupervisor {
     /// The path to the folder where unit files will be stored.
     unit_files_folder: PathBuf,
     last_progress: Timestamp,
+
+    /// Failpoints
+    pub(super) message_delay_failpoint: Failpoint<u64>,
 }
 
 impl Debug for EraSupervisor {
@@ -126,21 +133,19 @@ impl EraSupervisor {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         storage_dir: &Path,
-        secret_signing_key: Arc<SecretKey>,
-        public_signing_key: PublicKey,
+        validator_matrix: ValidatorMatrix,
         config: Config,
         chainspec: Arc<Chainspec>,
         registry: &Registry,
     ) -> Result<Self, Error> {
         let unit_files_folder = storage_dir.join("unit_files");
         std::fs::create_dir_all(&unit_files_folder)?;
-        info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
+        info!(our_id = %validator_matrix.public_signing_key(), "EraSupervisor pubkey",);
         let metrics = Metrics::new(registry)?;
 
         let era_supervisor = Self {
             open_eras: Default::default(),
-            secret_signing_key,
-            public_signing_key,
+            validator_matrix,
             chainspec,
             config,
             next_block_height: 0,
@@ -148,6 +153,7 @@ impl EraSupervisor {
             unit_files_folder,
             next_executed_height: 0,
             last_progress: Timestamp::now(),
+            message_delay_failpoint: Failpoint::new("consensus.message_delay"),
         };
 
         Ok(era_supervisor)
@@ -158,7 +164,7 @@ impl EraSupervisor {
         if let Some(era_id) = self.current_era() {
             return self.open_eras[&era_id]
                 .validators()
-                .contains_key(&self.public_signing_key);
+                .contains_key(self.validator_matrix.public_signing_key());
         }
         false
     }
@@ -370,13 +376,16 @@ impl EraSupervisor {
         if self.era(era_id).consensus.is_active() {
             return Effects::new();
         }
-        let our_id = self.public_signing_key.clone();
+        let our_id = self.validator_matrix.public_signing_key().clone();
         let outcomes = if !self.era(era_id).validators().contains_key(&our_id) {
             info!(era = era_id.value(), %our_id, "not voting; not a validator");
             vec![]
         } else {
             info!(era = era_id.value(), %our_id, "start voting");
-            let secret = Keypair::new(self.secret_signing_key.clone(), our_id.clone());
+            let secret = Keypair::new(
+                self.validator_matrix.secret_signing_key().clone(),
+                our_id.clone(),
+            );
             let instance_id = self.era(era_id).consensus.instance_id();
             let unit_hash_file = self.unit_file(instance_id);
             self.era_mut(era_id).consensus.activate_validator(
@@ -410,7 +419,7 @@ impl EraSupervisor {
             return Ok((era_id, vec![]));
         }
 
-        let era_end = key_block.era_end().ok_or_else(|| {
+        let era_end = key_block.clone_era_end().ok_or_else(|| {
             CreateNewEraError::LastBlockHeaderNotASwitchBlock {
                 era_id,
                 last_block_header: Box::new(key_block.clone()),
@@ -435,7 +444,6 @@ impl EraSupervisor {
             }
         }
 
-        let report = era_end.era_report();
         let validators = era_end.next_era_validator_weights();
 
         if let Some(current_era) = self.current_era() {
@@ -466,14 +474,15 @@ impl EraSupervisor {
 
         // Validators that were inactive in the previous era will be excluded from leader selection
         // in the new era.
-        let inactive = report.inactive_validators().iter().cloned().collect();
+        let inactive = era_end.inactive_validators().iter().cloned().collect();
 
         // Validators that were only exposed as faulty after the booking block are still in the new
         // era's validator set but get banned.
         let blocks_after_booking_block = switch_blocks.iter().rev().take(auction_delay);
         let faulty = blocks_after_booking_block
-            .filter_map(|switch_block| switch_block.era_end())
-            .flat_map(|era_end| era_end.era_report().equivocators().iter().cloned())
+            .filter_map(|switch_block| switch_block.maybe_equivocators())
+            .flat_map(|equivocators| equivocators.iter())
+            .cloned()
             .collect();
 
         info!(
@@ -499,7 +508,7 @@ impl EraSupervisor {
             .collect();
 
         // Create and insert the new era instance.
-        let (consensus, outcomes) = match self.chainspec.core_config.consensus_protocol {
+        let (consensus, mut outcomes) = match self.chainspec.core_config.consensus_protocol {
             ConsensusProtocolName::Highway => HighwayProtocol::new_boxed(
                 instance_id,
                 validators.clone(),
@@ -539,6 +548,7 @@ impl EraSupervisor {
 
         // Activate the era if this node was already running when the era began, it is still
         // ongoing based on its minimum duration, and we are one of the validators.
+        let our_id = self.validator_matrix.public_signing_key().clone();
         if self
             .current_era()
             .map_or(false, |current_era| current_era > era_id)
@@ -553,6 +563,28 @@ impl EraSupervisor {
             if let Some(era) = self.open_eras.get_mut(&era_id) {
                 era.consensus.set_evidence_only();
             }
+        } else {
+            self.metrics
+                .consensus_current_era
+                .set(era_id.value() as i64);
+            self.next_block_height = self.next_block_height.max(start_height);
+            outcomes.extend(self.era_mut(era_id).consensus.handle_is_current(now));
+            if !self.era(era_id).validators().contains_key(&our_id) {
+                info!(era = era_id.value(), %our_id, "not voting; not a validator");
+            } else {
+                info!(era = era_id.value(), %our_id, "start voting");
+                let secret = Keypair::new(
+                    self.validator_matrix.secret_signing_key().clone(),
+                    our_id.clone(),
+                );
+                let unit_hash_file = self.unit_file(&instance_id);
+                outcomes.extend(self.era_mut(era_id).consensus.activate_validator(
+                    our_id,
+                    secret,
+                    now,
+                    Some(unit_hash_file),
+                ))
+            };
         }
 
         // Mark validators as faulty for which we have evidence in the previous era.
@@ -607,7 +639,7 @@ impl EraSupervisor {
         self.unit_files_folder.join(format!(
             "unit_{:?}_{}.dat",
             instance_id,
-            self.public_signing_key.to_hex()
+            self.validator_matrix.public_signing_key().to_hex()
         ))
     }
 
@@ -973,9 +1005,18 @@ impl EraSupervisor {
             }
             ProtocolOutcome::CreatedGossipMessage(payload) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
-                effect_builder
-                    .broadcast_message_to_validators(message.into(), era_id)
-                    .ignore()
+                let delay_by = self.message_delay_failpoint.fire(rng).cloned();
+                async move {
+                    if let Some(delay) = delay_by {
+                        effect_builder
+                            .set_timeout(Duration::from_millis(delay))
+                            .await;
+                    }
+                    effect_builder
+                        .broadcast_message_to_validators(message.into(), era_id)
+                        .await
+                }
+                .ignore()
             }
             ProtocolOutcome::CreatedTargetedMessage(payload, to) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
@@ -1017,6 +1058,22 @@ impl EraSupervisor {
                 .immediately()
                 .event(move |()| Event::Action { era_id, action_id }),
             ProtocolOutcome::CreateNewBlock(block_context) => {
+                let signature_rewards_max_delay =
+                    self.chainspec.core_config.signature_rewards_max_delay;
+                let current_block_height = self.proposed_block_height(&block_context, era_id);
+                let minimum_block_height =
+                    current_block_height.saturating_sub(signature_rewards_max_delay);
+
+                let awaitable_appendable_block =
+                    effect_builder.request_appendable_block(block_context.timestamp());
+                let awaitable_blocks_with_metadata = async move {
+                    effect_builder
+                        .collect_past_blocks_with_metadata(
+                            minimum_block_height..current_block_height,
+                            false,
+                        )
+                        .await
+                };
                 let accusations = self
                     .iter_past(era_id, PAST_EVIDENCE_ERAS)
                     .flat_map(|e_id| self.era(e_id).consensus.validators_with_evidence())
@@ -1025,18 +1082,31 @@ impl EraSupervisor {
                     .cloned()
                     .collect();
                 let random_bit = rng.gen();
-                effect_builder
-                    .request_appendable_block(block_context.timestamp())
-                    .map(move |appendable_block| {
-                        Arc::new(appendable_block.into_block_payload(accusations, random_bit))
-                    })
-                    .event(move |block_payload| {
+
+                let validator_matrix = self.validator_matrix.clone();
+
+                join_2(awaitable_appendable_block, awaitable_blocks_with_metadata).event(
+                    move |(appendable_block, maybe_past_blocks_with_metadata)| {
+                        let rewarded_signatures = create_rewarded_signatures(
+                            &maybe_past_blocks_with_metadata,
+                            validator_matrix,
+                            &block_context,
+                            signature_rewards_max_delay,
+                        );
+
+                        let block_payload = Arc::new(appendable_block.into_block_payload(
+                            accusations,
+                            rewarded_signatures,
+                            random_bit,
+                        ));
+
                         Event::NewBlockPayload(NewBlockPayload {
                             era_id,
                             block_payload,
                             block_context,
                         })
-                    })
+                    },
+                )
             }
             ProtocolOutcome::FinalizedBlock(CpFinalizedBlock {
                 value,
@@ -1055,25 +1125,33 @@ impl EraSupervisor {
                 era.add_accusations(value.accusations());
                 // If this is the era's last block, it contains rewards. Everyone who is accused in
                 // the block or seen as equivocating via the consensus protocol gets faulty.
+
+                // TODO - add support for the `compute_rewards` chainspec parameter coming from
+                // private chain implementation in the 2.0 rewards scheme.
+                let _compute_rewards = self.chainspec.core_config.compute_rewards;
                 let report = terminal_block_data.map(|tbd| {
-                    EraReport::new(era.accusations(), BTreeMap::new(), tbd.inactive_validators)
+                    // If block rewards are disabled, zero them.
+                    // if !compute_rewards {
+                    //     for reward in tbd.rewards.values_mut() {
+                    //         *reward = 0;
+                    //     }
+                    // }
+
+                    InternalEraReport {
+                        equivocators: era.accusations(),
+                        inactive_validators: tbd.inactive_validators,
+                    }
                 });
                 let proposed_block = Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone());
                 let finalized_approvals: HashMap<_, _> = proposed_block
-                    .deploys()
-                    .iter()
-                    .chain(proposed_block.transfers().iter())
-                    .map(|dwa| {
-                        (
-                            *dwa.deploy_hash(),
-                            FinalizedApprovals::new(dwa.approvals().clone()),
-                        )
-                    })
+                    .all_transactions()
+                    .cloned()
+                    .map(TransactionHashWithApprovals::into_hash_and_finalized_approvals)
                     .collect();
                 if let Some(era_report) = report.as_ref() {
                     info!(
-                        inactive = %DisplayIter::new(era_report.inactive_validators()),
-                        faulty = %DisplayIter::new(era_report.equivocators()),
+                        inactive = %DisplayIter::new(&era_report.inactive_validators),
+                        faulty = %DisplayIter::new(&era_report.equivocators),
                         era_id = era_id.value(),
                         "era end: inactive and faulty validators"
                     );
@@ -1144,11 +1222,14 @@ impl EraSupervisor {
                     let msg = ConsensusMessage::EvidenceRequest { era_id, pub_key };
                     effects.extend(effect_builder.send_message(sender, msg.into()).ignore());
                 }
+                let proposed_block_height =
+                    self.proposed_block_height(proposed_block.context(), era_id);
                 effects.extend(
                     async move {
-                        check_deploys_for_replay_in_previous_eras_and_validate_block(
+                        check_txns_for_replay_in_previous_eras_and_validate_block(
                             effect_builder,
                             era_id,
+                            proposed_block_height,
                             sender,
                             proposed_block,
                         )
@@ -1206,7 +1287,7 @@ impl EraSupervisor {
         &self,
         responder: Responder<Option<(PublicKey, Option<TimeDiff>)>>,
     ) -> Effects<Event> {
-        let public_key = self.public_signing_key.clone();
+        let public_key = self.validator_matrix.public_signing_key().clone();
         let round_length = self
             .open_eras
             .values()
@@ -1222,7 +1303,12 @@ impl EraSupervisor {
 
     /// This node's public signing key.
     pub(crate) fn public_key(&self) -> &PublicKey {
-        &self.public_signing_key
+        self.validator_matrix.public_signing_key()
+    }
+
+    fn proposed_block_height(&self, block_context: &BlockContext<ClContext>, era_id: EraId) -> u64 {
+        let initial_era_height = self.era(era_id).start_height;
+        initial_era_height.saturating_add(block_context.ancestor_values().len() as u64)
     }
 }
 
@@ -1287,56 +1373,56 @@ impl SerializedMessage {
     }
 }
 
-async fn get_deploys<REv>(
+async fn get_transactions<REv>(
     effect_builder: EffectBuilder<REv>,
-    hashes: Vec<DeployHash>,
-) -> Option<Vec<Deploy>>
+    hashes: Vec<TransactionHash>,
+) -> Option<Vec<Transaction>>
 where
     REv: From<StorageRequest>,
 {
     effect_builder
-        .get_deploys_from_storage(hashes)
+        .get_transactions_from_storage(hashes)
         .await
         .into_iter()
-        .map(|maybe_deploy| maybe_deploy.map(|deploy| deploy.into_naive()))
+        .map(|maybe_transaction| maybe_transaction.map(|transaction| transaction.into_naive()))
         .collect()
 }
 
 async fn execute_finalized_block<REv>(
     effect_builder: EffectBuilder<REv>,
-    finalized_approvals: HashMap<DeployHash, FinalizedApprovals>,
+    finalized_approvals: HashMap<TransactionHash, FinalizedApprovals>,
     finalized_block: FinalizedBlock,
 ) where
     REv: From<StorageRequest> + From<FatalAnnouncement> + From<ContractRuntimeRequest>,
 {
-    for (deploy_hash, finalized_approvals) in finalized_approvals {
+    for (txn_hash, finalized_approvals) in finalized_approvals {
         effect_builder
-            .store_finalized_approvals(deploy_hash, finalized_approvals)
+            .store_finalized_approvals(txn_hash, finalized_approvals)
             .await;
     }
-    // Get all deploys in order they appear in the finalized block.
-    let deploys = match get_deploys(
+    // Get all transactions in order they appear in the finalized block.
+    let transactions = match get_transactions(
         effect_builder,
-        finalized_block
-            .deploy_and_transfer_hashes()
-            .cloned()
-            .collect_vec(),
+        finalized_block.all_transactions().copied().collect(),
     )
     .await
     {
-        Some(deploys) => deploys,
+        Some(transactions) => transactions,
         None => {
             fatal!(
                 effect_builder,
-                "Could not fetch deploys and transfers for finalized block: {:?}",
+                "Could not fetch transactions for finalized block: {:?}",
                 finalized_block
             )
             .await;
             return;
         }
     };
+
+    let executable_block =
+        ExecutableBlock::from_finalized_block_and_transactions(finalized_block, transactions);
     effect_builder
-        .enqueue_block_for_execution(finalized_block, deploys, MetaBlockState::new())
+        .enqueue_block_for_execution(executable_block, MetaBlockState::new())
         .await
 }
 
@@ -1348,35 +1434,38 @@ fn instance_id(chainspec_hash: Digest, era_id: EraId, key_block_hash: BlockHash)
     )
 }
 
-/// Checks that a [BlockPayload] does not have deploys we have already included in blocks in
-/// previous eras. This is done by repeatedly querying storage for deploy metadata. When metadata is
-/// found storage is queried again to get the era id for the included deploy. That era id must *not*
-/// be less than the current era, otherwise the deploy is a replay attack.
-async fn check_deploys_for_replay_in_previous_eras_and_validate_block<REv>(
+/// Checks that a `BlockPayload` does not have transactions we have already included in blocks in
+/// previous eras. This is done by repeatedly querying storage for transaction metadata. When
+/// metadata is found storage is queried again to get the era id for the included transaction. That
+/// era id must *not* be less than the current era, otherwise the transaction is a replay attack.
+async fn check_txns_for_replay_in_previous_eras_and_validate_block<REv>(
     effect_builder: EffectBuilder<REv>,
     proposed_block_era_id: EraId,
+    proposed_block_height: u64,
     sender: NodeId,
     proposed_block: ProposedBlock<ClContext>,
 ) -> Event
 where
     REv: From<BlockValidationRequest> + From<StorageRequest>,
 {
-    for deploy_hash in proposed_block.value().deploys_and_transfers_iter() {
-        let block_header = match effect_builder
-            .get_block_header_for_deploy_from_storage(deploy_hash.into())
-            .await
-        {
-            None => continue,
-            Some(header) => header,
-        };
-        // We have found the deploy in the database. If it was from a previous era, it was a
-        // replay attack.
+    let txns_era_ids = effect_builder
+        .get_transactions_era_ids(
+            proposed_block
+                .value()
+                .all_transactions()
+                .map(|thwa| thwa.transaction_hash())
+                .collect(),
+        )
+        .await;
+
+    for txn_era_id in txns_era_ids {
+        // If the stored transaction was executed in a previous era, it is a replay attack.
         //
-        // If not, then it might be this is a deploy for a block we are currently
+        // If not, then it might be this is a transaction for a block on which we are currently
         // coming to consensus, and we will rely on the immediate ancestors of the
         // block_payload within the current era to determine if we are facing a replay
         // attack.
-        if block_header.era_id() < proposed_block_era_id {
+        if txn_era_id < proposed_block_era_id {
             return Event::ResolveValidity(ResolveValidity {
                 era_id: proposed_block_era_id,
                 sender,
@@ -1388,7 +1477,11 @@ where
 
     let sender_for_validate_block: NodeId = sender;
     let valid = effect_builder
-        .validate_block(sender_for_validate_block, proposed_block.clone())
+        .validate_block(
+            sender_for_validate_block,
+            proposed_block_height,
+            proposed_block.clone(),
+        )
         .await;
 
     Event::ResolveValidity(ResolveValidity {
@@ -1400,16 +1493,82 @@ where
 }
 
 impl ProposedBlock<ClContext> {
-    /// If this block contains a deploy that's also present in an ancestor, this returns the deploy
-    /// hash, otherwise `None`.
-    fn contains_replay(&self) -> Option<DeployHash> {
-        let block_deploys_set: BTreeSet<DeployOrTransferHash> =
-            self.value().deploys_and_transfers_iter().collect();
+    /// If this block contains a transaction that's also present in an ancestor, this returns the
+    /// transaction hash, otherwise `None`.
+    fn contains_replay(&self) -> Option<TransactionHash> {
+        let block_txns_set: BTreeSet<TypedTransactionHash> =
+            self.value().typed_transaction_hashes().collect();
         self.context()
             .ancestor_values()
             .iter()
-            .flat_map(|ancestor| ancestor.deploys_and_transfers_iter())
-            .find(|deploy| block_deploys_set.contains(deploy))
-            .map(DeployOrTransferHash::into)
+            .flat_map(|ancestor| ancestor.typed_transaction_hashes())
+            .find(|typed_txn_hash| block_txns_set.contains(typed_txn_hash))
+            .map(TransactionHash::from)
     }
+}
+
+/// When `async move { join!(…) }` is used inline, it prevents rustfmt
+/// to run on the chained `event` block.
+async fn join_2<T: Future, U: Future>(
+    t: T,
+    u: U,
+) -> (<T as Future>::Output, <U as Future>::Output) {
+    futures::join!(t, u)
+}
+
+fn create_rewarded_signatures(
+    maybe_past_blocks_with_metadata: &[Option<BlockWithMetadata>],
+    validator_matrix: ValidatorMatrix,
+    block_context: &BlockContext<ClContext>,
+    signature_rewards_max_delay: u64,
+) -> RewardedSignatures {
+    let num_ancestor_values = block_context.ancestor_values().len();
+    let mut rewarded_signatures =
+        RewardedSignatures::new(maybe_past_blocks_with_metadata.iter().rev().map(
+            |maybe_past_block_with_metadata| {
+                maybe_past_block_with_metadata
+                    .as_ref()
+                    .and_then(|past_block_with_metadata| {
+                        create_single_block_rewarded_signatures(
+                            &validator_matrix,
+                            past_block_with_metadata,
+                        )
+                    })
+                    .unwrap_or_default()
+            },
+        ));
+
+    // exclude the signatures that were already included in ancestor blocks
+    for (past_index, ancestor_rewarded_signatures) in block_context
+        .ancestor_values()
+        .iter()
+        .map(|value| value.rewarded_signatures().clone())
+        // the above will only cover the signatures from the same era - chain
+        // with signatures from the blocks read from storage
+        .chain(
+            maybe_past_blocks_with_metadata
+                .iter()
+                .rev()
+                // skip the blocks corresponding to heights covered by
+                // ancestor_values
+                .skip(num_ancestor_values)
+                .map(|maybe_past_block| {
+                    maybe_past_block.as_ref().map_or_else(
+                        // if we're missing a block, this could cause us to include duplicate
+                        // signatures and make our proposal invalid - but this is covered by the
+                        // requirement for a validator to have blocks spanning the max deploy TTL
+                        // in the past
+                        Default::default,
+                        |past_block| past_block.block.rewarded_signatures().clone(),
+                    )
+                }),
+        )
+        .enumerate()
+        .take(signature_rewards_max_delay as usize)
+    {
+        rewarded_signatures = rewarded_signatures
+            .difference(&ancestor_rewarded_signatures.left_padded(past_index.saturating_add(1)));
+    }
+
+    rewarded_signatures
 }

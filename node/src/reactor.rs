@@ -62,7 +62,9 @@ use tracing_futures::Instrument;
 
 #[cfg(test)]
 use casper_types::testing::TestRng;
-use casper_types::{Block, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature};
+use casper_types::{
+    Block, BlockHeader, Chainspec, ChainspecRawBytes, FinalitySignature, Transaction,
+};
 
 #[cfg(target_os = "linux")]
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
@@ -71,15 +73,17 @@ use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 use crate::testing::{network::NetworkedReactor, ConditionCheckReactor};
 use crate::{
     components::{
-        block_accumulator, deploy_acceptor,
+        block_accumulator,
         fetcher::{self, FetchItem},
         network::{blocklist::BlocklistJustification, Identity as NetworkIdentity},
+        transaction_acceptor,
     },
     effect::{
         announcements::{ControlAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat},
         incoming::NetResponse,
         Effect, EffectBuilder, EffectExt, Effects,
     },
+    failpoints::FailpointActivation,
     types::{
         ApprovalsHashes, BlockExecutionResultsOrChunk, ExitCode, LegacyDeploy, NodeId, SyncLeap,
         TrieOrChunk,
@@ -297,6 +301,12 @@ pub(crate) trait Reactor: Sized {
 
     /// Instructs the reactor to update performance metrics, if any.
     fn update_metrics(&mut self, _event_queue_handle: EventQueueHandle<Self::Event>) {}
+
+    /// Activate/deactivate a failpoint.
+    fn activate_failpoint(&mut self, _activation: &FailpointActivation) {
+        // Default is to ignore the failpoint. If failpoint support is enabled for a reactor, route
+        // the activation to the respective components here.
+    }
 }
 
 /// A reactor event type.
@@ -497,7 +507,13 @@ where
             );
         }
 
-        let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
+        let event_queue_dump_threshold =
+            env::var("CL_EVENT_QUEUE_DUMP_THRESHOLD").map_or(None, |s| s.parse::<usize>().ok());
+
+        let scheduler = utils::leak(Scheduler::new(
+            QueueKind::weights(),
+            event_queue_dump_threshold,
+        ));
         let is_shutting_down = SharedFlag::new();
         let event_queue = EventQueueHandle::new(scheduler, is_shutting_down);
         let (reactor, initial_effects) = R::new(
@@ -655,6 +671,12 @@ where
 
                     // Do nothing on queue dump otherwise.
                     (Default::default(), None, QueueKind::Control)
+                }
+                Some(ControlAnnouncement::ActivateFailpoint { activation }) => {
+                    self.reactor.activate_failpoint(&activation);
+
+                    // No other effects, calling the method is all we had to do.
+                    (Effects::new(), None, QueueKind::Control)
                 }
             }
         } else {
@@ -988,13 +1010,13 @@ fn handle_get_response<R>(
 ) -> Effects<<R as Reactor>::Event>
 where
     R: Reactor,
-    <R as Reactor>::Event: From<deploy_acceptor::Event>
+    <R as Reactor>::Event: From<transaction_acceptor::Event>
         + From<fetcher::Event<FinalitySignature>>
         + From<fetcher::Event<Block>>
         + From<fetcher::Event<BlockHeader>>
         + From<fetcher::Event<BlockExecutionResultsOrChunk>>
         + From<fetcher::Event<LegacyDeploy>>
-        + From<fetcher::Event<Deploy>>
+        + From<fetcher::Event<Transaction>>
         + From<fetcher::Event<SyncLeap>>
         + From<fetcher::Event<TrieOrChunk>>
         + From<fetcher::Event<ApprovalsHashes>>
@@ -1002,7 +1024,7 @@ where
         + From<PeerBehaviorAnnouncement>,
 {
     match *message {
-        NetResponse::Deploy(ref serialized_item) => handle_fetch_response::<R, Deploy>(
+        NetResponse::Transaction(ref serialized_item) => handle_fetch_response::<R, Transaction>(
             reactor,
             effect_builder,
             rng,

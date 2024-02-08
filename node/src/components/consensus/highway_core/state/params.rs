@@ -1,12 +1,14 @@
 use datasize::DataSize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::{TimeDiff, Timestamp};
 
 /// Protocol parameters for Highway.
-#[derive(Debug, DataSize, Clone, Serialize)]
-pub(crate) struct Params {
+#[derive(Debug, DataSize, Clone, Serialize, Deserialize)]
+pub struct Params {
     seed: u64,
+    block_reward: u64,
+    reduced_block_reward: u64,
     min_round_len: TimeDiff,
     max_round_len: TimeDiff,
     init_round_len: TimeDiff,
@@ -36,6 +38,8 @@ impl Params {
     #[allow(clippy::too_many_arguments)] // FIXME
     pub(crate) fn new(
         seed: u64,
+        block_reward: u64,
+        reduced_block_reward: u64,
         min_round_len: TimeDiff,
         max_round_len: TimeDiff,
         init_round_len: TimeDiff,
@@ -44,9 +48,15 @@ impl Params {
         end_timestamp: Timestamp,
         endorsement_evidence_limit: u64,
     ) -> Params {
+        assert!(
+            reduced_block_reward <= block_reward,
+            "reduced block reward must not be greater than the reward for a finalized block"
+        );
         assert_ne!(min_round_len.millis(), 0); // Highway::new_boxed uses at least 1ms.
         Params {
             seed,
+            block_reward,
+            reduced_block_reward,
             min_round_len,
             max_round_len,
             init_round_len,
@@ -58,44 +68,44 @@ impl Params {
     }
 
     /// Returns the random seed.
-    pub(crate) fn seed(&self) -> u64 {
+    pub fn seed(&self) -> u64 {
         self.seed
     }
 
     /// Returns the minimum round length. This is always greater than 0.
-    pub(crate) fn min_round_length(&self) -> TimeDiff {
+    pub fn min_round_length(&self) -> TimeDiff {
         self.min_round_len
     }
 
     /// Returns the maximum round length.
-    pub(crate) fn max_round_length(&self) -> TimeDiff {
+    pub fn max_round_length(&self) -> TimeDiff {
         self.max_round_len
     }
 
     /// Returns the initial round length.
-    pub(crate) fn init_round_len(&self) -> TimeDiff {
+    pub fn init_round_len(&self) -> TimeDiff {
         self.init_round_len
     }
 
     /// Returns the minimum height of the last block.
-    pub(crate) fn end_height(&self) -> u64 {
+    pub fn end_height(&self) -> u64 {
         self.end_height
     }
 
     /// Returns the start timestamp of the era.
-    pub(crate) fn start_timestamp(&self) -> Timestamp {
+    pub fn start_timestamp(&self) -> Timestamp {
         self.start_timestamp
     }
 
     /// Returns the minimum timestamp of the last block.
-    pub(crate) fn end_timestamp(&self) -> Timestamp {
+    pub fn end_timestamp(&self) -> Timestamp {
         self.end_timestamp
     }
 
     /// Returns the maximum number of additional units included in evidence for conflicting
     /// endorsements. If you endorse two conflicting forks at sequence numbers that differ by more
     /// than this, you get away with it and are not marked faulty.
-    pub(crate) fn endorsement_evidence_limit(&self) -> u64 {
+    pub fn endorsement_evidence_limit(&self) -> u64 {
         self.endorsement_evidence_limit
     }
 }

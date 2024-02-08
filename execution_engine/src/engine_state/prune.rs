@@ -1,5 +1,5 @@
 //! Support for pruning leaf nodes from the merkle trie.
-use casper_types::{Digest, Key};
+use casper_types::{execution::Effects, Digest, Key};
 
 /// The result of performing a prune.
 #[derive(Debug, Clone)]
@@ -12,6 +12,8 @@ pub enum PruneResult {
     Success {
         /// State root hash.
         post_state_hash: Digest,
+        /// Effects of executing a step request.
+        effects: Effects,
     },
 }
 

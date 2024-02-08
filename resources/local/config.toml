@@ -6,27 +6,35 @@
 # If set, use this hash as a trust anchor when joining an existing network.
 #trusted_hash = 'HEX-FORMATTED BLOCK HASH'
 
-# Whether to synchronize all data back to genesis, or just [deploys.max_ttl] (chainspec setting) worth of data.
-sync_to_genesis = true
+# Historical sync behavior for this node. Options are:
+#  'genesis'  (node will attempt to acquire all block data back to genesis)
+#  'ttl'      (node will attempt to acquire all block data to comply with time to live enforcement)
+#  'nosync'   (node will only acquire blocks moving forward)
+# note: ttl is a chainsepc configured behavior on a given network; consult the `max_ttl` chainspec setting
+#       (it is currently ~18 hours by default on production and production-like networks but subject to change).
+# note: `nosync` is incompatible with validator behavior; a nosync node is prevented from participating
+#        in consensus / switching to validate mode. it is primarily for lightweight nodes that are
+#        only interested in recent activity.
+sync_handling = 'genesis'
 
 # Idle time after which the syncing process is considered stalled.
-idle_tolerance = '20min'
+idle_tolerance = '20 minutes'
 
 # When the syncing process is considered stalled, it'll be retried up to `max_attempts` times.
 max_attempts = 3
 
 # Default delay for the control events that have no dedicated delay requirements.
-control_logic_default_delay = '1sec'
+control_logic_default_delay = '1 second'
 
 # Flag which forces the node to resync all of the blocks.
 force_resync = false
 
 # A timeout for the ShutdownForUpgrade state, after which the node will upgrade even if not all
 # conditions are satisfied.
-shutdown_for_upgrade_timeout = '2min'
+shutdown_for_upgrade_timeout = '2 minutes'
 
 # Maximum time a node will wait for an upgrade to commit.
-upgrade_timeout = '30sec'
+upgrade_timeout = '30 seconds'
 
 
 # =================================
@@ -64,16 +72,16 @@ max_execution_delay = 3
 [consensus.zug]
 
 # Request the latest protocol state from a random peer periodically, with this interval.
-# '0sec' means it is disabled and we never request the protocol state from a peer.
-sync_state_interval = '50ms'
+# '0 seconds' means it is disabled and we never request the protocol state from a peer.
+sync_state_interval = '50 ms'
 
 # Log inactive or faulty validators periodically, with this interval.
-# '0sec' means it is disabled and we never print the log message.
-log_participation_interval = '1min'
+# '0 seconds' means it is disabled and we never print the log message.
+log_participation_interval = '1 minute'
 
 # The minimal proposal timeout. Validators wait this long for a proposal to receive a quorum of
 # echo messages, before they vote to make the round skippable and move on to the next proposer.
-proposal_timeout = '10sec'
+proposal_timeout = '10 seconds'
 
 # The additional proposal delay that is still considered fast enough, in percent. This should
 # take into account variables like empty vs. full blocks, network traffic etc.
@@ -88,7 +96,7 @@ proposal_timeout_inertia = 10
 
 # The maximum difference between validators' clocks we expect. Incoming proposals whose timestamp
 # lies in the future by more than that are rejected.
-clock_tolerance = '1sec'
+clock_tolerance = '1 second'
 
 
 # ===========================================
@@ -97,19 +105,19 @@ clock_tolerance = '1sec'
 [consensus.highway]
 
 # The duration for which incoming vertices with missing dependencies should be kept in a queue.
-pending_vertex_timeout = '1min'
+pending_vertex_timeout = '1 minute'
 
 # Request the latest protocol state from a random peer periodically, with this interval.
-# '0sec' means it is disabled and we never request the protocol state from a peer.
-request_state_interval = '20sec'
+# '0 seconds' means it is disabled and we never request the protocol state from a peer.
+request_state_interval = '20 seconds'
 
 # Log inactive or faulty validators periodically, with this interval.
-# '0sec' means it is disabled and we never print the log message.
-log_participation_interval = '15sec'
+# '0 seconds' means it is disabled and we never print the log message.
+log_participation_interval = '15 seconds'
 
 # Log the synchronizer state periodically, with this interval.
-# '0sec' means it is disabled and we never print the log message.
-log_synchronizer_interval = '5sec'
+# '0 seconds' means it is disabled and we never print the log message.
+log_synchronizer_interval = '5 seconds'
 
 # Log the size of every incoming and outgoing serialized unit.
 log_unit_sizes = false
@@ -174,19 +182,19 @@ known_addresses = ['127.0.0.1:34553']
 min_peers_for_initialization = 3
 
 # The interval between each fresh round of gossiping the node's public address.
-gossip_interval = '30sec'
+gossip_interval = '30 seconds'
 
 # Initial delay for starting address gossipping after the network starts. This should be slightly
 # more than the expected time required for initial connections to complete.
-initial_gossip_delay = '5sec'
+initial_gossip_delay = '5 seconds'
 
 # How long a connection is allowed to be stuck as pending before it is abandoned.
-max_addr_pending_time = '1min'
+max_addr_pending_time = '1 minute'
 
 # Maximum time allowed for a connection handshake between two nodes to be completed. Connections
 # exceeding this threshold are considered unlikely to be healthy or even malicious and thus
 # terminated.
-handshake_timeout = '20sec'
+handshake_timeout = '20 seconds'
 
 # Maximum number of incoming connections per unique peer allowed. If the limit is hit, additional
 # connections will be rejected. A value of `0` means unlimited.
@@ -216,7 +224,7 @@ max_in_flight_demands = 50
 tarpit_version_threshold = '1.2.1'
 
 # How long to hold connections to trapped legacy nodes.
-tarpit_duration = '10min'
+tarpit_duration = '10 minutes'
 
 # The probability [0.0, 1.0] of this node trapping a legacy node.
 #
@@ -227,7 +235,7 @@ tarpit_duration = '10min'
 tarpit_chance = 0.2
 
 # How long peers remain blocked after they get blocklisted.
-blocklist_retain_duration = '1min'
+blocklist_retain_duration = '1 minute'
 
 # Identity of a node
 #
@@ -245,12 +253,12 @@ blocklist_retain_duration = '1min'
 [network.estimator_weights]
 consensus = 0
 block_gossip = 1
-deploy_gossip = 0
+transaction_gossip = 0
 finality_signature_gossip = 1
 address_gossip = 0
 finality_signature_broadcasts = 0
-deploy_requests = 1
-deploy_responses = 0
+transaction_requests = 1
+transaction_responses = 0
 legacy_deploy_requests = 1
 legacy_deploy_responses = 0
 block_requests = 1
@@ -268,6 +276,14 @@ approvals_hashes_responses = 0
 execution_results_requests = 1
 execution_results_responses = 0
 
+# Identity of a node
+#
+# When this section is not specified, an identity will be generated when the node process starts with a self-signed certifcate.
+# This option makes sense for some private chains where for security reasons joining new nodes is restricted.
+# [network.identity]
+# tls_certificate = "local_node_cert.pem"
+# secret_key = "local_node.pem"
+# ca_certificate = "ca_cert.pem"
 
 # ==================================================
 # Configuration options for the JSON-RPC HTTP server
@@ -464,20 +480,20 @@ saturation_limit_percent = 80
 #
 # The longer they are retained, the lower the likelihood of re-gossiping a piece of data.  However,
 # the longer they are retained, the larger the list of finished entries can grow.
-finished_entry_duration = '1min'
+finished_entry_duration = '1 minute'
 
 # The timeout duration for a single gossip request, i.e. for a single gossip message
 # sent from this node, it will be considered timed out if the expected response from that peer is
 # not received within this specified duration.
-gossip_request_timeout = '10sec'
+gossip_request_timeout = '10 seconds'
 
 # The timeout duration for retrieving the remaining part(s) of newly-discovered data
 # from a peer which gossiped information about that data to this node.
-get_remainder_timeout = '5sec'
+get_remainder_timeout = '5 seconds'
 
 # The timeout duration for a newly-received, gossiped item to be validated and stored by another
 # component before the gossiper abandons waiting to gossip the item onwards.
-validate_and_store_timeout = '1min'
+validate_and_store_timeout = '1 minute'
 
 
 # ===============================================
@@ -489,10 +505,10 @@ validate_and_store_timeout = '1min'
 attempt_execution_threshold = 3
 
 # Accepted time interval for inactivity in block accumulator.
-dead_air_interval = '3min'
+dead_air_interval = '3 minutes'
 
 # Time after which the block acceptors are considered old and can be purged.
-purge_interval = '5min'
+purge_interval = '5 minutes'
 
 
 # ================================================
@@ -504,20 +520,28 @@ purge_interval = '5min'
 max_parallel_trie_fetches = 5000
 
 # Time interval for the node to ask for refreshed peers.
-peer_refresh_interval = '90sec'
+peer_refresh_interval = '90 seconds'
 
 # Time interval for the node to check what the block synchronizer needs to acquire next.
-need_next_interval = '1sec'
+need_next_interval = '1 second'
 
 # Time interval for recurring disconnection of dishonest peers.
-disconnect_dishonest_peers_interval = '10sec'
+disconnect_dishonest_peers_interval = '10 seconds'
 
 # Time interval for resetting the latch in block builders.
-latch_reset_interval = '5sec'
+latch_reset_interval = '5 seconds'
 
-# Time interval after which synchronization is considered stalled if no successful sync
-# activity happened.
-stall_limit = '120sec'
+
+# =============================================
+# Configuration options for the block validator
+# =============================================
+[block_validator]
+
+# Maximum number of completed entries to retain.
+#
+# A higher value can avoid creating needless validation work on an already-validated proposed
+# block, but comes at the cost of increased memory consumption.
+max_completed_entries = 3
 
 
 # ==================================
@@ -528,7 +552,7 @@ stall_limit = '120sec'
 # The timeout duration for a single fetcher request, i.e. for a single fetcher message
 # sent from this node to another node, it will be considered timed out if the expected response from that peer is
 # not received within this specified duration.
-get_from_peer_timeout = '10sec'
+get_from_peer_timeout = '10 seconds'
 
 
 # ========================================================
@@ -554,13 +578,28 @@ max_query_depth = 5
 enable_manual_sync = true
 
 
+# ==================================================
+# Configuration options for the transaction acceptor
+# ==================================================
+[transaction_acceptor]
+
+# The leeway allowed when considering whether a transaction is future-dated or not.
+#
+# To accommodate minor clock drift, transactions whose timestamps are within `timestamp_leeway` in the
+# future are still acceptable.
+#
+# The maximum value to which `timestamp_leeway` can be set is defined by the chainspec setting
+# `transaction.max_timestamp_leeway`.
+timestamp_leeway = '2 seconds'
+
+
 # ===========================================
 # Configuration options for the deploy buffer
 # ===========================================
 [deploy_buffer]
 
 # The interval of checking for expired deploys.
-expiry_check_interval = '1min'
+expiry_check_interval = '1 minute'
 
 
 # ==============================================
@@ -586,4 +625,4 @@ socket_umask = 0o077
 [upgrade_watcher]
 
 # How often to scan file system for available upgrades.
-upgrade_check_interval = '30sec'
+upgrade_check_interval = '30 seconds'

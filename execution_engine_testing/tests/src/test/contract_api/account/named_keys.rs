@@ -4,7 +4,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{bytesrepr::FromBytes, runtime_args, CLTyped, CLValue, Key, RuntimeArgs, U512};
+use casper_types::{bytesrepr::FromBytes, runtime_args, CLTyped, CLValue, Key, U512};
 
 const CONTRACT_NAMED_KEYS: &str = "named_keys.wasm";
 const EXPECTED_UREF_VALUE: u64 = 123_456_789u64;
@@ -49,15 +49,15 @@ fn should_run_named_keys_contract() {
     run_command(&mut builder, COMMAND_CREATE_UREF1);
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
-    assert!(account.named_keys().contains_key(KEY1));
-    assert!(!account.named_keys().contains_key(KEY2));
+    assert!(account.named_keys().contains(KEY1));
+    assert!(!account.named_keys().contains(KEY2));
 
     run_command(&mut builder, COMMAND_CREATE_UREF2);
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let uref1 = *account.named_keys().get(KEY1).expect("should have key");
     let uref2 = *account.named_keys().get(KEY2).expect("should have key");
@@ -71,17 +71,17 @@ fn should_run_named_keys_contract() {
     run_command(&mut builder, COMMAND_REMOVE_UREF1);
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
-    assert!(!account.named_keys().contains_key(KEY1));
-    assert!(account.named_keys().contains_key(KEY2));
+    assert!(!account.named_keys().contains(KEY1));
+    assert!(account.named_keys().contains(KEY2));
 
     run_command(&mut builder, COMMAND_TEST_READ_UREF2);
 
     run_command(&mut builder, COMMAND_INCREASE_UREF2);
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let uref2 = *account.named_keys().get(KEY2).expect("should have key");
     let value2: U512 = read_value(&mut builder, uref2);
@@ -90,7 +90,7 @@ fn should_run_named_keys_contract() {
     run_command(&mut builder, COMMAND_OVERWRITE_UREF2);
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let uref2 = *account.named_keys().get(KEY2).expect("should have key");
     let value2: U512 = read_value(&mut builder, uref2);
@@ -99,8 +99,8 @@ fn should_run_named_keys_contract() {
     run_command(&mut builder, COMMAND_REMOVE_UREF2);
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
-    assert!(!account.named_keys().contains_key(KEY1));
-    assert!(!account.named_keys().contains_key(KEY2));
+    assert!(!account.named_keys().contains(KEY1));
+    assert!(!account.named_keys().contains(KEY2));
 }

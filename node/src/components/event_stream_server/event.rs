@@ -6,22 +6,25 @@ use std::{
 use itertools::Itertools;
 
 use casper_types::{
-    Block, BlockHash, Deploy, DeployHash, DeployHeader, EraId, ExecutionEffect, ExecutionResult,
-    FinalitySignature, PublicKey, Timestamp,
+    contract_messages::Messages,
+    execution::{Effects, ExecutionResult},
+    Block, BlockHash, EraId, FinalitySignature, PublicKey, Timestamp, Transaction, TransactionHash,
+    TransactionHeader,
 };
 
 #[derive(Debug)]
 pub enum Event {
     Initialize,
     BlockAdded(Arc<Block>),
-    DeployAccepted(Arc<Deploy>),
-    DeployProcessed {
-        deploy_hash: DeployHash,
-        deploy_header: Box<DeployHeader>,
+    TransactionAccepted(Arc<Transaction>),
+    TransactionProcessed {
+        transaction_hash: TransactionHash,
+        transaction_header: Box<TransactionHeader>,
         block_hash: BlockHash,
         execution_result: Box<ExecutionResult>,
+        messages: Messages,
     },
-    DeploysExpired(Vec<DeployHash>),
+    TransactionsExpired(Vec<TransactionHash>),
     Fault {
         era_id: EraId,
         public_key: Box<PublicKey>,
@@ -30,7 +33,7 @@ pub enum Event {
     FinalitySignature(Box<FinalitySignature>),
     Step {
         era_id: EraId,
-        execution_effect: ExecutionEffect,
+        execution_effects: Effects,
     },
 }
 
@@ -39,18 +42,20 @@ impl Display for Event {
         match self {
             Event::Initialize => write!(formatter, "initialize"),
             Event::BlockAdded(block) => write!(formatter, "block added {}", block.hash()),
-            Event::DeployAccepted(deploy_hash) => {
-                write!(formatter, "deploy accepted {}", deploy_hash)
+            Event::TransactionAccepted(transaction_hash) => {
+                write!(formatter, "transaction accepted {}", transaction_hash)
             }
-            Event::DeploysExpired(deploy_hashes) => {
+            Event::TransactionProcessed {
+                transaction_hash, ..
+            } => {
+                write!(formatter, "transaction processed {}", transaction_hash)
+            }
+            Event::TransactionsExpired(transaction_hashes) => {
                 write!(
                     formatter,
-                    "deploys expired: {}",
-                    deploy_hashes.iter().join(", ")
+                    "transactions expired: {}",
+                    transaction_hashes.iter().join(", ")
                 )
-            }
-            Event::DeployProcessed { deploy_hash, .. } => {
-                write!(formatter, "deploy processed {}", deploy_hash)
             }
             Event::Fault {
                 era_id,

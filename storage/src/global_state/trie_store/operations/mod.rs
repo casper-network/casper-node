@@ -81,19 +81,23 @@ where
                     assert!(index < RADIX, "key length must be < {}", RADIX);
                     pointer_block[index]
                 };
+
                 match maybe_pointer {
-                    Some(pointer) => match store.get(txn, pointer.hash())? {
-                        Some(next) => {
+                    Some(pointer) => match store.get(txn, pointer.hash()) {
+                        Ok(Some(next)) => {
                             depth += 1;
                             current = next;
                         }
-                        None => {
+                        Ok(None) => {
                             warn!(
                                 "No trie value at key: {:?} (reading from key: {:?})",
                                 pointer.hash(),
                                 key
                             );
                             return Ok(ReadResult::NotFound);
+                        }
+                        Err(error) => {
+                            return Err(error.into());
                         }
                     },
                     None => {
@@ -280,6 +284,7 @@ where
     })
 }
 
+#[derive(Debug)]
 struct TrieScan<K, V> {
     tip: Trie<K, V>,
     parents: Parents<K, V>,
@@ -293,7 +298,7 @@ impl<K, V> TrieScan<K, V> {
 
 /// Returns a [`TrieScan`] from the given key at a given root in a given store.
 /// A scan consists of the deepest trie variant found at that key, a.k.a. the
-/// "tip", along the with the parents of that variant. Parents are ordered by
+/// "tip", along with the parents of that variant. Parents are ordered by
 /// their depth from the root (shallow to deep).
 fn scan<K, V, T, S, E>(
     txn: &T,
@@ -430,19 +435,19 @@ where
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum DeleteResult {
-    Deleted(Digest),
+pub enum PruneResult {
+    Pruned(Digest),
     DoesNotExist,
     RootNotFound,
 }
 
 /// Delete provided key from a global state so it is not reachable from a resulting state root hash.
-pub(crate) fn delete<K, V, T, S, E>(
+pub(crate) fn prune<K, V, T, S, E>(
     txn: &mut T,
     store: &S,
     root: &Digest,
-    key_to_delete: &K,
-) -> Result<DeleteResult, E>
+    keys_to_prune: &K,
+) -> Result<PruneResult, E>
 where
     K: ToBytes + FromBytes + Clone + PartialEq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone,
@@ -452,11 +457,11 @@ where
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     let root_trie_bytes = match store.get_raw(txn, root)? {
-        None => return Ok(DeleteResult::RootNotFound),
+        None => return Ok(PruneResult::RootNotFound),
         Some(root_trie) => root_trie,
     };
 
-    let key_bytes = key_to_delete.to_bytes()?;
+    let key_bytes = keys_to_prune.to_bytes()?;
     let TrieScanRaw { tip, mut parents } =
         scan_raw::<_, _, _, _, E>(txn, store, &key_bytes, root_trie_bytes)?;
 
@@ -475,9 +480,9 @@ where
                     "Tip should contain leaf bytes, but has tag {:?}",
                     trie_tag
                 );
-                key == *key_to_delete
+                key == *keys_to_prune
             } => {}
-        _ => return Ok(DeleteResult::DoesNotExist),
+        _ => return Ok(PruneResult::DoesNotExist),
     }
 
     let mut new_elements: Vec<(Digest, Trie<K, V>)> = Vec::new();
@@ -583,8 +588,9 @@ where
                                 let trie_key = new_extension.trie_hash()?;
                                 new_elements.push((trie_key, new_extension))
                             }
-                            // The single sibling is a extension.  We output an extension to replace
-                            // the parent, prepending the sibling index to the sibling's affix.  In
+                            // The single sibling is an extension.  We output an extension to
+                            // replace the parent, prepending the
+                            // sibling index to the sibling's affix.  In
                             // the next loop iteration, we will handle the case where this extension
                             // might need to be combined with a grandparent extension.
                             Trie::Extension {
@@ -658,7 +664,7 @@ where
         .map(|(hash, _)| hash)
         .unwrap_or_else(|| root.to_owned());
 
-    Ok(DeleteResult::Deleted(new_root))
+    Ok(PruneResult::Pruned(new_root))
 }
 
 #[allow(clippy::type_complexity)]
@@ -728,7 +734,7 @@ fn get_parents_path<K, V>(parents: &[(u8, Trie<K, V>)]) -> Vec<u8> {
 /// Takes a path to a leaf, that leaf's parent node, and the parents of that
 /// node, and adds the node to the parents.
 ///
-/// This function will panic if the the path to the leaf and the path to its
+/// This function will panic if the path to the leaf and the path to its
 /// parent node do not share a common prefix.
 fn add_node_to_parents<K, V>(
     path_to_leaf: &[u8],
@@ -827,7 +833,7 @@ struct SplitResult<K, V> {
 /// and child extensions.  The node pointer contained in the existing extension
 /// is repositioned in the new node or the possible child extension.  The
 /// possible parent extension is added to parents.  Returns the new node,
-/// parents, and the the possible child extension (paired with its hash).
+/// parents, and the possible child extension (paired with its hash).
 /// The new node and parents can be used by [`add_node_to_parents`], and the
 /// new hashed child extension can be added to the list of new trie elements.
 fn split_extension<K, V>(
@@ -1052,7 +1058,6 @@ where
         }) = self.visited.pop()
         {
             let mut maybe_next_trie: Option<Trie<K, V>> = None;
-
             match trie {
                 Trie::Leaf { key, .. } => {
                     let key_bytes = match key.to_bytes() {

@@ -38,7 +38,7 @@ use crate::{
     },
     effect::{
         requests::{
-            AcceptDeployRequest, BlockSynchronizerRequest, ChainspecRawBytesRequest,
+            AcceptTransactionRequest, BlockSynchronizerRequest, ChainspecRawBytesRequest,
             ConsensusRequest, ContractRuntimeRequest, MetricsRequest, NetworkInfoRequest,
             ReactorStatusRequest, RpcRequest, StorageRequest, UpgradeWatcherRequest,
         },
@@ -59,7 +59,7 @@ const COMPONENT_NAME: &str = "rpc_server";
 pub(crate) trait ReactorEventT:
     From<Event>
     + From<RpcRequest>
-    + From<AcceptDeployRequest>
+    + From<AcceptTransactionRequest>
     + From<ChainspecRawBytesRequest>
     + From<UpgradeWatcherRequest>
     + From<ContractRuntimeRequest>
@@ -76,7 +76,7 @@ pub(crate) trait ReactorEventT:
 impl<REv> ReactorEventT for REv where
     REv: From<Event>
         + From<RpcRequest>
-        + From<AcceptDeployRequest>
+        + From<AcceptTransactionRequest>
         + From<ChainspecRawBytesRequest>
         + From<UpgradeWatcherRequest>
         + From<ContractRuntimeRequest>
@@ -225,7 +225,6 @@ where
                 | Event::QueryGlobalStateResult { .. }
                 | Event::QueryEraValidatorsResult { .. }
                 | Event::GetBidsResult { .. }
-                | Event::GetDeployResult { .. }
                 | Event::GetPeersResult { .. }
                 | Event::GetBalanceResult { .. } => {
                     warn!(
@@ -290,26 +289,6 @@ where
                 }) => {
                     self.handle_get_balance(effect_builder, state_root_hash, purse_uref, responder)
                 }
-                Event::RpcRequest(RpcRequest::GetDeploy {
-                    hash,
-                    responder,
-                    finalized_approvals,
-                }) => effect_builder
-                    .get_deploy_and_metadata_from_storage(hash)
-                    .event(move |result| Event::GetDeployResult {
-                        hash,
-                        result: result.map(|(deploy_with_finalized_approvals, metadata_ext)| {
-                            Box::new(if finalized_approvals {
-                                (deploy_with_finalized_approvals.into_naive(), metadata_ext)
-                            } else {
-                                (
-                                    deploy_with_finalized_approvals.discard_finalized_approvals(),
-                                    metadata_ext,
-                                )
-                            })
-                        }),
-                        main_responder: responder,
-                    }),
                 Event::RpcRequest(RpcRequest::GetPeers { responder }) => effect_builder
                     .network_peers()
                     .event(move |peers| Event::GetPeersResult {
@@ -385,11 +364,6 @@ where
                     main_responder,
                 } => main_responder.respond(result).ignore(),
                 Event::GetBidsResult {
-                    result,
-                    main_responder,
-                } => main_responder.respond(result).ignore(),
-                Event::GetDeployResult {
-                    hash: _,
                     result,
                     main_responder,
                 } => main_responder.respond(result).ignore(),
@@ -476,16 +450,48 @@ where
 
 #[cfg(test)]
 mod tests {
-    use schemars::schema_for_value;
+    use std::fs;
+
+    use regex::Regex;
 
     use crate::{rpcs::docs::OPEN_RPC_SCHEMA, testing::assert_schema};
 
     #[test]
-    fn schema() {
+    fn json_schema_check() {
         let schema_path = format!(
-            "{}/../resources/test/rpc_schema_hashing.json",
+            "{}/../resources/test/rpc_schema.json",
             env!("CARGO_MANIFEST_DIR")
         );
-        assert_schema(schema_path, schema_for_value!(OPEN_RPC_SCHEMA.clone()));
+        assert_schema(
+            schema_path.clone(),
+            serde_json::to_string_pretty(&*OPEN_RPC_SCHEMA).unwrap(),
+        );
+        let schema = fs::read_to_string(&schema_path).unwrap();
+
+        // Check for the following pattern in the JSON as this points to a byte array or vec (e.g.
+        // a hash digest) not being represented as a hex-encoded string:
+        //
+        // ```json
+        // "type": "array",
+        // "items": {
+        //   "type": "integer",
+        //   "format": "uint8",
+        //   "minimum": 0.0
+        // },
+        // ```
+        //
+        // The type/variant in question (most easily identified from the git diff) might be easily
+        // fixed via application of a serde attribute, e.g.
+        // `#[serde(with = "serde_helpers::raw_32_byte_array")]`.  It will likely require a
+        // schemars attribute too, indicating it is a hex-encoded string.  See for example
+        // `TransactionInvocationTarget::Package::addr`.
+        let regex = Regex::new(
+            r#"\s*"type":\s*"array",\s*"items":\s*\{\s*"type":\s*"integer",\s*"format":\s*"uint8",\s*"minimum":\s*0\.0\s*\},"#
+        ).unwrap();
+        assert!(
+            !regex.is_match(&schema),
+            "seems like a byte array is not hex-encoded - see comment in `json_schema_check` for \
+            further info"
+        );
     }
 }

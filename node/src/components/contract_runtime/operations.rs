@@ -1,39 +1,45 @@
-use std::{cmp, collections::BTreeMap, ops::Range, sync::Arc, time::Instant};
+use std::{cmp, collections::BTreeMap, convert::TryInto, ops::Range, sync::Arc, time::Instant};
 
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::{
     engine_state::{
-        self, execution_result::ExecutionResults, step::EvictItem, ChecksumRegistry, DeployItem,
-        EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult,
-        GetEraValidatorsRequest, PruneConfig, PruneResult, StepError, StepRequest, StepSuccess,
+        self,
+        execution_result::{ExecutionResultAndMessages, ExecutionResults},
+        step::EvictItem,
+        ChecksumRegistry, DeployItem, EngineState, ExecuteRequest,
+        ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, PruneConfig,
+        PruneResult, QueryRequest, QueryResult, StepError, StepRequest, StepSuccess,
     },
     execution,
 };
 use casper_storage::{
     data_access_layer::DataAccessLayer,
-    global_state::{
-        shared::{transform::Transform, AdditiveMap},
-        state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
-    },
+    global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
 };
 use casper_types::{
-    Block, CLValue, Deploy, DeployHash, DeployHeader, Digest, EraEnd, EraId, EraReport,
-    ExecutionResult, Key, ProtocolVersion, PublicKey, U512,
+    account::AccountHash,
+    bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
+    contract_messages::Messages,
+    execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
+    AddressableEntity, AddressableEntityHash, BlockV2, CLValue, DeployHash, Digest, EraEndV2,
+    EraId, HashAddr, Key, ProtocolVersion, PublicKey, StoredValue, Transaction, U512,
 };
 
 use crate::{
     components::{
         contract_runtime::{
-            error::BlockExecutionError, types::StepEffectAndUpcomingEraValidators,
-            BlockAndExecutionResults, ExecutionPreState, Metrics, SpeculativeExecutionState,
-            APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
+            error::BlockExecutionError, types::StepEffectsAndUpcomingEraValidators,
+            BlockAndExecutionResults, ExecutionPreState, Metrics, PackageKindTag,
+            SpeculativeExecutionState, APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
         },
         fetcher::FetchItem,
     },
-    types::{self, ApprovalsHashes, Chunkable, FinalizedBlock},
+    types::{self, ApprovalsHashes, Chunkable, ExecutableBlock, InternalEraReport},
 };
+
+use super::ExecutionArtifact;
 
 fn generate_range_by_index(
     highest_era: u64,
@@ -92,15 +98,14 @@ pub fn execute_finalized_block(
     metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
     execution_pre_state: ExecutionPreState,
-    finalized_block: FinalizedBlock,
-    deploys: Vec<Deploy>,
+    executable_block: ExecutableBlock,
     activation_point_era_id: EraId,
     key_block_height_for_activation_point: u64,
     prune_batch_size: u64,
 ) -> Result<BlockAndExecutionResults, BlockExecutionError> {
-    if finalized_block.height != execution_pre_state.next_block_height {
+    if executable_block.height != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
-            finalized_block: Box::new(finalized_block),
+            executable_block: Box::new(executable_block),
             execution_pre_state: Box::new(execution_pre_state),
         });
     }
@@ -111,30 +116,40 @@ pub fn execute_finalized_block(
         next_block_height,
     } = execution_pre_state;
     let mut state_root_hash = pre_state_root_hash;
-    let mut execution_results: Vec<(_, DeployHeader, ExecutionResult)> =
-        Vec::with_capacity(deploys.len());
+    let mut execution_results: Vec<ExecutionArtifact> =
+        Vec::with_capacity(executable_block.transactions.len());
     // Run any deploys that must be executed
-    let block_time = finalized_block.timestamp.millis();
+    let block_time = executable_block.timestamp.millis();
     let start = Instant::now();
-    let deploy_ids = deploys.iter().map(|deploy| deploy.fetch_id()).collect_vec();
-    let approvals_checksum = types::compute_approvals_checksum(deploy_ids.clone())
+    let txn_ids = executable_block
+        .transactions
+        .iter()
+        .map(Transaction::fetch_id)
+        .collect_vec();
+    let approvals_checksum = types::compute_approvals_checksum(txn_ids.clone())
         .map_err(BlockExecutionError::FailedToComputeApprovalsChecksum)?;
 
     // Create a new EngineState that reads from LMDB but only caches changes in memory.
     let scratch_state = engine_state.get_scratch_engine_state();
 
     // Pay out block rewards
-    let proposer = *finalized_block.proposer.clone();
-    state_root_hash = scratch_state.distribute_block_rewards(
-        state_root_hash,
-        protocol_version,
-        proposer.clone(),
-        next_block_height,
-        block_time,
-    )?;
+    if let Some(rewards) = &executable_block.rewards {
+        state_root_hash = scratch_state.distribute_block_rewards(
+            state_root_hash,
+            protocol_version,
+            rewards,
+            next_block_height,
+            block_time,
+        )?;
+    }
 
-    // WARNING: Do not change the order of `deploys` as it will result in a different root hash.
-    for deploy in deploys {
+    // WARNING: Do not change the order of `transactions` as it will result in a different root
+    // hash.
+    for txn in executable_block.transactions {
+        let deploy = match txn {
+            Transaction::Deploy(deploy) => deploy,
+            Transaction::V1(_) => continue,
+        };
         let deploy_hash = *deploy.hash();
         let deploy_header = deploy.header().clone();
         let execute_request = ExecuteRequest::new(
@@ -142,7 +157,7 @@ pub fn execute_finalized_block(
             block_time,
             vec![DeployItem::from(deploy)],
             protocol_version,
-            proposer.clone(),
+            PublicKey::clone(&executable_block.proposer),
         );
 
         // TODO: this is currently working coincidentally because we are passing only one
@@ -154,40 +169,42 @@ pub fn execute_finalized_block(
 
         trace!(?deploy_hash, ?result, "deploy execution result");
         // As for now a given state is expected to exist.
-        let (state_hash, execution_result) = commit_execution_results(
+        let (state_hash, execution_result, messages) = commit_execution_results(
             &scratch_state,
             metrics.clone(),
             state_root_hash,
             deploy_hash,
             result,
         )?;
-        execution_results.push((deploy_hash, deploy_header, execution_result));
+        execution_results.push(ExecutionArtifact::new(
+            deploy_hash,
+            deploy_header,
+            execution_result,
+            messages,
+        ));
         state_root_hash = state_hash;
     }
 
-    // Write the deploy approvals and execution results Merkle root hashes to global state if there
-    // were any deploys.
+    // Write the deploy approvals' and execution results' checksums to global state.
     let execution_results_checksum = compute_execution_results_checksum(
-        &execution_results
+        execution_results
             .iter()
-            .map(|(_, _, result)| result)
-            .cloned()
-            .collect(),
+            .map(|artifact| &artifact.execution_result),
     )?;
 
-    let mut effects = AdditiveMap::new();
     let mut checksum_registry = ChecksumRegistry::new();
     checksum_registry.insert(APPROVALS_CHECKSUM_NAME, approvals_checksum);
     checksum_registry.insert(EXECUTION_RESULTS_CHECKSUM_NAME, execution_results_checksum);
-    let _ = effects.insert(
+    let mut effects = Effects::new();
+    effects.push(Transform::new(
         Key::ChecksumRegistry,
-        Transform::Write(
+        TransformKind::Write(
             CLValue::from_t(checksum_registry)
                 .map_err(BlockExecutionError::ChecksumRegistryToCLValue)?
                 .into(),
         ),
-    );
-    scratch_state.apply_effect(state_root_hash, effects)?;
+    ));
+    scratch_state.commit_effects(state_root_hash, effects)?;
 
     if let Some(metrics) = metrics.as_ref() {
         metrics.exec_block.observe(start.elapsed().as_secs_f64());
@@ -195,19 +212,19 @@ pub fn execute_finalized_block(
 
     // If the finalized block has an era report, run the auction contract and get the upcoming era
     // validators.
-    let maybe_step_effect_and_upcoming_era_validators =
-        if let Some(era_report) = finalized_block.era_report.as_deref() {
+    let maybe_step_effects_and_upcoming_era_validators =
+        if let Some(era_report) = &executable_block.era_report {
             let StepSuccess {
                 post_state_hash: _, // ignore the post-state-hash returned from scratch
-                execution_journal: step_execution_journal,
+                effects: step_effects,
             } = commit_step(
                 &scratch_state, // engine_state
                 metrics,
                 protocol_version,
                 state_root_hash,
-                era_report,
-                finalized_block.timestamp.millis(),
-                finalized_block.era_id.successor(),
+                era_report.clone(),
+                executable_block.timestamp.millis(),
+                executable_block.era_id.successor(),
             )?;
 
             state_root_hash =
@@ -221,8 +238,8 @@ pub fn execute_finalized_block(
                 system_contract_registry,
                 GetEraValidatorsRequest::new(state_root_hash, protocol_version),
             )?;
-            Some(StepEffectAndUpcomingEraValidators {
-                step_execution_journal,
+            Some(StepEffectsAndUpcomingEraValidators {
+                step_effects,
                 upcoming_era_validators,
             })
         } else {
@@ -237,7 +254,7 @@ pub fn execute_finalized_block(
     engine_state.flush_environment()?;
 
     // Pruning
-    if let Some(previous_block_height) = finalized_block.height.checked_sub(1) {
+    if let Some(previous_block_height) = executable_block.height.checked_sub(1) {
         if let Some(keys_to_prune) = calculate_prune_eras(
             activation_point_era_id,
             key_block_height_for_activation_point,
@@ -274,7 +291,9 @@ pub fn execute_finalized_block(
                         "commit prune: key does not exist"
                     );
                 }
-                Ok(PruneResult::Success { post_state_hash }) => {
+                Ok(PruneResult::Success {
+                    post_state_hash, ..
+                }) => {
                     info!(
                         previous_block_height,
                         %key_block_height_for_activation_point,
@@ -299,25 +318,35 @@ pub fn execute_finalized_block(
         }
     }
 
-    let maybe_next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> =
-        maybe_step_effect_and_upcoming_era_validators
+    let maybe_next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> = {
+        let next_era_id = executable_block.era_id.successor();
+        maybe_step_effects_and_upcoming_era_validators
             .as_ref()
             .and_then(
-                |StepEffectAndUpcomingEraValidators {
+                |StepEffectsAndUpcomingEraValidators {
                      upcoming_era_validators,
                      ..
-                 }| {
-                    upcoming_era_validators
-                        .get(&finalized_block.era_id.successor())
-                        .cloned()
-                },
-            );
+                 }| upcoming_era_validators.get(&next_era_id).cloned(),
+            )
+    };
 
-    let era_end = match (finalized_block.era_report, maybe_next_era_validator_weights) {
+    let era_end = match (
+        executable_block.era_report,
+        maybe_next_era_validator_weights,
+    ) {
         (None, None) => None,
-        (Some(era_report), Some(next_era_validator_weights)) => {
-            Some(EraEnd::new(*era_report, next_era_validator_weights))
-        }
+        (
+            Some(InternalEraReport {
+                equivocators,
+                inactive_validators,
+            }),
+            Some(next_era_validator_weights),
+        ) => Some(EraEndV2::new(
+            equivocators,
+            inactive_validators,
+            next_era_validator_weights,
+            executable_block.rewards.unwrap_or_default(),
+        )),
         (maybe_era_report, maybe_next_era_validator_weights) => {
             return Err(BlockExecutionError::FailedToCreateEraEnd {
                 maybe_era_report,
@@ -326,28 +355,28 @@ pub fn execute_finalized_block(
         }
     };
 
-    let block = Arc::new(Block::new(
+    let block = Arc::new(BlockV2::new(
         parent_hash,
         parent_seed,
         state_root_hash,
-        finalized_block.random_bit,
+        executable_block.random_bit,
         era_end,
-        finalized_block.timestamp,
-        finalized_block.era_id,
-        finalized_block.height,
+        executable_block.timestamp,
+        executable_block.era_id,
+        executable_block.height,
         protocol_version,
-        proposer,
-        finalized_block.deploy_hashes,
-        finalized_block.transfer_hashes,
+        (*executable_block.proposer).clone(),
+        executable_block.transfer,
+        executable_block.staking,
+        executable_block.install_upgrade,
+        executable_block.standard,
+        executable_block.rewarded_signatures,
     ));
 
-    let approvals_hashes = deploy_ids
-        .into_iter()
-        .map(|id| id.destructure().1)
-        .collect();
+    let approvals_hashes = txn_ids.into_iter().map(|id| id.approvals_hash()).collect();
     let proof_of_checksum_registry = engine_state.get_checksum_registry_proof(state_root_hash)?;
-    let approvals_hashes = Box::new(ApprovalsHashes::new(
-        block.hash(),
+    let approvals_hashes = Box::new(ApprovalsHashes::new_v2(
+        *block.hash(),
         approvals_hashes,
         proof_of_checksum_registry,
     ));
@@ -356,7 +385,7 @@ pub fn execute_finalized_block(
         block,
         approvals_hashes,
         execution_results,
-        maybe_step_effect_and_upcoming_era_validators,
+        maybe_step_effects_and_upcoming_era_validators,
     })
 }
 
@@ -367,7 +396,7 @@ fn commit_execution_results<S>(
     state_root_hash: Digest,
     deploy_hash: DeployHash,
     execution_results: ExecutionResults,
-) -> Result<(Digest, ExecutionResult), BlockExecutionError>
+) -> Result<(Digest, ExecutionResult, Messages), BlockExecutionError>
 where
     S: StateProvider + CommitProvider,
     S::Error: Into<execution::Error>,
@@ -376,22 +405,17 @@ where
         .into_iter()
         .exactly_one()
         .map_err(|_| BlockExecutionError::MoreThanOneExecutionResult)?;
-    let json_execution_result = ExecutionResult::from(&ee_execution_result);
 
-    let execution_effect: AdditiveMap<Key, Transform> = match ee_execution_result {
-        EngineExecutionResult::Success {
-            execution_journal,
-            cost,
-            ..
-        } => {
+    let effects = match &ee_execution_result {
+        EngineExecutionResult::Success { effects, cost, .. } => {
             // We do want to see the deploy hash and cost in the logs.
             // We don't need to see the effects in the logs.
             debug!(?deploy_hash, %cost, "execution succeeded");
-            execution_journal
+            effects.clone()
         }
         EngineExecutionResult::Failure {
             error,
-            execution_journal,
+            effects,
             cost,
             ..
         } => {
@@ -399,20 +423,23 @@ where
             // We do want to see the deploy hash, error, and cost in the logs.
             // We don't need to see the effects in the logs.
             debug!(?deploy_hash, ?error, %cost, "execution failure");
-            execution_journal
+            effects.clone()
         }
-    }
-    .into();
-    let new_state_root =
-        commit_transforms(engine_state, metrics, state_root_hash, execution_effect)?;
-    Ok((new_state_root, json_execution_result))
+    };
+    let new_state_root = commit_transforms(engine_state, metrics, state_root_hash, effects)?;
+    let ExecutionResultAndMessages {
+        execution_result,
+        messages,
+    } = ExecutionResultAndMessages::from(ee_execution_result);
+    let versioned_execution_result = ExecutionResult::from(execution_result);
+    Ok((new_state_root, versioned_execution_result, messages))
 }
 
 fn commit_transforms<S>(
     engine_state: &EngineState<S>,
     metrics: Option<Arc<Metrics>>,
     state_root_hash: Digest,
-    effects: AdditiveMap<Key, Transform>,
+    effects: Effects,
 ) -> Result<Digest, engine_state::Error>
 where
     S: StateProvider + CommitProvider,
@@ -420,7 +447,7 @@ where
 {
     trace!(?state_root_hash, ?effects, "commit");
     let start = Instant::now();
-    let result = engine_state.apply_effect(state_root_hash, effects);
+    let result = engine_state.commit_effects(state_root_hash, effects);
     if let Some(metrics) = metrics {
         metrics.apply_effect.observe(start.elapsed().as_secs_f64());
     }
@@ -428,7 +455,7 @@ where
     result.map(Digest::from)
 }
 
-/// Execute the transaction without commiting the effects.
+/// Execute the transaction without committing the effects.
 /// Intended to be used for discovery operations on read-only nodes.
 ///
 /// Returns effects of the execution.
@@ -436,7 +463,7 @@ pub fn execute_only<S>(
     engine_state: &EngineState<S>,
     execution_state: SpeculativeExecutionState,
     deploy: DeployItem,
-) -> Result<Option<ExecutionResult>, engine_state::Error>
+) -> Result<Option<(ExecutionResultV2, Messages)>, engine_state::Error>
 where
     S: StateProvider + CommitProvider,
     S::Error: Into<execution::Error>,
@@ -468,7 +495,14 @@ where
             // with `Some(_)` but `pop_front` already returns an `Option`.
             // We need to transform the `engine_state::ExecutionResult` into
             // `casper_types::ExecutionResult` as well.
-            execution_results.pop_front().map(Into::into)
+            execution_results.pop_front().map(|result| {
+                let ExecutionResultAndMessages {
+                    execution_result,
+                    messages,
+                } = result.into();
+
+                (execution_result, messages)
+            })
         }
     })
 }
@@ -497,7 +531,10 @@ fn commit_step<S>(
     maybe_metrics: Option<Arc<Metrics>>,
     protocol_version: ProtocolVersion,
     pre_state_root_hash: Digest,
-    era_report: &EraReport<PublicKey>,
+    InternalEraReport {
+        equivocators,
+        inactive_validators,
+    }: InternalEraReport,
     era_end_timestamp_millis: u64,
     next_era_id: EraId,
 ) -> Result<StepSuccess, StepError>
@@ -506,11 +543,9 @@ where
     S::Error: Into<execution::Error>,
 {
     // Both inactive validators and equivocators are evicted
-    let evict_items = era_report
-        .inactive_validators()
-        .iter()
-        .chain(era_report.equivocators())
-        .cloned()
+    let evict_items = inactive_validators
+        .into_iter()
+        .chain(equivocators)
         .map(EvictItem::new)
         .collect();
 
@@ -536,16 +571,212 @@ where
     result
 }
 
-/// Computes the root hash for a Merkle tree constructed from the hashes of execution results.
+/// Computes the checksum of the given set of execution results.
 ///
-/// NOTE: We're hashing vector of execution results, instead of just their hashes, b/c when a joiner
-/// node receives the chunks of *full data* it has to be able to verify it against the Merkle root.
-fn compute_execution_results_checksum(
-    execution_results: &Vec<ExecutionResult>,
+/// This will either be a simple hash of the bytesrepr-encoded results (in the case that the
+/// serialized results are not greater than `ChunkWithProof::CHUNK_SIZE_BYTES`), or otherwise will
+/// be a Merkle root hash of the chunks derived from the serialized results.
+pub(crate) fn compute_execution_results_checksum<'a>(
+    execution_results_iter: impl Iterator<Item = &'a ExecutionResult> + Clone,
 ) -> Result<Digest, BlockExecutionError> {
-    execution_results
-        .hash()
-        .map_err(BlockExecutionError::FailedToComputeExecutionResultsChecksum)
+    // Serialize the execution results as if they were `Vec<ExecutionResult>`.
+    let serialized_length = U32_SERIALIZED_LENGTH
+        + execution_results_iter
+            .clone()
+            .map(|exec_result| exec_result.serialized_length())
+            .sum::<usize>();
+    let mut serialized = vec![];
+    serialized
+        .try_reserve_exact(serialized_length)
+        .map_err(|_| {
+            BlockExecutionError::FailedToComputeApprovalsChecksum(bytesrepr::Error::OutOfMemory)
+        })?;
+    let item_count: u32 = execution_results_iter
+        .clone()
+        .count()
+        .try_into()
+        .map_err(|_| {
+            BlockExecutionError::FailedToComputeApprovalsChecksum(
+                bytesrepr::Error::NotRepresentable,
+            )
+        })?;
+    item_count
+        .write_bytes(&mut serialized)
+        .map_err(BlockExecutionError::FailedToComputeExecutionResultsChecksum)?;
+    for execution_result in execution_results_iter {
+        execution_result
+            .write_bytes(&mut serialized)
+            .map_err(BlockExecutionError::FailedToComputeExecutionResultsChecksum)?;
+    }
+
+    // Now hash the serialized execution results, using the `Chunkable` trait's `hash` method to
+    // chunk if required.
+    serialized.hash().map_err(|_| {
+        BlockExecutionError::FailedToComputeExecutionResultsChecksum(bytesrepr::Error::OutOfMemory)
+    })
+}
+
+pub(super) fn get_addressable_entity<S>(
+    engine_state: &EngineState<S>,
+    state_root_hash: Digest,
+    key: Key,
+) -> Option<AddressableEntity>
+where
+    S: StateProvider + CommitProvider,
+    S::Error: Into<execution::Error>,
+{
+    match key {
+        Key::AddressableEntity(package_kind_tag, entity_addr) => {
+            get_addressable_entity_under_entity_hash(
+                engine_state,
+                state_root_hash,
+                package_kind_tag,
+                entity_addr.into(),
+            )
+        }
+        Key::Account(account_hash) => {
+            get_addressable_entity_under_account_hash(engine_state, state_root_hash, account_hash)
+        }
+        Key::Hash(contract_hash) => {
+            get_addressable_entity_under_contract_hash(engine_state, state_root_hash, contract_hash)
+        }
+        _ => {
+            warn!(%key, "expected a Key::AddressableEntity, Key::Account, Key::Hash");
+            None
+        }
+    }
+}
+
+fn get_addressable_entity_under_entity_hash<S>(
+    engine_state: &EngineState<S>,
+    state_root_hash: Digest,
+    package_kind_tag: PackageKindTag,
+    entity_hash: AddressableEntityHash,
+) -> Option<AddressableEntity>
+where
+    S: StateProvider + CommitProvider,
+    S::Error: Into<execution::Error>,
+{
+    let key = Key::addressable_entity_key(package_kind_tag, entity_hash);
+    let query_request = QueryRequest::new(state_root_hash, key, vec![]);
+    let value = match engine_state.run_query(query_request) {
+        Ok(QueryResult::Success { value, .. }) => *value,
+        Ok(result) => {
+            debug!(?result, %key, "expected to find addressable entity");
+            return None;
+        }
+        Err(error) => {
+            warn!(%error, %key, "failed querying for addressable entity");
+            return None;
+        }
+    };
+    match value {
+        StoredValue::AddressableEntity(addressable_entity) => Some(addressable_entity),
+        _ => {
+            debug!(type_name = %value.type_name(), %key, "expected an AddressableEntity");
+            None
+        }
+    }
+}
+
+fn get_addressable_entity_under_account_hash<S>(
+    engine_state: &EngineState<S>,
+    state_root_hash: Digest,
+    account_hash: AccountHash,
+) -> Option<AddressableEntity>
+where
+    S: StateProvider + CommitProvider,
+    S::Error: Into<execution::Error>,
+{
+    let account_key = Key::Account(account_hash);
+    let query_request = QueryRequest::new(state_root_hash, account_key, vec![]);
+    let value = match engine_state.run_query(query_request) {
+        Ok(QueryResult::Success { value, .. }) => *value,
+        Ok(result) => {
+            debug!(?result, %account_key, "expected to find stored value under account hash");
+            return None;
+        }
+        Err(error) => {
+            warn!(%error, %account_key, "failed querying for stored value under account hash");
+            return None;
+        }
+    };
+    match value {
+        StoredValue::CLValue(cl_value) => match cl_value.into_t::<Key>() {
+            Ok(Key::AddressableEntity(package_kind_tag, entity_addr)) => {
+                get_addressable_entity_under_entity_hash(
+                    engine_state,
+                    state_root_hash,
+                    package_kind_tag,
+                    entity_addr.into(),
+                )
+            }
+            Ok(invalid_key) => {
+                warn!(
+                    %account_key,
+                    %invalid_key,
+                    "expected a Key::AddressableEntity to be stored under account hash"
+                );
+                None
+            }
+            Err(error) => {
+                warn!(%account_key, %error, "expected a Key to be stored under account hash");
+                None
+            }
+        },
+        StoredValue::Account(account) => Some(AddressableEntity::from(account)),
+        _ => {
+            warn!(
+                type_name = %value.type_name(),
+                %account_key,
+                "expected a CLValue or Account to be stored under account hash"
+            );
+            None
+        }
+    }
+}
+
+fn get_addressable_entity_under_contract_hash<S>(
+    engine_state: &EngineState<S>,
+    state_root_hash: Digest,
+    contract_hash: HashAddr,
+) -> Option<AddressableEntity>
+where
+    S: StateProvider + CommitProvider,
+    S::Error: Into<execution::Error>,
+{
+    // First try with an `AddressableEntityHash` derived from the contract hash.
+    get_addressable_entity_under_entity_hash(
+        engine_state,
+        state_root_hash,
+        PackageKindTag::SmartContract,
+        contract_hash.into(),
+    ).or_else(|| {
+        // Didn't work; the contract was either not migrated yet or the `AddressableEntity`
+        // record was not available at this state root hash. Try to query with a
+        // contract key next.
+        let contract_key = Key::Hash(contract_hash);
+        let query_request = QueryRequest::new(state_root_hash, contract_key, vec![]);
+        let value = match engine_state.run_query(query_request) {
+            Ok(QueryResult::Success { value, .. }) => *value,
+            Ok(result) => {
+                debug!(?result, %contract_key, "expected to find a stored value for a contract hash");
+                return None;
+            }
+            Err(error) => {
+                warn!(%error, %contract_key, "failed querying for a contract hash");
+                return None;
+            }
+        };
+
+        match value {
+            StoredValue::Contract(contract) => Some(contract.into()),
+            _ => {
+                debug!(type_name = %value.type_name(), ?contract_hash, "expected a Contract");
+                None
+            }
+        }
+    })
 }
 
 #[cfg(test)]

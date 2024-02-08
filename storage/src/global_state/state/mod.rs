@@ -6,27 +6,27 @@ pub mod lmdb;
 /// Lmdb implementation of global state with cache.
 pub mod scratch;
 
-use std::{collections::HashMap, hash::BuildHasher};
+use std::collections::HashMap;
 
-use tracing::error;
+use tracing::{debug, error, warn};
 
-use casper_types::{bytesrepr, Digest, Key, StoredValue};
+use casper_types::{
+    bytesrepr,
+    execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
+    Digest, Key, StoredValue,
+};
 
 pub use self::lmdb::make_temporary_global_state;
 use crate::global_state::{
-    shared::{
-        transform::{self, Transform},
-        AdditiveMap,
-    },
     transaction_source::{Transaction, TransactionSource},
     trie::{merkle_proof::TrieMerkleProof, Trie, TrieRaw},
     trie_store::{
-        operations::{read, write, ReadResult, WriteResult},
+        operations::{prune, read, write, ReadResult, WriteResult},
         TrieStore,
     },
 };
 
-use super::trie_store::operations::DeleteResult;
+use super::trie_store::operations::PruneResult;
 
 /// A trait expressing the reading of state. This trait is used to abstract the underlying store.
 pub trait StateReader<K, V> {
@@ -60,7 +60,7 @@ pub enum CommitError {
     KeyNotFound(Key),
     /// Transform error.
     #[error(transparent)]
-    TransformError(transform::Error),
+    TransformError(TransformError),
     /// Trie not found while attempting to validate cache write.
     #[error("Trie not found in cache {0}")]
     TrieNotFoundInCache(Digest),
@@ -70,11 +70,7 @@ pub enum CommitError {
 pub trait CommitProvider: StateProvider {
     /// Applies changes and returns a new post state hash.
     /// block_hash is used for computing a deterministic and unique keys.
-    fn commit(
-        &self,
-        state_hash: Digest,
-        effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Digest, Self::Error>;
+    fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, Self::Error>;
 }
 
 /// A trait expressing operations over the trie.
@@ -100,12 +96,8 @@ pub trait StateProvider {
     /// Finds all the children of `trie_raw` which aren't present in the state.
     fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, Self::Error>;
 
-    /// Delete key from the global state.
-    fn delete_keys(
-        &self,
-        root: Digest,
-        keys_to_delete: &[Key],
-    ) -> Result<DeleteResult, Self::Error>;
+    /// Prunes key from the global state.
+    fn prune_keys(&self, root: Digest, keys_to_delete: &[Key]) -> Result<PruneResult, Self::Error>;
 }
 
 /// Write multiple key/stored value pairs to the store in a single rw transaction.
@@ -145,18 +137,17 @@ where
 }
 
 /// Commit `effects` to the store.
-pub fn commit<'a, R, S, H, E>(
+pub fn commit<'a, R, S, E>(
     environment: &'a R,
     store: &S,
     prestate_hash: Digest,
-    effects: AdditiveMap<Key, Transform, H>,
+    effects: Effects,
 ) -> Result<Digest, E>
 where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<Key, StoredValue>,
     S::Error: From<R::Error>,
     E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
-    H: BuildHasher,
 {
     let mut txn = environment.create_read_write_txn()?;
     let mut state_root = prestate_hash;
@@ -167,53 +158,92 @@ where
         return Err(CommitError::RootNotFound(prestate_hash).into());
     };
 
-    for (key, transform) in effects.into_iter() {
+    for (key, kind) in effects.value().into_iter().map(Transform::destructure) {
         let read_result = read::<_, _, _, _, E>(&txn, store, &state_root, &key)?;
 
-        let value = match (read_result, transform) {
-            (ReadResult::NotFound, Transform::Write(new_value)) => new_value,
-            (ReadResult::NotFound, transform) => {
+        let instruction = match (read_result, kind) {
+            (_, TransformKind::Identity) => {
+                // effectively a noop.
+                debug!(?state_root, ?key, "commit: attempt to commit a read.");
+                continue;
+            }
+            (ReadResult::NotFound, TransformKind::Write(new_value)) => {
+                TransformInstruction::store(new_value)
+            }
+            (ReadResult::NotFound, TransformKind::Prune(key)) => {
+                // effectively a noop.
+                debug!(
+                    ?state_root,
+                    ?key,
+                    "commit: attempt to prune nonexistent record; this may happen if a key is both added and pruned in the same commit."
+                );
+                continue;
+            }
+            (ReadResult::NotFound, transform_kind) => {
                 error!(
                     ?state_root,
                     ?key,
-                    ?transform,
-                    "Key not found while attempting to apply transform"
+                    ?transform_kind,
+                    "commit: key not found while attempting to apply transform"
                 );
                 return Err(CommitError::KeyNotFound(key).into());
             }
-            (ReadResult::Found(current_value), transform) => match transform.apply(current_value) {
-                Ok(updated_value) => updated_value,
-                Err(err) => {
-                    error!(
-                        ?state_root,
-                        ?key,
-                        ?err,
-                        "Key found, but could not apply transform"
-                    );
-                    return Err(CommitError::TransformError(err).into());
+            (ReadResult::Found(current_value), transform_kind) => {
+                match transform_kind.apply(current_value) {
+                    Ok(instruction) => instruction,
+                    Err(err) => {
+                        error!(
+                            ?state_root,
+                            ?key,
+                            ?err,
+                            "commit: key found, but could not apply transform"
+                        );
+                        return Err(CommitError::TransformError(err).into());
+                    }
                 }
-            },
-            (ReadResult::RootNotFound, transform) => {
+            }
+            (ReadResult::RootNotFound, transform_kind) => {
                 error!(
                     ?state_root,
                     ?key,
-                    ?transform,
-                    "Failed to read state root while processing transform"
+                    ?transform_kind,
+                    "commit: failed to read state root while processing transform"
                 );
                 return Err(CommitError::ReadRootNotFound(state_root).into());
             }
         };
 
-        let write_result = write::<_, _, _, _, E>(&mut txn, store, &state_root, &key, &value)?;
+        match instruction {
+            TransformInstruction::Store(value) => {
+                let write_result =
+                    write::<_, _, _, _, E>(&mut txn, store, &state_root, &key, &value)?;
 
-        match write_result {
-            WriteResult::Written(root_hash) => {
-                state_root = root_hash;
+                match write_result {
+                    WriteResult::Written(root_hash) => {
+                        state_root = root_hash;
+                    }
+                    WriteResult::AlreadyExists => (),
+                    WriteResult::RootNotFound => {
+                        error!(?state_root, ?key, ?value, "commit: root not found");
+                        return Err(CommitError::WriteRootNotFound(state_root).into());
+                    }
+                }
             }
-            WriteResult::AlreadyExists => (),
-            WriteResult::RootNotFound => {
-                error!(?state_root, ?key, ?value, "Error writing new value");
-                return Err(CommitError::WriteRootNotFound(state_root).into());
+            TransformInstruction::Prune(key) => {
+                let prune_result = prune::<_, _, _, _, E>(&mut txn, store, &state_root, &key)?;
+
+                match prune_result {
+                    PruneResult::Pruned(root_hash) => {
+                        state_root = root_hash;
+                    }
+                    PruneResult::DoesNotExist => {
+                        warn!("commit: pruning attempt failed for {}", key);
+                    }
+                    PruneResult::RootNotFound => {
+                        error!(?state_root, ?key, "commit: root not found");
+                        return Err(CommitError::WriteRootNotFound(state_root).into());
+                    }
+                }
             }
         }
     }

@@ -26,24 +26,44 @@
       "description": "The raw bytes of the chainspec.toml, genesis accounts.toml, and global_state.toml files.",
       "type": "object",
       "required": [
-        "chainspec_bytes",
-        "maybe_genesis_accounts_bytes",
-        "maybe_global_state_bytes"
+        "chainspec_bytes"
       ],
       "properties": {
         "chainspec_bytes": {
-          "description": "Hex-encoded raw bytes of the current chainspec.toml file.",
-          "type": "string"
+          "description": "Raw bytes of the current chainspec.toml file.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Bytes"
+            }
+          ]
         },
         "maybe_genesis_accounts_bytes": {
-          "description": "Hex-encoded raw bytes of the current genesis accounts.toml file.",
-          "type": "string"
+          "description": "Raw bytes of the current genesis accounts.toml file.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Bytes"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "maybe_global_state_bytes": {
-          "description": "Hex-encoded raw bytes of the current global_state.toml file.",
-          "type": "string"
+          "description": "Raw bytes of the current global_state.toml file.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Bytes"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
+    },
+    "Bytes": {
+      "description": "Hex-encoded bytes.",
+      "type": "string"
     }
   }
 }

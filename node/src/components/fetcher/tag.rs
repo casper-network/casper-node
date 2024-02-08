@@ -24,9 +24,9 @@ use strum::EnumIter;
 )]
 #[repr(u8)]
 pub enum Tag {
-    /// A deploy identified by its hash and its approvals hash.
-    #[display(fmt = "deploy")]
-    Deploy,
+    /// A transaction identified by its hash and its approvals hash.
+    #[display(fmt = "transaction")]
+    Transaction,
     /// A legacy deploy identified by its hash alone.
     #[display(fmt = "legacy deploy")]
     LegacyDeploy,

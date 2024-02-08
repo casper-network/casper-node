@@ -19,8 +19,8 @@ use smallvec::smallvec;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    Approval, Block, Deploy, DeployConfig, DeployFootprint, DeployHash, DeployId, DisplayIter,
-    Timestamp,
+    Block, BlockV2, Deploy, DeployApproval, DeployFootprint, DeployHash, DeployId, DisplayIter,
+    Timestamp, Transaction, TransactionConfig, TransactionHash, TransactionId,
 };
 
 use crate::{
@@ -45,17 +45,18 @@ use crate::{
 pub(crate) use config::Config;
 pub(crate) use event::Event;
 
+use crate::types::TransactionHashWithApprovals;
 use metrics::Metrics;
 
 const COMPONENT_NAME: &str = "deploy_buffer";
 
-type FootprintAndApprovals = (DeployFootprint, BTreeSet<Approval>);
+type FootprintAndApprovals = (DeployFootprint, BTreeSet<DeployApproval>);
 
 #[derive(DataSize, Debug)]
 pub(crate) struct DeployBuffer {
     state: ComponentState,
     cfg: Config,
-    deploy_config: DeployConfig,
+    transaction_config: TransactionConfig,
     // Keeps track of all deploys the buffer is currently aware of.
     //
     // `hold` and `dead` are used to filter it on demand as necessary.
@@ -80,14 +81,14 @@ pub(crate) struct DeployBuffer {
 impl DeployBuffer {
     /// Create a deploy buffer for fun and profit.
     pub(crate) fn new(
-        deploy_config: DeployConfig,
+        transaction_config: TransactionConfig,
         cfg: Config,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
         Ok(DeployBuffer {
             state: ComponentState::Uninitialized,
             cfg,
-            deploy_config,
+            transaction_config,
             buffer: HashMap::new(),
             hold: BTreeMap::new(),
             dead: HashSet::new(),
@@ -206,8 +207,19 @@ impl DeployBuffer {
     {
         debug!(%deploy_id, "DeployBuffer: registering gossiped deploy");
         effect_builder
-            .get_stored_deploy(deploy_id)
-            .event(move |result| Event::StoredDeploy(deploy_id, result.map(Box::new)))
+            .get_stored_transaction(TransactionId::from(deploy_id))
+            .event(move |result| {
+                let deploy = result.map(|txn| match txn {
+                    Transaction::Deploy(deploy) => Box::new(deploy),
+                    Transaction::V1(_) => {
+                        todo!(
+                            "unreachable, but this code path will be removed as part of \
+                            https://github.com/casper-network/roadmap/issues/184"
+                        )
+                    }
+                });
+                Event::StoredDeploy(deploy_id, deploy)
+            })
     }
 
     /// Update buffer considering new stored deploy.
@@ -253,12 +265,27 @@ impl DeployBuffer {
         let timestamp = &proposed_block.context().timestamp();
         if let Some(hold_set) = self.hold.get_mut(timestamp) {
             debug!(%timestamp, "DeployBuffer: existing hold timestamp extended");
-            hold_set.extend(proposed_block.value().deploy_and_transfer_hashes());
+            hold_set.extend(proposed_block.value().all_transactions().filter_map(
+                |thwa| match thwa {
+                    TransactionHashWithApprovals::Deploy { deploy_hash, .. } => Some(*deploy_hash),
+                    TransactionHashWithApprovals::V1 { .. } => None,
+                },
+            ));
         } else {
             debug!(%timestamp, "DeployBuffer: new hold timestamp inserted");
             self.hold.insert(
                 *timestamp,
-                HashSet::from_iter(proposed_block.value().deploy_and_transfer_hashes().copied()),
+                HashSet::from_iter(
+                    proposed_block
+                        .value()
+                        .all_transactions()
+                        .filter_map(|thwa| match thwa {
+                            TransactionHashWithApprovals::Deploy { deploy_hash, .. } => {
+                                Some(*deploy_hash)
+                            }
+                            TransactionHashWithApprovals::V1 { .. } => None,
+                        }),
+                ),
             );
         }
         self.metrics.held_deploys.set(
@@ -276,7 +303,7 @@ impl DeployBuffer {
         timestamp: Timestamp,
         deploy_hashes: impl Iterator<Item = &'a DeployHash>,
     ) {
-        let expiry_timestamp = timestamp.saturating_add(self.deploy_config.max_ttl);
+        let expiry_timestamp = timestamp.saturating_add(self.transaction_config.max_ttl);
 
         for deploy_hash in deploy_hashes {
             if !self.buffer.contains_key(deploy_hash) {
@@ -293,11 +320,46 @@ impl DeployBuffer {
     }
 
     /// Update buffer and holds considering new added block.
-    fn register_block(&mut self, block: &Block) {
+    fn register_block(&mut self, block: &BlockV2) {
         let block_height = block.height();
         let timestamp = block.timestamp();
         debug!(%timestamp, "DeployBuffer: register_block({}) timestamp finalized", block_height);
-        self.register_deploys(timestamp, block.deploy_and_transfer_hashes());
+        self.register_deploys(
+            timestamp,
+            block
+                .all_transactions()
+                .filter_map(|txn_hash| match txn_hash {
+                    TransactionHash::Deploy(deploy_hash) => Some(deploy_hash),
+                    TransactionHash::V1(_) => None,
+                }),
+        );
+    }
+
+    /// When initializing the buffer, register past blocks in order to provide replay protection.
+    fn register_versioned_block(&mut self, block: &Block) {
+        let block_height = block.height();
+        let timestamp = block.timestamp();
+        debug!(
+            %timestamp,
+            "DeployBuffer: register_versioned_block({}) timestamp finalized",
+            block_height
+        );
+        match block {
+            Block::V1(v1_block) => {
+                self.register_deploys(timestamp, v1_block.deploy_and_transfer_hashes())
+            }
+            Block::V2(v2_block) => {
+                self.register_deploys(
+                    timestamp,
+                    v2_block
+                        .all_transactions()
+                        .filter_map(|txn_hash| match txn_hash {
+                            TransactionHash::Deploy(deploy_hash) => Some(deploy_hash),
+                            TransactionHash::V1(_) => None,
+                        }),
+                );
+            }
+        }
     }
 
     /// Update buffer and holds considering new finalized block.
@@ -305,7 +367,15 @@ impl DeployBuffer {
         let block_height = finalized_block.height;
         let timestamp = finalized_block.timestamp;
         debug!(%timestamp, "DeployBuffer: register_block_finalized({}) timestamp finalized", block_height);
-        self.register_deploys(timestamp, finalized_block.deploy_and_transfer_hashes());
+        self.register_deploys(
+            timestamp,
+            finalized_block
+                .all_transactions()
+                .filter_map(|txn_hash| match txn_hash {
+                    TransactionHash::Deploy(deploy_hash) => Some(deploy_hash),
+                    TransactionHash::V1(_) => None,
+                }),
+        );
     }
 
     /// Returns eligible deploys that are buffered and not held or dead.
@@ -328,7 +398,7 @@ impl DeployBuffer {
 
     /// Returns a right-sized payload of deploys that can be proposed.
     fn appendable_block(&mut self, timestamp: Timestamp) -> AppendableBlock {
-        let mut ret = AppendableBlock::new(self.deploy_config, timestamp);
+        let mut ret = AppendableBlock::new(self.transaction_config, timestamp);
         let mut holds = HashSet::new();
         let mut have_hit_transfer_limit = false;
         let mut have_hit_deploy_limit = false;
@@ -365,9 +435,12 @@ impl DeployBuffer {
                             self.dead.insert(deploy_hash);
                         }
                         AddError::InvalidDeploy => {
-                            // it should not be possible for an invalid deploy to get buffered
-                            // in the first place, thus this should be unreachable
-                            error!(
+                            // It should not generally be possible for an invalid deploy to get
+                            // buffered in the first place, thus this should be unreachable.  There
+                            // is a small potential for a slightly future-dated deploy to be
+                            // accepted (if within `timestamp_leeway`) and still be future-dated by
+                            // the time we try and add it to a proposed block here.
+                            warn!(
                                 ?deploy_hash,
                                 "DeployBuffer: invalid deploy in deploy buffer"
                             );
@@ -509,7 +582,7 @@ where
                 match event {
                     Event::Initialize(blocks) => {
                         for block in blocks {
-                            self.register_block(&block);
+                            self.register_versioned_block(&block);
                         }
                         <Self as InitializedComponent<MainEvent>>::set_state(
                             self,
@@ -525,6 +598,7 @@ where
                     | Event::StoredDeploy(_, _)
                     | Event::BlockProposed(_)
                     | Event::Block(_)
+                    | Event::VersionedBlock(_)
                     | Event::BlockFinalized(_)
                     | Event::Expire => {
                         warn!(
@@ -555,6 +629,10 @@ where
                 }
                 Event::Block(block) => {
                     self.register_block(&block);
+                    Effects::new()
+                }
+                Event::VersionedBlock(block) => {
+                    self.register_versioned_block(&block);
                     Effects::new()
                 }
                 Event::BlockProposed(proposed) => {

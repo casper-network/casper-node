@@ -22,7 +22,7 @@ use casper_execution_engine::{
         execution_result::ExecutionResult,
         run_genesis_request::RunGenesisRequest,
         step::{StepRequest, StepSuccess},
-        BalanceResult, EngineConfig, EngineState, Error, ExecutionJournal, GenesisSuccess,
+        BalanceResult, EngineConfig, EngineConfigBuilder, EngineState, Error, GenesisSuccess,
         GetBidsRequest, PruneConfig, PruneResult, QueryRequest, QueryResult, StepError,
         SystemContractRegistry, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
     },
@@ -31,7 +31,6 @@ use casper_execution_engine::{
 use casper_storage::{
     data_access_layer::{BlockStore, DataAccessLayer},
     global_state::{
-        shared::{transform::Transform, AdditiveMap},
         state::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
             StateReader,
@@ -42,28 +41,31 @@ use casper_storage::{
     },
 };
 use casper_types::{
-    account::{Account, AccountHash},
+    account::AccountHash,
     bytesrepr::{self, FromBytes},
+    contracts::ContractHash,
+    execution::Effects,
+    package::PackageKindTag,
     runtime_args,
     system::{
         auction::{
-            Bids, EraValidators, UnbondingPurse, UnbondingPurses, ValidatorWeights, WithdrawPurses,
-            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY,
-            METHOD_RUN_AUCTION, UNBONDING_DELAY_KEY,
+            BidKind, EraValidators, UnbondingPurse, UnbondingPurses, ValidatorWeights,
+            WithdrawPurses, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
+            AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION, UNBONDING_DELAY_KEY,
         },
         mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AuctionCosts, CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractWasm, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts, Key, KeyTag,
-    MintCosts, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr, URef,
-    UpgradeConfig, OS_PAGE_SIZE, U512,
+    AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, ByteCodeHash, ByteCodeKind,
+    CLTyped, CLValue, Contract, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts,
+    Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolVersion, PublicKey,
+    RefundHandling, StoredValue, Transfer, TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 
 use crate::{
     chainspec_config::{ChainspecConfig, PRODUCTION_PATH},
-    utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_PROPOSER_ADDR,
+    utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_GAS_PRICE, DEFAULT_PROPOSER_ADDR,
     DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
 
@@ -86,25 +88,25 @@ pub type LmdbWasmTestBuilder = WasmTestBuilder<DataAccessLayer<LmdbGlobalState>>
 
 /// Builder for simple WASM test
 pub struct WasmTestBuilder<S> {
-    /// [`EngineState`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation
+    /// [`EngineState`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation.
     engine_state: Rc<EngineState<S>>,
-    /// [`ExecutionResult`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation
+    /// [`ExecutionResult`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation.
     exec_results: Vec<Vec<Rc<ExecutionResult>>>,
     upgrade_results: Vec<Result<UpgradeSuccess, engine_state::Error>>,
     prune_results: Vec<Result<PruneResult, engine_state::Error>>,
     genesis_hash: Option<Digest>,
     /// Post state hash.
     post_state_hash: Option<Digest>,
-    /// Cached transform maps after subsequent successful runs i.e. `transforms[0]` is for first
-    /// exec call etc.
-    transforms: Vec<ExecutionJournal>,
-    /// Cached genesis transforms
-    genesis_account: Option<Account>,
-    /// Genesis transforms
-    genesis_transforms: Option<AdditiveMap<Key, Transform>>,
+    /// Cached effects after successful runs i.e. `effects[0]` is the collection of effects for
+    /// first exec call, etc.
+    effects: Vec<Effects>,
+    /// Genesis effects.
+    genesis_effects: Option<Effects>,
+    /// Cached system account.
+    system_account: Option<AddressableEntity>,
     /// Scratch global state used for in-memory execution and commit optimization.
     scratch_engine_state: Option<EngineState<ScratchGlobalState>>,
-    /// System contract registry
+    /// System contract registry.
     system_contract_registry: Option<SystemContractRegistry>,
     /// Global state dir, for implementations that define one.
     global_state_dir: Option<PathBuf>,
@@ -129,9 +131,9 @@ impl<S> Clone for WasmTestBuilder<S> {
             prune_results: self.prune_results.clone(),
             genesis_hash: self.genesis_hash,
             post_state_hash: self.post_state_hash,
-            transforms: self.transforms.clone(),
-            genesis_account: self.genesis_account.clone(),
-            genesis_transforms: self.genesis_transforms.clone(),
+            effects: self.effects.clone(),
+            genesis_effects: self.genesis_effects.clone(),
+            system_account: self.system_account.clone(),
             scratch_engine_state: None,
             system_contract_registry: self.system_contract_registry.clone(),
             global_state_dir: self.global_state_dir.clone(),
@@ -185,7 +187,7 @@ impl LmdbWasmTestBuilder {
 
         if let Ok(UpgradeSuccess {
             post_state_hash,
-            execution_effect: _,
+            effects: _,
         }) = result
         {
             self.post_state_hash = Some(post_state_hash);
@@ -241,9 +243,9 @@ impl LmdbWasmTestBuilder {
             prune_results: Vec::new(),
             genesis_hash: None,
             post_state_hash: None,
-            transforms: Vec::new(),
-            genesis_account: None,
-            genesis_transforms: None,
+            effects: Vec::new(),
+            system_account: None,
+            genesis_effects: None,
             scratch_engine_state: None,
             system_contract_registry: None,
             global_state_dir: Some(global_state_dir),
@@ -260,20 +262,26 @@ impl LmdbWasmTestBuilder {
         let chainspec_config = ChainspecConfig::from_chainspec_path(chainspec_path)
             .expect("must build chainspec configuration");
 
-        let engine_config = EngineConfig::new(
-            DEFAULT_MAX_QUERY_DEPTH,
-            chainspec_config.core_config.max_associated_keys,
-            chainspec_config.core_config.max_runtime_call_stack_height,
-            chainspec_config.core_config.minimum_delegation_amount,
-            chainspec_config.core_config.strict_argument_checking,
-            chainspec_config
-                .core_config
-                .vesting_schedule_period
-                .millis(),
-            chainspec_config.core_config.max_delegators_per_validator,
-            chainspec_config.wasm_config,
-            chainspec_config.system_costs_config,
-        );
+        let engine_config = EngineConfigBuilder::new()
+            .with_max_query_depth(DEFAULT_MAX_QUERY_DEPTH)
+            .with_max_associated_keys(chainspec_config.core_config.max_associated_keys)
+            .with_max_runtime_call_stack_height(
+                chainspec_config.core_config.max_runtime_call_stack_height,
+            )
+            .with_minimum_delegation_amount(chainspec_config.core_config.minimum_delegation_amount)
+            .with_strict_argument_checking(chainspec_config.core_config.strict_argument_checking)
+            .with_vesting_schedule_period_millis(
+                chainspec_config
+                    .core_config
+                    .vesting_schedule_period
+                    .millis(),
+            )
+            .with_max_delegators_per_validator(
+                chainspec_config.core_config.max_delegators_per_validator,
+            )
+            .with_wasm_config(chainspec_config.wasm_config)
+            .with_system_config(chainspec_config.system_costs_config)
+            .build();
 
         Self::new_with_config(data_dir, engine_config)
     }
@@ -349,21 +357,31 @@ impl LmdbWasmTestBuilder {
         };
 
         let engine_state = EngineState::new(data_access_layer, engine_config);
-        WasmTestBuilder {
+
+        let post_state_hash = mode.post_state_hash();
+
+        let mut builder = WasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
             prune_results: Vec::new(),
             genesis_hash: None,
-            post_state_hash: mode.post_state_hash(),
-            transforms: Vec::new(),
-            genesis_account: None,
-            genesis_transforms: None,
+            post_state_hash,
+            effects: Vec::new(),
+            genesis_effects: None,
+            system_account: None,
             scratch_engine_state: None,
             system_contract_registry: None,
             global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
             temp_dir: None,
+        };
+
+        if let Some(post_state_hash) = post_state_hash {
+            builder.system_contract_registry =
+                builder.query_system_contract_registry(Some(post_state_hash));
         }
+
+        builder
     }
 
     /// Creates a new instance of builder using the supplied configurations, opening wrapped LMDBs
@@ -414,17 +432,21 @@ impl LmdbWasmTestBuilder {
             .vesting_schedule_period
             .millis();
 
-        let engine_config = EngineConfig::new(
-            DEFAULT_MAX_QUERY_DEPTH,
-            chainspec_config.core_config.max_associated_keys,
-            chainspec_config.core_config.max_runtime_call_stack_height,
-            chainspec_config.core_config.minimum_delegation_amount,
-            chainspec_config.core_config.strict_argument_checking,
-            vesting_schedule_period_millis,
-            chainspec_config.core_config.max_delegators_per_validator,
-            chainspec_config.wasm_config,
-            chainspec_config.system_costs_config,
-        );
+        let engine_config = EngineConfigBuilder::new()
+            .with_max_query_depth(DEFAULT_MAX_QUERY_DEPTH)
+            .with_max_associated_keys(chainspec_config.core_config.max_associated_keys)
+            .with_max_runtime_call_stack_height(
+                chainspec_config.core_config.max_runtime_call_stack_height,
+            )
+            .with_minimum_delegation_amount(chainspec_config.core_config.minimum_delegation_amount)
+            .with_strict_argument_checking(chainspec_config.core_config.strict_argument_checking)
+            .with_vesting_schedule_period_millis(vesting_schedule_period_millis)
+            .with_max_delegators_per_validator(
+                chainspec_config.core_config.max_delegators_per_validator,
+            )
+            .with_wasm_config(chainspec_config.wasm_config)
+            .with_system_config(chainspec_config.system_costs_config)
+            .build();
 
         Self::new_temporary_with_config(engine_config)
     }
@@ -477,17 +499,15 @@ impl LmdbWasmTestBuilder {
         // First execute the request against our scratch global state.
         let maybe_exec_results = cached_state.run_execute(exec_request);
         for execution_result in maybe_exec_results.unwrap() {
-            let journal = execution_result.execution_journal().clone();
-            let transforms: AdditiveMap<Key, Transform> = journal.clone().into();
             let _post_state_hash = cached_state
-                .apply_effect(
+                .commit_effects(
                     self.post_state_hash.expect("requires a post_state_hash"),
-                    transforms,
+                    execution_result.effects().clone(),
                 )
                 .expect("should commit");
 
             // Save transforms and execution results for WasmTestBuilder.
-            self.transforms.push(journal);
+            self.effects.push(execution_result.effects().clone());
             exec_results.push(Rc::new(execution_result))
         }
         self.exec_results.push(exec_results);
@@ -533,11 +553,9 @@ where
 {
     /// Takes a [`RunGenesisRequest`], executes the request and returns Self.
     pub fn run_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
-        let system_account = Key::Account(PublicKey::System.to_account_hash());
-
         let GenesisSuccess {
             post_state_hash,
-            execution_effect,
+            effects,
         } = self
             .engine_state
             .commit_genesis(
@@ -548,11 +566,7 @@ where
             )
             .expect("Unable to get genesis response");
 
-        let transforms = execution_effect.transforms;
         let empty_path: Vec<String> = vec![];
-
-        let genesis_account =
-            utils::get_account(&transforms, &system_account).expect("Unable to get system account");
 
         self.system_contract_registry = match self.query(
             Some(post_state_hash),
@@ -570,9 +584,24 @@ where
 
         self.genesis_hash = Some(post_state_hash);
         self.post_state_hash = Some(post_state_hash);
-        self.genesis_account = Some(genesis_account);
-        self.genesis_transforms = Some(transforms);
+        self.system_account = self.get_entity_by_account_hash(*SYSTEM_ADDR);
+        self.genesis_effects = Some(effects);
         self
+    }
+
+    fn query_system_contract_registry(
+        &mut self,
+        post_state_hash: Option<Digest>,
+    ) -> Option<SystemContractRegistry> {
+        match self.query(post_state_hash, Key::SystemContractRegistry, &[]) {
+            Ok(StoredValue::CLValue(cl_registry)) => {
+                let system_contract_registry =
+                    CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
+                Some(system_contract_registry)
+            }
+            Ok(_) => None,
+            Err(_) => None,
+        }
     }
 
     /// Queries state for a [`StoredValue`].
@@ -644,11 +673,12 @@ where
     /// # Panics
     /// Panics if the total supply can't be found.
     pub fn total_supply(&self, maybe_post_state: Option<Digest>) -> U512 {
-        let mint_key: Key = self
-            .get_system_contract_hash(MINT)
+        let mint_entity_hash = self
+            .get_system_entity_hash(MINT)
             .cloned()
-            .expect("should have mint_contract_hash")
-            .into();
+            .expect("should have mint_contract_hash");
+
+        let mint_key = Key::addressable_entity_key(PackageKindTag::System, mint_entity_hash);
 
         let result = self.query(maybe_post_state, mint_key, &[TOTAL_SUPPLY_KEY.to_string()]);
 
@@ -665,14 +695,14 @@ where
     /// # Panics
     /// Panics if the total supply or seigniorage rate can't be found.
     pub fn base_round_reward(&mut self, maybe_post_state: Option<Digest>) -> U512 {
-        let mint_key: Key = self.get_mint_contract_hash().into();
+        let mint_key: Key =
+            Key::addressable_entity_key(PackageKindTag::System, self.get_mint_contract_hash());
 
         let mint_contract = self
             .query(maybe_post_state, mint_key, &[])
             .expect("must get mint stored value")
-            .as_contract()
-            .expect("must convert to mint contract")
-            .clone();
+            .into_addressable_entity()
+            .expect("must convert to mint contract");
 
         let mint_named_keys = mint_contract.named_keys().clone();
 
@@ -689,18 +719,16 @@ where
         let total_supply = self
             .query(maybe_post_state, Key::URef(total_supply_uref), &[])
             .expect("must read value under total supply URef")
-            .as_cl_value()
+            .into_cl_value()
             .expect("must convert into CL value")
-            .clone()
             .into_t::<U512>()
             .expect("must convert into U512");
 
         let rate = self
             .query(maybe_post_state, round_seigniorage_rate_uref, &[])
             .expect("must read value")
-            .as_cl_value()
+            .into_cl_value()
             .expect("must conver to cl value")
-            .clone()
             .into_t::<Ratio<U512>>()
             .expect("must conver to ratio");
 
@@ -722,11 +750,8 @@ where
         // Parse deploy results
         let execution_results = maybe_exec_results.as_ref().unwrap();
         // Cache transformations
-        self.transforms.extend(
-            execution_results
-                .iter()
-                .map(|res| res.execution_journal().clone()),
-        );
+        self.effects
+            .extend(execution_results.iter().map(|res| res.effects().clone()));
         self.exec_results.push(
             maybe_exec_results
                 .unwrap()
@@ -741,21 +766,17 @@ where
     pub fn commit(&mut self) -> &mut Self {
         let prestate_hash = self.post_state_hash.expect("Should have genesis hash");
 
-        let effects = self.transforms.last().cloned().unwrap_or_default();
+        let effects = self.effects.last().cloned().unwrap_or_default();
 
-        self.commit_transforms(prestate_hash, effects.into())
+        self.commit_transforms(prestate_hash, effects)
     }
 
     /// Runs a commit request, expects a successful response, and
     /// overwrites existing cached post state hash with a new one.
-    pub fn commit_transforms(
-        &mut self,
-        pre_state_hash: Digest,
-        effects: AdditiveMap<Key, Transform>,
-    ) -> &mut Self {
+    pub fn commit_transforms(&mut self, pre_state_hash: Digest, effects: Effects) -> &mut Self {
         let post_state_hash = self
             .engine_state
-            .apply_effect(pre_state_hash, effects)
+            .commit_effects(pre_state_hash, effects)
             .expect("should commit");
         self.post_state_hash = Some(post_state_hash);
         self
@@ -769,27 +790,36 @@ where
         engine_config: EngineConfig,
         upgrade_config: &mut UpgradeConfig,
     ) -> &mut Self {
+        self.upgrade_with_upgrade_request_and_config(Some(engine_config), upgrade_config)
+    }
+
+    /// Upgrades the execution engine.
+    ///
+    /// If `engine_config` is set to None, then it is defaulted to the current one.
+    pub fn upgrade_with_upgrade_request_and_config(
+        &mut self,
+        engine_config: Option<EngineConfig>,
+        upgrade_config: &mut UpgradeConfig,
+    ) -> &mut Self {
+        let engine_config = engine_config.unwrap_or_else(|| self.engine_state.config().clone());
+
         let pre_state_hash = self.post_state_hash.expect("should have state hash");
         upgrade_config.with_pre_state_hash(pre_state_hash);
 
-        let engine_state = Rc::get_mut(&mut self.engine_state).unwrap();
-        engine_state.update_config(engine_config);
+        let engine_state_mut =
+            Rc::get_mut(&mut self.engine_state).expect("should have unique ownership");
+        engine_state_mut.update_config(engine_config);
 
         let result = self.engine_state.commit_upgrade(upgrade_config.clone());
 
         if let Ok(UpgradeSuccess {
             post_state_hash,
-            execution_effect: _,
+            effects: _,
         }) = result
         {
             self.post_state_hash = Some(post_state_hash);
-
-            if let Ok(StoredValue::CLValue(cl_registry)) =
-                self.query(self.post_state_hash, Key::SystemContractRegistry, &[])
-            {
-                let registry = CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
-                self.system_contract_registry = Some(registry);
-            }
+            self.system_contract_registry =
+                self.query_system_contract_registry(Some(post_state_hash));
         }
 
         self.upgrade_results.push(result);
@@ -813,7 +843,7 @@ where
             },
         )
         .build();
-        self.exec(run_request).commit().expect_success()
+        self.exec(run_request).expect_success().commit()
     }
 
     /// Increments engine state.
@@ -835,7 +865,7 @@ where
         &mut self,
         pre_state_hash: Option<Digest>,
         protocol_version: ProtocolVersion,
-        proposer: PublicKey,
+        rewards: &BTreeMap<PublicKey, U512>,
         next_block_height: u64,
         time: u64,
     ) -> Result<Digest, StepError> {
@@ -843,7 +873,7 @@ where
         let post_state_hash = self.engine_state.distribute_block_rewards(
             pre_state_hash,
             protocol_version,
-            proposer,
+            rewards,
             next_block_height,
             time,
         )?;
@@ -854,10 +884,11 @@ where
     }
 
     /// Expects a successful run
+    #[track_caller]
     pub fn expect_success(&mut self) -> &mut Self {
         // Check first result, as only first result is interesting for a simple test
         let exec_results = self
-            .get_last_exec_results()
+            .get_last_exec_result()
             .expect("Expected to be called after run()");
         let exec_result = exec_results
             .get(0)
@@ -876,7 +907,7 @@ where
     pub fn expect_failure(&mut self) -> &mut Self {
         // Check first result, as only first result is interesting for a simple test
         let exec_results = self
-            .get_last_exec_results()
+            .get_last_exec_result()
             .expect("Expected to be called after run()");
         let exec_result = exec_results
             .get(0)
@@ -894,7 +925,7 @@ where
 
     /// Returns `true` if the las exec had an error, otherwise returns false.
     pub fn is_error(&self) -> bool {
-        self.get_last_exec_results()
+        self.get_last_exec_result()
             .expect("Expected to be called after run()")
             .get(0)
             .expect("Unable to get first execution result")
@@ -903,7 +934,7 @@ where
 
     /// Returns an `Option<engine_state::Error>` if the last exec had an error.
     pub fn get_error(&self) -> Option<engine_state::Error> {
-        self.get_last_exec_results()
+        self.get_last_exec_result()
             .expect("Expected to be called after run()")
             .get(0)
             .expect("Unable to get first deploy result")
@@ -911,56 +942,58 @@ where
             .cloned()
     }
 
-    /// Gets `ExecutionJournal`s of all passed runs.
-    pub fn get_execution_journals(&self) -> Vec<ExecutionJournal> {
-        self.transforms.clone()
+    /// Gets `Effects` of all previous runs.
+    pub fn get_effects(&self) -> Vec<Effects> {
+        self.effects.clone()
     }
 
     /// Gets genesis account (if present)
-    pub fn get_genesis_account(&self) -> &Account {
-        self.genesis_account
+    pub fn get_genesis_account(&self) -> &AddressableEntity {
+        self.system_account
             .as_ref()
             .expect("Unable to obtain genesis account. Please run genesis first.")
     }
 
-    /// Returns the [`ContractHash`] of the mint, panics if it can't be found.
-    pub fn get_mint_contract_hash(&self) -> ContractHash {
-        self.get_system_contract_hash(MINT)
+    /// Returns the [`AddressableEntityHash`] of the mint, panics if it can't be found.
+    pub fn get_mint_contract_hash(&self) -> AddressableEntityHash {
+        self.get_system_entity_hash(MINT)
             .cloned()
             .expect("Unable to obtain mint contract. Please run genesis first.")
     }
 
-    /// Returns the [`ContractHash`] of the "handle payment" contract, panics if it can't be found.
-    pub fn get_handle_payment_contract_hash(&self) -> ContractHash {
-        self.get_system_contract_hash(HANDLE_PAYMENT)
+    /// Returns the [`AddressableEntityHash`] of the "handle payment" contract, panics if it can't
+    /// be found.
+    pub fn get_handle_payment_contract_hash(&self) -> AddressableEntityHash {
+        self.get_system_entity_hash(HANDLE_PAYMENT)
             .cloned()
             .expect("Unable to obtain handle payment contract. Please run genesis first.")
     }
 
-    /// Returns the [`ContractHash`] of the "standard payment" contract, panics if it can't be
-    /// found.
-    pub fn get_standard_payment_contract_hash(&self) -> ContractHash {
-        self.get_system_contract_hash(STANDARD_PAYMENT)
+    /// Returns the [`AddressableEntityHash`] of the "standard payment" contract, panics if it can't
+    /// be found.
+    pub fn get_standard_payment_contract_hash(&self) -> AddressableEntityHash {
+        self.get_system_entity_hash(STANDARD_PAYMENT)
             .cloned()
             .expect("Unable to obtain standard payment contract. Please run genesis first.")
     }
 
-    fn get_system_contract_hash(&self, contract_name: &str) -> Option<&ContractHash> {
+    fn get_system_entity_hash(&self, contract_name: &str) -> Option<&AddressableEntityHash> {
         self.system_contract_registry
             .as_ref()
             .and_then(|registry| registry.get(contract_name))
     }
 
-    /// Returns the [`ContractHash`] of the "auction" contract, panics if it can't be found.
-    pub fn get_auction_contract_hash(&self) -> ContractHash {
-        self.get_system_contract_hash(AUCTION)
+    /// Returns the [`AddressableEntityHash`] of the "auction" contract, panics if it can't be
+    /// found.
+    pub fn get_auction_contract_hash(&self) -> AddressableEntityHash {
+        self.get_system_entity_hash(AUCTION)
             .cloned()
             .expect("Unable to obtain auction contract. Please run genesis first.")
     }
 
-    /// Returns genesis transforms, panics if there aren't any.
-    pub fn get_genesis_transforms(&self) -> &AdditiveMap<Key, Transform> {
-        self.genesis_transforms
+    /// Returns genesis effects, panics if there aren't any.
+    pub fn get_genesis_effects(&self) -> &Effects {
+        self.genesis_effects
             .as_ref()
             .expect("should have genesis transforms")
     }
@@ -982,7 +1015,7 @@ where
     }
 
     /// Returns the last results execs.
-    pub fn get_last_exec_results(&self) -> Option<Vec<Rc<ExecutionResult>>> {
+    pub fn get_last_exec_result(&self) -> Option<Vec<Rc<ExecutionResult>>> {
         let exec_results = self.exec_results.last()?;
 
         Some(exec_results.iter().map(Rc::clone).collect())
@@ -1023,12 +1056,13 @@ where
     }
 
     /// Returns the "handle payment" contract, panics if it can't be found.
-    pub fn get_handle_payment_contract(&self) -> Contract {
-        let handle_payment_contract: Key = self
-            .get_system_contract_hash(HANDLE_PAYMENT)
-            .cloned()
-            .expect("should have handle payment contract uref")
-            .into();
+    pub fn get_handle_payment_contract(&self) -> AddressableEntity {
+        let handle_payment_contract = Key::addressable_entity_key(
+            PackageKindTag::System,
+            self.get_system_entity_hash(HANDLE_PAYMENT)
+                .cloned()
+                .expect("should have handle payment contract uref"),
+        );
         self.query(None, handle_payment_contract, &[])
             .and_then(|v| v.try_into().map_err(|error| format!("{:?}", error)))
             .expect("should find handle payment URef")
@@ -1061,30 +1095,81 @@ where
 
     /// Gets the purse balance of a proposer.
     pub fn get_proposer_purse_balance(&self) -> U512 {
-        let proposer_account = self
-            .get_account(*DEFAULT_PROPOSER_ADDR)
+        let proposer_contract = self
+            .get_entity_by_account_hash(*DEFAULT_PROPOSER_ADDR)
             .expect("proposer account should exist");
-        self.get_purse_balance(proposer_account.main_purse())
+        self.get_purse_balance(proposer_contract.main_purse())
     }
 
-    /// Queries for an `Account`.
-    pub fn get_account(&self, account_hash: AccountHash) -> Option<Account> {
-        match self.query(None, Key::Account(account_hash), &[]) {
-            Ok(account_value) => match account_value {
-                StoredValue::Account(account) => Some(account),
-                _ => None,
-            },
-            Err(_) => None,
+    /// Gets the contract hash associated with a given account hash.
+    pub fn get_entity_hash_by_account_hash(
+        &self,
+        account_hash: AccountHash,
+    ) -> Option<AddressableEntityHash> {
+        match self.query(None, Key::Account(account_hash), &[]).ok() {
+            Some(StoredValue::CLValue(cl_value)) => {
+                let entity_key = CLValue::into_t::<Key>(cl_value).expect("must have contract hash");
+                entity_key.into_entity_hash()
+            }
+            Some(_) | None => None,
         }
     }
 
-    /// Queries for an `Account` and panics if it can't be found.
-    pub fn get_expected_account(&self, account_hash: AccountHash) -> Account {
-        self.get_account(account_hash).expect("account to exist")
+    /// Queries for an `Account`.
+    pub fn get_entity_by_account_hash(
+        &self,
+        account_hash: AccountHash,
+    ) -> Option<AddressableEntity> {
+        match self.query(None, Key::Account(account_hash), &[]).ok() {
+            Some(StoredValue::CLValue(cl_value)) => {
+                let contract_key =
+                    CLValue::into_t::<Key>(cl_value).expect("must have contract hash");
+                match self.query(None, contract_key, &[]) {
+                    Ok(StoredValue::AddressableEntity(contract)) => Some(contract),
+                    Ok(_) | Err(_) => None,
+                }
+            }
+            Some(_other_variant) => None,
+            None => None,
+        }
     }
 
-    /// Queries for a contract by `ContractHash`.
-    pub fn get_contract(&self, contract_hash: ContractHash) -> Option<Contract> {
+    /// Queries for an `AddressableEntity` and panics if it can't be found.
+    pub fn get_expected_addressable_entity_by_account_hash(
+        &self,
+        account_hash: AccountHash,
+    ) -> AddressableEntity {
+        self.get_entity_by_account_hash(account_hash)
+            .expect("account to exist")
+    }
+
+    /// Queries for an addressable entity by `AddressableEntityHash`.
+    pub fn get_addressable_entity(
+        &self,
+        entity_hash: AddressableEntityHash,
+    ) -> Option<AddressableEntity> {
+        let entity_key = Key::addressable_entity_key(PackageKindTag::SmartContract, entity_hash);
+
+        let contract_value: StoredValue = match self.query(None, entity_key, &[]) {
+            Ok(stored_value) => stored_value,
+            Err(_) => self
+                .query(
+                    None,
+                    Key::addressable_entity_key(PackageKindTag::System, entity_hash),
+                    &[],
+                )
+                .expect("must have value"),
+        };
+
+        if let StoredValue::AddressableEntity(contract) = contract_value {
+            Some(contract)
+        } else {
+            None
+        }
+    }
+
+    /// Retrieve a Contract from global state.
+    pub fn get_legacy_contract(&self, contract_hash: ContractHash) -> Option<Contract> {
         let contract_value: StoredValue = self
             .query(None, contract_hash.into(), &[])
             .expect("should have contract value");
@@ -1096,29 +1181,28 @@ where
         }
     }
 
-    /// Queries for a contract by `ContractHash` and returns an `Option<ContractWasm>`.
-    pub fn get_contract_wasm(&self, contract_hash: ContractHash) -> Option<ContractWasm> {
-        let contract_value: StoredValue = self
-            .query(None, contract_hash.into(), &[])
+    /// Queries for byte code by `ByteCodeAddr` and returns an `Option<ByteCode>`.
+    pub fn get_byte_code(&self, byte_code_hash: ByteCodeHash) -> Option<ByteCode> {
+        let byte_code_key = Key::byte_code_key(ByteCodeKind::V1CasperWasm, byte_code_hash.value());
+
+        let byte_code_value: StoredValue = self
+            .query(None, byte_code_key, &[])
             .expect("should have contract value");
 
-        if let StoredValue::ContractWasm(contract_wasm) = contract_value {
-            Some(contract_wasm)
+        if let StoredValue::ByteCode(byte_code) = byte_code_value {
+            Some(byte_code)
         } else {
             None
         }
     }
 
-    /// Queries for a contract package by `ContractPackageHash`.
-    pub fn get_contract_package(
-        &self,
-        contract_package_hash: ContractPackageHash,
-    ) -> Option<ContractPackage> {
+    /// Queries for a contract package by `PackageHash`.
+    pub fn get_package(&self, package_hash: PackageHash) -> Option<Package> {
         let contract_value: StoredValue = self
-            .query(None, contract_package_hash.into(), &[])
+            .query(None, package_hash.into(), &[])
             .expect("should have package value");
 
-        if let StoredValue::ContractPackage(package) = contract_value {
+        if let StoredValue::Package(package) = contract_value {
             Some(package)
         } else {
             None
@@ -1162,7 +1246,7 @@ where
     /// Returns the `Gas` cost of the last exec.
     pub fn last_exec_gas_cost(&self) -> Gas {
         let exec_results = self
-            .get_last_exec_results()
+            .get_last_exec_result()
             .expect("Expected to be called after run()");
         let exec_result = exec_results.get(0).expect("should have result");
         exec_result.cost()
@@ -1213,8 +1297,8 @@ where
         result.remove(&era_id)
     }
 
-    /// Gets [`Bids`].
-    pub fn get_bids(&mut self) -> Bids {
+    /// Gets [`Vec<BidKind>`].
+    pub fn get_bids(&mut self) -> Vec<BidKind> {
         let get_bids_request = GetBidsRequest::new(self.get_post_state_hash());
 
         let get_bids_result = self.engine_state.get_bids(get_bids_request).unwrap();
@@ -1303,22 +1387,19 @@ where
     }
 
     /// Gets a stored value from a contract's named keys.
-    pub fn get_value<T>(&mut self, contract_hash: ContractHash, name: &str) -> T
+    pub fn get_value<T>(&mut self, entity_hash: AddressableEntityHash, name: &str) -> T
     where
         T: FromBytes + CLTyped,
     {
         let contract = self
-            .get_contract(contract_hash)
+            .get_addressable_entity(entity_hash)
             .expect("should have contract");
         let key = contract
             .named_keys()
             .get(name)
             .expect("should have named key");
         let stored_value = self.query(None, *key, &[]).expect("should query");
-        let cl_value = stored_value
-            .as_cl_value()
-            .cloned()
-            .expect("should be cl value");
+        let cl_value = stored_value.into_cl_value().expect("should be cl value");
         let result: T = cl_value.into_t().expect("should convert");
         result
     }
@@ -1341,45 +1422,37 @@ where
         self.get_value(auction_contract, UNBONDING_DELAY_KEY)
     }
 
-    /// Gets the [`ContractHash`] of the system auction contract, panics if it can't be found.
-    pub fn get_system_auction_hash(&self) -> ContractHash {
+    /// Gets the [`AddressableEntityHash`] of the system auction contract, panics if it can't be
+    /// found.
+    pub fn get_system_auction_hash(&self) -> AddressableEntityHash {
         let state_root_hash = self.get_post_state_hash();
         self.engine_state
             .get_system_auction_hash(state_root_hash)
             .expect("should have auction hash")
     }
 
-    /// Gets the [`ContractHash`] of the system mint contract, panics if it can't be found.
-    pub fn get_system_mint_hash(&self) -> ContractHash {
+    /// Gets the [`AddressableEntityHash`] of the system mint contract, panics if it can't be found.
+    pub fn get_system_mint_hash(&self) -> AddressableEntityHash {
         let state_root_hash = self.get_post_state_hash();
         self.engine_state
             .get_system_mint_hash(state_root_hash)
-            .expect("should have auction hash")
+            .expect("should have mint hash")
     }
 
-    /// Gets the [`ContractHash`] of the system handle payment contract, panics if it can't be
-    /// found.
-    pub fn get_system_handle_payment_hash(&self) -> ContractHash {
+    /// Gets the [`AddressableEntityHash`] of the system handle payment contract, panics if it can't
+    /// be found.
+    pub fn get_system_handle_payment_hash(&self) -> AddressableEntityHash {
         let state_root_hash = self.get_post_state_hash();
         self.engine_state
             .get_handle_payment_hash(state_root_hash)
             .expect("should have handle payment hash")
     }
 
-    /// Returns the [`ContractHash`] of the system standard payment contract, panics if it can't be
-    /// found.
-    pub fn get_system_standard_payment_hash(&self) -> ContractHash {
-        let state_root_hash = self.get_post_state_hash();
-        self.engine_state
-            .get_standard_payment_hash(state_root_hash)
-            .expect("should have standard payment hash")
-    }
-
     /// Resets the `exec_results`, `upgrade_results` and `transform` fields.
     pub fn clear_results(&mut self) -> &mut Self {
         self.exec_results = Vec::new();
         self.upgrade_results = Vec::new();
-        self.transforms = Vec::new();
+        self.effects = Vec::new();
         self
     }
 
@@ -1443,8 +1516,13 @@ where
     pub fn commit_prune(&mut self, prune_config: PruneConfig) -> &mut Self {
         let result = self.engine_state.commit_prune(prune_config);
 
-        if let Ok(PruneResult::Success { post_state_hash }) = &result {
+        if let Ok(PruneResult::Success {
+            post_state_hash,
+            effects,
+        }) = &result
+        {
             self.post_state_hash = Some(*post_state_hash);
+            self.effects.push(effects.clone());
         }
 
         self.prune_results.push(result);
@@ -1476,19 +1554,6 @@ where
         }
 
         self
-    }
-
-    /// Gets the transform map that's cached between runs
-    #[deprecated(
-        since = "2.1.0",
-        note = "Use `get_execution_journals` that returns transforms in the order they were created."
-    )]
-    pub fn get_transforms(&self) -> Vec<AdditiveMap<Key, Transform>> {
-        self.transforms
-            .clone()
-            .into_iter()
-            .map(|journal| journal.into_iter().collect())
-            .collect()
     }
 
     /// Returns the results of all execs.
@@ -1523,5 +1588,24 @@ where
             })
             .collect::<BTreeMap<AccountHash, Vec<UnbondingPurse>>>();
         unbonding_purses
+    }
+
+    /// Calculates refunded amount from a last execution request.
+    pub fn calculate_refund_amount(&self, payment_amount: U512) -> U512 {
+        let gas_amount = Motes::from_gas(self.last_exec_gas_cost(), DEFAULT_GAS_PRICE)
+            .expect("should create motes from gas");
+
+        let refund_ratio = match self.engine_state.config().refund_handling() {
+            RefundHandling::Refund { refund_ratio } | RefundHandling::Burn { refund_ratio } => {
+                *refund_ratio
+            }
+        };
+
+        let (numer, denom) = refund_ratio.into();
+        let refund_ratio = Ratio::new_raw(U512::from(numer), U512::from(denom));
+
+        // amount declared to be paid in payment code MINUS gas spent in last execution.
+        let refundable_amount = Ratio::from(payment_amount) - Ratio::from(gas_amount.value());
+        (refundable_amount * refund_ratio).to_integer()
     }
 }

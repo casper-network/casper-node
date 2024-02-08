@@ -9,6 +9,36 @@ const DEFAULT_CONTROL_LOGIC_DEFAULT_DELAY: &str = "1sec";
 const DEFAULT_SHUTDOWN_FOR_UPGRADE_TIMEOUT: &str = "2min";
 const DEFAULT_UPGRADE_TIMEOUT: &str = "30sec";
 
+/// Node sync configuration.
+#[derive(DataSize, Debug, Deserialize, Serialize, Clone, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SyncHandling {
+    /// Attempt to acquire all historical state back to genesis.
+    Genesis,
+    /// Only attempt to acquire necessary blocks to satisfy Time to Live requirements.
+    #[default]
+    Ttl,
+    /// Don't attempt to sync historical blocks.
+    NoSync,
+}
+
+impl SyncHandling {
+    /// Sync to Genesis?
+    pub fn is_sync_to_genesis(&self) -> bool {
+        matches!(self, SyncHandling::Genesis)
+    }
+
+    /// Sync to Ttl?
+    pub fn is_sync_to_ttl(&self) -> bool {
+        matches!(self, SyncHandling::Ttl)
+    }
+
+    /// Don't Sync?
+    pub fn is_no_sync(&self) -> bool {
+        matches!(self, SyncHandling::NoSync)
+    }
+}
+
 /// Node fast-sync configuration.
 #[derive(DataSize, Debug, Deserialize, Serialize, Clone)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -17,9 +47,11 @@ pub struct NodeConfig {
     /// Hash used as a trust anchor when joining, if any.
     pub trusted_hash: Option<BlockHash>,
 
-    /// Whether to run in sync-to-genesis mode which captures all data (blocks, deploys
-    /// and global state) back to genesis.
-    pub sync_to_genesis: bool,
+    /// Which historical sync option?
+    ///  Genesis: sync all the way back to genesis
+    ///  Ttl: sync the necessary number of historical blocks to satisfy TTL requirement.
+    ///  NoSync: don't attempt to get any historical records; i.e. go forward only.
+    pub sync_handling: SyncHandling,
 
     /// Idle time after which the syncing process is considered stalled.
     pub idle_tolerance: TimeDiff,
@@ -46,7 +78,7 @@ impl Default for NodeConfig {
     fn default() -> NodeConfig {
         NodeConfig {
             trusted_hash: None,
-            sync_to_genesis: false,
+            sync_handling: SyncHandling::default(),
             idle_tolerance: DEFAULT_IDLE_TOLERANCE.parse().unwrap(),
             max_attempts: DEFAULT_MAX_ATTEMPTS,
             control_logic_default_delay: DEFAULT_CONTROL_LOGIC_DEFAULT_DELAY.parse().unwrap(),

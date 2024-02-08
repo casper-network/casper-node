@@ -14,13 +14,13 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{
-            self, Bids, DelegationRate, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID,
-            METHOD_SLASH,
+            self, BidsExt, DelegationRate, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS,
+            INITIAL_ERA_ID, METHOD_SLASH,
         },
         mint,
     },
     ApiError, EraId, GenesisAccount, GenesisValidator, Motes, ProtocolVersion, PublicKey,
-    RuntimeArgs, SecretKey, U512,
+    SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
@@ -63,7 +63,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     builder.exec(exec_request).expect_success().commit();
 
     let _default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
     let auction = builder.get_auction_contract_hash();
@@ -81,9 +81,9 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let bids: Bids = builder.get_bids();
+    let bids = builder.get_bids();
     let default_account_bid = bids
-        .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
+        .validator_bid(&DEFAULT_ACCOUNT_PUBLIC_KEY)
         .expect("should have bid");
     let bid_purse = *default_account_bid.bonding_purse();
     assert_eq!(
@@ -101,7 +101,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     let unbond_amount = U512::from(GENESIS_ACCOUNT_STAKE) - 1;
 
     let unbonding_purse = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account")
         .main_purse();
     let exec_request_3 = ExecuteRequestBuilder::standard(
@@ -176,15 +176,10 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     builder.exec(exec_request_5).expect_success().commit();
 
     let unbond_purses: UnbondingPurses = builder.get_unbonds();
-    assert!(unbond_purses
-        .get(&*DEFAULT_ACCOUNT_ADDR)
-        .unwrap()
-        .is_empty());
+    assert!(unbond_purses.get(&*DEFAULT_ACCOUNT_ADDR).is_none());
 
-    let bids: Bids = builder.get_bids();
-    let default_account_bid = bids.get(&DEFAULT_ACCOUNT_PUBLIC_KEY).unwrap();
-    assert!(default_account_bid.inactive());
-    assert!(default_account_bid.staked_amount().is_zero());
+    let bids = builder.get_bids();
+    assert!(bids.validator_bid(&DEFAULT_ACCOUNT_PUBLIC_KEY).is_none());
 
     let account_balance_after_slashing = builder.get_purse_balance(unbonding_purse);
     assert_eq!(account_balance_after_slashing, account_balance_before);
@@ -216,7 +211,7 @@ fn should_fail_bonding_with_insufficient_funds_directly() {
     builder.exec(exec_request).expect_success().commit();
 
     let new_validator_account = builder
-        .get_account(new_validator_hash)
+        .get_entity_by_account_hash(new_validator_hash)
         .expect("should work");
 
     let new_validator_balance = builder.get_purse_balance(new_validator_account.main_purse());
@@ -408,7 +403,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let unbonding_purse = default_account.main_purse();
@@ -426,7 +421,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
     builder.exec(exec_request).expect_success().commit();
 
     let _default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
@@ -442,8 +437,10 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let bids: Bids = builder.get_bids();
-    let bid = bids.get(&default_public_key_arg).expect("should have bid");
+    let bids = builder.get_bids();
+    let bid = bids
+        .validator_bid(&default_public_key_arg)
+        .expect("should have bid");
     let bid_purse = *bid.bonding_purse();
     assert_eq!(
         builder.get_purse_balance(bid_purse),
@@ -535,15 +532,14 @@ fn should_run_successful_bond_and_unbond_with_release() {
     );
 
     let unbond_purses: UnbondingPurses = builder.get_unbonds();
-    assert!(unbond_purses
-        .get(&*DEFAULT_ACCOUNT_ADDR)
-        .unwrap()
-        .is_empty());
+    assert!(unbond_purses.get(&*DEFAULT_ACCOUNT_ADDR).is_none());
 
-    let bids: Bids = builder.get_bids();
+    let bids = builder.get_bids();
     assert!(!bids.is_empty());
 
-    let bid = bids.get(&default_public_key_arg).expect("should have bid");
+    let bid = bids
+        .validator_bid(&default_public_key_arg)
+        .expect("should have bid");
     let bid_purse = *bid.bonding_purse();
     assert_eq!(
         builder.get_purse_balance(bid_purse),
@@ -579,11 +575,10 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
             .build()
     };
 
-    builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(None, &mut upgrade_request);
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let unbonding_purse = default_account.main_purse();
@@ -602,7 +597,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     builder.exec(exec_request).expect_success().commit();
 
     let _default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
@@ -619,8 +614,10 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let bids: Bids = builder.get_bids();
-    let bid = bids.get(&default_public_key_arg).expect("should have bid");
+    let bids = builder.get_bids();
+    let bid = bids
+        .validator_bid(&default_public_key_arg)
+        .expect("should have bid");
     let bid_purse = *bid.bonding_purse();
     assert_eq!(
         builder.get_purse_balance(bid_purse),
@@ -728,15 +725,14 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     );
 
     let unbond_purses: UnbondingPurses = builder.get_unbonds();
-    assert!(unbond_purses
-        .get(&*DEFAULT_ACCOUNT_ADDR)
-        .unwrap()
-        .is_empty());
+    assert!(unbond_purses.get(&*DEFAULT_ACCOUNT_ADDR).is_none());
 
-    let bids: Bids = builder.get_bids();
+    let bids = builder.get_bids();
     assert!(!bids.is_empty());
 
-    let bid = bids.get(&default_public_key_arg).expect("should have bid");
+    let bid = bids
+        .validator_bid(&default_public_key_arg)
+        .expect("should have bid");
     let bid_purse = *bid.bonding_purse();
     assert_eq!(
         builder.get_purse_balance(bid_purse),

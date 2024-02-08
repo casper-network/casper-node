@@ -1,26 +1,27 @@
-#[cfg(test)]
-pub(crate) mod test_block_builder;
-
 mod approvals_hashes;
 mod block_execution_results_or_chunk;
 mod block_execution_results_or_chunk_id;
 mod block_payload;
+mod block_with_metadata;
+mod executable_block;
 mod finalized_block;
 mod meta_block;
 mod signed_block;
 
 use casper_types::{
     bytesrepr::{self, ToBytes},
-    Block, BlockHash, DeployId, Digest, FinalitySignature,
+    Digest, FinalitySignature, SingleBlockRewardedSignatures, TransactionId,
 };
 
 pub(crate) use approvals_hashes::ApprovalsHashes;
 pub use block_execution_results_or_chunk::BlockExecutionResultsOrChunk;
 pub(crate) use block_execution_results_or_chunk_id::BlockExecutionResultsOrChunkId;
-pub(crate) use block_payload::BlockPayload;
-pub use finalized_block::FinalizedBlock;
+pub use block_payload::BlockPayload;
+pub(crate) use block_with_metadata::BlockWithMetadata;
+pub use executable_block::ExecutableBlock;
+pub use finalized_block::{FinalizedBlock, InternalEraReport};
 pub(crate) use meta_block::{
-    MergeMismatchError as MetaBlockMergeError, MetaBlock, State as MetaBlockState,
+    ForwardMetaBlock, MergeMismatchError as MetaBlockMergeError, MetaBlock, State as MetaBlockState,
 };
 pub use signed_block::SignedBlock;
 
@@ -71,8 +72,28 @@ type ValidatorFinalitySignature = FinalitySignature;
 
 /// Returns the hash of the bytesrepr-encoded deploy_ids.
 pub(crate) fn compute_approvals_checksum(
-    deploy_ids: Vec<DeployId>,
+    txn_ids: Vec<TransactionId>,
 ) -> Result<Digest, bytesrepr::Error> {
-    let bytes = deploy_ids.into_bytes()?;
+    let bytes = txn_ids.into_bytes()?;
     Ok(Digest::hash(bytes))
+}
+
+/// Creates a new recorded finality signatures, from a validator matrix, and a block
+/// with metadata.
+pub(crate) fn create_single_block_rewarded_signatures(
+    validator_matrix: &super::ValidatorMatrix,
+    past_block_with_metadata: &BlockWithMetadata,
+) -> Option<SingleBlockRewardedSignatures> {
+    validator_matrix
+        .validator_weights(past_block_with_metadata.block.era_id())
+        .map(|weights| {
+            SingleBlockRewardedSignatures::from_validator_set(
+                &past_block_with_metadata
+                    .block_signatures
+                    .signers()
+                    .cloned()
+                    .collect(),
+                weights.validator_public_keys(),
+            )
+        })
 }

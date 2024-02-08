@@ -1,0 +1,54 @@
+# VALIDATOR 1.
+[[accounts]]
+public_key = "PBK_V1"
+balance = "0"
+
+[accounts.validator]
+bonded_amount = "1000000000000001"
+delegation_rate = 1
+
+# VALIDATOR 2.
+[[accounts]]
+public_key = "PBK_V2"
+balance = "0"
+
+[accounts.validator]
+bonded_amount = "1000000000000002"
+delegation_rate = 2
+
+# VALIDATOR 3.
+[[accounts]]
+public_key = "PBK_V3"
+balance = "0"
+
+[accounts.validator]
+bonded_amount = "1000000000000003"
+delegation_rate = 3
+
+# VALIDATOR 4.
+[[accounts]]
+public_key = "PBK_V4"
+balance = "0"
+
+[accounts.validator]
+bonded_amount = "1000000000000004"
+delegation_rate = 4
+
+# VALIDATOR 5.
+[[accounts]]
+public_key = "PBK_V5"
+balance = "0"
+
+[accounts.validator]
+bonded_amount = "1000000000000005"
+delegation_rate = 5
+
+[[delegators]]
+validator_public_key = "PBK_V5"
+delegator_public_key = "PBK_U1"
+balance = "1000000000000000000"
+delegated_amount = "100000000000001"
+
+[[administrators]]
+public_key = "PBK_FAUCET"
+balance = "1000000000000000000000000000000000"

@@ -37,6 +37,7 @@ impl<R: Reactor> ConditionCheckReactor<R> {
     /// Sets the condition checker hook.
     pub(crate) fn set_condition_checker(&mut self, condition_checker: ConditionChecker<R>) {
         self.condition_checker = Some(condition_checker);
+        self.condition_result = false;
     }
 
     /// Returns the result of the last execution of the condition checker hook.

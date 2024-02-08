@@ -24,6 +24,8 @@ use std::error::Error as StdError;
 use datasize::DataSize;
 use num_integer::Integer;
 use num_rational::Ratio;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub use bytes::Bytes;
@@ -111,8 +113,9 @@ pub fn allocate_buffer<T: ToBytes>(to_be_serialized: &T) -> Result<Vec<u8>, Erro
 }
 
 /// Serialization and deserialization errors.
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Copy, Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum Error {
@@ -143,6 +146,41 @@ impl Display for Error {
                 formatter.write_str("Serialization error: value is not representable.")
             }
             Error::ExceededRecursionDepth => formatter.write_str("exceeded recursion depth"),
+        }
+    }
+}
+
+impl ToBytes for Error {
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        (*self as u8).write_bytes(writer)
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        (*self as u8).to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+    }
+}
+
+impl FromBytes for Error {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (value, remainder) = u8::from_bytes(bytes)?;
+        match value {
+            value if value == Error::EarlyEndOfStream as u8 => {
+                Ok((Error::EarlyEndOfStream, remainder))
+            }
+            value if value == Error::Formatting as u8 => Ok((Error::Formatting, remainder)),
+            value if value == Error::LeftOverBytes as u8 => Ok((Error::LeftOverBytes, remainder)),
+            value if value == Error::OutOfMemory as u8 => Ok((Error::OutOfMemory, remainder)),
+            value if value == Error::NotRepresentable as u8 => {
+                Ok((Error::NotRepresentable, remainder))
+            }
+            value if value == Error::ExceededRecursionDepth as u8 => {
+                Ok((Error::ExceededRecursionDepth, remainder))
+            }
+            _ => Err(Error::Formatting),
         }
     }
 }
@@ -408,7 +446,7 @@ fn ensure_efficient_serialization<T>() {
     debug_assert_ne!(
         any::type_name::<T>(),
         any::type_name::<u8>(),
-        "You should use Bytes newtype wrapper for efficiency"
+        "You should use `casper_types::bytesrepr::Bytes` newtype wrapper instead of `Vec<u8>` for efficiency"
     );
 }
 
@@ -1307,6 +1345,7 @@ pub(crate) fn vec_u8_serialized_length(vec: &Vec<u8>) -> usize {
 /// Also asserts that `t.serialized_length()` is the same as the actual number of bytes of the
 /// serialized `t` instance.
 #[cfg(any(feature = "testing", test))]
+#[track_caller]
 pub fn test_serialization_roundtrip<T>(t: &T)
 where
     T: fmt::Debug + ToBytes + FromBytes + PartialEq,
@@ -1315,10 +1354,9 @@ where
     assert_eq!(
         serialized.len(),
         t.serialized_length(),
-        "\nLength of serialized data: {},\nserialized_length() yielded: {},\nserialized data: {:?}, t is {:?}",
+        "\nLength of serialized data: {},\nserialized_length() yielded: {},\n t is {:?}",
         serialized.len(),
         t.serialized_length(),
-        serialized,
         t
     );
     let mut written_bytes = vec![];
@@ -1351,9 +1389,32 @@ mod tests {
         assert_eq!(result.unwrap_err(), Error::Formatting);
     }
 
+    #[test]
+    fn should_have_generic_tobytes_impl_for_borrowed_types() {
+        struct NonCopyable;
+
+        impl ToBytes for NonCopyable {
+            fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+                Ok(vec![1, 2, 3])
+            }
+
+            fn serialized_length(&self) -> usize {
+                3
+            }
+        }
+
+        let noncopyable: &NonCopyable = &NonCopyable;
+
+        assert_eq!(noncopyable.to_bytes().unwrap(), vec![1, 2, 3]);
+        assert_eq!(noncopyable.serialized_length(), 3);
+        assert_eq!(noncopyable.into_bytes().unwrap(), vec![1, 2, 3]);
+    }
+
     #[cfg(debug_assertions)]
     #[test]
-    #[should_panic(expected = "You should use Bytes newtype wrapper for efficiency")]
+    #[should_panic(
+        expected = "You should use `casper_types::bytesrepr::Bytes` newtype wrapper instead of `Vec<u8>` for efficiency"
+    )]
     fn should_fail_to_serialize_slice_of_u8() {
         let bytes = b"0123456789".to_vec();
         bytes.to_bytes().unwrap();

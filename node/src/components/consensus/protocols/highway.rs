@@ -17,7 +17,7 @@ use itertools::Itertools;
 use rand::RngCore;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_types::{Chainspec, TimeDiff, Timestamp, U512};
+use casper_types::{system::auction::BLOCK_REWARD, Chainspec, TimeDiff, Timestamp, U512};
 
 use crate::{
     components::consensus::{
@@ -157,8 +157,17 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             .saturating_mul(2)
             .min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
 
+        let block_reward = if chainspec.core_config.compute_rewards {
+            BLOCK_REWARD
+        } else {
+            // Set the block reward parameter to 0 so Highway can skip the computation.
+            0
+        };
+
         let params = Params::new(
             seed,
+            block_reward,
+            (highway_config.reduced_reward_multiplier * block_reward).to_integer(),
             minimum_round_length,
             maximum_round_length,
             init_round_len,
@@ -358,7 +367,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
     fn calculate_round_length(&mut self, vv: &ValidVertex<C>, now: Timestamp) {
         let new_round_len = self
             .round_success_meter
-            .calculate_new_length(self.highway.state());
+            .calculate_new_length(self.highway.state(), now);
         // If the vertex contains a proposal, register it in the success meter.
         // It's important to do this _after_ the calculation above - otherwise we might try to
         // register the proposal before the meter is aware that a new round has started, and it

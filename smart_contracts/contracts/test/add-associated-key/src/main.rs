@@ -5,7 +5,7 @@ use casper_contract::{
     contract_api::{account, runtime},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::account::{AccountHash, Weight};
+use casper_types::{account::AccountHash, addressable_entity::Weight};
 
 const ARG_ACCOUNT: &str = "account";
 const ARG_WEIGHT: &str = "weight";

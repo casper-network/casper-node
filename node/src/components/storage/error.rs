@@ -1,14 +1,15 @@
-use std::{io, path::PathBuf};
+use std::{fmt::Debug, io, path::PathBuf};
 
 use thiserror::Error;
 use tracing::error;
 
 use casper_types::{
-    bytesrepr, crypto, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockValidationError,
-    DeployHash, Digest, EraId, FinalitySignature, FinalitySignatureId,
+    bytesrepr, crypto, BlockBody, BlockHash, BlockHeader, BlockValidationError, DeployHash, Digest,
+    EraId, FinalitySignature, FinalitySignatureId, TransactionHash,
 };
 
 use super::lmdb_ext::LmdbExtError;
+use crate::types::VariantMismatch;
 
 /// A fatal storage component error.
 ///
@@ -39,15 +40,15 @@ pub enum FatalStorageError {
         /// Second block hash encountered at `era_id`.
         second: BlockHash,
     },
-    /// Found a duplicate switch-block-at-era-id index entry.
-    #[error("duplicate entries for blocks for deploy {deploy_hash}: {first} / {second}")]
-    DuplicateDeployIndex {
-        /// Deploy hash at which duplicate was found.
-        deploy_hash: DeployHash,
-        /// First block hash encountered at `deploy_hash`.
-        first: BlockHashAndHeight,
-        /// Second block hash encountered at `deploy_hash`.
-        second: BlockHashAndHeight,
+    /// Found a duplicate transaction index entry.
+    #[error("duplicate entries for blocks for transaction {transaction_hash}: {first} / {second}")]
+    DuplicateTransactionIndex {
+        /// Transaction hash at which duplicate was found.
+        transaction_hash: TransactionHash,
+        /// First block hash encountered at `transaction_hash`.
+        first: BlockHash,
+        /// Second block hash encountered at `transaction_hash`.
+        second: BlockHash,
     },
     /// LMDB error while operating.
     #[error("internal database error: {0}")]
@@ -133,13 +134,11 @@ pub enum FatalStorageError {
     /// Failed to serialize an item that was found in local storage.
     #[error("failed to serialized stored item")]
     StoredItemSerializationFailure(#[source] bincode::Error),
-    /// We tried to store finalized approvals for a nonexistent deploy.
-    #[error(
-        "Tried to store FinalizedApprovals for a nonexistent deploy. Deploy hash: {deploy_hash:?}"
-    )]
+    /// We tried to store finalized approvals for a nonexistent transaction.
+    #[error("Tried to store FinalizedApprovals for a nonexistent transaction {transaction_hash}")]
     UnexpectedFinalizedApprovals {
-        /// The missing deploy hash.
-        deploy_hash: DeployHash,
+        /// The missing transaction hash.
+        transaction_hash: TransactionHash,
     },
     /// `ToBytes` serialization failure of an item that should never fail to serialize.
     #[error("unexpected serialization failure: {0}")]
@@ -160,9 +159,23 @@ pub enum FatalStorageError {
         /// The number of approvals hashes.
         actual: usize,
     },
+    /// V1 execution results hashmap doesn't have exactly one entry.
+    #[error(
+        "stored v1 execution results doesn't have exactly one entry: deploy: {deploy_hash}, number \
+        of entries: {results_length}"
+    )]
+    InvalidExecutionResultsV1Length {
+        /// The deploy hash.
+        deploy_hash: DeployHash,
+        /// The number of execution results.
+        results_length: usize,
+    },
     /// Error initializing metrics.
     #[error("failed to initialize metrics for storage: {0}")]
     Prometheus(#[from] prometheus::Error),
+    /// Type mismatch indicating programmer error.
+    #[error(transparent)]
+    VariantMismatch(#[from] VariantMismatch),
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.

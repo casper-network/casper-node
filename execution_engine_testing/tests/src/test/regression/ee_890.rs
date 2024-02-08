@@ -1,10 +1,10 @@
-use parity_wasm::{self, builder};
+use casper_wasm::{self, builder};
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, RuntimeArgs};
+use casper_types::{addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, RuntimeArgs};
 
 const DO_NOTHING_WASM: &str = "do_nothing.wasm";
 
@@ -32,7 +32,7 @@ fn make_do_nothing_with_start() -> Vec<u8> {
         .build()
         .build();
 
-    parity_wasm::serialize(module).expect("should serialize")
+    casper_wasm::serialize(module).expect("should serialize")
 }
 
 #[ignore]

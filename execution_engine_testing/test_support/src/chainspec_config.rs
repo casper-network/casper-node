@@ -9,10 +9,12 @@ use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::engine_state::{run_genesis_request::RunGenesisRequest, ExecConfig};
+use casper_execution_engine::engine_state::{
+    genesis::ExecConfigBuilder, run_genesis_request::RunGenesisRequest, ExecConfig,
+};
 use casper_types::{
-    system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, GenesisAccount, ProtocolVersion, SystemConfig,
-    TimeDiff, WasmConfig,
+    system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, FeeHandling, GenesisAccount, ProtocolVersion,
+    RefundHandling, SystemConfig, TimeDiff, WasmConfig,
 };
 
 use crate::{
@@ -55,7 +57,7 @@ pub struct CoreConfig {
     pub(crate) locked_funds_period: TimeDiff,
     /// The period in which genesis validator's bid is released over time
     pub(crate) vesting_schedule_period: TimeDiff,
-    /// The delay in number of eras for paying out the the unbonding amount.
+    /// The delay in number of eras for paying out the unbonding amount.
     pub(crate) unbonding_delay: u64,
     /// Round seigniorage rate represented as a fractional number.
     pub(crate) round_seigniorage_rate: Ratio<u64>,
@@ -69,6 +71,10 @@ pub struct CoreConfig {
     pub(crate) strict_argument_checking: bool,
     /// The maximum amount of delegators per validator.
     pub(crate) max_delegators_per_validator: Option<u32>,
+    /// Refund handling.
+    pub(crate) refund_handling: RefundHandling,
+    /// Fee handling.
+    pub(crate) fee_handling: FeeHandling,
 }
 
 /// This struct can be parsed from a TOML-encoded chainspec file.  It means that as the
@@ -131,17 +137,40 @@ impl ChainspecConfig {
     ) -> Result<RunGenesisRequest, Error> {
         let chainspec_config = ChainspecConfig::from_path(filename)?;
 
-        let exec_config = ExecConfig::new(
-            genesis_accounts,
-            chainspec_config.wasm_config,
-            chainspec_config.system_costs_config,
-            chainspec_config.core_config.validator_slots,
-            chainspec_config.core_config.auction_delay,
-            chainspec_config.core_config.locked_funds_period.millis(),
-            chainspec_config.core_config.round_seigniorage_rate,
-            chainspec_config.core_config.unbonding_delay,
-            DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        );
+        // if you get a compilation error here, make sure to update the builder below accordingly
+        let ChainspecConfig {
+            core_config,
+            wasm_config,
+            system_costs_config,
+        } = chainspec_config;
+        let CoreConfig {
+            validator_slots,
+            auction_delay,
+            locked_funds_period,
+            vesting_schedule_period: _,
+            unbonding_delay,
+            round_seigniorage_rate,
+            max_associated_keys: _,
+            max_runtime_call_stack_height: _,
+            minimum_delegation_amount: _,
+            strict_argument_checking: _,
+            max_delegators_per_validator: _,
+            refund_handling: _,
+            fee_handling: _,
+        } = core_config;
+
+        let exec_config = ExecConfigBuilder::new()
+            .with_accounts(genesis_accounts)
+            .with_wasm_config(wasm_config)
+            .with_system_config(system_costs_config)
+            .with_validator_slots(validator_slots)
+            .with_auction_delay(auction_delay)
+            .with_locked_funds_period_millis(locked_funds_period.millis())
+            .with_round_seigniorage_rate(round_seigniorage_rate)
+            .with_unbonding_delay(unbonding_delay)
+            .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
+            .build();
+
         Ok(RunGenesisRequest::new(
             *DEFAULT_GENESIS_CONFIG_HASH,
             protocol_version,
@@ -167,17 +196,19 @@ impl TryFrom<ChainspecConfig> for ExecConfig {
     type Error = Error;
 
     fn try_from(chainspec_config: ChainspecConfig) -> Result<Self, Self::Error> {
-        Ok(ExecConfig::new(
-            DEFAULT_ACCOUNTS.clone(),
-            chainspec_config.wasm_config,
-            chainspec_config.system_costs_config,
-            chainspec_config.core_config.validator_slots,
-            chainspec_config.core_config.auction_delay,
-            chainspec_config.core_config.locked_funds_period.millis(),
-            chainspec_config.core_config.round_seigniorage_rate,
-            chainspec_config.core_config.unbonding_delay,
-            DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        ))
+        Ok(ExecConfigBuilder::new()
+            .with_accounts(DEFAULT_ACCOUNTS.clone())
+            .with_wasm_config(chainspec_config.wasm_config)
+            .with_system_config(chainspec_config.system_costs_config)
+            .with_validator_slots(chainspec_config.core_config.validator_slots)
+            .with_auction_delay(chainspec_config.core_config.auction_delay)
+            .with_locked_funds_period_millis(
+                chainspec_config.core_config.locked_funds_period.millis(),
+            )
+            .with_round_seigniorage_rate(chainspec_config.core_config.round_seigniorage_rate)
+            .with_unbonding_delay(chainspec_config.core_config.unbonding_delay)
+            .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
+            .build())
     }
 }
 

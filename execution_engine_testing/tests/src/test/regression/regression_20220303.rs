@@ -6,6 +6,7 @@ use std::{
 use casper_engine_test_support::{LmdbWasmTestBuilder, UpgradeRequestBuilder};
 use casper_execution_engine::engine_state::SystemContractRegistry;
 use casper_types::{
+    contracts::ContractHash,
     system::{self, mint},
     AccessRights, CLValue, Digest, EraId, Key, ProtocolVersion, StoredValue, URef,
 };
@@ -58,8 +59,11 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
             .expect("should contract hash")
     };
     let old_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+
+    let legacy_mint_hash = ContractHash::new(mint_contract_hash.value());
+
     let old_contract = builder
-        .get_contract(mint_contract_hash)
+        .get_legacy_contract(legacy_mint_hash)
         .expect("should have mint contract");
     assert_eq!(old_contract.protocol_version(), old_protocol_version);
     let new_protocol_version = ProtocolVersion::from_parts(
@@ -90,28 +94,24 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
     };
     let start = Instant::now();
     builder
-        .upgrade_with_upgrade_request_using_scratch(
-            //.upgrade_with_upgrade_request(
-            *builder.get_engine_state().config(),
-            &mut upgrade_request,
-        )
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
     let elapsed = start.elapsed();
     assert!(
-        elapsed < Duration::from_secs(20),
+        elapsed < Duration::from_secs(40),
         "upgrade took too long! {} (millis)",
         elapsed.as_millis()
     );
     let new_contract = builder
-        .get_contract(mint_contract_hash)
+        .get_addressable_entity(mint_contract_hash)
         .expect("should have mint contract");
     assert_eq!(
-        old_contract.contract_package_hash(),
-        new_contract.contract_package_hash()
+        old_contract.contract_package_hash().value(),
+        new_contract.package_hash().value()
     );
     assert_eq!(
-        old_contract.contract_wasm_hash(),
-        new_contract.contract_wasm_hash()
+        old_contract.contract_wasm_hash().value(),
+        new_contract.byte_code_hash().value()
     );
     assert_ne!(old_contract.entry_points(), new_contract.entry_points());
     assert_eq!(

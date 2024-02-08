@@ -85,6 +85,7 @@ function run_nightly_upgrade_test() {
     bash -c "./ci/nctl_upgrade.sh test_id=11"
     bash -c "./ci/nctl_upgrade.sh test_id=12"
     bash -c "./ci/nctl_upgrade.sh test_id=13"
+    bash -c "./ci/nctl_upgrade.sh test_id=14"
 }
 
 function run_soundness_test() {
@@ -102,19 +103,23 @@ function run_soundness_test() {
 source "$NCTL/sh/staging/set_override_tomls.sh"
 start_run_teardown "client.sh"
 start_run_teardown "itst01.sh"
+start_run_teardown "itst01_private_chain.sh"
 start_run_teardown "itst02.sh"
+start_run_teardown "itst02_private_chain.sh"
 start_run_teardown "itst11.sh"
+start_run_teardown "itst11_private_chain.sh"
 start_run_teardown "itst13.sh"
 start_run_teardown "itst14.sh"
+start_run_teardown "itst14_private_chain.sh"
 start_run_teardown "bond_its.sh"
 start_run_teardown "emergency_upgrade_test.sh"
 start_run_teardown "emergency_upgrade_test_balances.sh"
 start_run_teardown "upgrade_after_emergency_upgrade_test.sh"
 start_run_teardown "sync_test.sh timeout=500"
-start_run_teardown "gov96.sh"
 start_run_teardown "swap_validator_set.sh"
 start_run_teardown "sync_upgrade_test.sh node=6 era=5 timeout=500"
 start_run_teardown "validators_disconnect.sh"
+start_run_teardown "event_stream.sh"
 # Without start_run_teardown - these ones perform their own assets setup, network start and teardown
 source "$SCENARIOS_DIR/upgrade_after_emergency_upgrade_test_pre_1.5.sh"
 source "$SCENARIOS_DIR/regression_3976.sh"
@@ -125,4 +130,6 @@ run_soundness_test
 
 # Run these last as they occasionally fail (see https://github.com/casper-network/casper-node/issues/2973)
 start_run_teardown "itst06.sh"
+start_run_teardown "itst06_private_chain.sh"
 start_run_teardown "itst07.sh"
+start_run_teardown "itst07_private_chain.sh"

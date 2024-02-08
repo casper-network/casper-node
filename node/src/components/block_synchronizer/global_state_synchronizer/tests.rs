@@ -3,12 +3,11 @@ use std::time::Duration;
 use futures::channel::oneshot;
 use rand::Rng;
 
-use casper_types::{bytesrepr::Bytes, testing::TestRng};
+use casper_types::{bytesrepr::Bytes, testing::TestRng, TestBlockBuilder};
 
 use super::*;
 use crate::{
     reactor::{EventQueueHandle, QueueKind, Scheduler},
-    types::TestBlockBuilder,
     utils,
 };
 
@@ -38,7 +37,7 @@ struct MockReactor {
 
 impl MockReactor {
     fn new() -> Self {
-        let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
+        let scheduler = utils::leak(Scheduler::new(QueueKind::weights(), None));
         let event_queue_handle = EventQueueHandle::without_shutdown(scheduler);
         let effect_builder = EffectBuilder::new(event_queue_handle);
         MockReactor {

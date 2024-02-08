@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{bytesrepr::Bytes, runtime_args, ContractHash, RuntimeArgs};
+use casper_types::{bytesrepr::Bytes, runtime_args, AddressableEntityHash, RuntimeArgs};
 
 const HOST_FUNCTION_COSTS_NAME: &str = "host_function_costs.wasm";
 const CONTRACT_KEY_NAME: &str = "contract";
@@ -35,14 +35,14 @@ fn should_measure_gas_cost() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
+        .into_entity_addr()
         .expect("should be hash")
         .into();
 
@@ -103,14 +103,14 @@ fn should_measure_nested_host_function_call_cost() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
+        .into_entity_addr()
         .expect("should be hash")
         .into();
 
@@ -181,14 +181,14 @@ fn should_measure_argument_size_in_host_function_call() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
+        .into_entity_addr()
         .expect("should be hash")
         .into();
 

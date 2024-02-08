@@ -9,8 +9,9 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
-    contracts::{self, CONTRACT_INITIAL_VERSION, MAX_GROUPS},
-    runtime_args, Group, Key, RuntimeArgs,
+    addressable_entity::{self, MAX_GROUPS},
+    package::ENTITY_INITIAL_VERSION,
+    runtime_args, Group, RuntimeArgs,
 };
 
 const CONTRACT_GROUPS: &str = "manage_groups.wasm";
@@ -55,11 +56,8 @@ fn should_create_and_remove_group() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
 
     let package_hash = account
         .named_keys()
@@ -78,7 +76,7 @@ fn should_create_and_remove_group() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 CREATE_GROUP,
                 DEFAULT_CREATE_GROUP_ARGS.clone(),
             )
@@ -95,9 +93,7 @@ fn should_create_and_remove_group() {
     let query_result = builder
         .query(None, *package_hash, &[])
         .expect("should have result");
-    let contract_package = query_result
-        .as_contract_package()
-        .expect("should be package");
+    let contract_package = query_result.as_package().expect("should be package");
     assert_eq!(contract_package.groups().len(), 1);
     let group_1 = contract_package
         .groups()
@@ -116,7 +112,7 @@ fn should_create_and_remove_group() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 REMOVE_GROUP,
                 args,
             )
@@ -133,9 +129,7 @@ fn should_create_and_remove_group() {
     let query_result = builder
         .query(None, *package_hash, &[])
         .expect("should have result");
-    let contract_package = query_result
-        .as_contract_package()
-        .expect("should be package");
+    let contract_package = query_result.as_package().expect("should be package");
     assert_eq!(
         contract_package.groups().get(&Group::new(GROUP_1_NAME)),
         None
@@ -161,11 +155,8 @@ fn should_create_and_extend_user_group() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
 
     let package_hash = account
         .named_keys()
@@ -184,7 +175,7 @@ fn should_create_and_extend_user_group() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 CREATE_GROUP,
                 DEFAULT_CREATE_GROUP_ARGS.clone(),
             )
@@ -201,9 +192,7 @@ fn should_create_and_extend_user_group() {
     let query_result = builder
         .query(None, *package_hash, &[])
         .expect("should have result");
-    let contract_package = query_result
-        .as_contract_package()
-        .expect("should be package");
+    let contract_package = query_result.as_package().expect("should be package");
     assert_eq!(contract_package.groups().len(), 1);
     let group_1 = contract_package
         .groups()
@@ -223,7 +212,7 @@ fn should_create_and_extend_user_group() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 EXTEND_GROUP_UREFS,
                 args,
             )
@@ -240,9 +229,7 @@ fn should_create_and_extend_user_group() {
     let query_result = builder
         .query(None, *package_hash, &[])
         .expect("should have result");
-    let contract_package = query_result
-        .as_contract_package()
-        .expect("should be package");
+    let contract_package = query_result.as_package().expect("should be package");
     let group_1_extended = contract_package
         .groups()
         .get(&Group::new(GROUP_1_NAME))
@@ -272,12 +259,8 @@ fn should_create_and_remove_urefs_from_group() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
-
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
     let package_hash = account
         .named_keys()
         .get(PACKAGE_HASH_KEY)
@@ -295,7 +278,7 @@ fn should_create_and_remove_urefs_from_group() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 CREATE_GROUP,
                 DEFAULT_CREATE_GROUP_ARGS.clone(),
             )
@@ -312,9 +295,7 @@ fn should_create_and_remove_urefs_from_group() {
     let query_result = builder
         .query(None, *package_hash, &[])
         .expect("should have result");
-    let contract_package = query_result
-        .as_contract_package()
-        .expect("should be package");
+    let contract_package = query_result.as_package().expect("should be package");
     assert_eq!(contract_package.groups().len(), 1);
     let group_1 = contract_package
         .groups()
@@ -336,7 +317,7 @@ fn should_create_and_remove_urefs_from_group() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 REMOVE_GROUP_UREFS,
                 args,
             )
@@ -353,9 +334,7 @@ fn should_create_and_remove_urefs_from_group() {
     let query_result = builder
         .query(None, *package_hash, &[])
         .expect("should have result");
-    let contract_package = query_result
-        .as_contract_package()
-        .expect("should be package");
+    let contract_package = query_result.as_package().expect("should be package");
     let group_1_modified = contract_package
         .groups()
         .get(&Group::new(GROUP_1_NAME))
@@ -382,12 +361,8 @@ fn should_limit_max_urefs_while_extending() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
-
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
     let package_hash = account
         .named_keys()
         .get(PACKAGE_HASH_KEY)
@@ -405,7 +380,7 @@ fn should_limit_max_urefs_while_extending() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 CREATE_GROUP,
                 DEFAULT_CREATE_GROUP_ARGS.clone(),
             )
@@ -422,9 +397,7 @@ fn should_limit_max_urefs_while_extending() {
     let query_result = builder
         .query(None, *package_hash, &[])
         .expect("should have result");
-    let contract_package = query_result
-        .as_contract_package()
-        .expect("should be package");
+    let contract_package = query_result.as_package().expect("should be package");
     assert_eq!(contract_package.groups().len(), 1);
     let group_1 = contract_package
         .groups()
@@ -444,7 +417,7 @@ fn should_limit_max_urefs_while_extending() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 EXTEND_GROUP_UREFS,
                 args,
             )
@@ -469,7 +442,7 @@ fn should_limit_max_urefs_while_extending() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 EXTEND_GROUP_UREFS,
                 args,
             )
@@ -486,9 +459,7 @@ fn should_limit_max_urefs_while_extending() {
     let query_result = builder
         .query(None, *package_hash, &[])
         .expect("should have result");
-    let contract_package = query_result
-        .as_contract_package()
-        .expect("should be package");
+    let contract_package = query_result.as_package().expect("should be package");
     let group_1_modified = contract_package
         .groups()
         .get(&Group::new(GROUP_1_NAME))
@@ -505,5 +476,8 @@ fn should_limit_max_urefs_while_extending() {
     let exec_response = response.last().expect("should have response");
     let error = exec_response.as_error().expect("should have error");
     let error = assert_matches!(error, Error::Exec(execution::Error::Revert(e)) => e);
-    assert_eq!(error, &contracts::Error::MaxTotalURefsExceeded.into());
+    assert_eq!(
+        error,
+        &addressable_entity::Error::MaxTotalURefsExceeded.into()
+    );
 }

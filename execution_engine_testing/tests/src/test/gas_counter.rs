@@ -1,5 +1,5 @@
 use assert_matches::assert_matches;
-use parity_wasm::{
+use casper_wasm::{
     builder,
     elements::{BlockType, Instruction, Instructions},
 };
@@ -9,7 +9,7 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_WASM_CONFIG, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{engine_state::Error, runtime::PreprocessingError};
-use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, Gas, RuntimeArgs};
+use casper_types::{addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, Gas, RuntimeArgs};
 
 use crate::test::regression::test_utils::make_gas_counter_overflow;
 
@@ -33,7 +33,7 @@ fn make_session_code_with(instructions: Vec<Instruction>) -> Vec<u8> {
         .memory()
         .build()
         .build();
-    parity_wasm::serialize(module).expect("should serialize")
+    casper_wasm::serialize(module).expect("should serialize")
 }
 
 #[ignore]

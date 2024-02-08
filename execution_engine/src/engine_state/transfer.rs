@@ -2,10 +2,8 @@ use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
-    account::{Account, AccountHash},
-    system::mint,
-    AccessRights, ApiError, CLType, CLValueError, Key, PublicKey, RuntimeArgs, StoredValue, URef,
-    U512,
+    account::AccountHash, system::mint, AccessRights, AddressableEntity, ApiError, CLType,
+    CLValueError, Key, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
 use crate::{
@@ -23,6 +21,23 @@ pub enum TransferTargetMode {
     /// Native transfer arguments resolved into a transfer to a purse.
     PurseExists(URef),
     /// Native transfer arguments resolved into a transfer to an account.
+    CreateAccount(AccountHash),
+}
+
+/// A target mode indicates if a native transfer's arguments will resolve to an existing purse, or
+/// will have to create a new account first.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub(crate) enum NewTransferTargetMode {
+    /// Native transfer arguments resolved into a transfer to an existing account.
+    ExistingAccount {
+        /// Existing account hash.
+        target_account_hash: AccountHash,
+        /// Main purse of a resolved account.
+        main_purse: URef,
+    },
+    /// Native transfer arguments resolved into a transfer to a purse.
+    PurseExists(URef),
+    /// Native transfer arguments resolved into a transfer to a new account.
     CreateAccount(AccountHash),
 }
 
@@ -100,8 +115,6 @@ impl TryFrom<TransferArgs> for RuntimeArgs {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TransferRuntimeArgsBuilder {
     inner: RuntimeArgs,
-    transfer_target_mode: TransferTargetMode,
-    to: Option<AccountHash>,
 }
 
 impl TransferRuntimeArgsBuilder {
@@ -111,8 +124,6 @@ impl TransferRuntimeArgsBuilder {
     pub fn new(imputed_runtime_args: RuntimeArgs) -> TransferRuntimeArgsBuilder {
         TransferRuntimeArgsBuilder {
             inner: imputed_runtime_args,
-            transfer_target_mode: TransferTargetMode::Unknown,
-            to: None,
         }
     }
 
@@ -140,7 +151,7 @@ impl TransferRuntimeArgsBuilder {
     /// Returns resolved [`URef`].
     fn resolve_source_uref<R>(
         &self,
-        account: &Account,
+        account: &AddressableEntity,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<URef, Error>
     where
@@ -160,7 +171,7 @@ impl TransferRuntimeArgsBuilder {
                 let normalized_uref = Key::URef(uref).normalize();
                 let maybe_named_key = account
                     .named_keys()
-                    .values()
+                    .keys()
                     .find(|&named_key| named_key.normalize() == normalized_uref);
 
                 match maybe_named_key {
@@ -203,11 +214,12 @@ impl TransferRuntimeArgsBuilder {
     /// If the "target" account hash is not existing, then a special variant is returned that
     /// indicates that the system has to create new account first.
     ///
-    /// Returns [`TransferTargetMode`] with a resolved variant.
-    fn resolve_transfer_target_mode<R>(
+    /// Returns [`NewTransferTargetMode`] with a resolved variant.
+    pub(super) fn resolve_transfer_target_mode<R>(
         &mut self,
+        protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-    ) -> Result<TransferTargetMode, Error>
+    ) -> Result<NewTransferTargetMode, Error>
     where
         R: StateReader<Key, StoredValue>,
         R::Error: Into<ExecError>,
@@ -223,7 +235,7 @@ impl TransferRuntimeArgsBuilder {
                     return Err(Error::reverter(ApiError::InvalidPurse));
                 }
 
-                return Ok(TransferTargetMode::PurseExists(uref));
+                return Ok(NewTransferTargetMode::PurseExists(uref));
             }
             Some(cl_value) if *cl_value.cl_type() == CLType::ByteArray(32) => {
                 let account_hash: AccountHash =
@@ -247,12 +259,19 @@ impl TransferRuntimeArgsBuilder {
             None => return Err(Error::reverter(ApiError::MissingArgument)),
         };
 
-        self.to = Some(account_hash);
-        match tracking_copy.borrow_mut().read_account(account_hash) {
-            Ok(account) => Ok(TransferTargetMode::PurseExists(
-                account.main_purse().with_access_rights(AccessRights::ADD),
-            )),
-            Err(_) => Ok(TransferTargetMode::CreateAccount(account_hash)),
+        match tracking_copy
+            .borrow_mut()
+            .get_addressable_entity_by_account_hash(protocol_version, account_hash)
+        {
+            Ok(contract) => {
+                let main_purse_addable =
+                    contract.main_purse().with_access_rights(AccessRights::ADD);
+                Ok(NewTransferTargetMode::ExistingAccount {
+                    target_account_hash: account_hash,
+                    main_purse: main_purse_addable,
+                })
+            }
+            Err(_) => Ok(NewTransferTargetMode::CreateAccount(account_hash)),
         }
     }
 
@@ -294,43 +313,29 @@ impl TransferRuntimeArgsBuilder {
         Ok(id)
     }
 
-    /// Returns a resolved [`TransferTargetMode`].
-    pub(crate) fn transfer_target_mode<R>(
-        &mut self,
-        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-    ) -> Result<TransferTargetMode, Error>
-    where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<ExecError>,
-    {
-        let mode = self.transfer_target_mode;
-        if mode != TransferTargetMode::Unknown {
-            return Ok(mode);
-        }
-        match self.resolve_transfer_target_mode(tracking_copy) {
-            Ok(mode) => {
-                self.transfer_target_mode = mode;
-                Ok(mode)
-            }
-            Err(error) => Err(error),
-        }
-    }
-
     /// Creates new [`TransferArgs`] instance.
     pub fn build<R>(
         mut self,
-        from: &Account,
+        from: &AddressableEntity,
+        protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<TransferArgs, Error>
     where
         R: StateReader<Key, StoredValue>,
         R::Error: Into<ExecError>,
     {
-        let to = self.to;
-
-        let target_uref = match self.resolve_transfer_target_mode(Rc::clone(&tracking_copy))? {
-            TransferTargetMode::PurseExists(uref) => uref,
-            _ => {
+        let (to, target_uref) = match self
+            .resolve_transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))?
+        {
+            NewTransferTargetMode::ExistingAccount {
+                main_purse: purse_uref,
+                target_account_hash: target_account,
+            } => (Some(target_account), purse_uref),
+            NewTransferTargetMode::PurseExists(purse_uref) => (None, purse_uref),
+            NewTransferTargetMode::CreateAccount(_) => {
+                // Method "build()" is called after `resolve_transfer_target_mode` is first called
+                // and handled by creating a new account. Calling `resolve_transfer_target_mode`
+                // for the second time should never return `CreateAccount` variant.
                 return Err(Error::reverter(ApiError::Transfer));
             }
         };

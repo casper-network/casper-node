@@ -8,6 +8,8 @@ use crate::{
     CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter,
 };
 
+use super::METHOD_DISTRIBUTE_ACCUMULATED_FEES;
+
 /// Creates handle payment contract entry points.
 pub fn handle_payment_entry_points() -> EntryPoints {
     let mut entry_points = EntryPoints::new();
@@ -17,7 +19,7 @@ pub fn handle_payment_entry_points() -> EntryPoints {
         vec![],
         CLType::URef,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(get_payment_purse);
 
@@ -26,7 +28,7 @@ pub fn handle_payment_entry_points() -> EntryPoints {
         vec![Parameter::new(ARG_PURSE, CLType::URef)],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(set_refund_purse);
 
@@ -35,7 +37,7 @@ pub fn handle_payment_entry_points() -> EntryPoints {
         vec![],
         CLType::Option(Box::new(CLType::URef)),
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(get_refund_purse);
 
@@ -47,9 +49,18 @@ pub fn handle_payment_entry_points() -> EntryPoints {
         ],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     );
     entry_points.add_entry_point(finalize_payment);
+
+    let distribute_accumulated_fees = EntryPoint::new(
+        METHOD_DISTRIBUTE_ACCUMULATED_FEES,
+        vec![],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::AddressableEntity,
+    );
+    entry_points.add_entry_point(distribute_accumulated_fees);
 
     entry_points
 }

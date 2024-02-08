@@ -13,7 +13,7 @@ use rand::{
 };
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{bytesrepr, Key, URef, URefAddr};
+use crate::{bytesrepr, AddressableEntityHash, URef, URefAddr};
 
 /// The number of bytes in a serialized [`AccessRights`].
 pub const ACCESS_RIGHTS_SERIALIZED_LENGTH: usize = 1;
@@ -21,7 +21,6 @@ pub const ACCESS_RIGHTS_SERIALIZED_LENGTH: usize = 1;
 bitflags! {
     /// A struct which behaves like a set of bitflags to define access rights associated with a
     /// [`URef`](crate::URef).
-    #[allow(clippy::derive_hash_xor_eq)]
     #[cfg_attr(feature = "datasize", derive(DataSize))]
     pub struct AccessRights: u8 {
         /// No permissions
@@ -33,13 +32,13 @@ bitflags! {
         /// Permission to add to the value under the associated `URef`.
         const ADD   = 0b100;
         /// Permission to read or add to the value under the associated `URef`.
-        const READ_ADD       = Self::READ.bits | Self::ADD.bits;
+        const READ_ADD       = Self::READ.bits() | Self::ADD.bits();
         /// Permission to read or write the value under the associated `URef`.
-        const READ_WRITE     = Self::READ.bits | Self::WRITE.bits;
+        const READ_WRITE     = Self::READ.bits() | Self::WRITE.bits();
         /// Permission to add to, or write the value under the associated `URef`.
-        const ADD_WRITE      = Self::ADD.bits  | Self::WRITE.bits;
+        const ADD_WRITE      = Self::ADD.bits()  | Self::WRITE.bits();
         /// Permission to read, add to, or write the value under the associated `URef`.
-        const READ_ADD_WRITE = Self::READ.bits | Self::ADD.bits | Self::WRITE.bits;
+        const READ_ADD_WRITE = Self::READ.bits() | Self::ADD.bits() | Self::WRITE.bits();
     }
 }
 
@@ -89,7 +88,7 @@ impl Display for AccessRights {
 
 impl bytesrepr::ToBytes for AccessRights {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.bits.to_bytes()
+        self.bits().to_bytes()
     }
 
     fn serialized_length(&self) -> usize {
@@ -114,7 +113,7 @@ impl bytesrepr::FromBytes for AccessRights {
 
 impl Serialize for AccessRights {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.bits.serialize(serializer)
+        self.bits().serialize(serializer)
     }
 }
 
@@ -158,16 +157,19 @@ pub enum GrantedAccess {
 /// Access rights for a given runtime context.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ContextAccessRights {
-    context_key: Key,
+    context_entity_hash: AddressableEntityHash,
     access_rights: BTreeMap<URefAddr, AccessRights>,
 }
 
 impl ContextAccessRights {
     /// Creates a new instance of access rights from an iterator of URefs merging any duplicates,
     /// taking the union of their rights.
-    pub fn new<T: IntoIterator<Item = URef>>(context_key: Key, uref_iter: T) -> Self {
+    pub fn new<T: IntoIterator<Item = URef>>(
+        context_entity_hash: AddressableEntityHash,
+        uref_iter: T,
+    ) -> Self {
         let mut context_access_rights = ContextAccessRights {
-            context_key,
+            context_entity_hash,
             access_rights: BTreeMap::new(),
         };
         context_access_rights.do_extend(uref_iter);
@@ -175,8 +177,8 @@ impl ContextAccessRights {
     }
 
     /// Returns the current context key.
-    pub fn context_key(&self) -> Key {
-        self.context_key
+    pub fn context_key(&self) -> AddressableEntityHash {
+        self.context_entity_hash
     }
 
     /// Extends the current access rights from a given set of URefs.
@@ -248,8 +250,8 @@ mod tests {
     use super::*;
     use crate::UREF_ADDR_LENGTH;
 
+    const ENTITY_HASH: AddressableEntityHash = AddressableEntityHash::new([1u8; 32]);
     const UREF_ADDRESS: [u8; UREF_ADDR_LENGTH] = [1; UREF_ADDR_LENGTH];
-    const KEY: Key = Key::URef(URef::new(UREF_ADDRESS, AccessRights::empty()));
     const UREF_NO_PERMISSIONS: URef = URef::new(UREF_ADDRESS, AccessRights::empty());
     const UREF_READ: URef = URef::new(UREF_ADDRESS, AccessRights::READ);
     const UREF_ADD: URef = URef::new(UREF_ADDRESS, AccessRights::ADD);
@@ -304,7 +306,7 @@ mod tests {
 
     #[test]
     fn should_check_has_access_rights_to_uref() {
-        let context_rights = ContextAccessRights::new(KEY, vec![UREF_READ_ADD]);
+        let context_rights = ContextAccessRights::new(ENTITY_HASH, vec![UREF_READ_ADD]);
         assert!(context_rights.has_access_rights_to_uref(&UREF_READ_ADD));
         assert!(context_rights.has_access_rights_to_uref(&UREF_READ));
         assert!(context_rights.has_access_rights_to_uref(&UREF_ADD));
@@ -313,7 +315,7 @@ mod tests {
 
     #[test]
     fn should_check_does_not_have_access_rights_to_uref() {
-        let context_rights = ContextAccessRights::new(KEY, vec![UREF_READ_ADD]);
+        let context_rights = ContextAccessRights::new(ENTITY_HASH, vec![UREF_READ_ADD]);
         assert!(!context_rights.has_access_rights_to_uref(&UREF_READ_ADD_WRITE));
         assert!(!context_rights
             .has_access_rights_to_uref(&URef::new([2; UREF_ADDR_LENGTH], AccessRights::empty())));
@@ -322,7 +324,7 @@ mod tests {
     #[test]
     fn should_extend_access_rights() {
         // Start with uref with no permissions.
-        let mut context_rights = ContextAccessRights::new(KEY, vec![UREF_NO_PERMISSIONS]);
+        let mut context_rights = ContextAccessRights::new(ENTITY_HASH, vec![UREF_NO_PERMISSIONS]);
         let mut expected_rights = BTreeMap::new();
         expected_rights.insert(UREF_ADDRESS, AccessRights::empty());
         assert_eq!(context_rights.access_rights, expected_rights);
@@ -345,7 +347,7 @@ mod tests {
     #[test]
     fn should_perform_union_of_access_rights_in_new() {
         let context_rights =
-            ContextAccessRights::new(KEY, vec![UREF_NO_PERMISSIONS, UREF_READ, UREF_ADD]);
+            ContextAccessRights::new(ENTITY_HASH, vec![UREF_NO_PERMISSIONS, UREF_READ, UREF_ADD]);
 
         // Expect the three discrete URefs' rights to be unioned into READ_ADD.
         let mut expected_rights = BTreeMap::new();
@@ -355,7 +357,7 @@ mod tests {
 
     #[test]
     fn should_grant_access_rights() {
-        let mut context_rights = ContextAccessRights::new(KEY, vec![UREF_READ_ADD]);
+        let mut context_rights = ContextAccessRights::new(ENTITY_HASH, vec![UREF_READ_ADD]);
         let granted_access = context_rights.grant_access(UREF_READ);
         assert_eq!(granted_access, GrantedAccess::PreExisting);
         let granted_access = context_rights.grant_access(UREF_READ_ADD_WRITE);
@@ -381,7 +383,7 @@ mod tests {
 
     #[test]
     fn should_remove_access_rights() {
-        let mut context_rights = ContextAccessRights::new(KEY, vec![UREF_READ_ADD_WRITE]);
+        let mut context_rights = ContextAccessRights::new(ENTITY_HASH, vec![UREF_READ_ADD_WRITE]);
         assert!(context_rights.has_access_rights_to_uref(&UREF_READ_ADD_WRITE));
 
         // Strip write access from the context rights.

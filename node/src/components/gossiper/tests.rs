@@ -18,36 +18,36 @@ use tokio::time;
 use tracing::debug;
 
 use casper_types::{
-    testing::TestRng, Block, Chainspec, ChainspecRawBytes, Deploy, EraId, FinalitySignature,
-    ProtocolVersion, TimeDiff,
+    testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignature,
+    ProtocolVersion, TimeDiff, Transaction,
 };
 
 use super::*;
 use crate::{
     components::{
-        deploy_acceptor,
         in_memory_network::{self, InMemoryNetwork, NetworkController},
         network::{GossipedAddress, Identity as NetworkIdentity},
         storage::{self, Storage},
+        transaction_acceptor,
     },
     effect::{
         announcements::{
-            ControlAnnouncement, DeployAcceptorAnnouncement, FatalAnnouncement,
-            GossiperAnnouncement,
+            ControlAnnouncement, FatalAnnouncement, GossiperAnnouncement,
+            TransactionAcceptorAnnouncement,
         },
         incoming::{
             ConsensusDemand, ConsensusMessageIncoming, FinalitySignatureIncoming,
             NetRequestIncoming, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
             TrieResponseIncoming,
         },
-        requests::AcceptDeployRequest,
+        requests::AcceptTransactionRequest,
     },
     protocol::Message as NodeMessage,
     reactor::{self, EventQueueHandle, QueueKind, Runner, TryCrankOutcome},
     testing::{
         self,
         network::{NetworkedReactor, TestingNetwork},
-        ConditionCheckReactor, FakeDeployAcceptor,
+        ConditionCheckReactor, FakeTransactionAcceptor,
     },
     types::NodeId,
     utils::WithDir,
@@ -67,21 +67,21 @@ enum Event {
     #[from]
     Storage(storage::Event),
     #[from]
-    DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
+    TransactionAcceptor(#[serde(skip_serializing)] transaction_acceptor::Event),
     #[from]
-    DeployGossiper(super::Event<Deploy>),
+    TransactionGossiper(super::Event<Transaction>),
     #[from]
     NetworkRequest(NetworkRequest<NodeMessage>),
     #[from]
     StorageRequest(StorageRequest),
     #[from]
-    AcceptDeployRequest(AcceptDeployRequest),
+    AcceptTransactionRequest(AcceptTransactionRequest),
     #[from]
-    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement),
+    TransactionAcceptorAnnouncement(#[serde(skip_serializing)] TransactionAcceptorAnnouncement),
     #[from]
-    DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
+    TransactionGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Transaction>),
     #[from]
-    DeployGossiperIncoming(GossiperIncoming<Deploy>),
+    TransactionGossiperIncoming(GossiperIncoming<Transaction>),
 }
 
 impl ReactorEvent for Event {
@@ -94,8 +94,8 @@ impl ReactorEvent for Event {
     }
 }
 
-impl From<NetworkRequest<Message<Deploy>>> for Event {
-    fn from(request: NetworkRequest<Message<Deploy>>) -> Self {
+impl From<NetworkRequest<Message<Transaction>>> for Event {
+    fn from(request: NetworkRequest<Message<Transaction>>) -> Self {
         Event::NetworkRequest(request.map_payload(NodeMessage::from))
     }
 }
@@ -112,7 +112,7 @@ impl Unhandled for ConsensusDemand {}
 impl Unhandled for ControlAnnouncement {}
 impl Unhandled for FatalAnnouncement {}
 impl Unhandled for ConsensusMessageIncoming {}
-impl Unhandled for GossiperIncoming<Block> {}
+impl Unhandled for GossiperIncoming<BlockV2> {}
 impl Unhandled for GossiperIncoming<FinalitySignature> {}
 impl Unhandled for GossiperIncoming<GossipedAddress> {}
 impl Unhandled for NetRequestIncoming {}
@@ -132,8 +132,8 @@ enum Error {
 struct Reactor {
     network: InMemoryNetwork<NodeMessage>,
     storage: Storage,
-    fake_deploy_acceptor: FakeDeployAcceptor,
-    deploy_gossiper: Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy>,
+    fake_transaction_acceptor: FakeTransactionAcceptor,
+    transaction_gossiper: Gossiper<{ Transaction::ID_IS_COMPLETE_ITEM }, Transaction>,
     _storage_tempdir: TempDir,
 }
 
@@ -174,9 +174,9 @@ impl reactor::Reactor for Reactor {
         )
         .unwrap();
 
-        let fake_deploy_acceptor = FakeDeployAcceptor::new();
-        let deploy_gossiper = Gossiper::<{ Deploy::ID_IS_COMPLETE_ITEM }, _>::new(
-            "deploy_gossiper",
+        let fake_transaction_acceptor = FakeTransactionAcceptor::new();
+        let transaction_gossiper = Gossiper::<{ Transaction::ID_IS_COMPLETE_ITEM }, _>::new(
+            "transaction_gossiper",
             config,
             registry,
         )?;
@@ -184,8 +184,8 @@ impl reactor::Reactor for Reactor {
         let reactor = Reactor {
             network,
             storage,
-            fake_deploy_acceptor,
-            deploy_gossiper,
+            fake_transaction_acceptor,
+            transaction_gossiper,
             _storage_tempdir: storage_tempdir,
         };
 
@@ -204,17 +204,17 @@ impl reactor::Reactor for Reactor {
                 Event::Storage,
                 self.storage.handle_event(effect_builder, rng, event),
             ),
-            Event::DeployAcceptor(event) => reactor::wrap_effects(
-                Event::DeployAcceptor,
-                self.fake_deploy_acceptor
+            Event::TransactionAcceptor(event) => reactor::wrap_effects(
+                Event::TransactionAcceptor,
+                self.fake_transaction_acceptor
                     .handle_event(effect_builder, rng, event),
             ),
-            Event::DeployGossiper(super::Event::ItemReceived {
+            Event::TransactionGossiper(super::Event::ItemReceived {
                 item_id,
                 source,
                 target,
             }) => {
-                // Ensure the correct target type for deploys is provided.
+                // Ensure the correct target type for transactions is provided.
                 assert_eq!(target, EXPECTED_GOSSIP_TARGET);
                 let event = super::Event::ItemReceived {
                     item_id,
@@ -222,14 +222,14 @@ impl reactor::Reactor for Reactor {
                     target,
                 };
                 reactor::wrap_effects(
-                    Event::DeployGossiper,
-                    self.deploy_gossiper
+                    Event::TransactionGossiper,
+                    self.transaction_gossiper
                         .handle_event(effect_builder, rng, event),
                 )
             }
-            Event::DeployGossiper(event) => reactor::wrap_effects(
-                Event::DeployGossiper,
-                self.deploy_gossiper
+            Event::TransactionGossiper(event) => reactor::wrap_effects(
+                Event::TransactionGossiper,
+                self.transaction_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
             Event::NetworkRequest(NetworkRequest::Gossip {
@@ -239,7 +239,8 @@ impl reactor::Reactor for Reactor {
                 exclude,
                 auto_closing_responder,
             }) => {
-                // Ensure the correct target type for deploys is carried through to the `Network`.
+                // Ensure the correct target type for transactions is carried through to the
+                // `Network`.
                 assert_eq!(gossip_target, EXPECTED_GOSSIP_TARGET);
                 let request = NetworkRequest::Gossip {
                     payload,
@@ -264,57 +265,61 @@ impl reactor::Reactor for Reactor {
                 self.storage
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            Event::AcceptDeployRequest(AcceptDeployRequest {
-                deploy,
+            Event::AcceptTransactionRequest(AcceptTransactionRequest {
+                transaction,
                 speculative_exec_at_block,
                 responder,
             }) => {
                 assert!(speculative_exec_at_block.is_none());
-                let event = deploy_acceptor::Event::Accept {
-                    deploy,
+                let event = transaction_acceptor::Event::Accept {
+                    transaction,
                     source: Source::Client,
                     maybe_responder: Some(responder),
                 };
-                self.dispatch_event(effect_builder, rng, Event::DeployAcceptor(event))
+                self.dispatch_event(effect_builder, rng, Event::TransactionAcceptor(event))
             }
-            Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::AcceptedNewDeploy {
-                deploy,
-                source,
-            }) => {
-                let event = super::Event::ItemReceived {
-                    item_id: deploy.gossip_id(),
+            Event::TransactionAcceptorAnnouncement(
+                TransactionAcceptorAnnouncement::AcceptedNewTransaction {
+                    transaction,
                     source,
-                    target: deploy.gossip_target(),
+                },
+            ) => {
+                let event = super::Event::ItemReceived {
+                    item_id: transaction.gossip_id(),
+                    source,
+                    target: transaction.gossip_target(),
                 };
-                self.dispatch_event(effect_builder, rng, Event::DeployGossiper(event))
+                self.dispatch_event(effect_builder, rng, Event::TransactionGossiper(event))
             }
-            Event::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
-                deploy: _,
-                source: _,
-            }) => Effects::new(),
-            Event::DeployGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
+            Event::TransactionAcceptorAnnouncement(
+                TransactionAcceptorAnnouncement::InvalidTransaction {
+                    transaction: _,
+                    source: _,
+                },
+            ) => Effects::new(),
+            Event::TransactionGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
                 item,
                 sender,
             }) => reactor::wrap_effects(
-                Event::DeployAcceptor,
-                self.fake_deploy_acceptor.handle_event(
+                Event::TransactionAcceptor,
+                self.fake_transaction_acceptor.handle_event(
                     effect_builder,
                     rng,
-                    deploy_acceptor::Event::Accept {
-                        deploy: Arc::new(*item),
+                    transaction_acceptor::Event::Accept {
+                        transaction: *item,
                         source: Source::Peer(sender),
                         maybe_responder: None,
                     },
                 ),
             ),
-            Event::DeployGossiperAnnouncement(_ann) => Effects::new(),
+            Event::TransactionGossiperAnnouncement(_ann) => Effects::new(),
             Event::Network(event) => reactor::wrap_effects(
                 Event::Network,
                 self.network.handle_event(effect_builder, rng, event),
             ),
-            Event::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
-                Event::DeployGossiper,
-                self.deploy_gossiper
+            Event::TransactionGossiperIncoming(incoming) => reactor::wrap_effects(
+                Event::TransactionGossiper,
+                self.transaction_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
         }
@@ -327,13 +332,14 @@ impl NetworkedReactor for Reactor {
     }
 }
 
-fn announce_deploy_received(
-    deploy: Arc<Deploy>,
+fn announce_transaction_received(
+    transaction: &Transaction,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
-    |effect_builder: EffectBuilder<Event>| effect_builder.try_accept_deploy(deploy, None).ignore()
+    let txn = transaction.clone();
+    |effect_builder: EffectBuilder<Event>| effect_builder.try_accept_transaction(txn, None).ignore()
 }
 
-async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize) {
+async fn run_gossip(rng: &mut TestRng, network_size: usize, txn_count: usize) {
     const TIMEOUT: Duration = Duration::from_secs(20);
     const QUIET_FOR: Duration = Duration::from_millis(50);
 
@@ -343,30 +349,34 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
     // Add `network_size` nodes.
     let node_ids = network.add_nodes(rng, network_size).await;
 
-    // Create `deploy_count` random deploys.
-    let (all_deploy_hashes, mut deploys): (BTreeSet<_>, Vec<_>) = iter::repeat_with(|| {
-        let deploy = Arc::new(Deploy::random_valid_native_transfer(rng));
-        (*deploy.hash(), deploy)
+    // Create `txn_count` random transactions.
+    let (all_txn_hashes, mut txns): (BTreeSet<_>, Vec<_>) = iter::repeat_with(|| {
+        let txn = Transaction::random(rng);
+        (txn.hash(), txn)
     })
-    .take(deploy_count)
+    .take(txn_count)
     .unzip();
 
-    // Give each deploy to a randomly-chosen node to be gossiped.
-    for deploy in deploys.drain(..) {
+    // Give each transaction to a randomly-chosen node to be gossiped.
+    for txn in txns.drain(..) {
         let index: usize = rng.gen_range(0..network_size);
         network
-            .process_injected_effect_on(&node_ids[index], announce_deploy_received(deploy))
+            .process_injected_effect_on(&node_ids[index], announce_transaction_received(&txn))
             .await;
     }
 
-    // Check every node has every deploy stored locally.
-    let all_deploys_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
+    // Check every node has every transaction stored locally.
+    let all_txns_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
         nodes.values().all(|runner| {
-            let hashes = runner.reactor().inner().storage.get_all_deploy_hashes();
-            all_deploy_hashes == hashes
+            let hashes = runner
+                .reactor()
+                .inner()
+                .storage
+                .get_all_transaction_hashes();
+            all_txn_hashes == hashes
         })
     };
-    network.settle_on(rng, all_deploys_held, TIMEOUT).await;
+    network.settle_on(rng, all_txns_held, TIMEOUT).await;
 
     // Ensure all responders are called before dropping the network.
     network.settle(rng, QUIET_FOR, TIMEOUT).await;
@@ -377,13 +387,13 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
 #[tokio::test]
 async fn should_gossip() {
     const NETWORK_SIZES: [usize; 3] = [2, 5, 20];
-    const DEPLOY_COUNTS: [usize; 3] = [1, 10, 30];
+    const TXN_COUNTS: [usize; 3] = [1, 10, 30];
 
-    let mut rng = crate::new_rng();
+    let rng = &mut TestRng::new();
 
     for network_size in &NETWORK_SIZES {
-        for deploy_count in &DEPLOY_COUNTS {
-            run_gossip(&mut rng, *network_size, *deploy_count).await
+        for txn_count in &TXN_COUNTS {
+            run_gossip(rng, *network_size, *txn_count).await
         }
     }
 }
@@ -396,19 +406,19 @@ async fn should_get_from_alternate_source() {
 
     NetworkController::<NodeMessage>::create_active();
     let mut network = TestingNetwork::<Reactor>::new();
-    let mut rng = crate::new_rng();
+    let rng = &mut TestRng::new();
 
     // Add `NETWORK_SIZE` nodes.
-    let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
+    let node_ids = network.add_nodes(rng, NETWORK_SIZE).await;
 
-    // Create random deploy.
-    let deploy = Arc::new(Deploy::random_valid_native_transfer(&mut rng));
-    let deploy_id = *deploy.hash();
+    // Create random transaction.
+    let txn = Transaction::random(rng);
+    let txn_hash = txn.hash();
 
-    // Give the deploy to nodes 0 and 1 to be gossiped.
+    // Give the transaction to nodes 0 and 1 to be gossiped.
     for node_id in node_ids.iter().take(2) {
         network
-            .process_injected_effect_on(node_id, announce_deploy_received(Arc::clone(&deploy)))
+            .process_injected_effect_on(node_id, announce_transaction_received(&txn))
             .await;
     }
 
@@ -417,7 +427,7 @@ async fn should_get_from_alternate_source() {
         matches!(event, Event::NetworkRequest(NetworkRequest::Gossip { .. }))
     };
     network
-        .crank_until(&node_ids[0], &mut rng, made_gossip_request, TIMEOUT)
+        .crank_until(&node_ids[0], rng, made_gossip_request, TIMEOUT)
         .await;
     assert!(network.remove_node(&node_ids[0]).is_some());
     debug!("removed node {}", &node_ids[0]);
@@ -427,7 +437,8 @@ async fn should_get_from_alternate_source() {
     let sent_gossip_response = move |event: &Event| -> bool {
         match event {
             Event::NetworkRequest(NetworkRequest::SendMessage { dest, payload, .. }) => {
-                if let NodeMessage::DeployGossiper(Message::GossipResponse { .. }) = **payload {
+                if let NodeMessage::TransactionGossiper(Message::GossipResponse { .. }) = **payload
+                {
                     **dest == node_id_0
                 } else {
                     false
@@ -437,28 +448,28 @@ async fn should_get_from_alternate_source() {
         }
     };
     network
-        .crank_until(&node_ids[2], &mut rng, sent_gossip_response, TIMEOUT)
+        .crank_until(&node_ids[2], rng, sent_gossip_response, TIMEOUT)
         .await;
 
-    // Run nodes 1 and 2 until settled.  Node 2 will be waiting for the deploy from node 0.
-    network.settle(&mut rng, POLL_DURATION, TIMEOUT).await;
+    // Run nodes 1 and 2 until settled.  Node 2 will be waiting for the transaction from node 0.
+    network.settle(rng, POLL_DURATION, TIMEOUT).await;
 
-    // Advance time to trigger node 2's timeout causing it to request the deploy from node 1.
+    // Advance time to trigger node 2's timeout causing it to request the transaction from node 1.
     let duration_to_advance = Config::default().get_remainder_timeout();
     testing::advance_time(duration_to_advance.into()).await;
 
-    // Check node 0 has the deploy stored locally.
-    let deploy_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
+    // Check node 0 has the transaction stored locally.
+    let txn_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
         let runner = nodes.get(&node_ids[2]).unwrap();
         runner
             .reactor()
             .inner()
             .storage
-            .get_deploy_by_hash(deploy_id)
-            .map(|retrieved_deploy| retrieved_deploy == *deploy)
+            .get_transaction_by_hash(txn_hash)
+            .map(|retrieved_txn| retrieved_txn == txn)
             .unwrap_or_default()
     };
-    network.settle_on(&mut rng, deploy_held, TIMEOUT).await;
+    network.settle_on(rng, txn_held, TIMEOUT).await;
 
     NetworkController::<NodeMessage>::remove_active();
 }
@@ -470,34 +481,32 @@ async fn should_timeout_gossip_response() {
 
     NetworkController::<NodeMessage>::create_active();
     let mut network = TestingNetwork::<Reactor>::new();
-    let mut rng = crate::new_rng();
+    let rng = &mut TestRng::new();
 
     // The target number of peers to infect with a given piece of data.
     let infection_target = Config::default().infection_target();
 
     // Add `infection_target + 1` nodes.
-    let mut node_ids = network
-        .add_nodes(&mut rng, infection_target as usize + 1)
-        .await;
+    let mut node_ids = network.add_nodes(rng, infection_target as usize + 1).await;
 
-    // Create random deploy.
-    let deploy = Arc::new(Deploy::random_valid_native_transfer(&mut rng));
-    let deploy_id = *deploy.hash();
+    // Create random transaction.
+    let txn = Transaction::random(rng);
+    let txn_hash = txn.hash();
 
-    // Give the deploy to node 0 to be gossiped.
+    // Give the transaction to node 0 to be gossiped.
     network
-        .process_injected_effect_on(&node_ids[0], announce_deploy_received(Arc::clone(&deploy)))
+        .process_injected_effect_on(&node_ids[0], announce_transaction_received(&txn))
         .await;
 
     // Run node 0 until it has sent the gossip requests.
     let made_gossip_request = |event: &Event| -> bool {
         matches!(
             event,
-            Event::DeployGossiper(super::Event::GossipedTo { .. })
+            Event::TransactionGossiper(super::Event::GossipedTo { .. })
         )
     };
     network
-        .crank_until(&node_ids[0], &mut rng, made_gossip_request, TIMEOUT)
+        .crank_until(&node_ids[0], rng, made_gossip_request, TIMEOUT)
         .await;
     // Give node 0 time to set the timeouts before advancing the clock.
     time::sleep(PAUSE_DURATION).await;
@@ -508,7 +517,7 @@ async fn should_timeout_gossip_response() {
         debug!("removed node {}", node_id);
     }
     for _ in 0..infection_target {
-        let (node_id, _runner) = network.add_node(&mut rng).await.unwrap();
+        let (node_id, _runner) = network.add_node(rng).await.unwrap();
         node_ids.push(node_id);
     }
 
@@ -516,19 +525,19 @@ async fn should_timeout_gossip_response() {
     let duration_to_advance = Config::default().gossip_request_timeout();
     testing::advance_time(duration_to_advance.into()).await;
 
-    // Check every node has every deploy stored locally.
-    let deploy_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
+    // Check every node has every transaction stored locally.
+    let txn_held = |nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<Reactor>>>| {
         nodes.values().all(|runner| {
             runner
                 .reactor()
                 .inner()
                 .storage
-                .get_deploy_by_hash(deploy_id)
-                .map(|retrieved_deploy| retrieved_deploy == *deploy)
+                .get_transaction_by_hash(txn_hash)
+                .map(|retrieved_txn| retrieved_txn == txn)
                 .unwrap_or_default()
         })
     };
-    network.settle_on(&mut rng, deploy_held, TIMEOUT).await;
+    network.settle_on(rng, txn_held, TIMEOUT).await;
 
     NetworkController::<NodeMessage>::remove_active();
 }
@@ -541,8 +550,7 @@ async fn should_timeout_new_item_from_peer() {
 
     NetworkController::<NodeMessage>::create_active();
     let mut network = TestingNetwork::<Reactor>::new();
-    let mut test_rng = crate::new_rng();
-    let rng = &mut test_rng;
+    let rng = &mut TestRng::new();
 
     let node_ids = network.add_nodes(rng, NETWORK_SIZE).await;
     let node_0 = node_ids[0];
@@ -554,16 +562,16 @@ async fn should_timeout_new_item_from_peer() {
         .unwrap()
         .reactor_mut()
         .inner_mut();
-    reactor_0.deploy_gossiper.validate_and_store_timeout = VALIDATE_AND_STORE_TIMEOUT;
-    // Switch off the fake deploy acceptor on node 0 so that once the new deploy is received, no
-    // component triggers the `ItemReceived` event.
-    reactor_0.fake_deploy_acceptor.set_active(false);
+    reactor_0.transaction_gossiper.validate_and_store_timeout = VALIDATE_AND_STORE_TIMEOUT;
+    // Switch off the fake transaction acceptor on node 0 so that once the new transaction is
+    // received, no component triggers the `ItemReceived` event.
+    reactor_0.fake_transaction_acceptor.set_active(false);
 
-    let deploy = Arc::new(Deploy::random_valid_native_transfer(rng));
+    let txn = Transaction::random(rng);
 
-    // Give the deploy to node 1 to gossip to node 0.
+    // Give the transaction to node 1 to gossip to node 0.
     network
-        .process_injected_effect_on(&node_1, announce_deploy_received(Arc::clone(&deploy)))
+        .process_injected_effect_on(&node_1, announce_transaction_received(&txn))
         .await;
 
     // Run the network until node 1 has sent the gossip request and node 0 has handled it to the
@@ -571,7 +579,7 @@ async fn should_timeout_new_item_from_peer() {
     let got_new_item_body_announcement = |event: &Event| -> bool {
         matches!(
             event,
-            Event::DeployGossiperAnnouncement(GossiperAnnouncement::NewItemBody { .. })
+            Event::TransactionGossiperAnnouncement(GossiperAnnouncement::NewItemBody { .. })
         )
     };
     network
@@ -582,7 +590,7 @@ async fn should_timeout_new_item_from_peer() {
     let received_timeout_event = |event: &Event| -> bool {
         matches!(
             event,
-            Event::DeployGossiper(super::Event::CheckItemReceivedTimeout { .. })
+            Event::TransactionGossiper(super::Event::CheckItemReceivedTimeout { .. })
         )
     };
     network
@@ -593,7 +601,7 @@ async fn should_timeout_new_item_from_peer() {
     let made_finished_gossiping_announcement = |event: &Event| -> bool {
         matches!(
             event,
-            Event::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(_))
+            Event::TransactionGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(_))
         )
     };
     network
@@ -610,30 +618,27 @@ async fn should_not_gossip_old_stored_item_again() {
 
     NetworkController::<NodeMessage>::create_active();
     let mut network = TestingNetwork::<Reactor>::new();
-    let mut test_rng = crate::new_rng();
-    let rng = &mut test_rng;
+    let rng = &mut TestRng::new();
 
     let node_ids = network.add_nodes(rng, NETWORK_SIZE).await;
     let node_0 = node_ids[0];
 
-    let deploy = Arc::new(Deploy::random_valid_native_transfer(rng));
+    let txn = Transaction::random(rng);
 
-    // Store the deploy on node 0.
-    let store_deploy = |effect_builder: EffectBuilder<Event>| {
+    // Store the transaction on node 0.
+    let store_txn = |effect_builder: EffectBuilder<Event>| {
         effect_builder
-            .put_deploy_to_storage(Arc::clone(&deploy))
+            .put_transaction_to_storage(txn.clone())
             .ignore()
     };
-    network
-        .process_injected_effect_on(&node_0, store_deploy)
-        .await;
+    network.process_injected_effect_on(&node_0, store_txn).await;
 
     // Node 1 sends a gossip message to node 0.
     network
         .process_injected_effect_on(&node_0, |effect_builder| {
-            let event = Event::DeployGossiperIncoming(GossiperIncoming {
+            let event = Event::TransactionGossiperIncoming(GossiperIncoming {
                 sender: node_ids[1],
-                message: Box::new(Message::Gossip(deploy.gossip_id())),
+                message: Box::new(Message::Gossip(txn.gossip_id())),
             });
             effect_builder
                 .into_inner()
@@ -642,12 +647,12 @@ async fn should_not_gossip_old_stored_item_again() {
         })
         .await;
 
-    // Run node 0 until it has handled the gossip message and checked if the deploy is already
+    // Run node 0 until it has handled the gossip message and checked if the transaction is already
     // stored.
     let checked_if_stored = |event: &Event| -> bool {
         matches!(
             event,
-            Event::DeployGossiper(super::Event::IsStoredResult { .. })
+            Event::TransactionGossiper(super::Event::IsStoredResult { .. })
         )
     };
     network
@@ -660,7 +665,7 @@ async fn should_not_gossip_old_stored_item_again() {
         .unwrap()
         .reactor()
         .inner()
-        .deploy_gossiper
+        .transaction_gossiper
         .table
         .is_empty());
     assert!(matches!(
@@ -683,27 +688,26 @@ async fn should_ignore_unexpected_message(message_type: Unexpected) {
 
     NetworkController::<NodeMessage>::create_active();
     let mut network = TestingNetwork::<Reactor>::new();
-    let mut test_rng = crate::new_rng();
-    let rng = &mut test_rng;
+    let rng = &mut TestRng::new();
 
     let node_ids = network.add_nodes(rng, NETWORK_SIZE).await;
     let node_0 = node_ids[0];
 
-    let deploy = Box::new(Deploy::random_valid_native_transfer(rng));
+    let txn = Box::new(Transaction::random(rng));
 
     let message = match message_type {
         Unexpected::Response => Message::GossipResponse {
-            item_id: deploy.gossip_id(),
+            item_id: txn.gossip_id(),
             is_already_held: false,
         },
-        Unexpected::GetItem => Message::GetItem(deploy.gossip_id()),
-        Unexpected::Item => Message::Item(deploy),
+        Unexpected::GetItem => Message::GetItem(txn.gossip_id()),
+        Unexpected::Item => Message::Item(txn),
     };
 
     // Node 1 sends an unexpected message to node 0.
     network
         .process_injected_effect_on(&node_0, |effect_builder| {
-            let event = Event::DeployGossiperIncoming(GossiperIncoming {
+            let event = Event::TransactionGossiperIncoming(GossiperIncoming {
                 sender: node_ids[1],
                 message: Box::new(message),
             });
@@ -716,7 +720,7 @@ async fn should_ignore_unexpected_message(message_type: Unexpected) {
 
     // Run node 0 until it has handled the gossip message.
     let received_gossip_message =
-        |event: &Event| -> bool { matches!(event, Event::DeployGossiperIncoming(..)) };
+        |event: &Event| -> bool { matches!(event, Event::TransactionGossiperIncoming(..)) };
     network
         .crank_until(&node_0, rng, received_gossip_message, TIMEOUT)
         .await;
@@ -727,7 +731,7 @@ async fn should_ignore_unexpected_message(message_type: Unexpected) {
         .unwrap()
         .reactor()
         .inner()
-        .deploy_gossiper
+        .transaction_gossiper
         .table
         .is_empty());
     assert!(matches!(

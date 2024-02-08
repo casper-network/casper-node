@@ -11,6 +11,13 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## [Unreleased] (node 1.5.4)
+
+### Added
+* Add `storage::enable_contract_version` for enabling a specific version of a contract.
+
+
+
 ## 3.0.0
 
 ### Added

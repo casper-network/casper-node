@@ -6,7 +6,7 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 
-use casper_types::{Block, Deploy, DeployId};
+use casper_types::{Block, BlockV2, Deploy, DeployId};
 
 use crate::{
     components::consensus::{ClContext, ProposedBlock},
@@ -22,7 +22,8 @@ pub(crate) enum Event {
     ReceiveDeployGossiped(DeployId),
     StoredDeploy(DeployId, Option<Box<Deploy>>),
     BlockProposed(Box<ProposedBlock<ClContext>>),
-    Block(Arc<Block>),
+    Block(Arc<BlockV2>),
+    VersionedBlock(Arc<Block>),
     BlockFinalized(Box<FinalizedBlock>),
     Expire,
 }
@@ -59,6 +60,9 @@ impl Display for Event {
             }
             Event::Block(_) => {
                 write!(formatter, "block")
+            }
+            Event::VersionedBlock(_) => {
+                write!(formatter, "versioned block")
             }
             Event::Expire => {
                 write!(formatter, "expire deploys")

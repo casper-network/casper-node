@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use num_rational::Ratio;
 use num_traits::{CheckedMul, CheckedSub};
 use once_cell::sync::Lazy;
@@ -5,22 +7,21 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-    DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    PRODUCTION_ROUND_SEIGNIORAGE_RATE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
-    TIMESTAMP_MILLIS_INCREMENT,
+    DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_ROUND_SEIGNIORAGE_RATE,
+    PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::engine_state::engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 use casper_types::{
     self,
     account::AccountHash,
     runtime_args,
     system::auction::{
-        self, Bid, Bids, DelegationRate, Delegator, EraInfo, SeigniorageAllocation,
-        SeigniorageRecipientsSnapshot, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
-        ARG_PUBLIC_KEY, ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        self, BidsExt as _, DelegationRate, Delegator, EraInfo, SeigniorageAllocation,
+        SeigniorageRecipientsSnapshot, ValidatorBid, ARG_AMOUNT, ARG_DELEGATION_RATE,
+        ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_REWARDS_MAP, ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR,
+        METHOD_DISTRIBUTE, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    EraId, Key, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    EraId, Key, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
@@ -69,9 +70,12 @@ static GENESIS_ROUND_SEIGNIORAGE_RATE: Lazy<Ratio<U512>> = Lazy::new(|| {
     )
 });
 
-fn get_validator_bid(builder: &mut LmdbWasmTestBuilder, validator: PublicKey) -> Option<Bid> {
-    let mut bids: Bids = builder.get_bids();
-    bids.remove(&validator)
+fn get_validator_bid(
+    builder: &mut LmdbWasmTestBuilder,
+    validator_public_key: PublicKey,
+) -> Option<ValidatorBid> {
+    let bids = builder.get_bids();
+    bids.validator_bid(&validator_public_key)
 }
 
 fn get_delegator_bid(
@@ -79,8 +83,8 @@ fn get_delegator_bid(
     validator: PublicKey,
     delegator: PublicKey,
 ) -> Option<Delegator> {
-    let validator_bid = get_validator_bid(builder, validator)?;
-    validator_bid.delegators().get(&delegator).cloned()
+    let bids = builder.get_bids();
+    bids.delegator_by_public_keys(&validator, &delegator)
 }
 
 fn withdraw_bid(
@@ -129,22 +133,15 @@ fn undelegate(
 
 fn get_delegator_staked_amount(
     builder: &mut LmdbWasmTestBuilder,
-    validator: PublicKey,
-    delegator: PublicKey,
+    validator_public_key: PublicKey,
+    delegator_public_key: PublicKey,
 ) -> U512 {
-    let bids: Bids = builder.get_bids();
-    let validator_bid = bids.get(&validator).expect("should have validator entry");
+    let bids = builder.get_bids();
+    let delegator = bids
+        .delegator_by_public_keys(&validator_public_key, &delegator_public_key)
+        .expect("bid should exist for validator-{validator_public_key}, delegator-{delegator_public_key}");
 
-    let delegator_entry = validator_bid
-        .delegators()
-        .get(&delegator)
-        .unwrap_or_else(|| {
-            panic!(
-                "should have delegator entry delegator={:?} bid={:?}",
-                delegator, validator_bid
-            )
-        });
-    *delegator_entry.staked_amount()
+    delegator.staked_amount()
 }
 
 fn get_era_info(builder: &mut LmdbWasmTestBuilder) -> EraInfo {
@@ -279,13 +276,16 @@ fn should_distribute_delegation_rate_zero() {
             .expect("must execute step successfully");
     }
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), total_payout);
+
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -338,7 +338,7 @@ fn should_distribute_delegation_rate_zero() {
 
     let validator_1_actual_payout = {
         let vaildator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+        let validator_stake_after = get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
 
@@ -375,9 +375,7 @@ fn should_distribute_delegation_rate_zero() {
             VALIDATOR_1.clone(),
             validator_1_actual_payout + U512::from(VALIDATOR_1_STAKE),
         );
-        let validator_1_bid = get_validator_bid(&mut builder, VALIDATOR_1.clone()).unwrap();
-        assert!(validator_1_bid.inactive());
-        assert!(validator_1_bid.staked_amount().is_zero());
+        assert!(get_validator_bid(&mut builder, VALIDATOR_1.clone()).is_none());
         U512::zero()
     };
     assert_eq!(validator_1_balance, U512::zero());
@@ -542,13 +540,16 @@ fn should_withdraw_bids_after_distribute() {
             .expect("must execute step successfully");
     }
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), total_payout);
+
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -557,7 +558,7 @@ fn should_withdraw_bids_after_distribute() {
 
     let validator_1_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+        let validator_stake_after = get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
 
@@ -692,9 +693,7 @@ fn should_withdraw_bids_after_distribute() {
             withdraw_bid_amount,
         );
 
-        let bid = get_validator_bid(&mut builder, VALIDATOR_1.clone()).unwrap();
-        assert!(bid.inactive());
-        assert!(bid.staked_amount().is_zero());
+        assert!(get_validator_bid(&mut builder, VALIDATOR_1.clone()).is_none());
 
         withdraw_bid_amount
     };
@@ -843,20 +842,23 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
             .expect("must execute step successfully");
     }
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), total_payout);
+
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
-    let validator_1_staked_amount_1 = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+    let validator_1_staked_amount_1 = get_validator_bid(&mut builder, VALIDATOR_1.clone())
         .expect("should have validator bid")
         .staked_amount();
     let delegator_1_staked_amount_1 =
@@ -963,20 +965,23 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     let expected_total_reward_2_integer = expected_total_reward_2.to_integer();
     assert_eq!(total_payout_2, expected_total_reward_2_integer);
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), total_payout_2);
+
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
 
     builder.exec(distribute_request).commit().expect_success();
 
-    let validator_1_staked_amount_2 = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+    let validator_1_staked_amount_2 = get_validator_bid(&mut builder, VALIDATOR_1.clone())
         .expect("should have validator bid")
         .staked_amount();
     let delegator_1_staked_amount_2 =
@@ -1092,7 +1097,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
         get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone())
             .expect("should have delegator bid");
     assert_eq!(
-        *remaining_delegator_1_bid.staked_amount(),
+        remaining_delegator_1_bid.staked_amount(),
         U512::from(DELEGATOR_1_STAKE)
     );
 
@@ -1108,7 +1113,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
         get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone())
             .expect("should have delegator bid");
     assert_eq!(
-        *remaining_delegator_2_bid.staked_amount(),
+        remaining_delegator_2_bid.staked_amount(),
         U512::from(DELEGATOR_2_STAKE)
     );
 
@@ -1123,7 +1128,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     let remaining_validator_1_bid =
         get_validator_bid(&mut builder, VALIDATOR_1.clone()).expect("should have validator bid");
     assert_eq!(
-        *remaining_validator_1_bid.staked_amount(),
+        remaining_validator_1_bid.staked_amount(),
         U512::from(VALIDATOR_1_STAKE)
     );
 }
@@ -1250,13 +1255,16 @@ fn should_distribute_delegation_rate_half() {
             .expect("must execute step successfully");
     }
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), total_payout);
+
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -1309,7 +1317,7 @@ fn should_distribute_delegation_rate_half() {
 
     let validator_1_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+        let validator_stake_after = get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -1467,13 +1475,16 @@ fn should_distribute_delegation_rate_full() {
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), expected_total_reward_integer);
+
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -1482,7 +1493,7 @@ fn should_distribute_delegation_rate_full() {
 
     let validator_1_updated_stake = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+        let validator_stake_after = get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -1655,13 +1666,16 @@ fn should_distribute_uneven_delegation_rate_zero() {
             .expect("must execute step successfully");
     }
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), total_payout);
+
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -1714,7 +1728,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
 
     let validator_1_updated_stake = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+        let validator_stake_after = get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -1953,6 +1967,9 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             .expect("must execute step successfully");
     }
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), total_payout);
+
     // Validator 1 distribution
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -1960,7 +1977,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -1969,7 +1986,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     let validator_1_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+        let validator_stake_after = get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -2009,6 +2026,9 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         if *delegator_public_key == *DELEGATOR_2 && *amount == delegator_2_actual_payout
     ));
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_2.clone(), total_payout);
+
     // Validator 2 distribution
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -2016,7 +2036,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_2.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -2025,7 +2045,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     let validator_2_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_2_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_2.clone())
+        let validator_stake_after = get_validator_bid(&mut builder, VALIDATOR_2.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -2052,6 +2072,9 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         if *delegator_public_key == *DELEGATOR_3 && *amount == delegator_3_actual_payout
     ));
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_3.clone(), total_payout);
+
     // Validator 3 distribution
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -2059,7 +2082,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_3.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -2068,7 +2091,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     let validator_3_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_3_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_3.clone())
+        let validator_stake_after = get_validator_bid(&mut builder, VALIDATOR_3.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -2254,12 +2277,6 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     let initial_supply = builder.total_supply(None);
     let total_payout = builder.base_round_reward(None);
     let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
-    let expected_total_reward_2 =
-        *GENESIS_ROUND_SEIGNIORAGE_RATE * (initial_supply + expected_total_reward.to_integer());
-    let expected_total_reward_3 = *GENESIS_ROUND_SEIGNIORAGE_RATE
-        * (initial_supply
-            + expected_total_reward.to_integer()
-            + expected_total_reward_2.to_integer());
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(total_payout, expected_total_reward_integer);
 
@@ -2279,18 +2296,10 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             .expect("must execute step successfully");
     }
 
-    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *SYSTEM_ADDR,
-        builder.get_auction_contract_hash(),
-        METHOD_DISTRIBUTE,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
-        },
-    )
-    .build();
-
-    builder.exec(distribute_request).commit().expect_success();
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), total_payout);
+    rewards.insert(VALIDATOR_2.clone(), total_payout);
+    rewards.insert(VALIDATOR_3.clone(), total_payout);
 
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -2298,20 +2307,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_2.clone()
-        },
-    )
-    .build();
-
-    builder.exec(distribute_request).commit().expect_success();
-
-    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *SYSTEM_ADDR,
-        builder.get_auction_contract_hash(),
-        METHOD_DISTRIBUTE,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_3.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -2342,7 +2338,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let validator_1_actual_payout = {
         let validator_balance_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_balance_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+        let validator_balance_after = get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_balance_after - validator_balance_before
@@ -2358,7 +2354,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     let validator_2_delegator_1_share = {
         let validator_2_total_stake = VALIDATOR_2_STAKE + DELEGATOR_1_STAKE;
 
-        let total_reward = &Ratio::from(expected_total_reward_2.to_integer());
+        let total_reward = &Ratio::from(expected_total_reward.to_integer());
 
         let delegator_total_stake = U512::from(DELEGATOR_1_STAKE);
         let commission_rate = Ratio::new(
@@ -2379,13 +2375,13 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let validator_2_actual_payout = {
         let validator_balance_before = U512::from(VALIDATOR_2_STAKE);
-        let validator_balance_after = *get_validator_bid(&mut builder, VALIDATOR_2.clone())
+        let validator_balance_after = get_validator_bid(&mut builder, VALIDATOR_2.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_balance_after - validator_balance_before
     };
     let validator_2_expected_payout = {
-        let validator_share = expected_total_reward_2;
+        let validator_share = expected_total_reward;
         let validator_portion = validator_share - Ratio::from(validator_2_delegator_1_share);
         validator_portion.to_integer()
     };
@@ -2394,7 +2390,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     let validator_3_delegator_1_share = {
         let validator_3_total_stake = VALIDATOR_3_STAKE + DELEGATOR_1_STAKE;
 
-        let total_reward = &Ratio::from(expected_total_reward_3.to_integer());
+        let total_reward = &Ratio::from(expected_total_reward.to_integer());
 
         let delegator_total_stake = U512::from(DELEGATOR_1_STAKE);
         let commission_rate = Ratio::new(
@@ -2415,13 +2411,13 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let validator_3_actual_payout = {
         let validator_balance_before = U512::from(VALIDATOR_3_STAKE);
-        let validator_balance_after = *get_validator_bid(&mut builder, VALIDATOR_3.clone())
+        let validator_balance_after = get_validator_bid(&mut builder, VALIDATOR_3.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_balance_after - validator_balance_before
     };
     let validator_3_expected_payout = {
-        let validator_share = expected_total_reward_3;
+        let validator_share = expected_total_reward;
         let validator_portion = validator_share - Ratio::from(validator_3_delegator_1_share);
         validator_portion.to_integer()
     };
@@ -2658,18 +2654,12 @@ fn should_increase_total_supply_after_distribute() {
         "total supply should remain unchanged regardless of auction"
     );
 
-    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *SYSTEM_ADDR,
-        builder.get_auction_contract_hash(),
-        METHOD_DISTRIBUTE,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
-        },
-    )
-    .build();
+    let total_payout = U512::from(1_000_000_000_000_u64);
 
-    builder.exec(distribute_request).commit().expect_success();
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), total_payout);
+    rewards.insert(VALIDATOR_2.clone(), total_payout);
+    rewards.insert(VALIDATOR_3.clone(), total_payout);
 
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -2677,20 +2667,7 @@ fn should_increase_total_supply_after_distribute() {
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_2.clone()
-        },
-    )
-    .build();
-
-    builder.exec(distribute_request).commit().expect_success();
-
-    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *SYSTEM_ADDR,
-        builder.get_auction_contract_hash(),
-        METHOD_DISTRIBUTE,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_3.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -2854,13 +2831,18 @@ fn should_not_create_purses_during_distribute() {
         "total supply should remain unchanged regardless of auction"
     );
 
+    let total_payout = U512::from(1_000_000_000_000_u64);
+
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), total_payout);
+
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -2994,9 +2976,12 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     }
 
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis, Vec::new());
+        builder.advance_era();
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
+
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), expected_total_reward_integer);
 
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -3004,7 +2989,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -3013,7 +2998,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
 
     let validator_1_stake_before = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+        let validator_stake_after = get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -3066,39 +3051,52 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
             .build()
     };
 
-    builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(None, &mut upgrade_request);
 
     let initial_supply = builder.total_supply(None);
 
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis, Vec::new());
+        builder.advance_era();
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
-
-    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *SYSTEM_ADDR,
-        builder.get_auction_contract_hash(),
-        METHOD_DISTRIBUTE,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
-        },
-    )
-    .with_protocol_version(new_protocol_version)
-    .build();
 
     let new_round_seigniorage_rate = {
         let (numer, denom) = new_round_seigniorage_rate.into();
         Ratio::new(numer.into(), denom.into())
     };
 
-    builder.exec(distribute_request).commit().expect_success();
-
     let expected_total_reward_after = new_round_seigniorage_rate * initial_supply;
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(
+        VALIDATOR_1.clone(),
+        expected_total_reward_after.to_integer(),
+    );
+    builder
+        .distribute(None, new_protocol_version, &rewards, 10, timestamp_millis)
+        .expect("must distribute");
+
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), expected_total_reward_integer);
+
+    /*
+    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *SYSTEM_ADDR,
+        builder.get_auction_contract_hash(),
+        METHOD_DISTRIBUTE,
+        runtime_args! {
+            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
+            ARG_REWARDS_MAP => rewards
+        },
+    )
+    .with_protocol_version(new_protocol_version)
+    .build();
+
+    builder.exec(distribute_request).commit().expect_success();
+    */
+
     let validator_1_balance_after = {
-        let validator_staked_amount = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+        let validator_staked_amount = get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_staked_amount - validator_1_stake_before - U512::from(VALIDATOR_1_STAKE)
@@ -3230,7 +3228,7 @@ fn should_not_restake_after_full_unbond() {
 
     assert!(delegator.is_some());
     assert_eq!(
-        delegator.unwrap().staked_amount().to_owned(),
+        delegator.unwrap().staked_amount(),
         U512::from(DELEGATOR_1_STAKE)
     );
 
@@ -3249,7 +3247,7 @@ fn should_not_restake_after_full_unbond() {
 
     let withdraws = builder.get_unbonds();
     let unbonding_purses = withdraws
-        .get(&VALIDATOR_1_ADDR)
+        .get(&DELEGATOR_1_ADDR)
         .expect("should have validator entry");
     let delegator_unbond_amount = unbonding_purses
         .iter()
@@ -3360,10 +3358,7 @@ fn delegator_full_unbond_during_first_reward_era() {
     let delegator = get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone())
         .expect("should be delegator");
 
-    assert_eq!(
-        delegator.staked_amount().to_owned(),
-        U512::from(DELEGATOR_1_STAKE)
-    );
+    assert_eq!(delegator.staked_amount(), U512::from(DELEGATOR_1_STAKE));
 
     // step until validator receives rewards.
     builder.advance_eras_by(3);
@@ -3400,7 +3395,7 @@ fn delegator_full_unbond_during_first_reward_era() {
 
     let withdraws = builder.get_unbonds();
     let unbonding_purses = withdraws
-        .get(&VALIDATOR_1_ADDR)
+        .get(&DELEGATOR_1_ADDR)
         .expect("should have validator entry");
     let delegator_unbond_amount = unbonding_purses
         .iter()

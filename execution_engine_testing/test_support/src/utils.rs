@@ -9,13 +9,13 @@ use std::{
 use once_cell::sync::Lazy;
 
 use casper_execution_engine::engine_state::{
+    engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
     execution_result::ExecutionResult,
-    genesis::{ExecConfig, GenesisConfig},
+    genesis::{ExecConfig, ExecConfigBuilder, GenesisConfig},
     run_genesis_request::RunGenesisRequest,
     Error,
 };
-use casper_storage::global_state::shared::{transform::Transform, AdditiveMap};
-use casper_types::{account::Account, Gas, GenesisAccount, Key, StoredValue};
+use casper_types::{Gas, GenesisAccount};
 
 use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY};
 use crate::{
@@ -140,17 +140,22 @@ pub fn create_exec_config(accounts: Vec<GenesisAccount>) -> ExecConfig {
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
     let genesis_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
-    ExecConfig::new(
-        accounts,
-        wasm_config,
-        system_config,
-        validator_slots,
-        auction_delay,
-        locked_funds_period_millis,
-        round_seigniorage_rate,
-        unbonding_delay,
-        genesis_timestamp_millis,
-    )
+    let refund_handling = DEFAULT_REFUND_HANDLING;
+    let fee_handling = DEFAULT_FEE_HANDLING;
+
+    ExecConfigBuilder::default()
+        .with_accounts(accounts)
+        .with_wasm_config(wasm_config)
+        .with_system_config(system_config)
+        .with_validator_slots(validator_slots)
+        .with_auction_delay(auction_delay)
+        .with_locked_funds_period_millis(locked_funds_period_millis)
+        .with_round_seigniorage_rate(round_seigniorage_rate)
+        .with_unbonding_delay(unbonding_delay)
+        .with_genesis_timestamp_millis(genesis_timestamp_millis)
+        .with_refund_handling(refund_handling)
+        .with_fee_handling(fee_handling)
+        .build()
 }
 
 /// Returns a [`GenesisConfig`].
@@ -221,16 +226,4 @@ pub fn get_error_message<T: AsRef<ExecutionResult>, I: IntoIterator<Item = T>>(
         })
         .collect::<Vec<_>>();
     errors.join("\n")
-}
-
-/// Returns `Option<Account>`.
-#[allow(clippy::implicit_hasher)]
-pub fn get_account(transforms: &AdditiveMap<Key, Transform>, account: &Key) -> Option<Account> {
-    transforms.get(account).and_then(|transform| {
-        if let Transform::Write(StoredValue::Account(account)) = transform {
-            Some(account.to_owned())
-        } else {
-            None
-        }
-    })
 }

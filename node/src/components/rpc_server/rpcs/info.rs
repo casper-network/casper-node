@@ -1,19 +1,17 @@
 //! RPCs returning ancillary information.
 
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use std::{collections::BTreeMap, str};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{debug, error};
 
 use casper_types::{
-    BlockHash, BlockHashAndHeight, ChainspecRawBytes, Deploy, DeployHash, EraId, ExecutionResult,
-    JsonBlock, ProtocolVersion, PublicKey,
+    execution::{ExecutionResult, ExecutionResultV2},
+    Block, ChainspecRawBytes, Deploy, DeployHash, EraId, ProtocolVersion, PublicKey, Transaction,
+    TransactionHash,
 };
 
 use super::{
@@ -24,7 +22,10 @@ use crate::{
     components::consensus::ValidatorChange,
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::{DeployMetadataExt, GetStatusResult, PeersMap},
+    types::{
+        DeployWithFinalizedApprovals, ExecutionInfo, GetStatusResult, PeersMap,
+        TransactionWithFinalizedApprovals, VariantMismatch,
+    },
 };
 
 static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
@@ -34,11 +35,24 @@ static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
 static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     deploy: Deploy::doc_example().clone(),
-    execution_results: vec![JsonExecutionResult {
-        block_hash: JsonBlock::doc_example().hash,
-        result: ExecutionResult::example().clone(),
-    }],
-    block_hash_and_height: None,
+    execution_info: Some(ExecutionInfo {
+        block_hash: *Block::example().hash(),
+        block_height: Block::example().clone_header().height(),
+        execution_result: Some(ExecutionResult::from(ExecutionResultV2::example().clone())),
+    }),
+});
+static GET_TRANSACTION_PARAMS: Lazy<GetTransactionParams> = Lazy::new(|| GetTransactionParams {
+    transaction_hash: Transaction::doc_example().hash(),
+    finalized_approvals: true,
+});
+static GET_TRANSACTION_RESULT: Lazy<GetTransactionResult> = Lazy::new(|| GetTransactionResult {
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    transaction: Transaction::doc_example().clone(),
+    execution_info: Some(ExecutionInfo {
+        block_hash: *Block::example().hash(),
+        block_height: Block::example().height(),
+        execution_result: Some(ExecutionResult::from(ExecutionResultV2::example().clone())),
+    }),
 });
 static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
@@ -70,7 +84,8 @@ pub struct GetDeployParams {
     pub finalized_approvals: bool,
 }
 
-/// The default for `GetDeployParams::finalized_approvals`.
+/// The default for `GetDeployParams::finalized_approvals` and
+/// `GetTransactionParams::finalized_approvals`.
 fn finalized_approvals_default() -> bool {
     false
 }
@@ -79,16 +94,6 @@ impl DocExample for GetDeployParams {
     fn doc_example() -> &'static Self {
         &GET_DEPLOY_PARAMS
     }
-}
-
-/// The execution result of a single deploy.
-#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct JsonExecutionResult {
-    /// The block hash.
-    pub block_hash: BlockHash,
-    /// Execution result.
-    pub result: ExecutionResult,
 }
 
 /// Result for "info_get_deploy" RPC response.
@@ -100,12 +105,9 @@ pub struct GetDeployResult {
     pub api_version: ProtocolVersion,
     /// The deploy.
     pub deploy: Deploy,
-    /// The map of block hash to execution result.
-    pub execution_results: Vec<JsonExecutionResult>,
-    /// The hash and height of the block in which this deploy was executed,
-    /// only provided if the full execution results are not know on this node.
+    /// Execution info, if available.
     #[serde(skip_serializing_if = "Option::is_none", flatten)]
-    pub block_hash_and_height: Option<BlockHashAndHeight>,
+    pub execution_info: Option<ExecutionInfo>,
 }
 
 impl DocExample for GetDeployResult {
@@ -128,52 +130,129 @@ impl RpcWithParams for GetDeploy {
         api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
-        // Try to get the deploy and metadata from storage.
-        let maybe_deploy_and_metadata = effect_builder
-            .make_request(
-                |responder| RpcRequest::GetDeploy {
-                    hash: params.deploy_hash,
-                    finalized_approvals: params.finalized_approvals,
-                    responder,
-                },
-                QueueKind::Api,
-            )
-            .await;
-
-        let (deploy, metadata_ext) = match maybe_deploy_and_metadata {
-            Some(inner) => (inner.0, inner.1),
+        let txn_hash = TransactionHash::from(params.deploy_hash);
+        let (txn_with_finalized_approvals, execution_info) = match effect_builder
+            .get_transaction_and_execution_info_from_storage(txn_hash)
+            .await
+        {
+            Some(value) => value,
             None => {
                 let message = format!(
-                    "failed to get {} and metadata from storage",
+                    "failed to get {} and execution info from storage",
                     params.deploy_hash
                 );
-                info!("{}", message);
+                debug!("{}", message);
                 return Err(Error::new(ErrorCode::NoSuchDeploy, message));
             }
         };
 
-        let (execution_results, block_hash_and_height) = match metadata_ext {
-            DeployMetadataExt::Metadata(metadata) => (
-                metadata
-                    .execution_results
-                    .into_iter()
-                    .map(|(block_hash, result)| JsonExecutionResult { block_hash, result })
-                    .collect(),
-                None,
-            ),
-            DeployMetadataExt::BlockInfo(block_hash_and_height) => {
-                (Vec::new(), Some(block_hash_and_height))
+        let deploy_with_finalized_approvals = match txn_with_finalized_approvals {
+            TransactionWithFinalizedApprovals::Deploy {
+                deploy,
+                finalized_approvals,
+            } => DeployWithFinalizedApprovals::new(deploy, finalized_approvals),
+            other => {
+                let message = format!(
+                    "internal error: failed to get {} and execution info from storage: {}",
+                    params.deploy_hash,
+                    VariantMismatch(Box::new((txn_hash, other)))
+                );
+                error!("{}", message);
+                return Err(Error::new(ErrorCode::VariantMismatch, message));
             }
-            DeployMetadataExt::Empty => (Vec::new(), None),
         };
 
-        let result = Self::ResponseResult {
+        let deploy = if params.finalized_approvals {
+            deploy_with_finalized_approvals.into_naive()
+        } else {
+            deploy_with_finalized_approvals.discard_finalized_approvals()
+        };
+        Ok(Self::ResponseResult {
             api_version,
             deploy,
-            execution_results,
-            block_hash_and_height,
-        };
-        Ok(result)
+            execution_info,
+        })
+    }
+}
+
+/// Params for "info_get_transaction" RPC request.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetTransactionParams {
+    /// The transaction hash.
+    pub transaction_hash: TransactionHash,
+    /// Whether to return the transaction with the finalized approvals substituted. If `false` or
+    /// omitted, returns the transaction with the approvals that were originally received by the
+    /// node.
+    #[serde(default = "finalized_approvals_default")]
+    pub finalized_approvals: bool,
+}
+
+impl DocExample for GetTransactionParams {
+    fn doc_example() -> &'static Self {
+        &GET_TRANSACTION_PARAMS
+    }
+}
+
+/// Result for "info_get_transaction" RPC response.
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetTransactionResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ProtocolVersion,
+    /// The transaction.
+    pub transaction: Transaction,
+    /// Execution info, if available.
+    #[serde(skip_serializing_if = "Option::is_none", flatten)]
+    pub execution_info: Option<ExecutionInfo>,
+}
+
+impl DocExample for GetTransactionResult {
+    fn doc_example() -> &'static Self {
+        &GET_TRANSACTION_RESULT
+    }
+}
+
+/// "info_get_transaction" RPC.
+pub struct GetTransaction {}
+
+#[async_trait]
+impl RpcWithParams for GetTransaction {
+    const METHOD: &'static str = "info_get_transaction";
+    type RequestParams = GetTransactionParams;
+    type ResponseResult = GetTransactionResult;
+
+    async fn do_handle_request<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        api_version: ProtocolVersion,
+        params: Self::RequestParams,
+    ) -> Result<Self::ResponseResult, Error> {
+        match effect_builder
+            .get_transaction_and_execution_info_from_storage(params.transaction_hash)
+            .await
+        {
+            Some((txn_with_finalized_approvals, execution_info)) => {
+                let transaction = if params.finalized_approvals {
+                    txn_with_finalized_approvals.into_naive()
+                } else {
+                    txn_with_finalized_approvals.discard_finalized_approvals()
+                };
+                Ok(Self::ResponseResult {
+                    api_version,
+                    transaction,
+                    execution_info,
+                })
+            }
+            None => {
+                let message = format!(
+                    "failed to get {} and execution info from storage",
+                    params.transaction_hash
+                );
+                debug!("{}", message);
+                Err(Error::new(ErrorCode::NoSuchTransaction, message))
+            }
+        }
     }
 }
 

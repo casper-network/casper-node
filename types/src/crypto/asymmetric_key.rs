@@ -21,9 +21,9 @@ use datasize::DataSize;
 #[cfg(any(feature = "std", test))]
 use derp::{Der, Tag};
 use ed25519_dalek::{
-    ed25519::signature::Signature as _Signature, ExpandedSecretKey,
-    PUBLIC_KEY_LENGTH as ED25519_PUBLIC_KEY_LENGTH, SECRET_KEY_LENGTH as ED25519_SECRET_KEY_LENGTH,
-    SIGNATURE_LENGTH as ED25519_SIGNATURE_LENGTH,
+    Signature as Ed25519Signature, SigningKey as Ed25519SecretKey,
+    VerifyingKey as Ed25519PublicKey, PUBLIC_KEY_LENGTH as ED25519_PUBLIC_KEY_LENGTH,
+    SECRET_KEY_LENGTH as ED25519_SECRET_KEY_LENGTH, SIGNATURE_LENGTH as ED25519_SIGNATURE_LENGTH,
 };
 use hex_fmt::HexFmt;
 use k256::ecdsa::{
@@ -40,6 +40,8 @@ use rand::{Rng, RngCore};
 #[cfg(feature = "json-schema")]
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+#[cfg(feature = "json-schema")]
+use serde_json::json;
 #[cfg(any(feature = "std", test))]
 use untrusted::Input;
 
@@ -184,7 +186,7 @@ pub enum SecretKey {
     /// Ed25519 secret key.
     #[cfg_attr(feature = "datasize", data_size(skip))]
     // Manually verified to have no data on the heap.
-    Ed25519(ed25519_dalek::SecretKey),
+    Ed25519(Ed25519SecretKey),
     /// secp256k1 secret key.
     #[cfg_attr(feature = "datasize", data_size(skip))]
     Secp256k1(Secp256k1SecretKey),
@@ -207,16 +209,16 @@ impl SecretKey {
 
     /// Constructs a new ed25519 variant from a byte slice.
     pub fn ed25519_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
-        Ok(SecretKey::Ed25519(ed25519_dalek::SecretKey::from_bytes(
+        Ok(SecretKey::Ed25519(Ed25519SecretKey::try_from(
             bytes.as_ref(),
         )?))
     }
 
     /// Constructs a new secp256k1 variant from a byte slice.
     pub fn secp256k1_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
-        Ok(SecretKey::Secp256k1(Secp256k1SecretKey::from_bytes(
-            bytes.as_ref(),
-        )?))
+        Ok(SecretKey::Secp256k1(
+            Secp256k1SecretKey::from_slice(bytes.as_ref()).map_err(|_| Error::SignatureError)?,
+        ))
     }
 
     /// Generates a new ed25519 variant using the system's secure random number generator.
@@ -257,7 +259,7 @@ impl SecretKey {
                 // See https://tools.ietf.org/html/rfc8410#section-10.3
                 let mut key_bytes = vec![];
                 let mut der = Der::new(&mut key_bytes);
-                der.octet_string(secret_key.as_ref())?;
+                der.octet_string(&secret_key.to_bytes())?;
 
                 let mut encoded = vec![];
                 der = Der::new(&mut encoded);
@@ -481,7 +483,7 @@ pub enum PublicKey {
     System,
     /// Ed25519 public key.
     #[cfg_attr(feature = "datasize", data_size(skip))]
-    Ed25519(ed25519_dalek::PublicKey),
+    Ed25519(Ed25519PublicKey),
     /// secp256k1 public key.
     #[cfg_attr(feature = "datasize", data_size(skip))]
     Secp256k1(Secp256k1PublicKey),
@@ -544,7 +546,7 @@ impl PublicKey {
                         der.oid(&EC_PUBLIC_KEY_OBJECT_IDENTIFIER)?;
                         der.oid(&SECP256K1_OBJECT_IDENTIFIER)
                     })?;
-                    der.bit_string(0, &public_key.to_bytes())
+                    der.bit_string(0, public_key.to_encoded_point(true).as_ref())
                 })?;
                 Ok(encoded)
             }
@@ -674,15 +676,16 @@ impl AsymmetricType<'_> for PublicKey {
     }
 
     fn ed25519_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
-        Ok(PublicKey::Ed25519(ed25519_dalek::PublicKey::from_bytes(
+        Ok(PublicKey::Ed25519(Ed25519PublicKey::try_from(
             bytes.as_ref(),
         )?))
     }
 
     fn secp256k1_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
-        Ok(PublicKey::Secp256k1(Secp256k1PublicKey::from_sec1_bytes(
-            bytes.as_ref(),
-        )?))
+        Ok(PublicKey::Secp256k1(
+            Secp256k1PublicKey::from_sec1_bytes(bytes.as_ref())
+                .map_err(|_| Error::SignatureError)?,
+        ))
     }
 }
 
@@ -696,12 +699,44 @@ impl From<&SecretKey> for PublicKey {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
+impl PartialEq for SecretKey {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::System, Self::System) => true,
+            (Self::Ed25519(k1), Self::Ed25519(k2)) => k1.to_bytes() == k2.to_bytes(),
+            (Self::Secp256k1(k1), Self::Secp256k1(k2)) => k1.to_bytes() == k2.to_bytes(),
+            _ => false,
+        }
+    }
+}
+#[cfg(any(feature = "testing", test))]
+impl Eq for SecretKey {}
+
+#[cfg(any(feature = "testing", test))]
+impl Ord for SecretKey {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (Self::System, Self::System) => Ordering::Equal,
+            (Self::Ed25519(k1), Self::Ed25519(k2)) => k1.to_bytes().cmp(&k2.to_bytes()),
+            (Self::Secp256k1(k1), Self::Secp256k1(k2)) => k1.to_bytes().cmp(&k2.to_bytes()),
+            (k1, k2) => k1.variant_name().cmp(k2.variant_name()),
+        }
+    }
+}
+#[cfg(any(feature = "testing", test))]
+impl PartialOrd for SecretKey {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl From<&PublicKey> for Vec<u8> {
     fn from(public_key: &PublicKey) -> Self {
         match public_key {
             PublicKey::System => Vec::new(),
             PublicKey::Ed25519(key) => key.to_bytes().into(),
-            PublicKey::Secp256k1(key) => key.to_bytes().into(),
+            PublicKey::Secp256k1(key) => key.to_encoded_point(true).as_ref().into(),
         }
     }
 }
@@ -775,21 +810,7 @@ impl Tagged<u8> for PublicKey {
 impl ToBytes for PublicKey {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        match self {
-            PublicKey::System => {
-                buffer.insert(0, SYSTEM_TAG);
-            }
-            PublicKey::Ed25519(public_key) => {
-                buffer.insert(0, ED25519_TAG);
-                let ed25519_bytes = public_key.as_bytes();
-                buffer.extend_from_slice(ed25519_bytes);
-            }
-            PublicKey::Secp256k1(public_key) => {
-                buffer.insert(0, SECP256K1_TAG);
-                let secp256k1_bytes = public_key.to_bytes();
-                buffer.extend_from_slice(&secp256k1_bytes);
-            }
-        }
+        self.write_bytes(&mut buffer)?;
         Ok(buffer)
     }
 
@@ -805,13 +826,13 @@ impl ToBytes for PublicKey {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
             PublicKey::System => writer.push(SYSTEM_TAG),
-            PublicKey::Ed25519(pk) => {
+            PublicKey::Ed25519(public_key) => {
                 writer.push(ED25519_TAG);
-                writer.extend_from_slice(pk.as_bytes());
+                writer.extend_from_slice(public_key.as_bytes());
             }
-            PublicKey::Secp256k1(pk) => {
+            PublicKey::Secp256k1(public_key) => {
                 writer.push(SECP256K1_TAG);
-                writer.extend_from_slice(&pk.to_bytes());
+                writer.extend_from_slice(public_key.to_encoded_point(true).as_ref());
             }
         }
         Ok(())
@@ -866,6 +887,27 @@ impl JsonSchema for PublicKey {
         schema_object.metadata().description = Some(
             "Hex-encoded cryptographic public key, including the algorithm tag prefix.".to_string(),
         );
+        schema_object.metadata().examples = vec![
+            json!({
+                "name": "SystemPublicKey",
+                "description": "A pseudo public key, used for example when the system proposes an \
+                immediate switch block after a network upgrade rather than a specific validator. \
+                Its hex-encoded value is always '00', as is the corresponding pseudo signature's",
+                "value": "00"
+            }),
+            json!({
+                "name": "Ed25519PublicKey",
+                "description": "An Ed25519 public key. Its hex-encoded value begins '01' and is \
+                followed by 64 characters",
+                "value": "018a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+            }),
+            json!({
+                "name": "Secp256k1PublicKey",
+                "description": "A secp256k1 public key. Its hex-encoded value begins '02' and is \
+                followed by 66 characters",
+                "value": "0203408e9526316fd1f8def480dd45b2cc72ffd732771c9ceb5d92ffa4051e6ee084"
+            }),
+        ];
         schema_object.into()
     }
 }
@@ -885,7 +927,7 @@ pub enum Signature {
     System,
     /// Ed25519 signature.
     #[cfg_attr(feature = "datasize", data_size(skip))]
-    Ed25519(ed25519_dalek::Signature),
+    Ed25519(Ed25519Signature),
     /// Secp256k1 signature.
     #[cfg_attr(feature = "datasize", data_size(skip))]
     Secp256k1(Secp256k1Signature),
@@ -903,13 +945,7 @@ impl Signature {
 
     /// Constructs a new Ed25519 variant from a byte array.
     pub fn ed25519(bytes: [u8; Self::ED25519_LENGTH]) -> Result<Self, Error> {
-        let signature = ed25519_dalek::Signature::from_bytes(&bytes).map_err(|_| {
-            Error::AsymmetricKey(format!(
-                "failed to construct Ed25519 signature from {:?}",
-                &bytes[..]
-            ))
-        })?;
-
+        let signature = Ed25519Signature::from_bytes(&bytes);
         Ok(Signature::Ed25519(signature))
     }
 
@@ -940,7 +976,7 @@ impl AsymmetricType<'_> for Signature {
     }
 
     fn ed25519_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
-        let signature = ed25519_dalek::Signature::from_bytes(bytes.as_ref()).map_err(|_| {
+        let signature = Ed25519Signature::try_from(bytes.as_ref()).map_err(|_| {
             Error::AsymmetricKey(format!(
                 "failed to construct Ed25519 signature from {:?}",
                 bytes.as_ref()
@@ -950,7 +986,7 @@ impl AsymmetricType<'_> for Signature {
     }
 
     fn secp256k1_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
-        let signature = k256::ecdsa::Signature::try_from(bytes.as_ref()).map_err(|_| {
+        let signature = Secp256k1Signature::try_from(bytes.as_ref()).map_err(|_| {
             Error::AsymmetricKey(format!(
                 "failed to construct secp256k1 signature from {:?}",
                 bytes.as_ref()
@@ -1028,21 +1064,7 @@ impl Tagged<u8> for Signature {
 impl ToBytes for Signature {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        match self {
-            Signature::System => {
-                buffer.insert(0, SYSTEM_TAG);
-            }
-            Signature::Ed25519(signature) => {
-                buffer.insert(0, ED25519_TAG);
-                let ed5519_bytes = signature.to_bytes();
-                buffer.extend(&ed5519_bytes);
-            }
-            Signature::Secp256k1(signature) => {
-                buffer.insert(0, SECP256K1_TAG);
-                let secp256k1_bytes = signature.as_ref();
-                buffer.extend_from_slice(secp256k1_bytes);
-            }
-        }
+        self.write_bytes(&mut buffer)?;
         Ok(buffer)
     }
 
@@ -1060,13 +1082,13 @@ impl ToBytes for Signature {
             Signature::System => {
                 writer.push(SYSTEM_TAG);
             }
-            Signature::Ed25519(ed25519_signature) => {
+            Signature::Ed25519(signature) => {
                 writer.push(ED25519_TAG);
-                writer.extend(&ed25519_signature.to_bytes());
+                writer.extend(signature.to_bytes());
             }
             Signature::Secp256k1(signature) => {
                 writer.push(SECP256K1_TAG);
-                writer.extend_from_slice(signature.as_ref());
+                writer.extend_from_slice(&signature.to_bytes());
             }
         }
         Ok(())
@@ -1114,7 +1136,7 @@ impl From<&Signature> for Vec<u8> {
         match signature {
             Signature::System => Vec::new(),
             Signature::Ed25519(signature) => signature.to_bytes().into(),
-            Signature::Secp256k1(signature) => signature.as_ref().into(),
+            Signature::Secp256k1(signature) => (*signature.to_bytes()).into(),
         }
     }
 }
@@ -1151,9 +1173,8 @@ pub fn sign<T: AsRef<[u8]>>(
         (SecretKey::System, PublicKey::System) => {
             panic!("cannot create signature with system keys",)
         }
-        (SecretKey::Ed25519(secret_key), PublicKey::Ed25519(public_key)) => {
-            let expanded_secret_key = ExpandedSecretKey::from(secret_key);
-            let signature = expanded_secret_key.sign(message.as_ref(), public_key);
+        (SecretKey::Ed25519(secret_key), PublicKey::Ed25519(_public_key)) => {
+            let signature = secret_key.sign(message.as_ref());
             Signature::Ed25519(signature)
         }
         (SecretKey::Secp256k1(secret_key), PublicKey::Secp256k1(_public_key)) => {

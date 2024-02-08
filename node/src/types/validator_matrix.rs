@@ -13,7 +13,7 @@ use serde::Serialize;
 use static_assertions::const_assert;
 use tracing::info;
 
-use casper_types::{BlockHeader, EraId, FinalitySignature, PublicKey, SecretKey, U512};
+use casper_types::{BlockHeaderV2, EraId, FinalitySignature, PublicKey, SecretKey, U512};
 
 const MAX_VALIDATOR_MATRIX_ENTRIES: usize = 6;
 const_assert!(MAX_VALIDATOR_MATRIX_ENTRIES % 2 == 0);
@@ -242,6 +242,10 @@ impl ValidatorMatrix {
         &self.public_signing_key
     }
 
+    pub(crate) fn secret_signing_key(&self) -> &Arc<SecretKey> {
+        &self.secret_signing_key
+    }
+
     /// Returns whether `pub_key` is the ID of a validator in this era, or `None` if the validator
     /// information for that era is missing.
     pub(crate) fn is_self_validator_in_era(&self, era_id: EraId) -> Option<bool> {
@@ -262,7 +266,7 @@ impl ValidatorMatrix {
 
     pub(crate) fn create_finality_signature(
         &self,
-        block_header: &BlockHeader,
+        block_header: &BlockHeaderV2,
     ) -> Option<FinalitySignature> {
         if self
             .is_self_validator_in_era(block_header.era_id())
@@ -283,6 +287,11 @@ impl ValidatorMatrix {
 
     pub(crate) fn eras(&self) -> Vec<EraId> {
         self.read_inner().keys().copied().collect_vec()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn purge_era_validators(&mut self, era_id: &EraId) {
+        self.inner.write().unwrap().remove(era_id);
     }
 }
 
@@ -333,6 +342,10 @@ impl EraValidatorWeights {
 
     pub(crate) fn validator_public_keys(&self) -> impl Iterator<Item = &PublicKey> {
         self.validator_weights.keys()
+    }
+
+    pub(crate) fn into_validator_public_keys(self) -> impl Iterator<Item = PublicKey> {
+        self.validator_weights.into_keys()
     }
 
     pub(crate) fn missing_validators<'a>(

@@ -1,26 +1,19 @@
 use assert_matches::assert_matches;
+use casper_wasm::builder;
 use once_cell::sync::Lazy;
-use parity_wasm::builder;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
-    ARG_AMOUNT, DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT,
-    DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
+    ARG_AMOUNT, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    engine_state::{
-        engine_config::{
-            DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-            DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        },
-        EngineConfig, Error, ExecuteRequest, DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-    },
+    engine_state::{EngineConfigBuilder, Error, ExecuteRequest},
     execution::Error as ExecError,
 };
 use casper_types::{
-    contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, ApiError, EraId, HostFunctionCosts,
-    OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts, SystemConfig, WasmConfig,
+    addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, ApiError, EraId, HostFunctionCosts,
+    MessageLimits, OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts, WasmConfig,
     DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY,
 };
 
@@ -35,6 +28,7 @@ static DOUBLED_WASM_MEMORY_LIMIT: Lazy<WasmConfig> = Lazy::new(|| {
         OpcodeCosts::default(),
         StorageCosts::default(),
         HostFunctionCosts::default(),
+        MessageLimits::default(),
     )
 });
 static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
@@ -65,7 +59,7 @@ fn make_session_code_with_memory_pages(initial_pages: u32, max_pages: Option<u32
         .with_max(max_pages)
         .build()
         .build();
-    parity_wasm::serialize(module).expect("should serialize")
+    casper_wasm::serialize(module).expect("should serialize")
 }
 
 fn make_request_with_session_bytes(session_code: Vec<u8>) -> ExecuteRequest {
@@ -272,19 +266,11 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
         .build();
 
-    let engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        None,
-        *DOUBLED_WASM_MEMORY_LIMIT,
-        SystemConfig::default(),
-    );
+    let engine_config = EngineConfigBuilder::default()
+        .with_wasm_config(*DOUBLED_WASM_MEMORY_LIMIT)
+        .build();
 
-    builder.upgrade_with_upgrade_request(engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(engine_config), &mut upgrade_request);
 
     //
     // Now this request is working as the maximum memory limit is doubled.

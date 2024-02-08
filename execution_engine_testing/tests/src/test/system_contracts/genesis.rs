@@ -8,11 +8,13 @@ use casper_engine_test_support::{
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 use casper_execution_engine::engine_state::{
-    genesis::ExecConfig, run_genesis_request::RunGenesisRequest,
+    engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
+    genesis::ExecConfigBuilder,
+    run_genesis_request::RunGenesisRequest,
 };
 use casper_types::{
-    account::AccountHash, system::auction::DelegationRate, GenesisAccount, GenesisValidator, Motes,
-    ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
+    account::AccountHash, package::PackageKindTag, system::auction::DelegationRate, GenesisAccount,
+    GenesisValidator, Key, Motes, ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
 };
 
 const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];
@@ -75,38 +77,40 @@ fn should_run_genesis() {
 
     builder.run_genesis(&run_genesis_request);
 
-    let system_account = builder
-        .get_account(PublicKey::System.to_account_hash())
+    let _system_account = builder
+        .get_entity_by_account_hash(PublicKey::System.to_account_hash())
         .expect("system account should exist");
 
     let account_1 = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("account 1 should exist");
 
     let account_2 = builder
-        .get_account(*ACCOUNT_2_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_2_ADDR)
         .expect("account 2 should exist");
 
-    let system_account_balance_actual = builder.get_purse_balance(system_account.main_purse());
     let account_1_balance_actual = builder.get_purse_balance(account_1.main_purse());
     let account_2_balance_actual = builder.get_purse_balance(account_2.main_purse());
 
-    assert_eq!(system_account_balance_actual, U512::zero());
     assert_eq!(account_1_balance_actual, U512::from(ACCOUNT_1_BALANCE));
     assert_eq!(account_2_balance_actual, U512::from(ACCOUNT_2_BALANCE));
 
-    let mint_contract_hash = builder.get_mint_contract_hash();
-    let handle_payment_contract_hash = builder.get_handle_payment_contract_hash();
+    let mint_contract_key =
+        Key::addressable_entity_key(PackageKindTag::System, builder.get_mint_contract_hash());
+    let handle_payment_contract_key = Key::addressable_entity_key(
+        PackageKindTag::System,
+        builder.get_handle_payment_contract_hash(),
+    );
 
-    let result = builder.query(None, mint_contract_hash.into(), &[]);
-    if let Ok(StoredValue::Contract(_)) = result {
+    let result = builder.query(None, mint_contract_key, &[]);
+    if let Ok(StoredValue::AddressableEntity(_)) = result {
         // Contract exists at mint contract hash
     } else {
         panic!("contract not found at mint hash");
     }
 
-    if let Ok(StoredValue::Contract(_)) =
-        builder.query(None, handle_payment_contract_hash.into(), &[])
+    if let Ok(StoredValue::AddressableEntity(_)) =
+        builder.query(None, handle_payment_contract_key, &[])
     {
         // Contract exists at handle payment contract hash
     } else {
@@ -127,17 +131,22 @@ fn should_track_total_token_supply_in_mint() {
     let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
     let unbonding_delay = DEFAULT_UNBONDING_DELAY;
     let genesis_timestamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
-    let ee_config = ExecConfig::new(
-        accounts.clone(),
-        wasm_config,
-        system_config,
-        validator_slots,
-        auction_delay,
-        locked_funds_period,
-        round_seigniorage_rate,
-        unbonding_delay,
-        genesis_timestamp,
-    );
+    let refund_handling = DEFAULT_REFUND_HANDLING;
+    let fee_handling = DEFAULT_FEE_HANDLING;
+    let ee_config = ExecConfigBuilder::default()
+        .with_accounts(accounts.clone())
+        .with_wasm_config(wasm_config)
+        .with_system_config(system_config)
+        .with_validator_slots(validator_slots)
+        .with_auction_delay(auction_delay)
+        .with_locked_funds_period_millis(locked_funds_period)
+        .with_round_seigniorage_rate(round_seigniorage_rate)
+        .with_unbonding_delay(unbonding_delay)
+        .with_genesis_timestamp_millis(genesis_timestamp)
+        .with_refund_handling(refund_handling)
+        .with_fee_handling(fee_handling)
+        .build();
+
     let run_genesis_request = RunGenesisRequest::new(
         GENESIS_CONFIG_HASH.into(),
         protocol_version,

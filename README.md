@@ -1,4 +1,4 @@
-[![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/master/images/casper-association-logo-primary.svg)](https://casper.network/)
+[![LOGO](https://raw.githubusercontent.com/casper-network/casper-node/master/images/casper-association-logo-new.svg)](https://casper.network/)
 
 # casper-node
 
@@ -129,6 +129,18 @@ To set the threshold at which a warn-level log message is generated for a long-r
 CL_EVENT_MAX_MICROSECS=1000
 ```
 
+To set the threshold above which the size of the current scheduler queues will be dumped to logs, use the `CL_EVENT_QUEUE_DUMP_THRESHOLD` variable. For example, to set the threshold to 10000 events:
+
+```
+CL_EVENT_QUEUE_DUMP_THRESHOLD=10000
+```
+
+This will dump a line to the log if the total number of events in queues exceeds 10000. After each dump, the threshold will be automatically increased by 10% to avoid log flooding.
+
+Example log entry:
+```
+Current event queue size (11000) is above the threshold (10000): details [("FinalitySignature", 3000), ("FromStorage", 1000), ("NetworkIncoming", 6500), ("Regular", 500)]
+```
 
 ## Logging
 
@@ -184,7 +196,7 @@ multiple nodes provided all logs are available.
 Another helpful logging feature is ancestor logging. If the target `dispatch` is set to at least debug level, events
 being dispatched will be logged as well. Any event has an id (`ev`) and may have an ancestor (`a`), which is the previous
 event whose effects caused the resulting event to be scheduled. As an example, if an incoming network message gets
-asssigned an ID of `ev=123`, the first round of subsequent events will show `a=123` as their ancestor in the logs.
+assigned an ID of `ev=123`, the first round of subsequent events will show `a=123` as their ancestor in the logs.
 
 ### Changing the logging filter at runtime
 

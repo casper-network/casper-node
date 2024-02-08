@@ -3,7 +3,10 @@ use datasize::DataSize;
 use thiserror::Error;
 
 use casper_storage::global_state::{self, state::CommitError};
-use casper_types::{bytesrepr, system::mint, ApiError, Digest, ProtocolVersion};
+use casper_types::{
+    account::AccountHash, bytesrepr, system::mint, ApiError, Digest, Key, KeyTag, PackageHash,
+    ProtocolVersion,
+};
 
 use crate::{
     engine_state::{genesis::GenesisError, upgrade::ProtocolUpgradeError},
@@ -29,7 +32,7 @@ pub enum Error {
     WasmPreprocessing(#[from] PreprocessingError),
     /// WASM serialization error.
     #[error("Wasm serialization error: {0:?}")]
-    WasmSerialization(#[from] parity_wasm::SerializationError),
+    WasmSerialization(#[from] casper_wasm::SerializationError),
     /// Contract execution error.
     #[error(transparent)]
     Exec(execution::Error),
@@ -81,9 +84,9 @@ pub enum Error {
     /// An attempt to push to the runtime stack while already at the maximum height.
     #[error("Runtime stack overflow")]
     RuntimeStackOverflow,
-    /// Failed to get the set of Key::Withdraw from global state.
-    #[error("Failed to get withdraw keys")]
-    FailedToGetWithdrawKeys,
+    /// Failed to get the set of keys matching the specified tag.
+    #[error("Failed to get keys of kind: {0:?}")]
+    FailedToGetKeys(KeyTag),
     /// Failed to get the purses stored under Key::Withdraw
     #[error("Failed to get stored values under withdraws")]
     FailedToGetStoredWithdraws,
@@ -99,6 +102,18 @@ pub enum Error {
     /// Failed to put a trie node into global state because some of its children were missing.
     #[error("Failed to put a trie into global state because some of its children were missing")]
     MissingTrieNodeChildren(Vec<Digest>),
+    /// Failed to retrieve contract record by a given account hash.
+    #[error("Failed to retrieve contract by account hash {0}")]
+    MissingContractByAccountHash(AccountHash),
+    /// Failed to retrieve the entity's package
+    #[error("Failed to retrieve the entity package as {0}")]
+    MissingEntityPackage(PackageHash),
+    /// Failed to retrieve accumulation purse from handle payment system contract.
+    #[error("Failed to retrieve accumulation purse from the handle payment contract")]
+    FailedToRetrieveAccumulationPurse,
+    /// Failed to prune listed keys.
+    #[error("Pruning attempt failed.")]
+    FailedToPrune(Vec<Key>),
 }
 
 impl Error {

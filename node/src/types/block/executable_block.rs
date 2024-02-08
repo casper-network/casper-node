@@ -1,0 +1,104 @@
+use std::{collections::BTreeMap, fmt};
+
+use datasize::DataSize;
+use serde::Serialize;
+
+use casper_types::{
+    BlockV2, EraId, PublicKey, RewardedSignatures, Timestamp, Transaction, TransactionHash, U512,
+};
+
+use super::{FinalizedBlock, InternalEraReport};
+
+/// Data necessary for a block to be executed.
+#[derive(DataSize, Debug, Clone, PartialEq, Serialize)]
+pub struct ExecutableBlock {
+    pub(crate) rewarded_signatures: RewardedSignatures,
+    pub(crate) timestamp: Timestamp,
+    pub(crate) random_bit: bool,
+    pub(crate) era_report: Option<InternalEraReport>,
+    pub(crate) era_id: EraId,
+    pub(crate) height: u64,
+    pub(crate) proposer: Box<PublicKey>,
+    /// The transactions for the `FinalizedBlock`.
+    pub(crate) transactions: Vec<Transaction>,
+    /// The hashes of the transfer transactions within the `FinalizedBlock`.
+    pub(crate) transfer: Vec<TransactionHash>,
+    /// The hashes of the non-transfer, native transactions within the `FinalizedBlock`.
+    pub(crate) staking: Vec<TransactionHash>,
+    /// The hashes of the installer/upgrader transactions within the `FinalizedBlock`.
+    pub(crate) install_upgrade: Vec<TransactionHash>,
+    /// The hashes of all other transactions within the `FinalizedBlock`.
+    pub(crate) standard: Vec<TransactionHash>,
+    /// `None` may indicate that the rewards have not been computed yet,
+    /// or that the block is not a switch one.
+    pub(crate) rewards: Option<BTreeMap<PublicKey, U512>>,
+}
+
+impl ExecutableBlock {
+    /// Creates a new `ExecutedBlock` from a `FinalizedBlock` and its transactions.
+    pub fn from_finalized_block_and_transactions(
+        finalized_block: FinalizedBlock,
+        transactions: Vec<Transaction>,
+    ) -> Self {
+        Self {
+            rewarded_signatures: finalized_block.rewarded_signatures,
+            timestamp: finalized_block.timestamp,
+            random_bit: finalized_block.random_bit,
+            era_report: finalized_block.era_report,
+            era_id: finalized_block.era_id,
+            height: finalized_block.height,
+            proposer: finalized_block.proposer,
+            transactions,
+            transfer: finalized_block.transfer,
+            staking: finalized_block.staking,
+            install_upgrade: finalized_block.install_upgrade,
+            standard: finalized_block.standard,
+            rewards: None,
+        }
+    }
+
+    /// Creates a new `ExecutedBlock` from a `BlockV2` and its deploys.
+    pub fn from_block_and_transactions(block: BlockV2, transactions: Vec<Transaction>) -> Self {
+        let era_report = block.era_end().map(|ee| InternalEraReport {
+            equivocators: ee.equivocators().into(),
+            inactive_validators: ee.inactive_validators().into(),
+        });
+
+        Self {
+            rewarded_signatures: block.rewarded_signatures().clone(),
+            timestamp: block.timestamp(),
+            random_bit: block.random_bit(),
+            era_report,
+            era_id: block.era_id(),
+            height: block.height(),
+            proposer: Box::new(block.proposer().clone()),
+            transactions,
+            transfer: block.transfer().copied().collect(),
+            staking: block.staking().copied().collect(),
+            install_upgrade: block.install_upgrade().copied().collect(),
+            standard: block.standard().copied().collect(),
+            rewards: block.era_end().map(|era_end| era_end.rewards().clone()),
+        }
+    }
+}
+
+impl fmt::Display for ExecutableBlock {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "executable block #{} in {}, timestamp {}, {} transfers, {} staking txns, {} \
+            install/upgrade txns, {} standard txns",
+            self.height,
+            self.era_id,
+            self.timestamp,
+            self.transfer.len(),
+            self.staking.len(),
+            self.install_upgrade.len(),
+            self.standard.len(),
+        )?;
+        if let Some(ref ee) = self.era_report {
+            write!(formatter, ", era_end: {:?}", ee)?;
+        }
+        Ok(())
+    }
+}

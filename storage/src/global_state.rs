@@ -1,6 +1,5 @@
 /// Storage errors.
 pub mod error;
-pub mod shared;
 /// Global State.
 pub mod state;
 /// Store module.

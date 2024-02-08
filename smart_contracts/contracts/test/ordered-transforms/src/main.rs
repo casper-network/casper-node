@@ -10,8 +10,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    CLType, CLTyped, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter,
-    URef,
+    addressable_entity::NamedKeys, CLType, CLTyped, EntryPoint, EntryPointAccess, EntryPointType,
+    EntryPoints, Key, Parameter, URef,
 };
 
 #[no_mangle]
@@ -25,20 +25,22 @@ pub extern "C" fn call() {
         )],
         CLType::Unit,
         EntryPointAccess::Public,
-        EntryPointType::Contract,
+        EntryPointType::AddressableEntity,
     ));
 
     let n: u32 = runtime::get_named_arg("n");
-    let named_keys = (0..n)
-        .map(|i| (format!("uref-{}", i), Key::URef(storage::new_uref(0_i32))))
-        .chain(core::iter::once((
-            "n-urefs".to_string(),
-            Key::URef(storage::new_uref(n)),
-        )));
+    let mut named_keys = NamedKeys::new();
+    for i in 0..n {
+        named_keys.insert(format!("uref-{}", i), Key::URef(storage::new_uref(0_i32)));
+    }
+    named_keys.insert("n-urefs".to_string(), Key::URef(storage::new_uref(n)));
 
     let (contract_hash, _contract_version) =
-        storage::new_locked_contract(entry_points, Some(named_keys.collect()), None, None);
-    runtime::put_key("ordered-transforms-contract-hash", contract_hash.into());
+        storage::new_locked_contract(entry_points, Some(named_keys), None, None);
+    runtime::put_key(
+        "ordered-transforms-contract-hash",
+        Key::contract_entity_key(contract_hash),
+    );
 }
 
 #[no_mangle]

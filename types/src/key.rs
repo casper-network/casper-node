@@ -12,6 +12,8 @@ use core::{
     str::FromStr,
 };
 
+#[cfg(doc)]
+use crate::CLValue;
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
@@ -23,14 +25,25 @@ use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    account::{self, AccountHash, ACCOUNT_HASH_LENGTH},
-    bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
+    account::{AccountHash, ACCOUNT_HASH_LENGTH},
+    addressable_entity,
+    addressable_entity::AddressableEntityHash,
+    byte_code::ByteCodeKind,
+    bytesrepr::{
+        self, Error, FromBytes, ToBytes, U32_SERIALIZED_LENGTH, U64_SERIALIZED_LENGTH,
+        U8_SERIALIZED_LENGTH,
+    },
     checksummed_hex,
+    contract_messages::{self, MessageAddr, TopicNameHash, TOPIC_NAME_HASH_LENGTH},
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
+    package::{PackageHash, PackageKindTag},
+    system::auction::{BidAddr, BidAddrTag},
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
     DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError, TRANSFER_ADDR_LENGTH,
     UREF_ADDR_LENGTH,
@@ -48,6 +61,15 @@ const SYSTEM_CONTRACT_REGISTRY_PREFIX: &str = "system-contract-registry-";
 const ERA_SUMMARY_PREFIX: &str = "era-summary-";
 const CHAINSPEC_REGISTRY_PREFIX: &str = "chainspec-registry-";
 const CHECKSUM_REGISTRY_PREFIX: &str = "checksum-registry-";
+const BID_ADDR_PREFIX: &str = "bid-addr-";
+const PACKAGE_PREFIX: &str = "package-";
+const ENTITY_PREFIX: &str = "addressable-entity-";
+const ACCOUNT_ENTITY_PREFIX: &str = "account-";
+const CONTRACT_ENTITY_PREFIX: &str = "contract-";
+const SYSTEM_ENTITY_PREFIX: &str = "system-";
+const BYTE_CODE_PREFIX: &str = "byte-code-";
+const V1_WASM_PREFIX: &str = "v1-wasm-";
+const EMPTY_PREFIX: &str = "empty-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -61,6 +83,8 @@ pub const KEY_DEPLOY_INFO_LENGTH: usize = DeployHash::LENGTH;
 pub const KEY_DICTIONARY_LENGTH: usize = 32;
 /// The maximum length for a `dictionary_item_key`.
 pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 128;
+/// The maximum length for an `Addr`.
+pub const ADDR_LENGTH: usize = 32;
 const PADDING_BYTES: [u8; 32] = [0u8; 32];
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
 // u8 used to determine the ID
@@ -81,9 +105,26 @@ const KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_CHECKSUM_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
+const KEY_PACKAGE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + 32;
+const KEY_MESSAGE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH
+    + KEY_HASH_LENGTH
+    + TOPIC_NAME_HASH_LENGTH
+    + U8_SERIALIZED_LENGTH
+    + U32_SERIALIZED_LENGTH;
+
+const MAX_SERIALIZED_LENGTH: usize = KEY_MESSAGE_SERIALIZED_LENGTH;
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
+
+/// An alias for [`Key`]s package variant.
+pub type PackageAddr = [u8; ADDR_LENGTH];
+
+/// An alias for [`Key`]s entity variant.
+pub type EntityAddr = [u8; ADDR_LENGTH];
+
+/// An alias for [`Key`]s byte code variant.
+pub type ByteCodeAddr = [u8; ADDR_LENGTH];
 
 /// An alias for [`Key`]s dictionary variant.
 pub type DictionaryAddr = [u8; KEY_DICTIONARY_LENGTH];
@@ -107,10 +148,42 @@ pub enum KeyTag {
     Unbond = 12,
     ChainspecRegistry = 13,
     ChecksumRegistry = 14,
+    BidAddr = 15,
+    Package = 16,
+    AddressableEntity = 17,
+    ByteCode = 18,
+    Message = 19,
 }
 
-/// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
-/// are indexed on the network.
+impl Display for KeyTag {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            KeyTag::Account => write!(f, "Account"),
+            KeyTag::Hash => write!(f, "Hash"),
+            KeyTag::URef => write!(f, "URef"),
+            KeyTag::Transfer => write!(f, "Transfer"),
+            KeyTag::DeployInfo => write!(f, "DeployInfo"),
+            KeyTag::EraInfo => write!(f, "EraInfo"),
+            KeyTag::Balance => write!(f, "Balance"),
+            KeyTag::Bid => write!(f, "Bid"),
+            KeyTag::Withdraw => write!(f, "Withdraw"),
+            KeyTag::Dictionary => write!(f, "Dictionary"),
+            KeyTag::SystemContractRegistry => write!(f, "SystemContractRegistry"),
+            KeyTag::EraSummary => write!(f, "EraSummary"),
+            KeyTag::Unbond => write!(f, "Unbond"),
+            KeyTag::ChainspecRegistry => write!(f, "ChainspecRegistry"),
+            KeyTag::ChecksumRegistry => write!(f, "ChecksumRegistry"),
+            KeyTag::BidAddr => write!(f, "BidAddr"),
+            KeyTag::Package => write!(f, "Package"),
+            KeyTag::AddressableEntity => write!(f, "AddressableEntity"),
+            KeyTag::ByteCode => write!(f, "ByteCode"),
+            KeyTag::Message => write!(f, "Message"),
+        }
+    }
+}
+
+/// The key under which data (e.g. [`CLValue`]s, smart contracts, user accounts) are stored in
+/// global state.
 #[repr(C)]
 #[derive(PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -122,30 +195,59 @@ pub enum Key {
     Hash(HashAddr),
     /// A `Key` which is a [`URef`], under which most types of data can be stored.
     URef(URef),
-    /// A `Key` under which we store a transfer.
+    /// A `Key` under which a transfer is stored.
     Transfer(TransferAddr),
-    /// A `Key` under which we store a deploy info.
+    /// A `Key` under which a deploy info is stored.
     DeployInfo(DeployHash),
-    /// A `Key` under which we store an era info.
+    /// A `Key` under which an era info is stored.
     EraInfo(EraId),
-    /// A `Key` under which we store a purse balance.
+    /// A `Key` under which a purse balance is stored.
     Balance(URefAddr),
-    /// A `Key` under which we store bid information
+    /// A `Key` under which bid information is stored.
     Bid(AccountHash),
-    /// A `Key` under which we store withdraw information.
+    /// A `Key` under which withdraw information is stored.
     Withdraw(AccountHash),
-    /// A `Key` variant whose value is derived by hashing [`URef`]s address and arbitrary data.
+    /// A `Key` whose value is derived by hashing a [`URef`] address and arbitrary data, under
+    /// which a dictionary is stored.
     Dictionary(DictionaryAddr),
-    /// A `Key` variant under which system contract hashes are stored.
+    /// A `Key` under which system contract hashes are stored.
     SystemContractRegistry,
-    /// A `Key` under which we store current era info.
+    /// A `Key` under which current era info is stored.
     EraSummary,
-    /// A `Key` under which we store unbond information.
+    /// A `Key` under which unbond information is stored.
     Unbond(AccountHash),
-    /// A `Key` variant under which chainspec and other hashes are stored.
+    /// A `Key` under which chainspec and other hashes are stored.
     ChainspecRegistry,
-    /// A `Key` variant under which we store a registry of checksums.
+    /// A `Key` under which a registry of checksums is stored.
     ChecksumRegistry,
+    /// A `Key` under which bid information is stored.
+    BidAddr(BidAddr),
+    /// A `Key` under which package information is stored.
+    Package(PackageAddr),
+    /// A `Key` under which an addressable entity is stored.
+    AddressableEntity(PackageKindTag, EntityAddr),
+    /// A `Key` under which a byte code record is stored.
+    ByteCode(ByteCodeKind, ByteCodeAddr),
+    /// A `Key` under which a message is stored.
+    Message(MessageAddr),
+}
+
+#[cfg(feature = "json-schema")]
+impl JsonSchema for Key {
+    fn schema_name() -> String {
+        String::from("Key")
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some(
+            "The key as a formatted string, under which data (e.g. `CLValue`s, smart contracts, \
+                user accounts) are stored in global state."
+                .to_string(),
+        );
+        schema_object.into()
+    }
 }
 
 /// Errors produced when converting a `String` into a `Key`.
@@ -153,7 +255,7 @@ pub enum Key {
 #[non_exhaustive]
 pub enum FromStrError {
     /// Account parse error.
-    Account(account::FromStrError),
+    Account(addressable_entity::FromStrError),
     /// Hash parse error.
     Hash(String),
     /// URef parse error.
@@ -182,12 +284,22 @@ pub enum FromStrError {
     ChainspecRegistry(String),
     /// Checksum registry error.
     ChecksumRegistry(String),
+    /// Bid parse error.
+    BidAddr(String),
+    /// Package parse error.
+    Package(String),
+    /// Entity parse error.
+    AddressableEntity(String),
+    /// Byte code parse error.
+    ByteCode(String),
+    /// Message parse error.
+    Message(contract_messages::FromStrError),
     /// Unknown prefix.
     UnknownPrefix,
 }
 
-impl From<account::FromStrError> for FromStrError {
-    fn from(error: account::FromStrError) -> Self {
+impl From<addressable_entity::FromStrError> for FromStrError {
+    fn from(error: addressable_entity::FromStrError) -> Self {
         FromStrError::Account(error)
     }
 }
@@ -201,6 +313,12 @@ impl From<TransferFromStrError> for FromStrError {
 impl From<uref::FromStrError> for FromStrError {
     fn from(error: uref::FromStrError) -> Self {
         FromStrError::URef(error)
+    }
+}
+
+impl From<contract_messages::FromStrError> for FromStrError {
+    fn from(error: contract_messages::FromStrError) -> Self {
+        FromStrError::Message(error)
     }
 }
 
@@ -240,6 +358,17 @@ impl Display for FromStrError {
             FromStrError::ChecksumRegistry(error) => {
                 write!(f, "checksum-registry-key from string error: {}", error)
             }
+            FromStrError::BidAddr(error) => write!(f, "bid-addr-key from string error: {}", error),
+            FromStrError::Package(error) => write!(f, "package-key from string error: {}", error),
+            FromStrError::AddressableEntity(error) => {
+                write!(f, "addressable-entity-key from string error: {}", error)
+            }
+            FromStrError::ByteCode(error) => {
+                write!(f, "byte-code-key from string error: {}", error)
+            }
+            FromStrError::Message(error) => {
+                write!(f, "message-key from string error: {}", error)
+            }
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
         }
     }
@@ -265,12 +394,17 @@ impl Key {
             Key::Unbond(_) => String::from("Key::Unbond"),
             Key::ChainspecRegistry => String::from("Key::ChainspecRegistry"),
             Key::ChecksumRegistry => String::from("Key::ChecksumRegistry"),
+            Key::BidAddr(_) => String::from("Key::BidAddr"),
+            Key::Package(_) => String::from("Key::Package"),
+            Key::AddressableEntity(..) => String::from("Key::AddressableEntity"),
+            Key::ByteCode(..) => String::from("Key::ByteCode"),
+            Key::Message(_) => String::from("Key::Message"),
         }
     }
 
     /// Returns the maximum size a [`Key`] can be serialized into.
     pub const fn max_serialized_length() -> usize {
-        KEY_UREF_SERIALIZED_LENGTH
+        MAX_SERIALIZED_LENGTH
     }
 
     /// If `self` is of type [`Key::URef`], returns `self` with the
@@ -348,6 +482,57 @@ impl Key {
                     base16::encode_lower(&PADDING_BYTES)
                 )
             }
+            Key::BidAddr(bid_addr) => {
+                format!("{}{}", BID_ADDR_PREFIX, bid_addr)
+            }
+            Key::Message(message_addr) => message_addr.to_formatted_string(),
+            Key::Package(package_addr) => {
+                format!("{}{}", PACKAGE_PREFIX, base16::encode_lower(&package_addr))
+            }
+            Key::AddressableEntity(package_tag, entity_addr) => match package_tag {
+                PackageKindTag::System => {
+                    format!(
+                        "{}{}{}",
+                        ENTITY_PREFIX,
+                        SYSTEM_ENTITY_PREFIX,
+                        base16::encode_lower(&entity_addr)
+                    )
+                }
+                PackageKindTag::Account => {
+                    format!(
+                        "{}{}{}",
+                        ENTITY_PREFIX,
+                        ACCOUNT_ENTITY_PREFIX,
+                        base16::encode_lower(&entity_addr)
+                    )
+                }
+                PackageKindTag::SmartContract => {
+                    format!(
+                        "{}{}{}",
+                        ENTITY_PREFIX,
+                        CONTRACT_ENTITY_PREFIX,
+                        base16::encode_lower(&entity_addr)
+                    )
+                }
+            },
+            Key::ByteCode(byte_code_kind, byte_code_addr) => match byte_code_kind {
+                ByteCodeKind::Empty => {
+                    format!(
+                        "{}{}{}",
+                        BYTE_CODE_PREFIX,
+                        EMPTY_PREFIX,
+                        base16::encode_lower(&byte_code_addr)
+                    )
+                }
+                ByteCodeKind::V1CasperWasm => {
+                    format!(
+                        "{}{}{}",
+                        BYTE_CODE_PREFIX,
+                        V1_WASM_PREFIX,
+                        base16::encode_lower(&byte_code_addr)
+                    )
+                }
+            },
         }
     }
 
@@ -355,7 +540,7 @@ impl Key {
     pub fn from_formatted_str(input: &str) -> Result<Key, FromStrError> {
         match AccountHash::from_formatted_str(input) {
             Ok(account_hash) => return Ok(Key::Account(account_hash)),
-            Err(account::FromStrError::InvalidPrefix) => {}
+            Err(addressable_entity::FromStrError::InvalidPrefix) => {}
             Err(error) => return Err(error.into()),
         }
 
@@ -408,6 +593,42 @@ impl Key {
             let uref_addr = URefAddr::try_from(addr.as_ref())
                 .map_err(|error| FromStrError::Balance(error.to_string()))?;
             return Ok(Key::Balance(uref_addr));
+        }
+
+        // note: BID_ADDR must come before BID as their heads overlap (bid- / bid-addr-)
+        if let Some(hex) = input.strip_prefix(BID_ADDR_PREFIX) {
+            let bytes = checksummed_hex::decode(hex)
+                .map_err(|error| FromStrError::BidAddr(error.to_string()))?;
+            if bytes.is_empty() {
+                return Err(FromStrError::BidAddr(
+                    "bytes should not be 0 len".to_string(),
+                ));
+            }
+            let tag_bytes = <[u8; BidAddrTag::BID_ADDR_TAG_LENGTH]>::try_from(bytes[0..1].as_ref())
+                .map_err(|err| FromStrError::BidAddr(err.to_string()))?;
+            let tag = BidAddrTag::try_from_u8(tag_bytes[0])
+                .ok_or_else(|| FromStrError::BidAddr("failed to parse bid addr tag".to_string()))?;
+            let validator_bytes = <[u8; ACCOUNT_HASH_LENGTH]>::try_from(
+                bytes[1..BidAddr::VALIDATOR_BID_ADDR_LENGTH].as_ref(),
+            )
+            .map_err(|err| FromStrError::BidAddr(err.to_string()))?;
+
+            let bid_addr = {
+                if tag == BidAddrTag::Unified {
+                    BidAddr::legacy(validator_bytes)
+                } else if tag == BidAddrTag::Validator {
+                    BidAddr::new_validator_addr(validator_bytes)
+                } else if tag == BidAddrTag::Delegator {
+                    let delegator_bytes = <[u8; ACCOUNT_HASH_LENGTH]>::try_from(
+                        bytes[BidAddr::VALIDATOR_BID_ADDR_LENGTH..].as_ref(),
+                    )
+                    .map_err(|err| FromStrError::BidAddr(err.to_string()))?;
+                    BidAddr::new_delegator_addr((validator_bytes, delegator_bytes))
+                } else {
+                    return Err(FromStrError::BidAddr("invalid tag".to_string()));
+                }
+            };
+            return Ok(Key::BidAddr(bid_addr));
         }
 
         if let Some(hex) = input.strip_prefix(BID_PREFIX) {
@@ -475,6 +696,52 @@ impl Key {
             return Ok(Key::ChecksumRegistry);
         }
 
+        if let Some(package_addr) = input.strip_prefix(PACKAGE_PREFIX) {
+            let package_addr_bytes = checksummed_hex::decode(package_addr)
+                .map_err(|error| FromStrError::Dictionary(error.to_string()))?;
+            let addr = PackageAddr::try_from(package_addr_bytes.as_ref())
+                .map_err(|error| FromStrError::Package(error.to_string()))?;
+            return Ok(Key::Package(addr));
+        }
+
+        if let Some(entity) = input.strip_prefix(ENTITY_PREFIX) {
+            let (addr_str, tag) = if let Some(str) = entity.strip_prefix(ACCOUNT_ENTITY_PREFIX) {
+                (str, PackageKindTag::Account)
+            } else if let Some(str) = entity.strip_prefix(SYSTEM_ENTITY_PREFIX) {
+                (str, PackageKindTag::System)
+            } else if let Some(str) = entity.strip_prefix(CONTRACT_ENTITY_PREFIX) {
+                (str, PackageKindTag::SmartContract)
+            } else {
+                return Err(FromStrError::UnknownPrefix);
+            };
+            let addr = checksummed_hex::decode(addr_str)
+                .map_err(|error| FromStrError::AddressableEntity(error.to_string()))?;
+            let entity_addr = EntityAddr::try_from(addr.as_ref())
+                .map_err(|error| FromStrError::AddressableEntity(error.to_string()))?;
+            return Ok(Key::AddressableEntity(tag, entity_addr));
+        }
+
+        if let Some(byte_code) = input.strip_prefix(BYTE_CODE_PREFIX) {
+            let (addr_str, tag) = if let Some(str) = byte_code.strip_prefix(EMPTY_PREFIX) {
+                (str, ByteCodeKind::Empty)
+            } else if let Some(str) = byte_code.strip_prefix(V1_WASM_PREFIX) {
+                (str, ByteCodeKind::V1CasperWasm)
+            } else {
+                return Err(FromStrError::UnknownPrefix);
+            };
+            let addr = checksummed_hex::decode(addr_str)
+                .map_err(|error| FromStrError::ByteCode(error.to_string()))?;
+            let byte_code_addr = ByteCodeAddr::try_from(addr.as_ref())
+                .map_err(|error| FromStrError::ByteCode(error.to_string()))?;
+            return Ok(Key::ByteCode(tag, byte_code_addr));
+        }
+
+        match MessageAddr::from_formatted_str(input) {
+            Ok(message_addr) => return Ok(Key::Message(message_addr)),
+            Err(contract_messages::FromStrError::InvalidPrefix) => {}
+            Err(error) => return Err(error.into()),
+        }
+
         Err(FromStrError::UnknownPrefix)
     }
 
@@ -489,11 +756,43 @@ impl Key {
 
     /// Returns the inner bytes of `self` if `self` is of type [`Key::Hash`], otherwise returns
     /// `None`.
-    pub fn into_hash(self) -> Option<HashAddr> {
+    pub fn into_hash_addr(self) -> Option<HashAddr> {
         match self {
             Key::Hash(hash) => Some(hash),
             _ => None,
         }
+    }
+
+    /// Returns the inner bytes of `self` if `self` is of type [`Key::AddressableEntity`], otherwise
+    /// returns `None`.
+    pub fn into_entity_addr(self) -> Option<EntityAddr> {
+        match self {
+            Key::AddressableEntity(_, hash) => Some(hash),
+            _ => None,
+        }
+    }
+
+    /// Returns the inner bytes of `self` if `self` is of type [`Key::Package`], otherwise returns
+    /// `None`.
+    pub fn into_package_addr(self) -> Option<PackageAddr> {
+        match self {
+            Key::Package(package_addr) => Some(package_addr),
+            _ => None,
+        }
+    }
+
+    /// Returns [`AddressableEntityHash`] of `self` if `self` is of type [`Key::AddressableEntity`],
+    /// otherwise returns `None`.
+    pub fn into_entity_hash(self) -> Option<AddressableEntityHash> {
+        let entity_addr = self.into_entity_addr()?;
+        Some(AddressableEntityHash::new(entity_addr))
+    }
+
+    /// Returns [`PackageHash`] of `self` if `self` is of type [`Key::Package`], otherwise
+    /// returns `None`.
+    pub fn into_package_hash(self) -> Option<PackageHash> {
+        let package_addr = self.into_package_addr()?;
+        Some(PackageHash::new(package_addr))
     }
 
     /// Returns a reference to the inner [`URef`] if `self` is of type [`Key::URef`], otherwise
@@ -569,11 +868,97 @@ impl Key {
         Key::Dictionary(addr)
     }
 
+    /// Creates a new [`Key::AddressableEntity`] variant from a package kind and an entity
+    /// hash.
+    pub fn addressable_entity_key(
+        package_kind_tag: PackageKindTag,
+        entity_hash: AddressableEntityHash,
+    ) -> Self {
+        Key::AddressableEntity(package_kind_tag, entity_hash.value())
+    }
+
+    /// Creates a new [`Key::AddressableEntity`] for a Smart contract.
+    pub fn contract_entity_key(entity_hash: AddressableEntityHash) -> Key {
+        Self::addressable_entity_key(PackageKindTag::SmartContract, entity_hash)
+    }
+
+    /// Creates a new [`Key::ByteCode`] variant from a byte code kind and an byte code addr.
+    pub fn byte_code_key(byte_code_kind: ByteCodeKind, byte_code_addr: ByteCodeAddr) -> Self {
+        Key::ByteCode(byte_code_kind, byte_code_addr)
+    }
+
+    /// Creates a new [`Key::Message`] variant that identifies an indexed message based on an
+    /// `entity_addr`, `topic_name_hash` and message `index`.
+    pub fn message(
+        entity_addr: AddressableEntityHash,
+        topic_name_hash: TopicNameHash,
+        index: u32,
+    ) -> Key {
+        Key::Message(MessageAddr::new_message_addr(
+            entity_addr,
+            topic_name_hash,
+            index,
+        ))
+    }
+
+    /// Creates a new [`Key::Message`] variant that identifies a message topic based on an
+    /// `entity_addr` and a hash of the topic name.
+    pub fn message_topic(
+        entity_addr: AddressableEntityHash,
+        topic_name_hash: TopicNameHash,
+    ) -> Key {
+        Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_name_hash))
+    }
+
     /// Returns true if the key is of type [`Key::Dictionary`].
     pub fn is_dictionary_key(&self) -> bool {
         if let Key::Dictionary(_) = self {
             return true;
         }
+        false
+    }
+
+    /// Returns true if the key is of type [`Key::Bid`].
+    pub fn is_balance_key(&self) -> bool {
+        if let Key::Balance(_) = self {
+            return true;
+        }
+        false
+    }
+
+    /// Returns true if the key is of type [`Key::BidAddr`].
+    pub fn is_bid_addr_key(&self) -> bool {
+        if let Key::BidAddr(_) = self {
+            return true;
+        }
+        false
+    }
+
+    /// Returns a reference to the inner `BidAddr` if `self` is of type [`Key::Bid`],
+    /// otherwise returns `None`.
+    pub fn as_bid_addr(&self) -> Option<&BidAddr> {
+        if let Self::BidAddr(addr) = self {
+            Some(addr)
+        } else {
+            None
+        }
+    }
+
+    /// Returns if they inner Key is for a system contract entity.
+    pub fn is_system_key(&self) -> bool {
+        if let Self::AddressableEntity(PackageKindTag::System, _) = self {
+            return true;
+        }
+
+        false
+    }
+
+    /// Return true if the inner Key is of the smart contract type.
+    pub fn is_smart_contract_key(&self) -> bool {
+        if let Self::AddressableEntity(PackageKindTag::SmartContract, _) = self {
+            return true;
+        }
+
         false
     }
 }
@@ -622,6 +1007,27 @@ impl Display for Key {
                     base16::encode_lower(&PADDING_BYTES)
                 )
             }
+            Key::BidAddr(bid_addr) => write!(f, "Key::BidAddr({})", bid_addr),
+            Key::Message(message_addr) => {
+                write!(f, "Key::Message({})", message_addr)
+            }
+            Key::Package(package_addr) => {
+                write!(f, "Key::Package({})", base16::encode_lower(package_addr))
+            }
+            Key::AddressableEntity(kind_tag, entity_addr) => write!(
+                f,
+                "Key::AddressableEntity({}-{})",
+                kind_tag,
+                base16::encode_lower(entity_addr)
+            ),
+            Key::ByteCode(kind, byte_code_addr) => {
+                write!(
+                    f,
+                    "Key::ByteCode({}-{})",
+                    kind,
+                    base16::encode_lower(byte_code_addr)
+                )
+            }
         }
     }
 }
@@ -650,6 +1056,11 @@ impl Tagged<KeyTag> for Key {
             Key::Unbond(_) => KeyTag::Unbond,
             Key::ChainspecRegistry => KeyTag::ChainspecRegistry,
             Key::ChecksumRegistry => KeyTag::ChecksumRegistry,
+            Key::BidAddr(_) => KeyTag::BidAddr,
+            Key::Package(_) => KeyTag::Package,
+            Key::AddressableEntity(..) => KeyTag::AddressableEntity,
+            Key::ByteCode(..) => KeyTag::ByteCode,
+            Key::Message(_) => KeyTag::Message,
         }
     }
 }
@@ -679,21 +1090,27 @@ impl From<TransferAddr> for Key {
     }
 }
 
-impl From<ContractHash> for Key {
-    fn from(contract_hash: ContractHash) -> Key {
-        Key::Hash(contract_hash.value())
+impl From<PackageHash> for Key {
+    fn from(package_hash: PackageHash) -> Key {
+        Key::Package(package_hash.value())
     }
 }
 
 impl From<ContractWasmHash> for Key {
-    fn from(wasm_hash: ContractWasmHash) -> Key {
+    fn from(wasm_hash: ContractWasmHash) -> Self {
         Key::Hash(wasm_hash.value())
     }
 }
 
 impl From<ContractPackageHash> for Key {
-    fn from(package_hash: ContractPackageHash) -> Key {
-        Key::Hash(package_hash.value())
+    fn from(contract_package_hash: ContractPackageHash) -> Self {
+        Key::Hash(contract_package_hash.value())
+    }
+}
+
+impl From<ContractHash> for Key {
+    fn from(contract_hash: ContractHash) -> Self {
+        Key::Hash(contract_hash.value())
     }
 }
 
@@ -723,6 +1140,20 @@ impl ToBytes for Key {
             Key::Unbond(_) => KEY_UNBOND_SERIALIZED_LENGTH,
             Key::ChainspecRegistry => KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH,
             Key::ChecksumRegistry => KEY_CHECKSUM_REGISTRY_SERIALIZED_LENGTH,
+            Key::BidAddr(bid_addr) => match bid_addr.tag() {
+                BidAddrTag::Unified => KEY_ID_SERIALIZED_LENGTH + bid_addr.serialized_length() - 1,
+                BidAddrTag::Validator | BidAddrTag::Delegator => {
+                    KEY_ID_SERIALIZED_LENGTH + bid_addr.serialized_length()
+                }
+            },
+            Key::Package(_) => KEY_PACKAGE_SERIALIZED_LENGTH,
+            Key::AddressableEntity(..) => {
+                U8_SERIALIZED_LENGTH + KEY_ID_SERIALIZED_LENGTH + ADDR_LENGTH
+            }
+            Key::ByteCode(..) => U8_SERIALIZED_LENGTH + KEY_ID_SERIALIZED_LENGTH + ADDR_LENGTH,
+            Key::Message(message_addr) => {
+                KEY_ID_SERIALIZED_LENGTH + message_addr.serialized_length()
+            }
         }
     }
 
@@ -744,6 +1175,24 @@ impl ToBytes for Key {
             | Key::EraSummary
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry => PADDING_BYTES.write_bytes(writer),
+            Key::BidAddr(bid_addr) => match bid_addr.tag() {
+                BidAddrTag::Unified => {
+                    let bytes = bid_addr.to_bytes()?;
+                    writer.extend(&bytes[1..]);
+                    Ok(())
+                }
+                BidAddrTag::Validator | BidAddrTag::Delegator => bid_addr.write_bytes(writer),
+            },
+            Key::Package(package_addr) => package_addr.write_bytes(writer),
+            Key::AddressableEntity(package_kind_tag, entity_addr) => {
+                package_kind_tag.write_bytes(writer)?;
+                entity_addr.write_bytes(writer)
+            }
+            Key::ByteCode(byte_code_kind, byte_code_addr) => {
+                byte_code_kind.write_bytes(writer)?;
+                byte_code_addr.write_bytes(writer)
+            }
+            Key::Message(message_addr) => message_addr.write_bytes(writer),
         }
     }
 }
@@ -812,6 +1261,28 @@ impl FromBytes for Key {
                 let (_, rem) = <[u8; 32]>::from_bytes(remainder)?;
                 Ok((Key::ChecksumRegistry, rem))
             }
+            tag if tag == KeyTag::BidAddr as u8 => {
+                let (bid_addr, rem) = BidAddr::from_bytes(remainder)?;
+                Ok((Key::BidAddr(bid_addr), rem))
+            }
+            tag if tag == KeyTag::Package as u8 => {
+                let (package_addr, rem) = PackageAddr::from_bytes(remainder)?;
+                Ok((Key::Package(package_addr), rem))
+            }
+            tag if tag == KeyTag::AddressableEntity as u8 => {
+                let (package_kind_tag, rem) = PackageKindTag::from_bytes(remainder)?;
+                let (entity_addr, rem) = EntityAddr::from_bytes(rem)?;
+                Ok((Key::AddressableEntity(package_kind_tag, entity_addr), rem))
+            }
+            tag if tag == KeyTag::ByteCode as u8 => {
+                let (byte_code_kind, rem) = ByteCodeKind::from_bytes(remainder)?;
+                let (byte_code_addr, rem) = ByteCodeAddr::from_bytes(rem)?;
+                Ok((Key::ByteCode(byte_code_kind, byte_code_addr), rem))
+            }
+            tag if tag == KeyTag::Message as u8 => {
+                let (message_addr, rem) = MessageAddr::from_bytes(remainder)?;
+                Ok((Key::Message(message_addr), rem))
+            }
             _ => Err(Error::Formatting),
         }
     }
@@ -837,13 +1308,18 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::Unbond(_) => unimplemented!(),
         Key::ChainspecRegistry => unimplemented!(),
         Key::ChecksumRegistry => unimplemented!(),
+        Key::BidAddr(_) => unimplemented!(),
+        Key::Package(_) => unimplemented!(),
+        Key::AddressableEntity(..) => unimplemented!(),
+        Key::ByteCode(..) => unimplemented!(),
+        Key::Message(_) => unimplemented!(),
     }
 }
 
 #[cfg(any(feature = "testing", test))]
 impl Distribution<Key> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
-        match rng.gen_range(0..=14) {
+        match rng.gen_range(0..=18) {
             0 => Key::Account(rng.gen()),
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),
@@ -859,6 +1335,11 @@ impl Distribution<Key> for Standard {
             12 => Key::Unbond(rng.gen()),
             13 => Key::ChainspecRegistry,
             14 => Key::ChecksumRegistry,
+            15 => Key::BidAddr(rng.gen()),
+            16 => Key::Package(rng.gen()),
+            17 => Key::AddressableEntity(rng.gen(), rng.gen()),
+            18 => Key::ByteCode(rng.gen(), rng.gen()),
+            19 => Key::Message(rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -866,76 +1347,6 @@ impl Distribution<Key> for Standard {
 
 mod serde_helpers {
     use super::*;
-
-    #[derive(Serialize, Deserialize)]
-    pub(super) enum HumanReadable {
-        Account(String),
-        Hash(String),
-        URef(String),
-        Transfer(String),
-        DeployInfo(String),
-        EraInfo(String),
-        Balance(String),
-        Bid(String),
-        Withdraw(String),
-        Dictionary(String),
-        SystemContractRegistry(String),
-        EraSummary(String),
-        Unbond(String),
-        ChainspecRegistry(String),
-        ChecksumRegistry(String),
-    }
-
-    impl From<&Key> for HumanReadable {
-        fn from(key: &Key) -> Self {
-            let formatted_string = key.to_formatted_string();
-            match key {
-                Key::Account(_) => HumanReadable::Account(formatted_string),
-                Key::Hash(_) => HumanReadable::Hash(formatted_string),
-                Key::URef(_) => HumanReadable::URef(formatted_string),
-                Key::Transfer(_) => HumanReadable::Transfer(formatted_string),
-                Key::DeployInfo(_) => HumanReadable::DeployInfo(formatted_string),
-                Key::EraInfo(_) => HumanReadable::EraInfo(formatted_string),
-                Key::Balance(_) => HumanReadable::Balance(formatted_string),
-                Key::Bid(_) => HumanReadable::Bid(formatted_string),
-                Key::Withdraw(_) => HumanReadable::Withdraw(formatted_string),
-                Key::Dictionary(_) => HumanReadable::Dictionary(formatted_string),
-                Key::SystemContractRegistry => {
-                    HumanReadable::SystemContractRegistry(formatted_string)
-                }
-                Key::EraSummary => HumanReadable::EraSummary(formatted_string),
-                Key::Unbond(_) => HumanReadable::Unbond(formatted_string),
-                Key::ChainspecRegistry => HumanReadable::ChainspecRegistry(formatted_string),
-                Key::ChecksumRegistry => HumanReadable::ChecksumRegistry(formatted_string),
-            }
-        }
-    }
-
-    impl TryFrom<HumanReadable> for Key {
-        type Error = FromStrError;
-
-        fn try_from(helper: HumanReadable) -> Result<Self, Self::Error> {
-            match helper {
-                HumanReadable::Account(formatted_string)
-                | HumanReadable::Hash(formatted_string)
-                | HumanReadable::URef(formatted_string)
-                | HumanReadable::Transfer(formatted_string)
-                | HumanReadable::DeployInfo(formatted_string)
-                | HumanReadable::EraInfo(formatted_string)
-                | HumanReadable::Balance(formatted_string)
-                | HumanReadable::Bid(formatted_string)
-                | HumanReadable::Withdraw(formatted_string)
-                | HumanReadable::Dictionary(formatted_string)
-                | HumanReadable::SystemContractRegistry(formatted_string)
-                | HumanReadable::EraSummary(formatted_string)
-                | HumanReadable::Unbond(formatted_string)
-                | HumanReadable::ChainspecRegistry(formatted_string)
-                | HumanReadable::ChecksumRegistry(formatted_string) => {
-                    Key::from_formatted_str(&formatted_string)
-                }
-            }
-        }
-    }
 
     #[derive(Serialize)]
     pub(super) enum BinarySerHelper<'a> {
@@ -955,28 +1366,11 @@ mod serde_helpers {
         Unbond(&'a AccountHash),
         ChainspecRegistry,
         ChecksumRegistry,
-    }
-
-    impl<'a> From<&'a Key> for BinarySerHelper<'a> {
-        fn from(key: &'a Key) -> Self {
-            match key {
-                Key::Account(account_hash) => BinarySerHelper::Account(account_hash),
-                Key::Hash(hash_addr) => BinarySerHelper::Hash(hash_addr),
-                Key::URef(uref) => BinarySerHelper::URef(uref),
-                Key::Transfer(transfer_addr) => BinarySerHelper::Transfer(transfer_addr),
-                Key::DeployInfo(deploy_hash) => BinarySerHelper::DeployInfo(deploy_hash),
-                Key::EraInfo(era_id) => BinarySerHelper::EraInfo(era_id),
-                Key::Balance(uref_addr) => BinarySerHelper::Balance(uref_addr),
-                Key::Bid(account_hash) => BinarySerHelper::Bid(account_hash),
-                Key::Withdraw(account_hash) => BinarySerHelper::Withdraw(account_hash),
-                Key::Dictionary(addr) => BinarySerHelper::Dictionary(addr),
-                Key::SystemContractRegistry => BinarySerHelper::SystemContractRegistry,
-                Key::EraSummary => BinarySerHelper::EraSummary,
-                Key::Unbond(account_hash) => BinarySerHelper::Unbond(account_hash),
-                Key::ChainspecRegistry => BinarySerHelper::ChainspecRegistry,
-                Key::ChecksumRegistry => BinarySerHelper::ChecksumRegistry,
-            }
-        }
+        BidAddr(&'a BidAddr),
+        Package(&'a PackageAddr),
+        AddressableEntity(&'a PackageKindTag, &'a EntityAddr),
+        ByteCode(&'a ByteCodeKind, &'a ByteCodeAddr),
+        Message(&'a MessageAddr),
     }
 
     #[derive(Deserialize)]
@@ -997,6 +1391,42 @@ mod serde_helpers {
         Unbond(AccountHash),
         ChainspecRegistry,
         ChecksumRegistry,
+        BidAddr(BidAddr),
+        Package(PackageAddr),
+        AddressableEntity(PackageKindTag, EntityAddr),
+        ByteCode(ByteCodeKind, ByteCodeAddr),
+        Message(MessageAddr),
+    }
+
+    impl<'a> From<&'a Key> for BinarySerHelper<'a> {
+        fn from(key: &'a Key) -> Self {
+            match key {
+                Key::Account(account_hash) => BinarySerHelper::Account(account_hash),
+                Key::Hash(hash_addr) => BinarySerHelper::Hash(hash_addr),
+                Key::URef(uref) => BinarySerHelper::URef(uref),
+                Key::Transfer(transfer_addr) => BinarySerHelper::Transfer(transfer_addr),
+                Key::DeployInfo(deploy_hash) => BinarySerHelper::DeployInfo(deploy_hash),
+                Key::EraInfo(era_id) => BinarySerHelper::EraInfo(era_id),
+                Key::Balance(uref_addr) => BinarySerHelper::Balance(uref_addr),
+                Key::Bid(account_hash) => BinarySerHelper::Bid(account_hash),
+                Key::Withdraw(account_hash) => BinarySerHelper::Withdraw(account_hash),
+                Key::Dictionary(addr) => BinarySerHelper::Dictionary(addr),
+                Key::SystemContractRegistry => BinarySerHelper::SystemContractRegistry,
+                Key::EraSummary => BinarySerHelper::EraSummary,
+                Key::Unbond(account_hash) => BinarySerHelper::Unbond(account_hash),
+                Key::ChainspecRegistry => BinarySerHelper::ChainspecRegistry,
+                Key::ChecksumRegistry => BinarySerHelper::ChecksumRegistry,
+                Key::BidAddr(bid_addr) => BinarySerHelper::BidAddr(bid_addr),
+                Key::Message(message_addr) => BinarySerHelper::Message(message_addr),
+                Key::Package(package_addr) => BinarySerHelper::Package(package_addr),
+                Key::AddressableEntity(package_kind, entity_addr) => {
+                    BinarySerHelper::AddressableEntity(package_kind, entity_addr)
+                }
+                Key::ByteCode(byte_code_kind, byte_code_addr) => {
+                    BinarySerHelper::ByteCode(byte_code_kind, byte_code_addr)
+                }
+            }
+        }
     }
 
     impl From<BinaryDeserHelper> for Key {
@@ -1017,6 +1447,15 @@ mod serde_helpers {
                 BinaryDeserHelper::Unbond(account_hash) => Key::Unbond(account_hash),
                 BinaryDeserHelper::ChainspecRegistry => Key::ChainspecRegistry,
                 BinaryDeserHelper::ChecksumRegistry => Key::ChecksumRegistry,
+                BinaryDeserHelper::BidAddr(bid_addr) => Key::BidAddr(bid_addr),
+                BinaryDeserHelper::Message(message_addr) => Key::Message(message_addr),
+                BinaryDeserHelper::Package(package_addr) => Key::Package(package_addr),
+                BinaryDeserHelper::AddressableEntity(package_kind, entity_addr) => {
+                    Key::AddressableEntity(package_kind, entity_addr)
+                }
+                BinaryDeserHelper::ByteCode(byte_kind, byte_code_addr) => {
+                    Key::ByteCode(byte_kind, byte_code_addr)
+                }
             }
         }
     }
@@ -1025,7 +1464,7 @@ mod serde_helpers {
 impl Serialize for Key {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            serde_helpers::HumanReadable::from(self).serialize(serializer)
+            self.to_formatted_string().serialize(serializer)
         } else {
             serde_helpers::BinarySerHelper::from(self).serialize(serializer)
         }
@@ -1035,8 +1474,8 @@ impl Serialize for Key {
 impl<'de> Deserialize<'de> for Key {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         if deserializer.is_human_readable() {
-            let human_readable = serde_helpers::HumanReadable::deserialize(deserializer)?;
-            Key::try_from(human_readable).map_err(SerdeError::custom)
+            let formatted_key = String::deserialize(deserializer)?;
+            Key::from_formatted_str(&formatted_key).map_err(SerdeError::custom)
         } else {
             let binary_helper = serde_helpers::BinaryDeserHelper::deserialize(deserializer)?;
             Ok(Key::from(binary_helper))
@@ -1047,8 +1486,6 @@ impl<'de> Deserialize<'de> for Key {
 #[cfg(test)]
 mod tests {
     use std::string::ToString;
-
-    use serde_json::json;
 
     use super::*;
     use crate::{
@@ -1067,6 +1504,9 @@ mod tests {
     const ERA_INFO_KEY: Key = Key::EraInfo(EraId::new(42));
     const BALANCE_KEY: Key = Key::Balance([42; 32]);
     const BID_KEY: Key = Key::Bid(AccountHash::new([42; 32]));
+    const UNIFIED_BID_KEY: Key = Key::BidAddr(BidAddr::legacy([42; 32]));
+    const VALIDATOR_BID_KEY: Key = Key::BidAddr(BidAddr::new_validator_addr([2; 32]));
+    const DELEGATOR_BID_KEY: Key = Key::BidAddr(BidAddr::new_delegator_addr(([2; 32], [9; 32])));
     const WITHDRAW_KEY: Key = Key::Withdraw(AccountHash::new([42; 32]));
     const DICTIONARY_KEY: Key = Key::Dictionary([42; 32]);
     const SYSTEM_CONTRACT_REGISTRY_KEY: Key = Key::SystemContractRegistry;
@@ -1074,6 +1514,24 @@ mod tests {
     const UNBOND_KEY: Key = Key::Unbond(AccountHash::new([42; 32]));
     const CHAINSPEC_REGISTRY_KEY: Key = Key::ChainspecRegistry;
     const CHECKSUM_REGISTRY_KEY: Key = Key::ChecksumRegistry;
+    const PACKAGE_KEY: Key = Key::Package([42; 32]);
+    const ADDRESSABLE_ENTITY_SYSTEM_KEY: Key =
+        Key::AddressableEntity(PackageKindTag::System, [42; 32]);
+    const ADDRESSABLE_ENTITY_ACCOUNT_KEY: Key =
+        Key::AddressableEntity(PackageKindTag::Account, [42; 32]);
+    const ADDRESSABLE_ENTITY_SMART_CONTRACT_KEY: Key =
+        Key::AddressableEntity(PackageKindTag::SmartContract, [42; 32]);
+    const BYTE_CODE_EMPTY_KEY: Key = Key::ByteCode(ByteCodeKind::Empty, [42; 32]);
+    const BYTE_CODE_V1_WASM_KEY: Key = Key::ByteCode(ByteCodeKind::V1CasperWasm, [42; 32]);
+    const MESSAGE_TOPIC_KEY: Key = Key::Message(MessageAddr::new_topic_addr(
+        AddressableEntityHash::new([42u8; 32]),
+        TopicNameHash::new([42; 32]),
+    ));
+    const MESSAGE_KEY: Key = Key::Message(MessageAddr::new_message_addr(
+        AddressableEntityHash::new([42u8; 32]),
+        TopicNameHash::new([2; 32]),
+        15,
+    ));
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
@@ -1090,8 +1548,28 @@ mod tests {
         UNBOND_KEY,
         CHAINSPEC_REGISTRY_KEY,
         CHECKSUM_REGISTRY_KEY,
+        UNIFIED_BID_KEY,
+        VALIDATOR_BID_KEY,
+        DELEGATOR_BID_KEY,
+        PACKAGE_KEY,
+        ADDRESSABLE_ENTITY_SYSTEM_KEY,
+        ADDRESSABLE_ENTITY_ACCOUNT_KEY,
+        ADDRESSABLE_ENTITY_SMART_CONTRACT_KEY,
+        BYTE_CODE_EMPTY_KEY,
+        BYTE_CODE_V1_WASM_KEY,
+        MESSAGE_TOPIC_KEY,
+        MESSAGE_KEY,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
+    const TOPIC_NAME_HEX_STRING: &str =
+        "0202020202020202020202020202020202020202020202020202020202020202";
+    const MESSAGE_INDEX_HEX_STRING: &str = "f";
+    const UNIFIED_HEX_STRING: &str =
+        "002a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
+    const VALIDATOR_HEX_STRING: &str =
+        "010202020202020202020202020202020202020202020202020202020202020202";
+    const DELEGATOR_HEX_STRING: &str =
+        "0202020202020202020202020202020202020202020202020202020202020202020909090909090909090909090909090909090909090909090909090909090909";
 
     fn test_readable(right: AccessRights, is_true: bool) {
         assert_eq!(right.is_readable(), is_true)
@@ -1170,6 +1648,18 @@ mod tests {
         );
         assert_eq!(format!("{}", BID_KEY), format!("Key::Bid({})", HEX_STRING));
         assert_eq!(
+            format!("{}", UNIFIED_BID_KEY),
+            format!("Key::BidAddr({})", UNIFIED_HEX_STRING)
+        );
+        assert_eq!(
+            format!("{}", VALIDATOR_BID_KEY),
+            format!("Key::BidAddr({})", VALIDATOR_HEX_STRING)
+        );
+        assert_eq!(
+            format!("{}", DELEGATOR_BID_KEY),
+            format!("Key::BidAddr({})", DELEGATOR_HEX_STRING)
+        );
+        assert_eq!(
             format!("{}", WITHDRAW_KEY),
             format!("Key::Withdraw({})", HEX_STRING)
         );
@@ -1206,6 +1696,42 @@ mod tests {
                 base16::encode_lower(&PADDING_BYTES),
             )
         );
+        assert_eq!(
+            format!("{}", PACKAGE_KEY),
+            format!("Key::Package({})", HEX_STRING)
+        );
+        assert_eq!(
+            format!("{}", ADDRESSABLE_ENTITY_SYSTEM_KEY),
+            format!("Key::AddressableEntity(system-{})", HEX_STRING)
+        );
+        assert_eq!(
+            format!("{}", ADDRESSABLE_ENTITY_ACCOUNT_KEY),
+            format!("Key::AddressableEntity(account-{})", HEX_STRING)
+        );
+        assert_eq!(
+            format!("{}", ADDRESSABLE_ENTITY_SMART_CONTRACT_KEY),
+            format!("Key::AddressableEntity(smart-contract-{})", HEX_STRING)
+        );
+        assert_eq!(
+            format!("{}", BYTE_CODE_EMPTY_KEY),
+            format!("Key::ByteCode(empty-{})", HEX_STRING)
+        );
+        assert_eq!(
+            format!("{}", BYTE_CODE_V1_WASM_KEY),
+            format!("Key::ByteCode(v1-casper-wasm-{})", HEX_STRING)
+        );
+        assert_eq!(
+            format!("{}", MESSAGE_TOPIC_KEY),
+            format!("Key::Message({}-{})", HEX_STRING, HEX_STRING)
+        );
+
+        assert_eq!(
+            format!("{}", MESSAGE_KEY),
+            format!(
+                "Key::Message({}-{}-{})",
+                HEX_STRING, TOPIC_NAME_HEX_STRING, MESSAGE_INDEX_HEX_STRING
+            )
+        )
     }
 
     #[test]
@@ -1225,7 +1751,7 @@ mod tests {
         let account_hash = AccountHash::new(account);
         let key1 = Key::Account(account_hash);
         assert_eq!(key1.into_account(), Some(account_hash));
-        assert!(key1.into_hash().is_none());
+        assert!(key1.into_entity_addr().is_none());
         assert!(key1.as_uref().is_none());
     }
 
@@ -1234,7 +1760,25 @@ mod tests {
         let hash = [42; KEY_HASH_LENGTH];
         let key1 = Key::Hash(hash);
         assert!(key1.into_account().is_none());
-        assert_eq!(key1.into_hash(), Some(hash));
+        assert_eq!(key1.into_hash_addr(), Some(hash));
+        assert!(key1.as_uref().is_none());
+    }
+
+    #[test]
+    fn check_entity_key_getters() {
+        let hash = [42; KEY_HASH_LENGTH];
+        let key1 = Key::contract_entity_key(AddressableEntityHash::new(hash));
+        assert!(key1.into_account().is_none());
+        assert_eq!(key1.into_entity_addr(), Some(hash));
+        assert!(key1.as_uref().is_none());
+    }
+
+    #[test]
+    fn check_package_key_getters() {
+        let hash = [42; KEY_HASH_LENGTH];
+        let key1 = Key::Package(hash);
+        assert!(key1.into_account().is_none());
+        assert_eq!(key1.into_package_addr(), Some(hash));
         assert!(key1.as_uref().is_none());
     }
 
@@ -1243,7 +1787,7 @@ mod tests {
         let uref = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
         let key1 = Key::URef(uref);
         assert!(key1.into_account().is_none());
-        assert!(key1.into_hash().is_none());
+        assert!(key1.into_entity_addr().is_none());
         assert_eq!(key1.as_uref(), Some(&uref));
     }
 
@@ -1251,8 +1795,16 @@ mod tests {
     fn key_max_serialized_length() {
         let mut got_max = false;
         for key in KEYS {
-            assert!(key.serialized_length() <= Key::max_serialized_length());
-            if key.serialized_length() == Key::max_serialized_length() {
+            let expected = Key::max_serialized_length();
+            let actual = key.serialized_length();
+            assert!(
+                actual <= expected,
+                "key too long {} expected {} actual {}",
+                key,
+                expected,
+                actual
+            );
+            if actual == Key::max_serialized_length() {
                 got_max = true;
             }
         }
@@ -1264,10 +1816,87 @@ mod tests {
     }
 
     #[test]
+    fn should_parse_legacy_bid_key_from_string() {
+        let account_hash = AccountHash([1; 32]);
+        let legacy_bid_key = Key::Bid(account_hash);
+        let original_string = legacy_bid_key.to_formatted_string();
+
+        let parsed_bid_key =
+            Key::from_formatted_str(&original_string).expect("{string} (key = {key:?})");
+        if let Key::Bid(parsed_account_hash) = parsed_bid_key {
+            assert_eq!(parsed_account_hash, account_hash,);
+            assert_eq!(legacy_bid_key, parsed_bid_key);
+
+            let translated_string = parsed_bid_key.to_formatted_string();
+            assert_eq!(original_string, translated_string);
+        } else {
+            panic!("should have account hash");
+        }
+    }
+
+    #[test]
+    fn should_parse_legacy_unified_bid_key_from_string() {
+        let legacy_bid_addr = BidAddr::legacy([1; 32]);
+        let legacy_bid_key = Key::BidAddr(legacy_bid_addr);
+        assert_eq!(legacy_bid_addr.tag(), BidAddrTag::Unified,);
+
+        let original_string = legacy_bid_key.to_formatted_string();
+        let parsed_key =
+            Key::from_formatted_str(&original_string).expect("{string} (key = {key:?})");
+        let parsed_bid_addr = parsed_key.as_bid_addr().expect("must have bid addr");
+        assert!(parsed_key.is_bid_addr_key());
+        assert_eq!(parsed_bid_addr.tag(), legacy_bid_addr.tag(),);
+        assert_eq!(*parsed_bid_addr, legacy_bid_addr);
+
+        let translated_string = parsed_key.to_formatted_string();
+        assert_eq!(original_string, translated_string);
+        assert_eq!(parsed_key.as_bid_addr(), legacy_bid_key.as_bid_addr(),);
+    }
+
+    #[test]
+    fn should_parse_validator_bid_key_from_string() {
+        let validator_bid_addr = BidAddr::new_validator_addr([1; 32]);
+        let validator_bid_key = Key::BidAddr(validator_bid_addr);
+        assert_eq!(validator_bid_addr.tag(), BidAddrTag::Validator,);
+
+        let original_string = validator_bid_key.to_formatted_string();
+        let parsed_key =
+            Key::from_formatted_str(&original_string).expect("{string} (key = {key:?})");
+        let parsed_bid_addr = parsed_key.as_bid_addr().expect("must have bid addr");
+        assert!(parsed_key.is_bid_addr_key());
+        assert_eq!(parsed_bid_addr.tag(), validator_bid_addr.tag(),);
+        assert_eq!(*parsed_bid_addr, validator_bid_addr,);
+
+        let translated_string = parsed_key.to_formatted_string();
+        assert_eq!(original_string, translated_string);
+        assert_eq!(parsed_key.as_bid_addr(), validator_bid_key.as_bid_addr(),);
+    }
+
+    #[test]
+    fn should_parse_delegator_bid_key_from_string() {
+        let delegator_bid_addr = BidAddr::new_delegator_addr(([1; 32], [9; 32]));
+        let delegator_bid_key = Key::BidAddr(delegator_bid_addr);
+        assert_eq!(delegator_bid_addr.tag(), BidAddrTag::Delegator,);
+
+        let original_string = delegator_bid_key.to_formatted_string();
+
+        let parsed_key =
+            Key::from_formatted_str(&original_string).expect("{string} (key = {key:?})");
+        let parsed_bid_addr = parsed_key.as_bid_addr().expect("must have bid addr");
+        assert!(parsed_key.is_bid_addr_key());
+        assert_eq!(parsed_bid_addr.tag(), delegator_bid_addr.tag(),);
+        assert_eq!(*parsed_bid_addr, delegator_bid_addr,);
+
+        let translated_string = parsed_key.to_formatted_string();
+        assert_eq!(original_string, translated_string);
+        assert_eq!(parsed_key.as_bid_addr(), delegator_bid_key.as_bid_addr(),);
+    }
+
+    #[test]
     fn should_parse_key_from_str() {
         for key in KEYS {
             let string = key.to_formatted_string();
-            let parsed_key = Key::from_formatted_str(&string).unwrap();
+            let parsed_key = Key::from_formatted_str(&string).expect("{string} (key = {key:?})");
             assert_eq!(parsed_key, *key, "{string} (key = {key:?})");
         }
     }
@@ -1338,6 +1967,30 @@ mod tests {
             .unwrap_err()
             .to_string()
             .starts_with("checksum-registry-key from string error: "));
+        let bid_addr_err = Key::from_formatted_str(BID_ADDR_PREFIX)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            bid_addr_err.starts_with("bid-addr-key from string error: "),
+            "{}",
+            bid_addr_err
+        );
+        assert!(Key::from_formatted_str(PACKAGE_PREFIX)
+            .unwrap_err()
+            .to_string()
+            .starts_with("package-key from string error: "));
+        assert!(
+            Key::from_formatted_str(&format!("{}{}", ENTITY_PREFIX, ACCOUNT_ENTITY_PREFIX))
+                .unwrap_err()
+                .to_string()
+                .starts_with("addressable-entity-key from string error: ")
+        );
+        assert!(
+            Key::from_formatted_str(&format!("{}{}", BYTE_CODE_PREFIX, EMPTY_PREFIX))
+                .unwrap_err()
+                .to_string()
+                .starts_with("byte-code-key from string error: ")
+        );
         let invalid_prefix = "a-0000000000000000000000000000000000000000000000000000000000000000";
         assert_eq!(
             Key::from_formatted_str(invalid_prefix)
@@ -1364,49 +2017,11 @@ mod tests {
 
     #[test]
     fn key_to_json() {
-        let expected_json = &[
-            json!({ "Account": format!("account-hash-{}", HEX_STRING) }),
-            json!({ "Hash": format!("hash-{}", HEX_STRING) }),
-            json!({ "URef": format!("uref-{}-001", HEX_STRING) }),
-            json!({ "Transfer": format!("transfer-{}", HEX_STRING) }),
-            json!({ "DeployInfo": format!("deploy-{}", HEX_STRING) }),
-            json!({ "EraInfo": "era-42" }),
-            json!({ "Balance": format!("balance-{}", HEX_STRING) }),
-            json!({ "Bid": format!("bid-{}", HEX_STRING) }),
-            json!({ "Withdraw": format!("withdraw-{}", HEX_STRING) }),
-            json!({ "Dictionary": format!("dictionary-{}", HEX_STRING) }),
-            json!({
-                "SystemContractRegistry":
-                    format!(
-                        "system-contract-registry-{}",
-                        base16::encode_lower(&PADDING_BYTES)
-                    )
-            }),
-            json!({
-                "EraSummary": format!("era-summary-{}", base16::encode_lower(&PADDING_BYTES))
-            }),
-            json!({ "Unbond": format!("unbond-{}", HEX_STRING) }),
-            json!({
-                "ChainspecRegistry":
-                    format!(
-                        "chainspec-registry-{}",
-                        base16::encode_lower(&PADDING_BYTES)
-                    )
-            }),
-            json!({
-                "ChecksumRegistry":
-                    format!("checksum-registry-{}", base16::encode_lower(&PADDING_BYTES))
-            }),
-        ];
-
-        assert_eq!(
-            KEYS.len(),
-            expected_json.len(),
-            "There should be exactly one expected JSON string per test key"
-        );
-
-        for (key, expected_json_key) in KEYS.iter().zip(expected_json.iter()) {
-            assert_eq!(serde_json::to_value(key).unwrap(), *expected_json_key);
+        for key in KEYS.iter() {
+            assert_eq!(
+                serde_json::to_string(key).unwrap(),
+                format!("\"{}\"", key.to_formatted_string())
+            );
         }
     }
 
@@ -1423,7 +2038,8 @@ mod tests {
     fn serialization_roundtrip_json() {
         let round_trip = |key: &Key| {
             let encoded = serde_json::to_value(key).unwrap();
-            let decoded = serde_json::from_value(encoded).unwrap();
+            let decoded = serde_json::from_value(encoded.clone())
+                .unwrap_or_else(|_| panic!("{} {}", key, encoded));
             assert_eq!(key, &decoded);
         };
 
@@ -1432,6 +2048,7 @@ mod tests {
         }
 
         let zeros = [0; BLAKE2B_DIGEST_LENGTH];
+        let nines = [9; BLAKE2B_DIGEST_LENGTH];
 
         round_trip(&Key::Account(AccountHash::new(zeros)));
         round_trip(&Key::Hash(zeros));
@@ -1441,12 +2058,29 @@ mod tests {
         round_trip(&Key::EraInfo(EraId::from(0)));
         round_trip(&Key::Balance(URef::new(zeros, AccessRights::READ).addr()));
         round_trip(&Key::Bid(AccountHash::new(zeros)));
+        round_trip(&Key::BidAddr(BidAddr::legacy(zeros)));
+        round_trip(&Key::BidAddr(BidAddr::new_validator_addr(zeros)));
+        round_trip(&Key::BidAddr(BidAddr::new_delegator_addr((zeros, nines))));
         round_trip(&Key::Withdraw(AccountHash::new(zeros)));
         round_trip(&Key::Dictionary(zeros));
-        round_trip(&Key::SystemContractRegistry);
-        round_trip(&Key::EraSummary);
         round_trip(&Key::Unbond(AccountHash::new(zeros)));
-        round_trip(&Key::ChainspecRegistry);
-        round_trip(&Key::ChecksumRegistry);
+        round_trip(&Key::Package(zeros));
+        round_trip(&Key::AddressableEntity(PackageKindTag::System, zeros));
+        round_trip(&Key::AddressableEntity(PackageKindTag::Account, zeros));
+        round_trip(&Key::AddressableEntity(
+            PackageKindTag::SmartContract,
+            zeros,
+        ));
+        round_trip(&Key::ByteCode(ByteCodeKind::Empty, zeros));
+        round_trip(&Key::ByteCode(ByteCodeKind::V1CasperWasm, zeros));
+        round_trip(&Key::Message(MessageAddr::new_topic_addr(
+            zeros.into(),
+            nines.into(),
+        )));
+        round_trip(&Key::Message(MessageAddr::new_message_addr(
+            zeros.into(),
+            nines.into(),
+            1,
+        )));
     }
 }

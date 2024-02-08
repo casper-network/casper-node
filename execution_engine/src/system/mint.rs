@@ -4,6 +4,7 @@ pub(crate) mod system_provider;
 
 use num_rational::Ratio;
 use num_traits::CheckedMul;
+use tracing::warn;
 
 use casper_types::{
     account::AccountHash,
@@ -11,12 +12,15 @@ use casper_types::{
         mint::{Error, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         CallStackElement,
     },
-    Key, Phase, PublicKey, URef, U512,
+    Key, PublicKey, URef, U512,
 };
 
-use crate::system::mint::{
-    runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
-    system_provider::SystemProvider,
+use crate::{
+    engine_state::SystemContractRegistry,
+    system::mint::{
+        runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+        system_provider::SystemProvider,
+    },
 };
 
 /// Mint trait.
@@ -101,11 +105,104 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         amount: U512,
         id: Option<u64>,
     ) -> Result<(), Error> {
-        if let (Phase::Session, Some(&CallStackElement::StoredSession { .. })) =
-            (self.get_phase(), self.get_immediate_caller())
-        {
-            // stored session code is not allowed to call this method in the session phase
-            return Err(Error::InvalidContext);
+        if !self.allow_unrestricted_transfers() {
+            let registry = match self.get_system_contract_registry() {
+                Ok(registry) => registry,
+                Err(error) => {
+                    warn!(%error, "unable to obtain system contract registry during transfer");
+                    SystemContractRegistry::new()
+                }
+            };
+            let immediate_caller = self.get_immediate_caller().cloned();
+            match immediate_caller {
+                Some(CallStackElement::AddressableEntity {
+                    entity_hash: contract_hash,
+                    ..
+                }) if registry.has_contract_hash(&contract_hash) => {
+                    // System contract calling a mint is fine (i.e. standard payment calling mint's
+                    // transfer)
+                }
+
+                Some(CallStackElement::Session { account_hash: _ })
+                    if self.is_called_from_standard_payment() =>
+                {
+                    // Standard payment acts as a session without separate stack frame and calls
+                    // into mint's transfer.
+                }
+
+                Some(CallStackElement::Session { account_hash })
+                    if account_hash == PublicKey::System.to_account_hash() =>
+                {
+                    // System calls a session code.
+                }
+
+                Some(CallStackElement::Session { account_hash }) => {
+                    // For example: a session using transfer host functions, or calling the mint's
+                    // entrypoint directly
+
+                    let is_source_admin = self.is_administrator(&account_hash);
+                    match maybe_to {
+                        Some(to) => {
+                            let maybe_account = self.read_addressable_entity_by_account_hash(to);
+
+                            match maybe_account {
+                                Ok(Some(addressable_entity)) => {
+                                    // This can happen when user tries to transfer funds by
+                                    // calling mint
+                                    // directly but tries to specify wrong account hash.
+                                    if addressable_entity.main_purse().addr() != target.addr() {
+                                        return Err(Error::DisabledUnrestrictedTransfers);
+                                    }
+                                    let is_target_system_account =
+                                        to == PublicKey::System.to_account_hash();
+                                    let is_target_administrator = self.is_administrator(&to);
+                                    if !(is_source_admin
+                                        || is_target_system_account
+                                        || is_target_administrator)
+                                    {
+                                        return Err(Error::DisabledUnrestrictedTransfers);
+                                    }
+                                }
+                                Ok(None) => {
+                                    // `to` is specified, but no new account is persisted
+                                    // yet. Only
+                                    // administrators can do that and it is also validated
+                                    // at the host function level.
+                                    if !is_source_admin {
+                                        return Err(Error::DisabledUnrestrictedTransfers);
+                                    }
+                                }
+                                Err(error) => {
+                                    warn!(%error, "error while reading account");
+                                    // dbg!(&error);
+                                    return Err(Error::Storage);
+                                }
+                            }
+                        }
+                        None => {
+                            if !is_source_admin {
+                                return Err(Error::DisabledUnrestrictedTransfers);
+                            }
+                        }
+                    }
+                }
+
+                Some(CallStackElement::AddressableEntity {
+                    package_hash: _,
+                    entity_hash: _,
+                }) => {
+                    if self.get_caller() != PublicKey::System.to_account_hash()
+                        && !self.is_administrator(&self.get_caller())
+                    {
+                        return Err(Error::DisabledUnrestrictedTransfers);
+                    }
+                }
+
+                None => {
+                    // There's always an immediate caller, but we should return something.
+                    return Err(Error::DisabledUnrestrictedTransfers);
+                }
+            }
         }
 
         if !source.is_readable() {
@@ -121,21 +218,19 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         if amount > source_balance {
             return Err(Error::InsufficientFunds);
         }
-
         if self.read_balance(target)?.is_none() {
             return Err(Error::DestNotFound);
         }
-
-        if self.get_main_purse().addr() == source.addr() {
+        if self.get_caller() != PublicKey::System.to_account_hash()
+            && self.get_main_purse().addr() == source.addr()
+        {
             if amount > self.get_approved_spending_limit() {
                 return Err(Error::UnapprovedSpendingAmount);
             }
             self.sub_approved_spending_limit(amount);
         }
-
         self.write_balance(source, source_balance - amount)?;
         self.add_balance(target, amount)?;
-
         self.record_transfer(maybe_to, source, target, amount, id)?;
         Ok(())
     }
