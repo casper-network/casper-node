@@ -31,7 +31,7 @@ mod block_time;
 mod byte_code;
 pub mod bytesrepr;
 #[cfg(any(feature = "std", test))]
-mod chainspec;
+pub mod chainspec;
 pub mod checksummed_hex;
 mod cl_type;
 mod cl_value;
@@ -63,7 +63,7 @@ mod tagged;
 #[cfg(any(feature = "testing", test))]
 pub mod testing;
 mod timestamp;
-mod transaction;
+pub mod transaction;
 mod transfer;
 mod transfer_result;
 mod uint;
