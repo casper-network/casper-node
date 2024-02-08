@@ -21,10 +21,18 @@ use casper_execution_engine::engine_state::{
     GetBidsRequest, GetBidsResult, QueryRequest, SystemContractRegistry,
 };
 use casper_storage::global_state::state::{StateProvider, StateReader};
-use casper_types::{execution::{ExecutionResult, ExecutionResultV2, Transform, TransformKind}, system::{
-    auction::{BidAddr, BidKind, BidsExt, DelegationRate},
-    mint, AUCTION,
-}, testing::TestRng, AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes, ConsensusProtocolName, Deploy, EraId, Key, Motes, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue, TimeDiff, Timestamp, Transaction, TransactionHash, ValidatorConfig, U512, EntityAddr};
+use casper_types::{
+    execution::{ExecutionResult, ExecutionResultV2, Transform, TransformKind},
+    system::{
+        auction::{BidAddr, BidKind, BidsExt, DelegationRate},
+        mint, AUCTION,
+    },
+    testing::TestRng,
+    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, Block, BlockHash,
+    BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes, ConsensusProtocolName, Deploy,
+    EntityAddr, EraId, Key, Motes, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue,
+    TimeDiff, Timestamp, Transaction, TransactionHash, ValidatorConfig, U512,
+};
 
 use crate::{
     components::{
