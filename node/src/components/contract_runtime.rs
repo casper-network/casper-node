@@ -44,7 +44,7 @@ use casper_storage::{
     },
 };
 use casper_types::{
-    bytesrepr::Bytes, package::PackageKindTag, BlockHash, BlockHeaderV2, Chainspec,
+    addressable_entity::EntityKindTag, bytesrepr::Bytes, BlockHash, BlockHeaderV2, Chainspec,
     ChainspecRawBytes, ChainspecRegistry, Digest, EraId, Key, ProtocolVersion, Timestamp,
     Transaction, UpgradeConfig, U512,
 };
@@ -1128,7 +1128,7 @@ fn query_total_supply(
 
     let mint = engine_state.get_system_mint_hash(state_hash)?;
 
-    let mint_key = Key::addressable_entity_key(PackageKindTag::System, mint);
+    let mint_key = Key::addressable_entity_key(EntityKindTag::System, mint);
 
     let request = QueryRequest::new(
         state_hash,
@@ -1160,7 +1160,7 @@ fn query_round_seigniorage_rate(
     use engine_state::{Error, QueryResult::*};
 
     let mint = engine_state.get_system_mint_hash(state_hash)?;
-    let mint_key = Key::addressable_entity_key(PackageKindTag::System, mint);
+    let mint_key = Key::addressable_entity_key(EntityKindTag::System, mint);
 
     let request = QueryRequest::new(
         state_hash,

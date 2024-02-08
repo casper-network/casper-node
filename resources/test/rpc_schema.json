@@ -2906,19 +2906,6 @@
               }
             },
             "additionalProperties": false
-          },
-          {
-            "description": "Hex-encoded entity address of the initiator.",
-            "type": "object",
-            "required": [
-              "EntityAddr"
-            ],
-            "properties": {
-              "EntityAddr": {
-                "type": "string"
-              }
-            },
-            "additionalProperties": false
           }
         ]
       },
@@ -5132,6 +5119,19 @@
               }
             },
             "additionalProperties": false
+          },
+          {
+            "description": "A NamedKey record.",
+            "type": "object",
+            "required": [
+              "NamedKey"
+            ],
+            "properties": {
+              "NamedKey": {
+                "$ref": "#/components/schemas/NamedKeyValue"
+              }
+            },
+            "additionalProperties": false
           }
         ]
       },
@@ -5453,31 +5453,31 @@
           "action_thresholds",
           "associated_keys",
           "byte_code_hash",
+          "entity_kind",
           "entry_points",
           "main_purse",
           "message_topics",
-          "named_keys",
           "package_hash",
           "protocol_version"
         ],
         "properties": {
+          "protocol_version": {
+            "$ref": "#/components/schemas/ProtocolVersion"
+          },
+          "entity_kind": {
+            "$ref": "#/components/schemas/EntityKind"
+          },
           "package_hash": {
             "$ref": "#/components/schemas/PackageHash"
           },
           "byte_code_hash": {
             "$ref": "#/components/schemas/ByteCodeHash"
           },
-          "named_keys": {
-            "$ref": "#/components/schemas/NamedKeys"
+          "main_purse": {
+            "$ref": "#/components/schemas/URef"
           },
           "entry_points": {
             "$ref": "#/components/schemas/Array_of_NamedEntryPoint"
-          },
-          "protocol_version": {
-            "$ref": "#/components/schemas/ProtocolVersion"
-          },
-          "main_purse": {
-            "$ref": "#/components/schemas/URef"
           },
           "associated_keys": {
             "$ref": "#/components/schemas/AssociatedKeys"
@@ -5489,6 +5489,77 @@
             "$ref": "#/components/schemas/Array_of_MessageTopic"
           }
         }
+      },
+      "EntityKind": {
+        "description": "The type of Package.",
+        "oneOf": [
+          {
+            "description": "Package associated with a native contract implementation.",
+            "type": "object",
+            "required": [
+              "System"
+            ],
+            "properties": {
+              "System": {
+                "$ref": "#/components/schemas/SystemEntityType"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "Package associated with an Account hash.",
+            "type": "object",
+            "required": [
+              "Account"
+            ],
+            "properties": {
+              "Account": {
+                "$ref": "#/components/schemas/AccountHash"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "Packages associated with Wasm stored on chain.",
+            "type": "string",
+            "enum": [
+              "SmartContract"
+            ]
+          }
+        ]
+      },
+      "SystemEntityType": {
+        "description": "System contract types.\n\nUsed by converting to a `u32` and passing as the `system_contract_index` argument of `ext_ffi::casper_get_system_contract()`.",
+        "oneOf": [
+          {
+            "description": "Mint contract.",
+            "type": "string",
+            "enum": [
+              "Mint"
+            ]
+          },
+          {
+            "description": "Handle Payment contract.",
+            "type": "string",
+            "enum": [
+              "HandlePayment"
+            ]
+          },
+          {
+            "description": "Standard Payment contract.",
+            "type": "string",
+            "enum": [
+              "StandardPayment"
+            ]
+          },
+          {
+            "description": "Auction contract.",
+            "type": "string",
+            "enum": [
+              "Auction"
+            ]
+          }
+        ]
       },
       "ByteCodeHash": {
         "description": "The hash address of the contract wasm",
@@ -5531,7 +5602,6 @@
           "disabled_versions",
           "groups",
           "lock_status",
-          "package_kind",
           "versions"
         ],
         "properties": {
@@ -5572,14 +5642,6 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/PackageStatus"
-              }
-            ]
-          },
-          "package_kind": {
-            "description": "The kind of package.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/PackageKind"
               }
             ]
           }
@@ -5655,77 +5717,6 @@
           }
         ]
       },
-      "PackageKind": {
-        "description": "The type of Package.",
-        "oneOf": [
-          {
-            "description": "Package associated with a native contract implementation.",
-            "type": "object",
-            "required": [
-              "System"
-            ],
-            "properties": {
-              "System": {
-                "$ref": "#/components/schemas/SystemEntityType"
-              }
-            },
-            "additionalProperties": false
-          },
-          {
-            "description": "Package associated with an Account hash.",
-            "type": "object",
-            "required": [
-              "Account"
-            ],
-            "properties": {
-              "Account": {
-                "$ref": "#/components/schemas/AccountHash"
-              }
-            },
-            "additionalProperties": false
-          },
-          {
-            "description": "Packages associated with Wasm stored on chain.",
-            "type": "string",
-            "enum": [
-              "SmartContract"
-            ]
-          }
-        ]
-      },
-      "SystemEntityType": {
-        "description": "System contract types.\n\nUsed by converting to a `u32` and passing as the `system_contract_index` argument of `ext_ffi::casper_get_system_contract()`.",
-        "oneOf": [
-          {
-            "description": "Mint contract.",
-            "type": "string",
-            "enum": [
-              "Mint"
-            ]
-          },
-          {
-            "description": "Handle Payment contract.",
-            "type": "string",
-            "enum": [
-              "HandlePayment"
-            ]
-          },
-          {
-            "description": "Standard Payment contract.",
-            "type": "string",
-            "enum": [
-              "StandardPayment"
-            ]
-          },
-          {
-            "description": "Auction contract.",
-            "type": "string",
-            "enum": [
-              "Auction"
-            ]
-          }
-        ]
-      },
       "ByteCode": {
         "description": "A container for contract's Wasm bytes.",
         "type": "object",
@@ -5794,6 +5785,32 @@
       "MessageChecksum": {
         "description": "Message checksum as a formatted string.",
         "type": "string"
+      },
+      "NamedKeyValue": {
+        "description": "A NamedKey value.",
+        "type": "object",
+        "required": [
+          "name",
+          "named_key"
+        ],
+        "properties": {
+          "named_key": {
+            "description": "The actual `Key` encoded as a CLValue.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CLValue"
+              }
+            ]
+          },
+          "name": {
+            "description": "The name of the `Key` encoded as a CLValue.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CLValue"
+              }
+            ]
+          }
+        }
       },
       "GlobalStateIdentifier": {
         "description": "Identifier for possible ways to query Global State",

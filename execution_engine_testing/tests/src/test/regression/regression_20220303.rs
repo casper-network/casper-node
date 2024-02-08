@@ -8,7 +8,7 @@ use casper_execution_engine::engine_state::SystemContractRegistry;
 use casper_types::{
     contracts::ContractHash,
     system::{self, mint},
-    AccessRights, CLValue, Digest, EraId, Key, ProtocolVersion, StoredValue, URef,
+    AccessRights, ByteCodeHash, CLValue, Digest, EraId, Key, ProtocolVersion, StoredValue, URef,
 };
 use rand::Rng;
 
@@ -110,7 +110,7 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
         new_contract.package_hash().value()
     );
     assert_eq!(
-        old_contract.contract_wasm_hash().value(),
+        ByteCodeHash::default().value(),
         new_contract.byte_code_hash().value()
     );
     assert_ne!(old_contract.entry_points(), new_contract.entry_points());

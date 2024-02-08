@@ -475,7 +475,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         .commit();
 
     let account_1_genesis = builder
-        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should have account 1 after genesis");
 
     let stored_entity_key = account_1_genesis
@@ -484,7 +484,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         .unwrap();
 
     let stored_entity_hash = stored_entity_key
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .expect("should have stored contract hash");
 
@@ -672,7 +672,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         .commit();
 
     let account_1_genesis = builder
-        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should have account 1 after genesis");
 
     let stored_entity_key = account_1_genesis
@@ -681,7 +681,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         .unwrap();
 
     let stored_entity_hash = stored_entity_key
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .expect("should have stored entity hash");
 

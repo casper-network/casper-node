@@ -13,8 +13,9 @@ use casper_execution_engine::engine_state::{
     run_genesis_request::RunGenesisRequest,
 };
 use casper_types::{
-    account::AccountHash, package::PackageKindTag, system::auction::DelegationRate, GenesisAccount,
-    GenesisValidator, Key, Motes, ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
+    account::AccountHash, addressable_entity::EntityKindTag, system::auction::DelegationRate,
+    GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion, PublicKey, SecretKey,
+    StoredValue, U512,
 };
 
 const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];
@@ -96,9 +97,9 @@ fn should_run_genesis() {
     assert_eq!(account_2_balance_actual, U512::from(ACCOUNT_2_BALANCE));
 
     let mint_contract_key =
-        Key::addressable_entity_key(PackageKindTag::System, builder.get_mint_contract_hash());
+        Key::addressable_entity_key(EntityKindTag::System, builder.get_mint_contract_hash());
     let handle_payment_contract_key = Key::addressable_entity_key(
-        PackageKindTag::System,
+        EntityKindTag::System,
         builder.get_handle_payment_contract_hash(),
     );
 
