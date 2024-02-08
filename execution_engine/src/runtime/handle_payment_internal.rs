@@ -2,8 +2,9 @@ use casper_storage::global_state::{error::Error as GlobalStateError, state::Stat
 use std::collections::BTreeSet;
 
 use casper_types::{
-    account::AccountHash, system::handle_payment::Error, BlockTime, CLValue, FeeHandling, Key,
-    Phase, RefundHandling, StoredValue, TransferredTo, URef, U512,
+    account::AccountHash, addressable_entity::NamedKeyAddr, system::handle_payment::Error,
+    BlockTime, CLValue, FeeHandling, Key, Phase, RefundHandling, StoredValue, TransferredTo, URef,
+    U512,
 };
 
 use casper_storage::system::handle_payment::{
@@ -88,8 +89,28 @@ impl<'a, R> RuntimeProvider for Runtime<'a, R>
 where
     R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
-    fn get_key(&self, name: &str) -> Option<Key> {
-        self.context.named_keys_get(name).cloned()
+    fn get_key(&mut self, name: &str) -> Option<Key> {
+        match self.context.named_keys_get(name).cloned() {
+            None => {
+                let entity_addr = match self.context.get_entity_key().as_entity_addr() {
+                    Some(addr) => addr,
+                    None => return None,
+                };
+                let key = if let Ok(addr) =
+                    NamedKeyAddr::new_from_string(entity_addr, name.to_string())
+                {
+                    Key::NamedKey(addr)
+                } else {
+                    return None;
+                };
+                if let Ok(Some(StoredValue::NamedKey(value))) = self.context.read_gs(&key) {
+                    value.get_key().ok()
+                } else {
+                    None
+                }
+            }
+            Some(key) => Some(key),
+        }
     }
 
     fn put_key(&mut self, name: &str, key: Key) -> Result<(), Error> {

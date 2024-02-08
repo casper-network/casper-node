@@ -12,12 +12,13 @@ use crate::{
 
 use casper_types::{
     account::AccountHash,
-    addressable_entity::MessageTopics,
+    addressable_entity::{EntityKindTag, MessageTopics, NamedKeyAddr, NamedKeys},
     bytesrepr,
-    package::{EntityVersions, Groups, PackageKind, PackageKindTag, PackageStatus},
+    package::{EntityVersions, Groups, PackageStatus},
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeHash, ByteCodeKind,
-    CLValue, ChecksumRegistry, EntryPoints, Key, Motes, Package, PackageHash, Phase,
-    ProtocolVersion, StoredValue, StoredValueTypeMismatch, SystemContractRegistry, URef,
+    CLValue, ChecksumRegistry, EntityAddr, EntityKind, EntryPoints, Key, KeyTag, Motes, Package,
+    PackageHash, Phase, ProtocolVersion, StoredValue, StoredValueTypeMismatch,
+    SystemContractRegistry, URef,
 };
 
 use crate::tracking_copy::{TrackingCopy, TrackingCopyError};
@@ -74,6 +75,9 @@ pub trait TrackingCopyExt<R> {
         addressable_entity_hash: AddressableEntityHash,
     ) -> Result<AddressableEntity, Self::Error>;
 
+    /// Returns the collection of named keys for a given AddressableEntity.
+    fn get_named_keys(&mut self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error>;
+
     /// Gets an entity by hash.
     fn get_entity(
         &mut self,
@@ -91,6 +95,13 @@ pub trait TrackingCopyExt<R> {
 
     /// Gets byte code by hash.
     fn get_byte_code(&mut self, byte_code_hash: ByteCodeHash) -> Result<ByteCode, Self::Error>;
+
+    /// Migrate the NamedKeys for a Contract or Account.
+    fn migrate_named_keys(
+        &mut self,
+        entity_addr: EntityAddr,
+        named_keys: NamedKeys,
+    ) -> Result<(), Self::Error>;
 }
 
 impl<R> TrackingCopyExt<R> for TrackingCopy<R>
@@ -141,38 +152,41 @@ where
 
                 let entry_points = EntryPoints::new();
 
+                self.migrate_named_keys(
+                    EntityAddr::Account(entity_hash.value()),
+                    account.named_keys().clone(),
+                )?;
+
                 let entity = AddressableEntity::new(
                     package_hash,
                     byte_code_hash,
-                    account.named_keys().clone(),
                     entry_points,
                     protocol_version,
                     account.main_purse(),
                     account.associated_keys().clone().into(),
                     account.action_thresholds().clone().into(),
                     MessageTopics::default(),
+                    EntityKind::Account(account_hash),
                 );
 
                 let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
 
-                let contract_package = {
-                    let mut contract_package = Package::new(
+                let package = {
+                    let mut package = Package::new(
                         access_key,
                         EntityVersions::default(),
                         BTreeSet::default(),
                         Groups::default(),
                         PackageStatus::Locked,
-                        PackageKind::Account(account_hash),
                     );
-                    contract_package
-                        .insert_entity_version(protocol_version.value().major, entity_hash);
-                    contract_package
+                    package.insert_entity_version(protocol_version.value().major, entity_hash);
+                    package
                 };
 
-                let entity_key = Key::addressable_entity_key(PackageKindTag::Account, entity_hash);
+                let entity_key = entity.entity_key(entity_hash);
 
                 self.write(entity_key, StoredValue::AddressableEntity(entity.clone()));
-                self.write(package_hash.into(), contract_package.into());
+                self.write(package_hash.into(), package.into());
 
                 let contract_by_account = match CLValue::from_t(entity_key) {
                     Ok(cl_value) => cl_value,
@@ -289,9 +303,9 @@ where
         entity_hash: AddressableEntityHash,
     ) -> Result<AddressableEntity, Self::Error> {
         let package_kind_tag = if self.get_system_contracts()?.has_contract_hash(&entity_hash) {
-            PackageKindTag::System
+            EntityKindTag::System
         } else {
-            PackageKindTag::SmartContract
+            EntityKindTag::SmartContract
         };
 
         let key = Key::addressable_entity_key(package_kind_tag, entity_hash);
@@ -306,6 +320,89 @@ where
             )),
             None => Err(TrackingCopyError::KeyNotFound(key)),
         }
+    }
+
+    fn migrate_named_keys(
+        &mut self,
+        entity_addr: EntityAddr,
+        named_keys: NamedKeys,
+    ) -> Result<(), Self::Error> {
+        for (name, key) in named_keys.iter() {
+            let entry_key = {
+                let entry_addr = NamedKeyAddr::new_from_string(entity_addr, name.clone())?;
+                Key::NamedKey(entry_addr)
+            };
+
+            let cl_value = CLValue::from_t(*key).map_err(execution::Error::CLValue)?;
+
+            self.write(entry_key, StoredValue::CLValue(cl_value))
+        }
+
+        Ok(())
+    }
+
+    fn get_named_keys(&mut self, entity_addr: EntityAddr) -> Result<NamedKeys, Self::Error> {
+        let prefix = entity_addr
+            .named_keys_prefix()
+            .map_err(Self::Error::BytesRepr)?;
+
+        let mut ret: BTreeSet<Key> = BTreeSet::new();
+        let keys = self.reader.keys_with_prefix(&prefix).map_err(Into::into)?;
+        let pruned = &self.cache.prunes_cached;
+        // don't include keys marked for pruning
+        for key in keys {
+            if pruned.contains(&key) {
+                continue;
+            }
+            ret.insert(key);
+        }
+
+        let cache = self.cache.get_key_tag_muts_cached(&KeyTag::NamedKey);
+
+        // there may be newly inserted keys which have not been committed yet
+        if let Some(keys) = cache {
+            for key in keys {
+                if ret.contains(&key) {
+                    continue;
+                }
+                if key.is_entry_for_base(&entity_addr) {
+                    ret.insert(key);
+                }
+            }
+        }
+
+        let mut named_keys = NamedKeys::new();
+
+        for entry_key in ret.iter() {
+            match self.read(entry_key).map_err(Into::into)? {
+                Some(StoredValue::NamedKey(named_key)) => {
+                    let key = named_key.get_key().map_err(execution::Error::CLValue)?;
+                    let name = named_key.get_name().map_err(execution::Error::CLValue)?;
+                    named_keys.insert(name, key);
+                }
+                Some(other) => {
+                    return Err(execution::Error::TypeMismatch(
+                        StoredValueTypeMismatch::new("CLValue".to_string(), other.type_name()),
+                    ))
+                }
+                None => match self.cache.reads_cached.get(entry_key) {
+                    Some(StoredValue::NamedKey(named_key_value)) => {
+                        let key = named_key_value
+                            .get_key()
+                            .map_err(execution::Error::CLValue)?;
+                        let name = named_key_value
+                            .get_name()
+                            .map_err(execution::Error::CLValue)?;
+                        named_keys.insert(name, key);
+                    }
+                    Some(_) | None => {
+                        return Err(execution::Error::KeyNotFound(*entry_key));
+                    }
+                },
+            };
+        }
+
+        Ok(named_keys)
     }
 
     fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Self::Error> {

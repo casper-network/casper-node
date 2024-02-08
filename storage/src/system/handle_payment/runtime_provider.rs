@@ -8,7 +8,7 @@ use casper_types::{
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {
     /// Get named key under a `name`.
-    fn get_key(&self, name: &str) -> Option<Key>;
+    fn get_key(&mut self, name: &str) -> Option<Key>;
 
     /// Put key under a `name`.
     fn put_key(&mut self, name: &str, key: Key) -> Result<(), Error>;

@@ -19,17 +19,16 @@ use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
-    AddressableEntity, AddressableEntityHash, BlockV2, CLValue, ChecksumRegistry, DeployHash,
-    Digest, EraEndV2, EraId, HashAddr, Key, ProtocolVersion, PublicKey, StoredValue, Transaction,
-    U512,
+    AddressableEntity, BlockV2, CLValue, ChecksumRegistry, DeployHash, Digest, EntityAddr,
+    EraEndV2, EraId, HashAddr, Key, ProtocolVersion, PublicKey, StoredValue, Transaction, U512,
 };
 
 use crate::{
     components::{
         contract_runtime::{
             error::BlockExecutionError, types::StepEffectsAndUpcomingEraValidators,
-            BlockAndExecutionResults, ExecutionPreState, Metrics, PackageKindTag,
-            SpeculativeExecutionState, APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
+            BlockAndExecutionResults, ExecutionPreState, Metrics, SpeculativeExecutionState,
+            APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
         },
         fetcher::FetchItem,
     },
@@ -617,13 +616,8 @@ where
     S: StateProvider + CommitProvider,
 {
     match key {
-        Key::AddressableEntity(package_kind_tag, entity_addr) => {
-            get_addressable_entity_under_entity_hash(
-                engine_state,
-                state_root_hash,
-                package_kind_tag,
-                entity_addr.into(),
-            )
+        Key::AddressableEntity(entity_addr) => {
+            get_addressable_entity_under_entity_hash(engine_state, state_root_hash, entity_addr)
         }
         Key::Account(account_hash) => {
             get_addressable_entity_under_account_hash(engine_state, state_root_hash, account_hash)
@@ -641,13 +635,12 @@ where
 fn get_addressable_entity_under_entity_hash<S>(
     engine_state: &EngineState<S>,
     state_root_hash: Digest,
-    package_kind_tag: PackageKindTag,
-    entity_hash: AddressableEntityHash,
+    entity_addr: EntityAddr,
 ) -> Option<AddressableEntity>
 where
     S: StateProvider + CommitProvider,
 {
-    let key = Key::addressable_entity_key(package_kind_tag, entity_hash);
+    let key = Key::AddressableEntity(entity_addr);
     let query_request = QueryRequest::new(state_root_hash, key, vec![]);
     let value = match engine_state.run_query(query_request) {
         Ok(QueryResult::Success { value, .. }) => *value,
@@ -692,13 +685,8 @@ where
     };
     match value {
         StoredValue::CLValue(cl_value) => match cl_value.into_t::<Key>() {
-            Ok(Key::AddressableEntity(package_kind_tag, entity_addr)) => {
-                get_addressable_entity_under_entity_hash(
-                    engine_state,
-                    state_root_hash,
-                    package_kind_tag,
-                    entity_addr.into(),
-                )
+            Ok(Key::AddressableEntity(entity_addr)) => {
+                get_addressable_entity_under_entity_hash(engine_state, state_root_hash, entity_addr)
             }
             Ok(invalid_key) => {
                 warn!(
@@ -737,8 +725,8 @@ where
     get_addressable_entity_under_entity_hash(
         engine_state,
         state_root_hash,
-        PackageKindTag::SmartContract,
-        contract_hash.into(),
+        EntityAddr::SmartContract(contract_hash)
+
     ).or_else(|| {
         // Didn't work; the contract was either not migrated yet or the `AddressableEntity`
         // record was not available at this state root hash. Try to query with a

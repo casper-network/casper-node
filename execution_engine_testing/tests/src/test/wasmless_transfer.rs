@@ -624,7 +624,7 @@ fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
 
 fn get_default_account_named_uref(builder: &mut LmdbWasmTestBuilder, name: &str) -> URef {
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("default account should exist");
     default_account
         .named_keys()
@@ -902,7 +902,7 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
     builder.exec(create_purse_request).commit().expect_success();
 
     let account_1 = builder
-        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should get account 1");
 
     let account_1_purse = account_1

@@ -46,6 +46,7 @@ impl ByteSize for StoredValue {
                     message_topic_summary.serialized_length()
                 }
                 StoredValue::Message(message_summary) => message_summary.serialized_length(),
+                StoredValue::NamedKey(named_key) => named_key.serialized_length(),
             }
     }
 }

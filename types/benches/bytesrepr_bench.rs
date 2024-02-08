@@ -8,10 +8,10 @@ use std::{
 use casper_types::{
     account::AccountHash,
     addressable_entity::{
-        ActionThresholds, AddressableEntity, AssociatedKeys, MessageTopics, NamedKeys,
+        ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind, MessageTopics,
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    package::{PackageKind, PackageStatus},
+    package::PackageStatus,
     system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
     AccessRights, AddressableEntityHash, ByteCodeHash, CLType, CLTyped, CLValue, DeployHash,
     DeployInfo, EntityVersionKey, EntityVersions, EntryPoint, EntryPointAccess, EntryPointType,
@@ -450,32 +450,17 @@ fn deserialize_u512(b: &mut Bencher) {
 }
 
 fn serialize_contract(b: &mut Bencher) {
-    let contract = sample_contract(10, 10);
+    let contract = sample_contract(10);
     b.iter(|| ToBytes::to_bytes(black_box(&contract)));
 }
 
 fn deserialize_contract(b: &mut Bencher) {
-    let contract = sample_contract(10, 10);
+    let contract = sample_contract(10);
     let contract_bytes = AddressableEntity::to_bytes(&contract).unwrap();
     b.iter(|| AddressableEntity::from_bytes(black_box(&contract_bytes)).unwrap());
 }
 
-fn sample_named_keys(len: u8) -> NamedKeys {
-    NamedKeys::from(
-        (0..len)
-            .map(|i| {
-                (
-                    format!("named-key-{}", i),
-                    Key::Account(AccountHash::default()),
-                )
-            })
-            .collect::<BTreeMap<_, _>>(),
-    )
-}
-
-fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> AddressableEntity {
-    let named_keys: NamedKeys = sample_named_keys(named_keys_len);
-
+fn sample_contract(entry_points_len: u8) -> AddressableEntity {
     let entry_points = {
         let mut tmp = EntryPoints::new_with_default_entry_point();
         (1..entry_points_len).for_each(|i| {
@@ -495,16 +480,16 @@ fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> AddressableEntit
         tmp
     };
 
-    casper_types::addressable_entity::AddressableEntity::new(
+    AddressableEntity::new(
         PackageHash::default(),
         ByteCodeHash::default(),
-        named_keys,
         entry_points,
         ProtocolVersion::default(),
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
         MessageTopics::default(),
+        EntityKind::SmartContract,
     )
 }
 
@@ -569,7 +554,6 @@ fn sample_contract_package(
         disabled_versions,
         groups,
         PackageStatus::Locked,
-        PackageKind::SmartContract,
     )
 }
 

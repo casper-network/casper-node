@@ -273,6 +273,32 @@ mod fixture {
 
     #[ignore = "RUN_FIXTURE_GENERATORS env var should be enabled"]
     #[test]
+    fn generate_groups_fixture() {
+        const GROUPS_FIXTURE: &str = "groups";
+        const GROUPS_WASM: &str = "groups.wasm";
+
+        if !lmdb_fixture::is_fixture_generator_enabled() {
+            println!("Enable the RUN_FIXTURE_GENERATORS variable");
+            return;
+        }
+
+        let genesis_request = PRODUCTION_RUN_GENESIS_REQUEST.clone();
+
+        lmdb_fixture::generate_fixture(GROUPS_FIXTURE, genesis_request, |builder| {
+            let execute_request = ExecuteRequestBuilder::standard(
+                *DEFAULT_ACCOUNT_ADDR,
+                GROUPS_WASM,
+                runtime_args! {},
+            )
+            .build();
+
+            builder.exec(execute_request).expect_success().commit();
+        })
+        .unwrap();
+    }
+
+    #[ignore = "RUN_FIXTURE_GENERATORS env var should be enabled"]
+    #[test]
     fn generate_era_info_bloat_fixture() {
         if !lmdb_fixture::is_fixture_generator_enabled() {
             println!("Enable the RUN_FIXTURE_GENERATORS variable");

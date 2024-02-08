@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use casper_execution_engine::engine_state::EngineConfigBuilder;
+use casper_execution_engine::engine_state::{EngineConfigBuilder, SystemContractRegistry};
 use num_rational::Ratio;
 
 use casper_engine_test_support::{
@@ -8,28 +8,30 @@ use casper_engine_test_support::{
     DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_UNBONDING_DELAY, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 
+use crate::{lmdb_fixture, lmdb_fixture::CONTRACT_REGISTRY_SPECIAL_ADDRESS};
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
-    runtime_args,
+    runtime_args, system,
     system::{
         auction::{
             AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         mint::ROUND_SEIGNIORAGE_RATE_KEY,
     },
-    BrTableCost, CLValue, ControlFlowCosts, EraId, HostFunctionCosts, MessageLimits, OpcodeCosts,
-    ProtocolVersion, StorageCosts, StoredValue, WasmConfig, DEFAULT_ADD_COST, DEFAULT_BIT_COST,
-    DEFAULT_CONST_COST, DEFAULT_CONTROL_FLOW_BLOCK_OPCODE, DEFAULT_CONTROL_FLOW_BR_IF_OPCODE,
-    DEFAULT_CONTROL_FLOW_BR_OPCODE, DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER,
-    DEFAULT_CONTROL_FLOW_BR_TABLE_OPCODE, DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE,
-    DEFAULT_CONTROL_FLOW_CALL_OPCODE, DEFAULT_CONTROL_FLOW_DROP_OPCODE,
-    DEFAULT_CONTROL_FLOW_ELSE_OPCODE, DEFAULT_CONTROL_FLOW_END_OPCODE,
-    DEFAULT_CONTROL_FLOW_IF_OPCODE, DEFAULT_CONTROL_FLOW_LOOP_OPCODE,
-    DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE,
-    DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DIV_COST, DEFAULT_GLOBAL_COST,
-    DEFAULT_GROW_MEMORY_COST, DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST,
-    DEFAULT_LOCAL_COST, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST, DEFAULT_NOP_COST,
-    DEFAULT_STORE_COST, DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY, U256, U512,
+    BrTableCost, CLValue, ControlFlowCosts, EntityAddr, EraId, HostFunctionCosts, Key,
+    MessageLimits, OpcodeCosts, ProtocolVersion, StorageCosts, StoredValue, WasmConfig,
+    DEFAULT_ADD_COST, DEFAULT_BIT_COST, DEFAULT_CONST_COST, DEFAULT_CONTROL_FLOW_BLOCK_OPCODE,
+    DEFAULT_CONTROL_FLOW_BR_IF_OPCODE, DEFAULT_CONTROL_FLOW_BR_OPCODE,
+    DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER, DEFAULT_CONTROL_FLOW_BR_TABLE_OPCODE,
+    DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE, DEFAULT_CONTROL_FLOW_CALL_OPCODE,
+    DEFAULT_CONTROL_FLOW_DROP_OPCODE, DEFAULT_CONTROL_FLOW_ELSE_OPCODE,
+    DEFAULT_CONTROL_FLOW_END_OPCODE, DEFAULT_CONTROL_FLOW_IF_OPCODE,
+    DEFAULT_CONTROL_FLOW_LOOP_OPCODE, DEFAULT_CONTROL_FLOW_RETURN_OPCODE,
+    DEFAULT_CONTROL_FLOW_SELECT_OPCODE, DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST,
+    DEFAULT_DIV_COST, DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST,
+    DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST,
+    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST, DEFAULT_NOP_COST, DEFAULT_STORE_COST,
+    DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY, U256, U512,
 };
 
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
@@ -312,9 +314,9 @@ fn should_upgrade_only_validator_slots() {
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
     let validator_slot_key = *builder
-        .get_addressable_entity(builder.get_auction_contract_hash())
-        .expect("auction should exist")
-        .named_keys()
+        .get_named_keys(EntityAddr::System(
+            builder.get_auction_contract_hash().value(),
+        ))
         .get(VALIDATOR_SLOTS_KEY)
         .unwrap();
 
@@ -369,9 +371,9 @@ fn should_upgrade_only_auction_delay() {
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
     let auction_delay_key = *builder
-        .get_addressable_entity(builder.get_auction_contract_hash())
-        .expect("auction should exist")
-        .named_keys()
+        .get_named_keys(EntityAddr::System(
+            builder.get_auction_contract_hash().value(),
+        ))
         .get(AUCTION_DELAY_KEY)
         .unwrap();
 
@@ -426,9 +428,9 @@ fn should_upgrade_only_locked_funds_period() {
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
     let locked_funds_period_key = *builder
-        .get_addressable_entity(builder.get_auction_contract_hash())
-        .expect("auction should exist")
-        .named_keys()
+        .get_named_keys(EntityAddr::System(
+            builder.get_auction_contract_hash().value(),
+        ))
         .get(LOCKED_FUNDS_PERIOD_KEY)
         .unwrap();
 
@@ -482,12 +484,9 @@ fn should_upgrade_only_round_seigniorage_rate() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
-    let round_seigniorage_rate_key = *builder
-        .get_addressable_entity(builder.get_mint_contract_hash())
-        .expect("mint should exist")
-        .named_keys()
-        .get(ROUND_SEIGNIORAGE_RATE_KEY)
-        .unwrap();
+    let keys = builder.get_named_keys(EntityAddr::System(builder.get_mint_contract_hash().value()));
+
+    let round_seigniorage_rate_key = *keys.get(ROUND_SEIGNIORAGE_RATE_KEY).unwrap();
 
     let before_round_seigniorage_rate: Ratio<U512> = builder
         .query(None, round_seigniorage_rate_key, &[])
@@ -546,10 +545,10 @@ fn should_upgrade_only_unbonding_delay() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
+    let entity_addr = EntityAddr::System(builder.get_auction_contract_hash().value());
+
     let unbonding_delay_key = *builder
-        .get_addressable_entity(builder.get_auction_contract_hash())
-        .expect("auction should exist")
-        .named_keys()
+        .get_named_keys(entity_addr)
         .get(UNBONDING_DELAY_KEY)
         .unwrap();
 
@@ -607,9 +606,9 @@ fn should_apply_global_state_upgrade() {
 
     // We'll try writing directly to this key.
     let unbonding_delay_key = *builder
-        .get_addressable_entity(builder.get_auction_contract_hash())
-        .expect("auction should exist")
-        .named_keys()
+        .get_named_keys(EntityAddr::System(
+            builder.get_auction_contract_hash().value(),
+        ))
         .get(UNBONDING_DELAY_KEY)
         .unwrap();
 
@@ -719,4 +718,66 @@ fn should_increase_max_associated_keys_after_upgrade() {
         account.associated_keys().len(),
         new_engine_config.max_associated_keys() as usize
     );
+}
+
+#[ignore]
+#[test]
+fn should_correctly_migrate_and_prune_system_contract_records() {
+    let (mut builder, lmdb_fixture_state, _temp_dir) =
+        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
+
+    let legacy_system_contract_registry = {
+        let stored_value: StoredValue = builder
+            .query(None, CONTRACT_REGISTRY_SPECIAL_ADDRESS, &[])
+            .expect("should query system contract registry");
+        let cl_value = stored_value
+            .as_cl_value()
+            .cloned()
+            .expect("should have cl value");
+        let registry: SystemContractRegistry =
+            cl_value.into_t().expect("should have system registry");
+
+        registry
+    };
+
+    let old_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+
+    let mut global_state_update = BTreeMap::<Key, StoredValue>::new();
+
+    let registry = CLValue::from_t(legacy_system_contract_registry.clone())
+        .expect("must convert to StoredValue")
+        .into();
+
+    global_state_update.insert(Key::SystemContractRegistry, registry);
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(old_protocol_version)
+            .with_new_protocol_version(ProtocolVersion::from_parts(2, 0, 0))
+            .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .with_global_state_update(global_state_update)
+            .build()
+    };
+
+    builder
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .expect_upgrade_success();
+
+    let system_names = vec![system::MINT, system::AUCTION, system::HANDLE_PAYMENT];
+
+    for name in system_names {
+        let legacy_hash = *legacy_system_contract_registry
+            .get(name)
+            .expect("must have hash");
+
+        let legacy_contract_key = Key::Hash(legacy_hash.value());
+
+        let legacy_query = builder.query(None, legacy_contract_key, &[]);
+
+        assert!(legacy_query.is_err());
+
+        builder
+            .get_addressable_entity(legacy_hash)
+            .expect("must have system entity");
+    }
 }
