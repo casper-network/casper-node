@@ -21,19 +21,10 @@ use casper_execution_engine::engine_state::{
     GetBidsRequest, GetBidsResult, QueryRequest, SystemContractRegistry,
 };
 use casper_storage::global_state::state::{StateProvider, StateReader};
-use casper_types::{
-    execution::{ExecutionResult, ExecutionResultV2, Transform, TransformKind},
-    package::PackageKindTag,
-    system::{
-        auction::{BidAddr, BidKind, BidsExt, DelegationRate},
-        mint, AUCTION,
-    },
-    testing::TestRng,
-    AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, Block, BlockHash,
-    BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes, ConsensusProtocolName, Deploy,
-    EraId, Key, Motes, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue, TimeDiff,
-    Timestamp, Transaction, TransactionHash, ValidatorConfig, U512,
-};
+use casper_types::{execution::{ExecutionResult, ExecutionResultV2, Transform, TransformKind}, system::{
+    auction::{BidAddr, BidKind, BidsExt, DelegationRate},
+    mint, AUCTION,
+}, testing::TestRng, AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, Block, BlockHash, BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes, ConsensusProtocolName, Deploy, EraId, Key, Motes, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue, TimeDiff, Timestamp, Transaction, TransactionHash, ValidatorConfig, U512, EntityAddr};
 
 use crate::{
     components::{
@@ -1887,7 +1878,7 @@ async fn run_rewards_network_scenario(
 
             let request = QueryRequest::new(
                 state_hash,
-                Key::AddressableEntity(PackageKindTag::System, mint_hash.value()),
+                Key::AddressableEntity(EntityAddr::System(mint_hash.value())),
                 vec![mint::TOTAL_SUPPLY_KEY.to_owned()],
             );
 
