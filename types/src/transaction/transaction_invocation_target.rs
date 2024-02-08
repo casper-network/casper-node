@@ -15,11 +15,7 @@ use super::AddressableEntityIdentifier;
 use super::TransactionTarget;
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
-use crate::{
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    serde_helpers, AddressableEntityHash, EntityAddr, EntityVersion, PackageAddr, PackageHash,
-    PackageIdentifier,
-};
+use crate::{bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH}, serde_helpers, AddressableEntityHash, EntityVersion, PackageAddr, PackageHash, PackageIdentifier, HashAddr};
 
 const INVOCABLE_ENTITY_TAG: u8 = 0;
 const INVOCABLE_ENTITY_ALIAS_TAG: u8 = 1;
@@ -45,7 +41,7 @@ pub enum TransactionInvocationTarget {
             description = "Hex-encoded entity address identifying the invocable entity."
         )
     )]
-    InvocableEntity(EntityAddr), // currently needs to be of contract tag variant
+    InvocableEntity(HashAddr), // currently needs to be of contract tag variant
     /// The alias identifying the invocable entity.
     InvocableEntityAlias(String),
     /// The address and optional version identifying the package.
@@ -75,7 +71,7 @@ pub enum TransactionInvocationTarget {
 
 impl TransactionInvocationTarget {
     /// Returns a new `TransactionInvocationTarget::InvocableEntity`.
-    pub fn new_invocable_entity(addr: EntityAddr) -> Self {
+    pub fn new_invocable_entity(addr: HashAddr) -> Self {
         TransactionInvocationTarget::InvocableEntity(addr)
     }
 
@@ -263,7 +259,7 @@ impl FromBytes for TransactionInvocationTarget {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
             INVOCABLE_ENTITY_TAG => {
-                let (addr, remainder) = EntityAddr::from_bytes(remainder)?;
+                let (addr, remainder) = HashAddr::from_bytes(remainder)?;
                 let target = TransactionInvocationTarget::InvocableEntity(addr);
                 Ok((target, remainder))
             }

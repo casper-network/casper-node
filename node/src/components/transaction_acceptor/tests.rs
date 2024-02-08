@@ -22,16 +22,7 @@ use tokio::time;
 
 use casper_execution_engine::engine_state::{BalanceResult, QueryResult, MAX_PAYMENT_AMOUNT};
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
-use casper_types::{
-    account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight},
-    addressable_entity::{AddressableEntity, NamedKeys},
-    bytesrepr::Bytes,
-    testing::TestRng,
-    Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, DeployConfigFailure,
-    EraId, Package, PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff, Timestamp,
-    Transaction, TransactionSessionKind, TransactionV1, TransactionV1Builder,
-    TransactionV1ConfigFailure, URef, U512,
-};
+use casper_types::{account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight}, addressable_entity::{AddressableEntity, NamedKeys}, bytesrepr::Bytes, testing::TestRng, Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, DeployConfigFailure, EraId, Package, PublicKey, SecretKey, StoredValue, TestBlockBuilder, TimeDiff, Timestamp, Transaction, TransactionSessionKind, TransactionV1, TransactionV1Builder, TransactionV1ConfigFailure, URef, U512, HashAddr};
 
 use super::*;
 use crate::{
@@ -399,7 +390,7 @@ impl TestScenario {
                     }
                     ContractScenario::MissingContractAtHash => {
                         let txn = TransactionV1Builder::new_targeting_invocable_entity(
-                            EntityAddr::default(),
+                            EntityAddr::SmartContract(HashAddr::default()),
                             "call",
                         )
                         .with_chain_name("casper-example")
@@ -411,7 +402,7 @@ impl TestScenario {
                     }
                     ContractScenario::MissingEntryPoint => {
                         let txn = TransactionV1Builder::new_targeting_invocable_entity(
-                            EntityAddr::default(),
+                            EntityAddr::SmartContract(HashAddr::default()),
                             "non-existent-entry-point",
                         )
                         .with_chain_name("casper-example")

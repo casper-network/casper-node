@@ -15,7 +15,7 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::AddressableEntity,
     contracts::ContractHash,
-    package::{Package, PackageKindTag},
+    package::{Package},
     system::auction::ARG_AMOUNT,
     AddressableEntityHash, AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr,
     EntityVersion, EntityVersionKey, ExecutableDeployItem, ExecutableDeployItemIdentifier,
@@ -165,9 +165,6 @@ impl TransactionAcceptor {
             let account_key = match event_metadata.transaction.initiator_addr() {
                 InitiatorAddr::PublicKey(public_key) => Key::from(public_key.to_account_hash()),
                 InitiatorAddr::AccountHash(account_hash) => Key::from(account_hash),
-                InitiatorAddr::EntityAddr(entity_addr) => {
-                    Key::AddressableEntity(PackageKindTag::Account, entity_addr)
-                }
             };
             let block_header = block_header.clone();
             return effect_builder
@@ -210,9 +207,7 @@ impl TransactionAcceptor {
             let account_key = match event_metadata.transaction.initiator_addr() {
                 InitiatorAddr::PublicKey(public_key) => Key::from(public_key.to_account_hash()),
                 InitiatorAddr::AccountHash(account_hash) => Key::from(account_hash),
-                InitiatorAddr::EntityAddr(entity_addr) => {
-                    Key::AddressableEntity(PackageKindTag::Account, entity_addr)
-                }
+
             };
             effect_builder
                 .get_addressable_entity(*block_header.state_root_hash(), account_key)
@@ -500,7 +495,7 @@ impl TransactionAcceptor {
             Transaction::V1(txn) => match txn.target() {
                 TransactionTarget::Stored { id, .. } => match id {
                     TransactionInvocationTarget::InvocableEntity(entity_addr) => {
-                        NextStep::GetContract(*entity_addr)
+                        NextStep::GetContract(EntityAddr::SmartContract(*entity_addr))
                     }
                     TransactionInvocationTarget::Package { addr, version } => {
                         NextStep::GetPackage(*addr, *version)
@@ -520,14 +515,14 @@ impl TransactionAcceptor {
             NextStep::GetContract(entity_addr) => {
                 // Use `Key::Hash` variant so that we try to retrieve the entity as either an
                 // AddressableEntity, or fall back to retrieving an un-migrated Contract.
-                let key = Key::Hash(entity_addr);
+                let key = Key::Hash(entity_addr.value());
                 effect_builder
                     .get_addressable_entity(*block_header.state_root_hash(), key)
                     .event(move |maybe_contract| Event::GetContractResult {
                         event_metadata,
                         block_header,
                         is_payment: false,
-                        contract_hash: AddressableEntityHash::new(entity_addr),
+                        contract_hash: AddressableEntityHash::new(entity_addr.value()),
                         maybe_contract,
                     })
             }
