@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use casper_execution_engine::engine_state::EngineConfigBuilder;
+use casper_execution_engine::engine_state::{EngineConfigBuilder, SystemContractRegistry};
 use num_rational::Ratio;
 
 use casper_engine_test_support::{
@@ -8,18 +8,19 @@ use casper_engine_test_support::{
     DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_UNBONDING_DELAY, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 
+use crate::{lmdb_fixture, lmdb_fixture::CONTRACT_REGISTRY_SPECIAL_ADDRESS};
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
-    runtime_args,
+    runtime_args, system,
     system::{
         auction::{
             AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         mint::ROUND_SEIGNIORAGE_RATE_KEY,
     },
-    BrTableCost, CLValue, ControlFlowCosts, EntityAddr, EraId, HostFunctionCosts, MessageLimits,
-    OpcodeCosts, ProtocolVersion, StorageCosts, StoredValue, WasmConfig, DEFAULT_ADD_COST,
-    DEFAULT_BIT_COST, DEFAULT_CONST_COST, DEFAULT_CONTROL_FLOW_BLOCK_OPCODE,
+    BrTableCost, CLValue, ControlFlowCosts, EntityAddr, EraId, HostFunctionCosts, Key,
+    MessageLimits, OpcodeCosts, ProtocolVersion, StorageCosts, StoredValue, WasmConfig,
+    DEFAULT_ADD_COST, DEFAULT_BIT_COST, DEFAULT_CONST_COST, DEFAULT_CONTROL_FLOW_BLOCK_OPCODE,
     DEFAULT_CONTROL_FLOW_BR_IF_OPCODE, DEFAULT_CONTROL_FLOW_BR_OPCODE,
     DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER, DEFAULT_CONTROL_FLOW_BR_TABLE_OPCODE,
     DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE, DEFAULT_CONTROL_FLOW_CALL_OPCODE,
@@ -717,4 +718,66 @@ fn should_increase_max_associated_keys_after_upgrade() {
         account.associated_keys().len(),
         new_engine_config.max_associated_keys() as usize
     );
+}
+
+#[ignore]
+#[test]
+fn should_correctly_migrate_and_prune_system_contract_records() {
+    let (mut builder, lmdb_fixture_state, _temp_dir) =
+        lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
+
+    let legacy_system_contract_registry = {
+        let stored_value: StoredValue = builder
+            .query(None, CONTRACT_REGISTRY_SPECIAL_ADDRESS, &[])
+            .expect("should query system contract registry");
+        let cl_value = stored_value
+            .as_cl_value()
+            .cloned()
+            .expect("should have cl value");
+        let registry: SystemContractRegistry =
+            cl_value.into_t().expect("should have system registry");
+
+        registry
+    };
+
+    let old_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+
+    let mut global_state_update = BTreeMap::<Key, StoredValue>::new();
+
+    let registry = CLValue::from_t(legacy_system_contract_registry.clone())
+        .expect("must convert to StoredValue")
+        .into();
+
+    global_state_update.insert(Key::SystemContractRegistry, registry);
+
+    let mut upgrade_request = {
+        UpgradeRequestBuilder::new()
+            .with_current_protocol_version(old_protocol_version)
+            .with_new_protocol_version(ProtocolVersion::from_parts(2, 0, 0))
+            .with_activation_point(DEFAULT_ACTIVATION_POINT)
+            .with_global_state_update(global_state_update)
+            .build()
+    };
+
+    builder
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
+        .expect_upgrade_success();
+
+    let system_names = vec![system::MINT, system::AUCTION, system::HANDLE_PAYMENT];
+
+    for name in system_names {
+        let legacy_hash = *legacy_system_contract_registry
+            .get(name)
+            .expect("must have hash");
+
+        let legacy_contract_key = Key::Hash(legacy_hash.value());
+
+        let legacy_query = builder.query(None, legacy_contract_key, &[]);
+
+        assert!(legacy_query.is_err());
+
+        builder
+            .get_addressable_entity(legacy_hash)
+            .expect("must have system entity");
+    }
 }

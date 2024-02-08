@@ -13,9 +13,9 @@ use casper_types::{
     execution::Effects,
     package::{EntityVersions, Groups, PackageStatus},
     system::{handle_payment::ACCUMULATION_PURSE_KEY, SystemEntityType},
-    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeKind,
-    CLValue, CLValueError, Digest, EntityAddr, EntryPoints, FeeHandling, Key, Package, PackageHash,
-    Phase, ProtocolVersion, PublicKey, StoredValue, URef, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeHash,
+    ByteCodeKind, CLValue, CLValueError, Digest, EntityAddr, EntryPoints, FeeHandling, Key,
+    Package, PackageHash, Phase, ProtocolVersion, PublicKey, StoredValue, URef, U512,
 };
 
 use crate::{
@@ -23,6 +23,9 @@ use crate::{
 };
 
 use super::EngineConfig;
+
+const NO_PRUNE: bool = false;
+const PRUNE: bool = true;
 
 /// Represents a successfully executed upgrade.
 #[derive(Debug, Clone)]
@@ -134,7 +137,7 @@ where
         let contract_name = system_contract_type.contract_name();
         let entry_points = system_contract_type.contract_entry_points();
 
-        let (mut contract, maybe_named_keys) =
+        let (mut contract, maybe_named_keys, must_prune) =
             self.retrieve_system_contract(contract_hash, system_contract_type)?;
 
         let mut package =
@@ -148,7 +151,7 @@ where
 
         let new_entity = AddressableEntity::new(
             contract.package_hash(),
-            contract.byte_code_hash(),
+            ByteCodeHash::default(),
             entry_points,
             self.new_protocol_version,
             URef::default(),
@@ -196,6 +199,19 @@ where
             StoredValue::Package(package),
         );
 
+        if must_prune {
+            // Start pruning legacy records
+            self.tracking_copy
+                .borrow_mut()
+                .prune(Key::Hash(contract.package_hash().value()));
+            self.tracking_copy
+                .borrow_mut()
+                .prune(Key::Hash(contract_hash.value()));
+            let contract_wasm_key = Key::Hash(contract.byte_code_hash().value());
+
+            self.tracking_copy.borrow_mut().prune(contract_wasm_key);
+        }
+
         Ok(())
     }
 
@@ -241,7 +257,7 @@ where
         &self,
         contract_hash: AddressableEntityHash,
         system_contract_type: SystemEntityType,
-    ) -> Result<(AddressableEntity, Option<NamedKeys>), ProtocolUpgradeError> {
+    ) -> Result<(AddressableEntity, Option<NamedKeys>, bool), ProtocolUpgradeError> {
         if let Some(StoredValue::AddressableEntity(system_entity)) = self
             .tracking_copy
             .borrow_mut()
@@ -254,7 +270,7 @@ where
                 )
             })?
         {
-            return Ok((system_entity, None));
+            return Ok((system_entity, None, NO_PRUNE));
         }
 
         if let Some(StoredValue::Contract(system_contract)) = self
@@ -269,7 +285,7 @@ where
         {
             let named_keys = system_contract.named_keys().clone();
 
-            return Ok((system_contract.into(), Some(named_keys)));
+            return Ok((system_contract.into(), Some(named_keys), PRUNE));
         }
 
         Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
@@ -385,7 +401,7 @@ where
         };
         let system_contract = SystemEntityType::HandlePayment;
 
-        let (addressable_entity, maybe_named_keys) =
+        let (addressable_entity, maybe_named_keys, _) =
             self.retrieve_system_contract(*handle_payment_hash, system_contract)?;
 
         let entity_addr = EntityAddr::new_system_entity_addr(handle_payment_hash.value());
