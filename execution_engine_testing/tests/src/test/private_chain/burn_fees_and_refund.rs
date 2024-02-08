@@ -4,8 +4,8 @@ use casper_engine_test_support::{
 use casper_types::{
     runtime_args,
     system::{handle_payment::ACCUMULATION_PURSE_KEY, mint},
-    FeeHandling, RefundHandling, RuntimeArgs, DEFAULT_NOP_COST, DEFAULT_WASMLESS_TRANSFER_COST,
-    U512,
+    EntityAddr, FeeHandling, RefundHandling, RuntimeArgs, DEFAULT_NOP_COST,
+    DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };
 use num_rational::Ratio;
 use num_traits::{One, Zero};
@@ -108,11 +108,8 @@ fn test_burning_fees(
         PRIVATE_CHAIN_COMPUTE_REWARDS,
     );
     let handle_payment = builder.get_handle_payment_contract_hash();
-    let handle_payment_1 = builder
-        .get_addressable_entity(handle_payment)
-        .expect("should have handle payment contract");
+    let handle_payment_1 = builder.get_named_keys(EntityAddr::System(handle_payment.value()));
     let rewards_purse_key = handle_payment_1
-        .named_keys()
         .get(ACCUMULATION_PURSE_KEY)
         .expect("should have rewards purse");
     let rewards_purse_uref = rewards_purse_key.into_uref().expect("should be uref");

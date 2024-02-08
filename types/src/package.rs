@@ -13,11 +13,6 @@ use core::{
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(any(feature = "testing", test))]
-use rand::{
-    distributions::{Distribution, Standard},
-    Rng,
-};
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
@@ -26,15 +21,12 @@ use serde_map_to_array::KeyValueJsonSchema;
 use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
 use crate::{
-    account::AccountHash,
-    addressable_entity::{AssociatedKeys, Error, FromStrError, Weight},
-    bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH},
+    addressable_entity::{Error, FromStrError},
+    bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
     checksummed_hex,
     crypto::{self, PublicKey},
-    system::SystemEntityType,
     uref::URef,
-    AddressableEntityHash, CLType, CLTyped, HashAddr, Key, Tagged, BLAKE2B_DIGEST_LENGTH,
-    KEY_HASH_LENGTH,
+    AddressableEntityHash, CLType, CLTyped, HashAddr, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -624,237 +616,6 @@ impl FromBytes for PackageStatus {
     }
 }
 
-#[allow(missing_docs)]
-#[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "datasize", derive(DataSize))]
-#[repr(u8)]
-pub enum PackageKindTag {
-    System = 0,
-    Account = 1,
-    SmartContract = 2,
-}
-
-impl ToBytes for PackageKindTag {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        (*self as u8).to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        (*self as u8).write_bytes(writer)
-    }
-}
-
-impl FromBytes for PackageKindTag {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (package_kind_tag, remainder) = u8::from_bytes(bytes)?;
-        match package_kind_tag {
-            package_kind_tag if package_kind_tag == PackageKindTag::System as u8 => {
-                Ok((PackageKindTag::System, remainder))
-            }
-            package_kind_tag if package_kind_tag == PackageKindTag::Account as u8 => {
-                Ok((PackageKindTag::Account, remainder))
-            }
-            package_kind_tag if package_kind_tag == PackageKindTag::SmartContract as u8 => {
-                Ok((PackageKindTag::SmartContract, remainder))
-            }
-            _ => Err(bytesrepr::Error::Formatting),
-        }
-    }
-}
-
-impl Display for PackageKindTag {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            PackageKindTag::System => {
-                write!(f, "system")
-            }
-            PackageKindTag::Account => {
-                write!(f, "account")
-            }
-            PackageKindTag::SmartContract => {
-                write!(f, "smart-contract")
-            }
-        }
-    }
-}
-
-#[cfg(any(feature = "testing", test))]
-impl Distribution<PackageKindTag> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PackageKindTag {
-        match rng.gen_range(0..=1) {
-            0 => PackageKindTag::System,
-            1 => PackageKindTag::Account,
-            2 => PackageKindTag::SmartContract,
-            _ => unreachable!(),
-        }
-    }
-}
-
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
-)]
-#[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-/// The type of Package.
-pub enum PackageKind {
-    /// Package associated with a native contract implementation.
-    System(SystemEntityType),
-    /// Package associated with an Account hash.
-    Account(AccountHash),
-    /// Packages associated with Wasm stored on chain.
-    #[default]
-    SmartContract,
-}
-
-impl PackageKind {
-    /// Returns the Account hash associated with a Package based on the package kind.
-    pub fn maybe_account_hash(&self) -> Option<AccountHash> {
-        match self {
-            Self::Account(account_hash) => Some(*account_hash),
-            Self::SmartContract | Self::System(_) => None,
-        }
-    }
-
-    /// Returns the associated key set based on the Account hash set in the package kind.
-    pub fn associated_keys(&self) -> AssociatedKeys {
-        match self {
-            Self::Account(account_hash) => AssociatedKeys::new(*account_hash, Weight::new(1)),
-            Self::SmartContract | Self::System(_) => AssociatedKeys::default(),
-        }
-    }
-
-    /// Returns if the current package is either a system contract or the system entity.
-    pub fn is_system(&self) -> bool {
-        matches!(self, Self::System(_))
-    }
-
-    /// Returns if the current package is the system mint.
-    pub fn is_system_mint(&self) -> bool {
-        matches!(self, Self::System(SystemEntityType::Mint))
-    }
-
-    /// Returns if the current package is the system auction.
-    pub fn is_system_auction(&self) -> bool {
-        matches!(self, Self::System(SystemEntityType::Auction))
-    }
-
-    /// Returns if the current package is associated with the system addressable entity.
-    pub fn is_system_account(&self) -> bool {
-        match self {
-            Self::Account(account_hash) => {
-                if *account_hash == PublicKey::System.to_account_hash() {
-                    return true;
-                }
-                false
-            }
-            _ => false,
-        }
-    }
-}
-
-impl Tagged<PackageKindTag> for PackageKind {
-    fn tag(&self) -> PackageKindTag {
-        match self {
-            PackageKind::System(_) => PackageKindTag::System,
-            PackageKind::Account(_) => PackageKindTag::Account,
-            PackageKind::SmartContract => PackageKindTag::SmartContract,
-        }
-    }
-}
-
-impl Tagged<u8> for PackageKind {
-    fn tag(&self) -> u8 {
-        let package_kind_tag: PackageKindTag = self.tag();
-        package_kind_tag as u8
-    }
-}
-
-impl ToBytes for PackageKind {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        self.write_bytes(&mut buffer)?;
-        Ok(buffer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH
-            + match self {
-                PackageKind::SmartContract => 0,
-                PackageKind::System(system_entity_type) => system_entity_type.serialized_length(),
-                PackageKind::Account(account_hash) => account_hash.serialized_length(),
-            }
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        match self {
-            PackageKind::SmartContract => {
-                writer.push(self.tag());
-                Ok(())
-            }
-            PackageKind::System(system_entity_type) => {
-                writer.push(self.tag());
-                system_entity_type.write_bytes(writer)
-            }
-            PackageKind::Account(account_hash) => {
-                writer.push(self.tag());
-                account_hash.write_bytes(writer)
-            }
-        }
-    }
-}
-
-impl FromBytes for PackageKind {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
-        match tag {
-            tag if tag == PackageKindTag::System as u8 => {
-                let (entity_type, remainder) = SystemEntityType::from_bytes(remainder)?;
-                Ok((PackageKind::System(entity_type), remainder))
-            }
-            tag if tag == PackageKindTag::Account as u8 => {
-                let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
-                Ok((PackageKind::Account(account_hash), remainder))
-            }
-            tag if tag == PackageKindTag::SmartContract as u8 => {
-                Ok((PackageKind::SmartContract, remainder))
-            }
-            _ => Err(bytesrepr::Error::Formatting),
-        }
-    }
-}
-
-impl Display for PackageKind {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            PackageKind::System(system_entity) => {
-                write!(f, "PackageKind::System({})", system_entity)
-            }
-            PackageKind::Account(account_hash) => {
-                write!(f, "PackageKind::Account({})", account_hash)
-            }
-            PackageKind::SmartContract => {
-                write!(f, "PackageKind::SmartContract")
-            }
-        }
-    }
-}
-
-#[cfg(any(feature = "testing", test))]
-impl Distribution<PackageKind> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PackageKind {
-        match rng.gen_range(0..=2) {
-            0 => PackageKind::System(rng.gen()),
-            1 => PackageKind::Account(rng.gen()),
-            2 => PackageKind::SmartContract,
-            _ => unreachable!(),
-        }
-    }
-}
-
 /// Entity definition, metadata, and security container.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -873,8 +634,6 @@ pub struct Package {
     groups: Groups,
     /// A flag that determines whether a entity is locked
     lock_status: PackageStatus,
-    /// The kind of package.
-    package_kind: PackageKind,
 }
 
 impl CLTyped for Package {
@@ -891,7 +650,6 @@ impl Package {
         disabled_versions: BTreeSet<EntityVersionKey>,
         groups: Groups,
         lock_status: PackageStatus,
-        package_kind: PackageKind,
     ) -> Self {
         Package {
             access_key,
@@ -899,7 +657,6 @@ impl Package {
             disabled_versions,
             groups,
             lock_status,
-            package_kind,
         }
     }
 
@@ -1075,17 +832,6 @@ impl Package {
         self.enabled_versions().0.values().next_back().copied()
     }
 
-    /// Return the Key representation for the previous entity.
-    pub fn previous_entity_key(&self) -> Option<Key> {
-        if let Some(previous_entity_hash) = self.current_entity_hash() {
-            return Some(Key::addressable_entity_key(
-                self.get_package_kind().tag(),
-                previous_entity_hash,
-            ));
-        }
-        None
-    }
-
     /// Return the lock status of the entity package.
     pub fn is_locked(&self) -> bool {
         if self.versions.0.is_empty() {
@@ -1103,21 +849,6 @@ impl Package {
     pub fn get_lock_status(&self) -> PackageStatus {
         self.lock_status.clone()
     }
-
-    /// Returns the kind of Package.
-    pub fn get_package_kind(&self) -> PackageKind {
-        self.package_kind
-    }
-
-    /// Is the given Package associated to an Account.
-    pub fn is_account_kind(&self) -> bool {
-        matches!(self.package_kind, PackageKind::Account(_))
-    }
-
-    /// Update the entity package kind.
-    pub fn update_package_kind(&mut self, new_package_kind: PackageKind) {
-        self.package_kind = new_package_kind
-    }
 }
 
 impl ToBytes for Package {
@@ -1133,7 +864,6 @@ impl ToBytes for Package {
             + self.disabled_versions.serialized_length()
             + self.groups.serialized_length()
             + self.lock_status.serialized_length()
-            + self.package_kind.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -1142,7 +872,7 @@ impl ToBytes for Package {
         self.disabled_versions().write_bytes(writer)?;
         self.groups().write_bytes(writer)?;
         self.lock_status.write_bytes(writer)?;
-        self.package_kind.write_bytes(writer)?;
+
         Ok(())
     }
 }
@@ -1154,14 +884,13 @@ impl FromBytes for Package {
         let (disabled_versions, bytes) = BTreeSet::<EntityVersionKey>::from_bytes(bytes)?;
         let (groups, bytes) = Groups::from_bytes(bytes)?;
         let (lock_status, bytes) = PackageStatus::from_bytes(bytes)?;
-        let (package_kind, bytes) = PackageKind::from_bytes(bytes)?;
+
         let result = Package {
             access_key,
             versions,
             disabled_versions,
             groups,
             lock_status,
-            package_kind,
         };
 
         Ok((result, bytes))
@@ -1189,7 +918,6 @@ mod tests {
             BTreeSet::new(),
             Groups::default(),
             PackageStatus::default(),
-            PackageKind::SmartContract,
         );
 
         // add groups
@@ -1249,7 +977,6 @@ mod tests {
             BTreeSet::default(),
             Groups::default(),
             PackageStatus::default(),
-            PackageKind::SmartContract,
         );
         assert_eq!(package.next_entity_version_for(major), 1);
 

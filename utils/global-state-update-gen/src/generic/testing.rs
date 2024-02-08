@@ -5,15 +5,15 @@ use rand::Rng;
 
 use casper_types::{
     account::AccountHash,
-    addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, NamedKeys, Weight},
+    addressable_entity::{ActionThresholds, AssociatedKeys, MessageTopics, Weight},
     system::auction::{
         BidKind, BidsExt, Delegator, SeigniorageRecipient, SeigniorageRecipients,
         SeigniorageRecipientsSnapshot, UnbondingPurse, UnbondingPurses, ValidatorBid,
         WithdrawPurse, WithdrawPurses,
     },
     testing::TestRng,
-    AccessRights, AddressableEntity, ByteCodeHash, CLValue, EntryPoints, EraId, Key, PackageHash,
-    ProtocolVersion, PublicKey, StoredValue, URef, URefAddr, U512,
+    AccessRights, AddressableEntity, ByteCodeHash, CLValue, EntityKind, EntryPoints, EraId, Key,
+    PackageHash, ProtocolVersion, PublicKey, StoredValue, URef, URefAddr, U512,
 };
 
 use super::{
@@ -62,13 +62,13 @@ impl MockStateReader {
         let entity = AddressableEntity::new(
             PackageHash::new(rng.gen()),
             ByteCodeHash::new(rng.gen()),
-            NamedKeys::new(),
             EntryPoints::new(),
             self.protocol_version,
             main_purse,
             AssociatedKeys::new(account_hash, Weight::new(1)),
             ActionThresholds::default(),
             MessageTopics::default(),
+            EntityKind::Account(account_hash),
         );
 
         self.purses.insert(main_purse.addr(), balance);

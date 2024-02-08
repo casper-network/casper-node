@@ -5,8 +5,9 @@ use casper_storage::{
     tracking_copy::{TrackingCopy, TrackingCopyExt},
 };
 use casper_types::{
-    account::AccountHash, system::mint, AccessRights, AddressableEntity, ApiError, CLType,
-    CLValueError, Key, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
+    account::AccountHash, addressable_entity::NamedKeys, system::mint, AccessRights,
+    AddressableEntity, ApiError, CLType, CLValueError, Key, ProtocolVersion, PublicKey,
+    RuntimeArgs, StoredValue, URef, U512,
 };
 
 use crate::{engine_state::Error, execution::Error as ExecError};
@@ -150,6 +151,7 @@ impl TransferRuntimeArgsBuilder {
     fn resolve_source_uref<R>(
         &self,
         account: &AddressableEntity,
+        named_keys: NamedKeys,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<URef, Error>
     where
@@ -166,8 +168,7 @@ impl TransferRuntimeArgsBuilder {
                 }
 
                 let normalized_uref = Key::URef(uref).normalize();
-                let maybe_named_key = account
-                    .named_keys()
+                let maybe_named_key = named_keys
                     .keys()
                     .find(|&named_key| named_key.normalize() == normalized_uref);
 
@@ -312,8 +313,9 @@ impl TransferRuntimeArgsBuilder {
     /// Creates new [`TransferArgs`] instance.
     pub fn build<R>(
         mut self,
-        protocol_version: ProtocolVersion,
         from: &AddressableEntity,
+        entity_named_keys: NamedKeys,
+        protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<TransferArgs, Error>
     where
@@ -335,7 +337,8 @@ impl TransferRuntimeArgsBuilder {
             }
         };
 
-        let source_uref = self.resolve_source_uref(from, Rc::clone(&tracking_copy))?;
+        let source_uref =
+            self.resolve_source_uref(from, entity_named_keys, Rc::clone(&tracking_copy))?;
 
         if source_uref.addr() == target_uref.addr() {
             return Err(Error::reverter(ApiError::InvalidPurse));

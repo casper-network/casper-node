@@ -3,8 +3,9 @@ use num_traits::One;
 use casper_engine_test_support::{LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR};
 use casper_execution_engine::engine_state::{Error as CoreError, ExecError, ExecuteRequest};
 use casper_types::{
-    system::CallStackElement, AddressableEntity, AddressableEntityHash, CLValue, EntityAddr,
-    EntryPointType, HashAddr, Key, PackageAddr, PackageHash, StoredValue, Tagged, U512,
+    addressable_entity::NamedKeys, system::CallStackElement, AddressableEntity,
+    AddressableEntityHash, CLValue, EntityAddr, EntryPointType, HashAddr, Key, PackageAddr,
+    PackageHash, StoredValue, U512,
 };
 
 use crate::lmdb_fixture;
@@ -92,23 +93,35 @@ pub fn approved_amount(idx: usize) -> U512 {
     U512::from(LARGE_AMOUNT * (idx + 1) as u64)
 }
 
+struct EntityWithKeys {
+    #[allow(dead_code)]
+    entity: AddressableEntity,
+    named_keys: NamedKeys,
+}
+
+impl EntityWithKeys {
+    fn new(entity: AddressableEntity, named_keys: NamedKeys) -> Self {
+        Self { entity, named_keys }
+    }
+}
+
 trait AccountExt {
-    fn get_entity_hash(&self, key: &str) -> EntityAddr;
+    fn get_entity_hash(&self, key: &str) -> HashAddr;
 
     fn get_package_hash(&self, key: &str) -> PackageAddr;
 }
 
-impl AccountExt for AddressableEntity {
-    fn get_entity_hash(&self, key: &str) -> EntityAddr {
-        self.named_keys()
+impl AccountExt for EntityWithKeys {
+    fn get_entity_hash(&self, key: &str) -> HashAddr {
+        self.named_keys
             .get(key)
             .cloned()
-            .and_then(Key::into_entity_addr)
+            .and_then(Key::into_entity_hash_addr)
             .unwrap()
     }
 
     fn get_package_hash(&self, key: &str) -> PackageAddr {
-        self.named_keys()
+        self.named_keys
             .get(key)
             .cloned()
             .and_then(Key::into_package_addr)
@@ -158,21 +171,19 @@ impl BuilderExt for LmdbWasmTestBuilder {
             .query(None, Key::Package(contract_package_hash), &[])
             .unwrap();
 
-        let contract_package = match value {
+        let package = match value {
             StoredValue::Package(package) => package,
             _ => panic!("unreachable"),
         };
 
-        let current_contract_hash = contract_package.current_entity_hash().unwrap();
-        let current_contract_entity_key = Key::addressable_entity_key(
-            contract_package.get_package_kind().tag(),
-            current_contract_hash,
-        );
+        let current_entity_hash = package.current_entity_hash().unwrap();
+        let current_contract_entity_key =
+            EntityAddr::new_contract_entity_addr(current_entity_hash.value());
 
         let cl_value = self
             .query(
                 None,
-                current_contract_entity_key,
+                current_contract_entity_key.into(),
                 &[stored_call_stack_key.to_string()],
             )
             .unwrap();
@@ -329,6 +340,7 @@ fn assert_call_stack_matches_calls(call_stack: Vec<CallStackElement>, calls: &[C
 }
 
 mod session {
+    use crate::test::contract_api::get_call_stack::EntityWithKeys;
     use casper_engine_test_support::{ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR};
     use casper_types::{execution::TransformKind, runtime_args, system::mint, Key};
     use num_traits::Zero;
@@ -353,8 +365,13 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
@@ -388,9 +405,15 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
 
@@ -423,9 +446,15 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![
@@ -465,9 +494,15 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
@@ -506,8 +541,13 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let mut subcalls =
                 vec![
@@ -556,9 +596,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![
@@ -605,9 +650,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_session(current_contract_hash.into()); len.saturating_sub(1)];
@@ -654,7 +704,11 @@ mod session {
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
 
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_session(current_contract_hash.into()); len.saturating_sub(1)];
@@ -698,8 +752,13 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
@@ -740,9 +799,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![
@@ -789,9 +853,15 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_session(current_contract_hash.into()); len.saturating_sub(1)];
@@ -838,7 +908,11 @@ mod session {
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
 
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
 
@@ -880,8 +954,13 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let mut subcalls =
                 vec![
@@ -919,9 +998,15 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![
@@ -957,9 +1042,15 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
@@ -994,7 +1085,12 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
@@ -1029,8 +1125,12 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
@@ -1067,8 +1167,13 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
@@ -1114,9 +1219,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
 
@@ -1152,9 +1262,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
 
@@ -1190,9 +1305,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls =
                 vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
@@ -1228,9 +1348,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls =
                 vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
@@ -1275,9 +1400,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
 
@@ -1312,9 +1442,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
 
@@ -1351,8 +1486,12 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
@@ -1384,8 +1523,12 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
@@ -1417,7 +1560,11 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
 
@@ -1448,9 +1595,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
 
@@ -1481,8 +1633,12 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
@@ -1513,9 +1669,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls =
                 vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
@@ -1546,7 +1707,11 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
 
@@ -1576,7 +1741,11 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
 
@@ -1607,8 +1776,12 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let mut subcalls =
                 vec![
@@ -1649,9 +1822,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![
@@ -1690,9 +1868,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
@@ -1729,9 +1912,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
@@ -1767,8 +1955,12 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let mut subcalls =
                 vec![
@@ -1807,9 +1999,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![
@@ -1846,9 +2043,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
@@ -1884,7 +2086,11 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
@@ -1920,8 +2126,12 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
@@ -1957,8 +2167,12 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
@@ -1994,8 +2208,11 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
 
@@ -2030,9 +2247,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
 
@@ -2067,8 +2289,12 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
@@ -2103,9 +2329,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls =
                 vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
@@ -2141,7 +2372,11 @@ mod session {
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
 
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
 
@@ -2175,8 +2410,11 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
 
@@ -2210,8 +2448,12 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
@@ -2247,8 +2489,12 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
@@ -2285,7 +2531,11 @@ mod session {
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
 
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
 
@@ -2320,9 +2570,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
 
@@ -2357,8 +2612,12 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
@@ -2393,9 +2652,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls =
                 vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
@@ -2431,7 +2695,11 @@ mod session {
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
 
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
 
@@ -2466,7 +2734,11 @@ mod session {
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
 
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
 
@@ -2503,8 +2775,13 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let mut subcalls =
                 vec![
@@ -2549,9 +2826,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![
@@ -2594,9 +2876,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
@@ -2637,9 +2924,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
@@ -2679,8 +2971,12 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let mut subcalls =
                 vec![
@@ -2723,9 +3019,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![
@@ -2766,9 +3067,14 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
@@ -2808,7 +3114,10 @@ mod session {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
@@ -2845,7 +3154,7 @@ mod payment {
     use rand::Rng;
 
     use crate::test::contract_api::get_call_stack::{
-        IS_NOT_SESSION_ENTRY_POINT, IS_SESSION_ENTRY_POINT,
+        EntityWithKeys, IS_NOT_SESSION_ENTRY_POINT, IS_SESSION_ENTRY_POINT,
     };
     use casper_engine_test_support::{
         DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
@@ -3060,8 +3369,12 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let mut subcalls =
                 vec![
@@ -3086,9 +3399,14 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![
@@ -3111,9 +3429,14 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls = vec![
                 super::stored_session(current_contract_hash.into());
@@ -3140,7 +3463,11 @@ mod payment {
         let default_account = builder
             .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
             .unwrap();
-        let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+        let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+        let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+        let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
         let subcalls = vec![
             super::stored_contract(current_contract_hash.into()),
@@ -3157,7 +3484,11 @@ mod payment {
         let default_account = builder
             .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
             .unwrap();
-        let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+        let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+        let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+        let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
         let subcalls = iter::repeat_with(|| {
             [
@@ -3180,9 +3511,12 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
-            let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_package_hash =
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
             let mut subcalls =
                 vec![
                     super::stored_versioned_contract(current_contract_package_hash.into());
@@ -3206,9 +3540,14 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![
@@ -3231,9 +3570,14 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls = vec![
                 super::stored_contract(current_contract_hash.into());
@@ -3257,7 +3601,11 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls = vec![
                 super::stored_contract(current_contract_hash.into());
@@ -3281,8 +3629,12 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![
@@ -3302,9 +3654,12 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
-            let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_package_hash =
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
             let subcalls =
                 vec![
                     super::stored_versioned_session(current_contract_package_hash.into());
@@ -3328,7 +3683,11 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *call_depth];
 
@@ -3344,9 +3703,14 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *call_depth];
 
@@ -3367,8 +3731,12 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![
@@ -3388,9 +3756,14 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls =
                 vec![
@@ -3415,7 +3788,11 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *call_depth];
 
@@ -3431,7 +3808,11 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *call_depth];
 
@@ -3452,8 +3833,12 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![
@@ -3473,8 +3858,12 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![
@@ -3499,7 +3888,11 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_contract(current_contract_hash.into()); *call_depth];
 
@@ -3515,9 +3908,14 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_contract(current_contract_hash.into()); *call_depth];
 
@@ -3538,9 +3936,12 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
-            let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_package_hash =
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
             let subcalls =
                 vec![
                     super::stored_versioned_contract(current_contract_package_hash.into());
@@ -3559,9 +3960,14 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls =
                 vec![
@@ -3586,7 +3992,11 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_contract(current_contract_hash.into()); *call_depth];
 
@@ -3602,7 +4012,11 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_contract(current_contract_hash.into()); *call_depth];
 
@@ -3626,8 +4040,12 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let mut subcalls =
                 vec![
@@ -3653,9 +4071,14 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![
@@ -3684,9 +4107,14 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls = vec![
                 super::stored_contract(current_contract_hash.into());
@@ -3710,9 +4138,14 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls = vec![
                 super::stored_contract(current_contract_hash.into());
@@ -3740,8 +4173,12 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
 
             let mut subcalls =
                 vec![
@@ -3766,9 +4203,14 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![
@@ -3796,9 +4238,14 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+
             let current_contract_package_hash =
-                default_account.get_package_hash(CONTRACT_PACKAGE_NAME);
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+                default_entity.get_package_hash(CONTRACT_PACKAGE_NAME);
+
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls = vec![
                 super::stored_contract(current_contract_hash.into());
@@ -3822,7 +4269,10 @@ mod payment {
             let default_account = builder
                 .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
                 .unwrap();
-            let current_contract_hash = default_account.get_entity_hash(CONTRACT_NAME);
+            let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+            let default_entity = EntityWithKeys::new(default_account, named_keys);
+            let current_contract_hash = default_entity.get_entity_hash(CONTRACT_NAME);
 
             let mut subcalls = vec![
                 super::stored_contract(current_contract_hash.into());

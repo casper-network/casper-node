@@ -207,10 +207,10 @@ fn test_check_transfer_success_with_source_and_target() {
         .expect("new purse should exist");
 
     // let target_purse = builder
-    let default_account =
-        builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
-    let target_purse = default_account
-        .named_keys()
+
+    let named_keys = builder.get_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+
+    let target_purse = named_keys
         .get(NEW_PURSE_NAME)
         .expect("value")
         .into_uref()

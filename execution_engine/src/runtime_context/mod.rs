@@ -1,6 +1,5 @@
 //! The context of execution of WASM code.
 
-pub(crate) mod dictionary;
 #[cfg(test)]
 mod tests;
 
@@ -23,26 +22,24 @@ use casper_storage::{
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
-        ActionType, AddKeyFailure, MessageTopicError, NamedKeys, RemoveKeyFailure,
-        SetThresholdFailure, UpdateKeyFailure, Weight,
+        ActionType, AddKeyFailure, EntityKind, EntityKindTag, MessageTopicError, NamedKeyAddr,
+        NamedKeyValue, NamedKeys, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
     },
     bytesrepr::ToBytes,
     contract_messages::{
         Message, MessageAddr, MessageChecksum, MessageTopicSummary, Messages, TopicNameHash,
     },
     execution::Effects,
-    package::{PackageKind, PackageKindTag},
+    handle_stored_dictionary_value,
     system::auction::EraInfo,
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
-    ContextAccessRights, DeployHash, EntryPointType, Gas, GrantedAccess, Key, KeyTag, Package,
-    PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
-    SystemContractRegistry, Transfer, TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH,
-    KEY_HASH_LENGTH, U512,
+    CLValueDictionary, ContextAccessRights, DeployHash, EntityAddr, EntryPointType, Gas,
+    GrantedAccess, Key, KeyTag, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
+    RuntimeArgs, StoredValue, SystemContractRegistry, Transfer, TransferAddr, URef, URefAddr,
+    DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
-use crate::{
-    engine_state::EngineConfig, execution::Error, runtime_context::dictionary::DictionaryValue,
-};
+use crate::{engine_state::EngineConfig, execution::Error};
 
 /// Number of bytes returned from the `random_bytes` function.
 pub const RANDOM_BYTES_COUNT: usize = 32;
@@ -73,7 +70,7 @@ pub struct RuntimeContext<'a, R> {
     entity: &'a AddressableEntity,
     // Key pointing to the entity we are currently running
     entity_key: Key,
-    package_kind: PackageKind,
+    entity_kind: EntityKind,
     account_hash: AccountHash,
     emit_message_cost: U512,
 }
@@ -92,7 +89,7 @@ where
         entity_key: Key,
         authorization_keys: BTreeSet<AccountHash>,
         access_rights: ContextAccessRights,
-        package_kind: PackageKind,
+        entity_kind: EntityKind,
         account_hash: AccountHash,
         address_generator: Rc<RefCell<AddressGenerator>>,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -134,7 +131,7 @@ where
             engine_config,
             transfers,
             remaining_spending_limit,
-            package_kind,
+            entity_kind,
             emit_message_cost,
         }
     }
@@ -152,7 +149,7 @@ where
         let entity = self.entity;
         let authorization_keys = self.authorization_keys.clone();
         let account_hash = self.account_hash;
-        let package_kind = self.package_kind;
+        let entity_kind = self.entity_kind;
 
         let address_generator = self.address_generator.clone();
         let tracking_copy = self.state();
@@ -189,7 +186,7 @@ where
             engine_config,
             transfers,
             remaining_spending_limit,
-            package_kind,
+            entity_kind,
             emit_message_cost: self.emit_message_cost,
         }
     }
@@ -225,30 +222,30 @@ where
     }
 
     /// Returns the package kind associated with the current context.
-    pub fn get_package_kind(&self) -> PackageKind {
-        self.package_kind
+    pub fn get_entity_kind(&self) -> EntityKind {
+        self.entity_kind
     }
 
     /// Returns whether the current context is of the system addressable entity.
     pub fn is_system_account(&self) -> bool {
-        if let Some(account_hash) = self.package_kind.maybe_account_hash() {
+        if let Some(account_hash) = self.entity_kind.maybe_account_hash() {
             return account_hash == PublicKey::System.to_account_hash();
         }
         false
     }
 
     /// Helper function to avoid duplication in `remove_uref`.
-    fn remove_key_from_entity(
-        &mut self,
-        key: Key,
-        mut contract: AddressableEntity,
-        name: &str,
-    ) -> Result<(), Error> {
-        if contract.remove_named_key(name).is_none() {
-            return Ok(());
-        }
+    fn remove_key_from_entity(&mut self, entity_key: Key, name: &str) -> Result<(), Error> {
+        let entity_addr = if let Key::AddressableEntity(addr) = entity_key {
+            addr
+        } else {
+            return Err(Error::UnexpectedKeyVariant(entity_key));
+        };
 
-        self.metered_write_gs_unsafe(key, contract)?;
+        let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, name.to_string())?;
+        if let Some(StoredValue::NamedKey(_)) = self.read_gs(&Key::NamedKey(named_key_addr))? {
+            self.prune_gs_unsafe(Key::NamedKey(named_key_addr));
+        }
         Ok(())
     }
 
@@ -258,9 +255,8 @@ where
     /// TrackingCopy/GlobalState).
     pub fn remove_key(&mut self, name: &str) -> Result<(), Error> {
         let entity_key = self.get_entity_key();
-        let contract: AddressableEntity = self.read_gs_typed(&entity_key)?;
         self.named_keys.remove(name);
-        self.remove_key_from_entity(entity_key, contract, name)
+        self.remove_key_from_entity(entity_key, name)
     }
 
     /// Returns the block time.
@@ -378,11 +374,46 @@ where
     pub fn put_key(&mut self, name: String, key: Key) -> Result<(), Error> {
         // No need to perform actual validation on the base key because an account or contract (i.e.
         // the element stored under `base_key`) is allowed to add new named keys to itself.
-        let named_key_value = StoredValue::CLValue(CLValue::from_t((name.clone(), key))?);
+        let entity_addr = if let Key::AddressableEntity(entity_addr) = self.get_entity_key() {
+            entity_addr
+        } else {
+            return Err(Error::InvalidContext);
+        };
+        let named_key_value =
+            StoredValue::NamedKey(NamedKeyValue::from_concrete_values(key, name.clone())?);
         self.validate_value(&named_key_value)?;
-        self.metered_add_gs_unsafe(self.get_entity_key(), named_key_value)?;
+        let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, name.clone())?;
+        self.metered_write_gs_unsafe(Key::NamedKey(named_key_addr), named_key_value)?;
         self.insert_named_key(name, key);
         Ok(())
+    }
+
+    pub(crate) fn write_named_keys(
+        &mut self,
+        entity_addr: EntityAddr,
+        named_keys: NamedKeys,
+    ) -> Result<(), Error> {
+        for (name, key) in named_keys.iter() {
+            let named_key_value =
+                StoredValue::NamedKey(NamedKeyValue::from_concrete_values(*key, name.clone())?);
+            let named_key_addr = NamedKeyAddr::new_from_string(entity_addr, name.clone())?;
+            self.metered_write_gs_unsafe(Key::NamedKey(named_key_addr), named_key_value)?;
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn get_named_keys(&mut self, entity_key: Key) -> Result<NamedKeys, Error> {
+        let entity_addr = if let Key::AddressableEntity(entity_addr) = entity_key {
+            entity_addr
+        } else {
+            return Err(Error::UnexpectedKeyVariant(entity_key));
+        };
+
+        self.tracking_copy
+            .borrow_mut()
+            .get_named_keys(entity_addr)
+            .map_err(Into::into)
     }
 
     #[cfg(test)]
@@ -423,7 +454,7 @@ where
         let maybe_stored_value = self.tracking_copy.borrow_mut().read(key)?;
 
         let stored_value = match maybe_stored_value {
-            Some(stored_value) => dictionary::handle_stored_value(*key, stored_value)?,
+            Some(stored_value) => handle_stored_dictionary_value(*key, stored_value)?,
             None => return Ok(None),
         };
 
@@ -641,10 +672,7 @@ where
             StoredValue::Account(_) => Ok(()),
             StoredValue::ByteCode(_) => Ok(()),
             StoredValue::Contract(_) => Ok(()),
-            StoredValue::AddressableEntity(contract_header) => contract_header
-                .named_keys()
-                .keys()
-                .try_for_each(|key| self.validate_key(key)),
+            StoredValue::AddressableEntity(_) => Ok(()),
             // TODO: anything to validate here?
             StoredValue::Package(_) => Ok(()),
             StoredValue::Transfer(_) => Ok(()),
@@ -658,6 +686,10 @@ where
             StoredValue::ContractWasm(_) => Ok(()),
             StoredValue::MessageTopic(_) => Ok(()),
             StoredValue::Message(_) => Ok(()),
+            StoredValue::NamedKey(named_key_value) => {
+                self.validate_cl_value(named_key_value.get_key_as_cl_value())?;
+                self.validate_cl_value(named_key_value.get_name_as_cl_value())
+            }
         }
     }
 
@@ -740,20 +772,26 @@ where
             | Key::Package(_)
             | Key::AddressableEntity(..)
             | Key::ByteCode(..)
-            | Key::Message(_) => true,
+            | Key::Message(_)
+            | Key::NamedKey(_) => true,
         }
     }
 
     /// Tests whether addition to `key` is valid.
     pub fn is_addable(&self, key: &Key) -> bool {
         match key {
-            Key::AddressableEntity(_, entity_addr) => {
-                match self.get_entity_key().into_entity_hash() {
-                    Some(entity_hash) => entity_hash == AddressableEntityHash::new(*entity_addr),
-                    None => false,
+            Key::AddressableEntity(entity_addr) => match self.get_entity_key().into_entity_hash() {
+                Some(entity_hash) => entity_hash == AddressableEntityHash::new(entity_addr.value()),
+                None => false,
+            },
+            Key::URef(uref) => uref.is_addable(),
+            Key::NamedKey(named_key_addr) => {
+                if let Key::AddressableEntity(entity_addr) = self.get_entity_key() {
+                    named_key_addr.entity_addr() == entity_addr
+                } else {
+                    false
                 }
             }
-            Key::URef(uref) => uref.is_addable(),
             Key::Hash(_)
             | Key::Account(_)
             | Key::Transfer(_)
@@ -779,6 +817,13 @@ where
     pub fn is_writeable(&self, key: &Key) -> bool {
         match key {
             Key::URef(uref) => uref.is_writeable(),
+            Key::NamedKey(named_key_addr) => {
+                if let Key::AddressableEntity(entity_addr) = self.get_entity_key() {
+                    named_key_addr.entity_addr() == entity_addr
+                } else {
+                    false
+                }
+            }
             Key::Account(_)
             | Key::Hash(_)
             | Key::Transfer(_)
@@ -809,7 +854,7 @@ where
     pub(crate) fn charge_gas(&mut self, gas: Gas) -> Result<(), Error> {
         let prev = self.gas_counter();
         let gas_limit = self.gas_limit();
-        let is_system = self.package_kind.is_system();
+        let is_system = self.entity_kind.is_system();
 
         // gas charge overflow protection
         match prev.checked_add(gas.cost(is_system)) {
@@ -818,7 +863,6 @@ where
                 Err(Error::GasLimit)
             }
             Some(val) if val > gas_limit => {
-                println!("Val/limit {}/{}", val, gas_limit);
                 self.set_gas_counter(gas_limit);
                 Err(Error::GasLimit)
             }
@@ -841,7 +885,7 @@ where
 
     /// Charges gas for specified amount of bytes used.
     fn charge_gas_storage(&mut self, bytes_count: usize) -> Result<(), Error> {
-        if let Some(base_key) = self.get_entity_key().into_entity_addr() {
+        if let Some(base_key) = self.get_entity_key().into_entity_hash_addr() {
             let entity_hash = AddressableEntityHash::new(base_key);
             if self.is_system_addressable_entity(&entity_hash)? {
                 // Don't charge storage used while executing a system contract.
@@ -1257,7 +1301,7 @@ where
             .map_err(Into::<Error>::into)?;
 
         if let Some(stored_value) = maybe_stored_value {
-            let stored_value = dictionary::handle_stored_value(dictionary_key, stored_value)?;
+            let stored_value = handle_stored_dictionary_value(dictionary_key, stored_value)?;
             let cl_value = CLValue::try_from(stored_value).map_err(Error::TypeMismatch)?;
             Ok(Some(cl_value))
         } else {
@@ -1284,7 +1328,7 @@ where
         self.validate_cl_value(&cl_value)?;
 
         let wrapped_cl_value = {
-            let dictionary_value = DictionaryValue::new(
+            let dictionary_value = CLValueDictionary::new(
                 cl_value,
                 seed_uref.addr().to_vec(),
                 dictionary_item_key_bytes.to_vec(),
@@ -1310,7 +1354,7 @@ where
     pub(crate) fn get_system_entity_key(&self, name: &str) -> Result<Key, Error> {
         let system_entity_hash = self.get_system_contract(name)?;
         Ok(Key::addressable_entity_key(
-            PackageKindTag::System,
+            EntityKindTag::System,
             system_entity_hash,
         ))
     }

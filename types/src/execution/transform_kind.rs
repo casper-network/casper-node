@@ -104,14 +104,10 @@ impl TransformKind {
             TransformKind::AddUInt128(to_add) => wrapping_addition(stored_value, to_add),
             TransformKind::AddUInt256(to_add) => wrapping_addition(stored_value, to_add),
             TransformKind::AddUInt512(to_add) => wrapping_addition(stored_value, to_add),
-            TransformKind::AddKeys(keys) => match stored_value {
-                StoredValue::AddressableEntity(mut entity) => {
-                    entity.named_keys_append(keys);
-                    Ok(store(StoredValue::AddressableEntity(entity)))
-                }
-                StoredValue::Account(_) | StoredValue::Contract(_) => {
-                    Err(TransformError::Deprecated)
-                }
+            TransformKind::AddKeys(_) => match stored_value {
+                StoredValue::Account(_)
+                | StoredValue::Contract(_)
+                | StoredValue::AddressableEntity(_) => Err(TransformError::Deprecated),
                 StoredValue::CLValue(cl_value) => {
                     let expected = "Contract or Account".to_string();
                     let found = format!("{:?}", cl_value.cl_type());
@@ -170,6 +166,11 @@ impl TransformKind {
                 StoredValue::ContractPackage(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "ContractPackage".to_string();
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
+                }
+                StoredValue::NamedKey(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "NamedKeyValue".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
                 StoredValue::MessageTopic(_) => {
