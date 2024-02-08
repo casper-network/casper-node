@@ -12,15 +12,12 @@ use tracing::{debug, error, trace};
 
 use casper_execution_engine::engine_state::{BalanceRequest, MAX_PAYMENT};
 use casper_types::{
-    account::AccountHash,
-    addressable_entity::AddressableEntity,
-    contracts::ContractHash,
-    package::{Package},
-    system::auction::ARG_AMOUNT,
-    AddressableEntityHash, AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr,
-    EntityVersion, EntityVersionKey, ExecutableDeployItem, ExecutableDeployItemIdentifier,
-    InitiatorAddr, Key, PackageAddr, PackageHash, PackageIdentifier, ProtocolVersion, Transaction,
-    TransactionConfig, TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget, U512,
+    account::AccountHash, addressable_entity::AddressableEntity, contracts::ContractHash,
+    package::Package, system::auction::ARG_AMOUNT, AddressableEntityHash,
+    AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr, EntityVersion,
+    EntityVersionKey, ExecutableDeployItem, ExecutableDeployItemIdentifier, InitiatorAddr, Key,
+    PackageAddr, PackageHash, PackageIdentifier, ProtocolVersion, Transaction, TransactionConfig,
+    TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget, U512,
 };
 
 use crate::{
@@ -207,7 +204,6 @@ impl TransactionAcceptor {
             let account_key = match event_metadata.transaction.initiator_addr() {
                 InitiatorAddr::PublicKey(public_key) => Key::from(public_key.to_account_hash()),
                 InitiatorAddr::AccountHash(account_hash) => Key::from(account_hash),
-
             };
             effect_builder
                 .get_addressable_entity(*block_header.state_root_hash(), account_key)

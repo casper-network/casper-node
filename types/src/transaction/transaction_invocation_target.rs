@@ -15,7 +15,11 @@ use super::AddressableEntityIdentifier;
 use super::TransactionTarget;
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
-use crate::{bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH}, serde_helpers, AddressableEntityHash, EntityVersion, PackageAddr, PackageHash, PackageIdentifier, HashAddr};
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    serde_helpers, AddressableEntityHash, EntityVersion, HashAddr, PackageAddr, PackageHash,
+    PackageIdentifier,
+};
 
 const INVOCABLE_ENTITY_TAG: u8 = 0;
 const INVOCABLE_ENTITY_ALIAS_TAG: u8 = 1;

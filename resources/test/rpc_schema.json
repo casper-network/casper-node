@@ -2906,19 +2906,6 @@
               }
             },
             "additionalProperties": false
-          },
-          {
-            "description": "Hex-encoded entity address of the initiator.",
-            "type": "object",
-            "required": [
-              "EntityAddr"
-            ],
-            "properties": {
-              "EntityAddr": {
-                "type": "string"
-              }
-            },
-            "additionalProperties": false
           }
         ]
       },
@@ -5474,20 +5461,23 @@
           "protocol_version"
         ],
         "properties": {
+          "protocol_version": {
+            "$ref": "#/components/schemas/ProtocolVersion"
+          },
+          "entity_kind": {
+            "$ref": "#/components/schemas/EntityKind"
+          },
           "package_hash": {
             "$ref": "#/components/schemas/PackageHash"
           },
           "byte_code_hash": {
             "$ref": "#/components/schemas/ByteCodeHash"
           },
-          "entry_points": {
-            "$ref": "#/components/schemas/Array_of_NamedEntryPoint"
-          },
-          "protocol_version": {
-            "$ref": "#/components/schemas/ProtocolVersion"
-          },
           "main_purse": {
             "$ref": "#/components/schemas/URef"
+          },
+          "entry_points": {
+            "$ref": "#/components/schemas/Array_of_NamedEntryPoint"
           },
           "associated_keys": {
             "$ref": "#/components/schemas/AssociatedKeys"
@@ -5497,44 +5487,8 @@
           },
           "message_topics": {
             "$ref": "#/components/schemas/Array_of_MessageTopic"
-          },
-          "entity_kind": {
-            "$ref": "#/components/schemas/EntityKind"
           }
         }
-      },
-      "ByteCodeHash": {
-        "description": "The hash address of the contract wasm",
-        "type": "string"
-      },
-      "Array_of_MessageTopic": {
-        "type": "array",
-        "items": {
-          "$ref": "#/components/schemas/MessageTopic"
-        }
-      },
-      "MessageTopic": {
-        "type": "object",
-        "required": [
-          "topic_name",
-          "topic_name_hash"
-        ],
-        "properties": {
-          "topic_name": {
-            "type": "string"
-          },
-          "topic_name_hash": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/TopicNameHash"
-              }
-            ]
-          }
-        }
-      },
-      "TopicNameHash": {
-        "description": "The hash of the name of the message topic.",
-        "type": "string"
       },
       "EntityKind": {
         "description": "The type of Package.",
@@ -5606,6 +5560,39 @@
             ]
           }
         ]
+      },
+      "ByteCodeHash": {
+        "description": "The hash address of the contract wasm",
+        "type": "string"
+      },
+      "Array_of_MessageTopic": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/MessageTopic"
+        }
+      },
+      "MessageTopic": {
+        "type": "object",
+        "required": [
+          "topic_name",
+          "topic_name_hash"
+        ],
+        "properties": {
+          "topic_name": {
+            "type": "string"
+          },
+          "topic_name_hash": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TopicNameHash"
+              }
+            ]
+          }
+        }
+      },
+      "TopicNameHash": {
+        "description": "The hash of the name of the message topic.",
+        "type": "string"
       },
       "Package": {
         "description": "Entity definition, metadata, and security container.",

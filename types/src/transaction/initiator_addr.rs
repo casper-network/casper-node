@@ -42,7 +42,7 @@ impl InitiatorAddr {
     /// Returns a random `InitiatorAddr`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..3) {
+        match rng.gen_range(0..2) {
             PUBLIC_KEY_TAG => InitiatorAddr::PublicKey(PublicKey::random(rng)),
             ACCOUNT_HASH_TAG => InitiatorAddr::AccountHash(rng.gen()),
             _ => unreachable!(),
