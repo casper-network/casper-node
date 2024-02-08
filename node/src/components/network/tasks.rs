@@ -550,13 +550,13 @@ where
 /// While the sending connection does not receive any messages, it is still necessary to run the
 /// server portion in a loop to ensure outgoing messages are actually processed.
 pub(super) async fn rpc_sender_loop(mut rpc_server: RpcServer) -> Result<(), MessageSenderError> {
-    loop {
-        if let Some(incoming_request) = rpc_server.next_request().await? {
-            return Err(MessageSenderError::UnexpectedIncomingRequest(
-                incoming_request,
-            ));
-        } else {
-            // Connection closed regularly.
-        }
+    while let Some(incoming_request) = rpc_server.next_request().await? {
+        // Receiving anything at all is an error.
+        return Err(MessageSenderError::UnexpectedIncomingRequest(
+            incoming_request,
+        ));
     }
+
+    // Connection closed regularly.
+    Ok(())
 }
