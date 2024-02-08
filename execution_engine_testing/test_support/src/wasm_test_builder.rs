@@ -1187,6 +1187,7 @@ where
 
         None
     }
+
     /// Returns an Entity alongside its named keys queried by its entity hash.
     pub fn get_entity_with_named_keys_by_entity_hash(
         &self,
@@ -1393,7 +1394,6 @@ where
     }
 
     /// Returns named keys for an account entity by its account hash.
-
     pub fn get_named_keys_by_account_hash(&self, account_hash: AccountHash) -> NamedKeys {
         let entity_hash = self
             .get_entity_hash_by_account_hash(account_hash)

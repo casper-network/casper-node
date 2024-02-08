@@ -89,7 +89,7 @@ where
         entity_key: Key,
         authorization_keys: BTreeSet<AccountHash>,
         access_rights: ContextAccessRights,
-        package_kind: EntityKind,
+        entity_kind: EntityKind,
         account_hash: AccountHash,
         address_generator: Rc<RefCell<AddressGenerator>>,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -131,7 +131,7 @@ where
             engine_config,
             transfers,
             remaining_spending_limit,
-            entity_kind: package_kind,
+            entity_kind,
             emit_message_cost,
         }
     }
@@ -149,7 +149,7 @@ where
         let entity = self.entity;
         let authorization_keys = self.authorization_keys.clone();
         let account_hash = self.account_hash;
-        let package_kind = self.entity_kind;
+        let entity_kind = self.entity_kind;
 
         let address_generator = self.address_generator.clone();
         let tracking_copy = self.state();
@@ -186,7 +186,7 @@ where
             engine_config,
             transfers,
             remaining_spending_limit,
-            entity_kind: package_kind,
+            entity_kind,
             emit_message_cost: self.emit_message_cost,
         }
     }
@@ -222,7 +222,7 @@ where
     }
 
     /// Returns the package kind associated with the current context.
-    pub fn get_package_kind(&self) -> EntityKind {
+    pub fn get_entity_kind(&self) -> EntityKind {
         self.entity_kind
     }
 
