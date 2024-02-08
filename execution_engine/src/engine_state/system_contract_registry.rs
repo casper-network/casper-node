@@ -43,6 +43,11 @@ impl SystemContractRegistry {
     pub fn remove_standard_payment(&mut self) -> Option<AddressableEntityHash> {
         self.0.remove(STANDARD_PAYMENT)
     }
+
+    #[cfg(test)]
+    pub fn inner(self) -> BTreeMap<String, AddressableEntityHash> {
+        self.0
+    }
 }
 
 impl ToBytes for SystemContractRegistry {

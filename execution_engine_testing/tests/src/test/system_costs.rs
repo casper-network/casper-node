@@ -80,7 +80,7 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
         .commit();
 
     let entity = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let add_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -89,7 +89,7 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_entity_addr()
+            .into_entity_hash_addr()
             .unwrap()
             .into(),
         auction::METHOD_ADD_BID,
@@ -132,7 +132,7 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_entity_addr()
+            .into_entity_hash_addr()
             .unwrap()
             .into(),
         auction::METHOD_WITHDRAW_BID,
@@ -220,7 +220,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
         .commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let add_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -229,7 +229,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_entity_addr()
+            .into_entity_hash_addr()
             .unwrap()
             .into(),
         auction::METHOD_ADD_BID,
@@ -267,7 +267,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_entity_addr()
+            .into_entity_hash_addr()
             .unwrap()
             .into(),
         auction::METHOD_WITHDRAW_BID,
@@ -338,7 +338,7 @@ fn delegate_and_undelegate_have_expected_costs() {
         .commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let delegate_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -347,7 +347,7 @@ fn delegate_and_undelegate_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_entity_addr()
+            .into_entity_hash_addr()
             .unwrap()
             .into(),
         auction::METHOD_DELEGATE,
@@ -390,7 +390,7 @@ fn delegate_and_undelegate_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_entity_addr()
+            .into_entity_hash_addr()
             .unwrap()
             .into(),
         auction::METHOD_REDELEGATE,
@@ -422,7 +422,7 @@ fn delegate_and_undelegate_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_entity_addr()
+            .into_entity_hash_addr()
             .unwrap()
             .into(),
         auction::METHOD_UNDELEGATE,
@@ -537,7 +537,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
         .commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let delegate_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -546,7 +546,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_entity_addr()
+            .into_entity_hash_addr()
             .unwrap()
             .into(),
         auction::METHOD_DELEGATE,
@@ -582,7 +582,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_entity_addr()
+            .into_entity_hash_addr()
             .unwrap()
             .into(),
         auction::METHOD_REDELEGATE,
@@ -608,7 +608,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_entity_addr()
+            .into_entity_hash_addr()
             .unwrap()
             .into(),
         auction::METHOD_UNDELEGATE,
@@ -656,7 +656,7 @@ fn mint_transfer_has_expected_costs() {
     builder.exec(transfer_request_1).expect_success().commit();
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let purse_1 = default_account
