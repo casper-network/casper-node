@@ -701,7 +701,7 @@ where
 
         if let QueryResult::ValueNotFound(_) = query_result {
             if query_key.is_system_key() {
-                if let Some(entity_addr) = query_key.into_entity_addr() {
+                if let Some(entity_addr) = query_key.into_entity_hash_addr() {
                     debug!("Compensating for AddressableEntity move");
                     let legacy_query_key = Key::Hash(entity_addr);
                     let legacy_request =

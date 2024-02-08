@@ -11,9 +11,9 @@ use std::collections::HashMap;
 use tracing::{debug, error, warn};
 
 use casper_types::{
+    addressable_entity::EntityKindTag,
     bytesrepr,
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
-    package::PackageKindTag,
     system::{auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, AUCTION},
     Digest, Key, StoredValue,
 };
@@ -157,7 +157,7 @@ pub trait StateProvider {
             Ok(scr) => match scr.get(AUCTION).copied() {
                 Some(auction_hash) => QueryRequest::new(
                     state_root_hash,
-                    Key::addressable_entity_key(PackageKindTag::System, auction_hash),
+                    Key::addressable_entity_key(EntityKindTag::System, auction_hash),
                     vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()],
                 ),
                 None => return EraValidatorsResult::AuctionNotFound,
