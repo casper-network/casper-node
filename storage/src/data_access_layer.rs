@@ -10,10 +10,12 @@ use crate::global_state::{
 use crate::tracking_copy::TrackingCopy;
 
 pub mod balance;
+pub mod era_validators;
 pub mod get_bids;
 pub mod query;
 
 pub use balance::{BalanceRequest, BalanceResult};
+pub use era_validators::{EraValidatorsRequest, EraValidatorsResult};
 pub use get_bids::{GetBidsError, GetBidsRequest, GetBidsResult};
 pub use query::{QueryRequest, QueryResult};
 

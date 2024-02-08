@@ -16,11 +16,12 @@ use serde::Serialize;
 use smallvec::SmallVec;
 use static_assertions::const_assert;
 
-use casper_execution_engine::engine_state::{self, era_validators::GetEraValidatorsError};
+use casper_execution_engine::engine_state::{self};
 use casper_storage::{
     data_access_layer::{
         get_bids::{GetBidsRequest, GetBidsResult},
-        BalanceRequest, BalanceResult, QueryRequest, QueryResult,
+        BalanceRequest, BalanceResult, EraValidatorsRequest, EraValidatorsResult, QueryRequest,
+        QueryResult,
     },
     global_state::trie::TrieRaw,
 };
@@ -29,7 +30,6 @@ use casper_types::{
     bytesrepr::Bytes,
     contract_messages::Messages,
     execution::{ExecutionResult, ExecutionResultV2},
-    system::auction::EraValidators,
     Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash, Digest,
     DisplayIter, EraId, FinalitySignature, FinalitySignatureId, Key, ProtocolVersion, PublicKey,
     TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer,
@@ -44,7 +44,6 @@ use crate::{
             TrieAccumulatorError, TrieAccumulatorResponse,
         },
         consensus::{ClContext, ProposedBlock, ValidatorChange},
-        contract_runtime::EraValidatorsRequest,
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
@@ -761,7 +760,7 @@ pub(crate) enum RpcRequest {
         /// The protocol version.
         protocol_version: ProtocolVersion,
         /// Responder to call with the result.
-        responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
+        responder: Responder<EraValidatorsResult>,
     },
     /// Get the bids at the given root hash.
     GetBids {
@@ -920,7 +919,7 @@ pub(crate) enum ContractRuntimeRequest {
         #[serde(skip_serializing)]
         request: EraValidatorsRequest,
         /// Responder to call with the result.
-        responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
+        responder: Responder<EraValidatorsResult>,
     },
     /// Return bids at a given state root hash
     GetBids {

@@ -314,9 +314,10 @@ fn should_accumulate_fees_after_upgrade() {
         .expect_upgrade_success();
     // Check handle payments has rewards purse
     let handle_payment_hash = builder.get_handle_payment_contract_hash();
+
     let handle_payment_contract = builder
         .get_addressable_entity(handle_payment_hash)
-        .expect("should have handle payment contract");
+        .expect("should have handle payment addressable entity");
     let rewards_purse = handle_payment_contract
         .named_keys()
         .get(ACCUMULATION_PURSE_KEY)

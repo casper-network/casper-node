@@ -7,11 +7,13 @@ use casper_execution_engine::engine_state::{
     self,
     execution_result::{ExecutionResultAndMessages, ExecutionResults},
     step::EvictItem,
-    DeployItem, EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult,
-    GetEraValidatorsRequest, PruneConfig, PruneResult, StepError, StepRequest, StepSuccess,
+    DeployItem, EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult, PruneConfig,
+    PruneResult, StepError, StepRequest, StepSuccess,
 };
 use casper_storage::{
-    data_access_layer::{DataAccessLayer, QueryRequest, QueryResult},
+    data_access_layer::{
+        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, QueryRequest, QueryResult,
+    },
     global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
 };
 use casper_types::{
@@ -231,10 +233,27 @@ pub fn execute_finalized_block(
             // registry is guaranteed to exist.
             let system_contract_registry = None;
 
-            let upcoming_era_validators = engine_state.get_era_validators(
+            let era_validators_result = engine_state.get_era_validators(
                 system_contract_registry,
-                GetEraValidatorsRequest::new(state_root_hash, protocol_version),
-            )?;
+                EraValidatorsRequest::new(state_root_hash, protocol_version),
+            );
+
+            let upcoming_era_validators = match era_validators_result {
+                EraValidatorsResult::AuctionNotFound => {
+                    panic!("auction not found");
+                }
+                EraValidatorsResult::RootNotFound => {
+                    panic!("root not found");
+                }
+                EraValidatorsResult::ValueNotFound(msg) => {
+                    panic!("validator snapshot not found: {}", msg);
+                }
+                EraValidatorsResult::Failure(tce) => {
+                    return Err(BlockExecutionError::GetEraValidators(tce));
+                }
+                EraValidatorsResult::Success { era_validators } => era_validators,
+            };
+
             Some(StepEffectsAndUpcomingEraValidators {
                 step_effects,
                 upcoming_era_validators,
@@ -650,15 +669,19 @@ where
     let key = Key::addressable_entity_key(package_kind_tag, entity_hash);
     let query_request = QueryRequest::new(state_root_hash, key, vec![]);
     let value = match engine_state.run_query(query_request) {
-        Ok(QueryResult::Success { value, .. }) => *value,
-        Ok(result) => {
-            debug!(?result, %key, "expected to find addressable entity");
+        QueryResult::RootNotFound => {
+            error!(%state_root_hash, "state root not found");
             return None;
         }
-        Err(error) => {
-            warn!(%error, %key, "failed querying for addressable entity");
+        QueryResult::ValueNotFound(msg) => {
+            debug!(%key, "expected to find addressable entity: {}", msg);
             return None;
         }
+        QueryResult::Failure(tce) => {
+            warn!(%tce, %key, "failed querying for addressable entity");
+            return None;
+        }
+        QueryResult::Success { value, .. } => *value,
     };
     match value {
         StoredValue::AddressableEntity(addressable_entity) => Some(addressable_entity),
@@ -680,15 +703,19 @@ where
     let account_key = Key::Account(account_hash);
     let query_request = QueryRequest::new(state_root_hash, account_key, vec![]);
     let value = match engine_state.run_query(query_request) {
-        Ok(QueryResult::Success { value, .. }) => *value,
-        Ok(result) => {
-            debug!(?result, %account_key, "expected to find stored value under account hash");
+        QueryResult::RootNotFound => {
+            error!(%state_root_hash, "state root not found");
             return None;
         }
-        Err(error) => {
-            warn!(%error, %account_key, "failed querying for stored value under account hash");
+        QueryResult::ValueNotFound(msg) => {
+            debug!(%account_key, "expected to find account: {}", msg);
             return None;
         }
+        QueryResult::Failure(tce) => {
+            warn!(%tce, %account_key, "failed querying for account");
+            return None;
+        }
+        QueryResult::Success { value, .. } => *value,
     };
     match value {
         StoredValue::CLValue(cl_value) => match cl_value.into_t::<Key>() {
@@ -739,22 +766,27 @@ where
         state_root_hash,
         PackageKindTag::SmartContract,
         contract_hash.into(),
-    ).or_else(|| {
+    )
+    .or_else(|| {
         // Didn't work; the contract was either not migrated yet or the `AddressableEntity`
         // record was not available at this state root hash. Try to query with a
         // contract key next.
         let contract_key = Key::Hash(contract_hash);
         let query_request = QueryRequest::new(state_root_hash, contract_key, vec![]);
         let value = match engine_state.run_query(query_request) {
-            Ok(QueryResult::Success { value, .. }) => *value,
-            Ok(result) => {
-                debug!(?result, %contract_key, "expected to find a stored value for a contract hash");
+            QueryResult::RootNotFound => {
+                error!(%state_root_hash, "state root not found");
                 return None;
             }
-            Err(error) => {
-                warn!(%error, %contract_key, "failed querying for a contract hash");
+            QueryResult::ValueNotFound(msg) => {
+                debug!(%contract_key, "expected to find contract: {}", msg);
                 return None;
             }
+            QueryResult::Failure(tce) => {
+                warn!(%tce, %contract_key, "failed querying for contract");
+                return None;
+            }
+            QueryResult::Success { value, .. } => *value,
         };
 
         match value {

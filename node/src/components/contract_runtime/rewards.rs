@@ -3,13 +3,14 @@ mod tests;
 
 use std::{collections::BTreeMap, ops::Range, sync::Arc};
 
-use casper_execution_engine::engine_state::{self, GetEraValidatorsError};
+use casper_execution_engine::engine_state::{self};
+use casper_storage::data_access_layer::EraValidatorsRequest;
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
+
 use num_rational::Ratio;
 use num_traits::{CheckedAdd, CheckedMul};
 
 use crate::{
-    contract_runtime::EraValidatorsRequest,
     effect::{
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder,
@@ -67,7 +68,7 @@ pub enum RewardsError {
     ArithmeticOverflow,
 
     FailedToFetchBlockWithHeight(u64),
-    FailedToFetchEra(GetEraValidatorsError),
+    FailedToFetchEra(String),
     /// Fetching the era validators succedeed, but no info is present (should not happen).
     /// The `Digest` is the one that was queried.
     FailedToFetchEraValidators(Digest),
@@ -178,12 +179,16 @@ impl RewardsInfo {
 
         let mut eras_info: BTreeMap<_, _> = stream::iter(eras_and_state_root_hashes)
             .then(|(era_id, state_root_hash)| async move {
-                let weights = effect_builder
+                let era_validators_result = effect_builder
                     .get_era_validators_from_contract_runtime(EraValidatorsRequest::new(
                         state_root_hash,
                         protocol_version,
                     ))
-                    .await
+                    .await;
+                let msg = format!("{}", era_validators_result);
+                let weights = era_validators_result
+                    .take_era_validators()
+                    .ok_or(msg)
                     .map_err(RewardsError::FailedToFetchEra)?
                     // We consume the map to not clone the value:
                     .into_iter()

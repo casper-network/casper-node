@@ -13,6 +13,8 @@ use tracing::{debug, error, warn};
 use casper_types::{
     bytesrepr,
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
+    package::PackageKindTag,
+    system::{auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, AUCTION},
     Digest, Key, StoredValue,
 };
 
@@ -20,7 +22,10 @@ use casper_types::{
 pub use self::lmdb::make_temporary_global_state;
 
 use crate::{
-    data_access_layer::{BalanceRequest, BalanceResult, QueryRequest, QueryResult},
+    data_access_layer::{
+        era_validators::EraValidatorsResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
+        QueryRequest, QueryResult,
+    },
     global_state::{
         error::Error as GlobalStateError,
         transaction_source::{Transaction, TransactionSource},
@@ -31,6 +36,7 @@ use crate::{
         },
     },
     system::{
+        auction,
         auction::bidding::{BiddingRequest, BiddingResult},
         mint::transfer::{TransferRequest, TransferResult},
     },
@@ -103,31 +109,12 @@ pub trait StateProvider {
         match self.tracking_copy(query_request.state_hash()) {
             Ok(Some(tc)) => match tc.query(query_request.key(), query_request.path()) {
                 Ok(ret) => ret.into(),
-                Err(err) => QueryResult::TrackingCopyError(err),
+                Err(err) => QueryResult::Failure(err),
             },
             Ok(None) => QueryResult::RootNotFound,
-            Err(err) => QueryResult::StorageError(err),
+            Err(err) => QueryResult::Failure(TrackingCopyError::Storage(err)),
         }
     }
-
-    /// Returns an empty root hash.
-    fn empty_root(&self) -> Digest;
-
-    /// Reads a full `Trie` (never chunked) from the state if it is present
-    fn get_trie_full(&self, trie_key: &Digest) -> Result<Option<TrieRaw>, GlobalStateError>;
-
-    /// Insert a trie node into the trie
-    fn put_trie(&self, trie: &[u8]) -> Result<Digest, GlobalStateError>;
-
-    /// Finds all the children of `trie_raw` which aren't present in the state.
-    fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, GlobalStateError>;
-
-    /// Prunes key from the global state.
-    fn prune_keys(
-        &self,
-        root: Digest,
-        keys_to_delete: &[Key],
-    ) -> Result<PruneResult, GlobalStateError>;
 
     /// Query balance state.
     fn balance(&self, balance_request: BalanceRequest) -> BalanceResult {
@@ -156,6 +143,80 @@ pub trait StateProvider {
             Err(err) => BalanceResult::Failure(TrackingCopyError::Storage(err)),
         }
     }
+
+    /// Get the requested era validators.
+    fn era_validators(&self, era_validators_request: EraValidatorsRequest) -> EraValidatorsResult {
+        let state_root_hash = era_validators_request.state_hash();
+        let mut tc = match self.tracking_copy(state_root_hash) {
+            Ok(Some(tc)) => tc,
+            Ok(None) => return EraValidatorsResult::RootNotFound,
+            Err(err) => return EraValidatorsResult::Failure(TrackingCopyError::Storage(err)),
+        };
+
+        let query_request = match tc.get_system_contracts() {
+            Ok(scr) => match scr.get(AUCTION).copied() {
+                Some(auction_hash) => QueryRequest::new(
+                    state_root_hash,
+                    Key::addressable_entity_key(PackageKindTag::System, auction_hash),
+                    vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()],
+                ),
+                None => return EraValidatorsResult::AuctionNotFound,
+            },
+            Err(err) => return EraValidatorsResult::Failure(err),
+        };
+
+        let snapshot = match self.query(query_request) {
+            QueryResult::RootNotFound => return EraValidatorsResult::RootNotFound,
+            QueryResult::Failure(error) => {
+                error!(?error, "unexpected tracking copy error");
+                return EraValidatorsResult::Failure(error);
+            }
+            QueryResult::ValueNotFound(msg) => {
+                error!(%msg, "value not found");
+                return EraValidatorsResult::ValueNotFound(msg);
+            }
+            QueryResult::Success { value, proofs: _ } => {
+                let cl_value = match value.into_cl_value() {
+                    Some(snapshot_cl_value) => snapshot_cl_value,
+                    None => {
+                        error!("unexpected query failure; seigniorage recipients snapshot is not a CLValue");
+                        return EraValidatorsResult::Failure(
+                            TrackingCopyError::UnexpectedStoredValueVariant,
+                        );
+                    }
+                };
+
+                match cl_value.into_t() {
+                    Ok(snapshot) => snapshot,
+                    Err(cve) => {
+                        return EraValidatorsResult::Failure(TrackingCopyError::CLValue(cve));
+                    }
+                }
+            }
+        };
+
+        let era_validators = auction::detail::era_validators_from_snapshot(snapshot);
+        EraValidatorsResult::Success { era_validators }
+    }
+
+    /// Returns an empty root hash.
+    fn empty_root(&self) -> Digest;
+
+    /// Reads a full `Trie` (never chunked) from the state if it is present
+    fn get_trie_full(&self, trie_key: &Digest) -> Result<Option<TrieRaw>, GlobalStateError>;
+
+    /// Insert a trie node into the trie
+    fn put_trie(&self, trie: &[u8]) -> Result<Digest, GlobalStateError>;
+
+    /// Finds all the children of `trie_raw` which aren't present in the state.
+    fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, GlobalStateError>;
+
+    /// Prunes key from the global state.
+    fn prune_keys(
+        &self,
+        root: Digest,
+        keys_to_delete: &[Key],
+    ) -> Result<PruneResult, GlobalStateError>;
 
     fn transfer(&self, _transfer_request: TransferRequest) -> TransferResult {
         unimplemented!()

@@ -5,9 +5,10 @@ use std::{
 
 use derive_more::From;
 
-use casper_execution_engine::engine_state::GetEraValidatorsError;
-use casper_storage::data_access_layer::{BalanceResult, GetBidsResult, QueryResult};
-use casper_types::{system::auction::EraValidators, BlockHash, Transfer};
+use casper_storage::data_access_layer::{
+    BalanceResult, EraValidatorsResult, GetBidsResult, QueryResult,
+};
+use casper_types::{BlockHash, Transfer};
 
 use crate::{
     effect::{requests::RpcRequest, Responder},
@@ -29,8 +30,8 @@ pub(crate) enum Event {
         main_responder: Responder<QueryResult>,
     },
     QueryEraValidatorsResult {
-        result: Result<EraValidators, GetEraValidatorsError>,
-        main_responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
+        result: EraValidatorsResult,
+        main_responder: Responder<EraValidatorsResult>,
     },
     GetBidsResult {
         result: GetBidsResult,

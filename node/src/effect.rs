@@ -115,7 +115,7 @@ use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 use tracing::{debug, error, warn};
 
-use casper_execution_engine::engine_state::{self, era_validators::GetEraValidatorsError};
+use casper_execution_engine::engine_state::{self};
 use casper_storage::{
     data_access_layer::{
         BalanceRequest, BalanceResult, GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
@@ -123,12 +123,12 @@ use casper_storage::{
     global_state::trie::TrieRaw,
 };
 
+use casper_storage::data_access_layer::{EraValidatorsRequest, EraValidatorsResult};
 use casper_types::{
     bytesrepr::Bytes,
     contract_messages::Messages,
     execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},
     package::Package,
-    system::auction::EraValidators,
     AddressableEntity, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes,
     DeployHash, Digest, EraId, FinalitySignature, FinalitySignatureId, Key, PublicKey, TimeDiff,
     Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer, U512,
@@ -141,7 +141,7 @@ use crate::{
             TrieAccumulatorError, TrieAccumulatorResponse,
         },
         consensus::{ClContext, EraDump, ProposedBlock, ValidatorChange},
-        contract_runtime::{ContractRuntimeError, EraValidatorsRequest},
+        contract_runtime::ContractRuntimeError,
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
@@ -2016,7 +2016,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_era_validators_from_contract_runtime(
         self,
         request: EraValidatorsRequest,
-    ) -> Result<EraValidators, GetEraValidatorsError>
+    ) -> EraValidatorsResult
     where
         REv: From<ContractRuntimeRequest>,
     {

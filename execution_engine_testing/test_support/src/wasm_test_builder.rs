@@ -15,7 +15,6 @@ use num_rational::Ratio;
 use num_traits::CheckedMul;
 
 use casper_execution_engine::engine_state::{
-    era_validators::GetEraValidatorsRequest,
     execute_request::ExecuteRequest,
     execution_result::ExecutionResult,
     run_genesis_request::RunGenesisRequest,
@@ -24,7 +23,10 @@ use casper_execution_engine::engine_state::{
     PruneConfig, PruneResult, StepError, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
 };
 use casper_storage::{
-    data_access_layer::{BalanceResult, BlockStore, DataAccessLayer, QueryRequest, QueryResult},
+    data_access_layer::{
+        BalanceResult, BlockStore, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult,
+        QueryRequest, QueryResult,
+    },
     global_state::{
         state::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
@@ -621,11 +623,7 @@ where
 
         let query_request = QueryRequest::new(post_state, base_key, path.to_vec());
 
-        let query_result = self
-            .engine_state
-            .run_query(query_request)
-            .expect("should get query response");
-
+        let query_result = self.engine_state.run_query(query_request);
         if let QueryResult::Success { value, .. } = query_result {
             return Ok(value.deref().clone());
         }
@@ -661,10 +659,7 @@ where
 
         let query_request = QueryRequest::new(post_state, base_key, path_vec);
 
-        let query_result = self
-            .engine_state
-            .run_query(query_request)
-            .expect("should get query response");
+        let query_result = self.engine_state.run_query(query_request);
 
         if let QueryResult::Success { value, proofs } = query_result {
             return Ok((value.deref().clone(), proofs));
@@ -1151,7 +1146,7 @@ where
     ) -> Option<AddressableEntity> {
         let entity_key = Key::addressable_entity_key(PackageKindTag::SmartContract, entity_hash);
 
-        let contract_value: StoredValue = match self.query(None, entity_key, &[]) {
+        let value: StoredValue = match self.query(None, entity_key, &[]) {
             Ok(stored_value) => stored_value,
             Err(_) => self
                 .query(
@@ -1162,8 +1157,8 @@ where
                 .expect("must have value"),
         };
 
-        if let StoredValue::AddressableEntity(contract) = contract_value {
-            Some(contract)
+        if let StoredValue::AddressableEntity(entity) = value {
+            Some(entity)
         } else {
             None
         }
@@ -1282,14 +1277,20 @@ where
     /// Gets [`EraValidators`].
     pub fn get_era_validators(&mut self) -> EraValidators {
         let state_hash = self.get_post_state_hash();
-        let request = GetEraValidatorsRequest::new(state_hash, *DEFAULT_PROTOCOL_VERSION);
+        let request = EraValidatorsRequest::new(state_hash, *DEFAULT_PROTOCOL_VERSION);
         let system_contract_registry = self
             .system_contract_registry
             .clone()
             .expect("System contract registry not found. Please run genesis first.");
-        self.engine_state
-            .get_era_validators(Some(system_contract_registry), request)
-            .expect("get era validators should not error")
+        let result = self
+            .engine_state
+            .get_era_validators(Some(system_contract_registry), request);
+
+        if let EraValidatorsResult::Success { era_validators } = result {
+            era_validators
+        } else {
+            panic!("get era validators should be available");
+        }
     }
 
     /// Gets [`ValidatorWeights`] for a given [`EraId`].

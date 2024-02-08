@@ -46,8 +46,8 @@ use casper_storage::{
 };
 use casper_types::{
     bytesrepr::Bytes, package::PackageKindTag, BlockHash, BlockHeaderV2, Chainspec,
-    ChainspecRawBytes, ChainspecRegistry, Digest, EraId, Key, ProtocolVersion,
-    SystemContractRegistry, Timestamp, Transaction, UpgradeConfig, U512,
+    ChainspecRawBytes, ChainspecRegistry, Digest, EraId, Key, ProtocolVersion, Timestamp,
+    Transaction, UpgradeConfig, U512,
 };
 
 use crate::{
@@ -76,7 +76,7 @@ pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
 use operations::execute_only;
 pub(crate) use types::{
-    BlockAndExecutionResults, EraValidatorsRequest, ExecutionArtifact, RoundSeigniorageRateRequest,
+    BlockAndExecutionResults, ExecutionArtifact, RoundSeigniorageRateRequest,
     StepEffectsAndUpcomingEraValidators, TotalSupplyRequest,
 };
 
@@ -277,9 +277,8 @@ pub(crate) struct ContractRuntime {
 
     /// Finalized blocks waiting for their pre-state hash to start executing.
     exec_queue: ExecQueue,
-    /// Cached instance of a [`SystemContractRegistry`].
-    #[data_size(skip)]
-    system_contract_registry: Option<SystemContractRegistry>,
+
+    /// The chainspec.
     chainspec: Arc<Chainspec>,
 
     #[data_size(skip)]
@@ -383,7 +382,6 @@ impl ContractRuntime {
             engine_state,
             metrics,
             exec_queue: Default::default(),
-            system_contract_registry: None,
             chainspec,
             data_access_layer,
         })
@@ -726,25 +724,6 @@ impl ContractRuntime {
         result.map(|option| option.map(|trie_raw| trie_raw.into_inner()))
     }
 
-    #[inline]
-    fn try_init_system_contract_registry_cache(&mut self) {
-        // The system contract registry is stable so we can use the latest state root hash that we
-        // know from the execution pre-state to try and initialize it
-        let state_root_hash = self
-            .execution_pre_state
-            .lock()
-            .expect("ContractRuntime: execution_pre_state poisoned mutex")
-            .pre_state_root_hash;
-
-        // Try to cache system contract registry if possible.
-        if self.system_contract_registry.is_none() {
-            self.system_contract_registry = self
-                .engine_state
-                .get_system_contract_registry(state_root_hash)
-                .ok();
-        };
-    }
-
     /// Returns the engine state, for testing only.
     #[cfg(test)]
     pub(crate) fn engine_state(&self) -> &Arc<EngineState<DataAccessLayer<LmdbGlobalState>>> {
@@ -853,7 +832,6 @@ impl ContractRuntime {
                 responder,
             } => {
                 trace!(?balance_request, "balance");
-                //let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 let data_access_layer = Arc::clone(&self.data_access_layer);
                 async move {
@@ -865,25 +843,21 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::GetEraValidators { request, responder } => {
-                trace!(?request, "get era validators request");
-                let engine_state = Arc::clone(&self.engine_state);
+            ContractRuntimeRequest::GetEraValidators {
+                request: era_validators_request,
+                responder,
+            } => {
+                trace!(?era_validators_request, "get era validators request");
                 let metrics = Arc::clone(&self.metrics);
-
-                self.try_init_system_contract_registry_cache();
-
-                let system_contract_registry = self.system_contract_registry.clone();
-                // Increment the counter to track the amount of times GetEraValidators was
-                // requested.
+                let data_access_layer = Arc::clone(&self.data_access_layer);
                 async move {
                     let start = Instant::now();
-                    let era_validators =
-                        engine_state.get_era_validators(system_contract_registry, request.into());
+                    let result = data_access_layer.era_validators(era_validators_request);
                     metrics
                         .get_era_validators
                         .observe(start.elapsed().as_secs_f64());
-                    trace!(?era_validators, "get era validators response");
-                    responder.respond(era_validators).await
+                    trace!(?result, "balance result");
+                    responder.respond(result).await
                 }
                 .ignore()
             }
@@ -1149,24 +1123,18 @@ fn query_total_supply(
         vec![mint::TOTAL_SUPPLY_KEY.to_owned()],
     );
 
-    engine_state
-        .run_query(request)
-        .and_then(move |query_result| match query_result {
-            QueryResult::Success { value, proofs: _ } => value
-                .as_cl_value()
-                .ok_or_else(|| Error::Mint("Value not a CLValue".to_owned()))?
-                .clone()
-                .into_t()
-                .map_err(|e| Error::Mint(format!("CLValue not a U512: {e}"))),
-            QueryResult::ValueNotFound(s) => Err(Error::Mint(format!("ValueNotFound({s})"))),
-            QueryResult::CircularReference(s) => {
-                Err(Error::Mint(format!("CircularReference({s})")))
-            }
-            QueryResult::DepthLimit { depth } => Err(Error::Mint(format!("DepthLimit({depth})"))),
-            QueryResult::RootNotFound => Err(Error::RootNotFound(state_hash)),
-            QueryResult::StorageError(gse) => Err(Error::Storage(gse)),
-            QueryResult::TrackingCopyError(tce) => Err(Error::TrackingCopy(tce)),
-        })
+    let query_result = engine_state.run_query(request);
+    match query_result {
+        QueryResult::Success { value, proofs: _ } => value
+            .as_cl_value()
+            .ok_or_else(|| Error::Mint("Value not a CLValue".to_owned()))?
+            .clone()
+            .into_t()
+            .map_err(|e| Error::Mint(format!("CLValue not a U512: {e}"))),
+        QueryResult::ValueNotFound(s) => Err(Error::Mint(format!("ValueNotFound({s})"))),
+        QueryResult::RootNotFound => Err(Error::RootNotFound(state_hash)),
+        QueryResult::Failure(tce) => Err(Error::TrackingCopy(tce)),
+    }
 }
 
 fn query_round_seigniorage_rate(
@@ -1185,24 +1153,18 @@ fn query_round_seigniorage_rate(
         vec![mint::ROUND_SEIGNIORAGE_RATE_KEY.to_owned()],
     );
 
-    engine_state
-        .run_query(request)
-        .and_then(move |query_result| match query_result {
-            QueryResult::Success { value, proofs: _ } => value
-                .as_cl_value()
-                .ok_or_else(|| Error::Mint("Value not a CLValue".to_owned()))?
-                .clone()
-                .into_t()
-                .map_err(|e| Error::Mint(format!("CLValue not a Ratio<U512>: {e}"))),
-            QueryResult::ValueNotFound(s) => Err(Error::Mint(format!("ValueNotFound({s})"))),
-            QueryResult::CircularReference(s) => {
-                Err(Error::Mint(format!("CircularReference({s})")))
-            }
-            QueryResult::DepthLimit { depth } => Err(Error::Mint(format!("DepthLimit({depth})"))),
-            QueryResult::RootNotFound => Err(Error::RootNotFound(state_hash)),
-            QueryResult::StorageError(gse) => Err(Error::Storage(gse)),
-            QueryResult::TrackingCopyError(tce) => Err(Error::TrackingCopy(tce)),
-        })
+    let query_result = engine_state.run_query(request);
+    match query_result {
+        QueryResult::Success { value, proofs: _ } => value
+            .as_cl_value()
+            .ok_or_else(|| Error::Mint("Value not a CLValue".to_owned()))?
+            .clone()
+            .into_t()
+            .map_err(|e| Error::Mint(format!("CLValue not a Ratio<U512>: {e}"))),
+        QueryResult::ValueNotFound(s) => Err(Error::Mint(format!("ValueNotFound({s})"))),
+        QueryResult::RootNotFound => Err(Error::RootNotFound(state_hash)),
+        QueryResult::Failure(tce) => Err(Error::TrackingCopy(tce)),
+    }
 }
 
 #[cfg(test)]

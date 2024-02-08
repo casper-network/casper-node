@@ -1,7 +1,6 @@
 //!  This module contains all the execution related code.
 pub mod deploy_item;
 pub mod engine_config;
-pub mod era_validators;
 mod error;
 pub mod execute_request;
 pub(crate) mod execution_kind;
@@ -25,7 +24,7 @@ use std::{
 use num_rational::Ratio;
 use num_traits::Zero;
 use once_cell::sync::Lazy;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 pub use casper_storage::data_access_layer::get_bids::{
     GetBidsError, GetBidsRequest, GetBidsResult,
@@ -34,7 +33,7 @@ use casper_storage::{
     data_access_layer::{
         balance::BalanceResult,
         query::{QueryRequest, QueryResult},
-        DataAccessLayer,
+        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult,
     },
     global_state::{
         self,
@@ -46,7 +45,7 @@ use casper_storage::{
         trie_store::operations::PruneResult as GlobalStatePruneResult,
     },
     system::auction,
-    tracking_copy::{TrackingCopy, TrackingCopyExt, TrackingCopyQueryResult},
+    tracking_copy::{TrackingCopy, TrackingCopyError, TrackingCopyExt},
     AddressGenerator,
 };
 
@@ -58,10 +57,9 @@ use casper_types::{
     package::{EntityVersions, Groups, PackageKind, PackageKindTag, PackageStatus},
     system::{
         auction::{
-            BidAddr, BidKind, EraValidators, ValidatorBid, ARG_ERA_END_TIMESTAMP_MILLIS,
-            ARG_EVICTED_VALIDATORS, ARG_REWARDS_MAP, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
-            LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY,
-            VALIDATOR_SLOTS_KEY,
+            BidAddr, BidKind, ValidatorBid, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
+            ARG_REWARDS_MAP, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment::{self, ACCUMULATION_PURSE_KEY},
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
@@ -81,7 +79,6 @@ pub use self::{
         EngineConfig, EngineConfigBuilder, DEFAULT_MAX_QUERY_DEPTH,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     },
-    era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
     error::Error,
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
@@ -286,7 +283,7 @@ where
             // NOTE: As genesis is run once per instance condition below is considered programming
             // error
             Ok(None) => panic!("state has not been initialized properly"),
-            Err(error) => return Err(error),
+            Err(error) => return Err(Error::TrackingCopy(error)),
         };
 
         let mut genesis_installer: GenesisInstaller<S> = GenesisInstaller::new(
@@ -672,13 +669,16 @@ where
     }
 
     /// Creates a new tracking copy instance.
-    pub fn tracking_copy(&self, hash: Digest) -> Result<Option<TrackingCopy<S::Reader>>, Error> {
+    pub fn tracking_copy(
+        &self,
+        hash: Digest,
+    ) -> Result<Option<TrackingCopy<S::Reader>>, TrackingCopyError> {
         match self.state.checkout(hash) {
             Ok(ret) => match ret {
                 Some(tc) => Ok(Some(TrackingCopy::new(tc, self.config.max_query_depth))),
                 None => Ok(None),
             },
-            Err(err) => Err(Error::Storage(err)),
+            Err(err) => Err(TrackingCopyError::Storage(err)),
         }
     }
 
@@ -687,35 +687,31 @@ where
     /// For a given root [`Key`] it does a path lookup through the named keys.
     ///
     /// Returns the value stored under a [`URef`] wrapped in a [`QueryResult`].
-    pub fn run_query(&self, query_request: QueryRequest) -> Result<QueryResult, Error> {
-        let tracking_copy = match self.tracking_copy(query_request.state_hash())? {
-            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
-            None => return Ok(QueryResult::RootNotFound),
+    pub fn run_query(&self, query_request: QueryRequest) -> QueryResult {
+        let state_hash = query_request.state_hash();
+        let query_key = query_request.key();
+        let query_path = query_request.path();
+        let query_result = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => match tc.query(query_key, query_path) {
+                Ok(ret) => ret.into(),
+                Err(err) => QueryResult::Failure(err),
+            },
+            Ok(None) => QueryResult::RootNotFound,
+            Err(err) => QueryResult::Failure(err),
         };
 
-        let tracking_copy = tracking_copy.borrow();
-
-        match tracking_copy.query(query_request.key(), query_request.path()) {
-            Ok(TrackingCopyQueryResult::ValueNotFound(result_string)) => {
-                let key = query_request.key();
-
-                if !key.is_system_key() {
-                    return Ok(TrackingCopyQueryResult::ValueNotFound(result_string).into());
+        if let QueryResult::ValueNotFound(_) = query_result {
+            if query_key.is_system_key() {
+                if let Some(entity_addr) = query_key.into_entity_addr() {
+                    debug!("Compensating for AddressableEntity move");
+                    let legacy_query_key = Key::Hash(entity_addr);
+                    let legacy_request =
+                        QueryRequest::new(state_hash, legacy_query_key, query_path.to_vec());
+                    return self.run_query(legacy_request);
                 }
-
-                let new_query_key = Key::Hash(
-                    key.into_entity_addr()
-                        .ok_or_else(|| Error::InvalidKeyVariant)?,
-                );
-                info!("Compensating for AddressableEntity move");
-                let result = tracking_copy
-                    .query(new_query_key, query_request.path())
-                    .map_err(|err| Error::Exec(err.into()))?;
-                Ok(result.into())
             }
-            Ok(result) => Ok(result.into()),
-            Err(error) => Err(Error::Exec(error.into())),
         }
+        query_result
     }
 
     /// Runs a deploy execution request.
@@ -948,7 +944,11 @@ where
         proposer: PublicKey,
     ) -> Result<ExecutionResult, Error> {
         let tracking_copy = match self.tracking_copy(prestate_hash) {
-            Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
+            Err(tce) => {
+                return Ok(ExecutionResult::precondition_failure(Error::TrackingCopy(
+                    tce,
+                )))
+            }
             Ok(None) => return Err(Error::RootNotFound(prestate_hash)),
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
@@ -1521,7 +1521,11 @@ where
         // validation_spec_2: prestate_hash check
         // do this second; as there is no reason to proceed if the prestate hash is invalid
         let tracking_copy = match self.tracking_copy(prestate_hash) {
-            Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
+            Err(tce) => {
+                return Ok(ExecutionResult::precondition_failure(Error::TrackingCopy(
+                    tce,
+                )))
+            }
             Ok(None) => return Err(Error::RootNotFound(prestate_hash)),
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
@@ -2091,7 +2095,7 @@ where
         prestate_hash: Digest,
     ) -> Result<URef, Error> {
         let tracking_copy = match self.tracking_copy(prestate_hash) {
-            Err(error) => return Err(error),
+            Err(tce) => return Err(Error::TrackingCopy(tce)),
             Ok(None) => return Err(Error::RootNotFound(prestate_hash)),
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
@@ -2183,8 +2187,8 @@ where
     pub fn get_era_validators(
         &self,
         system_contract_registry: Option<SystemContractRegistry>,
-        get_era_validators_request: GetEraValidatorsRequest,
-    ) -> Result<EraValidators, GetEraValidatorsError> {
+        get_era_validators_request: EraValidatorsRequest,
+    ) -> EraValidatorsResult {
         let state_root_hash = get_era_validators_request.state_hash();
 
         let system_contract_registry = match system_contract_registry {
@@ -2192,65 +2196,52 @@ where
             None => match self.get_system_contract_registry(state_root_hash) {
                 Ok(system_contract_registry) => system_contract_registry,
                 Err(error) => {
-                    error!(%state_root_hash, %error, "unable to get era validators");
-                    return Err(error.into());
+                    error!(%state_root_hash, %error, "auction not found");
+                    return EraValidatorsResult::AuctionNotFound;
                 }
             },
         };
 
-        let auction_hash = system_contract_registry
-            .get(AUCTION)
-            .copied()
-            .ok_or_else(|| Error::MissingSystemContractHash(AUCTION.to_string()))?;
+        let query_request = match system_contract_registry.get(AUCTION).copied() {
+            Some(auction_hash) => QueryRequest::new(
+                state_root_hash,
+                Key::addressable_entity_key(PackageKindTag::System, auction_hash),
+                vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()],
+            ),
+            None => return EraValidatorsResult::AuctionNotFound,
+        };
 
-        let auction_key = Key::addressable_entity_key(PackageKindTag::System, auction_hash);
-
-        let query_request = QueryRequest::new(
-            state_root_hash,
-            auction_key,
-            vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()],
-        );
-
-        let snapshot = match self.run_query(query_request)? {
-            QueryResult::RootNotFound => return Err(GetEraValidatorsError::RootNotFound),
-            QueryResult::StorageError(error) => {
-                error!(%error, "unexpected global storage error");
-                return Err(GetEraValidatorsError::Other(Error::Storage(error)));
-            }
-            QueryResult::TrackingCopyError(error) => {
+        let snapshot = match self.run_query(query_request) {
+            QueryResult::RootNotFound => return EraValidatorsResult::RootNotFound,
+            QueryResult::Failure(error) => {
                 error!(%error, "unexpected tracking copy error");
-                return Err(GetEraValidatorsError::Other(Error::TrackingCopy(error)));
+                return EraValidatorsResult::Failure(error);
             }
-            QueryResult::ValueNotFound(error) => {
-                error!(%error, "unexpected query failure; value not found");
-                return Err(GetEraValidatorsError::EraValidatorsMissing);
-            }
-            QueryResult::CircularReference(error) => {
-                error!(%error, "unexpected query failure; circular reference");
-                return Err(GetEraValidatorsError::UnexpectedQueryFailure);
-            }
-            QueryResult::DepthLimit { depth } => {
-                error!(%depth, "unexpected query failure; depth limit exceeded");
-                return Err(GetEraValidatorsError::UnexpectedQueryFailure);
+            QueryResult::ValueNotFound(message) => {
+                error!(%message, "value not found");
+                return EraValidatorsResult::ValueNotFound(message);
             }
             QueryResult::Success { value, proofs: _ } => {
                 let cl_value = match value.into_cl_value() {
                     Some(snapshot_cl_value) => snapshot_cl_value,
                     None => {
                         error!("unexpected query failure; seigniorage recipients snapshot is not a CLValue");
-                        return Err(GetEraValidatorsError::UnexpectedQueryFailure);
+                        return EraValidatorsResult::Failure(
+                            TrackingCopyError::UnexpectedStoredValueVariant,
+                        );
                     }
                 };
 
-                cl_value.into_t().map_err(|cl_value_error| {
-                    error!(%cl_value_error, "unexpected query failure; unable to parse seigniorage recipients");
-                    GetEraValidatorsError::CLValue
-                })?
+                match cl_value.into_t() {
+                    Ok(snapshot) => snapshot,
+                    Err(cve) => {
+                        return EraValidatorsResult::Failure(TrackingCopyError::CLValue(cve));
+                    }
+                }
             }
         };
-
-        let era_validators_result = auction::detail::era_validators_from_snapshot(snapshot);
-        Ok(era_validators_result)
+        let era_validators = auction::detail::era_validators_from_snapshot(snapshot);
+        EraValidatorsResult::Success { era_validators }
     }
 
     /// Gets current bids from the auction system.
@@ -2308,7 +2299,7 @@ where
         let tracking_copy = match self.tracking_copy(pre_state_hash) {
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
             Ok(None) => return Err(StepError::RootNotFound(pre_state_hash)),
-            Err(error) => return Err(StepError::OtherEngineStateError(error)),
+            Err(error) => return Err(StepError::OtherEngineStateError(error.into())),
         };
 
         let executor = Executor::new(self.config().clone());
@@ -2410,7 +2401,7 @@ where
         let tracking_copy = match self.tracking_copy(step_request.pre_state_hash) {
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
             Ok(None) => return Err(StepError::RootNotFound(step_request.pre_state_hash)),
-            Err(error) => return Err(StepError::OtherEngineStateError(error)),
+            Err(error) => return Err(StepError::OtherEngineStateError(error.into())),
         };
 
         let executor = Executor::new(self.config().clone());
@@ -2539,7 +2530,7 @@ where
         let tracking_copy = match self.tracking_copy(state_hash) {
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
             Ok(None) => return Ok(BalanceResult::RootNotFound),
-            Err(error) => return Err(error),
+            Err(error) => return Err(error.into()),
         };
 
         let account_addr = public_key.to_account_hash();

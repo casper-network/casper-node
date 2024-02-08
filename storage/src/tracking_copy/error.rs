@@ -187,6 +187,15 @@ pub enum Error {
     /// Invalid string encoding.
     #[error("Invalid UTF-8 string encoding: {0}")]
     InvalidUtf8Encoding(Utf8Error),
+    /// Circular reference error.
+    #[error("Query attempted a circular reference : {0}")]
+    CircularReference(String),
+    /// Depth limit reached.
+    #[error("Query exceeded depth limit : {depth}")]
+    QueryDepthLimit {
+        /// Current depth limit.
+        depth: u64,
+    },
 }
 
 impl Error {
