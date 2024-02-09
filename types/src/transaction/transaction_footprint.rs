@@ -3,7 +3,7 @@ use datasize::DataSize;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
 
-use crate::{DeployFootprint, Gas, Timestamp};
+use crate::{DeployFootprint, Gas, Timestamp, U512};
 #[cfg(any(feature = "std", test))]
 use crate::{TimeDiff, TransactionConfig, TransactionHash};
 
@@ -44,7 +44,7 @@ impl TransactionFootprint {
     pub fn is_transfer(&self) -> bool {
         match self {
             TransactionFootprint::Deploy(deploy_footprint) => deploy_footprint.is_transfer,
-            TransactionFootprint::V1(v1_footprint) => v1_footprint.is_transfer,
+            TransactionFootprint::V1(_) => false,
         }
     }
 
@@ -52,7 +52,8 @@ impl TransactionFootprint {
     pub fn gas_estimate(&self) -> Gas {
         match self {
             TransactionFootprint::Deploy(deploy_footprint) => deploy_footprint.gas_estimate,
-            TransactionFootprint::V1(v1_footprint) => v1_footprint.gas_estimate,
+            TransactionFootprint::V1(_) => Gas::new(U512::from(0)), /* TODO[RC]: Add gas
+                                                                     * estimation for V1 */
         }
     }
 
@@ -95,7 +96,10 @@ impl TransactionFootprint {
                 .header
                 .is_valid(config, timestamp_leeway, at, v1_hash)
                 .map_err(Into::into),
-            _ => todo!("programmer error, checking deploy with v1 hash or vice versa"),
+            _ => {
+                // TODO[RC]: Add new error variant
+                todo!("programmer error, checking legacy deploy with v1 hash or vice versa")
+            }
         }
     }
 }

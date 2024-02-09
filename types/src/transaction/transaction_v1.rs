@@ -4,6 +4,7 @@ mod transaction_v1_approvals_hash;
 mod transaction_v1_body;
 #[cfg(any(feature = "std", test))]
 mod transaction_v1_builder;
+mod transaction_v1_category;
 mod transaction_v1_footprint;
 mod transaction_v1_hash;
 mod transaction_v1_header;
@@ -38,7 +39,8 @@ use crate::testing::TestRng;
 use crate::TransactionConfig;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, Digest, DisplayIter, Gas, Motes, RuntimeArgs, SecretKey, TimeDiff, Timestamp, U512,
+    crypto, Digest, DisplayIter, Gas, RuntimeArgs, SecretKey, TimeDiff, Timestamp,
+    TransactionSessionKind, U512,
 };
 pub use errors_v1::{
     DecodeFromJsonErrorV1 as TransactionV1DecodeFromJsonError, ErrorV1 as TransactionV1Error,
@@ -49,6 +51,7 @@ pub use transaction_v1_approvals_hash::TransactionV1ApprovalsHash;
 pub use transaction_v1_body::TransactionV1Body;
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1_builder::{TransactionV1Builder, TransactionV1BuilderError};
+pub use transaction_v1_category::TransactionV1Category;
 pub use transaction_v1_footprint::TransactionV1Footprint;
 pub use transaction_v1_hash::TransactionV1Hash;
 pub use transaction_v1_header::TransactionV1Header;
@@ -132,11 +135,6 @@ impl TransactionV1 {
     /// Returns the hash identifying this transaction.
     pub fn hash(&self) -> &TransactionV1Hash {
         &self.hash
-    }
-
-    /// Returns `true` if this transaction v1 is a native transfer.
-    pub fn is_transfer(&self) -> bool {
-        matches!(self.body.target, TransactionTarget::Native)
     }
 
     /// Returns the name of the chain the transaction should be executed on.
@@ -302,34 +300,16 @@ impl TransactionV1 {
         Ok(())
     }
 
-    /// Returns the `DeployFootprint`.
+    /// Returns the `TransactionV1Footprint`.
     pub fn footprint(&self) -> Result<TransactionV1Footprint, TransactionV1Error> {
         let header = self.header().clone();
-        let is_transfer = self.is_transfer();
 
-        // TODO[RC]: Is this ok?
-        let conv_rate = match header.pricing_mode() {
-            PricingMode::GasPriceMultiplier(multiplier) => *multiplier,
-            PricingMode::Fixed | PricingMode::Reserved => 1,
-        };
-
-        let gas_estimate = match header.payment_amount() {
-            Some(payment_amount) => {
-                match Gas::from_motes(Motes::new(U512::from(payment_amount)), conv_rate) {
-                    Some(gas_estimate) => gas_estimate,
-                    None => return Err(TransactionV1Error::InvalidPayment),
-                }
-            }
-            None => {
-                return Err(TransactionV1Error::InvalidPayment);
-            }
-        };
         let size_estimate = self.serialized_length();
         Ok(TransactionV1Footprint {
             header,
-            is_transfer,
-            gas_estimate,
             size_estimate,
+            category: self.category(),
+            gas_estimate: Gas::new(U512::from(0)), // TODO[RC]: Implement gas estimation.
         })
     }
 
@@ -423,6 +403,52 @@ impl TransactionV1 {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub(super) fn apply_approvals(&mut self, approvals: Vec<TransactionV1Approval>) {
         self.approvals.extend(approvals);
+    }
+
+    // TODO[RC]: Unit test needed, but only after we confirm this is the correct approach.
+    fn category(&self) -> TransactionV1Category {
+        let body = self.body();
+        let target = body.target();
+        let entry_point = body.entry_point();
+
+        match (target, entry_point) {
+            (TransactionTarget::Session { kind, .. }, _)
+                if matches!(
+                    kind,
+                    TransactionSessionKind::Installer | TransactionSessionKind::Upgrader
+                ) =>
+            {
+                TransactionV1Category::InstallUpgrade
+            }
+
+            (TransactionTarget::Session { kind, .. }, _)
+                if matches!(
+                    kind,
+                    TransactionSessionKind::Standard | TransactionSessionKind::Isolated
+                ) =>
+            {
+                if matches!(target, TransactionTarget::Stored { .. }) {
+                    TransactionV1Category::Standard
+                } else {
+                    TransactionV1Category::Other
+                }
+            }
+
+            (TransactionTarget::Native, TransactionEntryPoint::Transfer) => {
+                TransactionV1Category::Transfer
+            }
+
+            (TransactionTarget::Native, entry)
+                if !matches!(
+                    entry,
+                    TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer,
+                ) =>
+            {
+                TransactionV1Category::Staking
+            }
+
+            _ => TransactionV1Category::Other,
+        }
     }
 }
 

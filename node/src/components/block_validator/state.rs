@@ -16,8 +16,8 @@ use crate::{
     components::consensus::{ClContext, ProposedBlock},
     effect::Responder,
     types::{
-        appendable_block::AppendableBlock, DeployOrTransactionHash, DeployOrTransferHash, NodeId,
-        TransactionHashWithApprovals,
+        appendable_block::AppendableBlock, DeployHashWithApprovals, DeployOrTransactionHash,
+        DeployOrTransferHash, NodeId, TransactionHashWithApprovals,
     },
 };
 
@@ -152,9 +152,9 @@ impl BlockValidationState {
                 TransactionHashWithApprovals::Deploy { deploy_hash, .. } => {
                     DeployOrTransactionHash::from(DeployOrTransferHash::Deploy(*deploy_hash))
                 }
-                TransactionHashWithApprovals::V1 {
-                    transaction_hash, ..
-                } => DeployOrTransactionHash::from(*transaction_hash),
+                TransactionHashWithApprovals::V1(thwa) => {
+                    DeployOrTransactionHash::from(*thwa.transaction_hash())
+                }
             };
             (dt_hash, dhwa.approvals())
         });
@@ -163,9 +163,9 @@ impl BlockValidationState {
                 TransactionHashWithApprovals::Deploy { deploy_hash, .. } => {
                     DeployOrTransactionHash::from(DeployOrTransferHash::Transfer(*deploy_hash))
                 }
-                TransactionHashWithApprovals::V1 {
-                    transaction_hash, ..
-                } => DeployOrTransactionHash::from(*transaction_hash),
+                TransactionHashWithApprovals::V1(thwa) => {
+                    DeployOrTransactionHash::from(*thwa.transaction_hash())
+                }
             };
             (dt_hash, dhwa.approvals())
         });
@@ -383,19 +383,68 @@ impl BlockValidationState {
                     &transaction_hash,
                     &approvals_info.approvals,
                 );
-                let add_result = match dt_hash {
-                    DeployOrTransactionHash::Deploy(deploy) => match deploy {
-                        DeployOrTransferHash::Deploy(_) => {
-                            appendable_block.add_transaction(dhwa, footprint)
+                // let add_result = match dt_hash {
+                //     DeployOrTransactionHash::Deploy(deploy) => match deploy {
+                //         DeployOrTransferHash::Deploy(_) => {
+                //             appendable_block.add_deploy(dhwa, footprint)
+                //         }
+                //         DeployOrTransferHash::Transfer(_) => {
+                //             appendable_block.add_transfer(dhwa, footprint)
+                //         }
+                //     },
+                //     DeployOrTransactionHash::V1(_) => {
+                //         appendable_block.add_transaction(dhwa, footprint)
+                //     }
+                // };
+
+                let add_result = match (dt_hash, dhwa) {
+                    (
+                        DeployOrTransactionHash::Deploy(deploy_or_transfer_hash),
+                        TransactionHashWithApprovals::Deploy {
+                            deploy_hash: _, /* TODO[RC]: Hash is not used here,
+                                             * restructure. */
+                            approvals,
+                        },
+                    ) => match (deploy_or_transfer_hash, footprint) {
+                        (
+                            DeployOrTransferHash::Deploy(deploy_hash),
+                            TransactionFootprint::Deploy(footprint),
+                        ) => {
+                            let dhwa = DeployHashWithApprovals::new(*deploy_hash, approvals);
+                            appendable_block.add_deploy(dhwa, footprint)
                         }
-                        DeployOrTransferHash::Transfer(_) => {
+                        (
+                            DeployOrTransferHash::Transfer(transfer_hash),
+                            TransactionFootprint::Deploy(footprint),
+                        ) => {
+                            let dhwa = DeployHashWithApprovals::new(*transfer_hash, approvals);
                             appendable_block.add_transfer(dhwa, footprint)
                         }
+                        (DeployOrTransferHash::Transfer(_), TransactionFootprint::V1(_)) => todo!(),
+                        (_, TransactionFootprint::V1(_)) => panic!(),
                     },
-                    DeployOrTransactionHash::V1(_) => {
-                        appendable_block.add_transaction(dhwa, footprint)
+                    (
+                        DeployOrTransactionHash::V1(_hash), /* TODO[RC]: Hash is not used here,
+                                                             * restructure. */
+                        TransactionHashWithApprovals::V1(transaction_v1_hash_with_approvals),
+                    ) => match footprint {
+                        TransactionFootprint::Deploy(_) => {
+                            // TODO[RC],
+                            panic!()
+                        }
+                        TransactionFootprint::V1(footprint) => appendable_block
+                            .add_transaction_v1(transaction_v1_hash_with_approvals, footprint),
+                    },
+                    (
+                        DeployOrTransactionHash::V1(_),
+                        TransactionHashWithApprovals::Deploy { .. },
+                    )
+                    | (DeployOrTransactionHash::Deploy(_), TransactionHashWithApprovals::V1(_)) => {
+                        // TODO[RC],
+                        panic!()
                     }
                 };
+
                 match add_result {
                     Ok(()) => {
                         if !missing_deploys.is_empty() {

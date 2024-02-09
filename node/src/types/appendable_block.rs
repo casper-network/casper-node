@@ -8,42 +8,57 @@ use num_traits::Zero;
 use thiserror::Error;
 
 use casper_types::{
-    Gas, PublicKey, RewardedSignatures, TimeDiff, Timestamp, TransactionConfig,
-    TransactionFootprint, TransactionHash,
+    DeployFootprint, Gas, PublicKey, RewardedSignatures, TimeDiff, Timestamp, TransactionConfig,
+    TransactionFootprint, TransactionHash, TransactionV1Category, TransactionV1Footprint,
 };
 
-use super::BlockPayload;
+use super::{
+    transaction::{DeployHashWithApprovals, TransactionV1HashWithApprovals},
+    BlockPayload,
+};
 use crate::types::TransactionHashWithApprovals;
 
 const NO_LEEWAY: TimeDiff = TimeDiff::from_millis(0);
+
+#[derive(Debug, Error)]
+pub(crate) enum MismatchType {
+    #[error("legacy deploy with V1 footprint")]
+    LegacyDeployWithV1Footprint,
+    #[error("V1 transaction with legacy footprint")]
+    V1TransactionWithLegacyDeployFootprint,
+}
 
 #[derive(Debug, Error)]
 pub(crate) enum AddError {
     #[error("would exceed maximum transfer count per block")]
     TransferCount,
     #[error("would exceed maximum deploy count per block")]
-    TransactionCount,
+    DeployCount,
+    #[error("would exceed maximum transaction ({0:?}) count per block")]
+    TransactionCount(Option<TransactionV1Category>),
     #[error("would exceed maximum approval count per block")]
     ApprovalCount,
     #[error("would exceed maximum gas per block")]
     GasLimit,
     #[error("would exceed maximum block size")]
     BlockSize,
-    #[error("duplicate deploy")]
+    #[error("duplicate deploy or transaction")]
     Duplicate,
-    #[error("deploy has expired")]
+    #[error("deploy or transaction has expired")]
     Expired,
-    #[error("deploy is not valid in this context")]
-    InvalidTransaction,
+    #[error("deploy or transaction is not valid in this context")]
+    Invalid,
+    #[error("footprint type mismatch: {0}")]
+    FootprintTypeMismatch(MismatchType),
 }
 
 /// A block that is still being added to. It keeps track of and enforces block limits.
 #[derive(Clone, Eq, PartialEq, DataSize, Debug)]
 pub(crate) struct AppendableBlock {
     transaction_config: TransactionConfig,
-    deploys: Vec<TransactionHashWithApprovals>,
-    transfers: Vec<TransactionHashWithApprovals>,
-    deploy_and_transfer_set: HashSet<TransactionHash>,
+    transactions: Vec<TransactionHashWithApprovals>,
+    transfers: Vec<DeployHashWithApprovals>,
+    transaction_and_transfer_set: HashSet<TransactionHash>,
     timestamp: Timestamp,
     #[data_size(skip)]
     total_gas: Gas,
@@ -56,10 +71,10 @@ impl AppendableBlock {
     pub(crate) fn new(transaction_config: TransactionConfig, timestamp: Timestamp) -> Self {
         AppendableBlock {
             transaction_config,
-            deploys: Vec::new(),
+            transactions: Vec::new(),
             transfers: Vec::new(),
             timestamp,
-            deploy_and_transfer_set: HashSet::new(),
+            transaction_and_transfer_set: HashSet::new(),
             total_gas: Gas::zero(),
             total_size: 0,
             total_approvals: 0,
@@ -69,13 +84,36 @@ impl AppendableBlock {
     /// Attempts to add any kind of deploy (transfer or other kind).
     pub(crate) fn add(
         &mut self,
-        deploy_hash_with_approvals: TransactionHashWithApprovals,
+        transaction_hash_with_approvals: TransactionHashWithApprovals,
         footprint: &TransactionFootprint,
     ) -> Result<(), AddError> {
-        if footprint.is_transfer() {
-            self.add_transfer(deploy_hash_with_approvals, footprint)
-        } else {
-            self.add_transaction(deploy_hash_with_approvals, footprint)
+        match (transaction_hash_with_approvals, footprint) {
+            (
+                TransactionHashWithApprovals::Deploy {
+                    deploy_hash,
+                    approvals,
+                },
+                TransactionFootprint::Deploy(deploy_footprint),
+            ) => {
+                let dhwa = DeployHashWithApprovals::new(deploy_hash, approvals);
+                if footprint.is_transfer() {
+                    self.add_transfer(dhwa, deploy_footprint)
+                } else {
+                    self.add_deploy(dhwa, deploy_footprint)
+                }
+            }
+            (
+                TransactionHashWithApprovals::V1(thwa),
+                TransactionFootprint::V1(transaction_footprint),
+            ) => self.add_transaction_v1(thwa, transaction_footprint),
+            (TransactionHashWithApprovals::V1 { .. }, TransactionFootprint::Deploy(_)) => {
+                Err(AddError::FootprintTypeMismatch(
+                    MismatchType::V1TransactionWithLegacyDeployFootprint,
+                ))
+            }
+            (TransactionHashWithApprovals::Deploy { .. }, TransactionFootprint::V1(_)) => Err(
+                AddError::FootprintTypeMismatch(MismatchType::LegacyDeployWithV1Footprint),
+            ),
         }
     }
 
@@ -86,28 +124,29 @@ impl AppendableBlock {
     /// actually a transfer.
     pub(crate) fn add_transfer(
         &mut self,
-        transfer: TransactionHashWithApprovals,
-        footprint: &TransactionFootprint,
+        transfer: DeployHashWithApprovals,
+        footprint: &DeployFootprint,
     ) -> Result<(), AddError> {
         if self
-            .deploy_and_transfer_set
-            .contains(&transfer.transaction_hash())
+            .transaction_and_transfer_set
+            .contains(&TransactionHash::from(transfer.deploy_hash()))
         {
             return Err(AddError::Duplicate);
         }
-        if footprint.expired(self.timestamp) {
+        if footprint.header.expired(self.timestamp) {
             return Err(AddError::Expired);
         }
         if footprint
+            .header
             .is_valid(
                 &self.transaction_config,
                 NO_LEEWAY,
                 self.timestamp,
-                &transfer.transaction_hash(),
+                transfer.deploy_hash(),
             )
             .is_err()
         {
-            return Err(AddError::InvalidTransaction);
+            return Err(AddError::Invalid);
         }
         if self.has_max_transfer_count() {
             return Err(AddError::TransferCount);
@@ -115,8 +154,8 @@ impl AppendableBlock {
         if self.would_exceed_approval_limits(transfer.approvals().len()) {
             return Err(AddError::ApprovalCount);
         }
-        self.deploy_and_transfer_set
-            .insert(transfer.transaction_hash());
+        self.transaction_and_transfer_set
+            .insert(TransactionHash::from(transfer.deploy_hash()));
         self.total_approvals += transfer.approvals().len();
         self.transfers.push(transfer);
         Ok(())
@@ -127,44 +166,107 @@ impl AppendableBlock {
     ///
     /// This _must not_ be called with a transfer - the function cannot check whether the argument
     /// is actually not a transfer.
-    pub(crate) fn add_transaction(
+    pub(crate) fn add_deploy(
         &mut self,
-        transaction: TransactionHashWithApprovals,
-        footprint: &TransactionFootprint,
+        deploy: DeployHashWithApprovals,
+        footprint: &DeployFootprint,
     ) -> Result<(), AddError> {
         if self
-            .deploy_and_transfer_set
-            .contains(&transaction.transaction_hash())
+            .transaction_and_transfer_set
+            .contains(&TransactionHash::from(deploy.deploy_hash()))
         {
             return Err(AddError::Duplicate);
         }
-        if footprint.expired(self.timestamp) {
+        if footprint.header.expired(self.timestamp) {
             return Err(AddError::Expired);
         }
         if footprint
+            .header
             .is_valid(
                 &self.transaction_config,
                 NO_LEEWAY,
                 self.timestamp,
-                &transaction.transaction_hash(),
+                deploy.deploy_hash(),
             )
             .is_err()
         {
-            return Err(AddError::InvalidTransaction);
+            return Err(AddError::Invalid);
         }
-        if self.has_max_deploy_count() {
-            return Err(AddError::TransactionCount);
+        if self.has_max_transaction_count() {
+            return Err(AddError::DeployCount);
         }
-        if self.would_exceed_approval_limits(transaction.approvals().len()) {
+        if self.would_exceed_approval_limits(deploy.approvals().len()) {
             return Err(AddError::ApprovalCount);
         }
         // Only deploys count towards the size and gas limits.
         let new_total_size = self
             .total_size
-            .checked_add(footprint.size_estimate())
+            .checked_add(footprint.size_estimate)
             .filter(|size| *size <= self.transaction_config.max_block_size as usize)
             .ok_or(AddError::BlockSize)?;
-        let gas_estimate = footprint.gas_estimate();
+        let gas_estimate = footprint.gas_estimate;
+        let new_total_gas = self
+            .total_gas
+            .checked_add(gas_estimate)
+            .ok_or(AddError::GasLimit)?;
+        if new_total_gas > Gas::from(self.transaction_config.block_gas_limit) {
+            return Err(AddError::GasLimit);
+        }
+        self.total_gas = new_total_gas;
+        self.total_size = new_total_size;
+        self.total_approvals += deploy.approvals().len();
+        self.transaction_and_transfer_set
+            .insert(TransactionHash::from(deploy.deploy_hash()));
+        self.transactions.push(deploy.into());
+        Ok(())
+    }
+
+    /// Attempts to add a transaction V1 to the block; returns an error if that would violate a
+    /// validity condition.
+    pub(crate) fn add_transaction_v1(
+        &mut self,
+        transaction: TransactionV1HashWithApprovals,
+        footprint: &TransactionV1Footprint,
+    ) -> Result<(), AddError> {
+        if self
+            .transaction_and_transfer_set
+            .contains(&TransactionHash::from(transaction.transaction_hash()))
+        {
+            return Err(AddError::Duplicate);
+        }
+        if footprint.header.expired(self.timestamp) {
+            return Err(AddError::Expired);
+        }
+        if footprint
+            .header
+            .is_valid(
+                &self.transaction_config,
+                NO_LEEWAY,
+                self.timestamp,
+                transaction.transaction_hash(),
+            )
+            .is_err()
+        {
+            return Err(AddError::Invalid);
+        }
+        if self.has_max_transaction_count() {
+            return Err(AddError::TransactionCount(None));
+        }
+
+        if self.has_max_category_count(&footprint.category) {
+            return Err(AddError::TransactionCount(Some(footprint.category)));
+        }
+
+        if self.would_exceed_approval_limits(transaction.approvals().len()) {
+            return Err(AddError::ApprovalCount);
+        }
+
+        let new_total_size = self
+            .total_size
+            .checked_add(footprint.size_estimate)
+            .filter(|size| *size <= self.transaction_config.max_block_size as usize)
+            .ok_or(AddError::BlockSize)?;
+        let gas_estimate = footprint.gas_estimate;
         let new_total_gas = self
             .total_gas
             .checked_add(gas_estimate)
@@ -175,14 +277,15 @@ impl AppendableBlock {
         self.total_gas = new_total_gas;
         self.total_size = new_total_size;
         self.total_approvals += transaction.approvals().len();
-        self.deploy_and_transfer_set
-            .insert(transaction.transaction_hash());
-        self.deploys.push(transaction);
+        self.transaction_and_transfer_set
+            .insert(TransactionHash::from(transaction.transaction_hash()));
+        self.transactions
+            .push(TransactionHashWithApprovals::V1(transaction));
         Ok(())
     }
 
-    /// Creates a `BlockPayload` with the `AppendableBlock`s deploys and transfers, and the given
-    /// random bit and accusations.
+    /// Creates a `BlockPayload` with the `AppendableBlock`s transactions and transfers, and the
+    /// given random bit and accusations.
     pub(crate) fn into_block_payload(
         self,
         accusations: Vec<PublicKey>,
@@ -190,13 +293,23 @@ impl AppendableBlock {
         random_bit: bool,
     ) -> BlockPayload {
         let AppendableBlock {
-            deploys, transfers, ..
+            transactions,
+            transfers,
+            ..
         } = self;
         BlockPayload::new(
-            transfers,
+            transfers
+                .into_iter()
+                .map(|dhwa| {
+                    TransactionHashWithApprovals::new_deploy(
+                        *dhwa.deploy_hash(),
+                        dhwa.approvals().clone(),
+                    )
+                })
+                .collect(),
             vec![],
             vec![],
-            deploys,
+            transactions,
             accusations,
             rewarded_signatures,
             random_bit,
@@ -213,10 +326,10 @@ impl AppendableBlock {
         self.transfers.len() == self.transaction_config.block_max_transfer_count as usize
     }
 
-    /// Returns `true` if the number of deploys is already the maximum allowed count, i.e. no more
-    /// deploys can be added to this block.
-    fn has_max_deploy_count(&self) -> bool {
-        self.deploys.len() == self.transaction_config.block_max_standard_count as usize
+    /// Returns `true` if the number of transactions is already the maximum allowed count, i.e. no
+    /// more transactions can be added to this block.
+    fn has_max_transaction_count(&self) -> bool {
+        self.transactions.len() == self.transaction_config.block_max_standard_count as usize
     }
 
     /// Returns `true` if adding the deploy with 'additional_approvals` approvals would exceed the
@@ -229,34 +342,43 @@ impl AppendableBlock {
         let remaining_deploy_slots = self.transaction_config.block_max_transfer_count as usize
             - self.transfers.len()
             + self.transaction_config.block_max_standard_count as usize
-            - self.deploys.len();
+            - self.transactions.len();
         // safe to subtract because the chainspec is validated at load time
         additional_approvals > remaining_approval_slots - remaining_deploy_slots + 1
+    }
+
+    fn has_max_category_count(&self, _category: &TransactionV1Category) -> bool {
+        // TODO[RC]: Implement this
+        false
     }
 }
 
 impl Display for AppendableBlock {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        let deploy_approvals_count = self
-            .deploys
+        let transactions_approvals_count = self
+            .transactions
             .iter()
-            .map(|deploy_hash_with_approvals| deploy_hash_with_approvals.approvals().len())
+            .map(|transaction_hash_with_approvals| {
+                transaction_hash_with_approvals.approvals().len()
+            })
             .sum::<usize>();
         let transfer_approvals_count = self
             .transfers
             .iter()
-            .map(|deploy_hash_with_approvals| deploy_hash_with_approvals.approvals().len())
+            .map(|transaction_hash_with_approvals| {
+                transaction_hash_with_approvals.approvals().len()
+            })
             .sum::<usize>();
         write!(
             formatter,
             "AppendableBlock(timestamp-{}: {} non-transfers with {} approvals, {} transfers with {} approvals, \
             total of {} deploys with {} approvals, total gas {}, total size {})",
             self.timestamp,
-            self.deploys.len(),
-            deploy_approvals_count,
+            self.transactions.len(),
+            transactions_approvals_count,
             self.transfers.len(),
             transfer_approvals_count,
-            self.deploy_and_transfer_set.len(),
+            self.transaction_and_transfer_set.len(),
             self.total_approvals,
             self.total_gas,
             self.total_size,
@@ -270,7 +392,7 @@ mod tests {
 
     impl AppendableBlock {
         pub(crate) fn transaction_and_transfer_set(&self) -> &HashSet<TransactionHash> {
-            &self.deploy_and_transfer_set
+            &self.transaction_and_transfer_set
         }
     }
 }

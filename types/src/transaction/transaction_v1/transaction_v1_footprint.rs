@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Gas, TransactionV1Header};
 
+use super::transaction_v1_category::TransactionV1Category;
+
+/// Information about how much block limit a [`Transaction V1`] will consume.
 #[derive(Clone, Debug)]
 #[cfg_attr(
     any(feature = "std", test),
@@ -15,18 +18,10 @@ use crate::{Gas, TransactionV1Header};
 pub struct TransactionV1Footprint {
     /// The header of the `Transaction`.
     pub header: TransactionV1Header,
-    /// The estimated gas consumption of the `Transaction`.
+    /// The estimated gas consumption of the `Deploy`.
     pub gas_estimate: Gas,
     /// The bytesrepr serialized length of the `Transaction`.
     pub size_estimate: usize,
-    /// Whether the `Transaction` is a transfer or not.
-    // TODO[RC]: Is this distinction still correct for V1?
-    pub is_transfer: bool,
-}
-
-impl TransactionV1Footprint {
-    /// Returns `true` if this transaction is a native transfer.
-    pub fn is_transfer(&self) -> bool {
-        self.is_transfer
-    }
+    /// Transaction session kind.
+    pub category: TransactionV1Category,
 }

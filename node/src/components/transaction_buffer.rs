@@ -370,6 +370,8 @@ impl TransactionBuffer {
     fn appendable_block(&mut self, timestamp: Timestamp) -> AppendableBlock {
         let mut ret = AppendableBlock::new(self.transaction_config, timestamp);
         let mut holds = HashSet::new();
+
+        // TODO[RC]: Rewrite limits code?
         let mut have_hit_transfer_limit = false;
         let mut have_hit_transaction_limit = false;
         for (with_approvals, footprint) in self.proposable() {
@@ -404,7 +406,7 @@ impl TransactionBuffer {
                             );
                             self.dead.insert(transaction_hash);
                         }
-                        AddError::InvalidTransaction => {
+                        AddError::Invalid => {
                             // It should not generally be possible for an invalid transaction to get
                             // buffered in the first place, thus this should be unreachable.  There
                             // is a small potential for a slightly future-dated transaction to be
@@ -426,7 +428,8 @@ impl TransactionBuffer {
                             }
                             have_hit_transfer_limit = true;
                         }
-                        AddError::TransactionCount => {
+                        // TODO[RC]: Handle _
+                        AddError::TransactionCount(_) => {
                             if have_hit_transfer_limit {
                                 info!(
                                     ?transaction_hash,
@@ -449,6 +452,21 @@ impl TransactionBuffer {
                             // a block limit has been reached
                             break;
                         }
+                        AddError::DeployCount => {
+                            if have_hit_transfer_limit {
+                                info!(
+                                    ?transaction_hash,
+                                    "TransactionBuffer: block filled with deploys and transfers"
+                                );
+                                break;
+                            }
+                            have_hit_transaction_limit = true;
+                        }
+                        AddError::FootprintTypeMismatch(mismatch) => error!(
+                            ?transaction_hash,
+                            %mismatch,
+                            "TransactionBuffer: transaction and footprint type mismatch"
+                        ),
                     }
                 }
             }

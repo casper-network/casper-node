@@ -74,8 +74,9 @@ pub use transaction_session_kind::TransactionSessionKind;
 pub use transaction_target::TransactionTarget;
 pub use transaction_v1::{
     TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash, TransactionV1Body,
-    TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError, TransactionV1Error,
-    TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
+    TransactionV1Category, TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError,
+    TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Footprint, TransactionV1Hash,
+    TransactionV1Header,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1::{TransactionV1Builder, TransactionV1BuilderError};
@@ -305,14 +306,6 @@ impl Transaction {
             Transaction::Deploy(Deploy::random_valid_native_transfer(rng))
         } else {
             Transaction::V1(TransactionV1::random(rng))
-        }
-    }
-
-    /// Returns `true` if this transaction is a native transfer.
-    pub fn is_transfer(&self) -> bool {
-        match self {
-            Transaction::Deploy(deploy) => deploy.session().is_transfer(),
-            Transaction::V1(v1) => v1.is_transfer(),
         }
     }
 }
