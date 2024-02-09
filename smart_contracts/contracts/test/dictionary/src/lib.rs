@@ -13,7 +13,9 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    addressable_entity::NamedKeys, api_error, bytesrepr::ToBytes, package::PackageKindTag,
+    addressable_entity::{EntityKindTag, NamedKeys},
+    api_error,
+    bytesrepr::ToBytes,
     AccessRights, ApiError, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType,
     EntryPoints, Key, URef,
 };
@@ -238,7 +240,7 @@ pub fn delegate() {
         None,
     );
 
-    let entity_key = Key::addressable_entity_key(PackageKindTag::SmartContract, entity_hash);
+    let entity_key = Key::addressable_entity_key(EntityKindTag::SmartContract, entity_hash);
 
     runtime::put_key(CONTRACT_HASH_NAME, entity_key);
 }

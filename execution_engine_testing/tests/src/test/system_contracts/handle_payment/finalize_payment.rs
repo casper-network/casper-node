@@ -205,7 +205,7 @@ fn get_named_account_balance(
     name: &str,
 ) -> Option<U512> {
     let account = builder
-        .get_entity_by_account_hash(account_address)
+        .get_entity_with_named_keys_by_account_hash(account_address)
         .expect("should have account");
 
     let purse = account
