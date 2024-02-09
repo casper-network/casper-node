@@ -12,7 +12,7 @@ use tracing::Span;
 use casper_types::PublicKey;
 
 use super::{
-    error::{ConnectionError, MessageReceiverError},
+    error::{ConnectionError, MessageReceiverError, MessageSenderError},
     GossipedAddress, Message, NodeId, Ticket, Transport,
 };
 use crate::{
@@ -75,6 +75,8 @@ where
     OutgoingDropped {
         peer_id: Box<NodeId>,
         peer_addr: SocketAddr,
+        #[serde(skip_serializing)]
+        opt_err: Option<Box<MessageSenderError>>,
     },
 
     /// Incoming network request.
@@ -139,8 +141,20 @@ where
             Event::OutgoingConnection { outgoing, span: _ } => {
                 write!(f, "outgoing connection: {}", outgoing)
             }
-            Event::OutgoingDropped { peer_id, peer_addr } => {
-                write!(f, "dropped outgoing {} {}", peer_id, peer_addr)
+            Event::OutgoingDropped {
+                peer_id,
+                peer_addr,
+                opt_err,
+            } => {
+                if let Some(err) = opt_err {
+                    write!(
+                        f,
+                        "dropped outgoing {} {} with error {}",
+                        peer_id, peer_addr, err
+                    )
+                } else {
+                    write!(f, "dropped outgoing {} {}", peer_id, peer_addr)
+                }
             }
             Event::NetworkRequest { req } => write!(f, "request: {}", req),
             Event::NetworkInfoRequest { req } => write!(f, "request: {}", req),

@@ -83,7 +83,7 @@ use casper_types::{EraId, PublicKey, SecretKey};
 use self::{
     blocklist::BlocklistJustification,
     chain_info::ChainInfo,
-    error::{ConnectionError, MessageReceiverError},
+    error::{ConnectionError, MessageReceiverError, MessageSenderError},
     event::{IncomingConnection, OutgoingConnection},
     message::NodeKeyPair,
     metrics::Metrics,
@@ -885,9 +885,10 @@ where
                 }
 
                 effects.extend(tasks::rpc_sender_loop(rpc_server).instrument(span).event(
-                    move |_| Event::OutgoingDropped {
+                    move |result| Event::OutgoingDropped {
                         peer_id: Box::new(peer_id),
                         peer_addr,
+                        opt_err: result.err().map(Box::new),
                     },
                 ));
 
@@ -951,7 +952,14 @@ where
         &mut self,
         peer_id: NodeId,
         peer_addr: SocketAddr,
+        opt_err: Option<Box<MessageSenderError>>,
     ) -> Effects<Event<P>> {
+        if let Some(ref err) = opt_err {
+            debug!(err=%display_error(err), %peer_id, %peer_addr, "outgoing connection dropped due to error");
+        } else {
+            debug!(%peer_id, %peer_addr, "outgoing connection was dropped without error (i.e. closed by peer)")
+        }
+
         let requests = self
             .outgoing_manager
             .handle_connection_drop(peer_addr, Instant::now());
@@ -1247,9 +1255,11 @@ where
                 Event::OutgoingConnection { outgoing, span } => {
                     self.handle_outgoing_connection(*outgoing, span)
                 }
-                Event::OutgoingDropped { peer_id, peer_addr } => {
-                    self.handle_outgoing_dropped(*peer_id, peer_addr)
-                }
+                Event::OutgoingDropped {
+                    peer_id,
+                    peer_addr,
+                    opt_err,
+                } => self.handle_outgoing_dropped(*peer_id, peer_addr, opt_err),
                 Event::NetworkRequest { req: request } => {
                     self.handle_network_request(*request, rng)
                 }
