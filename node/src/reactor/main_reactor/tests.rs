@@ -11,8 +11,10 @@ use tempfile::TempDir;
 use tokio::time::{self, error::Elapsed};
 use tracing::{error, info};
 
-use casper_execution_engine::engine_state::{BidsRequest, BidsResult};
-use casper_storage::global_state::state::{StateProvider, StateReader};
+use casper_storage::{
+    data_access_layer::{BidsRequest, BidsResult},
+    global_state::state::{StateProvider, StateReader},
+};
 use casper_types::{
     execution::{ExecutionResult, ExecutionResultV2, Transform, TransformKind},
     system::{
@@ -676,7 +678,7 @@ fn is_ping(event: &MainEvent) -> bool {
     if let MainEvent::ConsensusMessageIncoming(ConsensusMessageIncoming { message, .. }) = event {
         if let ConsensusMessage::Protocol { ref payload, .. } = **message {
             return matches!(
-                payload.deserialize_incoming::<HighwayMessage::<ClContext>>(),
+                payload.deserialize_incoming::<HighwayMessage<ClContext>>(),
                 Ok(HighwayMessage::<ClContext>::NewVertex(HighwayVertex::Ping(
                     _
                 )))

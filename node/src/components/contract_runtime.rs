@@ -29,13 +29,14 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, info, trace};
 
-#[cfg(test)]
-use casper_execution_engine::engine_state::{BidsRequest, BidsResult};
-
 use casper_execution_engine::engine_state::{
     self, genesis::GenesisError, DeployItem, EngineConfigBuilder, EngineState, GenesisSuccess,
     UpgradeSuccess,
 };
+
+#[cfg(test)]
+use casper_storage::data_access_layer::{BidsRequest, BidsResult};
+
 use casper_storage::{
     data_access_layer::{BlockStore, DataAccessLayer, QueryRequest, QueryResult},
     global_state::{

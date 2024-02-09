@@ -22,11 +22,10 @@ use casper_execution_engine::engine_state::{
     EngineConfig, EngineConfigBuilder, EngineState, Error, GenesisSuccess, PruneConfig,
     PruneResult, StepError, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
 };
-use casper_storage::data_access_layer::BidsRequest;
 use casper_storage::{
     data_access_layer::{
-        BalanceResult, BlockStore, DataAccessLayer, EraValidatorsRequest, EraValidatorsResult,
-        QueryRequest, QueryResult,
+        BalanceResult, BidsRequest, BlockStore, DataAccessLayer, EraValidatorsRequest,
+        EraValidatorsResult, QueryRequest, QueryResult,
     },
     global_state::{
         state::{
