@@ -763,6 +763,7 @@ where
             // during regular upgrades.
             ConnectionError::TlsInitialization(_)
             | ConnectionError::TcpConnection(_)
+            | ConnectionError::TcpConnectionTimeout
             | ConnectionError::TcpNoDelay(_)
             | ConnectionError::TlsHandshake(_)
             | ConnectionError::HandshakeSend(_)

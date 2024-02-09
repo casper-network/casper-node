@@ -121,6 +121,9 @@ pub enum ConnectionError {
         #[source]
         io::Error,
     ),
+    /// TCP connection did not finish in time.
+    #[error("TCP connection timeout")]
+    TcpConnectionTimeout,
     /// Did not succeed setting TCP_NODELAY on the connection.
     #[error("Could not set TCP_NODELAY on outgoing connection")]
     TcpNoDelay(

@@ -111,10 +111,19 @@ where
     REv: 'static,
     P: Payload,
 {
-    let (peer_id, transport) = match tls_connect(&context, peer_addr).await {
-        Ok(value) => value,
-        Err(error) => return OutgoingConnection::FailedEarly { peer_addr, error },
-    };
+    let (peer_id, transport) =
+        match tokio::time::timeout(context.tcp_timeout.into(), tls_connect(&context, peer_addr))
+            .await
+        {
+            Ok(Ok(value)) => value,
+            Ok(Err(error)) => return OutgoingConnection::FailedEarly { peer_addr, error },
+            Err(_elapsed) => {
+                return OutgoingConnection::FailedEarly {
+                    peer_addr,
+                    error: ConnectionError::TcpConnectionTimeout,
+                }
+            }
+        };
 
     // Register the `peer_id` on the [`Span`].
     Span::current().record("peer_id", &field::display(peer_id));
@@ -187,6 +196,8 @@ where
     node_key_pair: Option<NodeKeyPair>,
     /// Our own public listening address.
     public_addr: Option<SocketAddr>,
+    /// Timeout for initial TCP and TLS negotiation connection.
+    tcp_timeout: TimeDiff,
     /// Timeout for handshake completion.
     pub(super) handshake_timeout: TimeDiff,
     /// The protocol version at which (or under) tarpitting is enabled.
@@ -223,6 +234,7 @@ impl<REv> NetworkContext<REv> {
             net_metrics: Arc::downgrade(net_metrics),
             chain_info,
             node_key_pair,
+            tcp_timeout: cfg.handshake_timeout, // TODO: Maybe there is merit in separating these.
             handshake_timeout: cfg.handshake_timeout,
             tarpit_version_threshold: cfg.tarpit_version_threshold,
             tarpit_duration: cfg.tarpit_duration,
