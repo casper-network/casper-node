@@ -4,7 +4,11 @@ use rand_chacha::ChaChaRng;
 
 use casper_types::{AccessRights, Digest, Phase, URef};
 
-use crate::{Address, ADDRESS_LENGTH};
+/// The length of an address.
+pub const ADDRESS_LENGTH: usize = 32;
+
+/// Alias for an array of bytes that represents an address.
+pub type Address = [u8; ADDRESS_LENGTH];
 
 const SEED_LENGTH: usize = 32;
 

@@ -25,6 +25,10 @@ pub enum Error {
     /// Error committing to execution engine.
     #[error(transparent)]
     CommitError(#[from] CommitError),
+
+    /// Invalid state root hash.
+    #[error("RootNotFound")]
+    RootNotFound,
 }
 
 impl From<bytesrepr::Error> for Error {

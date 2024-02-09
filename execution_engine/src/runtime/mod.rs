@@ -23,7 +23,11 @@ use tracing::error;
 #[cfg(feature = "test-support")]
 use casper_wasmi::RuntimeValue;
 
-use casper_storage::global_state::state::StateReader;
+use casper_storage::{
+    global_state::{error::Error as GlobalStateError, state::StateReader},
+    system::{auction::Auction, handle_payment::HandlePayment, mint::Mint},
+    tracking_copy::TrackingCopyExt,
+};
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
@@ -58,8 +62,6 @@ use crate::{
     execution::{self, Error},
     runtime::host_function_flag::HostFunctionFlag,
     runtime_context::RuntimeContext,
-    system::{auction::Auction, handle_payment::HandlePayment, mint::Mint},
-    tracking_copy::TrackingCopyExt,
 };
 pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
 pub use wasm_prep::{
@@ -90,8 +92,7 @@ pub struct Runtime<'a, R> {
 
 impl<'a, R> Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     /// Creates a new runtime instance.
     pub(crate) fn new(context: RuntimeContext<'a, R>) -> Self {

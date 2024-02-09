@@ -4,11 +4,11 @@ use std::{
 };
 
 use casper_engine_test_support::{LmdbWasmTestBuilder, UpgradeRequestBuilder};
-use casper_execution_engine::engine_state::SystemContractRegistry;
 use casper_types::{
     contracts::ContractHash,
     system::{self, mint},
-    AccessRights, ByteCodeHash, CLValue, Digest, EraId, Key, ProtocolVersion, StoredValue, URef,
+    AccessRights, ByteCodeHash, CLValue, Digest, EraId, Key, ProtocolVersion, StoredValue,
+    SystemContractRegistry, URef,
 };
 use rand::Rng;
 

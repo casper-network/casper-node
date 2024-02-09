@@ -20,8 +20,11 @@ use tempfile::TempDir;
 use thiserror::Error;
 use tokio::time;
 
-use casper_execution_engine::engine_state::{BalanceResult, QueryResult, MAX_PAYMENT_AMOUNT};
-use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
+use casper_execution_engine::engine_state::MAX_PAYMENT_AMOUNT;
+use casper_storage::{
+    data_access_layer::{BalanceResult, QueryResult},
+    global_state::trie::merkle_proof::TrieMerkleProof,
+};
 use casper_types::{
     account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight},
     addressable_entity::{AddressableEntity, NamedKeys},
@@ -68,7 +71,6 @@ enum Event {
     Storage(#[serde(skip_serializing)] storage::Event),
     #[from]
     TransactionAcceptor(#[serde(skip_serializing)] super::Event),
-    #[from]
     ControlAnnouncement(ControlAnnouncement),
     #[from]
     FatalAnnouncement(FatalAnnouncement),
@@ -93,6 +95,12 @@ impl From<MakeBlockExecutableRequest> for Event {
 impl From<MarkBlockCompletedRequest> for Event {
     fn from(request: MarkBlockCompletedRequest) -> Self {
         Event::Storage(storage::Event::MarkBlockCompletedRequest(request))
+    }
+}
+
+impl From<ControlAnnouncement> for Event {
+    fn from(control_announcement: ControlAnnouncement) -> Self {
+        Event::ControlAnnouncement(control_announcement)
     }
 }
 
@@ -758,7 +766,7 @@ impl reactor::Reactor for Reactor {
                     } else {
                         panic!("expect only queries using Key::Package variant");
                     };
-                    responder.respond(Ok(query_result)).ignore()
+                    responder.respond(query_result).ignore()
                 }
                 ContractRuntimeRequest::GetBalance {
                     balance_request,
@@ -786,7 +794,7 @@ impl reactor::Reactor for Reactor {
                                 proof: Box::new(proof),
                             }
                         };
-                    responder.respond(Ok(balance_result)).ignore()
+                    responder.respond(balance_result).ignore()
                 }
                 ContractRuntimeRequest::GetAddressableEntity {
                     state_root_hash: _,

@@ -1,26 +1,15 @@
-//! Execution error and supporting code.
 use std::str::Utf8Error;
 use thiserror::Error;
 
-use casper_storage::{global_state, tracking_copy::TrackingCopyError};
-
 use casper_types::{
-    addressable_entity::{
-        AddKeyFailure, EntityKind, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure,
-    },
+    addressable_entity::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
     bytesrepr,
     execution::TransformError,
     system, AccessRights, AddressableEntityHash, ApiError, ByteCodeHash, CLType, CLValueError,
     EntityVersionKey, Key, PackageHash, StoredValueTypeMismatch, URef,
 };
-use casper_wasm::elements;
 
-use crate::{
-    resolvers::error::ResolverError,
-    runtime::{stack, PreprocessingError},
-};
-
-/// Possible execution errors.
+/// Possible tracking copy errors.
 #[derive(Error, Debug, Clone)]
 #[non_exhaustive]
 pub enum Error {
@@ -29,7 +18,7 @@ pub enum Error {
     Interpreter(String),
     /// Storage error.
     #[error("Storage error: {}", _0)]
-    Storage(global_state::error::Error),
+    Storage(crate::global_state::error::Error),
     /// Failed to (de)serialize bytes.
     #[error("Serialization error: {}", _0)]
     BytesRepr(bytesrepr::Error),
@@ -60,9 +49,6 @@ pub enum Error {
     /// Unable to find a function.
     #[error("Function not found: {}", _0)]
     FunctionNotFound(String),
-    /// Parity WASM error.
-    #[error("{}", _0)]
-    ParityWasm(elements::Error),
     /// Error optimizing WASM.
     #[error("WASM optimizer error")]
     WasmOptimizer,
@@ -72,9 +58,6 @@ pub enum Error {
     /// A stored smart contract called a ret function.
     #[error("Return")]
     Ret(Vec<URef>),
-    /// Error using WASM host function resolver.
-    #[error("Resolver error: {}", _0)]
-    Resolver(ResolverError),
     /// Reverts execution with a provided status
     #[error("{}", _0)]
     Revert(ApiError),
@@ -132,11 +115,8 @@ pub enum Error {
     #[error("No such method: {}", _0)]
     NoSuchMethod(String),
     /// Contract does
-    #[error("Error calling an abstract entry point: {}", _0)]
+    #[error("Error calling an template entry point: {}", _0)]
     TemplateMethod(String),
-    /// Error processing WASM bytes.
-    #[error("Wasm preprocessing error: {}", _0)]
-    WasmPreprocessing(PreprocessingError),
     /// Unable to convert a [`Key`] into an [`URef`].
     #[error("Key is not a URef: {}", _0)]
     KeyIsNotAURef(Key),
@@ -188,15 +168,9 @@ pub enum Error {
     /// Invalid key
     #[error("Invalid key {0}")]
     UnexpectedKeyVariant(Key),
-    /// Invalid AddressableEntity kind.
-    #[error("Invalid entity kind: {0}")]
-    InvalidEntityKind(EntityKind),
     /// Failed to transfer tokens on a private chain.
     #[error("Failed to transfer with unrestricted transfers disabled")]
     DisabledUnrestrictedTransfers,
-    /// Storage error.
-    #[error("Tracking copy error: {0}")]
-    TrackingCopy(TrackingCopyError),
     /// Weight of all used associated keys does not meet entity's upgrade threshold.
     #[error("Deployment authorization failure")]
     UpgradeAuthorizationFailure,
@@ -211,18 +185,6 @@ pub enum Error {
     InvalidUtf8Encoding(Utf8Error),
 }
 
-impl From<PreprocessingError> for Error {
-    fn from(error: PreprocessingError) -> Self {
-        Error::WasmPreprocessing(error)
-    }
-}
-
-impl From<casper_wasm_utils::OptimizerError> for Error {
-    fn from(_optimizer_error: casper_wasm_utils::OptimizerError) -> Self {
-        Error::WasmOptimizer
-    }
-}
-
 impl Error {
     /// Returns new type mismatch error.
     pub fn type_mismatch(expected: CLType, found: CLType) -> Error {
@@ -233,41 +195,9 @@ impl Error {
     }
 }
 
-impl casper_wasmi::HostError for Error {}
-
-impl From<casper_wasmi::Error> for Error {
-    fn from(error: casper_wasmi::Error) -> Self {
-        match error
-            .as_host_error()
-            .and_then(|host_error| host_error.downcast_ref::<Error>())
-        {
-            Some(error) => error.clone(),
-            None => Error::Interpreter(error.into()),
-        }
-    }
-}
-
-impl From<global_state::error::Error> for Error {
-    fn from(e: global_state::error::Error) -> Self {
-        Error::Storage(e)
-    }
-}
-
 impl From<bytesrepr::Error> for Error {
     fn from(e: bytesrepr::Error) -> Self {
         Error::BytesRepr(e)
-    }
-}
-
-impl From<elements::Error> for Error {
-    fn from(e: elements::Error) -> Self {
-        Error::ParityWasm(e)
-    }
-}
-
-impl From<ResolverError> for Error {
-    fn from(err: ResolverError) -> Self {
-        Error::Resolver(err)
     }
 }
 
@@ -295,26 +225,14 @@ impl From<SetThresholdFailure> for Error {
     }
 }
 
-impl From<system::Error> for Error {
-    fn from(error: system::Error) -> Self {
-        Error::SystemContract(error)
-    }
-}
-
 impl From<CLValueError> for Error {
     fn from(e: CLValueError) -> Self {
         Error::CLValue(e)
     }
 }
 
-impl From<stack::RuntimeStackOverflow> for Error {
-    fn from(_: stack::RuntimeStackOverflow) -> Self {
-        Error::RuntimeStackOverflow
-    }
-}
-
-impl From<TrackingCopyError> for Error {
-    fn from(e: TrackingCopyError) -> Self {
-        Error::TrackingCopy(e)
+impl From<crate::global_state::error::Error> for Error {
+    fn from(gse: crate::global_state::error::Error) -> Self {
+        Error::Storage(gse)
     }
 }

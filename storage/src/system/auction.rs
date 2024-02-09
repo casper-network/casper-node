@@ -1,5 +1,6 @@
-pub(crate) mod detail;
-pub(crate) mod providers;
+pub mod bidding;
+pub mod detail;
+pub mod providers;
 
 use std::collections::BTreeMap;
 

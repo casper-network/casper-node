@@ -11,9 +11,7 @@ use tempfile::TempDir;
 use tokio::time::{self, error::Elapsed};
 use tracing::{error, info};
 
-use casper_execution_engine::engine_state::{
-    GetBidsRequest, GetBidsResult, SystemContractRegistry,
-};
+use casper_execution_engine::engine_state::{GetBidsRequest, GetBidsResult};
 use casper_storage::global_state::state::{StateProvider, StateReader};
 use casper_types::{
     execution::{ExecutionResult, ExecutionResultV2, Transform, TransformKind},
@@ -24,8 +22,8 @@ use casper_types::{
     testing::TestRng,
     AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, Block, BlockHash,
     BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Deploy, EraId, Key, Motes,
-    ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, Timestamp, Transaction,
-    TransactionHash, ValidatorConfig, U512,
+    ProtocolVersion, PublicKey, SecretKey, StoredValue, SystemContractRegistry, TimeDiff,
+    Timestamp, Transaction, TransactionHash, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -527,8 +525,7 @@ impl TestFixture {
         let bids_result = runner
             .main_reactor()
             .contract_runtime
-            .auction_state(*highest_block.state_root_hash())
-            .expect("should have bids result");
+            .auction_state(*highest_block.state_root_hash());
 
         if let GetBidsResult::Success { bids } = bids_result {
             match bids.iter().find(|bid_kind| {
@@ -744,8 +741,7 @@ impl SwitchBlocks {
         for runner in nodes.values() {
             let request = GetBidsRequest::new(state_root_hash);
             let engine_state = runner.main_reactor().contract_runtime().engine_state();
-            let bids_result = engine_state.get_bids(request).expect("get_bids failed");
-            if let Some(bids) = bids_result.into_success() {
+            if let GetBidsResult::Success { bids } = engine_state.get_bids(request) {
                 return bids;
             }
         }

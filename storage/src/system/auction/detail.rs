@@ -193,7 +193,7 @@ where
 /// a specific era is reached.
 ///
 /// This function can be called by the system only.
-pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(
+pub fn process_unbond_requests<P: Auction + ?Sized>(
     provider: &mut P,
     max_delegators_per_validator: Option<u32>,
     minimum_delegation_amount: u64,
@@ -250,7 +250,7 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(
 
 /// Creates a new purse in unbonding_purses given a validator's key, amount, and a destination
 /// unbonding purse. Returns the amount of motes remaining in the validator's bid purse.
-pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
+pub fn create_unbonding_purse<P: Auction + ?Sized>(
     provider: &mut P,
     validator_public_key: PublicKey,
     unbonder_public_key: PublicKey,
@@ -462,7 +462,7 @@ where
 /// If specified validator exists, and if validator is not yet at max delegators count, processes
 /// delegation. For a new delegation a delegator bid record will be created to track the delegation,
 /// otherwise the existing tracking record will be updated.
-pub(crate) fn handle_delegation<P>(
+pub fn handle_delegation<P>(
     provider: &mut P,
     delegator_public_key: PublicKey,
     validator_public_key: PublicKey,
@@ -537,10 +537,7 @@ where
     Ok(updated_amount)
 }
 
-pub(crate) fn read_validator_bid<P>(
-    provider: &mut P,
-    bid_key: &Key,
-) -> Result<Box<ValidatorBid>, Error>
+pub fn read_validator_bid<P>(provider: &mut P, bid_key: &Key) -> Result<Box<ValidatorBid>, Error>
 where
     P: StorageProvider + ?Sized,
 {
@@ -554,7 +551,7 @@ where
     }
 }
 
-pub(crate) fn read_delegator_bids<P>(
+pub fn read_delegator_bids<P>(
     provider: &mut P,
     validator_public_key: &PublicKey,
 ) -> Result<Vec<Delegator>, Error>
@@ -577,10 +574,7 @@ where
     Ok(ret)
 }
 
-pub(crate) fn read_delegator_bid<P>(
-    provider: &mut P,
-    bid_key: &Key,
-) -> Result<Box<Delegator>, Error>
+pub fn read_delegator_bid<P>(provider: &mut P, bid_key: &Key) -> Result<Box<Delegator>, Error>
 where
     P: RuntimeProvider + ?Sized + StorageProvider,
 {
@@ -594,7 +588,7 @@ where
     }
 }
 
-pub(crate) fn seigniorage_recipient<P>(
+pub fn seigniorage_recipient<P>(
     provider: &mut P,
     validator_bid: &ValidatorBid,
 ) -> Result<SeigniorageRecipient, Error>
@@ -622,9 +616,7 @@ where
 ///
 /// This is `pub` as it is used not just in the relevant auction entry point, but also by the
 /// engine state while directly querying for the era validators.
-pub(crate) fn era_validators_from_snapshot(
-    snapshot: SeigniorageRecipientsSnapshot,
-) -> EraValidators {
+pub fn era_validators_from_snapshot(snapshot: SeigniorageRecipientsSnapshot) -> EraValidators {
     snapshot
         .into_iter()
         .map(|(era_id, recipients)| {
@@ -642,7 +634,7 @@ pub(crate) fn era_validators_from_snapshot(
 /// validator.
 ///
 /// Returns `true` if the provided bid's vesting schedule was initialized.
-pub(crate) fn process_with_vesting_schedule<P>(
+pub fn process_with_vesting_schedule<P>(
     provider: &mut P,
     validator_bid: &mut ValidatorBid,
     timestamp_millis: u64,
@@ -691,10 +683,7 @@ where
 }
 
 /// Returns the total staked amount of validator + all delegators
-pub(crate) fn total_staked_amount<P>(
-    provider: &mut P,
-    validator_bid: &ValidatorBid,
-) -> Result<U512, Error>
+pub fn total_staked_amount<P>(provider: &mut P, validator_bid: &ValidatorBid) -> Result<U512, Error>
 where
     P: RuntimeProvider + ?Sized + StorageProvider,
 {

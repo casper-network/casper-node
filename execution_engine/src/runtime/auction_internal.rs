@@ -1,7 +1,13 @@
 use std::collections::BTreeSet;
 use tracing::error;
 
-use casper_storage::global_state::state::StateReader;
+use casper_storage::{
+    global_state::{error::Error as GlobalStateError, state::StateReader},
+    system::auction::{
+        providers::{AccountProvider, MintProvider, RuntimeProvider, StorageProvider},
+        Auction,
+    },
+};
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
@@ -15,13 +21,7 @@ use casper_types::{
 };
 
 use super::Runtime;
-use crate::{
-    execution,
-    system::auction::{
-        providers::{AccountProvider, MintProvider, RuntimeProvider, StorageProvider},
-        Auction,
-    },
-};
+use crate::execution;
 
 impl From<execution::Error> for Option<Error> {
     fn from(exec_error: execution::Error) -> Self {
@@ -37,8 +37,7 @@ impl From<execution::Error> for Option<Error> {
 
 impl<'a, R> StorageProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn read<T: FromBytes + CLTyped>(&mut self, uref: URef) -> Result<Option<T>, Error> {
         match self.context.read_gs(&uref.into()) {
@@ -149,8 +148,7 @@ where
 
 impl<'a, R> RuntimeProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn get_caller(&self) -> AccountHash {
         self.context.get_caller()
@@ -213,8 +211,7 @@ where
 
 impl<'a, R> MintProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn unbond(&mut self, unbonding_purse: &UnbondingPurse) -> Result<(), Error> {
         let account_hash =
@@ -380,8 +377,7 @@ where
 
 impl<'a, R> AccountProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn get_main_purse(&self) -> Result<URef, Error> {
         // NOTE: This violates security as system contract is a contract entrypoint and normal
@@ -392,9 +388,7 @@ where
     }
 }
 
-impl<'a, R> Auction for Runtime<'a, R>
-where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+impl<'a, R> Auction for Runtime<'a, R> where
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>
 {
 }

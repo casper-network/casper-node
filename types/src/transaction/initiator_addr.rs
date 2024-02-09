@@ -39,10 +39,18 @@ pub enum InitiatorAddr {
 }
 
 impl InitiatorAddr {
+    /// Gets the account hash.
+    pub fn account_hash(&self) -> AccountHash {
+        match self {
+            InitiatorAddr::PublicKey(public_key) => public_key.to_account_hash(),
+            InitiatorAddr::AccountHash(hash) => *hash,
+        }
+    }
+
     /// Returns a random `InitiatorAddr`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..2) {
+        match rng.gen_range(0..=1) {
             PUBLIC_KEY_TAG => InitiatorAddr::PublicKey(PublicKey::random(rng)),
             ACCOUNT_HASH_TAG => InitiatorAddr::AccountHash(rng.gen()),
             _ => unreachable!(),

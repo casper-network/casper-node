@@ -3,7 +3,9 @@ use std::{cell::RefCell, collections::BTreeSet, fmt, rc::Rc};
 
 use thiserror::Error;
 
-use casper_storage::global_state::state::StateProvider;
+use casper_storage::{
+    global_state::state::StateProvider, tracking_copy::TrackingCopy, AddressGenerator,
+};
 use casper_types::{
     addressable_entity::{
         ActionThresholds, AssociatedKeys, EntityKind, EntityKindTag, MessageTopics, NamedKeyAddr,
@@ -16,10 +18,6 @@ use casper_types::{
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeHash,
     ByteCodeKind, CLValue, CLValueError, Digest, EntityAddr, EntryPoints, FeeHandling, Key,
     Package, PackageHash, Phase, ProtocolVersion, PublicKey, StoredValue, URef, U512,
-};
-
-use crate::{
-    engine_state::ACCOUNT_BYTE_CODE_HASH, execution::AddressGenerator, tracking_copy::TrackingCopy,
 };
 
 use super::EngineConfig;
@@ -299,7 +297,7 @@ where
     ) -> Result<(), ProtocolUpgradeError> {
         let mut address_generator = AddressGenerator::new(pre_state_hash.as_ref(), Phase::System);
 
-        let byte_code_hash = *ACCOUNT_BYTE_CODE_HASH;
+        let byte_code_hash = ByteCodeHash::default();
         let entity_hash = AddressableEntityHash::new(address_generator.new_hash_address());
         let package_hash = PackageHash::new(address_generator.new_hash_address());
 

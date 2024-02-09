@@ -8,5 +8,14 @@
 )]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
+pub mod address_generator;
 pub mod data_access_layer;
 pub mod global_state;
+pub mod system;
+pub mod tracking_copy;
+
+pub use address_generator::{AddressGenerator, AddressGeneratorBuilder};
+pub use tracking_copy::TrackingCopy;
+
+#[cfg(test)]
+pub use self::tracking_copy::new_temporary_tracking_copy;

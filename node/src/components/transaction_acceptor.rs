@@ -10,7 +10,8 @@ use datasize::DataSize;
 use prometheus::Registry;
 use tracing::{debug, error, trace};
 
-use casper_execution_engine::engine_state::{BalanceRequest, MAX_PAYMENT};
+use casper_execution_engine::engine_state::MAX_PAYMENT;
+use casper_storage::data_access_layer::BalanceRequest;
 use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, contracts::ContractHash,
     package::Package, system::auction::ARG_AMOUNT, AddressableEntityHash,
@@ -248,7 +249,7 @@ impl TransactionAcceptor {
                     .event(move |balance_result| Event::GetBalanceResult {
                         event_metadata,
                         block_header,
-                        maybe_balance: balance_result.ok().and_then(|res| res.motes().copied()),
+                        maybe_balance: balance_result.motes().copied(),
                     })
             }
         }
