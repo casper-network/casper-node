@@ -71,7 +71,7 @@ pub struct Renderer {
 }
 
 const UNIT_WIDTH: f32 = 0.5;
-const UNIT_HEIGHT: f32 = 0.3;
+const UNIT_HEIGHT: f32 = 0.4;
 const CORNER_RADIUS: f32 = 0.05;
 const LINE_WIDTH: f32 = 0.015;
 
@@ -314,21 +314,23 @@ impl Renderer {
             );
             let text3 = format!("Vote: {:?}", unit.vote);
             let text4 = format!("round_exp: {}", unit.round_exp);
-            let text5 = format!("timestamp: {} (round {})", unit.timestamp, unit.round_num);
-            let text6 = if let Some(quorum) = unit.max_quorum.as_ref() {
+            let text5 = format!("round_id: {}", unit.round_id);
+            let text6 = format!("timestamp: {} (round {})", unit.timestamp, unit.round_num);
+            let text7 = if let Some(quorum) = unit.max_quorum.as_ref() {
                 format!("max quorum: {:3.1}%", quorum.weight_percent)
             } else {
                 "".to_string()
             };
-            self.draw_text(target, -0.4, 0.6, &text1, 1.3, &matrix2);
-            self.draw_text(target, -0.8, 0.26, &text2, 0.8, &matrix2);
-            self.draw_text(target, -0.8, 0.0, &text3, 0.8, &matrix2);
-            self.draw_text(target, -0.8, -0.26, &text4, 0.8, &matrix2);
-            self.draw_text(target, -0.8, -0.52, &text5, 0.8, &matrix2);
-            self.draw_text(target, -0.8, -0.78, &text6, 0.8, &matrix2);
+            self.draw_text(target, -0.4, 0.7, &text1, 1.3, &matrix2);
+            self.draw_text(target, -0.8, 0.46, &text2, 0.8, &matrix2);
+            self.draw_text(target, -0.8, 0.22, &text3, 0.8, &matrix2);
+            self.draw_text(target, -0.8, -0.02, &text4, 0.8, &matrix2);
+            self.draw_text(target, -0.8, -0.26, &text5, 0.8, &matrix2);
+            self.draw_text(target, -0.8, -0.5, &text6, 0.8, &matrix2);
+            self.draw_text(target, -0.8, -0.74, &text7, 0.8, &matrix2);
         } else {
             let text = format!("{:?}", unit.id);
-            self.draw_text(target, -0.4, -0.1, &text, 2.0, &matrix2);
+            self.draw_text(target, -0.4, -0.15, &text, 3.0, &matrix2);
         }
     }
 
@@ -342,7 +344,7 @@ impl Renderer {
         scale: f32,
         matrix: &Matrix,
     ) {
-        let basic_scale = UNIT_HEIGHT / 8.0;
+        let basic_scale = UNIT_HEIGHT / 12.0;
         let scale = basic_scale * scale;
         let matrix = Matrix::scale(scale, scale)
             * Matrix::translation(x * UNIT_WIDTH / 2.0, y * UNIT_HEIGHT / 2.0)

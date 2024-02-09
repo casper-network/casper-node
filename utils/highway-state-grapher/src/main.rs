@@ -183,6 +183,7 @@ pub struct GraphUnit {
     pub graph_height: usize,
     pub timestamp: u64,
     pub round_num: u64,
+    pub round_id: Timestamp,
     pub round_exp: u8,
     pub max_quorum: Option<Quorum>,
 }
@@ -198,6 +199,7 @@ impl Debug for GraphUnit {
             .field("is_proposal", &self.is_proposal)
             .field("timestamp", &self.timestamp)
             .field("round_num", &self.round_num)
+            .field("round_id", &self.round_id)
             .field("round_exp", &self.round_exp)
             .field("max_quorum", &self.max_quorum)
             .field("cited_units", &self.cited_units)
@@ -347,6 +349,7 @@ impl Graph {
                 graph_height,
                 timestamp: time_since_era_start,
                 round_num,
+                round_id: unit.round_id(),
                 round_exp: (unit.round_len().millis() / state.params().min_round_length().millis())
                     .trailing_zeros() as u8,
                 max_quorum: None,
