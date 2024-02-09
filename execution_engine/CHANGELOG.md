@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [Unreleased]
+## 7.0.0
 
 ### Added
 * Add chainspec option `core.allow_unrestricted_transfers` that, if enabled, allows token transfers between any two peers. Disabling this option makes sense only for private chains.
@@ -24,18 +24,20 @@ All notable changes to this project will be documented in this file.  The format
 * Add support for a new FFI function `enable_contract_version` for enabling a specific version of a contract.
 
 ### Changed
-* Default value for `max_stack_height` is increased to 500.
 * `current stack height` is written to `stderr` in case `Trap(Unreachable)` error is encountered during Wasm execution.
 * Tweak upgrade logic transforming withdraw purses to early exit if possible.
 * Lower the default gas costs of opcodes.
   - Set the cost for branching opcodes to 35,000 (`br`, `br_if`, `br_table`).
   - Set the cost for call opcodes to 68,000 (`call`, `call_indirect`).
+* Default value for round seigniorage rate is halved to `7/175070816` due to reduction in block times, to maintain current seigniorage rate (per unit of time).
+* Refund ratio is changed from 0% to 99%.
 
 
 
 ## 6.0.0
 
 ### Changed
+* Default value for `max_stack_height` is increased to 500.
 * Replaced usage of `parity-wasm` and `wasmi` with Casper forks `casper-wasm` and `casper-wasmi` respectively.
 
 ### Fixed
@@ -44,6 +46,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Security
 * Fix unbounded memory allocation issue while parsing Wasm.
+
 
 
 ## 5.0.0

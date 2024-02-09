@@ -1,5 +1,3 @@
-use std::convert::TryInto;
-
 use casper_types::{
     account::{Account, AccountHash},
     CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,

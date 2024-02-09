@@ -8,10 +8,11 @@ use datasize::DataSize;
 use serde::Serialize;
 
 /// A specification for a stopping point.
-#[derive(Copy, Clone, DataSize, Debug, Eq, PartialEq, Serialize)]
+#[derive(Copy, Clone, DataSize, Debug, Eq, PartialEq, Serialize, Default)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub(crate) enum StopAtSpec {
     /// Stop after completion of the current block.
+    #[default]
     NextBlock,
     /// Stop after the completion of the next switch block.
     EndOfCurrentEra,
@@ -21,12 +22,6 @@ pub(crate) enum StopAtSpec {
     BlockHeight(u64),
     /// Stop at a given era id.
     EraId(EraId),
-}
-
-impl Default for StopAtSpec {
-    fn default() -> Self {
-        StopAtSpec::NextBlock
-    }
 }
 
 impl Display for StopAtSpec {

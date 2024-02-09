@@ -1,0 +1,3 @@
+[core]
+minimum_era_height = 15
+era_duration = "63 seconds"

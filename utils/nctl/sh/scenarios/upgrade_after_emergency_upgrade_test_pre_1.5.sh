@@ -286,7 +286,9 @@ function do_await_deploy_inclusion() {
 function do_upgrade_second_time() {
     ACTIVATE_ERA_2=$(($(get_chain_era)+2))
     log_step "scheduling the network upgrade to version ${TEST_PROTOCOL_VERSION_2} at era ${ACTIVATE_ERA_2}"
-    nctl-assets-upgrade-from-stage stage="1" era="$ACTIVATE_ERA_2"
+
+    CONFIG_PATH="$NCTL/overrides/upgrade_after_emergency_upgrade_test_pre_1_5.config.toml"
+    nctl-assets-upgrade-from-stage stage="1" era="$ACTIVATE_ERA_2" config_path="$CONFIG_PATH"
 }
 
 function do_await_second_upgrade() {

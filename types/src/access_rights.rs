@@ -4,9 +4,6 @@ use alloc::{
 };
 use core::fmt::{self, Display, Formatter};
 
-use bitflags::bitflags;
-#[cfg(feature = "datasize")]
-use datasize::DataSize;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -14,32 +11,41 @@ use rand::{
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{bytesrepr, Key, URef, URefAddr};
+pub use private::AccessRights;
 
 /// The number of bytes in a serialized [`AccessRights`].
 pub const ACCESS_RIGHTS_SERIALIZED_LENGTH: usize = 1;
 
-bitflags! {
-    /// A struct which behaves like a set of bitflags to define access rights associated with a
-    /// [`URef`](crate::URef).
-    #[allow(clippy::derive_hash_xor_eq)]
-    #[cfg_attr(feature = "datasize", derive(DataSize))]
-    pub struct AccessRights: u8 {
-        /// No permissions
-        const NONE = 0;
-        /// Permission to read the value under the associated `URef`.
-        const READ  = 0b001;
-        /// Permission to write a value under the associated `URef`.
-        const WRITE = 0b010;
-        /// Permission to add to the value under the associated `URef`.
-        const ADD   = 0b100;
-        /// Permission to read or add to the value under the associated `URef`.
-        const READ_ADD       = Self::READ.bits | Self::ADD.bits;
-        /// Permission to read or write the value under the associated `URef`.
-        const READ_WRITE     = Self::READ.bits | Self::WRITE.bits;
-        /// Permission to add to, or write the value under the associated `URef`.
-        const ADD_WRITE      = Self::ADD.bits  | Self::WRITE.bits;
-        /// Permission to read, add to, or write the value under the associated `URef`.
-        const READ_ADD_WRITE = Self::READ.bits | Self::ADD.bits | Self::WRITE.bits;
+// Module exists only to restrict the scope of the following `#allow`.
+#[allow(clippy::bad_bit_mask)]
+mod private {
+    use bitflags::bitflags;
+    #[cfg(feature = "datasize")]
+    use datasize::DataSize;
+
+    bitflags! {
+        /// A struct which behaves like a set of bitflags to define access rights associated with a
+        /// [`URef`](crate::URef).
+        #[allow(clippy::derived_hash_with_manual_eq)]
+        #[cfg_attr(feature = "datasize", derive(DataSize))]
+        pub struct AccessRights: u8 {
+            /// No permissions
+            const NONE = 0;
+            /// Permission to read the value under the associated `URef`.
+            const READ  = 0b001;
+            /// Permission to write a value under the associated `URef`.
+            const WRITE = 0b010;
+            /// Permission to add to the value under the associated `URef`.
+            const ADD   = 0b100;
+            /// Permission to read or add to the value under the associated `URef`.
+            const READ_ADD       = Self::READ.bits | Self::ADD.bits;
+            /// Permission to read or write the value under the associated `URef`.
+            const READ_WRITE     = Self::READ.bits | Self::WRITE.bits;
+            /// Permission to add to, or write the value under the associated `URef`.
+            const ADD_WRITE      = Self::ADD.bits  | Self::WRITE.bits;
+            /// Permission to read, add to, or write the value under the associated `URef`.
+            const READ_ADD_WRITE = Self::READ.bits | Self::ADD.bits | Self::WRITE.bits;
+        }
     }
 }
 
@@ -89,7 +95,7 @@ impl Display for AccessRights {
 
 impl bytesrepr::ToBytes for AccessRights {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.bits.to_bytes()
+        self.bits().to_bytes()
     }
 
     fn serialized_length(&self) -> usize {
@@ -114,7 +120,7 @@ impl bytesrepr::FromBytes for AccessRights {
 
 impl Serialize for AccessRights {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.bits.serialize(serializer)
+        self.bits().serialize(serializer)
     }
 }
 

@@ -1,0 +1,2 @@
+[block_synchronizer]
+peer_refresh_interval = "10 seconds"

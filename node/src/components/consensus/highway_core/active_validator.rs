@@ -194,7 +194,7 @@ impl<C: Context> ActiveValidator<C> {
             if timestamp == r_id && state.leader(r_id) == self.vidx {
                 effects.extend(self.request_new_block(state, instance_id, timestamp));
                 return effects;
-            } else if timestamp == r_id + self.witness_offset(r_len) {
+            } else if timestamp == r_id.saturating_add(self.witness_offset(r_len)) {
                 let panorama = self.panorama_at(state, timestamp);
                 if let Some(witness_unit) =
                     self.new_unit(panorama, timestamp, None, state, instance_id)
@@ -213,7 +213,10 @@ impl<C: Context> ActiveValidator<C> {
         // We are not creating a new unit. Send a ping once per maximum-length round, to show that
         // we're online.
         let one_max_round_ago = timestamp.saturating_sub(state.params().max_round_length());
-        if !state.has_ping(self.vidx, one_max_round_ago + TimeDiff::from_millis(1)) {
+        if !state.has_ping(
+            self.vidx,
+            one_max_round_ago.saturating_add(TimeDiff::from_millis(1)),
+        ) {
             warn!(%timestamp, "too many validators offline, sending ping");
             effects.push(self.send_ping(timestamp, instance_id));
         }
@@ -230,6 +233,7 @@ impl<C: Context> ActiveValidator<C> {
     /// tolerance threshold, always counting this validator as online.
     fn enough_validators_online(&self, state: &State<C>, now: Timestamp) -> bool {
         // We divide before adding, because  total_weight + target_fft  could overflow u64.
+        #[allow(clippy::arithmetic_side_effects)]
         let target_quorum = state.total_weight() / 2 + self.target_ftt / 2;
         let online_weight: Weight = state
             .weights()
@@ -446,6 +450,7 @@ impl<C: Context> ActiveValidator<C> {
         }
         let seq_number = panorama.next_seq_num(state, self.vidx);
         let endorsed = state.seen_endorsed(&panorama);
+        #[allow(clippy::arithmetic_side_effects)] // min_round_length is guaranteed to be > 0.
         let round_exp = (self.round_len(state, timestamp) / state.params().min_round_length())
             .trailing_zeros() as u8;
         let hwunit = WireUnit {
@@ -480,15 +485,15 @@ impl<C: Context> ActiveValidator<C> {
         }
         let r_len = self.round_len(state, timestamp);
         let r_id = state::round_id(timestamp, r_len);
-        self.next_timer = if timestamp < r_id + self.witness_offset(r_len) {
-            r_id + self.witness_offset(r_len)
+        self.next_timer = if timestamp < r_id.saturating_add(self.witness_offset(r_len)) {
+            r_id.saturating_add(self.witness_offset(r_len))
         } else {
-            let next_r_id = r_id + r_len;
+            let next_r_id = r_id.saturating_add(r_len);
             if state.leader(next_r_id) == self.vidx {
                 next_r_id
             } else {
                 let next_r_len = self.round_len(state, next_r_id);
-                next_r_id + self.witness_offset(next_r_len)
+                next_r_id.saturating_add(self.witness_offset(next_r_len))
             }
         };
         vec![Effect::ScheduleTimer(self.next_timer)]
@@ -501,7 +506,8 @@ impl<C: Context> ActiveValidator<C> {
             .map_or(state.params().start_timestamp(), |unit| {
                 unit.previous().map_or(unit.timestamp, |vh2| {
                     let unit2 = state.unit(vh2);
-                    unit.timestamp.max(unit2.round_id() + unit2.round_len())
+                    unit.timestamp
+                        .max(unit2.round_id().saturating_add(unit2.round_len()))
                 })
             })
     }
@@ -524,6 +530,7 @@ impl<C: Context> ActiveValidator<C> {
     }
 
     /// Returns the duration after the beginning of a round when the witness units are sent.
+    #[allow(clippy::arithmetic_side_effects)] // Round length will never be large enough to overflow.
     fn witness_offset(&self, round_len: TimeDiff) -> TimeDiff {
         round_len * 2 / 3
     }
@@ -653,7 +660,7 @@ pub(crate) fn write_last_unit<C: Context>(
 }
 
 #[cfg(test)]
-#[allow(clippy::integer_arithmetic)] // Overflows in tests panic anyway.
+#[allow(clippy::arithmetic_side_effects)] // Overflows in tests panic anyway.
 mod tests {
     use std::{collections::BTreeSet, fmt::Debug};
     use tempfile::tempdir;

@@ -224,16 +224,6 @@ impl<C: Context> Highway<C> {
         self.active_validator = None;
     }
 
-    /// Gets the round exponent for the next message this instance will create.
-    #[cfg(test)]
-    #[allow(clippy::integer_arithmetic)]
-    pub(crate) fn get_round_exp(&self) -> Option<u8> {
-        self.active_validator.as_ref().map(|av| {
-            (av.next_round_length().millis() / self.state.params().min_round_length().millis())
-                .trailing_zeros() as u8
-        })
-    }
-
     /// Switches the active validator to a new round length.
     pub(crate) fn set_round_len(&mut self, new_round_len: TimeDiff) {
         if let Some(ref mut av) = self.active_validator {
@@ -735,7 +725,7 @@ impl<C: Context> Highway<C> {
             state.params().start_timestamp()
         };
         for skipped_r_id in (1..=MAX_SKIPPED_PROPOSAL_LOGS)
-            .map(|i| r_id.saturating_sub(state.params().min_round_length() * i))
+            .filter_map(|i| r_id.checked_sub(state.params().min_round_length().checked_mul(i)?))
             .take_while(|skipped_r_id| *skipped_r_id > parent_timestamp)
         {
             let leader_index = state.leader(skipped_r_id);
@@ -773,6 +763,7 @@ impl<C: Context> Highway<C> {
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 pub(crate) mod tests {
     use std::{collections::BTreeSet, iter::FromIterator};
 

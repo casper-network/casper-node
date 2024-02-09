@@ -19,10 +19,7 @@ impl PeerList {
 
 // Create multiple random peers
 fn random_peers(rng: &mut TestRng, num_random_peers: usize) -> HashSet<NodeId> {
-    (0..num_random_peers)
-        .into_iter()
-        .map(|_| NodeId::random(rng))
-        .collect()
+    (0..num_random_peers).map(|_| NodeId::random(rng)).collect()
 }
 
 #[test]

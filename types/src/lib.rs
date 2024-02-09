@@ -10,7 +10,7 @@
     )),
     no_std
 )]
-#![doc(html_root_url = "https://docs.rs/casper-types/3.0.0")]
+#![doc(html_root_url = "https://docs.rs/casper-types/4.0.1")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon_48.png",
     html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png",
@@ -35,7 +35,7 @@ pub mod crypto;
 mod deploy_info;
 mod era_id;
 mod execution_result;
-#[cfg(any(feature = "std", test))]
+#[cfg(any(feature = "std-fs-io", test))]
 pub mod file_utils;
 mod gas;
 #[cfg(any(feature = "testing", feature = "gens", test))]
@@ -66,7 +66,7 @@ pub use access_rights::{
 pub use api_error::ApiError;
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
 pub use cl_type::{named_key_type, CLType, CLTyped};
-pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
+pub use cl_value::{cl_value_to_json, CLTypeMismatch, CLValue, CLValueError};
 pub use contract_wasm::{ContractWasm, ContractWasmHash};
 #[doc(inline)]
 pub use contracts::{

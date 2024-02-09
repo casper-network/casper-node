@@ -2,7 +2,7 @@
 name = "create-purse-01"
 version = "0.1.0"
 authors = ["Henry Till <henrytill@gmail.com>", "Ed Hastings <ed@casperlabs.io"]
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "create_purse_01"
