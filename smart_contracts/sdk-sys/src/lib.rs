@@ -10,12 +10,7 @@ pub struct Param {
 #[derive(Copy, Clone, Debug)]
 pub struct EntryPoint {
     pub selector: u32,
-
-    pub params_ptr: *const Param, // pointer of pointers (preferred 'static lifetime)
-    pub params_size: usize,
-
-    pub fptr: extern "C" fn() -> (), // extern "C" fn(A1) -> (),
-
+    pub fptr: extern "C" fn() -> (),
     pub flags: u32,
 }
 

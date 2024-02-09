@@ -7056,6 +7056,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "vm2-trait"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "casper-macros",
+ "casper-sdk",
+ "ctor 0.2.5",
+ "impls",
+ "serde_json",
+ "vm-common",
+]
+
+[[package]]
 name = "wabt"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

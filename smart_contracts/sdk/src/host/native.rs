@@ -66,7 +66,6 @@ impl Into<NativeParam> for &casper_sdk_sys::Param {
 #[derive(Clone)]
 pub struct NativeEntryPoint {
     pub selector: u32,
-    pub params: Vec<NativeParam>,
     pub fptr: Arc<dyn Fn() -> () + Send + Sync>,
     pub flags: EntryPointFlags,
 }
@@ -75,7 +74,6 @@ impl std::fmt::Debug for NativeEntryPoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("NativeEntryPoint")
             .field("selector", &self.selector)
-            .field("params", &self.params)
             .field("fptr", &"<fptr>")
             .field("flags", &self.flags)
             .finish()
@@ -85,10 +83,6 @@ impl std::fmt::Debug for NativeEntryPoint {
 impl Into<NativeEntryPoint> for &casper_sdk_sys::EntryPoint {
     fn into(self) -> NativeEntryPoint {
         let selector = self.selector;
-        let params = unsafe { slice::from_raw_parts(self.params_ptr, self.params_size) }
-            .iter()
-            .map(|param| param.into())
-            .collect();
         let ptr = self.fptr;
         let fptr = Arc::new(move || {
             ptr();
@@ -96,7 +90,6 @@ impl Into<NativeEntryPoint> for &casper_sdk_sys::EntryPoint {
         let flags = EntryPointFlags::from_bits(self.flags).expect("Valid flags");
         NativeEntryPoint {
             selector,
-            params,
             fptr,
             flags,
         }

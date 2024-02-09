@@ -327,6 +327,7 @@ mod tests {
     use borsh::{schema::BorshSchemaContainer, BorshSchema};
     use casper_sdk::{
         host::native::{dispatch_with, Stub},
+        manifest::ToManifest,
         schema::{schema_helper, CasperSchema},
         sys::Manifest,
         Contract,
@@ -404,12 +405,9 @@ mod tests {
             .map(|e| (e.name.as_str(), e.selector))
             .collect();
 
-        let manifest = Harness::__casper_manifest();
-        let manifest_entrypoints =
-            unsafe { slice::from_raw_parts(manifest.entry_points, manifest.entry_points_size) };
+        let manifest = <Harness as ToManifest>::to_manifest();
 
-        let manifest_selectors: BTreeSet<u32> =
-            manifest_entrypoints.iter().map(|e| e.selector).collect();
+        let manifest_selectors: BTreeSet<u32> = manifest.iter().map(|e| e.selector).collect();
 
         assert_eq!(schema_mapping["constructor_with_args"], 4116419170,);
         assert!(manifest_selectors.contains(&4116419170));
@@ -423,22 +421,20 @@ mod tests {
         })
         .expect("No trap");
 
-        const MANIFEST: Manifest = Harness::__casper_manifest();
+        let manifest = <Harness as ToManifest>::to_manifest();
         const PRIVATE_SELECTOR: Selector =
             selector!("private_function_that_should_not_be_exported");
         const PUB_CRATE_SELECTOR: Selector =
             selector!("restricted_function_that_should_be_part_of_manifest");
-        let entry_points =
-            unsafe { slice::from_raw_parts(MANIFEST.entry_points, MANIFEST.entry_points_size) };
         assert!(
-            entry_points
+            manifest
                 .iter()
                 .find(|e| e.selector == PRIVATE_SELECTOR.get())
                 .is_none(),
             "This entry point should not be part of manifest"
         );
         assert!(
-            entry_points
+            manifest
                 .iter()
                 .find(|e| e.selector == PUB_CRATE_SELECTOR.get())
                 .is_some(),

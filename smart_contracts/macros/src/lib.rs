@@ -34,6 +34,8 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
         Data::Union(_) => todo!("Union"),
     };
 
+    let manifest_name = format_ident!("{name}_MANIFEST");
+
     let f = quote! {
 
         impl casper_sdk::Contract for #name {
@@ -42,12 +44,15 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
             }
 
             fn create<T:casper_sdk::ToCallData>(call_data: T) -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
-                let input_data = call_data.input_data();
-                Self::__casper_create(T::SELECTOR, input_data.as_ref().map(|v| v.as_slice()))
+                let manifest: &[casper_sdk::sys::EntryPoint] = #manifest_name.as_slice();
+                // let input_data = call_data.input_data();
+                // Self::__casper_create(T::SELECTOR, input_data.as_ref().map(|v| v.as_slice()))
+                todo!()
             }
 
             fn default_create() -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
-                Self::__casper_default_create()
+                // Self::__casper_default_create()
+                todo!()
             }
         }
     };
@@ -222,6 +227,9 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 });
                             }
 
+                            let handle_err;
+                            let handle_call;
+
                             if method_attribute.constructor {
                                 manifest_entry_points_data.push(quote! {
 
@@ -236,8 +244,11 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     };
 
                                 });
+
+                                // handle_call = quote! {};
+                                handle_err = quote! {};
                             } else {
-                                let handle_err = if method_attribute.revert_on_error {
+                                handle_err = if method_attribute.revert_on_error {
                                     if let syn::ReturnType::Default = func.sig.output {
                                         panic!(
                                             "Cannot revert on error if there is no return value"
@@ -254,43 +265,26 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     quote! {}
                                 };
 
-                                let handle_call = if entry_point_requires_state {
-                                    quote! {
-                                        let mut instance: #struct_name = casper_sdk::host::read_state().unwrap();
+                                // manifest_entry_points_data.push(quote! {
 
-                                        let _ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
-                                            instance.#name(#(#arg_names,)*)
-                                        });
-                                    }
-                                } else {
-                                    quote! {
-                                        let _ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
-                                            <#struct_name>::#name(#(#arg_names,)*)
-                                        });
-                                    }
-                                };
-
-                                manifest_entry_points_data.push(quote! {
-
-                                    #[allow(non_upper_case_globals)]
-                                    const #name: (&'static str, [casper_sdk::sys::Param; #arg_count], extern "C" fn() -> ()) = {
-                                        extern "C" fn #name() {
-                                            let mut flags = vm_common::flags::ReturnFlags::empty();
-
-                                            #handle_call;
-
-                                            #handle_err;
-
-                                            #handle_write_state;
-
-                                            #handle_ret;
-                                        }
-                                        (stringify!(#name), [#(#entrypoint_params,)*], #name)
-                                    };
-
-                                });
+                                // });
                             }
 
+                            handle_call = if entry_point_requires_state {
+                                quote! {
+                                    let mut instance: #struct_name = casper_sdk::host::read_state().unwrap();
+
+                                    let _ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
+                                        instance.#name(#(#arg_names,)*)
+                                    });
+                                }
+                            } else {
+                                quote! {
+                                    let _ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
+                                        <#struct_name>::#name(#(#arg_names,)*)
+                                    });
+                                }
+                            };
                             if method_attribute.constructor {
                                 flag_value |= EntryPointFlags::CONSTRUCTOR;
                             }
@@ -303,11 +297,23 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                             manifest_entry_points.push(quote! {
                                 {
+
+                                    #[allow(non_upper_case_globals)]
+                                        extern "C" fn #name() {
+                                            let mut flags = vm_common::flags::ReturnFlags::empty();
+
+                                            #handle_call;
+
+                                            #handle_err;
+
+                                            #handle_write_state;
+
+                                            #handle_ret;
+                                        }
+
                                     casper_sdk::sys::EntryPoint {
                                         selector: #selector,
-                                        params_ptr: #name.1.as_ptr(),
-                                        params_size: #name.1.len(),
-                                        fptr: #name.2,
+                                        fptr: #name,
                                         flags: #bits,
                                     }
                                 }
@@ -467,9 +473,12 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                 }
 
                 // Create a expansion token from the length of `manifest_entry_points_data`
-                let manifest_entry_points_data_len = manifest_entry_points_data.len();
+                // let manifest_entry_points_data_len = manifest_entry_points_data.len();
+                let manifest_entry_points_len = manifest_entry_points.len();
 
                 let st_name = struct_name.get_ident().unwrap();
+
+                let static_entry_points_name = format_ident!("{st_name}_MANIFEST");
 
                 let res = quote! {
                     #entry_points
@@ -499,33 +508,14 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 entry_points,
                             }
                         }
+                    }
 
-                        #[inline(always)]
-                        #[doc(hidden)]
-                        const fn __casper_manifest() -> casper_sdk::sys::Manifest {
-                            #(#manifest_entry_points_data)*;
-                            const ENTRY_POINTS: [casper_sdk::sys::EntryPoint; #manifest_entry_points_data_len] = [#(#manifest_entry_points,)*];
+                    #[doc(hidden)]
+                    static #static_entry_points_name: [casper_sdk::sys::EntryPoint; #manifest_entry_points_len] = [#(#manifest_entry_points,)*];
 
-                            const MANIFEST: casper_sdk::sys::Manifest = casper_sdk::sys::Manifest {
-                                entry_points: ENTRY_POINTS.as_ptr(),
-                                entry_points_size: ENTRY_POINTS.len(),
-                            };
-
-                            MANIFEST
-                        }
-
-                        #[inline(always)]
-                        #[doc(hidden)]
-                        fn __casper_create(entry_point: casper_sdk::Selector, input_data: Option<&[u8]>) -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
-                            const MANIFEST: casper_sdk::sys::Manifest = #struct_name::__casper_manifest();
-                            casper_sdk::host::casper_create(None, &MANIFEST, Some(entry_point), input_data)
-                        }
-
-                        #[inline(always)]
-                        #[doc(hidden)]
-                        fn __casper_default_create() -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
-                            const MANIFEST: casper_sdk::sys::Manifest = #struct_name::__casper_manifest();
-                            casper_sdk::host::casper_create(None, &MANIFEST, None, None)
+                    impl casper_sdk::manifest::ToManifest for #struct_name {
+                        fn to_manifest() -> &'static [casper_sdk::sys::EntryPoint] {
+                            #static_entry_points_name.as_slice()
                         }
                     }
 
