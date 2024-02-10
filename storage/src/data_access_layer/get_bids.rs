@@ -36,7 +36,7 @@ pub enum BidsResult {
 
 impl BidsResult {
     /// Returns wrapped [`Vec<BidKind>`] if this represents a successful query result.
-    pub fn into_success(self) -> Option<Vec<BidKind>> {
+    pub fn into_option(self) -> Option<Vec<BidKind>> {
         if let Self::Success { bids } = self {
             Some(bids)
         } else {

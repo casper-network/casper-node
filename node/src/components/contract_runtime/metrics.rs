@@ -49,6 +49,9 @@ const GET_BIDS_HELP: &str = "time in seconds to get bids from global state";
 const EXECUTION_RESULTS_CHECKSUM_NAME: &str = "contract_runtime_execution_results_checksum";
 const EXECUTION_RESULTS_CHECKSUM_HELP: &str = "contract_runtime_execution_results_checksum";
 
+const ADDRESSABLE_ENTITY_NAME: &str = "contract_runtime_addressable_entity";
+const ADDRESSABLE_ENTITY_HELP: &str = "contract_runtime_addressable_entity";
+
 const PUT_TRIE_NAME: &str = "contract_runtime_put_trie";
 const PUT_TRIE_HELP: &str = "time in seconds to put a trie";
 
@@ -79,6 +82,7 @@ pub struct Metrics {
     pub(super) get_era_validators: Histogram,
     pub(super) get_bids: Histogram,
     pub(super) execution_results_checksum: Histogram,
+    pub(super) addressable_entity: Histogram,
     pub(super) put_trie: Histogram,
     pub(super) get_trie: Histogram,
     pub(super) exec_block: Histogram,
@@ -173,6 +177,12 @@ impl Metrics {
                 registry,
                 EXECUTION_RESULTS_CHECKSUM_NAME,
                 EXECUTION_RESULTS_CHECKSUM_HELP,
+                common_buckets.clone(),
+            )?,
+            addressable_entity: utils::register_histogram_metric(
+                registry,
+                ADDRESSABLE_ENTITY_NAME,
+                ADDRESSABLE_ENTITY_HELP,
                 common_buckets.clone(),
             )?,
             get_trie: utils::register_histogram_metric(

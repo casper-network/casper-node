@@ -966,7 +966,7 @@ async fn run_equivocator_network() {
 
     let era_count = 4;
 
-    let timeout = ONE_MIN * era_count as u32;
+    let timeout = ONE_MIN * (era_count + 1) as u32;
     info!("Waiting for {} eras to end.", era_count);
     fixture
         .run_until_stored_switch_block_header(EraId::new(era_count - 1), timeout)

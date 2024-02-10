@@ -20,13 +20,12 @@ use casper_execution_engine::engine_state::{self};
 use casper_storage::{
     data_access_layer::{
         get_bids::{BidsRequest, BidsResult},
-        BalanceRequest, BalanceResult, EraValidatorsRequest, EraValidatorsResult,
-        ExecutionResultsChecksumResult, QueryRequest, QueryResult,
+        AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
+        EraValidatorsResult, ExecutionResultsChecksumResult, QueryRequest, QueryResult,
     },
     global_state::trie::TrieRaw,
 };
 use casper_types::{
-    addressable_entity::AddressableEntity,
     bytesrepr::Bytes,
     contract_messages::Messages,
     execution::{ExecutionResult, ExecutionResultV2},
@@ -935,12 +934,14 @@ pub(crate) enum ContractRuntimeRequest {
         state_root_hash: Digest,
         responder: Responder<ExecutionResultsChecksumResult>,
     },
-    /// Returns an `AddressableEntity` if found under the given key.  If a legacy `Account` exists
-    /// under the given key, it will be converted to an `AddressableEntity` and returned.
+    /// Returns an `AddressableEntity` if found under the given key.  If a legacy `Account`
+    /// or contract exists under the given key, it will be migrated to an `AddressableEntity`
+    /// and returned. However, global state is not altered and the migrated record does not
+    /// actually exist.
     GetAddressableEntity {
         state_root_hash: Digest,
         key: Key,
-        responder: Responder<Option<AddressableEntity>>,
+        responder: Responder<AddressableEntityResult>,
     },
     /// Get a trie or chunk by its ID.
     GetTrie {

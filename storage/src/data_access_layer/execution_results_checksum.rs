@@ -40,15 +40,6 @@ pub enum ExecutionResultsChecksumResult {
 }
 
 impl ExecutionResultsChecksumResult {
-    /// Returns checksum if this represents a successful query result.
-    pub fn into_success(self) -> Option<Digest> {
-        if let Self::Success { checksum } = self {
-            Some(checksum)
-        } else {
-            None
-        }
-    }
-
     /// Returns a Result matching the original api for this functionality.
     pub fn as_legacy(&self) -> Result<Option<Digest>, TrackingCopyError> {
         match self {

@@ -9,12 +9,14 @@ use crate::global_state::{
 
 use crate::tracking_copy::TrackingCopy;
 
+mod addressable_entity;
 pub mod balance;
 pub mod era_validators;
 mod execution_results_checksum;
 pub mod get_bids;
 pub mod query;
 
+pub use addressable_entity::{AddressableEntityRequest, AddressableEntityResult};
 pub use balance::{BalanceRequest, BalanceResult};
 pub use era_validators::{EraValidatorsRequest, EraValidatorsResult};
 pub use execution_results_checksum::{

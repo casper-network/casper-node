@@ -1344,7 +1344,7 @@ where
 
         let get_bids_result = self.engine_state.get_bids(get_bids_request);
 
-        get_bids_result.into_success().unwrap()
+        get_bids_result.into_option().unwrap()
     }
 
     /// Returns named keys for an account entity by its account hash.

@@ -22,7 +22,7 @@ use tokio::time;
 
 use casper_execution_engine::engine_state::MAX_PAYMENT_AMOUNT;
 use casper_storage::{
-    data_access_layer::{BalanceResult, QueryResult},
+    data_access_layer::{AddressableEntityResult, BalanceResult, QueryResult},
     global_state::trie::merkle_proof::TrieMerkleProof,
 };
 use casper_types::{
@@ -808,10 +808,12 @@ impl reactor::Reactor for Reactor {
                         self.test_scenario,
                         TestScenario::FromPeerMissingAccount(_)
                     ) {
-                        None
+                        AddressableEntityResult::ValueNotFound("missing account".to_string())
                     } else if let Key::Account(account_hash) = key {
                         let account = create_account(account_hash, self.test_scenario);
-                        Some(AddressableEntity::from(account))
+                        AddressableEntityResult::Success {
+                            entity: AddressableEntity::from(account),
+                        }
                     } else if let Key::Hash(..) = key {
                         match self.test_scenario {
                             TestScenario::FromPeerCustomPaymentContract(
@@ -827,7 +829,9 @@ impl reactor::Reactor for Reactor {
                             | TestScenario::FromClientSessionContract(
                                 _,
                                 ContractScenario::MissingContractAtHash,
-                            ) => None,
+                            ) => AddressableEntityResult::ValueNotFound(
+                                "missing contract".to_string(),
+                            ),
                             TestScenario::FromPeerCustomPaymentContract(
                                 ContractScenario::MissingEntryPoint,
                             )
@@ -843,7 +847,9 @@ impl reactor::Reactor for Reactor {
                                 ContractScenario::MissingEntryPoint,
                             ) => {
                                 let contract = Contract::default();
-                                Some(AddressableEntity::from(contract))
+                                AddressableEntityResult::Success {
+                                    entity: AddressableEntity::from(contract),
+                                }
                             }
                             _ => panic!("unexpected GetAddressableEntity: {:?}", key),
                         }

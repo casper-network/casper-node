@@ -15,7 +15,7 @@ use casper_types::{
     bytesrepr,
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
     system::{auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, AUCTION},
-    Digest, Key, KeyTag, StoredValue,
+    AddressableEntity, Digest, EntityAddr, Key, KeyTag, StoredValue,
 };
 
 #[cfg(test)]
@@ -23,9 +23,10 @@ pub use self::lmdb::make_temporary_global_state;
 
 use crate::{
     data_access_layer::{
-        era_validators::EraValidatorsResult, BalanceRequest, BalanceResult, BidsRequest,
-        BidsResult, EraValidatorsRequest, ExecutionResultsChecksumRequest,
-        ExecutionResultsChecksumResult, QueryRequest, QueryResult, EXECUTION_RESULTS_CHECKSUM_NAME,
+        era_validators::EraValidatorsResult, AddressableEntityRequest, AddressableEntityResult,
+        BalanceRequest, BalanceResult, BidsRequest, BidsResult, EraValidatorsRequest,
+        ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult, QueryRequest, QueryResult,
+        EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -96,14 +97,17 @@ pub trait StateProvider {
     /// Associated reader type for `StateProvider`.
     type Reader: StateReader<Key, StoredValue, Error = GlobalStateError>;
 
-    /// Checkouts to the post state of a specific block.
-    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, GlobalStateError>;
+    /// Returns an empty root hash.
+    fn empty_root(&self) -> Digest;
 
     /// Get a tracking copy.
     fn tracking_copy(
         &self,
         state_hash: Digest,
     ) -> Result<Option<TrackingCopy<Self::Reader>>, GlobalStateError>;
+
+    /// Checkouts a slice of initial state using root state hash.
+    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, GlobalStateError>;
 
     /// Query state.
     fn query(&self, request: QueryRequest) -> QueryResult {
@@ -255,8 +259,101 @@ pub trait StateProvider {
         }
     }
 
-    /// Returns an empty root hash.
-    fn empty_root(&self) -> Digest;
+    fn addressable_entity(&self, request: AddressableEntityRequest) -> AddressableEntityResult {
+        let key = request.key();
+        let query_key = match key {
+            Key::Account(_) => {
+                let query_request = QueryRequest::new(request.state_hash(), key, vec![]);
+                match self.query(query_request) {
+                    QueryResult::RootNotFound => return AddressableEntityResult::RootNotFound,
+                    QueryResult::ValueNotFound(msg) => {
+                        return AddressableEntityResult::ValueNotFound(msg)
+                    }
+                    QueryResult::Failure(err) => return AddressableEntityResult::Failure(err),
+                    QueryResult::Success { value, .. } => {
+                        if let StoredValue::Account(account) = *value {
+                            // legacy account that has not been migrated
+                            let entity = AddressableEntity::from(account);
+                            return AddressableEntityResult::Success { entity };
+                        }
+                        if let StoredValue::CLValue(cl_value) = &*value {
+                            // the corresponding entity key should be under the account's key
+                            match cl_value.clone().into_t::<Key>() {
+                                Ok(entity_key @ Key::AddressableEntity(_)) => entity_key,
+                                Ok(invalid_key) => {
+                                    warn!(
+                                        %key,
+                                        %invalid_key,
+                                        type_name = %value.type_name(),
+                                        "expected a Key::AddressableEntity to be stored under account hash"
+                                    );
+                                    return AddressableEntityResult::Failure(
+                                        TrackingCopyError::UnexpectedStoredValueVariant,
+                                    );
+                                }
+                                Err(error) => {
+                                    error!(%key, %error, "expected a CLValue::Key to be stored under account hash");
+                                    return AddressableEntityResult::Failure(
+                                        TrackingCopyError::CLValue(error),
+                                    );
+                                }
+                            };
+                        };
+                        warn!(
+                            %key,
+                            type_name = %value.type_name(),
+                            "expected a CLValue::Key or Account to be stored under account hash"
+                        );
+                        return AddressableEntityResult::Failure(
+                            TrackingCopyError::UnexpectedStoredValueVariant,
+                        );
+                    }
+                }
+            }
+            Key::Hash(contract_hash) => {
+                let query_request = QueryRequest::new(request.state_hash(), key, vec![]);
+                match self.query(query_request) {
+                    QueryResult::RootNotFound => return AddressableEntityResult::RootNotFound,
+                    QueryResult::ValueNotFound(msg) => {
+                        return AddressableEntityResult::ValueNotFound(msg)
+                    }
+                    QueryResult::Failure(err) => return AddressableEntityResult::Failure(err),
+                    QueryResult::Success { value, .. } => {
+                        if let StoredValue::Contract(contract) = *value {
+                            // legacy contract that has not been migrated
+                            let entity = AddressableEntity::from(contract);
+                            return AddressableEntityResult::Success { entity };
+                        }
+                        Key::AddressableEntity(EntityAddr::SmartContract(contract_hash))
+                    }
+                }
+            }
+            Key::AddressableEntity(_) => key,
+            _ => {
+                return AddressableEntityResult::Failure(TrackingCopyError::UnexpectedKeyVariant(
+                    key,
+                ))
+            }
+        };
+
+        let query_request = QueryRequest::new(request.state_hash(), query_key, vec![]);
+        match self.query(query_request) {
+            QueryResult::RootNotFound => AddressableEntityResult::RootNotFound,
+            QueryResult::ValueNotFound(msg) => AddressableEntityResult::ValueNotFound(msg),
+            QueryResult::Success { value, .. } => {
+                let entity = match value.as_addressable_entity() {
+                    Some(entity) => entity.clone(),
+                    None => {
+                        return AddressableEntityResult::Failure(
+                            TrackingCopyError::UnexpectedStoredValueVariant,
+                        )
+                    }
+                };
+                AddressableEntityResult::Success { entity }
+            }
+            QueryResult::Failure(err) => AddressableEntityResult::Failure(err),
+        }
+    }
 
     /// Reads a full `Trie` (never chunked) from the state if it is present
     fn get_trie_full(&self, trie_key: &Digest) -> Result<Option<TrieRaw>, GlobalStateError>;

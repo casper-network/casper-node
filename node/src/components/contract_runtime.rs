@@ -39,7 +39,8 @@ use casper_storage::data_access_layer::{BidsRequest, BidsResult};
 
 use casper_storage::{
     data_access_layer::{
-        BlockStore, DataAccessLayer, ExecutionResultsChecksumRequest, QueryRequest, QueryResult,
+        AddressableEntityRequest, BlockStore, DataAccessLayer, ExecutionResultsChecksumRequest,
+        QueryRequest, QueryResult,
     },
     global_state::{
         state::{lmdb::LmdbGlobalState, StateProvider},
@@ -899,6 +900,26 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
+            ContractRuntimeRequest::GetAddressableEntity {
+                state_root_hash,
+                key,
+                responder,
+            } => {
+                trace!(?state_root_hash, "get addressable entity");
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let request = AddressableEntityRequest::new(state_root_hash, key);
+                    let result = data_access_layer.addressable_entity(request);
+                    metrics
+                        .addressable_entity
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "get addressable entity");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
             ContractRuntimeRequest::GetTrie {
                 trie_or_chunk_id,
                 responder,
@@ -1027,19 +1048,6 @@ impl ContractRuntime {
                     .exec_queue_size
                     .set(self.exec_queue.len().try_into().unwrap_or(i64::MIN));
                 effects
-            }
-            ContractRuntimeRequest::GetAddressableEntity {
-                state_root_hash,
-                key,
-                responder,
-            } => {
-                let engine_state = Arc::clone(&self.engine_state);
-                async move {
-                    let result =
-                        operations::get_addressable_entity(&engine_state, state_root_hash, key);
-                    responder.respond(result).await
-                }
-                .ignore()
             }
             ContractRuntimeRequest::SpeculativelyExecute {
                 execution_prestate,

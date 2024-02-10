@@ -124,16 +124,17 @@ use casper_storage::{
 };
 
 use casper_storage::data_access_layer::{
-    EraValidatorsRequest, EraValidatorsResult, ExecutionResultsChecksumResult,
+    AddressableEntityResult, EraValidatorsRequest, EraValidatorsResult,
+    ExecutionResultsChecksumResult,
 };
 use casper_types::{
     bytesrepr::Bytes,
     contract_messages::Messages,
     execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},
     package::Package,
-    AddressableEntity, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes,
-    DeployHash, Digest, EraId, FinalitySignature, FinalitySignatureId, Key, PublicKey, TimeDiff,
-    Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer, U512,
+    Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash, Digest,
+    EraId, FinalitySignature, FinalitySignatureId, Key, PublicKey, TimeDiff, Timestamp,
+    Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer, U512,
 };
 
 use crate::{
@@ -1968,7 +1969,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         state_root_hash: Digest,
         key: Key,
-    ) -> Option<AddressableEntity>
+    ) -> AddressableEntityResult
     where
         REv: From<ContractRuntimeRequest>,
     {
