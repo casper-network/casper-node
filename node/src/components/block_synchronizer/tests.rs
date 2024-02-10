@@ -13,8 +13,10 @@ use derive_more::From;
 use num_rational::Ratio;
 use rand::{seq::IteratorRandom, Rng};
 
-use casper_storage::data_access_layer::ExecutionResultsChecksumResult;
-use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
+use casper_storage::{
+    data_access_layer::ExecutionResultsChecksumResult,
+    global_state::trie::merkle_proof::TrieMerkleProof,
+};
 use casper_types::{
     testing::TestRng, AccessRights, BlockV2, CLValue, Chainspec, Deploy, EraId, Key,
     LegacyRequiredFinality, ProtocolVersion, PublicKey, SecretKey, StoredValue, TestBlockBuilder,
