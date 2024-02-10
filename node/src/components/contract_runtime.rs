@@ -38,7 +38,9 @@ use casper_execution_engine::engine_state::{
 use casper_storage::data_access_layer::{BidsRequest, BidsResult};
 
 use casper_storage::{
-    data_access_layer::{BlockStore, DataAccessLayer, QueryRequest, QueryResult},
+    data_access_layer::{
+        BlockStore, DataAccessLayer, ExecutionResultsChecksumRequest, QueryRequest, QueryResult,
+    },
     global_state::{
         state::{lmdb::LmdbGlobalState, StateProvider},
         transaction_source::lmdb::LmdbEnvironment,
@@ -857,7 +859,7 @@ impl ContractRuntime {
                     metrics
                         .get_era_validators
                         .observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "balance result");
+                    trace!(?result, "era validators result");
                     responder.respond(result).await
                 }
                 .ignore()
@@ -873,7 +875,26 @@ impl ContractRuntime {
                     let start = Instant::now();
                     let result = data_access_layer.bids(bids_request);
                     metrics.get_bids.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "balance result");
+                    trace!(?result, "bids result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::GetExecutionResultsChecksum {
+                state_root_hash,
+                responder,
+            } => {
+                trace!(?state_root_hash, "get exection results checksum request");
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let request = ExecutionResultsChecksumRequest::new(state_root_hash);
+                    let result = data_access_layer.execution_result_checksum(request);
+                    metrics
+                        .execution_results_checksum
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "execution result checksum");
                     responder.respond(result).await
                 }
                 .ignore()
@@ -1006,20 +1027,6 @@ impl ContractRuntime {
                     .exec_queue_size
                     .set(self.exec_queue.len().try_into().unwrap_or(i64::MIN));
                 effects
-            }
-            ContractRuntimeRequest::GetExecutionResultsChecksum {
-                state_root_hash,
-                responder,
-            } => {
-                let result = self
-                    .engine_state
-                    .get_checksum_registry(state_root_hash)
-                    .map(|maybe_registry| {
-                        maybe_registry.and_then(|registry| {
-                            registry.get(EXECUTION_RESULTS_CHECKSUM_NAME).copied()
-                        })
-                    });
-                responder.respond(result).ignore()
             }
             ContractRuntimeRequest::GetAddressableEntity {
                 state_root_hash,

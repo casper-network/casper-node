@@ -24,7 +24,8 @@ pub use self::lmdb::make_temporary_global_state;
 use crate::{
     data_access_layer::{
         era_validators::EraValidatorsResult, BalanceRequest, BalanceResult, BidsRequest,
-        BidsResult, EraValidatorsRequest, QueryRequest, QueryResult,
+        BidsResult, EraValidatorsRequest, ExecutionResultsChecksumRequest,
+        ExecutionResultsChecksumResult, QueryRequest, QueryResult, EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -101,13 +102,13 @@ pub trait StateProvider {
     /// Get a tracking copy.
     fn tracking_copy(
         &self,
-        hash: Digest,
+        state_hash: Digest,
     ) -> Result<Option<TrackingCopy<Self::Reader>>, GlobalStateError>;
 
     /// Query state.
-    fn query(&self, query_request: QueryRequest) -> QueryResult {
-        match self.tracking_copy(query_request.state_hash()) {
-            Ok(Some(tc)) => match tc.query(query_request.key(), query_request.path()) {
+    fn query(&self, request: QueryRequest) -> QueryResult {
+        match self.tracking_copy(request.state_hash()) {
+            Ok(Some(tc)) => match tc.query(request.key(), request.path()) {
                 Ok(ret) => ret.into(),
                 Err(err) => QueryResult::Failure(err),
             },
@@ -117,10 +118,10 @@ pub trait StateProvider {
     }
 
     /// Query balance state.
-    fn balance(&self, balance_request: BalanceRequest) -> BalanceResult {
-        match self.tracking_copy(balance_request.state_hash()) {
+    fn balance(&self, request: BalanceRequest) -> BalanceResult {
+        match self.tracking_copy(request.state_hash()) {
             Ok(Some(tracking_copy)) => {
-                let purse_uref = balance_request.purse_uref();
+                let purse_uref = request.purse_uref();
                 let purse_key = purse_uref.into();
                 // read the new hold records if any exist
                 // check their timestamps..if stale tc.prune(that item)
@@ -145,9 +146,9 @@ pub trait StateProvider {
     }
 
     /// Get the requested era validators.
-    fn era_validators(&self, era_validators_request: EraValidatorsRequest) -> EraValidatorsResult {
-        let state_root_hash = era_validators_request.state_hash();
-        let mut tc = match self.tracking_copy(state_root_hash) {
+    fn era_validators(&self, request: EraValidatorsRequest) -> EraValidatorsResult {
+        let state_hash = request.state_hash();
+        let mut tc = match self.tracking_copy(state_hash) {
             Ok(Some(tc)) => tc,
             Ok(None) => return EraValidatorsResult::RootNotFound,
             Err(err) => return EraValidatorsResult::Failure(TrackingCopyError::Storage(err)),
@@ -156,7 +157,7 @@ pub trait StateProvider {
         let query_request = match tc.get_system_contracts() {
             Ok(scr) => match scr.get(AUCTION).copied() {
                 Some(auction_hash) => QueryRequest::new(
-                    state_root_hash,
+                    state_hash,
                     Key::addressable_entity_key(EntityKindTag::System, auction_hash),
                     vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()],
                 ),
@@ -199,9 +200,9 @@ pub trait StateProvider {
         EraValidatorsResult::Success { era_validators }
     }
 
-    fn bids(&self, bids_request: BidsRequest) -> BidsResult {
-        let state_root_hash = bids_request.state_hash();
-        let mut tc = match self.tracking_copy(state_root_hash) {
+    fn bids(&self, request: BidsRequest) -> BidsResult {
+        let state_hash = request.state_hash();
+        let mut tc = match self.tracking_copy(state_hash) {
             Ok(Some(tc)) => tc,
             Ok(None) => return BidsResult::RootNotFound,
             Err(err) => return BidsResult::Failure(TrackingCopyError::Storage(err)),
@@ -228,6 +229,30 @@ pub trait StateProvider {
             }
         }
         BidsResult::Success { bids }
+    }
+
+    fn execution_result_checksum(
+        &self,
+        request: ExecutionResultsChecksumRequest,
+    ) -> ExecutionResultsChecksumResult {
+        let state_hash = request.state_hash();
+        let mut tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => tc,
+            Ok(None) => return ExecutionResultsChecksumResult::RootNotFound,
+            Err(err) => {
+                return ExecutionResultsChecksumResult::Failure(TrackingCopyError::Storage(err))
+            }
+        };
+        match tc.get_checksum_registry() {
+            Ok(Some(registry)) => match registry.get(EXECUTION_RESULTS_CHECKSUM_NAME) {
+                Some(checksum) => ExecutionResultsChecksumResult::Success {
+                    checksum: *checksum,
+                },
+                None => ExecutionResultsChecksumResult::ChecksumNotFound,
+            },
+            Ok(None) => ExecutionResultsChecksumResult::RegistryNotFound,
+            Err(err) => ExecutionResultsChecksumResult::Failure(err),
+        }
     }
 
     /// Returns an empty root hash.

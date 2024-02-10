@@ -20,8 +20,8 @@ use casper_execution_engine::engine_state::{self};
 use casper_storage::{
     data_access_layer::{
         get_bids::{BidsRequest, BidsResult},
-        BalanceRequest, BalanceResult, EraValidatorsRequest, EraValidatorsResult, QueryRequest,
-        QueryResult,
+        BalanceRequest, BalanceResult, EraValidatorsRequest, EraValidatorsResult,
+        ExecutionResultsChecksumResult, QueryRequest, QueryResult,
     },
     global_state::trie::TrieRaw,
 };
@@ -933,7 +933,7 @@ pub(crate) enum ContractRuntimeRequest {
     /// given state root hash.
     GetExecutionResultsChecksum {
         state_root_hash: Digest,
-        responder: Responder<Result<Option<Digest>, engine_state::Error>>,
+        responder: Responder<ExecutionResultsChecksumResult>,
     },
     /// Returns an `AddressableEntity` if found under the given key.  If a legacy `Account` exists
     /// under the given key, it will be converted to an `AddressableEntity` and returned.

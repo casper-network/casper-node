@@ -123,7 +123,9 @@ use casper_storage::{
     global_state::trie::TrieRaw,
 };
 
-use casper_storage::data_access_layer::{EraValidatorsRequest, EraValidatorsResult};
+use casper_storage::data_access_layer::{
+    EraValidatorsRequest, EraValidatorsResult, ExecutionResultsChecksumResult,
+};
 use casper_types::{
     bytesrepr::Bytes,
     contract_messages::Messages,
@@ -2091,7 +2093,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_execution_results_checksum(
         self,
         state_root_hash: Digest,
-    ) -> Result<Option<Digest>, engine_state::Error>
+    ) -> ExecutionResultsChecksumResult
     where
         REv: From<ContractRuntimeRequest>,
     {
