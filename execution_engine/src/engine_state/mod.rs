@@ -31,7 +31,7 @@ use casper_storage::{
         balance::BalanceResult,
         get_bids::{BidsRequest, BidsResult},
         query::{QueryRequest, QueryResult},
-        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult,
+        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, TrieRequest,
     },
     global_state::{
         self,
@@ -2217,10 +2217,8 @@ where
 
     /// Gets a trie object for given state root hash.
     pub fn get_trie_full(&self, trie_key: Digest) -> Result<Option<TrieRaw>, Error> {
-        match self.state.get_trie_full(&trie_key) {
-            Ok(ret) => Ok(ret),
-            Err(err) => Err(err.into()),
-        }
+        let req = TrieRequest::new(trie_key, None);
+        self.state.trie(req).into_legacy().map_err(Error::Storage)
     }
 
     /// Puts a trie if no children are missing from the global state; otherwise reports the missing

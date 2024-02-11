@@ -10,7 +10,10 @@ use tracing::{debug, error, info, warn};
 
 use casper_json_rpc::ReservedErrorCode;
 use casper_storage::{
-    data_access_layer::{get_bids::BidsResult, BalanceResult, EraValidatorsResult, QueryResult},
+    data_access_layer::{
+        get_bids::BidsResult, BalanceResult, EraValidatorsResult, QueryResult, TrieElement,
+        TrieRequest, TrieResult,
+    },
     global_state::trie::merkle_proof::TrieMerkleProof,
 };
 use casper_types::{
@@ -1034,22 +1037,29 @@ impl RpcWithParams for GetTrie {
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
         let trie_key = params.trie_key;
-
-        match effect_builder.get_trie_full(trie_key).await {
-            Ok(maybe_trie_bytes) => {
-                let result = Self::ResponseResult {
-                    api_version,
-                    maybe_trie_bytes,
-                };
-                Ok(result)
+        let request = TrieRequest::new(trie_key, None);
+        let response = effect_builder.get_trie(request).await;
+        match response {
+            TrieResult::ValueNotFound(msg) => {
+                warn!(?msg, "failed to get trie");
+                Err(Error::new(ErrorCode::FailedToGetTrie, msg))
             }
-            Err(error) => {
+            TrieResult::Failure(error) => {
                 warn!(?error, "failed to get trie");
                 Err(Error::new(
                     ErrorCode::FailedToGetTrie,
                     format!("{:?}", error),
                 ))
             }
+            TrieResult::Success { element } => match element {
+                TrieElement::Raw(raw) | TrieElement::Chunked(raw, _) => {
+                    let result = Self::ResponseResult {
+                        api_version,
+                        maybe_trie_bytes: Some(raw.into_inner()),
+                    };
+                    Ok(result)
+                }
+            },
         }
     }
 }

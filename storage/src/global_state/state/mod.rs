@@ -31,12 +31,12 @@ use crate::{
         BalanceRequest, BalanceResult, BidsRequest, BidsResult, EraValidatorsRequest,
         ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult, QueryRequest, QueryResult,
         RoundSeigniorageRateRequest, RoundSeigniorageRateResult, TotalSupplyRequest,
-        TotalSupplyResult, EXECUTION_RESULTS_CHECKSUM_NAME,
+        TotalSupplyResult, TrieRequest, TrieResult, EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
         transaction_source::{Transaction, TransactionSource},
-        trie::{merkle_proof::TrieMerkleProof, Trie, TrieRaw},
+        trie::{merkle_proof::TrieMerkleProof, Trie},
         trie_store::{
             operations::{prune, read, write, ReadResult, WriteResult},
             TrieStore,
@@ -464,8 +464,8 @@ pub trait StateProvider {
         }
     }
 
-    /// Reads a full `Trie` (never chunked) from the state if it is present
-    fn get_trie_full(&self, trie_key: &Digest) -> Result<Option<TrieRaw>, GlobalStateError>;
+    /// Reads a `Trie` from the state if it is present
+    fn trie(&self, request: TrieRequest) -> TrieResult;
 
     /// Insert a trie node into the trie
     fn put_trie(&self, trie: &[u8]) -> Result<Digest, GlobalStateError>;

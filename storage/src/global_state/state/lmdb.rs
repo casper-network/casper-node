@@ -4,29 +4,34 @@ use lmdb::DatabaseFlags;
 
 use tempfile::TempDir;
 
-use crate::tracking_copy::TrackingCopy;
 use casper_types::{
     execution::{Effects, Transform, TransformKind},
     Digest, Key, StoredValue,
 };
 
-use crate::global_state::{
-    error::Error as GlobalStateError,
-    state::{
-        commit, put_stored_values, scratch::ScratchGlobalState, CommitProvider, StateProvider,
-        StateReader,
-    },
-    store::Store,
-    transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
-    trie::{merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie, TrieRaw},
-    trie_store::{
-        lmdb::{LmdbTrieStore, ScratchTrieStore},
-        operations::{
-            keys_with_prefix, missing_children, prune, put_trie, read, read_with_proof,
-            PruneResult, ReadResult,
+use crate::{
+    data_access_layer::{TrieElement, TrieRequest, TrieResult},
+    global_state::{
+        error::Error as GlobalStateError,
+        state::{
+            commit, put_stored_values, scratch::ScratchGlobalState, CommitProvider, StateProvider,
+            StateReader,
         },
+        store::Store,
+        transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
+        trie::{
+            merkle_proof::TrieMerkleProof, operations::create_hashed_empty_trie, Trie, TrieRaw,
+        },
+        trie_store::{
+            lmdb::{LmdbTrieStore, ScratchTrieStore},
+            operations::{
+                keys_with_prefix, missing_children, prune, put_trie, read, read_with_proof,
+                PruneResult, ReadResult,
+            },
+        },
+        DEFAULT_MAX_DB_SIZE, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_READERS,
     },
-    DEFAULT_MAX_DB_SIZE, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_READERS,
+    tracking_copy::TrackingCopy,
 };
 
 /// Global state implemented against LMDB as a backing data store.
@@ -247,13 +252,36 @@ impl StateProvider for LmdbGlobalState {
         self.empty_root_hash
     }
 
-    fn get_trie_full(&self, trie_key: &Digest) -> Result<Option<TrieRaw>, GlobalStateError> {
-        let txn = self.environment.create_read_txn()?;
-        let ret: Option<TrieRaw> =
-            Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?
-                .map(TrieRaw::new);
-        txn.commit()?;
-        Ok(ret)
+    fn trie(&self, request: TrieRequest) -> TrieResult {
+        let key = request.trie_key();
+        let txn = match self.environment.create_read_txn() {
+            Ok(ro) => ro,
+            Err(err) => return TrieResult::Failure(err.into()),
+        };
+        let raw = match Store::<Digest, Trie<Digest, StoredValue>>::get_raw(
+            &*self.trie_store,
+            &txn,
+            &key,
+        ) {
+            Ok(Some(bytes)) => TrieRaw::new(bytes),
+            Ok(None) => {
+                return TrieResult::ValueNotFound(key.to_string());
+            }
+            Err(err) => {
+                return TrieResult::Failure(err);
+            }
+        };
+        match txn.commit() {
+            Ok(_) => match request.chunk_id() {
+                Some(chunk_id) => TrieResult::Success {
+                    element: TrieElement::Chunked(raw, chunk_id),
+                },
+                None => TrieResult::Success {
+                    element: TrieElement::Raw(raw),
+                },
+            },
+            Err(err) => TrieResult::Failure(err.into()),
+        }
     }
 
     fn put_trie(&self, trie: &[u8]) -> Result<Digest, GlobalStateError> {

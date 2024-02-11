@@ -22,12 +22,11 @@ use casper_storage::{
         AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
         EraValidatorsResult, ExecutionResultsChecksumResult, QueryRequest, QueryResult,
         RoundSeigniorageRateRequest, RoundSeigniorageRateResult, TotalSupplyRequest,
-        TotalSupplyResult,
+        TotalSupplyResult, TrieRequest, TrieResult,
     },
     global_state::trie::TrieRaw,
 };
 use casper_types::{
-    bytesrepr::Bytes,
     contract_messages::Messages,
     execution::{ExecutionResult, ExecutionResultV2},
     Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash, Digest,
@@ -51,14 +50,14 @@ use crate::{
         transaction_acceptor,
         upgrade_watcher::NextUpgrade,
     },
-    contract_runtime::{ContractRuntimeError, SpeculativeExecutionState},
+    contract_runtime::SpeculativeExecutionState,
     reactor::main_reactor::ReactorState,
     rpcs::docs::OpenRpcSchema,
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
         ExecutableBlock, ExecutionInfo, FinalizedApprovals, LegacyDeploy, MetaBlockState, NodeId,
-        SignedBlock, StatusFeed, TransactionWithFinalizedApprovals, TrieOrChunk, TrieOrChunkId,
+        SignedBlock, StatusFeed, TransactionWithFinalizedApprovals,
     },
     utils::Source,
 };
@@ -943,17 +942,11 @@ pub(crate) enum ContractRuntimeRequest {
     },
     /// Get a trie or chunk by its ID.
     GetTrie {
-        /// The ID of the trie (or chunk of a trie) to be read.
-        trie_or_chunk_id: TrieOrChunkId,
+        /// A request for a trie element.
+        #[serde(skip_serializing)]
+        request: TrieRequest,
         /// Responder to call with the result.
-        responder: Responder<Result<Option<TrieOrChunk>, ContractRuntimeError>>,
-    },
-    /// Get a trie by its ID.
-    GetTrieFull {
-        /// The ID of the trie to be read.
-        trie_key: Digest,
-        /// Responder to call with the result.
-        responder: Responder<Result<Option<Bytes>, engine_state::Error>>,
+        responder: Responder<TrieResult>,
     },
     /// Insert a trie into global storage
     PutTrie {
@@ -1034,13 +1027,8 @@ impl Display for ContractRuntimeRequest {
                     key, state_root_hash
                 )
             }
-            ContractRuntimeRequest::GetTrie {
-                trie_or_chunk_id, ..
-            } => {
-                write!(formatter, "get trie_or_chunk_id: {}", trie_or_chunk_id)
-            }
-            ContractRuntimeRequest::GetTrieFull { trie_key, .. } => {
-                write!(formatter, "get trie_key: {}", trie_key)
+            ContractRuntimeRequest::GetTrie { request, .. } => {
+                write!(formatter, "get trie: {:?}", request)
             }
             ContractRuntimeRequest::PutTrie { trie_bytes, .. } => {
                 write!(formatter, "trie: {:?}", trie_bytes)

@@ -7,8 +7,8 @@ use serde::Serialize;
 use tempfile::TempDir;
 
 use casper_types::{
-    runtime_args, Chainspec, ChainspecRawBytes, Deploy, EraId, ExecutableDeployItem, PublicKey,
-    SecretKey, TimeDiff, U512,
+    bytesrepr::Bytes, runtime_args, Chainspec, ChainspecRawBytes, Deploy, EraId,
+    ExecutableDeployItem, PublicKey, SecretKey, TimeDiff, U512,
 };
 
 use super::*;

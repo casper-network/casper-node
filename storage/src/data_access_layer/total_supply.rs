@@ -33,5 +33,6 @@ pub enum TotalSupplyResult {
         /// The total supply in motes.
         total_supply: U512,
     },
+    /// Failed to get total supply.
     Failure(TrackingCopyError),
 }

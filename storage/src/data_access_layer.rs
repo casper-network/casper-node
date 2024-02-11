@@ -3,7 +3,6 @@ use casper_types::{execution::Effects, Digest, EraId};
 use crate::global_state::{
     error::Error as GlobalStateError,
     state::{CommitProvider, StateProvider},
-    trie::TrieRaw,
     trie_store::operations::PruneResult,
 };
 
@@ -17,6 +16,7 @@ pub mod get_bids;
 pub mod query;
 mod round_seigniorage;
 mod total_supply;
+mod trie;
 
 pub use addressable_entity::{AddressableEntityRequest, AddressableEntityResult};
 pub use balance::{BalanceRequest, BalanceResult};
@@ -29,6 +29,7 @@ pub use get_bids::{BidsRequest, BidsResult};
 pub use query::{QueryRequest, QueryResult};
 pub use round_seigniorage::{RoundSeigniorageRateRequest, RoundSeigniorageRateResult};
 pub use total_supply::{TotalSupplyRequest, TotalSupplyResult};
+pub use trie::{TrieElement, TrieRequest, TrieResult};
 
 pub struct Block {
     _era_id: EraId,
@@ -90,8 +91,8 @@ where
         self.state.empty_root()
     }
 
-    fn get_trie_full(&self, trie_key: &Digest) -> Result<Option<TrieRaw>, GlobalStateError> {
-        self.state.get_trie_full(trie_key)
+    fn trie(&self, request: TrieRequest) -> TrieResult {
+        self.state.trie(request)
     }
 
     fn put_trie(&self, trie: &[u8]) -> Result<Digest, GlobalStateError> {

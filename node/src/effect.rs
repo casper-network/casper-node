@@ -125,10 +125,9 @@ use casper_storage::{
 use casper_storage::data_access_layer::{
     AddressableEntityResult, EraValidatorsRequest, EraValidatorsResult,
     ExecutionResultsChecksumResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
-    TotalSupplyRequest, TotalSupplyResult,
+    TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
 };
 use casper_types::{
-    bytesrepr::Bytes,
     contract_messages::Messages,
     execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},
     package::Package,
@@ -144,7 +143,6 @@ use crate::{
             TrieAccumulatorError, TrieAccumulatorResponse,
         },
         consensus::{ClContext, EraDump, ProposedBlock, ValidatorChange},
-        contract_runtime::ContractRuntimeError,
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
@@ -160,7 +158,6 @@ use crate::{
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
         ExecutableBlock, ExecutionInfo, FinalizedApprovals, FinalizedBlock, LegacyDeploy,
         MetaBlock, MetaBlockState, NodeId, SignedBlock, TransactionWithFinalizedApprovals,
-        TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -1401,24 +1398,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Get a trie or chunk by its ID.
-    pub(crate) async fn get_trie(
-        self,
-        trie_or_chunk_id: TrieOrChunkId,
-    ) -> Result<Option<TrieOrChunk>, ContractRuntimeError>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            |responder| ContractRuntimeRequest::GetTrie {
-                trie_or_chunk_id,
-                responder,
-            },
-            QueueKind::ContractRuntime,
-        )
-        .await
-    }
-
     pub(crate) async fn get_reactor_status(self) -> (ReactorState, Timestamp)
     where
         REv: From<ReactorStatusRequest>,
@@ -1438,19 +1417,13 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Get a trie by its hash key.
-    pub(crate) async fn get_trie_full(
-        self,
-        trie_key: Digest,
-    ) -> Result<Option<Bytes>, engine_state::Error>
+    /// Get a trie or chunk by its ID.
+    pub(crate) async fn get_trie(self, request: TrieRequest) -> TrieResult
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::GetTrieFull {
-                trie_key,
-                responder,
-            },
+            |responder| ContractRuntimeRequest::GetTrie { request, responder },
             QueueKind::ContractRuntime,
         )
         .await
