@@ -1,16 +1,17 @@
 use crate::tracking_copy::TrackingCopyError;
 use casper_types::{Digest, U512};
+use num_rational::Ratio;
 
-/// Request for total supply.
+/// Request to get the current round seigniorage rate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TotalSupplyRequest {
+pub struct RoundSeigniorageRateRequest {
     state_hash: Digest,
 }
 
-impl TotalSupplyRequest {
-    /// Creates an instance of TotalSupplyRequest.
+impl RoundSeigniorageRateRequest {
+    /// Create instance of RoundSeigniorageRateRequest.
     pub fn new(state_hash: Digest) -> Self {
-        TotalSupplyRequest { state_hash }
+        RoundSeigniorageRateRequest { state_hash }
     }
 
     /// Returns state root hash.
@@ -19,19 +20,19 @@ impl TotalSupplyRequest {
     }
 }
 
-/// Represents a result of a `total_supply` request.
+/// Represents a result of a `round_seigniorage_rate` request.
 #[derive(Debug)]
-pub enum TotalSupplyResult {
+pub enum RoundSeigniorageRateResult {
     /// Invalid state root hash.
     RootNotFound,
     /// The mint is not found.
     MintNotFound,
     /// Value not found.
     ValueNotFound(String),
-    /// The total supply at the specified state hash.
+    /// The round seigniorage rate at the specified state hash.
     Success {
-        /// The total supply in motes.
-        total_supply: U512,
+        /// The current rate.
+        rate: Ratio<U512>,
     },
     Failure(TrackingCopyError),
 }

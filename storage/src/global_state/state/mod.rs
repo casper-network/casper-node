@@ -14,7 +14,11 @@ use casper_types::{
     addressable_entity::EntityKindTag,
     bytesrepr,
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
-    system::{auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, mint::TOTAL_SUPPLY_KEY, AUCTION, MINT},
+    system::{
+        auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
+        AUCTION, MINT,
+    },
     AddressableEntity, Digest, EntityAddr, Key, KeyTag, StoredValue,
 };
 
@@ -26,7 +30,8 @@ use crate::{
         era_validators::EraValidatorsResult, AddressableEntityRequest, AddressableEntityResult,
         BalanceRequest, BalanceResult, BidsRequest, BidsResult, EraValidatorsRequest,
         ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult, QueryRequest, QueryResult,
-        TotalSupplyRequest, TotalSupplyResult, EXECUTION_RESULTS_CHECKSUM_NAME,
+        RoundSeigniorageRateRequest, RoundSeigniorageRateResult, TotalSupplyRequest,
+        TotalSupplyResult, EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -400,6 +405,60 @@ pub trait StateProvider {
                 match cl_value.into_t() {
                     Ok(total_supply) => TotalSupplyResult::Success { total_supply },
                     Err(cve) => TotalSupplyResult::Failure(TrackingCopyError::CLValue(cve)),
+                }
+            }
+        }
+    }
+
+    /// Gets the current round seigniorage rate.
+    fn round_seigniorage_rate(
+        &self,
+        request: RoundSeigniorageRateRequest,
+    ) -> RoundSeigniorageRateResult {
+        let state_hash = request.state_hash();
+        let mut tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => tc,
+            Ok(None) => return RoundSeigniorageRateResult::RootNotFound,
+            Err(err) => {
+                return RoundSeigniorageRateResult::Failure(TrackingCopyError::Storage(err))
+            }
+        };
+
+        let query_request = match tc.get_system_contracts() {
+            Ok(scr) => match scr.get(MINT).copied() {
+                Some(mint_hash) => QueryRequest::new(
+                    state_hash,
+                    Key::addressable_entity_key(EntityKindTag::System, mint_hash),
+                    vec![ROUND_SEIGNIORAGE_RATE_KEY.to_string()],
+                ),
+                None => {
+                    error!("unexpected query failure; mint not found");
+                    return RoundSeigniorageRateResult::MintNotFound;
+                }
+            },
+            Err(err) => return RoundSeigniorageRateResult::Failure(err),
+        };
+
+        match self.query(query_request) {
+            QueryResult::RootNotFound => RoundSeigniorageRateResult::RootNotFound,
+            QueryResult::ValueNotFound(msg) => RoundSeigniorageRateResult::ValueNotFound(msg),
+            QueryResult::Failure(tce) => RoundSeigniorageRateResult::Failure(tce),
+            QueryResult::Success { value, proofs: _ } => {
+                let cl_value = match value.into_cl_value() {
+                    Some(cl_value) => cl_value,
+                    None => {
+                        error!("unexpected query failure; total supply is not a CLValue");
+                        return RoundSeigniorageRateResult::Failure(
+                            TrackingCopyError::UnexpectedStoredValueVariant,
+                        );
+                    }
+                };
+
+                match cl_value.into_t() {
+                    Ok(rate) => RoundSeigniorageRateResult::Success { rate },
+                    Err(cve) => {
+                        RoundSeigniorageRateResult::Failure(TrackingCopyError::CLValue(cve))
+                    }
                 }
             }
         }

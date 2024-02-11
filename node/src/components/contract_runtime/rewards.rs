@@ -3,8 +3,9 @@ mod tests;
 
 use std::{collections::BTreeMap, ops::Range, sync::Arc};
 
-use casper_execution_engine::engine_state::{self};
-use casper_storage::data_access_layer::{EraValidatorsRequest, TotalSupplyResult};
+use casper_storage::data_access_layer::{
+    EraValidatorsRequest, RoundSeigniorageRateResult, TotalSupplyResult,
+};
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
 
 use num_rational::Ratio;
@@ -73,7 +74,7 @@ pub enum RewardsError {
     /// The `Digest` is the one that was queried.
     FailedToFetchEraValidators(Digest),
     FailedToFetchTotalSupply,
-    FailedToFetchSeigniorageRate(engine_state::Error),
+    FailedToFetchSeigniorageRate,
 }
 
 impl RewardsInfo {
@@ -206,10 +207,20 @@ impl RewardsInfo {
                     TotalSupplyResult::Success { total_supply } => total_supply,
                 };
 
-                let seignorate_rate = effect_builder
+                let seignorate_rate = match effect_builder
                     .get_round_seigniorage_rate(state_root_hash)
                     .await
-                    .map_err(RewardsError::FailedToFetchSeigniorageRate)?;
+                {
+                    RoundSeigniorageRateResult::RootNotFound
+                    | RoundSeigniorageRateResult::MintNotFound
+                    | RoundSeigniorageRateResult::ValueNotFound(_)
+                    | RoundSeigniorageRateResult::Failure(_) => {
+                        debug_assert!(false, "wtf");
+                        return Err(RewardsError::FailedToFetchSeigniorageRate);
+                    }
+                    RoundSeigniorageRateResult::Success { rate } => rate,
+                };
+
                 let reward_per_round = seignorate_rate * total_supply;
                 let total_weights = weights.values().copied().sum();
 

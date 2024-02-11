@@ -11,7 +11,6 @@ use std::{
 };
 
 use datasize::DataSize;
-use num_rational::Ratio;
 use serde::Serialize;
 use smallvec::SmallVec;
 use static_assertions::const_assert;
@@ -22,7 +21,8 @@ use casper_storage::{
         get_bids::{BidsRequest, BidsResult},
         AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
         EraValidatorsResult, ExecutionResultsChecksumResult, QueryRequest, QueryResult,
-        TotalSupplyRequest, TotalSupplyResult,
+        RoundSeigniorageRateRequest, RoundSeigniorageRateResult, TotalSupplyRequest,
+        TotalSupplyResult,
     },
     global_state::trie::TrieRaw,
 };
@@ -33,7 +33,7 @@ use casper_types::{
     Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash, Digest,
     DisplayIter, EraId, FinalitySignature, FinalitySignatureId, Key, ProtocolVersion, PublicKey,
     TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer,
-    URef, U512,
+    URef,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -51,9 +51,7 @@ use crate::{
         transaction_acceptor,
         upgrade_watcher::NextUpgrade,
     },
-    contract_runtime::{
-        ContractRuntimeError, RoundSeigniorageRateRequest, SpeculativeExecutionState,
-    },
+    contract_runtime::{ContractRuntimeError, SpeculativeExecutionState},
     reactor::main_reactor::ReactorState,
     rpcs::docs::OpenRpcSchema,
     types::{
@@ -910,7 +908,7 @@ pub(crate) enum ContractRuntimeRequest {
     GetRoundSeigniorageRate {
         #[serde(skip_serializing)]
         request: RoundSeigniorageRateRequest,
-        responder: Responder<Result<Ratio<U512>, engine_state::Error>>,
+        responder: Responder<RoundSeigniorageRateResult>,
     },
     /// Returns validator weights.
     GetEraValidators {

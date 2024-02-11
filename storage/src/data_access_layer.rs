@@ -15,6 +15,7 @@ pub mod era_validators;
 mod execution_results_checksum;
 pub mod get_bids;
 pub mod query;
+mod round_seigniorage;
 mod total_supply;
 
 pub use addressable_entity::{AddressableEntityRequest, AddressableEntityResult};
@@ -26,6 +27,7 @@ pub use execution_results_checksum::{
 };
 pub use get_bids::{BidsRequest, BidsResult};
 pub use query::{QueryRequest, QueryResult};
+pub use round_seigniorage::{RoundSeigniorageRateRequest, RoundSeigniorageRateResult};
 pub use total_supply::{TotalSupplyRequest, TotalSupplyResult};
 
 pub struct Block {

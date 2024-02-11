@@ -108,7 +108,6 @@ use std::{
 
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
-use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use serde::{Serialize, Serializer};
 use smallvec::{smallvec, SmallVec};
@@ -125,7 +124,8 @@ use casper_storage::{
 
 use casper_storage::data_access_layer::{
     AddressableEntityResult, EraValidatorsRequest, EraValidatorsResult,
-    ExecutionResultsChecksumResult, TotalSupplyRequest, TotalSupplyResult,
+    ExecutionResultsChecksumResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
+    TotalSupplyRequest, TotalSupplyResult,
 };
 use casper_types::{
     bytesrepr::Bytes,
@@ -152,7 +152,7 @@ use crate::{
         transaction_acceptor,
         upgrade_watcher::NextUpgrade,
     },
-    contract_runtime::{RoundSeigniorageRateRequest, SpeculativeExecutionState},
+    contract_runtime::SpeculativeExecutionState,
     failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
@@ -2040,11 +2040,10 @@ impl<REv> EffectBuilder<REv> {
     /// Returns the seigniorage rate from the given `root_hash`.
     ///
     /// This operation is read only.
-    #[allow(unused)] //TODO remove in the next ticket implementation.
     pub(crate) async fn get_round_seigniorage_rate(
         self,
         state_hash: Digest,
-    ) -> Result<Ratio<U512>, engine_state::Error>
+    ) -> RoundSeigniorageRateResult
     where
         REv: From<ContractRuntimeRequest>,
     {

@@ -22,7 +22,6 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use lmdb::DatabaseFlags;
-use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use prometheus::Registry;
 use serde::Serialize;
@@ -40,7 +39,6 @@ use casper_storage::data_access_layer::{BidsRequest, BidsResult};
 use casper_storage::{
     data_access_layer::{
         AddressableEntityRequest, BlockStore, DataAccessLayer, ExecutionResultsChecksumRequest,
-        QueryRequest, QueryResult,
     },
     global_state::{
         state::{lmdb::LmdbGlobalState, StateProvider},
@@ -49,9 +47,8 @@ use casper_storage::{
     },
 };
 use casper_types::{
-    addressable_entity::EntityKindTag, bytesrepr::Bytes, BlockHash, BlockHeaderV2, Chainspec,
-    ChainspecRawBytes, ChainspecRegistry, Digest, EraId, Key, ProtocolVersion, Timestamp,
-    Transaction, UpgradeConfig, U512,
+    bytesrepr::Bytes, BlockHash, BlockHeaderV2, Chainspec, ChainspecRawBytes, ChainspecRegistry,
+    Digest, EraId, ProtocolVersion, Timestamp, Transaction, UpgradeConfig,
 };
 
 use crate::{
@@ -80,8 +77,7 @@ pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
 use operations::execute_only;
 pub(crate) use types::{
-    BlockAndExecutionResults, ExecutionArtifact, RoundSeigniorageRateRequest,
-    StepEffectsAndUpcomingEraValidators,
+    BlockAndExecutionResults, ExecutionArtifact, StepEffectsAndUpcomingEraValidators,
 };
 
 const COMPONENT_NAME: &str = "contract_runtime";
@@ -938,7 +934,29 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
-
+            ContractRuntimeRequest::GetRoundSeigniorageRate {
+                request: round_seigniorage_rate_request,
+                responder,
+            } => {
+                trace!(
+                    ?round_seigniorage_rate_request,
+                    "round seigniorage rate request"
+                );
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let result =
+                        data_access_layer.round_seigniorage_rate(round_seigniorage_rate_request);
+                    metrics
+                        .get_round_seigniorage_rate
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "round seigniorage rate results");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            // trie related events
             ContractRuntimeRequest::GetTrie {
                 trie_or_chunk_id,
                 responder,
@@ -1091,63 +1109,7 @@ impl ContractRuntime {
                     unreachable!()
                 }
             }
-            ContractRuntimeRequest::GetRoundSeigniorageRate {
-                request: round_seigniorage_rate_request,
-                responder,
-            } => {
-                trace!(
-                    ?round_seigniorage_rate_request,
-                    "get round seigniorage rate request"
-                );
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-
-                async move {
-                    let start = Instant::now();
-                    let result = query_round_seigniorage_rate(
-                        engine_state,
-                        round_seigniorage_rate_request.state_hash,
-                    );
-
-                    metrics
-                        .get_round_seigniorage_rate
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "round seigniorage rate result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
         }
-    }
-}
-
-fn query_round_seigniorage_rate(
-    engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
-    state_hash: Digest,
-) -> Result<Ratio<U512>, engine_state::Error> {
-    use casper_types::system::mint;
-    use engine_state::Error;
-
-    let mint = engine_state.get_system_mint_hash(state_hash)?;
-    let mint_key = Key::addressable_entity_key(EntityKindTag::System, mint);
-
-    let request = QueryRequest::new(
-        state_hash,
-        mint_key,
-        vec![mint::ROUND_SEIGNIORAGE_RATE_KEY.to_owned()],
-    );
-
-    let query_result = engine_state.run_query(request);
-    match query_result {
-        QueryResult::Success { value, proofs: _ } => value
-            .as_cl_value()
-            .ok_or_else(|| Error::Mint("Value not a CLValue".to_owned()))?
-            .clone()
-            .into_t()
-            .map_err(|e| Error::Mint(format!("CLValue not a Ratio<U512>: {e}"))),
-        QueryResult::ValueNotFound(s) => Err(Error::Mint(format!("ValueNotFound({s})"))),
-        QueryResult::RootNotFound => Err(Error::RootNotFound(state_hash)),
-        QueryResult::Failure(tce) => Err(Error::TrackingCopy(tce)),
     }
 }
 
