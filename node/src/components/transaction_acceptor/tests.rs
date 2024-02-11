@@ -725,7 +725,7 @@ impl reactor::Reactor for Reactor {
             }
             Event::ContractRuntime(event) => match event {
                 ContractRuntimeRequest::Query {
-                    query_request,
+                    request: query_request,
                     responder,
                 } => {
                     let query_result = if let Key::Package(_) = query_request.key() {
@@ -769,7 +769,7 @@ impl reactor::Reactor for Reactor {
                     responder.respond(query_result).ignore()
                 }
                 ContractRuntimeRequest::GetBalance {
-                    balance_request,
+                    request: balance_request,
                     responder,
                 } => {
                     let proof = TrieMerkleProof::new(

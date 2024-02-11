@@ -21,11 +21,6 @@ pub struct ValidatorWeightsByEraIdRequest {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TotalSupplyRequest {
-    pub state_hash: Digest,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RoundSeigniorageRateRequest {
     pub state_hash: Digest,
 }
@@ -59,12 +54,6 @@ impl ValidatorWeightsByEraIdRequest {
 impl From<ValidatorWeightsByEraIdRequest> for EraValidatorsRequest {
     fn from(input: ValidatorWeightsByEraIdRequest) -> Self {
         EraValidatorsRequest::new(input.state_hash, input.protocol_version)
-    }
-}
-
-impl TotalSupplyRequest {
-    pub fn new(state_hash: Digest) -> Self {
-        TotalSupplyRequest { state_hash }
     }
 }
 

@@ -81,7 +81,7 @@ pub use operations::execute_finalized_block;
 use operations::execute_only;
 pub(crate) use types::{
     BlockAndExecutionResults, ExecutionArtifact, RoundSeigniorageRateRequest,
-    StepEffectsAndUpcomingEraValidators, TotalSupplyRequest,
+    StepEffectsAndUpcomingEraValidators,
 };
 
 const COMPONENT_NAME: &str = "contract_runtime";
@@ -816,7 +816,7 @@ impl ContractRuntime {
     {
         match request {
             ContractRuntimeRequest::Query {
-                query_request,
+                request: query_request,
                 responder,
             } => {
                 trace!(?query_request, "query");
@@ -832,7 +832,7 @@ impl ContractRuntime {
                 .ignore()
             }
             ContractRuntimeRequest::GetBalance {
-                balance_request,
+                request: balance_request,
                 responder,
             } => {
                 trace!(?balance_request, "balance");
@@ -920,6 +920,25 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
+            ContractRuntimeRequest::GetTotalSupply {
+                request: total_supply_request,
+                responder,
+            } => {
+                trace!(?total_supply_request, "total supply request");
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let result = data_access_layer.total_supply(total_supply_request);
+                    metrics
+                        .get_total_supply
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "total supply results");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+
             ContractRuntimeRequest::GetTrie {
                 trie_or_chunk_id,
                 responder,
@@ -1072,28 +1091,8 @@ impl ContractRuntime {
                     unreachable!()
                 }
             }
-            ContractRuntimeRequest::GetTotalSupply {
-                total_supply_request,
-                responder,
-            } => {
-                trace!(?total_supply_request, "get total supply request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-
-                async move {
-                    let start = Instant::now();
-                    let result = query_total_supply(engine_state, total_supply_request.state_hash);
-
-                    metrics
-                        .get_total_supply
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "total supply result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
             ContractRuntimeRequest::GetRoundSeigniorageRate {
-                round_seigniorage_rate_request,
+                request: round_seigniorage_rate_request,
                 responder,
             } => {
                 trace!(
@@ -1119,37 +1118,6 @@ impl ContractRuntime {
                 .ignore()
             }
         }
-    }
-}
-
-fn query_total_supply(
-    engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
-    state_hash: Digest,
-) -> Result<U512, engine_state::Error> {
-    use casper_types::system::mint;
-    use engine_state::Error;
-
-    let mint = engine_state.get_system_mint_hash(state_hash)?;
-
-    let mint_key = Key::addressable_entity_key(EntityKindTag::System, mint);
-
-    let request = QueryRequest::new(
-        state_hash,
-        mint_key,
-        vec![mint::TOTAL_SUPPLY_KEY.to_owned()],
-    );
-
-    let query_result = engine_state.run_query(request);
-    match query_result {
-        QueryResult::Success { value, proofs: _ } => value
-            .as_cl_value()
-            .ok_or_else(|| Error::Mint("Value not a CLValue".to_owned()))?
-            .clone()
-            .into_t()
-            .map_err(|e| Error::Mint(format!("CLValue not a U512: {e}"))),
-        QueryResult::ValueNotFound(s) => Err(Error::Mint(format!("ValueNotFound({s})"))),
-        QueryResult::RootNotFound => Err(Error::RootNotFound(state_hash)),
-        QueryResult::Failure(tce) => Err(Error::TrackingCopy(tce)),
     }
 }
 

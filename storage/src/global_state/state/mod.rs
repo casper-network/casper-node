@@ -14,7 +14,7 @@ use casper_types::{
     addressable_entity::EntityKindTag,
     bytesrepr,
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
-    system::{auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, AUCTION},
+    system::{auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, mint::TOTAL_SUPPLY_KEY, AUCTION, MINT},
     AddressableEntity, Digest, EntityAddr, Key, KeyTag, StoredValue,
 };
 
@@ -26,7 +26,7 @@ use crate::{
         era_validators::EraValidatorsResult, AddressableEntityRequest, AddressableEntityResult,
         BalanceRequest, BalanceResult, BidsRequest, BidsResult, EraValidatorsRequest,
         ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult, QueryRequest, QueryResult,
-        EXECUTION_RESULTS_CHECKSUM_NAME,
+        TotalSupplyRequest, TotalSupplyResult, EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -204,6 +204,7 @@ pub trait StateProvider {
         EraValidatorsResult::Success { era_validators }
     }
 
+    /// Gets the bids.
     fn bids(&self, request: BidsRequest) -> BidsResult {
         let state_hash = request.state_hash();
         let mut tc = match self.tracking_copy(state_hash) {
@@ -235,6 +236,7 @@ pub trait StateProvider {
         BidsResult::Success { bids }
     }
 
+    /// Gets the execution result checksum.
     fn execution_result_checksum(
         &self,
         request: ExecutionResultsChecksumRequest,
@@ -259,6 +261,7 @@ pub trait StateProvider {
         }
     }
 
+    /// Gets an addressable entity.
     fn addressable_entity(&self, request: AddressableEntityRequest) -> AddressableEntityResult {
         let key = request.key();
         let query_key = match key {
@@ -352,6 +355,53 @@ pub trait StateProvider {
                 AddressableEntityResult::Success { entity }
             }
             QueryResult::Failure(err) => AddressableEntityResult::Failure(err),
+        }
+    }
+
+    /// Gets total supply.
+    fn total_supply(&self, request: TotalSupplyRequest) -> TotalSupplyResult {
+        let state_hash = request.state_hash();
+        let mut tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => tc,
+            Ok(None) => return TotalSupplyResult::RootNotFound,
+            Err(err) => return TotalSupplyResult::Failure(TrackingCopyError::Storage(err)),
+        };
+
+        let query_request = match tc.get_system_contracts() {
+            Ok(scr) => match scr.get(MINT).copied() {
+                Some(mint_hash) => QueryRequest::new(
+                    state_hash,
+                    Key::addressable_entity_key(EntityKindTag::System, mint_hash),
+                    vec![TOTAL_SUPPLY_KEY.to_string()],
+                ),
+                None => {
+                    error!("unexpected query failure; mint not found");
+                    return TotalSupplyResult::MintNotFound;
+                }
+            },
+            Err(err) => return TotalSupplyResult::Failure(err),
+        };
+
+        match self.query(query_request) {
+            QueryResult::RootNotFound => TotalSupplyResult::RootNotFound,
+            QueryResult::ValueNotFound(msg) => TotalSupplyResult::ValueNotFound(msg),
+            QueryResult::Failure(tce) => TotalSupplyResult::Failure(tce),
+            QueryResult::Success { value, proofs: _ } => {
+                let cl_value = match value.into_cl_value() {
+                    Some(cl_value) => cl_value,
+                    None => {
+                        error!("unexpected query failure; total supply is not a CLValue");
+                        return TotalSupplyResult::Failure(
+                            TrackingCopyError::UnexpectedStoredValueVariant,
+                        );
+                    }
+                };
+
+                match cl_value.into_t() {
+                    Ok(total_supply) => TotalSupplyResult::Success { total_supply },
+                    Err(cve) => TotalSupplyResult::Failure(TrackingCopyError::CLValue(cve)),
+                }
+            }
         }
     }
 

@@ -4,7 +4,7 @@ mod tests;
 use std::{collections::BTreeMap, ops::Range, sync::Arc};
 
 use casper_execution_engine::engine_state::{self};
-use casper_storage::data_access_layer::EraValidatorsRequest;
+use casper_storage::data_access_layer::{EraValidatorsRequest, TotalSupplyResult};
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
 
 use num_rational::Ratio;
@@ -72,7 +72,7 @@ pub enum RewardsError {
     /// Fetching the era validators succedeed, but no info is present (should not happen).
     /// The `Digest` is the one that was queried.
     FailedToFetchEraValidators(Digest),
-    FailedToFetchTotalSupply(engine_state::Error),
+    FailedToFetchTotalSupply,
     FailedToFetchSeigniorageRate(engine_state::Error),
 }
 
@@ -195,10 +195,17 @@ impl RewardsInfo {
                     .find(|(key, _)| key == &era_id)
                     .ok_or_else(|| RewardsError::FailedToFetchEraValidators(state_root_hash))?
                     .1;
-                let total_supply = effect_builder
-                    .get_total_supply(state_root_hash)
-                    .await
-                    .map_err(RewardsError::FailedToFetchTotalSupply)?;
+
+                let total_supply = match effect_builder.get_total_supply(state_root_hash).await {
+                    TotalSupplyResult::RootNotFound
+                    | TotalSupplyResult::MintNotFound
+                    | TotalSupplyResult::ValueNotFound(_)
+                    | TotalSupplyResult::Failure(_) => {
+                        return Err(RewardsError::FailedToFetchTotalSupply)
+                    }
+                    TotalSupplyResult::Success { total_supply } => total_supply,
+                };
+
                 let seignorate_rate = effect_builder
                     .get_round_seigniorage_rate(state_root_hash)
                     .await

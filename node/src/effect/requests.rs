@@ -22,6 +22,7 @@ use casper_storage::{
         get_bids::{BidsRequest, BidsResult},
         AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
         EraValidatorsResult, ExecutionResultsChecksumResult, QueryRequest, QueryResult,
+        TotalSupplyRequest, TotalSupplyResult,
     },
     global_state::trie::TrieRaw,
 };
@@ -52,7 +53,6 @@ use crate::{
     },
     contract_runtime::{
         ContractRuntimeError, RoundSeigniorageRateRequest, SpeculativeExecutionState,
-        TotalSupplyRequest,
     },
     reactor::main_reactor::ReactorState,
     rpcs::docs::OpenRpcSchema,
@@ -888,7 +888,7 @@ pub(crate) enum ContractRuntimeRequest {
     Query {
         /// Query request.
         #[serde(skip_serializing)]
-        query_request: QueryRequest,
+        request: QueryRequest,
         /// Responder to call with the query result.
         responder: Responder<QueryResult>,
     },
@@ -896,20 +896,20 @@ pub(crate) enum ContractRuntimeRequest {
     GetBalance {
         /// Balance request.
         #[serde(skip_serializing)]
-        balance_request: BalanceRequest,
+        request: BalanceRequest,
         /// Responder to call with the balance result.
         responder: Responder<BalanceResult>,
     },
     /// Get the total supply on the chain.
     GetTotalSupply {
         #[serde(skip_serializing)]
-        total_supply_request: TotalSupplyRequest,
-        responder: Responder<Result<U512, engine_state::Error>>,
+        request: TotalSupplyRequest,
+        responder: Responder<TotalSupplyResult>,
     },
     /// Get the round seigniorage rate.
     GetRoundSeigniorageRate {
         #[serde(skip_serializing)]
-        round_seigniorage_rate_request: RoundSeigniorageRateRequest,
+        request: RoundSeigniorageRateRequest,
         responder: Responder<Result<Ratio<U512>, engine_state::Error>>,
     },
     /// Returns validator weights.
@@ -983,20 +983,24 @@ impl Display for ContractRuntimeRequest {
             } => {
                 write!(formatter, "executable_block: {}", executable_block)
             }
-            ContractRuntimeRequest::Query { query_request, .. } => {
+            ContractRuntimeRequest::Query {
+                request: query_request,
+                ..
+            } => {
                 write!(formatter, "query request: {:?}", query_request)
             }
             ContractRuntimeRequest::GetBalance {
-                balance_request, ..
+                request: balance_request,
+                ..
             } => write!(formatter, "balance request: {:?}", balance_request),
             ContractRuntimeRequest::GetTotalSupply {
-                total_supply_request,
+                request: total_supply_request,
                 ..
             } => {
                 write!(formatter, "get total supply: {:?}", total_supply_request)
             }
             ContractRuntimeRequest::GetRoundSeigniorageRate {
-                round_seigniorage_rate_request,
+                request: round_seigniorage_rate_request,
                 ..
             } => {
                 write!(
