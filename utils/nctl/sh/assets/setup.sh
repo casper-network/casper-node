@@ -50,7 +50,7 @@ export NET_ID=${NET_ID:-1}
 GENESIS_DELAY_SECONDS=${GENESIS_DELAY_SECONDS:-30}
 NODE_COUNT=${NODE_COUNT:-5}
 PATH_TO_CHAINSPEC=${PATH_TO_CHAINSPEC:-"${NCTL_CASPER_HOME}/resources/local/chainspec.toml.in"}
-PATH_TO_ACCOUNTS=${PATH_TO_ACCOUNTS:-"/home/chef/casper/"}
+PATH_TO_ACCOUNTS=${PATH_TO_ACCOUNTS:-"/home/chef/casper/users"}
 PATH_TO_CONFIG_TOML=${PATH_TO_CONFIG_TOML:-"${NCTL_CASPER_HOME}/resources/local/config.toml"}
 
 
