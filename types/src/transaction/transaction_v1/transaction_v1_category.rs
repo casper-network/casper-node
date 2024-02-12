@@ -16,7 +16,6 @@ use serde::{Deserialize, Serialize};
 )]
 #[serde(deny_unknown_fields)]
 #[repr(u8)]
-// TODO[RC]: Move to separate file
 pub enum TransactionV1Category {
     /// Install or Upgrade.
     InstallUpgrade,
