@@ -3,7 +3,7 @@ use datasize::DataSize;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
 
-use crate::{DeployFootprint, Gas, Timestamp, U512};
+use crate::{DeployFootprint, Gas, Timestamp};
 #[cfg(any(feature = "std", test))]
 use crate::{TimeDiff, TransactionConfig, TransactionHash};
 
@@ -52,8 +52,9 @@ impl TransactionFootprint {
     pub fn gas_estimate(&self) -> Gas {
         match self {
             TransactionFootprint::Deploy(deploy_footprint) => deploy_footprint.gas_estimate,
-            TransactionFootprint::V1(_) => Gas::new(U512::from(0)), /* TODO[RC]: Add gas
-                                                                     * estimation for V1 */
+            TransactionFootprint::V1(transaction_v1_footprint) => {
+                transaction_v1_footprint.gas_estimate
+            }
         }
     }
 
