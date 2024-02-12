@@ -357,7 +357,7 @@ impl BlockValidationState {
 
     /// If the current state is `InProgress` and `dt_hash` is present, tries to add the footprint to
     /// the appendable block to continue validation of the proposed block.
-    pub(super) fn try_add_deploy_footprint(
+    pub(super) fn try_add_transaction_footprint(
         &mut self,
         dt_hash: &DeployOrTransactionHash,
         footprint: &TransactionFootprint,
@@ -399,49 +399,42 @@ impl BlockValidationState {
 
                 let add_result = match (dt_hash, dhwa) {
                     (
-                        DeployOrTransactionHash::Deploy(deploy_or_transfer_hash),
+                        DeployOrTransactionHash::Deploy(_),
                         TransactionHashWithApprovals::Deploy {
-                            deploy_hash: _, /* TODO[RC]: Hash is not used here,
-                                             * restructure. */
+                            deploy_hash,
                             approvals,
                         },
-                    ) => match (deploy_or_transfer_hash, footprint) {
-                        (
-                            DeployOrTransferHash::Deploy(deploy_hash),
-                            TransactionFootprint::Deploy(footprint),
-                        ) => {
-                            let dhwa = DeployHashWithApprovals::new(*deploy_hash, approvals);
-                            appendable_block.add_deploy(dhwa, footprint)
-                        }
-                        (
-                            DeployOrTransferHash::Transfer(transfer_hash),
-                            TransactionFootprint::Deploy(footprint),
-                        ) => {
-                            let dhwa = DeployHashWithApprovals::new(*transfer_hash, approvals);
-                            appendable_block.add_transfer(dhwa, footprint)
-                        }
-                        (DeployOrTransferHash::Transfer(_), TransactionFootprint::V1(_)) => todo!(),
-                        (_, TransactionFootprint::V1(_)) => panic!(),
-                    },
+                    ) => {
+                        let TransactionFootprint::Deploy(deploy_footprint) = footprint else {
+                            error!(%dt_hash, "legacy deploy with transaction V1 footprint");
+                            return vec![];
+                        };
+                        let dhwa = DeployHashWithApprovals::new(deploy_hash, approvals);
+                        appendable_block.add_deploy(dhwa, deploy_footprint)
+                    }
                     (
-                        DeployOrTransactionHash::V1(_hash), /* TODO[RC]: Hash is not used here,
-                                                             * restructure. */
+                        DeployOrTransactionHash::V1(_),
                         TransactionHashWithApprovals::V1(transaction_v1_hash_with_approvals),
-                    ) => match footprint {
-                        TransactionFootprint::Deploy(_) => {
-                            // TODO[RC],
-                            panic!()
-                        }
-                        TransactionFootprint::V1(footprint) => appendable_block
-                            .add_transaction_v1(transaction_v1_hash_with_approvals, footprint),
-                    },
+                    ) => {
+                        let TransactionFootprint::V1(transaction_v1_footprint) = footprint else {
+                            error!(%dt_hash, "transaction v1 with legacy deploy footprint");
+                            return vec![];
+                        };
+                        appendable_block.add_transaction_v1(
+                            transaction_v1_hash_with_approvals,
+                            transaction_v1_footprint,
+                        )
+                    }
+                    (DeployOrTransactionHash::Deploy(_), TransactionHashWithApprovals::V1(_)) => {
+                        error!(%dt_hash, "legacy deploy with transaction V1 approvals");
+                        return vec![];
+                    }
                     (
                         DeployOrTransactionHash::V1(_),
                         TransactionHashWithApprovals::Deploy { .. },
-                    )
-                    | (DeployOrTransactionHash::Deploy(_), TransactionHashWithApprovals::V1(_)) => {
-                        // TODO[RC],
-                        panic!()
+                    ) => {
+                        error!(%dt_hash, "transaction V1 with legacy deploy approvals");
+                        return vec![];
                     }
                 };
 
@@ -1081,7 +1074,7 @@ mod tests {
         let mut footprints = fixture.footprints();
         while footprints.len() > 1 {
             let (dt_hash, footprint) = footprints.pop().unwrap();
-            let responders = state.try_add_deploy_footprint(&dt_hash, &footprint);
+            let responders = state.try_add_transaction_footprint(&dt_hash, &footprint);
             assert!(responders.is_empty());
             assert!(matches!(
                 state,
@@ -1093,7 +1086,7 @@ mod tests {
         // The final deploy should cause the state to go to `Valid` and the responders to be
         // returned.
         let (dt_hash, footprint) = footprints.pop().unwrap();
-        let responders = state.try_add_deploy_footprint(&dt_hash, &footprint);
+        let responders = state.try_add_transaction_footprint(&dt_hash, &footprint);
         assert_eq!(responders.len(), 1);
         assert!(matches!(state, BlockValidationState::Valid(_)));
     }
@@ -1124,7 +1117,7 @@ mod tests {
         let footprint = deploy.footprint().unwrap().into();
 
         // Ensure trying to add it doesn't change the state.
-        let responders = state.try_add_deploy_footprint(&dt_hash, &footprint);
+        let responders = state.try_add_transaction_footprint(&dt_hash, &footprint);
         assert!(responders.is_empty());
         match &state {
             BlockValidationState::InProgress {
@@ -1162,7 +1155,7 @@ mod tests {
             if dt_hash.transaction_hash() == invalid_deploy_hash.into() {
                 continue;
             }
-            let responders = state.try_add_deploy_footprint(&dt_hash, &footprint);
+            let responders = state.try_add_transaction_footprint(&dt_hash, &footprint);
             assert!(responders.is_empty());
         }
 
@@ -1171,7 +1164,7 @@ mod tests {
         let dt_hash =
             DeployOrTransactionHash::from(DeployOrTransferHash::Deploy(invalid_deploy_hash));
         let footprint = invalid_deploy.footprint().unwrap();
-        let responders = state.try_add_deploy_footprint(&dt_hash, &footprint);
+        let responders = state.try_add_transaction_footprint(&dt_hash, &footprint);
         assert_eq!(responders.len(), 1);
         assert!(matches!(state, BlockValidationState::Invalid(_)));
     }

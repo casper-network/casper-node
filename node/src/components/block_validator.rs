@@ -552,7 +552,8 @@ impl BlockValidator {
 
                 let mut effects = Effects::new();
                 for state in self.validation_states.values_mut() {
-                    let responders = state.try_add_deploy_footprint(&dt_hash, &deploy_footprint);
+                    let responders =
+                        state.try_add_transaction_footprint(&dt_hash, &deploy_footprint);
                     if !responders.is_empty() {
                         let is_valid = matches!(state, BlockValidationState::Valid(_));
                         dbg!("Block validation succeeded");
