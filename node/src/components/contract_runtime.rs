@@ -39,7 +39,7 @@ use casper_storage::data_access_layer::{BidsRequest, BidsResult};
 use casper_storage::{
     data_access_layer::{
         AddressableEntityRequest, BlockStore, DataAccessLayer, ExecutionResultsChecksumRequest,
-        TrieRequest,
+        FlushRequest, FlushResult, TrieRequest,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -962,28 +962,23 @@ impl ContractRuntime {
                 .ignore()
             }
             ContractRuntimeRequest::PutTrie {
-                trie_bytes,
+                request: put_trie_request,
                 responder,
             } => {
-                trace!(?trie_bytes, "put_trie request");
-                let engine_state = Arc::clone(&self.engine_state);
+                trace!(?put_trie_request, "put trie request");
                 let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
                 async move {
                     let start = Instant::now();
-                    let result = engine_state.put_trie_if_all_children_present(trie_bytes.inner());
-                    // PERF: this *could* be called only periodically.
-                    if let Err(lmdb_error) = engine_state.flush_environment() {
-                        fatal!(
-                            effect_builder,
-                            "error flushing lmdb environment {:?}",
-                            lmdb_error
-                        )
-                        .await;
-                    } else {
-                        metrics.put_trie.observe(start.elapsed().as_secs_f64());
-                        trace!(?result, "put_trie response");
-                        responder.respond(result).await
+                    let result = data_access_layer.put_trie(put_trie_request);
+                    let flush_req = FlushRequest::new();
+                    // PERF: consider flushing periodically.
+                    if let FlushResult::Failure(gse) = data_access_layer.flush(flush_req) {
+                        fatal!(effect_builder, "error flushing data environment {:?}", gse).await;
                     }
+                    metrics.put_trie.observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "put trie response");
+                    responder.respond(result).await
                 }
                 .ignore()
             }

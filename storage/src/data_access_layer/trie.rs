@@ -65,3 +65,47 @@ impl TrieResult {
         }
     }
 }
+
+/// Request for a trie element to be persisted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PutTrieRequest {
+    raw: TrieRaw,
+}
+
+impl PutTrieRequest {
+    /// Creates an instance of PutTrieRequest.
+    pub fn new(raw: TrieRaw) -> Self {
+        PutTrieRequest { raw }
+    }
+
+    /// The raw bytes of the trie element.
+    pub fn raw(&self) -> &TrieRaw {
+        &self.raw
+    }
+
+    pub fn take_raw(self) -> TrieRaw {
+        self.raw
+    }
+}
+
+/// Represents a result of a `put_trie` request.
+#[derive(Debug)]
+pub enum PutTrieResult {
+    /// The trie element is persisted.
+    Success {
+        /// The hash of the persisted trie element.
+        hash: Digest,
+    },
+    /// Failed to persist the trie element.
+    Failure(GlobalStateError),
+}
+
+impl PutTrieResult {
+    /// Returns a Result matching the original api for this functionality.
+    pub fn as_legacy(&self) -> Result<Digest, GlobalStateError> {
+        match self {
+            PutTrieResult::Success { hash } => Ok(*hash),
+            PutTrieResult::Failure(err) => Err(err.clone()),
+        }
+    }
+}

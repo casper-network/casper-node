@@ -1,6 +1,6 @@
 use std::{collections::HashMap, ops::Deref, sync::Arc};
 
-use lmdb::DatabaseFlags;
+use lmdb::{DatabaseFlags, RwTransaction};
 
 use tempfile::TempDir;
 
@@ -10,7 +10,10 @@ use casper_types::{
 };
 
 use crate::{
-    data_access_layer::{TrieElement, TrieRequest, TrieResult},
+    data_access_layer::{
+        FlushRequest, FlushResult, PutTrieRequest, PutTrieResult, TrieElement, TrieRequest,
+        TrieResult,
+    },
     global_state::{
         error::Error as GlobalStateError,
         state::{
@@ -226,6 +229,17 @@ impl CommitProvider for LmdbGlobalState {
 impl StateProvider for LmdbGlobalState {
     type Reader = LmdbGlobalStateView;
 
+    fn flush(&self, _: FlushRequest) -> FlushResult {
+        if self.environment.is_manual_sync_enabled() {
+            match self.environment.sync() {
+                Ok(_) => FlushResult::Success,
+                Err(err) => FlushResult::Failure(err.into()),
+            }
+        } else {
+            FlushResult::ManualSyncDisabled
+        }
+    }
+
     fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, GlobalStateError> {
         let txn = self.environment.create_read_txn()?;
         let maybe_root: Option<Trie<Key, StoredValue>> = self.trie_store.get(&txn, &state_hash)?;
@@ -284,16 +298,46 @@ impl StateProvider for LmdbGlobalState {
         }
     }
 
-    fn put_trie(&self, trie: &[u8]) -> Result<Digest, GlobalStateError> {
-        let mut txn = self.environment.create_read_write_txn()?;
-        let trie_hash =
-            put_trie::<Key, StoredValue, lmdb::RwTransaction, LmdbTrieStore, GlobalStateError>(
-                &mut txn,
-                &self.trie_store,
-                trie,
-            )?;
-        txn.commit()?;
-        Ok(trie_hash)
+    /// Persists a trie element.
+    fn put_trie(&self, request: PutTrieRequest) -> PutTrieResult {
+        // We only allow bottom-up persistence of trie elements.
+        // Thus we do not persist the element unless we already have all of its descendants
+        // persisted. It is safer to throw away the element and rely on a follow up attempt
+        // to reacquire it later than to allow it to be persisted which would allow runtime
+        // access to acquire a root hash that is missing one or more children which will
+        // result in undefined behavior if a process attempts to access elements below that
+        // root which are not held locally.
+        let bytes = request.raw().inner();
+        match self.missing_children(bytes) {
+            Ok(missing_children) => {
+                if !missing_children.is_empty() {
+                    let hash = Digest::hash_into_chunks_if_necessary(bytes);
+                    return PutTrieResult::Failure(GlobalStateError::MissingTrieNodeChildren(
+                        hash,
+                        request.take_raw(),
+                        missing_children,
+                    ));
+                }
+            }
+            Err(err) => return PutTrieResult::Failure(err),
+        };
+
+        match self.environment.create_read_write_txn() {
+            Ok(mut txn) => {
+                match put_trie::<Key, StoredValue, RwTransaction, LmdbTrieStore, GlobalStateError>(
+                    &mut txn,
+                    &self.trie_store,
+                    bytes,
+                ) {
+                    Ok(hash) => match txn.commit() {
+                        Ok(_) => PutTrieResult::Success { hash },
+                        Err(err) => PutTrieResult::Failure(err.into()),
+                    },
+                    Err(err) => PutTrieResult::Failure(err),
+                }
+            }
+            Err(err) => PutTrieResult::Failure(err.into()),
+        }
     }
 
     /// Finds all of the keys of missing directly descendant `Trie<K,V>` values.

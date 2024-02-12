@@ -12,6 +12,7 @@ mod addressable_entity;
 pub mod balance;
 pub mod era_validators;
 mod execution_results_checksum;
+mod flush;
 pub mod get_bids;
 pub mod query;
 mod round_seigniorage;
@@ -25,11 +26,12 @@ pub use execution_results_checksum::{
     ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult,
     EXECUTION_RESULTS_CHECKSUM_NAME,
 };
+pub use flush::{FlushRequest, FlushResult};
 pub use get_bids::{BidsRequest, BidsResult};
 pub use query::{QueryRequest, QueryResult};
 pub use round_seigniorage::{RoundSeigniorageRateRequest, RoundSeigniorageRateResult};
 pub use total_supply::{TotalSupplyRequest, TotalSupplyResult};
-pub use trie::{TrieElement, TrieRequest, TrieResult};
+pub use trie::{PutTrieRequest, PutTrieResult, TrieElement, TrieRequest, TrieResult};
 
 pub struct Block {
     _era_id: EraId,
@@ -73,6 +75,10 @@ where
 {
     type Reader = S::Reader;
 
+    fn flush(&self, request: FlushRequest) -> FlushResult {
+        self.state.flush(request)
+    }
+
     fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, GlobalStateError> {
         self.state.checkout(state_hash)
     }
@@ -95,8 +101,8 @@ where
         self.state.trie(request)
     }
 
-    fn put_trie(&self, trie: &[u8]) -> Result<Digest, GlobalStateError> {
-        self.state.put_trie(trie)
+    fn put_trie(&self, request: PutTrieRequest) -> PutTrieResult {
+        self.state.put_trie(request)
     }
 
     fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, GlobalStateError> {

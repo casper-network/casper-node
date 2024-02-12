@@ -31,7 +31,7 @@ use casper_storage::{
         balance::BalanceResult,
         get_bids::{BidsRequest, BidsResult},
         query::{QueryRequest, QueryResult},
-        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, TrieRequest,
+        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, PutTrieRequest, TrieRequest,
     },
     global_state::{
         self,
@@ -2228,8 +2228,10 @@ where
             Ok(ret) => ret,
             Err(err) => return Err(err.into()),
         };
+        let raw = TrieRaw::new(trie_bytes.into());
+        let req = PutTrieRequest::new(raw);
         if missing_children.is_empty() {
-            Ok(self.state.put_trie(trie_bytes)?)
+            Ok(self.state.put_trie(req).as_legacy()?)
         } else {
             Err(Error::MissingTrieNodeChildren(missing_children))
         }
