@@ -32,7 +32,7 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
     let mut builder = LmdbWasmTestBuilder::default();
 
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request);
 
     let entity_hash = builder

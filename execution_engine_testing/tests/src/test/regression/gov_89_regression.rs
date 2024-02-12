@@ -60,7 +60,7 @@ fn initialize_builder() -> LmdbWasmTestBuilder {
         tmp
     };
     let run_genesis_request = utils::create_run_genesis_request(accounts);
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
     builder
 }
 

@@ -32,7 +32,7 @@ static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
 #[test]
 fn default_genesis_config_should_not_have_rewards_purse() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let handle_payment = builder.get_handle_payment_contract_hash();
     let handle_payment_contract =

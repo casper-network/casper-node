@@ -1,6 +1,7 @@
 use std::time::Duration;
 use tracing::{debug, error, info, trace};
 
+use casper_storage::data_access_layer::GenesisResult;
 use casper_types::{BlockHash, BlockHeader, Digest, EraId, PublicKey, Timestamp};
 
 use crate::{
@@ -330,10 +331,15 @@ impl MainReactor {
             self.chainspec.clone().as_ref(),
             self.chainspec_raw_bytes.clone().as_ref(),
         ) {
-            Ok(success) => success.post_state_hash,
-            Err(error) => {
-                return GenesisInstruction::Fatal(error.to_string());
+            GenesisResult::Fatal(msg) => {
+                return GenesisInstruction::Fatal(msg);
             }
+            GenesisResult::Failure(err) => {
+                return GenesisInstruction::Fatal(format!("genesis error: {}", err));
+            }
+            GenesisResult::Success {
+                post_state_hash, ..
+            } => post_state_hash,
         };
 
         info!(

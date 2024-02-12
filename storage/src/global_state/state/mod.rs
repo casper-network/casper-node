@@ -6,7 +6,7 @@ pub mod lmdb;
 /// Lmdb implementation of global state with cache.
 pub mod scratch;
 
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use tracing::{debug, error, warn};
 
@@ -30,9 +30,9 @@ use crate::{
         era_validators::EraValidatorsResult, AddressableEntityRequest, AddressableEntityResult,
         BalanceRequest, BalanceResult, BidsRequest, BidsResult, EraValidatorsRequest,
         ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult, FlushRequest, FlushResult,
-        PutTrieRequest, PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
-        RoundSeigniorageRateResult, TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
-        EXECUTION_RESULTS_CHECKSUM_NAME,
+        GenesisRequest, GenesisResult, PutTrieRequest, PutTrieResult, QueryRequest, QueryResult,
+        RoundSeigniorageRateRequest, RoundSeigniorageRateResult, TotalSupplyRequest,
+        TotalSupplyResult, TrieRequest, TrieResult, EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -46,6 +46,7 @@ use crate::{
     system::{
         auction,
         auction::bidding::{BiddingRequest, BiddingResult},
+        genesis::{GenesisError, GenesisInstaller},
         mint::transfer::{TransferRequest, TransferResult},
     },
     tracking_copy::{TrackingCopy, TrackingCopyError, TrackingCopyExt},
@@ -96,6 +97,41 @@ pub trait CommitProvider: StateProvider {
     /// Applies changes and returns a new post state hash.
     /// block_hash is used for computing a deterministic and unique keys.
     fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, GlobalStateError>;
+
+    fn genesis(&self, request: GenesisRequest) -> GenesisResult {
+        let initial_root = self.empty_root();
+        let tc = match self.tracking_copy(initial_root) {
+            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
+            Ok(None) => return GenesisResult::Fatal("state uninitialized".to_string()),
+            Err(err) => {
+                return GenesisResult::Failure(GenesisError::TrackingCopyError(
+                    crate::tracking_copy::TrackingCopyError::Storage(err),
+                ))
+            }
+        };
+        let chainspec_hash = request.chainspec_hash();
+        let protocol_version = request.protocol_version();
+        let config = request.config();
+
+        let mut genesis_installer: GenesisInstaller<Self> =
+            GenesisInstaller::new(chainspec_hash, protocol_version, config.clone(), tc);
+
+        let chainspec_registry = request.chainspec_registry();
+        if let Err(gen_err) = genesis_installer.install(chainspec_registry.clone()) {
+            return GenesisResult::Failure(*gen_err);
+        }
+
+        let effects = genesis_installer.finalize();
+        match self.commit(initial_root, effects.clone()) {
+            Ok(post_state_hash) => GenesisResult::Success {
+                post_state_hash,
+                effects,
+            },
+            Err(err) => GenesisResult::Failure(GenesisError::TrackingCopyError(
+                TrackingCopyError::Storage(err),
+            )),
+        }
+    }
 }
 
 /// A trait expressing operations over the trie.

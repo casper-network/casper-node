@@ -42,7 +42,7 @@ fn should_run_ee_550_remove_with_saturated_threshold_regression() {
     let mut builder = LmdbWasmTestBuilder::default();
 
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .expect_success()
         .commit()
@@ -79,7 +79,7 @@ fn should_run_ee_550_update_with_saturated_threshold_regression() {
     let mut builder = LmdbWasmTestBuilder::default();
 
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .expect_success()
         .commit()

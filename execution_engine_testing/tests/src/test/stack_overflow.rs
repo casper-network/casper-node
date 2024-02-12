@@ -26,7 +26,7 @@ fn runtime_stack_overflow_should_cause_unreachable_error() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
     builder
         .exec(do_stack_overflow_request)
         .expect_failure()

@@ -27,19 +27,21 @@ use prometheus::Registry;
 use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::engine_state::{
-    self, genesis::GenesisError, DeployItem, EngineConfigBuilder, EngineState, GenesisSuccess,
-    UpgradeSuccess,
+    self, DeployItem, EngineConfigBuilder, EngineState, UpgradeSuccess,
 };
+
 use casper_storage::{
     data_access_layer::{
         AddressableEntityRequest, BlockStore, DataAccessLayer, ExecutionResultsChecksumRequest,
-        FlushRequest, FlushResult, TrieRequest,
+        FlushRequest, FlushResult, GenesisRequest, GenesisResult, TrieRequest,
     },
     global_state::{
-        state::{lmdb::LmdbGlobalState, StateProvider},
+        state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
         transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
+    system::genesis::GenesisError,
+    tracking_copy::TrackingCopyError,
 };
 use casper_types::{Chainspec, ChainspecRawBytes, ChainspecRegistry, Transaction, UpgradeConfig};
 
@@ -211,31 +213,39 @@ impl ContractRuntime {
         &self,
         chainspec: &Chainspec,
         chainspec_raw_bytes: &ChainspecRawBytes,
-    ) -> Result<GenesisSuccess, engine_state::Error> {
-        let genesis_config_hash = chainspec.hash();
+    ) -> GenesisResult {
         let protocol_version = chainspec.protocol_config.version;
-        // Transforms a chainspec into a valid genesis config for execution engine.
-        let ee_config = chainspec.into();
+        let chainspec_hash = chainspec.hash();
+        let genesis_config = chainspec.into();
+        let account_bytes = match chainspec_raw_bytes.maybe_genesis_accounts_bytes() {
+            Some(bytes) => bytes,
+            None => {
+                error!("failed to provide genesis account bytes in commit genesis");
+                return GenesisResult::Failure(GenesisError::MissingGenesisAccounts);
+            }
+        };
 
         let chainspec_registry = ChainspecRegistry::new_with_genesis(
             chainspec_raw_bytes.chainspec_bytes(),
-            chainspec_raw_bytes
-                .maybe_genesis_accounts_bytes()
-                .ok_or_else(|| {
-                    error!("failed to provide genesis account bytes in commit genesis");
-                    engine_state::Error::Genesis(Box::new(
-                        GenesisError::MissingChainspecRegistryEntry,
-                    ))
-                })?,
+            account_bytes,
         );
 
-        let result = self.engine_state.commit_genesis(
-            genesis_config_hash,
+        let genesis_request = GenesisRequest::new(
+            chainspec_hash,
             protocol_version,
-            &ee_config,
+            genesis_config,
             chainspec_registry,
         );
-        self.engine_state.flush_environment()?;
+
+        let data_access_layer = Arc::clone(&self.data_access_layer);
+        let result = data_access_layer.genesis(genesis_request);
+        if result.is_success() {
+            if let Err(err) = self.engine_state.flush_environment() {
+                return GenesisResult::Failure(GenesisError::TrackingCopyError(
+                    TrackingCopyError::Storage(err),
+                ));
+            }
+        }
         result
     }
 

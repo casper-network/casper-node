@@ -21,7 +21,7 @@ fn contract_transforms_should_be_ordered_in_the_effects() {
     const N_OPS: usize = 1000;
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let mut rng = StdRng::seed_from_u64(0);
 

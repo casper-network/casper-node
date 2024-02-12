@@ -4,6 +4,7 @@ use thiserror::Error;
 
 use casper_storage::{
     global_state::{self, state::CommitError},
+    system::genesis::GenesisError,
     tracking_copy::TrackingCopyError,
 };
 use casper_types::{
@@ -12,7 +13,7 @@ use casper_types::{
 };
 
 use crate::{
-    engine_state::{genesis::GenesisError, upgrade::ProtocolUpgradeError},
+    engine_state::upgrade::ProtocolUpgradeError,
     execution,
     runtime::{stack, PreprocessingError},
 };

@@ -116,7 +116,7 @@ fn initialize_isolated_storage_costs() -> LmdbWasmTestBuilder {
     //
     // Isolate storage costs without host function costs, and without opcode costs
     //
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let mut upgrade_request = UpgradeRequestBuilder::new()
         .with_current_protocol_version(*DEFAULT_PROTOCOL_VERSION)
@@ -354,7 +354,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
     let cost_per_byte = U512::from(StorageCosts::default().gas_per_byte());
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -578,7 +578,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
     let cost_per_byte = U512::from(StorageCosts::default().gas_per_byte());
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

@@ -4,12 +4,13 @@ use lmdb::{Cursor, Transaction};
 use rand::Rng;
 use tempfile::TempDir;
 
-use casper_execution_engine::engine_state::{
-    run_genesis_request::RunGenesisRequest, EngineState, ExecuteRequest,
-};
-use casper_storage::global_state::{
-    state::{CommitProvider, StateProvider},
-    trie::{Pointer, Trie},
+use casper_execution_engine::engine_state::{EngineState, ExecuteRequest};
+use casper_storage::{
+    data_access_layer::GenesisRequest,
+    global_state::{
+        state::{CommitProvider, StateProvider},
+        trie::{Pointer, Trie},
+    },
 };
 use casper_types::{
     account::AccountHash,
@@ -277,7 +278,7 @@ pub fn run_genesis_and_create_initial_accounts(
     }
     let run_genesis_request =
         create_run_genesis_request(validator_keys.len() as u32 + 2, genesis_accounts);
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     // Setup the system account with enough cspr
     let transfer = ExecuteRequestBuilder::transfer(
@@ -310,8 +311,8 @@ pub fn run_genesis_and_create_initial_accounts(
 fn create_run_genesis_request(
     validator_slots: u32,
     genesis_accounts: Vec<GenesisAccount>,
-) -> RunGenesisRequest {
-    let exec_config = GenesisConfigBuilder::default()
+) -> GenesisRequest {
+    let genesis_config = GenesisConfigBuilder::default()
         .with_accounts(genesis_accounts)
         .with_wasm_config(*DEFAULT_WASM_CONFIG)
         .with_system_config(*DEFAULT_SYSTEM_CONFIG)
@@ -325,10 +326,10 @@ fn create_run_genesis_request(
         .with_fee_handling(DEFAULT_FEE_HANDLING)
         .build();
 
-    RunGenesisRequest::new(
+    GenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
-        exec_config,
+        genesis_config,
         ChainspecRegistry::new_with_genesis(&[], &[]),
     )
 }

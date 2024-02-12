@@ -1,13 +1,12 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    utils::create_genesis_config, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    ARG_AMOUNT, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    engine_state::{run_genesis_request::RunGenesisRequest, Error as EngineError},
-    execution::Error,
-};
+use casper_execution_engine::{engine_state::Error as EngineError, execution::Error};
+use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     account::AccountHash, addressable_entity::EntityKindTag, runtime_args, system::mint,
     AccessRights, AddressableEntityHash, ApiError, CLType, CLValue, GenesisAccount, Key, Motes,
@@ -27,7 +26,7 @@ const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let fund_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,
@@ -461,7 +460,7 @@ fn should_fail_get_with_invalid_dictionary_item_key() {
 fn dictionary_put_should_fail_with_large_item_key() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let fund_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,
@@ -502,7 +501,7 @@ fn dictionary_put_should_fail_with_large_item_key() {
 fn dictionary_get_should_fail_with_large_item_key() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let fund_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,
@@ -547,12 +546,13 @@ fn should_query_dictionary_items_with_test_builder() {
         None,
     );
 
-    let mut genesis_config = DEFAULT_GENESIS_CONFIG.clone();
-    genesis_config.config_mut().push_account(genesis_account);
-    let run_genesis_request = RunGenesisRequest::new(
+    let mut accounts = vec![genesis_account];
+    accounts.extend((*DEFAULT_ACCOUNTS).clone());
+    let genesis_config = create_genesis_config(accounts);
+    let genesis_request = GenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
-        genesis_config.protocol_version(),
-        genesis_config.take_config(),
+        *DEFAULT_PROTOCOL_VERSION,
+        genesis_config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
@@ -568,7 +568,7 @@ fn should_query_dictionary_items_with_test_builder() {
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request).commit();
+    builder.run_genesis(genesis_request).commit();
 
     builder.exec(exec_request).commit().expect_success();
 
@@ -664,7 +664,7 @@ fn should_query_dictionary_items_with_test_builder() {
 #[test]
 fn should_be_able_to_perform_dictionary_read() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let dictionary_session_call =
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, DICTIONARY_READ, RuntimeArgs::new())
@@ -680,7 +680,7 @@ fn should_be_able_to_perform_dictionary_read() {
 #[test]
 fn should_be_able_to_perform_read_from_key() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let read_from_key_session_call =
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, READ_FROM_KEY, RuntimeArgs::new())

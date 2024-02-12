@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, iter::FromIterator};
 
-use casper_execution_engine::engine_state::{EngineConfigBuilder, RunGenesisRequest};
+use casper_execution_engine::engine_state::EngineConfigBuilder;
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 
@@ -10,6 +10,7 @@ use casper_engine_test_support::{
     DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
     DEFAULT_VALIDATOR_SLOTS, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
+use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     runtime_args,
     system::{
@@ -104,7 +105,7 @@ fn initialize_builder() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
 
     let run_genesis_request = utils::create_run_genesis_request(GENESIS_ACCOUNTS.clone());
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let fund_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,
@@ -257,7 +258,7 @@ fn should_retain_genesis_validator_slot_protection() {
                 .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
                 .build();
 
-            RunGenesisRequest::new(
+            GenesisRequest::new(
                 *DEFAULT_GENESIS_CONFIG_HASH,
                 *DEFAULT_PROTOCOL_VERSION,
                 exec_config,
@@ -266,7 +267,7 @@ fn should_retain_genesis_validator_slot_protection() {
         };
 
         let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(engine_config);
-        builder.run_genesis(&run_genesis_request);
+        builder.run_genesis(run_genesis_request);
 
         let fund_request = ExecuteRequestBuilder::transfer(
             *DEFAULT_ACCOUNT_ADDR,

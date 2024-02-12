@@ -190,7 +190,7 @@ fn distribute_rewards<S>(
 #[test]
 fn gh_3710_should_produce_era_summary_in_a_step() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     add_validator_and_wait_for_rotation(&mut builder, &DEFAULT_ACCOUNT_PUBLIC_KEY);
     distribute_rewards(&mut builder, 1, &DEFAULT_ACCOUNT_PUBLIC_KEY, 0.into());

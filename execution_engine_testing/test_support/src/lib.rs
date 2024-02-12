@@ -31,7 +31,7 @@ pub use casper_execution_engine::engine_state::engine_config::{
     DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
 };
-use casper_execution_engine::engine_state::{GenesisRequest, RunGenesisRequest};
+use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     account::AccountHash, ChainspecRegistry, Digest, GenesisAccount, GenesisConfig,
     GenesisConfigBuilder, Motes, ProtocolVersion, PublicKey, SecretKey, SystemConfig, WasmConfig,
@@ -148,39 +148,13 @@ pub static DEFAULT_EXEC_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
         .with_fee_handling(DEFAULT_FEE_HANDLING)
         .build()
 });
-/// Default [`GenesisRequest`].
-pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisRequest> = Lazy::new(|| {
-    GenesisRequest::new(
-        DEFAULT_CHAIN_NAME.to_string(),
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        *DEFAULT_PROTOCOL_VERSION,
-        #[allow(deprecated)]
-        DEFAULT_EXEC_CONFIG.clone(),
-    )
-});
+
 /// Default [`ChainspecRegistry`].
 pub static DEFAULT_CHAINSPEC_REGISTRY: Lazy<ChainspecRegistry> =
     Lazy::new(|| ChainspecRegistry::new_with_genesis(&[1, 2, 3], &[4, 5, 6]));
-/// Default [`RunGenesisRequest`].
-///
-/// This has been deprecated in favor of [`PRODUCTION_RUN_GENESIS_REQUEST`] which uses cost tables
-/// matching those used in Casper Mainnet.
-#[deprecated(
-    since = "2.3.0",
-    note = "prefer `PRODUCTION_RUN_GENESIS_REQUEST` as it uses cost tables matching those used in \
-           Casper Mainnet"
-)]
-pub static DEFAULT_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|| {
-    RunGenesisRequest::new(
-        *DEFAULT_GENESIS_CONFIG_HASH,
-        *DEFAULT_PROTOCOL_VERSION,
-        #[allow(deprecated)]
-        DEFAULT_EXEC_CONFIG.clone(),
-        DEFAULT_CHAINSPEC_REGISTRY.clone(),
-    )
-});
-/// A [`RunGenesisRequest`] using cost tables matching those used in Casper Mainnet.
-pub static PRODUCTION_RUN_GENESIS_REQUEST: Lazy<RunGenesisRequest> = Lazy::new(|| {
+
+/// A [`GenesisRequest`] using cost tables matching those used in Casper Mainnet.
+pub static PRODUCTION_RUN_GENESIS_REQUEST: Lazy<GenesisRequest> = Lazy::new(|| {
     ChainspecConfig::create_genesis_request_from_production_chainspec(
         DEFAULT_ACCOUNTS.clone(),
         *DEFAULT_PROTOCOL_VERSION,

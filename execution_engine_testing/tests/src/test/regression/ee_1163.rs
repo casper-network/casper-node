@@ -18,7 +18,7 @@ const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
     builder
 }
 

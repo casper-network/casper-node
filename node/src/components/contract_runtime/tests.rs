@@ -216,8 +216,9 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
         .inner()
         .contract_runtime
         .commit_genesis(chainspec.as_ref(), chainspec_raw_bytes.as_ref())
+        .as_legacy()
         .unwrap()
-        .post_state_hash;
+        .0;
 
     let initial_pre_state = ExecutionPreState::new(
         0,
@@ -395,9 +396,6 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
 mod trie_chunking_tests {
     use std::sync::Arc;
 
-    use casper_execution_engine::engine_state::engine_config::{
-        DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,
-    };
     use casper_storage::global_state::{
         state::StateProvider,
         trie::{Pointer, Trie},
@@ -408,7 +406,7 @@ mod trie_chunking_tests {
         execution::{Transform, TransformKind},
         testing::TestRng,
         ActivationPoint, CLValue, Chainspec, ChunkWithProof, CoreConfig, Digest, EraId, Key,
-        ProtocolConfig, StoredValue, TimeDiff,
+        ProtocolConfig, StoredValue, TimeDiff, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,
     };
     use prometheus::Registry;
     use tempfile::tempdir;

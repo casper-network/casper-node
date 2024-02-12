@@ -56,8 +56,8 @@ pub struct GenesisConfig {
 impl GenesisConfig {
     /// Creates a new genesis configuration.
     ///
-    /// New code should use [`GenesisConfigBuilder`] instead as some config options will otherwise be
-    /// defaulted.
+    /// New code should use [`GenesisConfigBuilder`] instead as some config options will otherwise
+    /// be defaulted.
     #[deprecated(
         since = "3.0.0",
         note = "prefer to use ExecConfigBuilder to construct an ExecConfig"

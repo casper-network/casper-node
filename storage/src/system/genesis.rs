@@ -17,9 +17,6 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
-use casper_storage::{
-    global_state::state::StateProvider, tracking_copy::TrackingCopy, AddressGenerator,
-};
 use casper_types::{
     addressable_entity::{
         ActionThresholds, EntityKind, EntityKindTag, MessageTopics, NamedKeyAddr, NamedKeyValue,
@@ -44,13 +41,17 @@ use casper_types::{
     ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, Chainspec, ChainspecRegistry, Digest,
     EntityAddr, EntryPoints, EraId, FeeHandling, GenesisAccount, GenesisConfig,
     GenesisConfigBuilder, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
-    RefundHandling, StoredValue, SystemConfig, Tagged, URef, WasmConfig, U512,
+    RefundHandling, StoredValue, SystemConfig, SystemContractRegistry, Tagged, URef, WasmConfig,
+    U512,
 };
 
 use crate::{
-    engine_state::{SystemContractRegistry, DEFAULT_ADDRESS},
-    execution::{self},
+    global_state::state::StateProvider,
+    tracking_copy::{TrackingCopy, TrackingCopyError},
+    AddressGenerator,
 };
+
+const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
 
 const NO_WASM: bool = true;
 
@@ -69,98 +70,17 @@ impl fmt::Display for GenesisSuccess {
     }
 }
 
-/// Represents a configuration of a genesis process.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GenesisRequest {
-    name: String,
-    timestamp: u64,
-    protocol_version: ProtocolVersion,
-    config: GenesisConfig,
-}
-
-impl GenesisRequest {
-    /// Creates a new genesis config object.
-    pub fn new(
-        name: String,
-        timestamp: u64,
-        protocol_version: ProtocolVersion,
-        config: GenesisConfig,
-    ) -> Self {
-        GenesisRequest {
-            name,
-            timestamp,
-            protocol_version,
-            config,
-        }
-    }
-
-    /// Returns name.
-    pub fn name(&self) -> &str {
-        self.name.as_str()
-    }
-
-    /// Returns timestamp.
-    pub fn timestamp(&self) -> u64 {
-        self.timestamp
-    }
-
-    /// Returns protocol version.
-    pub fn protocol_version(&self) -> ProtocolVersion {
-        self.protocol_version
-    }
-
-    /// Returns configuration details of the genesis process.
-    pub fn config(&self) -> &GenesisConfig {
-        &self.config
-    }
-
-    /// Returns mutable reference to the configuration.
-    pub fn config_mut(&mut self) -> &mut GenesisConfig {
-        &mut self.config
-    }
-
-    /// Returns genesis configuration and consumes the object.
-    pub fn take_config(self) -> GenesisConfig {
-        self.config
-    }
-}
-
-impl Distribution<GenesisRequest> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisRequest {
-        let count = rng.gen_range(1..1000);
-        let name = iter::repeat(())
-            .map(|_| rng.gen::<char>())
-            .take(count)
-            .collect();
-
-        let timestamp = rng.gen();
-
-        let protocol_version = ProtocolVersion::from_parts(rng.gen(), rng.gen(), rng.gen());
-
-        let config = rng.gen();
-
-        GenesisRequest {
-            name,
-            timestamp,
-            protocol_version,
-            config,
-        }
-    }
-}
-
 /// Error returned as a result of a failed genesis process.
 #[derive(Clone, Debug)]
 pub enum GenesisError {
     /// Error creating a runtime.
-    UnableToCreateRuntime,
+    StateUninitialized,
     /// Error obtaining the mint's contract key.
     InvalidMintKey,
     /// Missing mint contract.
     MissingMintContract,
     /// Unexpected stored value variant.
     UnexpectedStoredValue,
-    /// Error executing a system contract.
-    ExecutionError(execution::Error),
     /// Error executing the mint system contract.
     MintError(mint::Error),
     /// Error converting a [`CLValue`] to a concrete type.
@@ -215,11 +135,21 @@ pub enum GenesisError {
     DuplicatedAdministratorEntry,
     /// A bytesrepr Error.
     Bytesrepr(bytesrepr::Error),
+    /// Genesis process requires initial accounts.
+    MissingGenesisAccounts,
+    /// A tracking copy error.
+    TrackingCopyError(TrackingCopyError),
 }
 
-pub(crate) struct GenesisInstaller<S>
+impl fmt::Display for GenesisError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "GenesisError: {:?}", self)
+    }
+}
+
+pub struct GenesisInstaller<S>
 where
-    S: StateProvider,
+    S: StateProvider + ?Sized,
 {
     protocol_version: ProtocolVersion,
     config: GenesisConfig,
@@ -229,9 +159,9 @@ where
 
 impl<S> GenesisInstaller<S>
 where
-    S: StateProvider,
+    S: StateProvider + ?Sized,
 {
-    pub(crate) fn new(
+    pub fn new(
         genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
         config: GenesisConfig,
@@ -253,7 +183,7 @@ where
         }
     }
 
-    pub(crate) fn finalize(self) -> Effects {
+    pub fn finalize(self) -> Effects {
         self.tracking_copy.borrow().effects()
     }
 
@@ -649,7 +579,7 @@ where
         Ok(contract_hash)
     }
 
-    pub(crate) fn create_accounts(
+    pub fn create_accounts(
         &self,
         total_supply_key: Key,
         payment_purse_uref: URef,
@@ -948,7 +878,7 @@ where
     }
 
     /// Performs a complete system installation.
-    pub(crate) fn install(
+    pub fn install(
         &mut self,
         chainspec_registry: ChainspecRegistry,
     ) -> Result<(), Box<GenesisError>> {

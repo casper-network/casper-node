@@ -32,7 +32,7 @@ fn should_run_purse_to_purse_transfer() {
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .expect_success()
         .commit();
@@ -103,7 +103,7 @@ fn should_run_purse_to_purse_transfer_with_error() {
         .build();
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .expect_success()
         .commit();

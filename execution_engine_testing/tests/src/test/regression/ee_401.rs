@@ -25,7 +25,7 @@ fn should_execute_contracts_which_provide_extra_urefs() {
     .build();
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
     builder.exec(exec_request_2).expect_success().commit();
