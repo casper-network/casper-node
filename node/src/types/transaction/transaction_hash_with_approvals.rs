@@ -108,13 +108,6 @@ impl TransactionHashWithApprovals {
         }
     }
 
-    pub(crate) fn approvals_count(&self) -> usize {
-        match self {
-            TransactionHashWithApprovals::Deploy { approvals, .. } => approvals.len(),
-            TransactionHashWithApprovals::V1(thwa) => thwa.approvals().len(),
-        }
-    }
-
     /// Returns the approvals.
     pub(crate) fn approvals(&self) -> BTreeSet<TransactionApproval> {
         match self {

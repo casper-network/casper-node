@@ -26,7 +26,7 @@ use once_cell::sync::OnceCell;
 use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
-use tracing::debug;
+use tracing::{debug, error};
 
 #[cfg(any(feature = "std", test))]
 use super::InitiatorAddrAndSecretKey;
@@ -447,7 +447,10 @@ impl TransactionV1 {
                 TransactionV1Category::Staking
             }
 
-            _ => TransactionV1Category::Other,
+            _ => {
+                error!("uncategorized transaction encountered");
+                TransactionV1Category::Other
+            }
         }
     }
 }

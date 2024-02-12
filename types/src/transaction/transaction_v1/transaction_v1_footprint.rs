@@ -22,6 +22,28 @@ pub struct TransactionV1Footprint {
     pub gas_estimate: Gas,
     /// The bytesrepr serialized length of the `Transaction`.
     pub size_estimate: usize,
-    /// Transaction session kind.
+    /// Transaction category.
     pub category: TransactionV1Category,
+}
+
+impl TransactionV1Footprint {
+    /// Returns true if transaction has been categorized as install/upgrade.
+    pub fn is_install_upgrade(&self) -> bool {
+        matches!(self.category, TransactionV1Category::InstallUpgrade)
+    }
+
+    /// Returns true if transaction has been categorized as standard.
+    pub fn is_standard(&self) -> bool {
+        matches!(self.category, TransactionV1Category::Standard)
+    }
+
+    /// Returns true if transaction has been categorized as staking.
+    pub fn is_staking(&self) -> bool {
+        matches!(self.category, TransactionV1Category::Staking)
+    }
+
+    /// Returns true if transaction has been categorized as transfer.
+    pub fn is_transfer(&self) -> bool {
+        matches!(self.category, TransactionV1Category::Transfer)
+    }
 }

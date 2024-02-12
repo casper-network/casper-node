@@ -532,14 +532,14 @@ impl BlockValidator {
                         .flat_map(|state| state.try_mark_invalid(&dt_hash));
                     return respond(false, responders);
                 }
-                let deploy_footprint = match item.footprint() {
+                let transaction_footprint = match item.footprint() {
                     Ok(footprint) => footprint,
                     Err(error) => {
                         warn!(
-                            deploy = %item,
+                            transaction = %item,
                             %dt_hash,
                             %error,
-                            "could not convert deploy",
+                            "could not convert transaction",
                         );
                         // Hard failure - change state to Invalid.
                         let responders = self
@@ -553,10 +553,9 @@ impl BlockValidator {
                 let mut effects = Effects::new();
                 for state in self.validation_states.values_mut() {
                     let responders =
-                        state.try_add_transaction_footprint(&dt_hash, &deploy_footprint);
+                        state.try_add_transaction_footprint(&dt_hash, &transaction_footprint);
                     if !responders.is_empty() {
                         let is_valid = matches!(state, BlockValidationState::Valid(_));
-                        dbg!("Block validation succeeded");
                         effects.extend(respond(is_valid, responders));
                     }
                 }

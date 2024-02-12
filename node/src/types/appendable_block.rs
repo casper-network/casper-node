@@ -34,8 +34,8 @@ pub(crate) enum AddError {
     TransferCount,
     #[error("would exceed maximum deploy count per block")]
     DeployCount,
-    #[error("would exceed maximum transaction ({0:?}) count per block")]
-    TransactionCount(Option<TransactionV1Category>),
+    #[error("would exceed maximum transaction ({0}) count per block")]
+    TransactionCount(TransactionV1Category),
     #[error("would exceed maximum approval count per block")]
     ApprovalCount,
     #[error("would exceed maximum gas per block")]
@@ -46,8 +46,10 @@ pub(crate) enum AddError {
     Duplicate,
     #[error("deploy or transaction has expired")]
     Expired,
-    #[error("deploy or transaction is not valid in this context")]
-    Invalid,
+    #[error("deploy is not valid in this context")]
+    InvalidDeploy,
+    #[error("transaction is not valid in this context")]
+    InvalidTransaction,
     #[error("footprint type mismatch: {0}")]
     FootprintTypeMismatch(MismatchType),
 }
@@ -56,7 +58,7 @@ pub(crate) enum AddError {
 #[derive(Clone, Eq, PartialEq, DataSize, Debug)]
 pub(crate) struct AppendableBlock {
     transaction_config: TransactionConfig,
-    transactions: Vec<TransactionHashWithApprovals>,
+    transactions: Vec<(TransactionHashWithApprovals, TransactionV1Category)>,
     transfers: Vec<DeployHashWithApprovals>,
     transaction_and_transfer_set: HashSet<TransactionHash>,
     timestamp: Timestamp,
@@ -146,7 +148,7 @@ impl AppendableBlock {
             )
             .is_err()
         {
-            return Err(AddError::Invalid);
+            return Err(AddError::InvalidDeploy);
         }
         if self.has_max_transfer_count() {
             return Err(AddError::TransferCount);
@@ -190,9 +192,9 @@ impl AppendableBlock {
             )
             .is_err()
         {
-            return Err(AddError::Invalid);
+            return Err(AddError::InvalidDeploy);
         }
-        if self.has_max_transaction_count() {
+        if self.has_max_standard_count() {
             return Err(AddError::DeployCount);
         }
         if self.would_exceed_approval_limits(deploy.approvals().len()) {
@@ -217,7 +219,8 @@ impl AppendableBlock {
         self.total_approvals += deploy.approvals().len();
         self.transaction_and_transfer_set
             .insert(TransactionHash::from(deploy.deploy_hash()));
-        self.transactions.push(deploy.into());
+        self.transactions
+            .push((deploy.into(), TransactionV1Category::Standard));
         Ok(())
     }
 
@@ -247,14 +250,11 @@ impl AppendableBlock {
             )
             .is_err()
         {
-            return Err(AddError::Invalid);
-        }
-        if self.has_max_transaction_count() {
-            return Err(AddError::TransactionCount(None));
+            return Err(AddError::InvalidTransaction);
         }
 
         if self.has_max_category_count(&footprint.category) {
-            return Err(AddError::TransactionCount(Some(footprint.category)));
+            return Err(AddError::TransactionCount(footprint.category));
         }
 
         if self.would_exceed_approval_limits(transaction.approvals().len()) {
@@ -279,8 +279,10 @@ impl AppendableBlock {
         self.total_approvals += transaction.approvals().len();
         self.transaction_and_transfer_set
             .insert(TransactionHash::from(transaction.transaction_hash()));
-        self.transactions
-            .push(TransactionHashWithApprovals::V1(transaction));
+        self.transactions.push((
+            TransactionHashWithApprovals::V1(transaction),
+            footprint.category,
+        ));
         Ok(())
     }
 
@@ -309,7 +311,10 @@ impl AppendableBlock {
                 .collect(),
             vec![],
             vec![],
-            transactions,
+            transactions
+                .into_iter()
+                .map(|(transaction, _category)| transaction)
+                .collect(),
             accusations,
             rewarded_signatures,
             random_bit,
@@ -328,7 +333,7 @@ impl AppendableBlock {
 
     /// Returns `true` if the number of transactions is already the maximum allowed count, i.e. no
     /// more transactions can be added to this block.
-    fn has_max_transaction_count(&self) -> bool {
+    fn has_max_standard_count(&self) -> bool {
         self.transactions.len() == self.transaction_config.block_max_standard_count as usize
     }
 
@@ -347,9 +352,26 @@ impl AppendableBlock {
         additional_approvals > remaining_approval_slots - remaining_deploy_slots + 1
     }
 
-    fn has_max_category_count(&self, _category: &TransactionV1Category) -> bool {
-        // TODO[RC]: Implement this
-        false
+    fn has_max_category_count(&self, incoming_category: &TransactionV1Category) -> bool {
+        let category_count = self
+            .transactions
+            .iter()
+            .filter(|(_transaction, category)| category == incoming_category)
+            .count();
+        match incoming_category {
+            TransactionV1Category::InstallUpgrade => {
+                category_count == self.transaction_config.block_max_install_upgrade_count as usize
+            }
+            TransactionV1Category::Staking => {
+                category_count == self.transaction_config.block_max_staking_count as usize
+            }
+            TransactionV1Category::Standard => {
+                self.transactions.len() == self.transaction_config.block_max_standard_count as usize
+            }
+            // TODO[RC]: Handle these.
+            TransactionV1Category::Transfer => todo!(),
+            TransactionV1Category::Other => todo!(),
+        }
     }
 }
 
@@ -358,7 +380,7 @@ impl Display for AppendableBlock {
         let transactions_approvals_count = self
             .transactions
             .iter()
-            .map(|transaction_hash_with_approvals| {
+            .map(|(transaction_hash_with_approvals, _category)| {
                 transaction_hash_with_approvals.approvals().len()
             })
             .sum::<usize>();
