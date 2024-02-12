@@ -6,6 +6,7 @@ use std::{
 use datasize::DataSize;
 use num_traits::Zero;
 use thiserror::Error;
+use tracing::error;
 
 use casper_types::{
     DeployFootprint, Gas, PublicKey, RewardedSignatures, TimeDiff, Timestamp, TransactionConfig,
@@ -59,7 +60,6 @@ pub(crate) enum AddError {
 pub(crate) struct AppendableBlock {
     transaction_config: TransactionConfig,
     transactions: Vec<(TransactionHashWithApprovals, TransactionV1Category)>,
-    transfers: Vec<DeployHashWithApprovals>,
     transaction_and_transfer_set: HashSet<TransactionHash>,
     timestamp: Timestamp,
     #[data_size(skip)]
@@ -74,7 +74,7 @@ impl AppendableBlock {
         AppendableBlock {
             transaction_config,
             transactions: Vec::new(),
-            transfers: Vec::new(),
+            //transfers: Vec::new(),
             timestamp,
             transaction_and_transfer_set: HashSet::new(),
             total_gas: Gas::zero(),
@@ -159,7 +159,10 @@ impl AppendableBlock {
         self.transaction_and_transfer_set
             .insert(TransactionHash::from(transfer.deploy_hash()));
         self.total_approvals += transfer.approvals().len();
-        self.transfers.push(transfer);
+        self.transactions.push((
+            TransactionHashWithApprovals::from(transfer),
+            TransactionV1Category::Transfer,
+        ));
         Ok(())
     }
 
@@ -294,27 +297,37 @@ impl AppendableBlock {
         rewarded_signatures: RewardedSignatures,
         random_bit: bool,
     ) -> BlockPayload {
-        let AppendableBlock {
-            transactions,
-            transfers,
-            ..
-        } = self;
+        let AppendableBlock { transactions, .. } = self;
+
+        let transfers = transactions
+            .iter()
+            .filter(|(_, c)| c == &TransactionV1Category::Transfer)
+            .map(|(t, _)| t.clone())
+            .collect();
+
+        let staking = transactions
+            .iter()
+            .filter(|(_, c)| c == &TransactionV1Category::Staking)
+            .map(|(t, _)| t.clone())
+            .collect();
+
+        let install_upgrade = transactions
+            .iter()
+            .filter(|(_, c)| c == &TransactionV1Category::InstallUpgrade)
+            .map(|(t, _)| t.clone())
+            .collect();
+
+        let standard = transactions
+            .iter()
+            .filter(|(_, c)| c == &TransactionV1Category::Standard)
+            .map(|(t, _)| t.clone())
+            .collect();
+
         BlockPayload::new(
-            transfers
-                .into_iter()
-                .map(|dhwa| {
-                    TransactionHashWithApprovals::new_deploy(
-                        *dhwa.deploy_hash(),
-                        dhwa.approvals().clone(),
-                    )
-                })
-                .collect(),
-            vec![],
-            vec![],
-            transactions
-                .into_iter()
-                .map(|(transaction, _category)| transaction)
-                .collect(),
+            transfers,
+            staking,
+            install_upgrade,
+            standard,
             accusations,
             rewarded_signatures,
             random_bit,
@@ -325,10 +338,33 @@ impl AppendableBlock {
         self.timestamp
     }
 
+    fn category_count(&self, category: &TransactionV1Category) -> usize {
+        self.transactions
+            .iter()
+            .filter(|(_t, c)| c == category)
+            .count()
+    }
+
+    fn total_approval_count(&self) -> usize {
+        self.transactions
+            .iter()
+            .map(|(t, _c)| t.approvals().len())
+            .sum()
+    }
+
+    fn category_approval_count(&self, category: &TransactionV1Category) -> usize {
+        self.transactions
+            .iter()
+            .filter(|(_t, c)| c == category)
+            .map(|(t, _c)| t.approvals().len())
+            .sum()
+    }
+
     /// Returns `true` if the number of transfers is already the maximum allowed count, i.e. no
     /// more transfers can be added to this block.
     fn has_max_transfer_count(&self) -> bool {
-        self.transfers.len() == self.transaction_config.block_max_transfer_count as usize
+        self.category_count(&TransactionV1Category::Transfer)
+            == self.transaction_config.block_max_transfer_count as usize
     }
 
     /// Returns `true` if the number of transactions is already the maximum allowed count, i.e. no
@@ -345,20 +381,16 @@ impl AppendableBlock {
         let remaining_approval_slots =
             self.transaction_config.block_max_approval_count as usize - self.total_approvals;
         let remaining_deploy_slots = self.transaction_config.block_max_transfer_count as usize
-            - self.transfers.len()
+            - self.category_count(&TransactionV1Category::Transfer)
             + self.transaction_config.block_max_standard_count as usize
             - self.transactions.len();
         // safe to subtract because the chainspec is validated at load time
         additional_approvals > remaining_approval_slots - remaining_deploy_slots + 1
     }
 
-    fn has_max_category_count(&self, incoming_category: &TransactionV1Category) -> bool {
-        let category_count = self
-            .transactions
-            .iter()
-            .filter(|(_transaction, category)| category == incoming_category)
-            .count();
-        match incoming_category {
+    fn has_max_category_count(&self, categbory: &TransactionV1Category) -> bool {
+        let category_count = self.category_count(categbory);
+        match categbory {
             TransactionV1Category::InstallUpgrade => {
                 category_count == self.transaction_config.block_max_install_upgrade_count as usize
             }
@@ -377,31 +409,30 @@ impl AppendableBlock {
 
 impl Display for AppendableBlock {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        let transactions_approvals_count = self
-            .transactions
-            .iter()
-            .map(|(transaction_hash_with_approvals, _category)| {
-                transaction_hash_with_approvals.approvals().len()
-            })
-            .sum::<usize>();
-        let transfer_approvals_count = self
-            .transfers
-            .iter()
-            .map(|transaction_hash_with_approvals| {
-                transaction_hash_with_approvals.approvals().len()
-            })
-            .sum::<usize>();
+        let standard_count = self.category_count(&TransactionV1Category::Standard);
+        let standard_approvals_count =
+            self.category_approval_count(&TransactionV1Category::Standard);
+        let transfers_count = self.category_count(&TransactionV1Category::Transfer);
+        let transfers_approvals_count =
+            self.category_approval_count(&TransactionV1Category::Transfer);
+        let staking_count = self.category_count(&TransactionV1Category::Staking);
+        let staking_approvals_count = self.category_approval_count(&TransactionV1Category::Staking);
+        let install_upgrade_count = self.category_count(&TransactionV1Category::InstallUpgrade);
+        let install_upgrade_approvals_count =
+            self.category_approval_count(&TransactionV1Category::InstallUpgrade);
+        let total_count = self.transactions.len();
+        let total_approvals_count = self.total_approval_count();
+
         write!(
             formatter,
-            "AppendableBlock(timestamp-{}: {} non-transfers with {} approvals, {} transfers with {} approvals, \
-            total of {} deploys with {} approvals, total gas {}, total size {})",
+            "AppendableBlock(timestamp-{}:
+                {standard_count} standard with {standard_approvals_count} approvals, \
+                {transfers_count} transfers with {transfers_approvals_count} approvals, \
+                {staking_count} staking with {staking_approvals_count} approvals, \
+                {install_upgrade_count} install/upgrade with {install_upgrade_approvals_count} approvals, \
+                total of {total_count} transactions with {total_approvals_count} approvals, \
+                total gas {}, total size {})",
             self.timestamp,
-            self.transactions.len(),
-            transactions_approvals_count,
-            self.transfers.len(),
-            transfer_approvals_count,
-            self.transaction_and_transfer_set.len(),
-            self.total_approvals,
             self.total_gas,
             self.total_size,
         )
