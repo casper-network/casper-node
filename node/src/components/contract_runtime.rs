@@ -240,7 +240,8 @@ impl ContractRuntime {
         let data_access_layer = Arc::clone(&self.data_access_layer);
         let result = data_access_layer.genesis(genesis_request);
         if result.is_success() {
-            if let Err(err) = self.engine_state.flush_environment() {
+            let flush_req = FlushRequest::new();
+            if let FlushResult::Failure(err) = data_access_layer.flush(flush_req) {
                 return GenesisResult::Failure(GenesisError::TrackingCopyError(
                     TrackingCopyError::Storage(err),
                 ));
