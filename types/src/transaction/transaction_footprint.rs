@@ -97,8 +97,7 @@ impl TransactionFootprint {
                 .is_valid(config, timestamp_leeway, at, v1_hash)
                 .map_err(Into::into),
             _ => {
-                // TODO[RC]: Add new error variant
-                todo!("programmer error, checking legacy deploy with v1 hash or vice versa")
+                panic!("programmer error, checking legacy deploy with v1 hash or vice versa")
             }
         }
     }
