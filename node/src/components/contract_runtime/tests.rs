@@ -12,7 +12,6 @@ use casper_types::{
 };
 
 use super::*;
-use crate::types::{ExecutableBlock, MetaBlockState};
 use crate::{
     components::{
         network::Identity as NetworkIdentity,
@@ -22,7 +21,10 @@ use crate::{
     protocol::Message,
     reactor::{self, EventQueueHandle, ReactorEvent, Runner},
     testing::{self, network::NetworkedReactor, ConditionCheckReactor},
-    types::{BlockPayload, FinalizedBlock, InternalEraReport, TransactionHashWithApprovals},
+    types::{
+        BlockPayload, ExecutableBlock, FinalizedBlock, InternalEraReport, MetaBlockState,
+        TransactionHashWithApprovals,
+    },
     utils::{Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
 };

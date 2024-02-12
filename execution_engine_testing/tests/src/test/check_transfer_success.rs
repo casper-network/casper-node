@@ -28,12 +28,12 @@ fn test_check_transfer_success_with_source_only() {
 
     // add the account to the genesis config.
     let mut genesis_config = DEFAULT_GENESIS_CONFIG.clone();
-    genesis_config.ee_config_mut().push_account(account);
+    genesis_config.config_mut().push_account(account);
 
     let run_genesis_request = RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         genesis_config.protocol_version(),
-        genesis_config.take_ee_config(),
+        genesis_config.take_config(),
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
@@ -89,12 +89,12 @@ fn test_check_transfer_success_with_source_only_errors() {
     );
 
     let mut genesis_config = DEFAULT_GENESIS_CONFIG.clone();
-    genesis_config.ee_config_mut().push_account(genesis_account);
+    genesis_config.config_mut().push_account(genesis_account);
 
     let run_genesis_request = RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         genesis_config.protocol_version(),
-        genesis_config.take_ee_config(),
+        genesis_config.take_config(),
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
@@ -150,12 +150,12 @@ fn test_check_transfer_success_with_source_and_target() {
     );
 
     let mut genesis_config = DEFAULT_GENESIS_CONFIG.clone();
-    genesis_config.ee_config_mut().push_account(genesis_account);
+    genesis_config.config_mut().push_account(genesis_account);
 
     let run_genesis_request = RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         genesis_config.protocol_version(),
-        genesis_config.take_ee_config(),
+        genesis_config.take_config(),
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 

@@ -14,7 +14,8 @@ use casper_engine_test_support::{
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 use casper_execution_engine::engine_state::{
-    genesis::ExecConfigBuilder, EngineConfig, EngineConfigBuilder, ExecConfig, RunGenesisRequest,
+    genesis::ExecConfigBuilder, EngineConfig, EngineConfigBuilder, GenesisRequest,
+    RunGenesisRequest,
 };
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
@@ -139,7 +140,7 @@ const PRIVATE_CHAIN_REFUND_HANDLING: RefundHandling = RefundHandling::Refund {
 const PRIVATE_CHAIN_FEE_HANDLING: FeeHandling = FeeHandling::Accumulate;
 const PRIVATE_CHAIN_COMPUTE_REWARDS: bool = false;
 
-static DEFUALT_PRIVATE_CHAIN_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
+static DEFUALT_PRIVATE_CHAIN_EXEC_CONFIG: Lazy<GenesisRequest> = Lazy::new(|| {
     ExecConfigBuilder::default()
         .with_accounts(PRIVATE_CHAIN_DEFAULT_ACCOUNTS.clone())
         .with_wasm_config(*DEFAULT_WASM_CONFIG)

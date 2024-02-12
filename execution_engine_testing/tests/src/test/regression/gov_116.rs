@@ -1,8 +1,6 @@
 use std::{collections::BTreeSet, iter::FromIterator};
 
-use casper_execution_engine::engine_state::{
-    genesis::ExecConfigBuilder, EngineConfigBuilder, RunGenesisRequest,
-};
+use casper_execution_engine::engine_state::{EngineConfigBuilder, RunGenesisRequest};
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 
@@ -18,7 +16,8 @@ use casper_types::{
         auction::{self, DelegationRate, EraValidators, VESTING_SCHEDULE_LENGTH_MILLIS},
         mint,
     },
-    GenesisAccount, GenesisValidator, Motes, PublicKey, SecretKey, U256, U512,
+    GenesisAccount, GenesisConfigBuilder, GenesisValidator, Motes, PublicKey, SecretKey, U256,
+    U512,
 };
 
 const MINIMUM_BONDED_AMOUNT: u64 = 1_000;
@@ -253,7 +252,7 @@ fn should_retain_genesis_validator_slot_protection() {
 
         let run_genesis_request = {
             let accounts = GENESIS_ACCOUNTS.clone();
-            let exec_config = ExecConfigBuilder::default()
+            let exec_config = GenesisConfigBuilder::default()
                 .with_accounts(accounts)
                 .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
                 .build();

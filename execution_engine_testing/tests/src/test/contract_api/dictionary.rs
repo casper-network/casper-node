@@ -548,11 +548,11 @@ fn should_query_dictionary_items_with_test_builder() {
     );
 
     let mut genesis_config = DEFAULT_GENESIS_CONFIG.clone();
-    genesis_config.ee_config_mut().push_account(genesis_account);
+    genesis_config.config_mut().push_account(genesis_account);
     let run_genesis_request = RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         genesis_config.protocol_version(),
-        genesis_config.take_ee_config(),
+        genesis_config.take_config(),
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 

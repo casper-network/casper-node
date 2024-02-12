@@ -9,12 +9,10 @@ use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::engine_state::{
-    genesis::ExecConfigBuilder, run_genesis_request::RunGenesisRequest, ExecConfig,
-};
+use casper_execution_engine::engine_state::run_genesis_request::RunGenesisRequest;
 use casper_types::{
-    system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, FeeHandling, GenesisAccount, ProtocolVersion,
-    RefundHandling, SystemConfig, TimeDiff, WasmConfig,
+    system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, FeeHandling, GenesisAccount, GenesisConfig,
+    GenesisConfigBuilder, ProtocolVersion, RefundHandling, SystemConfig, TimeDiff, WasmConfig,
 };
 
 use crate::{
@@ -159,7 +157,7 @@ impl ChainspecConfig {
             fee_handling: _,
         } = core_config;
 
-        let exec_config = ExecConfigBuilder::new()
+        let exec_config = GenesisConfigBuilder::new()
             .with_accounts(genesis_accounts)
             .with_wasm_config(wasm_config)
             .with_system_config(system_costs_config)
@@ -192,11 +190,11 @@ impl ChainspecConfig {
     }
 }
 
-impl TryFrom<ChainspecConfig> for ExecConfig {
+impl TryFrom<ChainspecConfig> for GenesisConfig {
     type Error = Error;
 
     fn try_from(chainspec_config: ChainspecConfig) -> Result<Self, Self::Error> {
-        Ok(ExecConfigBuilder::new()
+        Ok(GenesisConfigBuilder::new()
             .with_accounts(DEFAULT_ACCOUNTS.clone())
             .with_wasm_config(chainspec_config.wasm_config)
             .with_system_config(chainspec_config.system_costs_config)
@@ -218,7 +216,7 @@ mod tests {
 
     use once_cell::sync::Lazy;
 
-    use super::{ChainspecConfig, ExecConfig, CHAINSPEC_NAME};
+    use super::{ChainspecConfig, GenesisRequest, CHAINSPEC_NAME};
 
     pub static LOCAL_PATH: Lazy<PathBuf> =
         Lazy::new(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../resources/local/"));
@@ -235,7 +233,7 @@ mod tests {
     fn should_get_exec_config_from_chainspec_values() {
         let path = &LOCAL_PATH.join(CHAINSPEC_NAME);
         let chainspec_config = ChainspecConfig::from_chainspec_path(path).unwrap();
-        let exec_config = ExecConfig::try_from(chainspec_config).unwrap();
+        let exec_config = GenesisRequest::try_from(chainspec_config).unwrap();
         assert_eq!(exec_config.auction_delay(), 1)
     }
 }

@@ -13,6 +13,7 @@ pub mod balance;
 pub mod era_validators;
 mod execution_results_checksum;
 mod flush;
+mod genesis;
 pub mod get_bids;
 pub mod query;
 mod round_seigniorage;

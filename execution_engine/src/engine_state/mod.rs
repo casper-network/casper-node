@@ -68,9 +68,9 @@ use casper_types::{
     },
     AccessRights, AddressableEntity, AddressableEntityHash, ApiError, BlockTime, ByteCodeHash,
     CLValue, ChainspecRegistry, ChecksumRegistry, DeployHash, DeployInfo, Digest, EntityAddr,
-    EntryPoints, ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Package, PackageHash,
-    Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, SystemContractRegistry, URef,
-    UpgradeConfig, U512,
+    EntryPoints, ExecutableDeployItem, FeeHandling, Gas, GenesisConfig, Key, KeyTag, Motes,
+    Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
+    SystemContractRegistry, URef, UpgradeConfig, U512,
 };
 
 use self::transfer::NewTransferTargetMode;
@@ -84,7 +84,7 @@ pub use self::{
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ForcedTransferResult},
-    genesis::{ExecConfig, GenesisConfig, GenesisSuccess},
+    genesis::{GenesisRequest, GenesisSuccess},
     prune::{PruneConfig, PruneResult},
     run_genesis_request::RunGenesisRequest,
     step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
@@ -263,7 +263,7 @@ where
     /// This process is run only once per network to initiate the system. By definition users are
     /// unable to execute smart contracts on a network without a genesis.
     ///
-    /// Takes genesis configuration passed through [`ExecConfig`] and creates the system contracts,
+    /// Takes genesis configuration passed through [`GenesisRequest`] and creates the system contracts,
     /// sets up the genesis accounts, and sets up the auction state based on that. At the end of
     /// the process, [`SystemContractRegistry`] is persisted under the special global state space
     /// [`Key::SystemContractRegistry`].
@@ -273,7 +273,7 @@ where
         &self,
         genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
-        ee_config: &ExecConfig,
+        config: &GenesisConfig,
         chainspec_registry: ChainspecRegistry,
     ) -> Result<GenesisSuccess, Error> {
         // Preliminaries
@@ -290,7 +290,7 @@ where
         let mut genesis_installer: GenesisInstaller<S> = GenesisInstaller::new(
             genesis_config_hash,
             protocol_version,
-            ee_config.clone(),
+            config.clone(),
             tracking_copy,
         );
 

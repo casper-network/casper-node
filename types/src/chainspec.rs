@@ -6,6 +6,7 @@ mod activation_point;
 mod chainspec_raw_bytes;
 mod core_config;
 mod fee_handling;
+pub mod genesis_config;
 mod global_state_update;
 mod highway_config;
 mod network_config;
@@ -37,6 +38,11 @@ pub use activation_point::ActivationPoint;
 pub use chainspec_raw_bytes::ChainspecRawBytes;
 pub use core_config::{ConsensusProtocolName, CoreConfig, LegacyRequiredFinality};
 pub use fee_handling::FeeHandling;
+#[cfg(any(feature = "std", test))]
+pub use genesis_config::{GenesisConfig, GenesisConfigBuilder};
+#[cfg(any(feature = "testing", test))]
+pub use genesis_config::{DEFAULT_AUCTION_DELAY, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING};
+
 pub use global_state_update::{GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError};
 pub use highway_config::HighwayConfig;
 pub use network_config::NetworkConfig;

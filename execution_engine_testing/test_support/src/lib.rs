@@ -31,14 +31,11 @@ pub use casper_execution_engine::engine_state::engine_config::{
     DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
 };
-use casper_execution_engine::engine_state::{
-    engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
-    genesis::ExecConfigBuilder,
-    ExecConfig, GenesisConfig, RunGenesisRequest,
-};
+use casper_execution_engine::engine_state::{GenesisRequest, RunGenesisRequest};
 use casper_types::{
-    account::AccountHash, ChainspecRegistry, Digest, GenesisAccount, Motes, ProtocolVersion,
-    PublicKey, SecretKey, SystemConfig, WasmConfig, U512,
+    account::AccountHash, ChainspecRegistry, Digest, GenesisAccount, GenesisConfig,
+    GenesisConfigBuilder, Motes, ProtocolVersion, PublicKey, SecretKey, SystemConfig, WasmConfig,
+    DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING, U512,
 };
 
 pub use chainspec_config::ChainspecConfig;
@@ -135,9 +132,9 @@ pub static DEFAULT_WASM_CONFIG: Lazy<WasmConfig> = Lazy::new(WasmConfig::default
 /// Default [`SystemConfig`].
 pub static DEFAULT_SYSTEM_CONFIG: Lazy<SystemConfig> = Lazy::new(SystemConfig::default);
 
-/// Default [`ExecConfig`].
-pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
-    ExecConfigBuilder::default()
+/// Default [`GenesisConfig`].
+pub static DEFAULT_EXEC_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
+    GenesisConfigBuilder::default()
         .with_accounts(DEFAULT_ACCOUNTS.clone())
         .with_wasm_config(*DEFAULT_WASM_CONFIG)
         .with_system_config(*DEFAULT_SYSTEM_CONFIG)
@@ -151,9 +148,9 @@ pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
         .with_fee_handling(DEFAULT_FEE_HANDLING)
         .build()
 });
-/// Default [`GenesisConfig`].
-pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
-    GenesisConfig::new(
+/// Default [`GenesisRequest`].
+pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisRequest> = Lazy::new(|| {
+    GenesisRequest::new(
         DEFAULT_CHAIN_NAME.to_string(),
         DEFAULT_GENESIS_TIMESTAMP_MILLIS,
         *DEFAULT_PROTOCOL_VERSION,

@@ -6,16 +6,14 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
-use casper_types::{ChainspecRegistry, Digest, ProtocolVersion};
-
-use super::genesis::ExecConfig;
+use casper_types::{ChainspecRegistry, Digest, GenesisConfig, ProtocolVersion};
 
 /// Represents a genesis request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunGenesisRequest {
     genesis_config_hash: Digest,
     protocol_version: ProtocolVersion,
-    ee_config: ExecConfig,
+    config: GenesisConfig,
     chainspec_registry: ChainspecRegistry,
 }
 
@@ -24,13 +22,13 @@ impl RunGenesisRequest {
     pub fn new(
         genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
-        ee_config: ExecConfig,
+        config: GenesisConfig,
         chainspec_registry: ChainspecRegistry,
     ) -> RunGenesisRequest {
         RunGenesisRequest {
             genesis_config_hash,
             protocol_version,
-            ee_config,
+            config,
             chainspec_registry,
         }
     }
@@ -46,8 +44,8 @@ impl RunGenesisRequest {
     }
 
     /// Returns EE config.
-    pub fn ee_config(&self) -> &ExecConfig {
-        &self.ee_config
+    pub fn ee_config(&self) -> &GenesisConfig {
+        &self.config
     }
 
     /// Returns a reference to the chainspec registry.
@@ -56,8 +54,8 @@ impl RunGenesisRequest {
     }
 
     /// Returns a EE config and consumes the object.
-    pub fn take_ee_config(self) -> ExecConfig {
-        self.ee_config
+    pub fn take_ee_config(self) -> GenesisConfig {
+        self.config
     }
 }
 
