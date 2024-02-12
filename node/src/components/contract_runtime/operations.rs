@@ -3,19 +3,15 @@ use std::{cmp, collections::BTreeMap, convert::TryInto, ops::Range, sync::Arc, t
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_execution_engine::{
-    engine_state::{
-        self,
-        execution_result::{ExecutionResultAndMessages, ExecutionResults},
-        step::EvictItem,
-        ChecksumRegistry, DeployItem, EngineState, ExecuteRequest,
-        ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, PruneConfig,
-        PruneResult, QueryRequest, QueryResult, StepError, StepRequest, StepSuccess,
-    },
-    execution,
+use casper_execution_engine::engine_state::{
+    self,
+    execution_result::{ExecutionResultAndMessages, ExecutionResults},
+    step::EvictItem,
+    DeployItem, EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult,
+    GetEraValidatorsRequest, PruneConfig, PruneResult, StepError, StepRequest, StepSuccess,
 };
 use casper_storage::{
-    data_access_layer::DataAccessLayer,
+    data_access_layer::{DataAccessLayer, QueryRequest, QueryResult},
     global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
 };
 use casper_types::{
@@ -23,16 +19,16 @@ use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
-    AddressableEntity, AddressableEntityHash, BlockV2, CLValue, DeployHash, Digest, EraEndV2,
-    EraId, HashAddr, Key, ProtocolVersion, PublicKey, StoredValue, Transaction, U512,
+    AddressableEntity, BlockV2, CLValue, ChecksumRegistry, DeployHash, Digest, EntityAddr,
+    EraEndV2, EraId, HashAddr, Key, ProtocolVersion, PublicKey, StoredValue, Transaction, U512,
 };
 
 use crate::{
     components::{
         contract_runtime::{
             error::BlockExecutionError, types::StepEffectsAndUpcomingEraValidators,
-            BlockAndExecutionResults, ExecutionPreState, Metrics, PackageKindTag,
-            SpeculativeExecutionState, APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
+            BlockAndExecutionResults, ExecutionPreState, Metrics, SpeculativeExecutionState,
+            APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
         },
         fetcher::FetchItem,
     },
@@ -399,7 +395,6 @@ fn commit_execution_results<S>(
 ) -> Result<(Digest, ExecutionResult, Messages), BlockExecutionError>
 where
     S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
 {
     let ee_execution_result = execution_results
         .into_iter()
@@ -443,7 +438,6 @@ fn commit_transforms<S>(
 ) -> Result<Digest, engine_state::Error>
 where
     S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
 {
     trace!(?state_root_hash, ?effects, "commit");
     let start = Instant::now();
@@ -466,7 +460,6 @@ pub fn execute_only<S>(
 ) -> Result<Option<(ExecutionResultV2, Messages)>, engine_state::Error>
 where
     S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
 {
     let SpeculativeExecutionState {
         state_root_hash,
@@ -514,7 +507,6 @@ fn execute<S>(
 ) -> Result<ExecutionResults, engine_state::Error>
 where
     S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
 {
     trace!(?execute_request, "execute");
     let start = Instant::now();
@@ -540,7 +532,6 @@ fn commit_step<S>(
 ) -> Result<StepSuccess, StepError>
 where
     S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
 {
     // Both inactive validators and equivocators are evicted
     let evict_items = inactive_validators
@@ -623,16 +614,10 @@ pub(super) fn get_addressable_entity<S>(
 ) -> Option<AddressableEntity>
 where
     S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
 {
     match key {
-        Key::AddressableEntity(package_kind_tag, entity_addr) => {
-            get_addressable_entity_under_entity_hash(
-                engine_state,
-                state_root_hash,
-                package_kind_tag,
-                entity_addr.into(),
-            )
+        Key::AddressableEntity(entity_addr) => {
+            get_addressable_entity_under_entity_hash(engine_state, state_root_hash, entity_addr)
         }
         Key::Account(account_hash) => {
             get_addressable_entity_under_account_hash(engine_state, state_root_hash, account_hash)
@@ -650,14 +635,12 @@ where
 fn get_addressable_entity_under_entity_hash<S>(
     engine_state: &EngineState<S>,
     state_root_hash: Digest,
-    package_kind_tag: PackageKindTag,
-    entity_hash: AddressableEntityHash,
+    entity_addr: EntityAddr,
 ) -> Option<AddressableEntity>
 where
     S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
 {
-    let key = Key::addressable_entity_key(package_kind_tag, entity_hash);
+    let key = Key::AddressableEntity(entity_addr);
     let query_request = QueryRequest::new(state_root_hash, key, vec![]);
     let value = match engine_state.run_query(query_request) {
         Ok(QueryResult::Success { value, .. }) => *value,
@@ -686,7 +669,6 @@ fn get_addressable_entity_under_account_hash<S>(
 ) -> Option<AddressableEntity>
 where
     S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
 {
     let account_key = Key::Account(account_hash);
     let query_request = QueryRequest::new(state_root_hash, account_key, vec![]);
@@ -703,13 +685,8 @@ where
     };
     match value {
         StoredValue::CLValue(cl_value) => match cl_value.into_t::<Key>() {
-            Ok(Key::AddressableEntity(package_kind_tag, entity_addr)) => {
-                get_addressable_entity_under_entity_hash(
-                    engine_state,
-                    state_root_hash,
-                    package_kind_tag,
-                    entity_addr.into(),
-                )
+            Ok(Key::AddressableEntity(entity_addr)) => {
+                get_addressable_entity_under_entity_hash(engine_state, state_root_hash, entity_addr)
             }
             Ok(invalid_key) => {
                 warn!(
@@ -743,14 +720,13 @@ fn get_addressable_entity_under_contract_hash<S>(
 ) -> Option<AddressableEntity>
 where
     S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
 {
     // First try with an `AddressableEntityHash` derived from the contract hash.
     get_addressable_entity_under_entity_hash(
         engine_state,
         state_root_hash,
-        PackageKindTag::SmartContract,
-        contract_hash.into(),
+        EntityAddr::SmartContract(contract_hash)
+
     ).or_else(|| {
         // Didn't work; the contract was either not migrated yet or the `AddressableEntity`
         // record was not available at this state root hash. Try to query with a

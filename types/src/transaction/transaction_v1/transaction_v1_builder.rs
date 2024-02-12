@@ -199,7 +199,7 @@ impl<'a> TransactionV1Builder<'a> {
         addr: EntityAddr,
         entry_point: E,
     ) -> Self {
-        let id = TransactionInvocationTarget::new_invocable_entity(addr);
+        let id = TransactionInvocationTarget::new_invocable_entity(addr.value());
         Self::new_targeting_stored(id, entry_point)
     }
 

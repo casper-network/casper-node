@@ -84,7 +84,7 @@ impl Display for FromStrError {
 
 /// A newtype wrapping a `HashAddr` which is the raw bytes of
 /// the ContractWasmHash
-#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractWasmHash(HashAddr);
 
@@ -117,6 +117,12 @@ impl ContractWasmHash {
             .ok_or(FromStrError::InvalidPrefix)?;
         let bytes = HashAddr::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
         Ok(ContractWasmHash(bytes))
+    }
+}
+
+impl Default for ContractWasmHash {
+    fn default() -> Self {
+        ContractWasmHash::new([0; 32])
     }
 }
 

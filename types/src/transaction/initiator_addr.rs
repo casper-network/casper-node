@@ -3,7 +3,6 @@ use core::fmt::{self, Debug, Display, Formatter};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use hex_fmt::HexFmt;
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
 #[cfg(feature = "json-schema")]
@@ -17,12 +16,11 @@ use crate::testing::TestRng;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    serde_helpers, EntityAddr, PublicKey,
+    PublicKey,
 };
 
 const PUBLIC_KEY_TAG: u8 = 0;
 const ACCOUNT_HASH_TAG: u8 = 1;
-const ENTITY_ADDR_TAG: u8 = 2;
 
 /// The address of the initiator of a [`TransactionV1`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -38,26 +36,23 @@ pub enum InitiatorAddr {
     PublicKey(PublicKey),
     /// The account hash derived from the public key of the initiator.
     AccountHash(AccountHash),
-    /// The entity address of the initiator.
-    #[serde(with = "serde_helpers::raw_32_byte_array")]
-    #[cfg_attr(
-        feature = "json-schema",
-        schemars(
-            with = "String",
-            description = "Hex-encoded entity address of the initiator."
-        )
-    )]
-    EntityAddr(EntityAddr),
 }
 
 impl InitiatorAddr {
+    /// Gets the account hash.
+    pub fn account_hash(&self) -> AccountHash {
+        match self {
+            InitiatorAddr::PublicKey(public_key) => public_key.to_account_hash(),
+            InitiatorAddr::AccountHash(hash) => *hash,
+        }
+    }
+
     /// Returns a random `InitiatorAddr`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..3) {
+        match rng.gen_range(0..=1) {
             PUBLIC_KEY_TAG => InitiatorAddr::PublicKey(PublicKey::random(rng)),
             ACCOUNT_HASH_TAG => InitiatorAddr::AccountHash(rng.gen()),
-            ENTITY_ADDR_TAG => InitiatorAddr::EntityAddr(rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -69,9 +64,6 @@ impl Display for InitiatorAddr {
             InitiatorAddr::PublicKey(public_key) => write!(formatter, "{}", public_key),
             InitiatorAddr::AccountHash(account_hash) => {
                 write!(formatter, "account-hash({})", account_hash)
-            }
-            InitiatorAddr::EntityAddr(entity_addr) => {
-                write!(formatter, "entity-addr({:10})", HexFmt(entity_addr))
             }
         }
     }
@@ -88,10 +80,6 @@ impl Debug for InitiatorAddr {
                 .debug_tuple("AccountHash")
                 .field(account_hash)
                 .finish(),
-            InitiatorAddr::EntityAddr(entity_addr) => formatter
-                .debug_tuple("EntityAddr")
-                .field(&HexFmt(entity_addr))
-                .finish(),
         }
     }
 }
@@ -107,10 +95,6 @@ impl ToBytes for InitiatorAddr {
                 ACCOUNT_HASH_TAG.write_bytes(writer)?;
                 account_hash.write_bytes(writer)
             }
-            InitiatorAddr::EntityAddr(entity_addr) => {
-                ENTITY_ADDR_TAG.write_bytes(writer)?;
-                entity_addr.write_bytes(writer)
-            }
         }
     }
 
@@ -125,7 +109,6 @@ impl ToBytes for InitiatorAddr {
             + match self {
                 InitiatorAddr::PublicKey(public_key) => public_key.serialized_length(),
                 InitiatorAddr::AccountHash(account_hash) => account_hash.serialized_length(),
-                InitiatorAddr::EntityAddr(entity_addr) => entity_addr.serialized_length(),
             }
     }
 }
@@ -141,10 +124,6 @@ impl FromBytes for InitiatorAddr {
             ACCOUNT_HASH_TAG => {
                 let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
                 Ok((InitiatorAddr::AccountHash(account_hash), remainder))
-            }
-            ENTITY_ADDR_TAG => {
-                let (entity_addr, remainder) = EntityAddr::from_bytes(remainder)?;
-                Ok((InitiatorAddr::EntityAddr(entity_addr), remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }

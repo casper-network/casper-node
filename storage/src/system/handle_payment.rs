@@ -1,7 +1,7 @@
 mod internal;
-pub(crate) mod mint_provider;
-pub(crate) mod runtime_provider;
-pub(crate) mod storage_provider;
+pub mod mint_provider;
+pub mod runtime_provider;
+pub mod storage_provider;
 
 use casper_types::{account::AccountHash, system::handle_payment::Error, AccessRights, URef, U512};
 
@@ -13,7 +13,7 @@ use crate::system::handle_payment::{
 /// Handle payment functionality implementation.
 pub trait HandlePayment: MintProvider + RuntimeProvider + StorageProvider + Sized {
     /// Get payment purse.
-    fn get_payment_purse(&self) -> Result<URef, Error> {
+    fn get_payment_purse(&mut self) -> Result<URef, Error> {
         let purse = internal::get_payment_purse(self)?;
         // Limit the access rights so only balance query and deposit are allowed.
         Ok(URef::new(purse.addr(), AccessRights::READ_ADD))
@@ -25,7 +25,7 @@ pub trait HandlePayment: MintProvider + RuntimeProvider + StorageProvider + Size
     }
 
     /// Get refund purse.
-    fn get_refund_purse(&self) -> Result<Option<URef>, Error> {
+    fn get_refund_purse(&mut self) -> Result<Option<URef>, Error> {
         // We purposely choose to remove the access rights so that we do not
         // accidentally give rights for a purse to some contract that is not
         // supposed to have it.

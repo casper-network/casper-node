@@ -15,7 +15,7 @@ use casper_types::{AddressableEntityHash, ApiError, RuntimeArgs, URef};
 pub extern "C" fn call() {
     let contract_hash: AddressableEntityHash = runtime::get_key("hello_ext")
         .unwrap_or_revert_with(ApiError::GetKey)
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .unwrap_or_revert()
         .into();
 

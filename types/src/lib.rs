@@ -30,7 +30,7 @@ mod block;
 mod block_time;
 mod byte_code;
 pub mod bytesrepr;
-#[cfg(any(feature = "std", test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub mod chainspec;
 pub mod checksummed_hex;
 mod cl_type;
@@ -78,10 +78,11 @@ pub use crate::uint::{UIntParseError, U128, U256, U512};
 pub use access_rights::{
     AccessRights, ContextAccessRights, GrantedAccess, ACCESS_RIGHTS_SERIALIZED_LENGTH,
 };
+pub use account::Account;
 #[doc(inline)]
 pub use addressable_entity::{
-    AddressableEntity, AddressableEntityHash, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Parameter,
+    AddressableEntity, AddressableEntityHash, EntityAddr, EntityKind, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints, Parameter,
 };
 #[doc(inline)]
 pub use api_error::ApiError;
@@ -98,7 +99,7 @@ pub use block::{
 pub use block::{TestBlockBuilder, TestBlockV1Builder};
 
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
-pub use byte_code::{ByteCode, ByteCodeHash, ByteCodeKind};
+pub use byte_code::{ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind};
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{
     AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,
@@ -129,7 +130,11 @@ pub use chainspec::{
     DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY,
 };
 pub use cl_type::{named_key_type, CLType, CLTyped};
-pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
+
+pub use cl_value::{
+    handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError, ChecksumRegistry,
+    DictionaryValue as CLValueDictionary, SystemContractRegistry,
+};
 pub use contract_wasm::ContractWasm;
 #[doc(inline)]
 pub use contracts::Contract;
@@ -145,9 +150,8 @@ pub use gas::Gas;
 pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]
 pub use key::{
-    ByteCodeAddr, DictionaryAddr, EntityAddr, FromStrError as KeyFromStrError, HashAddr, Key,
-    KeyTag, PackageAddr, BLAKE2B_DIGEST_LENGTH, DICTIONARY_ITEM_KEY_MAX_LENGTH,
-    KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
+    DictionaryAddr, FromStrError as KeyFromStrError, HashAddr, Key, KeyTag, PackageAddr,
+    BLAKE2B_DIGEST_LENGTH, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
 };
 pub use motes::Motes;
 #[doc(inline)]

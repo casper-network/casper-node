@@ -1,19 +1,20 @@
 //! The registry of checksums.
 
-use std::collections::BTreeMap;
+use alloc::{
+    collections::BTreeMap,
+    string::{String, ToString},
+    vec::Vec,
+};
 
-use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     CLType, CLTyped, Digest,
 };
 
 /// The checksum registry.
-#[derive(
-    Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug, DataSize, Default,
-)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug, Default)]
 pub struct ChecksumRegistry(BTreeMap<String, Digest>);
 
 impl ChecksumRegistry {

@@ -1,18 +1,19 @@
 //! The registry of system contracts.
 
-use std::collections::BTreeMap;
+use alloc::{collections::BTreeMap, string::String, vec::Vec};
 
-use datasize::DataSize;
+// #[cfg(feature = "datasize")]
+// use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     system::STANDARD_PAYMENT,
     AddressableEntityHash, CLType, CLTyped,
 };
 
 /// The system contract registry.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug, DataSize)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
 pub struct SystemContractRegistry(BTreeMap<String, AddressableEntityHash>);
 
 impl SystemContractRegistry {
@@ -42,6 +43,11 @@ impl SystemContractRegistry {
     /// Remove standard payment from the contract registry.
     pub fn remove_standard_payment(&mut self) -> Option<AddressableEntityHash> {
         self.0.remove(STANDARD_PAYMENT)
+    }
+
+    #[cfg(test)]
+    pub fn inner(self) -> BTreeMap<String, AddressableEntityHash> {
+        self.0
     }
 }
 

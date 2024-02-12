@@ -2,6 +2,7 @@
 //! the underlying state remains unmodified, but it can be interacted with as if the modifications
 //! were applied on it.
 mod byte_size;
+mod error;
 mod ext;
 pub(self) mod meter;
 #[cfg(test)]
@@ -15,32 +16,28 @@ use std::{
 use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
 
-use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
+use crate::global_state::{
+    error::Error as GlobalStateError, state::StateReader, trie::merkle_proof::TrieMerkleProof,
+    DEFAULT_MAX_QUERY_DEPTH,
+};
 use casper_types::{
-    addressable_entity::NamedKeys,
+    addressable_entity::{NamedKeyAddr, NamedKeys},
     bytesrepr::{self},
     contract_messages::{Message, Messages},
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
-    CLType, CLValue, CLValueError, Digest, Key, KeyTag, StoredValue, StoredValueTypeMismatch,
-    Tagged, U512,
+    handle_stored_dictionary_value, CLType, CLValue, CLValueError, Digest, Key, KeyTag,
+    StoredValue, StoredValueTypeMismatch, Tagged, U512,
 };
 
-pub use self::ext::TrackingCopyExt;
 use self::meter::{heap_meter::HeapSize, Meter};
-use super::engine_state::EngineConfig;
-use crate::runtime_context::dictionary;
+pub use self::{error::Error as TrackingCopyError, ext::TrackingCopyExt};
 
 /// Result of a query on a `TrackingCopy`.
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum TrackingCopyQueryResult {
-    /// The query was successful.
-    Success {
-        /// The value read from the state.
-        value: StoredValue,
-        /// Merkle proofs for the value.
-        proofs: Vec<TrieMerkleProof<Key, StoredValue>>,
-    },
+    /// Invalid state root hash.
+    RootNotFound,
     /// The value wasn't found.
     ValueNotFound(String),
     /// A circular reference was found in the state while traversing it.
@@ -49,6 +46,13 @@ pub enum TrackingCopyQueryResult {
     DepthLimit {
         /// The depth reached.
         depth: u64,
+    },
+    /// The query was successful.
+    Success {
+        /// The value read from the state.
+        value: StoredValue,
+        /// Merkle proofs for the value.
+        proofs: Vec<TrieMerkleProof<Key, StoredValue>>,
     },
 }
 
@@ -92,6 +96,12 @@ impl Query {
     fn navigate(&mut self, key: Key) {
         self.current_key = key.normalize();
         self.depth += 1;
+    }
+
+    fn navigate_for_named_key(&mut self, named_key: Key) {
+        if let Key::NamedKey(_) = &named_key {
+            self.current_key = named_key.normalize();
+        }
     }
 
     fn into_not_found_result(self, msg_prefix: &str) -> TrackingCopyQueryResult {
@@ -224,6 +234,7 @@ pub struct TrackingCopy<R> {
     reader: R,
     cache: TrackingCopyCache<HeapSize>,
     effects: Effects,
+    max_query_depth: u64,
     messages: Messages,
 }
 
@@ -255,14 +266,18 @@ impl From<CLValueError> for AddResult {
     }
 }
 
-impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
+impl<R: StateReader<Key, StoredValue>> TrackingCopy<R>
+where
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
+{
     /// Creates a new `TrackingCopy` using the `reader` as the interface to the state.
-    pub fn new(reader: R) -> TrackingCopy<R> {
+    pub fn new(reader: R, max_query_depth: u64) -> TrackingCopy<R> {
         TrackingCopy {
             reader,
             // TODO: Should `max_cache_size` be a fraction of wasm memory limit?
             cache: TrackingCopyCache::new(1024 * 16, HeapSize),
             effects: Effects::new(),
+            max_query_depth,
             messages: Vec::new(),
         }
     }
@@ -285,25 +300,38 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     /// forking, however we recognize this is sub-optimal and will revisit
     /// in the future.
     pub fn fork(&self) -> TrackingCopy<&TrackingCopy<R>> {
-        TrackingCopy::new(self)
+        TrackingCopy::new(self, self.max_query_depth)
     }
 
-    pub(super) fn get(&mut self, key: &Key) -> Result<Option<StoredValue>, R::Error> {
+    /// Returns a copy of the execution effects cached by this instance.
+    pub fn effects(&self) -> Effects {
+        self.effects.clone()
+    }
+
+    pub fn get(&mut self, key: &Key) -> Result<Option<StoredValue>, TrackingCopyError> {
         if let Some(value) = self.cache.get(key) {
             return Ok(Some(value.to_owned()));
         }
-        if let Some(value) = self.reader.read(key)? {
-            self.cache.insert_read(*key, value.to_owned());
-            Ok(Some(value))
-        } else {
-            Ok(None)
+        match self.reader.read(key) {
+            Ok(ret) => {
+                if let Some(value) = ret {
+                    self.cache.insert_read(*key, value.to_owned());
+                    Ok(Some(value))
+                } else {
+                    Ok(None)
+                }
+            }
+            Err(err) => Err(TrackingCopyError::Storage(err)),
         }
     }
 
     /// Gets the set of keys in the state whose tag is `key_tag`.
-    pub fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, R::Error> {
+    pub fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, TrackingCopyError> {
         let mut ret: BTreeSet<Key> = BTreeSet::new();
-        let keys = self.reader.keys_with_prefix(&[*key_tag as u8])?;
+        let keys = match self.reader.keys_with_prefix(&[*key_tag as u8]) {
+            Ok(ret) => ret,
+            Err(err) => return Err(TrackingCopyError::Storage(err)),
+        };
         let pruned = &self.cache.prunes_cached;
         // don't include keys marked for pruning
         for key in keys {
@@ -325,7 +353,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     }
 
     /// Reads the value stored under `key`.
-    pub fn read(&mut self, key: &Key) -> Result<Option<StoredValue>, R::Error> {
+    pub fn read(&mut self, key: &Key) -> Result<Option<StoredValue>, TrackingCopyError> {
         let normalized_key = key.normalize();
         if let Some(value) = self.get(&normalized_key)? {
             self.effects
@@ -364,7 +392,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     }
 
     /// Prunes a `key`.
-    pub(crate) fn prune(&mut self, key: Key) {
+    pub fn prune(&mut self, key: Key) {
         let normalized_key = key.normalize();
         self.cache.insert_prune(normalized_key);
         self.effects
@@ -375,7 +403,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     /// Ok(Some(unit)) represents successful operation.
     /// Err(error) is reserved for unexpected errors when accessing global
     /// state.
-    pub fn add(&mut self, key: Key, value: StoredValue) -> Result<AddResult, R::Error> {
+    pub fn add(&mut self, key: Key, value: StoredValue) -> Result<AddResult, TrackingCopyError> {
         let normalized_key = key.normalize();
         let current_value = match self.get(&normalized_key)? {
             None => return Ok(AddResult::KeyNotFound(normalized_key)),
@@ -451,11 +479,6 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         }
     }
 
-    /// Returns a copy of the execution effects cached by this instance.
-    pub fn effects(&self) -> Effects {
-        self.effects.clone()
-    }
-
     /// Returns a copy of the messages cached by this instance.
     pub fn messages(&self) -> Messages {
         self.messages.clone()
@@ -470,16 +493,15 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     /// values.
     pub fn query(
         &self,
-        config: &EngineConfig,
         base_key: Key,
         path: &[String],
-    ) -> Result<TrackingCopyQueryResult, R::Error> {
+    ) -> Result<TrackingCopyQueryResult, TrackingCopyError> {
         let mut query = Query::new(base_key, path);
 
         let mut proofs = Vec::new();
 
         loop {
-            if query.depth >= config.max_query_depth {
+            if query.depth >= self.max_query_depth {
                 return Ok(query.into_depth_limit_result());
             }
 
@@ -498,7 +520,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
 
             // Following code does a patching on the `StoredValue` that unwraps an inner
             // `DictionaryValue` for dictionaries only.
-            let value = match dictionary::handle_stored_value(query.current_key, value) {
+            let value = match handle_stored_dictionary_value(query.current_key, value) {
                 Ok(patched_stored_value) => patched_stored_value,
                 Err(error) => {
                     return Ok(query.into_not_found_result(&format!(
@@ -510,7 +532,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
 
             proofs.push(stored_value);
 
-            if query.unvisited_names.is_empty() {
+            if query.unvisited_names.is_empty() && !query.current_key.is_named_key() {
                 return Ok(TrackingCopyQueryResult::Success { value, proofs });
             }
 
@@ -538,6 +560,29 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                         return Ok(query.into_not_found_result(&msg_prefix));
                     }
                 }
+                StoredValue::NamedKey(named_key_value) => {
+                    match query.visited_names.last() {
+                        Some(expected_name) => match named_key_value.get_name() {
+                            Ok(actual_name) => {
+                                if &actual_name != expected_name {
+                                    return Ok(query.into_not_found_result(
+                                        "Queried and retrieved names do not match",
+                                    ));
+                                } else if let Ok(key) = named_key_value.get_key() {
+                                    query.navigate(key)
+                                } else {
+                                    return Ok(query
+                                        .into_not_found_result("Failed to parse CLValue as Key"));
+                                }
+                            }
+                            Err(_) => {
+                                return Ok(query
+                                    .into_not_found_result("Failed to parse CLValue as String"))
+                            }
+                        },
+                        None => return Ok(query.into_not_found_result("No visited names")),
+                    }
+                }
                 StoredValue::CLValue(cl_value) if cl_value.cl_type() == &CLType::Key => {
                     if let Ok(key) = cl_value.to_owned().into_t::<Key>() {
                         query.navigate(key);
@@ -553,12 +598,22 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                     );
                     return Ok(query.into_not_found_result(&msg_prefix));
                 }
-                StoredValue::AddressableEntity(entity) => {
+                StoredValue::AddressableEntity(_) => {
+                    let current_key = query.current_key;
                     let name = query.next_name();
-                    if let Some(key) = entity.named_keys().get(name) {
-                        query.navigate(*key);
+
+                    if let Key::AddressableEntity(addr) = current_key {
+                        let named_key_addr = match NamedKeyAddr::new_from_string(addr, name.clone())
+                        {
+                            Ok(named_key_addr) => Key::NamedKey(named_key_addr),
+                            Err(error) => {
+                                let msg_prefix = format!("{}", error);
+                                return Ok(query.into_not_found_result(&msg_prefix));
+                            }
+                        };
+                        query.navigate_for_named_key(named_key_addr);
                     } else {
-                        let msg_prefix = format!("Name {} not found in Contract", name);
+                        let msg_prefix = "Invalid base key".to_string();
                         return Ok(query.into_not_found_result(&msg_prefix));
                     }
                 }
@@ -723,11 +778,6 @@ pub fn validate_query_proof(
         let named_keys = match proof_value {
             StoredValue::Account(account) => account.named_keys(),
             StoredValue::Contract(contract) => contract.named_keys(),
-            StoredValue::AddressableEntity(entity) => entity.named_keys(),
-            StoredValue::CLValue(_) => {
-                proof_value = proof.value();
-                continue;
-            }
             _ => return Err(ValidationError::PathCold),
         };
 
@@ -754,6 +804,42 @@ pub fn validate_query_proof(
 
     if proof_value != expected_value {
         return Err(ValidationError::UnexpectedValue);
+    }
+
+    Ok(())
+}
+
+/// Validates proof of the query.
+///
+/// Returns [`ValidationError`] for any of
+pub fn validate_query_merkle_proof(
+    hash: &Digest,
+    proofs: &[TrieMerkleProof<Key, StoredValue>],
+    expected_key_trace: &[Key],
+    expected_value: &StoredValue,
+) -> Result<(), ValidationError> {
+    let expected_len = expected_key_trace.len();
+    if proofs.len() != expected_len {
+        return Err(ValidationError::PathLengthDifferentThanProofLessOne);
+    }
+
+    let proof_keys: Vec<Key> = proofs.iter().map(|proof| *proof.key()).collect();
+
+    if !expected_key_trace.eq(&proof_keys) {
+        return Err(ValidationError::UnexpectedKey);
+    }
+
+    if expected_value != proofs[expected_len - 1].value() {
+        return Err(ValidationError::UnexpectedValue);
+    }
+
+    let mut proofs_iter = proofs.iter();
+
+    // length check above means we are safe to unwrap here
+    let first_proof = proofs_iter.next().unwrap();
+
+    if hash != &first_proof.compute_state_hash()? {
+        return Err(ValidationError::InvalidProofHash);
     }
 
     Ok(())
@@ -792,4 +878,30 @@ pub fn validate_balance_proof(
     }
 
     Ok(())
+}
+
+use crate::global_state::state::{
+    lmdb::{make_temporary_global_state, LmdbGlobalStateView},
+    StateProvider,
+};
+use tempfile::TempDir;
+
+/// Creates a temp global state with initial state and checks out a tracking copy on it.
+pub fn new_temporary_tracking_copy(
+    initial_data: impl IntoIterator<Item = (Key, StoredValue)>,
+    max_query_depth: Option<u64>,
+) -> (TrackingCopy<LmdbGlobalStateView>, TempDir) {
+    let (global_state, state_root_hash, tempdir) = make_temporary_global_state(initial_data);
+
+    let reader = global_state
+        .checkout(state_root_hash)
+        .expect("Checkout should not throw errors.")
+        .expect("Root hash should exist.");
+
+    let query_depth = match max_query_depth {
+        None => DEFAULT_MAX_QUERY_DEPTH,
+        Some(depth) => depth,
+    };
+
+    (TrackingCopy::new(reader, query_depth), tempdir)
 }

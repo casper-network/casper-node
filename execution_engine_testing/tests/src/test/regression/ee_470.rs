@@ -43,7 +43,7 @@ fn regression_test_genesis_hash_mismatch() {
                 LmdbTrieStore::new(&lmdb_environment, None, DatabaseFlags::default())
                     .expect("should create lmdb trie store");
 
-            LmdbGlobalState::empty(Arc::new(lmdb_environment), Arc::new(lmdb_trie_store))
+            LmdbGlobalState::empty(Arc::new(lmdb_environment), Arc::new(lmdb_trie_store), 6)
                 .expect("Empty GlobalState.")
         };
         gs.empty_root()

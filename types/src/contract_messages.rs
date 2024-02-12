@@ -23,6 +23,7 @@ use core::fmt::{Debug, Display, Formatter};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -194,6 +195,7 @@ impl FromBytes for MessageAddr {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<MessageAddr> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> MessageAddr {
         MessageAddr {

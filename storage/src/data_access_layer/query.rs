@@ -1,8 +1,10 @@
 //! Support for global state queries.
-use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{Digest, Key, StoredValue};
 
-use crate::tracking_copy::TrackingCopyQueryResult;
+use crate::{
+    global_state::trie::merkle_proof::TrieMerkleProof,
+    tracking_copy::{TrackingCopyError, TrackingCopyQueryResult},
+};
 
 /// Result of a global state query request.
 #[derive(Debug)]
@@ -25,6 +27,10 @@ pub enum QueryResult {
         /// Merkle proof of the query.
         proofs: Vec<TrieMerkleProof<Key, StoredValue>>,
     },
+    /// Storage Error
+    StorageError(crate::global_state::error::Error),
+    /// Tracking Copy Error
+    TrackingCopyError(TrackingCopyError),
 }
 
 /// Request for a global state query.
@@ -73,6 +79,7 @@ impl From<TrackingCopyQueryResult> for QueryResult {
                 QueryResult::Success { value, proofs }
             }
             TrackingCopyQueryResult::DepthLimit { depth } => QueryResult::DepthLimit { depth },
+            TrackingCopyQueryResult::RootNotFound => QueryResult::RootNotFound,
         }
     }
 }

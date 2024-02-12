@@ -14,7 +14,7 @@ use super::{
 };
 
 /// Returns the purse for accepting payment for transactions.
-pub(crate) fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef, Error> {
+pub fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &mut R) -> Result<URef, Error> {
     match runtime_provider.get_key(PAYMENT_PURSE_KEY) {
         Some(Key::URef(uref)) => Ok(uref),
         Some(_) => Err(Error::PaymentPurseKeyUnexpectedType),
@@ -25,10 +25,7 @@ pub(crate) fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Res
 /// Sets the purse where refunds (excess funds not spent to pay for computation) will be sent.
 /// Note that if this function is never called, the default location is the main purse of the
 /// deployer's account.
-pub(crate) fn set_refund<R: RuntimeProvider>(
-    runtime_provider: &mut R,
-    purse: URef,
-) -> Result<(), Error> {
+pub fn set_refund<R: RuntimeProvider>(runtime_provider: &mut R, purse: URef) -> Result<(), Error> {
     if let Phase::Payment = runtime_provider.get_phase() {
         runtime_provider.put_key(REFUND_PURSE_KEY, Key::URef(purse))?;
         return Ok(());
@@ -37,8 +34,8 @@ pub(crate) fn set_refund<R: RuntimeProvider>(
 }
 
 /// Returns the currently set refund purse.
-pub(crate) fn get_refund_purse<R: RuntimeProvider>(
-    runtime_provider: &R,
+pub fn get_refund_purse<R: RuntimeProvider>(
+    runtime_provider: &mut R,
 ) -> Result<Option<URef>, Error> {
     match runtime_provider.get_key(REFUND_PURSE_KEY) {
         Some(Key::URef(uref)) => Ok(Some(uref)),
@@ -89,7 +86,7 @@ fn calculate_refund_and_fee(
 /// refund purse, depending on how much was spent on the computation, or burns the refund. This code
 /// maintains the invariant that the balance of the payment purse is zero at the beginning and end
 /// of each deploy and that the refund purse is unset at the beginning and end of each deploy.
-pub(crate) fn finalize_payment<P: MintProvider + RuntimeProvider + StorageProvider>(
+pub fn finalize_payment<P: MintProvider + RuntimeProvider + StorageProvider>(
     provider: &mut P,
     gas_spent: U512,
     account: AccountHash,
@@ -200,7 +197,7 @@ pub(crate) fn finalize_payment<P: MintProvider + RuntimeProvider + StorageProvid
     Ok(())
 }
 
-pub(crate) fn refund_to_account<M: MintProvider>(
+pub fn refund_to_account<M: MintProvider>(
     mint_provider: &mut M,
     payment_purse: URef,
     account: AccountHash,
@@ -225,7 +222,7 @@ fn get_accumulation_purse<R: RuntimeProvider>(provider: &mut R) -> Result<URef, 
 }
 
 /// This function distributes the fees according to the fee handling config.
-pub(crate) fn distribute_accumulated_fees<P>(provider: &mut P) -> Result<(), Error>
+pub fn distribute_accumulated_fees<P>(provider: &mut P) -> Result<(), Error>
 where
     P: RuntimeProvider + MintProvider,
 {

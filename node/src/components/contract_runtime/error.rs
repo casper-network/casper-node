@@ -7,7 +7,7 @@ use thiserror::Error;
 use casper_execution_engine::engine_state::{
     Error as EngineStateError, GetEraValidatorsError, StepError,
 };
-use casper_storage::global_state::error::Error as StorageLmdbError;
+use casper_storage::global_state::error::Error as GlobalStateError;
 use casper_types::{bytesrepr, CLValueError, PublicKey, U512};
 
 use crate::{
@@ -20,7 +20,7 @@ use crate::{
 pub(crate) enum ConfigError {
     /// Error initializing the LMDB environment.
     #[error("failed to initialize LMDB environment for contract runtime: {0}")]
-    Lmdb(#[from] StorageLmdbError),
+    GlobalState(#[from] GlobalStateError),
     /// Error initializing metrics.
     #[error("failed to initialize metrics for contract runtime: {0}")]
     Prometheus(#[from] prometheus::Error),
@@ -88,7 +88,7 @@ pub enum BlockExecutionError {
     Lmdb(
         #[from]
         #[serde(skip_serializing)]
-        StorageLmdbError,
+        GlobalStateError,
     ),
     /// An error that occurred while getting era validators.
     #[error(transparent)]

@@ -1,10 +1,9 @@
+use crate::system::error::ProviderError;
 use casper_types::{
     account::AccountHash,
     system::{mint::Error, CallStackElement},
-    AddressableEntity, Key, Phase, URef, U512,
+    AddressableEntity, Key, Phase, SystemContractRegistry, URef, U512,
 };
-
-use crate::{engine_state::SystemContractRegistry, execution};
 
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {
@@ -14,15 +13,15 @@ pub trait RuntimeProvider {
     /// This method should return the immediate caller of the current context.
     fn get_immediate_caller(&self) -> Option<&CallStackElement>;
 
-    /// Get system contract registry.
-    fn get_system_contract_registry(&self) -> Result<SystemContractRegistry, execution::Error>;
-
     fn is_called_from_standard_payment(&self) -> bool;
+
+    /// Get system contract registry.
+    fn get_system_contract_registry(&self) -> Result<SystemContractRegistry, ProviderError>;
 
     fn read_addressable_entity_by_account_hash(
         &mut self,
         account_hash: AccountHash,
-    ) -> Result<Option<AddressableEntity>, execution::Error>;
+    ) -> Result<Option<AddressableEntity>, ProviderError>;
 
     /// Gets execution phase
     fn get_phase(&self) -> Phase;

@@ -34,19 +34,20 @@ use casper_execution_engine::engine_state::{GetBidsRequest, GetBidsResult};
 
 use casper_execution_engine::engine_state::{
     self, genesis::GenesisError, DeployItem, EngineConfigBuilder, EngineState, GenesisSuccess,
-    QueryRequest, SystemContractRegistry, UpgradeSuccess,
+    UpgradeSuccess,
 };
 use casper_storage::{
-    data_access_layer::{BlockStore, DataAccessLayer},
+    data_access_layer::{BlockStore, DataAccessLayer, QueryRequest, QueryResult},
     global_state::{
-        state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
+        state::{lmdb::LmdbGlobalState, StateProvider},
+        transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
 };
 use casper_types::{
-    bytesrepr::Bytes, package::PackageKindTag, BlockHash, BlockHeaderV2, Chainspec,
-    ChainspecRawBytes, ChainspecRegistry, Digest, EraId, Key, ProtocolVersion, Timestamp,
-    Transaction, UpgradeConfig, U512,
+    addressable_entity::EntityKindTag, bytesrepr::Bytes, BlockHash, BlockHeaderV2, Chainspec,
+    ChainspecRawBytes, ChainspecRegistry, Digest, EraId, Key, ProtocolVersion,
+    SystemContractRegistry, Timestamp, Transaction, UpgradeConfig, U512,
 };
 
 use crate::{
@@ -270,14 +271,19 @@ impl Display for Event {
 pub(crate) struct ContractRuntime {
     state: ComponentState,
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
+    #[data_size(skip)]
     engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
     metrics: Arc<Metrics>,
 
     /// Finalized blocks waiting for their pre-state hash to start executing.
     exec_queue: ExecQueue,
     /// Cached instance of a [`SystemContractRegistry`].
+    #[data_size(skip)]
     system_contract_registry: Option<SystemContractRegistry>,
     chainspec: Arc<Chainspec>,
+
+    #[data_size(skip)]
+    data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
 }
 
 impl Debug for ContractRuntime {
@@ -322,389 +328,6 @@ where
 }
 
 impl ContractRuntime {
-    /// How many blocks are backed up in the queue
-    pub(crate) fn queue_depth(&self) -> usize {
-        self.exec_queue.len()
-    }
-
-    /// Handles an incoming request to get a trie.
-    fn handle_trie_request<REv>(
-        &self,
-        effect_builder: EffectBuilder<REv>,
-        TrieRequestIncoming { sender, message }: TrieRequestIncoming,
-    ) -> Effects<Event>
-    where
-        REv: From<NetworkRequest<Message>> + Send,
-    {
-        let TrieRequest(ref serialized_id) = *message;
-        let fetch_response = match self.get_trie(serialized_id) {
-            Ok(fetch_response) => fetch_response,
-            Err(error) => {
-                debug!("failed to get trie: {}", error);
-                return Effects::new();
-            }
-        };
-
-        match Message::new_get_response(&fetch_response) {
-            Ok(message) => effect_builder.send_message(sender, message).ignore(),
-            Err(error) => {
-                error!("failed to create get-response: {}", error);
-                Effects::new()
-            }
-        }
-    }
-
-    /// Handles an incoming demand for a trie.
-    fn handle_trie_demand(
-        &self,
-        TrieDemand {
-            request_msg,
-            auto_closing_responder,
-            ..
-        }: TrieDemand,
-    ) -> Effects<Event> {
-        let TrieRequest(ref serialized_id) = *request_msg;
-        let fetch_response = match self.get_trie(serialized_id) {
-            Ok(fetch_response) => fetch_response,
-            Err(error) => {
-                // Something is wrong in our trie store, but be courteous and still send a reply.
-                debug!("failed to get trie: {}", error);
-                return auto_closing_responder.respond_none().ignore();
-            }
-        };
-
-        match Message::new_get_response(&fetch_response) {
-            Ok(message) => auto_closing_responder.respond(message).ignore(),
-            Err(error) => {
-                // This should never happen, but if it does, we let the peer know we cannot help.
-                error!("failed to create get-response: {}", error);
-                auto_closing_responder.respond_none().ignore()
-            }
-        }
-    }
-
-    /// Handles a contract runtime request.
-    fn handle_contract_runtime_request<REv>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        _rng: &mut NodeRng,
-        request: ContractRuntimeRequest,
-    ) -> Effects<Event>
-    where
-        REv: From<ContractRuntimeRequest>
-            + From<ContractRuntimeAnnouncement>
-            + From<StorageRequest>
-            + From<MetaBlockAnnouncement>
-            + From<UnexecutedBlockAnnouncement>
-            + From<FatalAnnouncement>
-            + Send,
-    {
-        match request {
-            ContractRuntimeRequest::Query {
-                query_request,
-                responder,
-            } => {
-                trace!(?query_request, "query");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let start = Instant::now();
-                    let result = engine_state.run_query(query_request);
-                    metrics.run_query.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "query result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            ContractRuntimeRequest::GetBalance {
-                balance_request,
-                responder,
-            } => {
-                trace!(?balance_request, "balance");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let start = Instant::now();
-                    let result = engine_state.get_purse_balance(
-                        balance_request.state_hash(),
-                        balance_request.purse_uref(),
-                    );
-                    metrics.get_balance.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "balance result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            ContractRuntimeRequest::GetTotalSupply {
-                total_supply_request,
-                responder,
-            } => {
-                trace!(?total_supply_request, "get total supply request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-
-                async move {
-                    let start = Instant::now();
-                    let result = query_total_supply(engine_state, total_supply_request.state_hash);
-
-                    metrics
-                        .get_total_supply
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "total supply result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            ContractRuntimeRequest::GetRoundSeigniorageRate {
-                round_seigniorage_rate_request,
-                responder,
-            } => {
-                trace!(
-                    ?round_seigniorage_rate_request,
-                    "get round seigniorage rate request"
-                );
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-
-                async move {
-                    let start = Instant::now();
-                    let result = query_round_seigniorage_rate(
-                        engine_state,
-                        round_seigniorage_rate_request.state_hash,
-                    );
-
-                    metrics
-                        .get_round_seigniorage_rate
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "round seigniorage rate result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            ContractRuntimeRequest::GetEraValidators { request, responder } => {
-                trace!(?request, "get era validators request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-
-                self.try_init_system_contract_registry_cache();
-
-                let system_contract_registry = self.system_contract_registry.clone();
-                // Increment the counter to track the amount of times GetEraValidators was
-                // requested.
-                async move {
-                    let start = Instant::now();
-                    let era_validators =
-                        engine_state.get_era_validators(system_contract_registry, request.into());
-                    metrics
-                        .get_era_validators
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?era_validators, "get era validators response");
-                    responder.respond(era_validators).await
-                }
-                .ignore()
-            }
-            ContractRuntimeRequest::GetTrie {
-                trie_or_chunk_id,
-                responder,
-            } => {
-                trace!(?trie_or_chunk_id, "get_trie request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let result = Self::do_get_trie(&engine_state, &metrics, trie_or_chunk_id);
-                    trace!(?result, "get_trie response");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            ContractRuntimeRequest::GetTrieFull {
-                trie_key,
-                responder,
-            } => {
-                trace!(?trie_key, "get_trie_full request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let result = Self::get_trie_full(&engine_state, &metrics, trie_key);
-                    trace!(?result, "get_trie_full response");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            ContractRuntimeRequest::PutTrie {
-                trie_bytes,
-                responder,
-            } => {
-                trace!(?trie_bytes, "put_trie request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let start = Instant::now();
-                    let result = engine_state.put_trie_if_all_children_present(trie_bytes.inner());
-                    // PERF: this *could* be called only periodically.
-                    if let Err(lmdb_error) = engine_state.flush_environment() {
-                        fatal!(
-                            effect_builder,
-                            "error flushing lmdb environment {:?}",
-                            lmdb_error
-                        )
-                        .await;
-                    } else {
-                        metrics.put_trie.observe(start.elapsed().as_secs_f64());
-                        trace!(?result, "put_trie response");
-                        responder.respond(result).await
-                    }
-                }
-                .ignore()
-            }
-            ContractRuntimeRequest::EnqueueBlockForExecution {
-                executable_block,
-                key_block_height_for_activation_point,
-                meta_block_state,
-            } => {
-                let mut effects = Effects::new();
-                let mut exec_queue = self.exec_queue.clone();
-                let finalized_block_height = executable_block.height;
-                let current_pre_state = self.execution_pre_state.lock().unwrap();
-                let next_block_height = current_pre_state.next_block_height;
-                match finalized_block_height.cmp(&next_block_height) {
-                    // An old block: it won't be executed:
-                    Ordering::Less => {
-                        debug!(
-                            "ContractRuntime: finalized block({}) precedes expected next block({})",
-                            finalized_block_height, next_block_height
-                        );
-                        effects.extend(
-                            effect_builder
-                                .announce_unexecuted_block(finalized_block_height)
-                                .ignore(),
-                        );
-                    }
-                    // This is the next block to be executed, we do it right away:
-                    Ordering::Equal => {
-                        info!(
-                            "ContractRuntime: execute finalized block({}) with {} transactions",
-                            finalized_block_height,
-                            executable_block.transactions.len()
-                        );
-                        let engine_state = Arc::clone(&self.engine_state);
-                        let metrics = Arc::clone(&self.metrics);
-                        let shared_pre_state = Arc::clone(&self.execution_pre_state);
-                        effects.extend(
-                            Self::execute_executable_block_or_requeue(
-                                engine_state,
-                                metrics,
-                                self.chainspec.clone(),
-                                exec_queue,
-                                shared_pre_state,
-                                current_pre_state.clone(),
-                                effect_builder,
-                                executable_block,
-                                key_block_height_for_activation_point,
-                                meta_block_state,
-                            )
-                            .ignore(),
-                        )
-                    }
-                    // This is a future block, we store it into exec_queue, to be executed later:
-                    Ordering::Greater => {
-                        debug!(
-                            "ContractRuntime: enqueuing({}) waiting for({})",
-                            finalized_block_height, next_block_height
-                        );
-                        info!(
-                            "ContractRuntime: enqueuing finalized block({}) with {} transactions \
-                            for execution",
-                            finalized_block_height,
-                            executable_block.transactions.len()
-                        );
-                        exec_queue.insert(
-                            finalized_block_height,
-                            QueueItem {
-                                executable_block,
-                                meta_block_state,
-                            },
-                        );
-                    }
-                }
-                self.metrics
-                    .exec_queue_size
-                    .set(self.exec_queue.len().try_into().unwrap_or(i64::MIN));
-                effects
-            }
-            ContractRuntimeRequest::GetBids {
-                get_bids_request,
-                responder,
-            } => {
-                trace!(?get_bids_request, "get bids request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let start = Instant::now();
-                    let result = engine_state.get_bids(get_bids_request);
-                    metrics.get_bids.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "get bids result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            ContractRuntimeRequest::GetExecutionResultsChecksum {
-                state_root_hash,
-                responder,
-            } => {
-                let result = self
-                    .engine_state
-                    .get_checksum_registry(state_root_hash)
-                    .map(|maybe_registry| {
-                        maybe_registry.and_then(|registry| {
-                            registry.get(EXECUTION_RESULTS_CHECKSUM_NAME).copied()
-                        })
-                    });
-                responder.respond(result).ignore()
-            }
-            ContractRuntimeRequest::GetAddressableEntity {
-                state_root_hash,
-                key,
-                responder,
-            } => {
-                let engine_state = Arc::clone(&self.engine_state);
-                async move {
-                    let result =
-                        operations::get_addressable_entity(&engine_state, state_root_hash, key);
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            ContractRuntimeRequest::SpeculativelyExecute {
-                execution_prestate,
-                transaction,
-                responder,
-            } => {
-                let deploy_item = match *transaction {
-                    Transaction::Deploy(deploy) => DeployItem::from(deploy),
-                    Transaction::V1(_) => {
-                        return responder
-                            .respond(Err(engine_state::Error::InvalidDeployItemVariant(
-                                "temp error until EE handles transactions".to_string(),
-                            )))
-                            .ignore();
-                    }
-                };
-                let engine_state = Arc::clone(&self.engine_state);
-                async move {
-                    let result = run_intensive_task(move || {
-                        execute_only(engine_state.as_ref(), execution_prestate, deploy_item)
-                    })
-                    .await;
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-        }
-    }
-}
-
-impl ContractRuntime {
     pub(crate) fn new(
         storage_dir: &Path,
         contract_runtime_config: &Config,
@@ -719,29 +342,8 @@ impl ContractRuntime {
             parent_seed: Default::default(),
         }));
 
-        let data_access_layer = {
-            let environment = Arc::new(LmdbEnvironment::new(
-                storage_dir,
-                contract_runtime_config.max_global_state_size_or_default(),
-                contract_runtime_config.max_readers_or_default(),
-                contract_runtime_config.manual_sync_enabled_or_default(),
-            )?);
-
-            let trie_store = Arc::new(LmdbTrieStore::new(
-                &environment,
-                None,
-                DatabaseFlags::empty(),
-            )?);
-
-            let global_state = LmdbGlobalState::empty(environment, trie_store)?;
-
-            let block_store = BlockStore::new();
-
-            DataAccessLayer {
-                state: global_state,
-                block_store,
-            }
-        };
+        let data_access_layer = Self::data_access_layer(storage_dir, contract_runtime_config)
+            .map_err(ConfigError::GlobalState)?;
 
         let engine_config = EngineConfigBuilder::new()
             .with_max_query_depth(contract_runtime_config.max_query_depth_or_default())
@@ -770,6 +372,10 @@ impl ContractRuntime {
         let engine_state = Arc::new(engine_state);
 
         let metrics = Arc::new(Metrics::new(registry)?);
+        let data_access_layer = Arc::new(
+            Self::data_access_layer(storage_dir, contract_runtime_config)
+                .map_err(ConfigError::GlobalState)?,
+        );
 
         Ok(ContractRuntime {
             state: ComponentState::Initialized,
@@ -779,7 +385,45 @@ impl ContractRuntime {
             exec_queue: Default::default(),
             system_contract_registry: None,
             chainspec,
+            data_access_layer,
         })
+    }
+
+    /// How many blocks are backed up in the queue
+    pub(crate) fn queue_depth(&self) -> usize {
+        self.exec_queue.len()
+    }
+
+    fn data_access_layer(
+        storage_dir: &Path,
+        contract_runtime_config: &Config,
+    ) -> Result<DataAccessLayer<LmdbGlobalState>, casper_storage::global_state::error::Error> {
+        let data_access_layer = {
+            let environment = Arc::new(LmdbEnvironment::new(
+                storage_dir,
+                contract_runtime_config.max_global_state_size_or_default(),
+                contract_runtime_config.max_readers_or_default(),
+                contract_runtime_config.manual_sync_enabled_or_default(),
+            )?);
+
+            let trie_store = Arc::new(LmdbTrieStore::new(
+                &environment,
+                None,
+                DatabaseFlags::empty(),
+            )?);
+
+            let block_store = BlockStore::new();
+
+            let max_query_depth = contract_runtime_config.max_query_depth_or_default();
+            let global_state = LmdbGlobalState::empty(environment, trie_store, max_query_depth)?;
+
+            DataAccessLayer {
+                state: global_state,
+                block_store,
+                max_query_depth,
+            }
+        };
+        Ok(data_access_layer)
     }
 
     /// Commits a genesis request.
@@ -1109,13 +753,382 @@ impl ContractRuntime {
 
     /// Returns auction state, for testing only.
     #[cfg(test)]
-    pub(crate) fn auction_state(
-        &self,
-        root_hash: Digest,
-    ) -> Result<GetBidsResult, engine_state::Error> {
+    pub(crate) fn auction_state(&self, root_hash: Digest) -> GetBidsResult {
         let engine_state = Arc::clone(&self.engine_state);
         let get_bids_request = GetBidsRequest::new(root_hash);
         engine_state.get_bids(get_bids_request)
+    }
+
+    /// Handles an incoming request to get a trie.
+    fn handle_trie_request<REv>(
+        &self,
+        effect_builder: EffectBuilder<REv>,
+        TrieRequestIncoming { sender, message }: TrieRequestIncoming,
+    ) -> Effects<Event>
+    where
+        REv: From<NetworkRequest<Message>> + Send,
+    {
+        let TrieRequest(ref serialized_id) = *message;
+        let fetch_response = match self.get_trie(serialized_id) {
+            Ok(fetch_response) => fetch_response,
+            Err(error) => {
+                debug!("failed to get trie: {}", error);
+                return Effects::new();
+            }
+        };
+
+        match Message::new_get_response(&fetch_response) {
+            Ok(message) => effect_builder.send_message(sender, message).ignore(),
+            Err(error) => {
+                error!("failed to create get-response: {}", error);
+                Effects::new()
+            }
+        }
+    }
+
+    /// Handles an incoming demand for a trie.
+    fn handle_trie_demand(
+        &self,
+        TrieDemand {
+            request_msg,
+            auto_closing_responder,
+            ..
+        }: TrieDemand,
+    ) -> Effects<Event> {
+        let TrieRequest(ref serialized_id) = *request_msg;
+        let fetch_response = match self.get_trie(serialized_id) {
+            Ok(fetch_response) => fetch_response,
+            Err(error) => {
+                // Something is wrong in our trie store, but be courteous and still send a reply.
+                debug!("failed to get trie: {}", error);
+                return auto_closing_responder.respond_none().ignore();
+            }
+        };
+
+        match Message::new_get_response(&fetch_response) {
+            Ok(message) => auto_closing_responder.respond(message).ignore(),
+            Err(error) => {
+                // This should never happen, but if it does, we let the peer know we cannot help.
+                error!("failed to create get-response: {}", error);
+                auto_closing_responder.respond_none().ignore()
+            }
+        }
+    }
+
+    /// Handles a contract runtime request.
+    fn handle_contract_runtime_request<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        _rng: &mut NodeRng,
+        request: ContractRuntimeRequest,
+    ) -> Effects<Event>
+    where
+        REv: From<ContractRuntimeRequest>
+            + From<ContractRuntimeAnnouncement>
+            + From<StorageRequest>
+            + From<MetaBlockAnnouncement>
+            + From<UnexecutedBlockAnnouncement>
+            + From<FatalAnnouncement>
+            + Send,
+    {
+        match request {
+            ContractRuntimeRequest::Query {
+                query_request,
+                responder,
+            } => {
+                trace!(?query_request, "query");
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let result = data_access_layer.query(query_request);
+                    metrics.run_query.observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "query result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::GetBalance {
+                balance_request,
+                responder,
+            } => {
+                trace!(?balance_request, "balance");
+                //let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let result = data_access_layer.balance(balance_request);
+                    metrics.get_balance.observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "balance result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::GetEraValidators { request, responder } => {
+                trace!(?request, "get era validators request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+
+                self.try_init_system_contract_registry_cache();
+
+                let system_contract_registry = self.system_contract_registry.clone();
+                // Increment the counter to track the amount of times GetEraValidators was
+                // requested.
+                async move {
+                    let start = Instant::now();
+                    let era_validators =
+                        engine_state.get_era_validators(system_contract_registry, request.into());
+                    metrics
+                        .get_era_validators
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?era_validators, "get era validators response");
+                    responder.respond(era_validators).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::GetTrie {
+                trie_or_chunk_id,
+                responder,
+            } => {
+                trace!(?trie_or_chunk_id, "get_trie request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                async move {
+                    let result = Self::do_get_trie(&engine_state, &metrics, trie_or_chunk_id);
+                    trace!(?result, "get_trie response");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::GetTrieFull {
+                trie_key,
+                responder,
+            } => {
+                trace!(?trie_key, "get_trie_full request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                async move {
+                    let result = Self::get_trie_full(&engine_state, &metrics, trie_key);
+                    trace!(?result, "get_trie_full response");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::PutTrie {
+                trie_bytes,
+                responder,
+            } => {
+                trace!(?trie_bytes, "put_trie request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                async move {
+                    let start = Instant::now();
+                    let result = engine_state.put_trie_if_all_children_present(trie_bytes.inner());
+                    // PERF: this *could* be called only periodically.
+                    if let Err(lmdb_error) = engine_state.flush_environment() {
+                        fatal!(
+                            effect_builder,
+                            "error flushing lmdb environment {:?}",
+                            lmdb_error
+                        )
+                        .await;
+                    } else {
+                        metrics.put_trie.observe(start.elapsed().as_secs_f64());
+                        trace!(?result, "put_trie response");
+                        responder.respond(result).await
+                    }
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::EnqueueBlockForExecution {
+                executable_block,
+                key_block_height_for_activation_point,
+                meta_block_state,
+            } => {
+                let mut effects = Effects::new();
+                let mut exec_queue = self.exec_queue.clone();
+                let finalized_block_height = executable_block.height;
+                let current_pre_state = self.execution_pre_state.lock().unwrap();
+                let next_block_height = current_pre_state.next_block_height;
+                match finalized_block_height.cmp(&next_block_height) {
+                    // An old block: it won't be executed:
+                    Ordering::Less => {
+                        debug!(
+                            "ContractRuntime: finalized block({}) precedes expected next block({})",
+                            finalized_block_height, next_block_height
+                        );
+                        effects.extend(
+                            effect_builder
+                                .announce_unexecuted_block(finalized_block_height)
+                                .ignore(),
+                        );
+                    }
+                    // This is the next block to be executed, we do it right away:
+                    Ordering::Equal => {
+                        info!(
+                            "ContractRuntime: execute finalized block({}) with {} transactions",
+                            finalized_block_height,
+                            executable_block.transactions.len()
+                        );
+                        let engine_state = Arc::clone(&self.engine_state);
+                        let metrics = Arc::clone(&self.metrics);
+                        let shared_pre_state = Arc::clone(&self.execution_pre_state);
+                        effects.extend(
+                            Self::execute_executable_block_or_requeue(
+                                engine_state,
+                                metrics,
+                                self.chainspec.clone(),
+                                exec_queue,
+                                shared_pre_state,
+                                current_pre_state.clone(),
+                                effect_builder,
+                                executable_block,
+                                key_block_height_for_activation_point,
+                                meta_block_state,
+                            )
+                            .ignore(),
+                        )
+                    }
+                    // This is a future block, we store it into exec_queue, to be executed later:
+                    Ordering::Greater => {
+                        debug!(
+                            "ContractRuntime: enqueuing({}) waiting for({})",
+                            finalized_block_height, next_block_height
+                        );
+                        info!(
+                            "ContractRuntime: enqueuing finalized block({}) with {} transactions \
+                            for execution",
+                            finalized_block_height,
+                            executable_block.transactions.len()
+                        );
+                        exec_queue.insert(
+                            finalized_block_height,
+                            QueueItem {
+                                executable_block,
+                                meta_block_state,
+                            },
+                        );
+                    }
+                }
+                self.metrics
+                    .exec_queue_size
+                    .set(self.exec_queue.len().try_into().unwrap_or(i64::MIN));
+                effects
+            }
+            ContractRuntimeRequest::GetBids {
+                get_bids_request,
+                responder,
+            } => {
+                trace!(?get_bids_request, "get bids request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+                async move {
+                    let start = Instant::now();
+                    let result = engine_state.get_bids(get_bids_request);
+                    metrics.get_bids.observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "get bids result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::GetExecutionResultsChecksum {
+                state_root_hash,
+                responder,
+            } => {
+                let result = self
+                    .engine_state
+                    .get_checksum_registry(state_root_hash)
+                    .map(|maybe_registry| {
+                        maybe_registry.and_then(|registry| {
+                            registry.get(EXECUTION_RESULTS_CHECKSUM_NAME).copied()
+                        })
+                    });
+                responder.respond(result).ignore()
+            }
+            ContractRuntimeRequest::GetAddressableEntity {
+                state_root_hash,
+                key,
+                responder,
+            } => {
+                let engine_state = Arc::clone(&self.engine_state);
+                async move {
+                    let result =
+                        operations::get_addressable_entity(&engine_state, state_root_hash, key);
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::SpeculativelyExecute {
+                execution_prestate,
+                transaction,
+                responder,
+            } => {
+                if let Transaction::Deploy(deploy) = *transaction {
+                    let engine_state = Arc::clone(&self.engine_state);
+                    async move {
+                        let result = run_intensive_task(move || {
+                            execute_only(
+                                engine_state.as_ref(),
+                                execution_prestate,
+                                DeployItem::from(deploy.clone()),
+                            )
+                        })
+                        .await;
+                        responder.respond(result).await
+                    }
+                    .ignore()
+                } else {
+                    unreachable!()
+                }
+            }
+            ContractRuntimeRequest::GetTotalSupply {
+                total_supply_request,
+                responder,
+            } => {
+                trace!(?total_supply_request, "get total supply request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+
+                async move {
+                    let start = Instant::now();
+                    let result = query_total_supply(engine_state, total_supply_request.state_hash);
+
+                    metrics
+                        .get_total_supply
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "total supply result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::GetRoundSeigniorageRate {
+                round_seigniorage_rate_request,
+                responder,
+            } => {
+                trace!(
+                    ?round_seigniorage_rate_request,
+                    "get round seigniorage rate request"
+                );
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+
+                async move {
+                    let start = Instant::now();
+                    let result = query_round_seigniorage_rate(
+                        engine_state,
+                        round_seigniorage_rate_request.state_hash,
+                    );
+
+                    metrics
+                        .get_round_seigniorage_rate
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "round seigniorage rate result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+        }
     }
 }
 
@@ -1124,11 +1137,11 @@ fn query_total_supply(
     state_hash: Digest,
 ) -> Result<U512, engine_state::Error> {
     use casper_types::system::mint;
-    use engine_state::{Error, QueryResult::*};
+    use engine_state::Error;
 
     let mint = engine_state.get_system_mint_hash(state_hash)?;
 
-    let mint_key = Key::addressable_entity_key(PackageKindTag::System, mint);
+    let mint_key = Key::addressable_entity_key(EntityKindTag::System, mint);
 
     let request = QueryRequest::new(
         state_hash,
@@ -1139,16 +1152,20 @@ fn query_total_supply(
     engine_state
         .run_query(request)
         .and_then(move |query_result| match query_result {
-            Success { value, proofs: _ } => value
+            QueryResult::Success { value, proofs: _ } => value
                 .as_cl_value()
                 .ok_or_else(|| Error::Mint("Value not a CLValue".to_owned()))?
                 .clone()
                 .into_t()
                 .map_err(|e| Error::Mint(format!("CLValue not a U512: {e}"))),
-            ValueNotFound(s) => Err(Error::Mint(format!("ValueNotFound({s})"))),
-            CircularReference(s) => Err(Error::Mint(format!("CircularReference({s})"))),
-            DepthLimit { depth } => Err(Error::Mint(format!("DepthLimit({depth})"))),
-            RootNotFound => Err(Error::RootNotFound(state_hash)),
+            QueryResult::ValueNotFound(s) => Err(Error::Mint(format!("ValueNotFound({s})"))),
+            QueryResult::CircularReference(s) => {
+                Err(Error::Mint(format!("CircularReference({s})")))
+            }
+            QueryResult::DepthLimit { depth } => Err(Error::Mint(format!("DepthLimit({depth})"))),
+            QueryResult::RootNotFound => Err(Error::RootNotFound(state_hash)),
+            QueryResult::StorageError(gse) => Err(Error::Storage(gse)),
+            QueryResult::TrackingCopyError(tce) => Err(Error::TrackingCopy(tce)),
         })
 }
 
@@ -1157,10 +1174,10 @@ fn query_round_seigniorage_rate(
     state_hash: Digest,
 ) -> Result<Ratio<U512>, engine_state::Error> {
     use casper_types::system::mint;
-    use engine_state::{Error, QueryResult::*};
+    use engine_state::Error;
 
     let mint = engine_state.get_system_mint_hash(state_hash)?;
-    let mint_key = Key::addressable_entity_key(PackageKindTag::System, mint);
+    let mint_key = Key::addressable_entity_key(EntityKindTag::System, mint);
 
     let request = QueryRequest::new(
         state_hash,
@@ -1171,16 +1188,20 @@ fn query_round_seigniorage_rate(
     engine_state
         .run_query(request)
         .and_then(move |query_result| match query_result {
-            Success { value, proofs: _ } => value
+            QueryResult::Success { value, proofs: _ } => value
                 .as_cl_value()
                 .ok_or_else(|| Error::Mint("Value not a CLValue".to_owned()))?
                 .clone()
                 .into_t()
                 .map_err(|e| Error::Mint(format!("CLValue not a Ratio<U512>: {e}"))),
-            ValueNotFound(s) => Err(Error::Mint(format!("ValueNotFound({s})"))),
-            CircularReference(s) => Err(Error::Mint(format!("CircularReference({s})"))),
-            DepthLimit { depth } => Err(Error::Mint(format!("DepthLimit({depth})"))),
-            RootNotFound => Err(Error::RootNotFound(state_hash)),
+            QueryResult::ValueNotFound(s) => Err(Error::Mint(format!("ValueNotFound({s})"))),
+            QueryResult::CircularReference(s) => {
+                Err(Error::Mint(format!("CircularReference({s})")))
+            }
+            QueryResult::DepthLimit { depth } => Err(Error::Mint(format!("DepthLimit({depth})"))),
+            QueryResult::RootNotFound => Err(Error::RootNotFound(state_hash)),
+            QueryResult::StorageError(gse) => Err(Error::Storage(gse)),
+            QueryResult::TrackingCopyError(tce) => Err(Error::TrackingCopy(tce)),
         })
 }
 
