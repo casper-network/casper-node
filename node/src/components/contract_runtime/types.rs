@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use datasize::DataSize;
 
-use casper_execution_engine::engine_state::GetEraValidatorsRequest;
+use casper_storage::data_access_layer::EraValidatorsRequest;
 use casper_types::{
     contract_messages::Messages,
     execution::{Effects, ExecutionResult},
@@ -18,16 +18,6 @@ pub struct ValidatorWeightsByEraIdRequest {
     state_hash: Digest,
     era_id: EraId,
     protocol_version: ProtocolVersion,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TotalSupplyRequest {
-    pub state_hash: Digest,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RoundSeigniorageRateRequest {
-    pub state_hash: Digest,
 }
 
 impl ValidatorWeightsByEraIdRequest {
@@ -56,54 +46,9 @@ impl ValidatorWeightsByEraIdRequest {
     }
 }
 
-impl From<ValidatorWeightsByEraIdRequest> for GetEraValidatorsRequest {
+impl From<ValidatorWeightsByEraIdRequest> for EraValidatorsRequest {
     fn from(input: ValidatorWeightsByEraIdRequest) -> Self {
-        GetEraValidatorsRequest::new(input.state_hash, input.protocol_version)
-    }
-}
-
-impl TotalSupplyRequest {
-    pub fn new(state_hash: Digest) -> Self {
-        TotalSupplyRequest { state_hash }
-    }
-}
-
-impl RoundSeigniorageRateRequest {
-    pub fn new(state_hash: Digest) -> Self {
-        RoundSeigniorageRateRequest { state_hash }
-    }
-}
-
-/// Request for era validators.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EraValidatorsRequest {
-    state_hash: Digest,
-    protocol_version: ProtocolVersion,
-}
-
-impl EraValidatorsRequest {
-    /// Constructs a new EraValidatorsRequest.
-    pub fn new(state_hash: Digest, protocol_version: ProtocolVersion) -> Self {
-        EraValidatorsRequest {
-            state_hash,
-            protocol_version,
-        }
-    }
-
-    /// Get the state hash.
-    pub fn state_hash(&self) -> Digest {
-        self.state_hash
-    }
-
-    /// Get the protocol version.
-    pub fn protocol_version(&self) -> ProtocolVersion {
-        self.protocol_version
-    }
-}
-
-impl From<EraValidatorsRequest> for GetEraValidatorsRequest {
-    fn from(input: EraValidatorsRequest) -> Self {
-        GetEraValidatorsRequest::new(input.state_hash, input.protocol_version)
+        EraValidatorsRequest::new(input.state_hash, input.protocol_version)
     }
 }
 

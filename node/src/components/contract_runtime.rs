@@ -22,22 +22,24 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use lmdb::DatabaseFlags;
-use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use prometheus::Registry;
 use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, info, trace};
 
-#[cfg(test)]
-use casper_execution_engine::engine_state::{GetBidsRequest, GetBidsResult};
-
 use casper_execution_engine::engine_state::{
     self, genesis::GenesisError, DeployItem, EngineConfigBuilder, EngineState, GenesisSuccess,
     UpgradeSuccess,
 };
+
+#[cfg(test)]
+use casper_storage::data_access_layer::{BidsRequest, BidsResult};
+
 use casper_storage::{
-    data_access_layer::{BlockStore, DataAccessLayer, QueryRequest, QueryResult},
+    data_access_layer::{
+        AddressableEntityRequest, BlockStore, DataAccessLayer, ExecutionResultsChecksumRequest,
+    },
     global_state::{
         state::{lmdb::LmdbGlobalState, StateProvider},
         transaction_source::lmdb::LmdbEnvironment,
@@ -45,9 +47,8 @@ use casper_storage::{
     },
 };
 use casper_types::{
-    addressable_entity::EntityKindTag, bytesrepr::Bytes, BlockHash, BlockHeaderV2, Chainspec,
-    ChainspecRawBytes, ChainspecRegistry, Digest, EraId, Key, ProtocolVersion,
-    SystemContractRegistry, Timestamp, Transaction, UpgradeConfig, U512,
+    bytesrepr::Bytes, BlockHash, BlockHeaderV2, Chainspec, ChainspecRawBytes, ChainspecRegistry,
+    Digest, EraId, ProtocolVersion, Timestamp, Transaction, UpgradeConfig,
 };
 
 use crate::{
@@ -76,8 +77,7 @@ pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
 use operations::execute_only;
 pub(crate) use types::{
-    BlockAndExecutionResults, EraValidatorsRequest, ExecutionArtifact, RoundSeigniorageRateRequest,
-    StepEffectsAndUpcomingEraValidators, TotalSupplyRequest,
+    BlockAndExecutionResults, ExecutionArtifact, StepEffectsAndUpcomingEraValidators,
 };
 
 const COMPONENT_NAME: &str = "contract_runtime";
@@ -277,9 +277,8 @@ pub(crate) struct ContractRuntime {
 
     /// Finalized blocks waiting for their pre-state hash to start executing.
     exec_queue: ExecQueue,
-    /// Cached instance of a [`SystemContractRegistry`].
-    #[data_size(skip)]
-    system_contract_registry: Option<SystemContractRegistry>,
+
+    /// The chainspec.
     chainspec: Arc<Chainspec>,
 
     #[data_size(skip)]
@@ -383,7 +382,6 @@ impl ContractRuntime {
             engine_state,
             metrics,
             exec_queue: Default::default(),
-            system_contract_registry: None,
             chainspec,
             data_access_layer,
         })
@@ -726,25 +724,6 @@ impl ContractRuntime {
         result.map(|option| option.map(|trie_raw| trie_raw.into_inner()))
     }
 
-    #[inline]
-    fn try_init_system_contract_registry_cache(&mut self) {
-        // The system contract registry is stable so we can use the latest state root hash that we
-        // know from the execution pre-state to try and initialize it
-        let state_root_hash = self
-            .execution_pre_state
-            .lock()
-            .expect("ContractRuntime: execution_pre_state poisoned mutex")
-            .pre_state_root_hash;
-
-        // Try to cache system contract registry if possible.
-        if self.system_contract_registry.is_none() {
-            self.system_contract_registry = self
-                .engine_state
-                .get_system_contract_registry(state_root_hash)
-                .ok();
-        };
-    }
-
     /// Returns the engine state, for testing only.
     #[cfg(test)]
     pub(crate) fn engine_state(&self) -> &Arc<EngineState<DataAccessLayer<LmdbGlobalState>>> {
@@ -753,9 +732,9 @@ impl ContractRuntime {
 
     /// Returns auction state, for testing only.
     #[cfg(test)]
-    pub(crate) fn auction_state(&self, root_hash: Digest) -> GetBidsResult {
+    pub(crate) fn auction_state(&self, root_hash: Digest) -> BidsResult {
         let engine_state = Arc::clone(&self.engine_state);
-        let get_bids_request = GetBidsRequest::new(root_hash);
+        let get_bids_request = BidsRequest::new(root_hash);
         engine_state.get_bids(get_bids_request)
     }
 
@@ -833,7 +812,7 @@ impl ContractRuntime {
     {
         match request {
             ContractRuntimeRequest::Query {
-                query_request,
+                request: query_request,
                 responder,
             } => {
                 trace!(?query_request, "query");
@@ -849,11 +828,10 @@ impl ContractRuntime {
                 .ignore()
             }
             ContractRuntimeRequest::GetBalance {
-                balance_request,
+                request: balance_request,
                 responder,
             } => {
                 trace!(?balance_request, "balance");
-                //let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 let data_access_layer = Arc::clone(&self.data_access_layer);
                 async move {
@@ -865,28 +843,120 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::GetEraValidators { request, responder } => {
-                trace!(?request, "get era validators request");
-                let engine_state = Arc::clone(&self.engine_state);
+            ContractRuntimeRequest::GetEraValidators {
+                request: era_validators_request,
+                responder,
+            } => {
+                trace!(?era_validators_request, "get era validators request");
                 let metrics = Arc::clone(&self.metrics);
-
-                self.try_init_system_contract_registry_cache();
-
-                let system_contract_registry = self.system_contract_registry.clone();
-                // Increment the counter to track the amount of times GetEraValidators was
-                // requested.
+                let data_access_layer = Arc::clone(&self.data_access_layer);
                 async move {
                     let start = Instant::now();
-                    let era_validators =
-                        engine_state.get_era_validators(system_contract_registry, request.into());
+                    let result = data_access_layer.era_validators(era_validators_request);
                     metrics
                         .get_era_validators
                         .observe(start.elapsed().as_secs_f64());
-                    trace!(?era_validators, "get era validators response");
-                    responder.respond(era_validators).await
+                    trace!(?result, "era validators result");
+                    responder.respond(result).await
                 }
                 .ignore()
             }
+            ContractRuntimeRequest::GetBids {
+                request: bids_request,
+                responder,
+            } => {
+                trace!(?bids_request, "get bids request");
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let result = data_access_layer.bids(bids_request);
+                    metrics.get_bids.observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "bids result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::GetExecutionResultsChecksum {
+                state_root_hash,
+                responder,
+            } => {
+                trace!(?state_root_hash, "get exection results checksum request");
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let request = ExecutionResultsChecksumRequest::new(state_root_hash);
+                    let result = data_access_layer.execution_result_checksum(request);
+                    metrics
+                        .execution_results_checksum
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "execution result checksum");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::GetAddressableEntity {
+                state_root_hash,
+                key,
+                responder,
+            } => {
+                trace!(?state_root_hash, "get addressable entity");
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let request = AddressableEntityRequest::new(state_root_hash, key);
+                    let result = data_access_layer.addressable_entity(request);
+                    metrics
+                        .addressable_entity
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "get addressable entity");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::GetTotalSupply {
+                request: total_supply_request,
+                responder,
+            } => {
+                trace!(?total_supply_request, "total supply request");
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let result = data_access_layer.total_supply(total_supply_request);
+                    metrics
+                        .get_total_supply
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "total supply results");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::GetRoundSeigniorageRate {
+                request: round_seigniorage_rate_request,
+                responder,
+            } => {
+                trace!(
+                    ?round_seigniorage_rate_request,
+                    "round seigniorage rate request"
+                );
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let result =
+                        data_access_layer.round_seigniorage_rate(round_seigniorage_rate_request);
+                    metrics
+                        .get_round_seigniorage_rate
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "round seigniorage rate results");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            // trie related events
             ContractRuntimeRequest::GetTrie {
                 trie_or_chunk_id,
                 responder,
@@ -1016,49 +1086,6 @@ impl ContractRuntime {
                     .set(self.exec_queue.len().try_into().unwrap_or(i64::MIN));
                 effects
             }
-            ContractRuntimeRequest::GetBids {
-                get_bids_request,
-                responder,
-            } => {
-                trace!(?get_bids_request, "get bids request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let start = Instant::now();
-                    let result = engine_state.get_bids(get_bids_request);
-                    metrics.get_bids.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "get bids result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            ContractRuntimeRequest::GetExecutionResultsChecksum {
-                state_root_hash,
-                responder,
-            } => {
-                let result = self
-                    .engine_state
-                    .get_checksum_registry(state_root_hash)
-                    .map(|maybe_registry| {
-                        maybe_registry.and_then(|registry| {
-                            registry.get(EXECUTION_RESULTS_CHECKSUM_NAME).copied()
-                        })
-                    });
-                responder.respond(result).ignore()
-            }
-            ContractRuntimeRequest::GetAddressableEntity {
-                state_root_hash,
-                key,
-                responder,
-            } => {
-                let engine_state = Arc::clone(&self.engine_state);
-                async move {
-                    let result =
-                        operations::get_addressable_entity(&engine_state, state_root_hash, key);
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
             ContractRuntimeRequest::SpeculativelyExecute {
                 execution_prestate,
                 transaction,
@@ -1082,127 +1109,8 @@ impl ContractRuntime {
                     unreachable!()
                 }
             }
-            ContractRuntimeRequest::GetTotalSupply {
-                total_supply_request,
-                responder,
-            } => {
-                trace!(?total_supply_request, "get total supply request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-
-                async move {
-                    let start = Instant::now();
-                    let result = query_total_supply(engine_state, total_supply_request.state_hash);
-
-                    metrics
-                        .get_total_supply
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "total supply result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            ContractRuntimeRequest::GetRoundSeigniorageRate {
-                round_seigniorage_rate_request,
-                responder,
-            } => {
-                trace!(
-                    ?round_seigniorage_rate_request,
-                    "get round seigniorage rate request"
-                );
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-
-                async move {
-                    let start = Instant::now();
-                    let result = query_round_seigniorage_rate(
-                        engine_state,
-                        round_seigniorage_rate_request.state_hash,
-                    );
-
-                    metrics
-                        .get_round_seigniorage_rate
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "round seigniorage rate result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
         }
     }
-}
-
-fn query_total_supply(
-    engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
-    state_hash: Digest,
-) -> Result<U512, engine_state::Error> {
-    use casper_types::system::mint;
-    use engine_state::Error;
-
-    let mint = engine_state.get_system_mint_hash(state_hash)?;
-
-    let mint_key = Key::addressable_entity_key(EntityKindTag::System, mint);
-
-    let request = QueryRequest::new(
-        state_hash,
-        mint_key,
-        vec![mint::TOTAL_SUPPLY_KEY.to_owned()],
-    );
-
-    engine_state
-        .run_query(request)
-        .and_then(move |query_result| match query_result {
-            QueryResult::Success { value, proofs: _ } => value
-                .as_cl_value()
-                .ok_or_else(|| Error::Mint("Value not a CLValue".to_owned()))?
-                .clone()
-                .into_t()
-                .map_err(|e| Error::Mint(format!("CLValue not a U512: {e}"))),
-            QueryResult::ValueNotFound(s) => Err(Error::Mint(format!("ValueNotFound({s})"))),
-            QueryResult::CircularReference(s) => {
-                Err(Error::Mint(format!("CircularReference({s})")))
-            }
-            QueryResult::DepthLimit { depth } => Err(Error::Mint(format!("DepthLimit({depth})"))),
-            QueryResult::RootNotFound => Err(Error::RootNotFound(state_hash)),
-            QueryResult::StorageError(gse) => Err(Error::Storage(gse)),
-            QueryResult::TrackingCopyError(tce) => Err(Error::TrackingCopy(tce)),
-        })
-}
-
-fn query_round_seigniorage_rate(
-    engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
-    state_hash: Digest,
-) -> Result<Ratio<U512>, engine_state::Error> {
-    use casper_types::system::mint;
-    use engine_state::Error;
-
-    let mint = engine_state.get_system_mint_hash(state_hash)?;
-    let mint_key = Key::addressable_entity_key(EntityKindTag::System, mint);
-
-    let request = QueryRequest::new(
-        state_hash,
-        mint_key,
-        vec![mint::ROUND_SEIGNIORAGE_RATE_KEY.to_owned()],
-    );
-
-    engine_state
-        .run_query(request)
-        .and_then(move |query_result| match query_result {
-            QueryResult::Success { value, proofs: _ } => value
-                .as_cl_value()
-                .ok_or_else(|| Error::Mint("Value not a CLValue".to_owned()))?
-                .clone()
-                .into_t()
-                .map_err(|e| Error::Mint(format!("CLValue not a Ratio<U512>: {e}"))),
-            QueryResult::ValueNotFound(s) => Err(Error::Mint(format!("ValueNotFound({s})"))),
-            QueryResult::CircularReference(s) => {
-                Err(Error::Mint(format!("CircularReference({s})")))
-            }
-            QueryResult::DepthLimit { depth } => Err(Error::Mint(format!("DepthLimit({depth})"))),
-            QueryResult::RootNotFound => Err(Error::RootNotFound(state_hash)),
-            QueryResult::StorageError(gse) => Err(Error::Storage(gse)),
-            QueryResult::TrackingCopyError(tce) => Err(Error::TrackingCopy(tce)),
-        })
 }
 
 #[cfg(test)]

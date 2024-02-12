@@ -10,7 +10,7 @@ use tracing::{debug, error, info, warn};
 
 use casper_json_rpc::ReservedErrorCode;
 use casper_storage::{
-    data_access_layer::{get_bids::GetBidsResult, BalanceResult, QueryResult},
+    data_access_layer::{get_bids::BidsResult, BalanceResult, EraValidatorsResult, QueryResult},
     global_state::trie::merkle_proof::TrieMerkleProof,
 };
 use casper_types::{
@@ -373,8 +373,8 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .await;
 
         let bids = match get_bids_result {
-            GetBidsResult::Success { bids } => bids,
-            GetBidsResult::RootNotFound => {
+            BidsResult::Success { bids } => bids,
+            BidsResult::RootNotFound => {
                 error!(
                     block_hash=?block.hash(),
                     ?state_root_hash,
@@ -388,7 +388,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
                     ),
                 ));
             }
-            GetBidsResult::Failure(error) => {
+            BidsResult::Failure(error) => {
                 error!(
                     block_hash=?block.hash(),
                     ?state_root_hash,
@@ -417,28 +417,25 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             )
             .await;
 
-        let era_validators = match era_validators_result {
-            Ok(validators) => validators,
-            Err(error) => {
-                error!(block_hash=?block.hash(), ?state_root_hash, ?error, "failed to get era validators");
-                return Err(Error::new(
-                    ReservedErrorCode::InternalError,
-                    format!(
-                        "failed to get validators at block {:?}: {}",
-                        block.hash().inner(),
-                        error
-                    ),
-                ));
-            }
-        };
+        if let EraValidatorsResult::Success { era_validators } = era_validators_result {
+            let auction_state =
+                AuctionState::new(state_root_hash, block_height, era_validators, bids);
 
-        let auction_state = AuctionState::new(state_root_hash, block_height, era_validators, bids);
-
-        let result = Self::ResponseResult {
-            api_version,
-            auction_state,
-        };
-        Ok(result)
+            let result = Self::ResponseResult {
+                api_version,
+                auction_state,
+            };
+            return Ok(result);
+        }
+        error!(block_hash=?block.hash(), ?state_root_hash, ?era_validators_result, "failed to get era validators");
+        Err(Error::new(
+            ReservedErrorCode::InternalError,
+            format!(
+                "failed to get validators at block {:?}: {}",
+                block.hash().inner(),
+                era_validators_result
+            ),
+        ))
     }
 }
 

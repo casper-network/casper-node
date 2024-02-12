@@ -4,10 +4,10 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 use thiserror::Error;
 
-use casper_execution_engine::engine_state::{
-    Error as EngineStateError, GetEraValidatorsError, StepError,
+use casper_execution_engine::engine_state::{Error as EngineStateError, StepError};
+use casper_storage::{
+    global_state::error::Error as GlobalStateError, tracking_copy::TrackingCopyError,
 };
-use casper_storage::global_state::error::Error as GlobalStateError;
 use casper_types::{bytesrepr, CLValueError, PublicKey, U512};
 
 use crate::{
@@ -95,6 +95,6 @@ pub enum BlockExecutionError {
     GetEraValidators(
         #[from]
         #[serde(skip_serializing)]
-        GetEraValidatorsError,
+        TrackingCopyError,
     ),
 }

@@ -9,13 +9,26 @@ use crate::global_state::{
 
 use crate::tracking_copy::TrackingCopy;
 
+mod addressable_entity;
 pub mod balance;
+pub mod era_validators;
+mod execution_results_checksum;
 pub mod get_bids;
 pub mod query;
+mod round_seigniorage;
+mod total_supply;
 
+pub use addressable_entity::{AddressableEntityRequest, AddressableEntityResult};
 pub use balance::{BalanceRequest, BalanceResult};
-pub use get_bids::{GetBidsError, GetBidsRequest, GetBidsResult};
+pub use era_validators::{EraValidatorsRequest, EraValidatorsResult};
+pub use execution_results_checksum::{
+    ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult,
+    EXECUTION_RESULTS_CHECKSUM_NAME,
+};
+pub use get_bids::{BidsRequest, BidsResult};
 pub use query::{QueryRequest, QueryResult};
+pub use round_seigniorage::{RoundSeigniorageRateRequest, RoundSeigniorageRateResult};
+pub use total_supply::{TotalSupplyRequest, TotalSupplyResult};
 
 pub struct Block {
     _era_id: EraId,

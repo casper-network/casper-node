@@ -11,16 +11,28 @@ use std::collections::HashMap;
 use tracing::{debug, error, warn};
 
 use casper_types::{
+    addressable_entity::EntityKindTag,
     bytesrepr,
     execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
-    Digest, Key, StoredValue,
+    system::{
+        auction::SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
+        AUCTION, MINT,
+    },
+    AddressableEntity, Digest, EntityAddr, Key, KeyTag, StoredValue,
 };
 
 #[cfg(test)]
 pub use self::lmdb::make_temporary_global_state;
 
 use crate::{
-    data_access_layer::{BalanceRequest, BalanceResult, QueryRequest, QueryResult},
+    data_access_layer::{
+        era_validators::EraValidatorsResult, AddressableEntityRequest, AddressableEntityResult,
+        BalanceRequest, BalanceResult, BidsRequest, BidsResult, EraValidatorsRequest,
+        ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult, QueryRequest, QueryResult,
+        RoundSeigniorageRateRequest, RoundSeigniorageRateResult, TotalSupplyRequest,
+        TotalSupplyResult, EXECUTION_RESULTS_CHECKSUM_NAME,
+    },
     global_state::{
         error::Error as GlobalStateError,
         transaction_source::{Transaction, TransactionSource},
@@ -31,6 +43,7 @@ use crate::{
         },
     },
     system::{
+        auction,
         auction::bidding::{BiddingRequest, BiddingResult},
         mint::transfer::{TransferRequest, TransferResult},
     },
@@ -89,51 +102,35 @@ pub trait StateProvider {
     /// Associated reader type for `StateProvider`.
     type Reader: StateReader<Key, StoredValue, Error = GlobalStateError>;
 
-    /// Checkouts to the post state of a specific block.
-    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, GlobalStateError>;
+    /// Returns an empty root hash.
+    fn empty_root(&self) -> Digest;
 
     /// Get a tracking copy.
     fn tracking_copy(
         &self,
-        hash: Digest,
+        state_hash: Digest,
     ) -> Result<Option<TrackingCopy<Self::Reader>>, GlobalStateError>;
 
+    /// Checkouts a slice of initial state using root state hash.
+    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, GlobalStateError>;
+
     /// Query state.
-    fn query(&self, query_request: QueryRequest) -> QueryResult {
-        match self.tracking_copy(query_request.state_hash()) {
-            Ok(Some(tc)) => match tc.query(query_request.key(), query_request.path()) {
+    fn query(&self, request: QueryRequest) -> QueryResult {
+        match self.tracking_copy(request.state_hash()) {
+            Ok(Some(tc)) => match tc.query(request.key(), request.path()) {
                 Ok(ret) => ret.into(),
-                Err(err) => QueryResult::TrackingCopyError(err),
+                Err(err) => QueryResult::Failure(err),
             },
             Ok(None) => QueryResult::RootNotFound,
-            Err(err) => QueryResult::StorageError(err),
+            Err(err) => QueryResult::Failure(TrackingCopyError::Storage(err)),
         }
     }
 
-    /// Returns an empty root hash.
-    fn empty_root(&self) -> Digest;
-
-    /// Reads a full `Trie` (never chunked) from the state if it is present
-    fn get_trie_full(&self, trie_key: &Digest) -> Result<Option<TrieRaw>, GlobalStateError>;
-
-    /// Insert a trie node into the trie
-    fn put_trie(&self, trie: &[u8]) -> Result<Digest, GlobalStateError>;
-
-    /// Finds all the children of `trie_raw` which aren't present in the state.
-    fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, GlobalStateError>;
-
-    /// Prunes key from the global state.
-    fn prune_keys(
-        &self,
-        root: Digest,
-        keys_to_delete: &[Key],
-    ) -> Result<PruneResult, GlobalStateError>;
-
     /// Query balance state.
-    fn balance(&self, balance_request: BalanceRequest) -> BalanceResult {
-        match self.tracking_copy(balance_request.state_hash()) {
+    fn balance(&self, request: BalanceRequest) -> BalanceResult {
+        match self.tracking_copy(request.state_hash()) {
             Ok(Some(tracking_copy)) => {
-                let purse_uref = balance_request.purse_uref();
+                let purse_uref = request.purse_uref();
                 let purse_key = purse_uref.into();
                 // read the new hold records if any exist
                 // check their timestamps..if stale tc.prune(that item)
@@ -156,6 +153,332 @@ pub trait StateProvider {
             Err(err) => BalanceResult::Failure(TrackingCopyError::Storage(err)),
         }
     }
+
+    /// Get the requested era validators.
+    fn era_validators(&self, request: EraValidatorsRequest) -> EraValidatorsResult {
+        let state_hash = request.state_hash();
+        let mut tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => tc,
+            Ok(None) => return EraValidatorsResult::RootNotFound,
+            Err(err) => return EraValidatorsResult::Failure(TrackingCopyError::Storage(err)),
+        };
+
+        let query_request = match tc.get_system_contracts() {
+            Ok(scr) => match scr.get(AUCTION).copied() {
+                Some(auction_hash) => QueryRequest::new(
+                    state_hash,
+                    Key::addressable_entity_key(EntityKindTag::System, auction_hash),
+                    vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()],
+                ),
+                None => return EraValidatorsResult::AuctionNotFound,
+            },
+            Err(err) => return EraValidatorsResult::Failure(err),
+        };
+
+        let snapshot = match self.query(query_request) {
+            QueryResult::RootNotFound => return EraValidatorsResult::RootNotFound,
+            QueryResult::Failure(error) => {
+                error!(?error, "unexpected tracking copy error");
+                return EraValidatorsResult::Failure(error);
+            }
+            QueryResult::ValueNotFound(msg) => {
+                error!(%msg, "value not found");
+                return EraValidatorsResult::ValueNotFound(msg);
+            }
+            QueryResult::Success { value, proofs: _ } => {
+                let cl_value = match value.into_cl_value() {
+                    Some(snapshot_cl_value) => snapshot_cl_value,
+                    None => {
+                        error!("unexpected query failure; seigniorage recipients snapshot is not a CLValue");
+                        return EraValidatorsResult::Failure(
+                            TrackingCopyError::UnexpectedStoredValueVariant,
+                        );
+                    }
+                };
+
+                match cl_value.into_t() {
+                    Ok(snapshot) => snapshot,
+                    Err(cve) => {
+                        return EraValidatorsResult::Failure(TrackingCopyError::CLValue(cve));
+                    }
+                }
+            }
+        };
+
+        let era_validators = auction::detail::era_validators_from_snapshot(snapshot);
+        EraValidatorsResult::Success { era_validators }
+    }
+
+    /// Gets the bids.
+    fn bids(&self, request: BidsRequest) -> BidsResult {
+        let state_hash = request.state_hash();
+        let mut tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => tc,
+            Ok(None) => return BidsResult::RootNotFound,
+            Err(err) => return BidsResult::Failure(TrackingCopyError::Storage(err)),
+        };
+
+        let bid_keys = match tc.get_keys(&KeyTag::BidAddr) {
+            Ok(ret) => ret,
+            Err(err) => return BidsResult::Failure(err),
+        };
+
+        let mut bids = vec![];
+        for key in bid_keys.iter() {
+            match tc.get(key) {
+                Ok(ret) => match ret {
+                    Some(StoredValue::BidKind(bid_kind)) => {
+                        bids.push(bid_kind);
+                    }
+                    Some(_) => {
+                        return BidsResult::Failure(TrackingCopyError::UnexpectedStoredValueVariant)
+                    }
+                    None => return BidsResult::Failure(TrackingCopyError::MissingBid(*key)),
+                },
+                Err(error) => return BidsResult::Failure(error),
+            }
+        }
+        BidsResult::Success { bids }
+    }
+
+    /// Gets the execution result checksum.
+    fn execution_result_checksum(
+        &self,
+        request: ExecutionResultsChecksumRequest,
+    ) -> ExecutionResultsChecksumResult {
+        let state_hash = request.state_hash();
+        let mut tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => tc,
+            Ok(None) => return ExecutionResultsChecksumResult::RootNotFound,
+            Err(err) => {
+                return ExecutionResultsChecksumResult::Failure(TrackingCopyError::Storage(err))
+            }
+        };
+        match tc.get_checksum_registry() {
+            Ok(Some(registry)) => match registry.get(EXECUTION_RESULTS_CHECKSUM_NAME) {
+                Some(checksum) => ExecutionResultsChecksumResult::Success {
+                    checksum: *checksum,
+                },
+                None => ExecutionResultsChecksumResult::ChecksumNotFound,
+            },
+            Ok(None) => ExecutionResultsChecksumResult::RegistryNotFound,
+            Err(err) => ExecutionResultsChecksumResult::Failure(err),
+        }
+    }
+
+    /// Gets an addressable entity.
+    fn addressable_entity(&self, request: AddressableEntityRequest) -> AddressableEntityResult {
+        let key = request.key();
+        let query_key = match key {
+            Key::Account(_) => {
+                let query_request = QueryRequest::new(request.state_hash(), key, vec![]);
+                match self.query(query_request) {
+                    QueryResult::RootNotFound => return AddressableEntityResult::RootNotFound,
+                    QueryResult::ValueNotFound(msg) => {
+                        return AddressableEntityResult::ValueNotFound(msg)
+                    }
+                    QueryResult::Failure(err) => return AddressableEntityResult::Failure(err),
+                    QueryResult::Success { value, .. } => {
+                        if let StoredValue::Account(account) = *value {
+                            // legacy account that has not been migrated
+                            let entity = AddressableEntity::from(account);
+                            return AddressableEntityResult::Success { entity };
+                        }
+                        if let StoredValue::CLValue(cl_value) = &*value {
+                            // the corresponding entity key should be under the account's key
+                            match cl_value.clone().into_t::<Key>() {
+                                Ok(entity_key @ Key::AddressableEntity(_)) => entity_key,
+                                Ok(invalid_key) => {
+                                    warn!(
+                                        %key,
+                                        %invalid_key,
+                                        type_name = %value.type_name(),
+                                        "expected a Key::AddressableEntity to be stored under account hash"
+                                    );
+                                    return AddressableEntityResult::Failure(
+                                        TrackingCopyError::UnexpectedStoredValueVariant,
+                                    );
+                                }
+                                Err(error) => {
+                                    error!(%key, %error, "expected a CLValue::Key to be stored under account hash");
+                                    return AddressableEntityResult::Failure(
+                                        TrackingCopyError::CLValue(error),
+                                    );
+                                }
+                            };
+                        };
+                        warn!(
+                            %key,
+                            type_name = %value.type_name(),
+                            "expected a CLValue::Key or Account to be stored under account hash"
+                        );
+                        return AddressableEntityResult::Failure(
+                            TrackingCopyError::UnexpectedStoredValueVariant,
+                        );
+                    }
+                }
+            }
+            Key::Hash(contract_hash) => {
+                let query_request = QueryRequest::new(request.state_hash(), key, vec![]);
+                match self.query(query_request) {
+                    QueryResult::RootNotFound => return AddressableEntityResult::RootNotFound,
+                    QueryResult::ValueNotFound(msg) => {
+                        return AddressableEntityResult::ValueNotFound(msg)
+                    }
+                    QueryResult::Failure(err) => return AddressableEntityResult::Failure(err),
+                    QueryResult::Success { value, .. } => {
+                        if let StoredValue::Contract(contract) = *value {
+                            // legacy contract that has not been migrated
+                            let entity = AddressableEntity::from(contract);
+                            return AddressableEntityResult::Success { entity };
+                        }
+                        Key::AddressableEntity(EntityAddr::SmartContract(contract_hash))
+                    }
+                }
+            }
+            Key::AddressableEntity(_) => key,
+            _ => {
+                return AddressableEntityResult::Failure(TrackingCopyError::UnexpectedKeyVariant(
+                    key,
+                ))
+            }
+        };
+
+        let query_request = QueryRequest::new(request.state_hash(), query_key, vec![]);
+        match self.query(query_request) {
+            QueryResult::RootNotFound => AddressableEntityResult::RootNotFound,
+            QueryResult::ValueNotFound(msg) => AddressableEntityResult::ValueNotFound(msg),
+            QueryResult::Success { value, .. } => {
+                let entity = match value.as_addressable_entity() {
+                    Some(entity) => entity.clone(),
+                    None => {
+                        return AddressableEntityResult::Failure(
+                            TrackingCopyError::UnexpectedStoredValueVariant,
+                        )
+                    }
+                };
+                AddressableEntityResult::Success { entity }
+            }
+            QueryResult::Failure(err) => AddressableEntityResult::Failure(err),
+        }
+    }
+
+    /// Gets total supply.
+    fn total_supply(&self, request: TotalSupplyRequest) -> TotalSupplyResult {
+        let state_hash = request.state_hash();
+        let mut tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => tc,
+            Ok(None) => return TotalSupplyResult::RootNotFound,
+            Err(err) => return TotalSupplyResult::Failure(TrackingCopyError::Storage(err)),
+        };
+
+        let query_request = match tc.get_system_contracts() {
+            Ok(scr) => match scr.get(MINT).copied() {
+                Some(mint_hash) => QueryRequest::new(
+                    state_hash,
+                    Key::addressable_entity_key(EntityKindTag::System, mint_hash),
+                    vec![TOTAL_SUPPLY_KEY.to_string()],
+                ),
+                None => {
+                    error!("unexpected query failure; mint not found");
+                    return TotalSupplyResult::MintNotFound;
+                }
+            },
+            Err(err) => return TotalSupplyResult::Failure(err),
+        };
+
+        match self.query(query_request) {
+            QueryResult::RootNotFound => TotalSupplyResult::RootNotFound,
+            QueryResult::ValueNotFound(msg) => TotalSupplyResult::ValueNotFound(msg),
+            QueryResult::Failure(tce) => TotalSupplyResult::Failure(tce),
+            QueryResult::Success { value, proofs: _ } => {
+                let cl_value = match value.into_cl_value() {
+                    Some(cl_value) => cl_value,
+                    None => {
+                        error!("unexpected query failure; total supply is not a CLValue");
+                        return TotalSupplyResult::Failure(
+                            TrackingCopyError::UnexpectedStoredValueVariant,
+                        );
+                    }
+                };
+
+                match cl_value.into_t() {
+                    Ok(total_supply) => TotalSupplyResult::Success { total_supply },
+                    Err(cve) => TotalSupplyResult::Failure(TrackingCopyError::CLValue(cve)),
+                }
+            }
+        }
+    }
+
+    /// Gets the current round seigniorage rate.
+    fn round_seigniorage_rate(
+        &self,
+        request: RoundSeigniorageRateRequest,
+    ) -> RoundSeigniorageRateResult {
+        let state_hash = request.state_hash();
+        let mut tc = match self.tracking_copy(state_hash) {
+            Ok(Some(tc)) => tc,
+            Ok(None) => return RoundSeigniorageRateResult::RootNotFound,
+            Err(err) => {
+                return RoundSeigniorageRateResult::Failure(TrackingCopyError::Storage(err))
+            }
+        };
+
+        let query_request = match tc.get_system_contracts() {
+            Ok(scr) => match scr.get(MINT).copied() {
+                Some(mint_hash) => QueryRequest::new(
+                    state_hash,
+                    Key::addressable_entity_key(EntityKindTag::System, mint_hash),
+                    vec![ROUND_SEIGNIORAGE_RATE_KEY.to_string()],
+                ),
+                None => {
+                    error!("unexpected query failure; mint not found");
+                    return RoundSeigniorageRateResult::MintNotFound;
+                }
+            },
+            Err(err) => return RoundSeigniorageRateResult::Failure(err),
+        };
+
+        match self.query(query_request) {
+            QueryResult::RootNotFound => RoundSeigniorageRateResult::RootNotFound,
+            QueryResult::ValueNotFound(msg) => RoundSeigniorageRateResult::ValueNotFound(msg),
+            QueryResult::Failure(tce) => RoundSeigniorageRateResult::Failure(tce),
+            QueryResult::Success { value, proofs: _ } => {
+                let cl_value = match value.into_cl_value() {
+                    Some(cl_value) => cl_value,
+                    None => {
+                        error!("unexpected query failure; total supply is not a CLValue");
+                        return RoundSeigniorageRateResult::Failure(
+                            TrackingCopyError::UnexpectedStoredValueVariant,
+                        );
+                    }
+                };
+
+                match cl_value.into_t() {
+                    Ok(rate) => RoundSeigniorageRateResult::Success { rate },
+                    Err(cve) => {
+                        RoundSeigniorageRateResult::Failure(TrackingCopyError::CLValue(cve))
+                    }
+                }
+            }
+        }
+    }
+
+    /// Reads a full `Trie` (never chunked) from the state if it is present
+    fn get_trie_full(&self, trie_key: &Digest) -> Result<Option<TrieRaw>, GlobalStateError>;
+
+    /// Insert a trie node into the trie
+    fn put_trie(&self, trie: &[u8]) -> Result<Digest, GlobalStateError>;
+
+    /// Finds all the children of `trie_raw` which aren't present in the state.
+    fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, GlobalStateError>;
+
+    /// Prunes key from the global state.
+    fn prune_keys(
+        &self,
+        root: Digest,
+        keys_to_delete: &[Key],
+    ) -> Result<PruneResult, GlobalStateError>;
 
     fn transfer(&self, _transfer_request: TransferRequest) -> TransferResult {
         unimplemented!()
