@@ -8,9 +8,9 @@ use casper_engine_test_support::{
 };
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AddressableEntityHash, EraId, Gas,
-    HostFunction, HostFunctionCost, HostFunctionCosts, Key, MintCosts, Motes, ProtocolVersion,
-    PublicKey, SecretKey, SystemConfig, UpgradeConfig, WasmConfig, DEFAULT_MAX_STACK_HEIGHT,
-    DEFAULT_WASM_MAX_MEMORY, U512,
+    HostFunction, HostFunctionCost, HostFunctionCosts, Key, MintCosts, Motes,
+    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, SecretKey, SystemConfig, WasmConfig,
+    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
 const TRANSFER_TO_ACCOUNT_CONTRACT: &str = "transfer_to_account.wasm";
@@ -762,7 +762,7 @@ fn make_wasm_config(
     )
 }
 
-fn make_upgrade_request() -> UpgradeConfig {
+fn make_upgrade_request() -> ProtocolUpgradeConfig {
     UpgradeRequestBuilder::new()
         .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
         .with_new_protocol_version(*NEW_PROTOCOL_VERSION)

@@ -8,7 +8,6 @@ pub mod execution_result;
 mod prune;
 pub mod step;
 mod transfer;
-pub mod upgrade;
 
 use itertools::Itertools;
 
@@ -19,7 +18,6 @@ use std::{
     rc::Rc,
 };
 
-use num_rational::Ratio;
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 use tracing::{debug, error, trace, warn};
@@ -30,7 +28,8 @@ use casper_storage::{
         get_bids::{BidsRequest, BidsResult},
         query::{QueryRequest, QueryResult},
         DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FlushRequest, FlushResult,
-        GenesisRequest, GenesisResult, PutTrieRequest, TrieRequest,
+        GenesisRequest, GenesisResult, ProtocolUpgradeRequest, ProtocolUpgradeResult,
+        PutTrieRequest, TrieRequest,
     },
     global_state::{
         self,
@@ -57,19 +56,17 @@ use casper_types::{
     package::{EntityVersions, Groups, PackageStatus},
     system::{
         auction::{
-            BidAddr, BidKind, ValidatorBid, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
-            ARG_REWARDS_MAP, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY,
-            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, ARG_REWARDS_MAP,
+            ARG_VALIDATOR_PUBLIC_KEYS, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
         },
         handle_payment::{self, ACCUMULATION_PURSE_KEY},
-        mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
+        mint::{self},
         AUCTION, HANDLE_PAYMENT, MINT,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, ApiError, BlockTime, ByteCodeHash,
     CLValue, ChecksumRegistry, DeployHash, DeployInfo, Digest, EntityAddr, EntryPoints,
     ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Package, PackageHash, Phase,
-    ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, SystemContractRegistry, URef,
-    UpgradeConfig, U512,
+    ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, SystemEntityRegistry, URef, U512,
 };
 
 use self::transfer::NewTransferTargetMode;
@@ -86,14 +83,12 @@ pub use self::{
     prune::{PruneConfig, PruneResult},
     step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
-    upgrade::UpgradeSuccess,
 };
 
 use crate::{
     engine_state::{
         execution_kind::ExecutionKind,
         execution_result::{ExecutionResultBuilder, ExecutionResults},
-        upgrade::{ProtocolUpgradeError, SystemUpgrader},
     },
     execution::{self, DirectSystemContractCall, Executor},
     runtime::RuntimeStack,
@@ -256,8 +251,8 @@ where
     ///
     /// Takes genesis configuration passed through [`GenesisRequest`] and creates the system
     /// contracts, sets up the genesis accounts, and sets up the auction state based on that. At
-    /// the end of the process, [`SystemContractRegistry`] is persisted under the special global
-    /// state space [`Key::SystemContractRegistry`].
+    /// the end of the process, [`SystemEntityRegistry`] is persisted under the special global
+    /// state space [`Key::SystemEntityRegistry`].
     ///
     /// Returns a [`GenesisResult`].
     pub fn commit_genesis(&self, request: GenesisRequest) -> GenesisResult {
@@ -269,316 +264,8 @@ where
     /// This process applies changes to the global state.
     ///
     /// Returns [`UpgradeSuccess`].
-    pub fn commit_upgrade(&self, upgrade_config: UpgradeConfig) -> Result<UpgradeSuccess, Error> {
-        // per specification:
-        // https://casperlabs.atlassian.net/wiki/spaces/EN/pages/139854367/Upgrading+System+Contracts+Specification
-
-        // 3.1.1.1.1.1 validate pre state hash exists
-        // 3.1.2.1 get a tracking_copy at the provided pre_state_hash
-        let pre_state_hash = upgrade_config.pre_state_hash();
-        let tracking_copy = match self.tracking_copy(pre_state_hash)? {
-            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
-            None => return Err(Error::RootNotFound(pre_state_hash)),
-        };
-
-        // 3.1.1.1.1.2 current protocol version is required
-        let current_protocol_version = upgrade_config.current_protocol_version();
-
-        // 3.1.1.1.1.3 activation point is not currently used by EE; skipping
-        // 3.1.1.1.1.4 upgrade point protocol version validation
-        let new_protocol_version = upgrade_config.new_protocol_version();
-
-        let upgrade_check_result =
-            current_protocol_version.check_next_version(&new_protocol_version);
-
-        if upgrade_check_result.is_invalid() {
-            return Err(Error::InvalidProtocolVersion(new_protocol_version));
-        }
-
-        let mut registry = if let Ok(registry) = tracking_copy.borrow_mut().get_system_contracts() {
-            registry
-        } else {
-            // Check the upgrade config for the registry
-            let upgrade_registry = upgrade_config
-                .global_state_update()
-                .get(&Key::SystemContractRegistry)
-                .ok_or_else(|| {
-                    error!("Registry is absent in upgrade config");
-                    Error::ProtocolUpgrade(ProtocolUpgradeError::FailedToCreateSystemRegistry)
-                })?
-                .to_owned();
-            if let StoredValue::CLValue(cl_registry) = upgrade_registry {
-                CLValue::into_t::<SystemContractRegistry>(cl_registry).map_err(|error| {
-                    let error_msg = format!("Conversion to system registry failed: {:?}", error);
-                    error!("{}", error_msg);
-                    Error::Bytesrepr(error_msg)
-                })?
-            } else {
-                error!("Failed to create registry as StoreValue in upgrade config is not CLValue");
-                return Err(Error::ProtocolUpgrade(
-                    ProtocolUpgradeError::FailedToCreateSystemRegistry,
-                ));
-            }
-        };
-
-        let mint_hash = *registry.get(MINT).ok_or_else(|| {
-            error!("Missing system mint contract hash");
-            Error::MissingSystemContractHash(MINT.to_string())
-        })?;
-        let auction_hash = *registry.get(AUCTION).ok_or_else(|| {
-            error!("Missing system auction contract hash");
-            Error::MissingSystemContractHash(AUCTION.to_string())
-        })?;
-
-        let handle_payment_hash = *registry.get(HANDLE_PAYMENT).ok_or_else(|| {
-            error!("Missing system handle payment contract hash");
-            Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
-        })?;
-
-        if let Some(standard_payment_hash) = registry.remove_standard_payment() {
-            // Write the chainspec registry to global state
-            let cl_value_chainspec_registry =
-                CLValue::from_t(registry).map_err(|error| Error::Bytesrepr(error.to_string()))?;
-
-            tracking_copy.borrow_mut().write(
-                Key::SystemContractRegistry,
-                StoredValue::CLValue(cl_value_chainspec_registry),
-            );
-
-            // Prune away standard payment from global state.
-            tracking_copy
-                .borrow_mut()
-                .prune(Key::Hash(standard_payment_hash.value()));
-        };
-
-        // Write the chainspec registry to global state
-        let cl_value_chainspec_registry =
-            CLValue::from_t(upgrade_config.chainspec_registry().clone())
-                .map_err(|error| Error::Bytesrepr(error.to_string()))?;
-
-        tracking_copy.borrow_mut().write(
-            Key::ChainspecRegistry,
-            StoredValue::CLValue(cl_value_chainspec_registry),
-        );
-
-        // Cycle through the system contracts and update
-        // their metadata if there is a change in entry points.
-        let system_upgrader: SystemUpgrader<S> = SystemUpgrader::new(
-            new_protocol_version,
-            current_protocol_version,
-            tracking_copy.clone(),
-        );
-
-        system_upgrader.migrate_system_account(pre_state_hash)?;
-
-        system_upgrader
-            .create_accumulation_purse_if_required(&handle_payment_hash, &self.config)
-            .map_err(Error::ProtocolUpgrade)?;
-
-        system_upgrader
-            .refresh_system_contracts(&mint_hash, &auction_hash, &handle_payment_hash)
-            .map_err(Error::ProtocolUpgrade)?;
-
-        // Prune away the standard payment record.
-
-        // 3.1.1.1.1.7 new total validator slots is optional
-        if let Some(new_validator_slots) = upgrade_config.new_validator_slots() {
-            // 3.1.2.4 if new total validator slots is provided, update auction contract state
-            let auction_addr = EntityAddr::new_system_entity_addr(auction_hash.value());
-
-            let auction_named_keys = tracking_copy.borrow_mut().get_named_keys(auction_addr)?;
-
-            let validator_slots_key = auction_named_keys
-                .get(VALIDATOR_SLOTS_KEY)
-                .expect("validator_slots key must exist in auction contract's named keys");
-            let value = StoredValue::CLValue(
-                CLValue::from_t(new_validator_slots)
-                    .map_err(|_| Error::Bytesrepr("new_validator_slots".to_string()))?,
-            );
-            tracking_copy
-                .borrow_mut()
-                .write(*validator_slots_key, value);
-        }
-
-        if let Some(new_auction_delay) = upgrade_config.new_auction_delay() {
-            debug!(%new_auction_delay, "Auction delay changed as part of the upgrade");
-
-            let auction_addr = EntityAddr::new_system_entity_addr(auction_hash.value());
-
-            let auction_named_keys = tracking_copy.borrow_mut().get_named_keys(auction_addr)?;
-
-            let auction_delay_key = auction_named_keys
-                .get(AUCTION_DELAY_KEY)
-                .expect("auction_delay key must exist in auction contract's named keys");
-            let value = StoredValue::CLValue(
-                CLValue::from_t(new_auction_delay)
-                    .map_err(|_| Error::Bytesrepr("new_auction_delay".to_string()))?,
-            );
-            tracking_copy.borrow_mut().write(*auction_delay_key, value);
-        }
-
-        if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period_millis() {
-            let auction_addr = EntityAddr::new_system_entity_addr(auction_hash.value());
-
-            let auction_named_keys = tracking_copy.borrow_mut().get_named_keys(auction_addr)?;
-
-            let locked_funds_period_key = auction_named_keys
-                .get(LOCKED_FUNDS_PERIOD_KEY)
-                .expect("locked_funds_period key must exist in auction contract's named keys");
-            let value = StoredValue::CLValue(
-                CLValue::from_t(new_locked_funds_period)
-                    .map_err(|_| Error::Bytesrepr("new_locked_funds_period".to_string()))?,
-            );
-            tracking_copy
-                .borrow_mut()
-                .write(*locked_funds_period_key, value);
-        }
-
-        if let Some(new_round_seigniorage_rate) = upgrade_config.new_round_seigniorage_rate() {
-            let new_round_seigniorage_rate: Ratio<U512> = {
-                let (numer, denom) = new_round_seigniorage_rate.into();
-                Ratio::new(numer.into(), denom.into())
-            };
-
-            let mint_addr = EntityAddr::new_system_entity_addr(mint_hash.value());
-
-            let mint_named_keys = tracking_copy.borrow_mut().get_named_keys(mint_addr)?;
-
-            let locked_funds_period_key = mint_named_keys
-                .get(ROUND_SEIGNIORAGE_RATE_KEY)
-                .expect("round_seigniorage_rate key must exist in mint contract's named keys");
-            let value = StoredValue::CLValue(
-                CLValue::from_t(new_round_seigniorage_rate)
-                    .map_err(|_| Error::Bytesrepr("new_round_seigniorage_rate".to_string()))?,
-            );
-            tracking_copy
-                .borrow_mut()
-                .write(*locked_funds_period_key, value);
-        }
-
-        // One time upgrade of existing bids
-        {
-            let mut borrow = tracking_copy.borrow_mut();
-            if let Ok(existing_bid_keys) = borrow.get_keys(&KeyTag::Bid) {
-                for key in existing_bid_keys {
-                    if let Some(StoredValue::Bid(existing_bid)) =
-                        borrow.get(&key).map_err(Into::<Error>::into)?
-                    {
-                        // prune away the original record, we don't need it anymore
-                        borrow.prune(key);
-
-                        if existing_bid.staked_amount().is_zero() {
-                            // the previous logic enforces unbonding all delegators of
-                            // a validator that reduced their personal stake to 0 (and we have
-                            // various existent tests that prove this), thus there is no need
-                            // to handle the complicated hypothetical case of one or more
-                            // delegator stakes being > 0 if the validator stake is 0.
-                            //
-                            // tl;dr this is a "zombie" bid and we don't need to continue
-                            // carrying it forward at tip.
-                            continue;
-                        }
-
-                        let validator_public_key = existing_bid.validator_public_key();
-                        let validator_bid_addr = BidAddr::from(validator_public_key.clone());
-                        let validator_bid = ValidatorBid::from(*existing_bid.clone());
-                        borrow.write(
-                            validator_bid_addr.into(),
-                            StoredValue::BidKind(BidKind::Validator(Box::new(validator_bid))),
-                        );
-
-                        let delegators = existing_bid.delegators().clone();
-                        for (_, delegator) in delegators {
-                            let delegator_bid_addr = BidAddr::new_from_public_keys(
-                                validator_public_key,
-                                Some(delegator.delegator_public_key()),
-                            );
-                            // the previous code was removing a delegator bid from the embedded
-                            // collection within their validator's bid when the delegator fully
-                            // unstaked, so technically we don't need to check for 0 balance here.
-                            // However, since it is low effort to check, doing it just to be sure.
-                            if !delegator.staked_amount().is_zero() {
-                                borrow.write(
-                                    delegator_bid_addr.into(),
-                                    StoredValue::BidKind(BidKind::Delegator(Box::new(delegator))),
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // apply accepted global state updates (if any)
-        for (key, value) in upgrade_config.global_state_update() {
-            tracking_copy.borrow_mut().write(*key, value.clone());
-        }
-
-        // We insert the new unbonding delay once the purses to be paid out have been transformed
-        // based on the previous unbonding delay.
-        if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
-            let auction_addr = EntityAddr::new_system_entity_addr(auction_hash.value());
-
-            let auction_named_keys = tracking_copy.borrow_mut().get_named_keys(auction_addr)?;
-
-            let unbonding_delay_key = auction_named_keys
-                .get(UNBONDING_DELAY_KEY)
-                .expect("unbonding_delay key must exist in auction contract's named keys");
-            let value = StoredValue::CLValue(
-                CLValue::from_t(new_unbonding_delay)
-                    .map_err(|_| Error::Bytesrepr("new_unbonding_delay".to_string()))?,
-            );
-            tracking_copy
-                .borrow_mut()
-                .write(*unbonding_delay_key, value);
-        }
-
-        // EraInfo migration
-        if let Some(activation_point) = upgrade_config.activation_point() {
-            // The highest stored era is the immediate predecessor of the activation point.
-            let highest_era_info_id = activation_point.saturating_sub(1);
-            let highest_era_info_key = Key::EraInfo(highest_era_info_id);
-
-            let get_result = tracking_copy
-                .borrow_mut()
-                .get(&highest_era_info_key)
-                .map_err(|error| Error::Exec(error.into()))?;
-
-            match get_result {
-                Some(stored_value @ StoredValue::EraInfo(_)) => {
-                    tracking_copy
-                        .borrow_mut()
-                        .write(Key::EraSummary, stored_value);
-                }
-                Some(other_stored_value) => {
-                    // This should not happen as we only write EraInfo variants.
-                    error!(stored_value_type_name=%other_stored_value.type_name(),
-                        "EraInfo key contains unexpected StoredValue variant");
-                    return Err(Error::ProtocolUpgrade(
-                        ProtocolUpgradeError::UnexpectedStoredValueVariant,
-                    ));
-                }
-                None => {
-                    // Can't find key
-                    // Most likely this chain did not yet ran an auction, or recently completed a
-                    // prune
-                }
-            };
-        }
-
-        let effects = tracking_copy.borrow().effects();
-
-        // commit
-        let post_state_hash = self
-            .state
-            .commit(pre_state_hash, effects.clone())
-            .map_err(Into::<Error>::into)?;
-
-        // return result and effects
-        Ok(UpgradeSuccess {
-            post_state_hash,
-            effects,
-        })
+    pub fn commit_upgrade(&self, request: ProtocolUpgradeRequest) -> ProtocolUpgradeResult {
+        self.state.protocol_upgrade(request)
     }
 
     /// Commit a prune of leaf nodes from the tip of the merkle trie.
@@ -2586,7 +2273,7 @@ where
     pub fn get_system_contract_registry(
         &self,
         state_root_hash: Digest,
-    ) -> Result<SystemContractRegistry, Error> {
+    ) -> Result<SystemEntityRegistry, Error> {
         let tracking_copy = match self.tracking_copy(state_root_hash)? {
             None => return Err(Error::RootNotFound(state_root_hash)),
             Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),

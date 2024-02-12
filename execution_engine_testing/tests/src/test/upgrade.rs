@@ -862,7 +862,7 @@ fn setup_upgrade_threshold_state() -> (LmdbWasmTestBuilder, ProtocolVersion, Acc
         .build();
 
     builder
-        .upgrade_with_upgrade_request_using_scratch(
+        .upgrade_using_scratch(
             builder.get_engine_state().config().clone(),
             &mut upgrade_request,
         )

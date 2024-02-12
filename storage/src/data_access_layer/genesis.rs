@@ -51,17 +51,6 @@ impl GenesisRequest {
     pub fn chainspec_registry(&self) -> &ChainspecRegistry {
         &self.chainspec_registry
     }
-
-    //
-    // /// Returns mutable reference to the configuration.
-    // pub fn config_mut(&mut self) -> &mut GenesisConfig {
-    //     &mut self.config
-    // }
-    //
-    // /// Returns genesis configuration and consumes the object.
-    // pub fn take_config(self) -> GenesisConfig {
-    //     self.config
-    // }
 }
 
 impl Distribution<GenesisRequest> for Standard {
@@ -79,6 +68,8 @@ impl Distribution<GenesisRequest> for Standard {
     }
 }
 
+/// Represents a result of a `genesis` request.
+#[derive(Debug, Clone)]
 pub enum GenesisResult {
     Fatal(String),
     Failure(GenesisError),
@@ -96,6 +87,7 @@ impl GenesisResult {
         matches!(self, GenesisResult::Success { .. })
     }
 
+    /// Returns a Result matching the original api for this functionality.
     pub fn as_legacy(self) -> Result<(Digest, Effects), Box<GenesisError>> {
         match self {
             GenesisResult::Fatal(_) => Err(Box::new(GenesisError::StateUninitialized)),
