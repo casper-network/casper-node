@@ -421,7 +421,7 @@ async fn transfer_deploy_mixup_and_replay() {
     // This test-case currently fails because we cannot detect "transfer" sneaking as "deploy".
     // There is a check in BlockValidator::handle_transaction_fetched():
     //      if DeployOrTransactionHash::new(&item) != dt_hash {
-    // which is `true` on 2.0, but remains `false` after the upgrade.
+    // which is `true` on `feat-2.0`, but remains `false` on this branch.
     // Before going down the rabbit-hole, first clarify if the Transfer/Deploy distinction is still
     // the case for the new Transaction type.
     // let deploys = vec![deploy1.clone(), deploy2.clone(), transfer2.clone()];
