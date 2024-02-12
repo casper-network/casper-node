@@ -498,22 +498,22 @@ impl TransactionBuffer {
                             }
                             have_hit_standard_limit = true;
                         }
-                        AddError::TransactionCount(category) => {
-                            match category {
-                                TransactionV1Category::InstallUpgrade => {
-                                    have_hit_install_upgrade_limit = true
-                                }
-                                TransactionV1Category::Standard => {
-                                    have_hit_standard_limit = true;
-                                }
-                                TransactionV1Category::Staking => {
-                                    have_hit_staking_limit = true;
-                                }
-                                // TODO[RC]: Handle these
-                                TransactionV1Category::Transfer => todo!(),
-                                TransactionV1Category::Other => todo!(),
+                        AddError::TransactionCount(category) => match category {
+                            TransactionV1Category::InstallUpgrade => {
+                                have_hit_install_upgrade_limit = true
                             }
-                        }
+                            TransactionV1Category::Standard => {
+                                have_hit_standard_limit = true;
+                            }
+                            TransactionV1Category::Staking => {
+                                have_hit_staking_limit = true;
+                            }
+                            TransactionV1Category::Transfer => {
+                                have_hit_transfer_limit = true;
+                            }
+                            // TODO[RC]: Say what?
+                            TransactionV1Category::Other => todo!(),
+                        },
                         AddError::ApprovalCount if has_multiple_approvals => {
                             // keep iterating, we can maybe fit in a deploy with fewer approvals
                         }

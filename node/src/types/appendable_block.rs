@@ -388,9 +388,9 @@ impl AppendableBlock {
         additional_approvals > remaining_approval_slots - remaining_deploy_slots + 1
     }
 
-    fn has_max_category_count(&self, categbory: &TransactionV1Category) -> bool {
-        let category_count = self.category_count(categbory);
-        match categbory {
+    fn has_max_category_count(&self, category: &TransactionV1Category) -> bool {
+        let category_count = self.category_count(category);
+        match category {
             TransactionV1Category::InstallUpgrade => {
                 category_count == self.transaction_config.block_max_install_upgrade_count as usize
             }
@@ -398,10 +398,11 @@ impl AppendableBlock {
                 category_count == self.transaction_config.block_max_staking_count as usize
             }
             TransactionV1Category::Standard => {
-                self.transactions.len() == self.transaction_config.block_max_standard_count as usize
+                category_count == self.transaction_config.block_max_standard_count as usize
             }
-            // TODO[RC]: Handle these.
-            TransactionV1Category::Transfer => todo!(),
+            TransactionV1Category::Transfer => {
+                category_count == self.transaction_config.block_max_transfer_count as usize
+            }
             TransactionV1Category::Other => todo!(),
         }
     }
