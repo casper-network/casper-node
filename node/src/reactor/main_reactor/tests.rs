@@ -524,10 +524,12 @@ impl TestFixture {
             .expect("should not have have storage error")
             .expect("should have block");
 
+        let bids_request = BidsRequest::new(*highest_block.state_root_hash());
         let bids_result = runner
             .main_reactor()
             .contract_runtime
-            .auction_state(*highest_block.state_root_hash());
+            .data_provider()
+            .bids(bids_request);
 
         if let BidsResult::Success { bids } = bids_result {
             match bids.iter().find(|bid_kind| {
