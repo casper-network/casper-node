@@ -39,16 +39,18 @@ use casper_storage::data_access_layer::{BidsRequest, BidsResult};
 use casper_storage::{
     data_access_layer::{
         AddressableEntityRequest, BlockStore, DataAccessLayer, ExecutionResultsChecksumRequest,
+        FlushRequest, FlushResult, TrieRequest,
     },
     global_state::{
+        error::Error as GlobalStateError,
         state::{lmdb::LmdbGlobalState, StateProvider},
         transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
 };
 use casper_types::{
-    bytesrepr::Bytes, BlockHash, BlockHeaderV2, Chainspec, ChainspecRawBytes, ChainspecRegistry,
-    Digest, EraId, ProtocolVersion, Timestamp, Transaction, UpgradeConfig,
+    BlockHash, BlockHeaderV2, Chainspec, ChainspecRawBytes, ChainspecRegistry, Digest, EraId,
+    ProtocolVersion, Timestamp, Transaction, UpgradeConfig,
 };
 
 use crate::{
@@ -58,7 +60,7 @@ use crate::{
             ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
             UnexecutedBlockAnnouncement,
         },
-        incoming::{TrieDemand, TrieRequest, TrieRequestIncoming},
+        incoming::{TrieDemand, TrieRequest as TrieRequestMessage, TrieRequestIncoming},
         requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
@@ -90,7 +92,7 @@ pub(crate) enum ContractRuntimeError {
     InvalidSerializedId(#[source] bincode::Error),
     // It was not possible to get trie with the specified id
     #[error("error retrieving trie by id: {0}")]
-    FailedToRetrieveTrieById(#[source] engine_state::Error),
+    FailedToRetrieveTrieById(#[source] GlobalStateError),
     /// Chunking error.
     #[error("failed to chunk the data {0}")]
     ChunkingError(#[source] ChunkingError),
@@ -530,7 +532,7 @@ impl ContractRuntime {
                     }
                 };
 
-                tracing::info!("rewards successfully computed");
+                info!("rewards successfully computed");
 
                 rewards
             } else {
@@ -685,43 +687,29 @@ impl ContractRuntime {
     }
 
     /// Reads the trie (or chunk of a trie) under the given key and index.
-    pub(crate) fn get_trie(
+    pub(crate) fn fetch_trie_local(
         &self,
         serialized_id: &[u8],
     ) -> Result<FetchResponse<TrieOrChunk, TrieOrChunkId>, ContractRuntimeError> {
         trace!(?serialized_id, "get_trie");
-
-        let id: TrieOrChunkId = bincode::deserialize(serialized_id)?;
-        let maybe_trie = Self::do_get_trie(&self.engine_state, &self.metrics, id)?;
-        Ok(FetchResponse::from_opt(id, maybe_trie))
-    }
-
-    fn do_get_trie(
-        engine_state: &EngineState<DataAccessLayer<LmdbGlobalState>>,
-        metrics: &Metrics,
-        trie_or_chunk_id: TrieOrChunkId,
-    ) -> Result<Option<TrieOrChunk>, ContractRuntimeError> {
-        let start = Instant::now();
-        let TrieOrChunkId(chunk_index, trie_key) = trie_or_chunk_id;
-        let ret = match engine_state.get_trie_full(trie_key)? {
-            None => Ok(None),
-            Some(trie_raw) => Ok(Some(TrieOrChunk::new(trie_raw.into(), chunk_index)?)),
+        let trie_or_chunk_id: TrieOrChunkId = bincode::deserialize(serialized_id)?;
+        let data_access_layer = Arc::clone(&self.data_access_layer);
+        let maybe_trie = {
+            let start = Instant::now();
+            let TrieOrChunkId(chunk_index, trie_key) = trie_or_chunk_id;
+            let req = TrieRequest::new(trie_key, Some(chunk_index));
+            let maybe_raw = data_access_layer
+                .trie(req)
+                .into_legacy()
+                .map_err(ContractRuntimeError::FailedToRetrieveTrieById)?;
+            let ret = match maybe_raw {
+                Some(raw) => Some(TrieOrChunk::new(raw.into(), chunk_index)?),
+                None => None,
+            };
+            self.metrics.get_trie.observe(start.elapsed().as_secs_f64());
+            ret
         };
-        metrics.get_trie.observe(start.elapsed().as_secs_f64());
-        ret
-    }
-
-    fn get_trie_full(
-        engine_state: &EngineState<DataAccessLayer<LmdbGlobalState>>,
-        metrics: &Metrics,
-        trie_key: Digest,
-    ) -> Result<Option<Bytes>, engine_state::Error> {
-        let start = Instant::now();
-        let result = engine_state.get_trie_full(trie_key);
-        metrics.get_trie.observe(start.elapsed().as_secs_f64());
-        // Extract the inner Bytes, we don't want this change to ripple through the system right
-        // now.
-        result.map(|option| option.map(|trie_raw| trie_raw.into_inner()))
+        Ok(FetchResponse::from_opt(trie_or_chunk_id, maybe_trie))
     }
 
     /// Returns the engine state, for testing only.
@@ -747,8 +735,8 @@ impl ContractRuntime {
     where
         REv: From<NetworkRequest<Message>> + Send,
     {
-        let TrieRequest(ref serialized_id) = *message;
-        let fetch_response = match self.get_trie(serialized_id) {
+        let TrieRequestMessage(ref serialized_id) = *message;
+        let fetch_response = match self.fetch_trie_local(serialized_id) {
             Ok(fetch_response) => fetch_response,
             Err(error) => {
                 debug!("failed to get trie: {}", error);
@@ -774,8 +762,8 @@ impl ContractRuntime {
             ..
         }: TrieDemand,
     ) -> Effects<Event> {
-        let TrieRequest(ref serialized_id) = *request_msg;
-        let fetch_response = match self.get_trie(serialized_id) {
+        let TrieRequestMessage(ref serialized_id) = *request_msg;
+        let fetch_response = match self.fetch_trie_local(serialized_id) {
             Ok(fetch_response) => fetch_response,
             Err(error) => {
                 // Something is wrong in our trie store, but be courteous and still send a reply.
@@ -881,7 +869,7 @@ impl ContractRuntime {
                 state_root_hash,
                 responder,
             } => {
-                trace!(?state_root_hash, "get exection results checksum request");
+                trace!(?state_root_hash, "get execution results checksum request");
                 let metrics = Arc::clone(&self.metrics);
                 let data_access_layer = Arc::clone(&self.data_access_layer);
                 async move {
@@ -958,56 +946,39 @@ impl ContractRuntime {
             }
             // trie related events
             ContractRuntimeRequest::GetTrie {
-                trie_or_chunk_id,
+                request: trie_request,
                 responder,
             } => {
-                trace!(?trie_or_chunk_id, "get_trie request");
-                let engine_state = Arc::clone(&self.engine_state);
+                trace!(?trie_request, "trie request");
                 let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
                 async move {
-                    let result = Self::do_get_trie(&engine_state, &metrics, trie_or_chunk_id);
-                    trace!(?result, "get_trie response");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            ContractRuntimeRequest::GetTrieFull {
-                trie_key,
-                responder,
-            } => {
-                trace!(?trie_key, "get_trie_full request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let result = Self::get_trie_full(&engine_state, &metrics, trie_key);
-                    trace!(?result, "get_trie_full response");
+                    let start = Instant::now();
+                    let result = data_access_layer.trie(trie_request);
+                    metrics.get_trie.observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "trie response");
                     responder.respond(result).await
                 }
                 .ignore()
             }
             ContractRuntimeRequest::PutTrie {
-                trie_bytes,
+                request: put_trie_request,
                 responder,
             } => {
-                trace!(?trie_bytes, "put_trie request");
-                let engine_state = Arc::clone(&self.engine_state);
+                trace!(?put_trie_request, "put trie request");
                 let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
                 async move {
                     let start = Instant::now();
-                    let result = engine_state.put_trie_if_all_children_present(trie_bytes.inner());
-                    // PERF: this *could* be called only periodically.
-                    if let Err(lmdb_error) = engine_state.flush_environment() {
-                        fatal!(
-                            effect_builder,
-                            "error flushing lmdb environment {:?}",
-                            lmdb_error
-                        )
-                        .await;
-                    } else {
-                        metrics.put_trie.observe(start.elapsed().as_secs_f64());
-                        trace!(?result, "put_trie response");
-                        responder.respond(result).await
+                    let result = data_access_layer.put_trie(put_trie_request);
+                    let flush_req = FlushRequest::new();
+                    // PERF: consider flushing periodically.
+                    if let FlushResult::Failure(gse) = data_access_layer.flush(flush_req) {
+                        fatal!(effect_builder, "error flushing data environment {:?}", gse).await;
                     }
+                    metrics.put_trie.observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "put trie response");
+                    responder.respond(result).await
                 }
                 .ignore()
             }
@@ -1237,7 +1208,7 @@ mod trie_chunking_tests {
     fn read_trie(contract_runtime: &ContractRuntime, id: TrieOrChunkId) -> TrieOrChunk {
         let serialized_id = bincode::serialize(&id).unwrap();
         match contract_runtime
-            .get_trie(&serialized_id)
+            .fetch_trie_local(&serialized_id)
             .expect("expected a successful read")
         {
             FetchResponse::Fetched(found) => found,
@@ -1288,7 +1259,7 @@ mod trie_chunking_tests {
         // there should be no chunk with index `count`
         let serialized_id = bincode::serialize(&TrieOrChunkId(count, hash)).unwrap();
         assert!(matches!(
-            contract_runtime.get_trie(&serialized_id),
+            contract_runtime.fetch_trie_local(&serialized_id),
             Err(ContractRuntimeError::ChunkingError(
                 ChunkingError::MerkleConstruction(_)
             ))

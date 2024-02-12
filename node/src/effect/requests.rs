@@ -16,18 +16,14 @@ use smallvec::SmallVec;
 use static_assertions::const_assert;
 
 use casper_execution_engine::engine_state::{self};
-use casper_storage::{
-    data_access_layer::{
-        get_bids::{BidsRequest, BidsResult},
-        AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
-        EraValidatorsResult, ExecutionResultsChecksumResult, QueryRequest, QueryResult,
-        RoundSeigniorageRateRequest, RoundSeigniorageRateResult, TotalSupplyRequest,
-        TotalSupplyResult,
-    },
-    global_state::trie::TrieRaw,
+use casper_storage::data_access_layer::{
+    get_bids::{BidsRequest, BidsResult},
+    AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
+    EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
+    QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
+    TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
 };
 use casper_types::{
-    bytesrepr::Bytes,
     contract_messages::Messages,
     execution::{ExecutionResult, ExecutionResultV2},
     Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash, Digest,
@@ -51,14 +47,14 @@ use crate::{
         transaction_acceptor,
         upgrade_watcher::NextUpgrade,
     },
-    contract_runtime::{ContractRuntimeError, SpeculativeExecutionState},
+    contract_runtime::SpeculativeExecutionState,
     reactor::main_reactor::ReactorState,
     rpcs::docs::OpenRpcSchema,
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
         ExecutableBlock, ExecutionInfo, FinalizedApprovals, LegacyDeploy, MetaBlockState, NodeId,
-        SignedBlock, StatusFeed, TransactionWithFinalizedApprovals, TrieOrChunk, TrieOrChunkId,
+        SignedBlock, StatusFeed, TransactionWithFinalizedApprovals,
     },
     utils::Source,
 };
@@ -943,24 +939,19 @@ pub(crate) enum ContractRuntimeRequest {
     },
     /// Get a trie or chunk by its ID.
     GetTrie {
-        /// The ID of the trie (or chunk of a trie) to be read.
-        trie_or_chunk_id: TrieOrChunkId,
+        /// A request for a trie element.
+        #[serde(skip_serializing)]
+        request: TrieRequest,
         /// Responder to call with the result.
-        responder: Responder<Result<Option<TrieOrChunk>, ContractRuntimeError>>,
-    },
-    /// Get a trie by its ID.
-    GetTrieFull {
-        /// The ID of the trie to be read.
-        trie_key: Digest,
-        /// Responder to call with the result.
-        responder: Responder<Result<Option<Bytes>, engine_state::Error>>,
+        responder: Responder<TrieResult>,
     },
     /// Insert a trie into global storage
     PutTrie {
-        /// The hash of the value to get from the `TrieStore`
-        trie_bytes: TrieRaw,
-        /// Responder to call with the result. Contains the hash of the stored trie.
-        responder: Responder<Result<Digest, engine_state::Error>>,
+        /// A request to persist a trie element.
+        #[serde(skip_serializing)]
+        request: PutTrieRequest,
+        /// Responder to call with the result. Contains the hash of the persisted trie.
+        responder: Responder<PutTrieResult>,
     },
     /// Execute transaction without committing results
     SpeculativelyExecute {
@@ -1034,16 +1025,11 @@ impl Display for ContractRuntimeRequest {
                     key, state_root_hash
                 )
             }
-            ContractRuntimeRequest::GetTrie {
-                trie_or_chunk_id, ..
-            } => {
-                write!(formatter, "get trie_or_chunk_id: {}", trie_or_chunk_id)
+            ContractRuntimeRequest::GetTrie { request, .. } => {
+                write!(formatter, "get trie: {:?}", request)
             }
-            ContractRuntimeRequest::GetTrieFull { trie_key, .. } => {
-                write!(formatter, "get trie_key: {}", trie_key)
-            }
-            ContractRuntimeRequest::PutTrie { trie_bytes, .. } => {
-                write!(formatter, "trie: {:?}", trie_bytes)
+            ContractRuntimeRequest::PutTrie { request, .. } => {
+                write!(formatter, "trie: {:?}", request)
             }
             ContractRuntimeRequest::SpeculativelyExecute {
                 execution_prestate,

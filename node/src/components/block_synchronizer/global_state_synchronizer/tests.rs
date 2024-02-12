@@ -3,6 +3,7 @@ use std::time::Duration;
 use futures::channel::oneshot;
 use rand::Rng;
 
+use casper_storage::global_state::error::Error as GlobalStateError;
 use casper_types::{bytesrepr::Bytes, testing::TestRng, TestBlockBuilder};
 
 use super::*;
@@ -66,10 +67,10 @@ impl MockReactor {
         let ((_ancestor, reactor_event), _) = self.scheduler.pop().await;
         match reactor_event {
             ReactorEvent::ContractRuntimeRequest(ContractRuntimeRequest::PutTrie {
-                trie_bytes,
+                request,
                 responder: _,
             }) => {
-                assert_eq!(trie_bytes, *trie);
+                assert_eq!(request.raw(), trie);
             }
             _ => {
                 unreachable!();
@@ -189,7 +190,7 @@ async fn sync_global_state_request_starts_maximum_trie_fetches() {
     tokio::time::sleep(Duration::from_millis(2)).await;
     // simulate the fetch returning a trie
     let effects = global_state_synchronizer.handle_fetched_trie(
-        TrieHash(trie_hash),
+        trie_hash.into(),
         Ok(TrieAccumulatorResponse::new(trie_raw.clone(), vec![])),
         reactor.effect_builder(),
     );
@@ -204,17 +205,23 @@ async fn sync_global_state_request_starts_maximum_trie_fetches() {
 
     // sleep a bit so that the next progress timestamp is different
     tokio::time::sleep(Duration::from_millis(2)).await;
+
+    // root node would have some children that we haven't yet downloaded
+    let missing_children = (0u8..255)
+        .into_iter()
+        // TODO: generate random hashes when `rng.gen` works
+        .map(|i| Digest::hash([i; 32]))
+        .collect();
+
+    let trie_hash = trie_raw.hash();
+
     // simulate synchronizer processing the fetched trie
     let effects = global_state_synchronizer.handle_put_trie_result(
-        TrieHash(trie_hash),
-        trie_raw,
-        // root node would have some children that we haven't yet downloaded
-        Err(engine_state::Error::MissingTrieNodeChildren(
-            (0u8..255)
-                .into_iter()
-                // TODO: generate random hashes when `rng.gen` works
-                .map(|i| Digest::hash([i; 32]))
-                .collect(),
+        trie_hash,
+        PutTrieResult::Failure(GlobalStateError::MissingTrieNodeChildren(
+            trie_hash,
+            trie_raw,
+            missing_children,
         )),
         reactor.effect_builder(),
     );
@@ -424,9 +431,8 @@ async fn trie_store_error_cancels_request() {
     // Assuming we received the trie from the accumulator, check the behavior when we an error
     // is returned when trying to put the trie to the store.
     let mut effects = global_state_synchronizer.handle_put_trie_result(
-        Digest::hash(trie.inner()).into(),
-        trie,
-        Err(engine_state::Error::RootNotFound(state_root_hash)),
+        trie.hash(),
+        PutTrieResult::Failure(GlobalStateError::RootNotFound),
         reactor.effect_builder(),
     );
     assert_eq!(effects.len(), 1);
@@ -449,6 +455,7 @@ async fn missing_trie_node_children_triggers_fetch() {
         &mut rng,
         Responder::without_shutdown(oneshot::channel().0),
     );
+    let trie_hash = Digest::hash(request_trie.clone().inner());
     let state_root_hash = request.state_root_hash;
 
     let mut effects = global_state_synchronizer.handle_request(request, reactor.effect_builder());
@@ -507,9 +514,10 @@ async fn missing_trie_node_children_triggers_fetch() {
         .collect();
 
     let effects = global_state_synchronizer.handle_put_trie_result(
-        Digest::hash(request_trie.inner()).into(),
-        request_trie.clone(),
-        Err(engine_state::Error::MissingTrieNodeChildren(
+        trie_hash,
+        PutTrieResult::Failure(GlobalStateError::MissingTrieNodeChildren(
+            trie_hash,
+            request_trie.clone(),
             missing_trie_nodes_hashes.clone(),
         )),
         reactor.effect_builder(),
@@ -579,11 +587,13 @@ async fn missing_trie_node_children_triggers_fetch() {
         .expect_put_trie_request(&missing_tries[num_missing_trie_nodes - 1])
         .await;
 
+    let trie_hash =
+        Digest::hash_into_chunks_if_necessary(missing_tries[num_missing_trie_nodes - 1].inner());
+
     // Handle put trie to store for the missing child
     let mut effects = global_state_synchronizer.handle_put_trie_result(
-        trie_hash.into(),
-        missing_tries[num_missing_trie_nodes - 1].clone(),
-        Ok(trie_hash.into()),
+        trie_hash,
+        PutTrieResult::Success { hash: trie_hash },
         reactor.effect_builder(),
     );
 
@@ -689,13 +699,11 @@ async fn stored_trie_finalizes_request() {
 
     // Generate a successful trie store
     let mut effects = global_state_synchronizer.handle_put_trie_result(
-        trie_hash.into(),
-        trie,
-        Ok(trie_hash.into()),
+        trie_hash,
+        PutTrieResult::Success { hash: trie_hash },
         reactor.effect_builder(),
     );
-    // Check that request was successfully serviced and the global synchronizer is finished with
-    // it.
+    // Assert request was successful and global synchronizer is finished.
     assert_eq!(effects.len(), 1);
     assert_eq!(global_state_synchronizer.tries_awaiting_children.len(), 0);
     assert!(global_state_synchronizer.request_state.is_none());

@@ -29,14 +29,15 @@ use crate::{
     data_access_layer::{
         era_validators::EraValidatorsResult, AddressableEntityRequest, AddressableEntityResult,
         BalanceRequest, BalanceResult, BidsRequest, BidsResult, EraValidatorsRequest,
-        ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult, QueryRequest, QueryResult,
-        RoundSeigniorageRateRequest, RoundSeigniorageRateResult, TotalSupplyRequest,
-        TotalSupplyResult, EXECUTION_RESULTS_CHECKSUM_NAME,
+        ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult, FlushRequest, FlushResult,
+        PutTrieRequest, PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
+        RoundSeigniorageRateResult, TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+        EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
         transaction_source::{Transaction, TransactionSource},
-        trie::{merkle_proof::TrieMerkleProof, Trie, TrieRaw},
+        trie::{merkle_proof::TrieMerkleProof, Trie},
         trie_store::{
             operations::{prune, read, write, ReadResult, WriteResult},
             TrieStore,
@@ -101,6 +102,9 @@ pub trait CommitProvider: StateProvider {
 pub trait StateProvider {
     /// Associated reader type for `StateProvider`.
     type Reader: StateReader<Key, StoredValue, Error = GlobalStateError>;
+
+    /// Flush the state provider.
+    fn flush(&self, request: FlushRequest) -> FlushResult;
 
     /// Returns an empty root hash.
     fn empty_root(&self) -> Digest;
@@ -464,11 +468,11 @@ pub trait StateProvider {
         }
     }
 
-    /// Reads a full `Trie` (never chunked) from the state if it is present
-    fn get_trie_full(&self, trie_key: &Digest) -> Result<Option<TrieRaw>, GlobalStateError>;
+    /// Reads a `Trie` from the state if it is present
+    fn trie(&self, request: TrieRequest) -> TrieResult;
 
-    /// Insert a trie node into the trie
-    fn put_trie(&self, trie: &[u8]) -> Result<Digest, GlobalStateError>;
+    /// Persists a trie element.
+    fn put_trie(&self, request: PutTrieRequest) -> PutTrieResult;
 
     /// Finds all the children of `trie_raw` which aren't present in the state.
     fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, GlobalStateError>;

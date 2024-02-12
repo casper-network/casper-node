@@ -115,20 +115,16 @@ use tokio::{sync::Semaphore, time};
 use tracing::{debug, error, warn};
 
 use casper_execution_engine::engine_state::{self};
-use casper_storage::{
-    data_access_layer::{
-        BalanceRequest, BalanceResult, BidsRequest, BidsResult, QueryRequest, QueryResult,
-    },
-    global_state::trie::TrieRaw,
+use casper_storage::data_access_layer::{
+    BalanceRequest, BalanceResult, BidsRequest, BidsResult, QueryRequest, QueryResult,
 };
 
 use casper_storage::data_access_layer::{
     AddressableEntityResult, EraValidatorsRequest, EraValidatorsResult,
-    ExecutionResultsChecksumResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
-    TotalSupplyRequest, TotalSupplyResult,
+    ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult, RoundSeigniorageRateRequest,
+    RoundSeigniorageRateResult, TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
 };
 use casper_types::{
-    bytesrepr::Bytes,
     contract_messages::Messages,
     execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},
     package::Package,
@@ -144,7 +140,6 @@ use crate::{
             TrieAccumulatorError, TrieAccumulatorResponse,
         },
         consensus::{ClContext, EraDump, ProposedBlock, ValidatorChange},
-        contract_runtime::ContractRuntimeError,
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
@@ -160,7 +155,6 @@ use crate::{
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
         ExecutableBlock, ExecutionInfo, FinalizedApprovals, FinalizedBlock, LegacyDeploy,
         MetaBlock, MetaBlockState, NodeId, SignedBlock, TransactionWithFinalizedApprovals,
-        TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -1401,24 +1395,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Get a trie or chunk by its ID.
-    pub(crate) async fn get_trie(
-        self,
-        trie_or_chunk_id: TrieOrChunkId,
-    ) -> Result<Option<TrieOrChunk>, ContractRuntimeError>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            |responder| ContractRuntimeRequest::GetTrie {
-                trie_or_chunk_id,
-                responder,
-            },
-            QueueKind::ContractRuntime,
-        )
-        .await
-    }
-
     pub(crate) async fn get_reactor_status(self) -> (ReactorState, Timestamp)
     where
         REv: From<ReactorStatusRequest>,
@@ -1438,19 +1414,13 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Get a trie by its hash key.
-    pub(crate) async fn get_trie_full(
-        self,
-        trie_key: Digest,
-    ) -> Result<Option<Bytes>, engine_state::Error>
+    /// Get a trie or chunk by its ID.
+    pub(crate) async fn get_trie(self, request: TrieRequest) -> TrieResult
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::GetTrieFull {
-                trie_key,
-                responder,
-            },
+            |responder| ContractRuntimeRequest::GetTrie { request, responder },
             QueueKind::ContractRuntime,
         )
         .await
@@ -1461,16 +1431,13 @@ impl<REv> EffectBuilder<REv> {
     /// Returns the digest under which the trie was stored if successful.
     pub(crate) async fn put_trie_if_all_children_present(
         self,
-        trie_bytes: TrieRaw,
-    ) -> Result<Digest, engine_state::Error>
+        request: PutTrieRequest,
+    ) -> PutTrieResult
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::PutTrie {
-                trie_bytes,
-                responder,
-            },
+            |responder| ContractRuntimeRequest::PutTrie { request, responder },
             QueueKind::ContractRuntime,
         )
         .await
