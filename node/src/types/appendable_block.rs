@@ -74,7 +74,6 @@ impl AppendableBlock {
         AppendableBlock {
             transaction_config,
             transactions: Vec::new(),
-            //transfers: Vec::new(),
             timestamp,
             transaction_and_transfer_set: HashSet::new(),
             total_gas: Gas::zero(),
@@ -403,7 +402,6 @@ impl AppendableBlock {
             TransactionV1Category::Transfer => {
                 category_count == self.transaction_config.block_max_transfer_count as usize
             }
-            TransactionV1Category::Other => todo!(),
         }
     }
 }

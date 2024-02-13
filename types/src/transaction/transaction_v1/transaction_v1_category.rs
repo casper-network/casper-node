@@ -25,9 +25,6 @@ pub enum TransactionV1Category {
     Staking,
     /// Transfer.
     Transfer,
-    // TODO[RC]: There should be no Other, we should be able to categorize all transactions
-    /// Unspecified.
-    Other,
 }
 
 impl fmt::Display for TransactionV1Category {
@@ -37,7 +34,6 @@ impl fmt::Display for TransactionV1Category {
             TransactionV1Category::Standard => write!(f, "Standard"),
             TransactionV1Category::Staking => write!(f, "Staking"),
             TransactionV1Category::Transfer => write!(f, "Transfer"),
-            TransactionV1Category::Other => write!(f, "Other"),
         }
     }
 }

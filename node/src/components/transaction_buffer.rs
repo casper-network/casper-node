@@ -511,8 +511,6 @@ impl TransactionBuffer {
                             TransactionV1Category::Transfer => {
                                 have_hit_transfer_limit = true;
                             }
-                            // TODO[RC]: Say what?
-                            TransactionV1Category::Other => todo!(),
                         },
                         AddError::ApprovalCount if has_multiple_approvals => {
                             // keep iterating, we can maybe fit in a deploy with fewer approvals

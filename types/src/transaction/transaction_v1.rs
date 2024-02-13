@@ -26,7 +26,9 @@ use once_cell::sync::OnceCell;
 use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error};
+use tracing::debug;
+
+use self::errors_v1::CategorizationError;
 
 #[cfg(any(feature = "std", test))]
 use super::InitiatorAddrAndSecretKey;
@@ -308,7 +310,7 @@ impl TransactionV1 {
         Ok(TransactionV1Footprint {
             header,
             size_estimate,
-            category: self.category(),
+            category: self.category()?,
             gas_estimate: Gas::new(U512::from(0)), // TODO[RC]: Implement gas estimation.
         })
     }
@@ -405,53 +407,32 @@ impl TransactionV1 {
         self.approvals.extend(approvals);
     }
 
-    // TODO[RC]: Unit test needed, but only after we confirm this is the correct approach.
-    fn category(&self) -> TransactionV1Category {
+    fn category(&self) -> Result<TransactionV1Category, CategorizationError> {
         let body = self.body();
         let target = body.target();
         let entry_point = body.entry_point();
 
-        match (target, entry_point) {
-            (TransactionTarget::Session { kind, .. }, _)
-                if matches!(
-                    kind,
-                    TransactionSessionKind::Installer | TransactionSessionKind::Upgrader
-                ) =>
-            {
-                TransactionV1Category::InstallUpgrade
+        Ok(match target {
+            TransactionTarget::Native if matches!(entry_point, TransactionEntryPoint::Transfer) => {
+                TransactionV1Category::Transfer
             }
-
-            (TransactionTarget::Session { kind, .. }, _)
+            TransactionTarget::Native
+                if matches!(entry_point, TransactionEntryPoint::Custom(_)) =>
+            {
+                return Err(CategorizationError::NativeTargetWithCustomEntryPoint);
+            }
+            TransactionTarget::Native => TransactionV1Category::Staking,
+            TransactionTarget::Stored { .. } => TransactionV1Category::Standard,
+            TransactionTarget::Session { kind, .. }
                 if matches!(
                     kind,
                     TransactionSessionKind::Standard | TransactionSessionKind::Isolated
                 ) =>
             {
-                if matches!(target, TransactionTarget::Stored { .. }) {
-                    TransactionV1Category::Standard
-                } else {
-                    TransactionV1Category::Other
-                }
+                TransactionV1Category::Standard
             }
-
-            (TransactionTarget::Native, TransactionEntryPoint::Transfer) => {
-                TransactionV1Category::Transfer
-            }
-
-            (TransactionTarget::Native, entry)
-                if !matches!(
-                    entry,
-                    TransactionEntryPoint::Custom(_) | TransactionEntryPoint::Transfer,
-                ) =>
-            {
-                TransactionV1Category::Staking
-            }
-
-            _ => {
-                error!("uncategorized transaction encountered");
-                TransactionV1Category::Other
-            }
-        }
+            TransactionTarget::Session { .. } => TransactionV1Category::InstallUpgrade,
+        })
     }
 }
 
