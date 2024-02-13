@@ -130,7 +130,11 @@ pub use chainspec::{
     DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY,
 };
 pub use cl_type::{named_key_type, CLType, CLTyped};
-pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
+
+pub use cl_value::{
+    handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError, ChecksumRegistry,
+    DictionaryValue as CLValueDictionary, SystemContractRegistry,
+};
 pub use contract_wasm::ContractWasm;
 #[doc(inline)]
 pub use contracts::Contract;

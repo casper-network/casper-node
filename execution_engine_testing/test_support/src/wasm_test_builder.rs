@@ -14,22 +14,19 @@ use lmdb::DatabaseFlags;
 use num_rational::Ratio;
 use num_traits::CheckedMul;
 
-use casper_execution_engine::{
-    engine_state::{
-        self,
-        era_validators::GetEraValidatorsRequest,
-        execute_request::ExecuteRequest,
-        execution_result::ExecutionResult,
-        run_genesis_request::RunGenesisRequest,
-        step::{StepRequest, StepSuccess},
-        BalanceResult, EngineConfig, EngineConfigBuilder, EngineState, Error, GenesisSuccess,
-        GetBidsRequest, PruneConfig, PruneResult, QueryRequest, QueryResult, StepError,
-        SystemContractRegistry, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
-    },
-    execution,
+use casper_execution_engine::engine_state::{
+    execute_request::ExecuteRequest,
+    execution_result::ExecutionResult,
+    run_genesis_request::RunGenesisRequest,
+    step::{StepRequest, StepSuccess},
+    EngineConfig, EngineConfigBuilder, EngineState, Error, GenesisSuccess, PruneConfig,
+    PruneResult, StepError, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
 };
 use casper_storage::{
-    data_access_layer::{BlockStore, DataAccessLayer},
+    data_access_layer::{
+        BalanceResult, BidsRequest, BlockStore, DataAccessLayer, EraValidatorsRequest,
+        EraValidatorsResult, QueryRequest, QueryResult,
+    },
     global_state::{
         state::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
@@ -59,8 +56,8 @@ use casper_types::{
     AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, ByteCodeAddr, ByteCodeHash,
     CLTyped, CLValue, Contract, DeployHash, DeployInfo, Digest, EntityAddr, EraId, Gas,
     HandlePaymentCosts, Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolVersion,
-    PublicKey, RefundHandling, StoredValue, Transfer, TransferAddr, URef, UpgradeConfig,
-    OS_PAGE_SIZE, U512,
+    PublicKey, RefundHandling, StoredValue, SystemContractRegistry, Transfer, TransferAddr, URef,
+    UpgradeConfig, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 
@@ -121,8 +118,8 @@ pub struct WasmTestBuilder<S> {
     engine_state: Rc<EngineState<S>>,
     /// [`ExecutionResult`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation.
     exec_results: Vec<Vec<Rc<ExecutionResult>>>,
-    upgrade_results: Vec<Result<UpgradeSuccess, engine_state::Error>>,
-    prune_results: Vec<Result<PruneResult, engine_state::Error>>,
+    upgrade_results: Vec<Result<UpgradeSuccess, Error>>,
+    prune_results: Vec<Result<PruneResult, Error>>,
     genesis_hash: Option<Digest>,
     /// Post state hash.
     post_state_hash: Option<Digest>,
@@ -135,8 +132,6 @@ pub struct WasmTestBuilder<S> {
     system_account: Option<AddressableEntity>,
     /// Scratch global state used for in-memory execution and commit optimization.
     scratch_engine_state: Option<EngineState<ScratchGlobalState>>,
-    /// System contract registry.
-    system_contract_registry: Option<SystemContractRegistry>,
     /// Global state dir, for implementations that define one.
     global_state_dir: Option<PathBuf>,
     /// Temporary directory, for implementation that uses one.
@@ -164,7 +159,6 @@ impl<S> Clone for WasmTestBuilder<S> {
             genesis_effects: self.genesis_effects.clone(),
             system_account: self.system_account.clone(),
             scratch_engine_state: None,
-            system_contract_registry: self.system_contract_registry.clone(),
             global_state_dir: self.global_state_dir.clone(),
             temp_dir: self.temp_dir.clone(),
         }
@@ -220,13 +214,6 @@ impl LmdbWasmTestBuilder {
         }) = result
         {
             self.post_state_hash = Some(post_state_hash);
-
-            if let Ok(StoredValue::CLValue(cl_registry)) =
-                self.query(self.post_state_hash, Key::SystemContractRegistry, &[])
-            {
-                let registry = CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
-                self.system_contract_registry = Some(registry);
-            }
         }
 
         self.upgrade_results.push(result);
@@ -256,12 +243,14 @@ impl LmdbWasmTestBuilder {
                 .expect("should create LmdbTrieStore"),
         );
 
-        let global_state =
-            LmdbGlobalState::empty(environment, trie_store).expect("should create LmdbGlobalState");
+        let max_query_depth = DEFAULT_MAX_QUERY_DEPTH;
+        let global_state = LmdbGlobalState::empty(environment, trie_store, max_query_depth)
+            .expect("should create LmdbGlobalState");
 
         let data_access_layer = DataAccessLayer {
             block_store: BlockStore::new(),
             state: global_state,
+            max_query_depth,
         };
         let engine_state = EngineState::new(data_access_layer, engine_config);
 
@@ -276,7 +265,6 @@ impl LmdbWasmTestBuilder {
             system_account: None,
             genesis_effects: None,
             scratch_engine_state: None,
-            system_contract_registry: None,
             global_state_dir: Some(global_state_dir),
             temp_dir: None,
         }
@@ -366,30 +354,38 @@ impl LmdbWasmTestBuilder {
         )
         .expect("should create LmdbEnvironment");
 
+        let max_query_depth = DEFAULT_MAX_QUERY_DEPTH;
+
         let global_state = match mode {
             GlobalStateMode::Create(database_flags) => {
                 let trie_store = LmdbTrieStore::new(&environment, None, database_flags)
                     .expect("should open LmdbTrieStore");
-                LmdbGlobalState::empty(Arc::new(environment), Arc::new(trie_store))
+                LmdbGlobalState::empty(Arc::new(environment), Arc::new(trie_store), max_query_depth)
                     .expect("should create LmdbGlobalState")
             }
             GlobalStateMode::Open(post_state_hash) => {
                 let trie_store =
                     LmdbTrieStore::open(&environment, None).expect("should open LmdbTrieStore");
-                LmdbGlobalState::new(Arc::new(environment), Arc::new(trie_store), post_state_hash)
+                LmdbGlobalState::new(
+                    Arc::new(environment),
+                    Arc::new(trie_store),
+                    post_state_hash,
+                    max_query_depth,
+                )
             }
         };
 
         let data_access_layer = DataAccessLayer {
             block_store: BlockStore::new(),
             state: global_state,
+            max_query_depth,
         };
 
         let engine_state = EngineState::new(data_access_layer, engine_config);
 
         let post_state_hash = mode.post_state_hash();
 
-        let mut builder = WasmTestBuilder {
+        let builder = WasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
@@ -400,15 +396,9 @@ impl LmdbWasmTestBuilder {
             genesis_effects: None,
             system_account: None,
             scratch_engine_state: None,
-            system_contract_registry: None,
             global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
             temp_dir: None,
         };
-
-        if let Some(post_state_hash) = post_state_hash {
-            builder.system_contract_registry =
-                builder.query_system_contract_registry(Some(post_state_hash));
-        }
 
         builder
     }
@@ -577,8 +567,6 @@ impl LmdbWasmTestBuilder {
 impl<S> WasmTestBuilder<S>
 where
     S: StateProvider + CommitProvider,
-    engine_state::Error: From<S::Error>,
-    S::Error: Into<execution::Error>,
 {
     /// Takes a [`RunGenesisRequest`], executes the request and returns Self.
     pub fn run_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
@@ -595,22 +583,6 @@ where
             )
             .expect("Unable to get genesis response");
 
-        let empty_path: Vec<String> = vec![];
-
-        self.system_contract_registry = match self.query(
-            Some(post_state_hash),
-            Key::SystemContractRegistry,
-            &empty_path,
-        ) {
-            Ok(StoredValue::CLValue(cl_registry)) => {
-                let system_contract_registry =
-                    CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
-                Some(system_contract_registry)
-            }
-            Ok(_) => panic!("Failed to get system registry"),
-            Err(err) => panic!("{}", err),
-        };
-
         self.genesis_hash = Some(post_state_hash);
         self.post_state_hash = Some(post_state_hash);
         self.system_account = self.get_entity_by_account_hash(*SYSTEM_ADDR);
@@ -619,7 +591,7 @@ where
     }
 
     fn query_system_contract_registry(
-        &mut self,
+        &self,
         post_state_hash: Option<Digest>,
     ) -> Option<SystemContractRegistry> {
         match self.query(post_state_hash, Key::SystemContractRegistry, &[]) {
@@ -646,11 +618,7 @@ where
 
         let query_request = QueryRequest::new(post_state, base_key, path.to_vec());
 
-        let query_result = self
-            .engine_state
-            .run_query(query_request)
-            .expect("should get query response");
-
+        let query_result = self.engine_state.run_query(query_request);
         if let QueryResult::Success { value, .. } = query_result {
             return Ok(value.deref().clone());
         }
@@ -721,10 +689,7 @@ where
 
         let query_request = QueryRequest::new(post_state, base_key, path_vec);
 
-        let query_result = self
-            .engine_state
-            .run_query(query_request)
-            .expect("should get query response");
+        let query_result = self.engine_state.run_query(query_request);
 
         if let QueryResult::Success { value, proofs } = query_result {
             return Ok((value.deref().clone(), proofs));
@@ -739,7 +704,6 @@ where
     pub fn total_supply(&self, maybe_post_state: Option<Digest>) -> U512 {
         let mint_entity_hash = self
             .get_system_entity_hash(MINT)
-            .cloned()
             .expect("should have mint_contract_hash");
 
         let mint_key = Key::addressable_entity_key(EntityKindTag::System, mint_entity_hash);
@@ -874,8 +838,6 @@ where
         }) = result
         {
             self.post_state_hash = Some(post_state_hash);
-            self.system_contract_registry =
-                self.query_system_contract_registry(Some(post_state_hash));
         }
 
         self.upgrade_results.push(result);
@@ -989,7 +951,7 @@ where
     }
 
     /// Returns an `Option<engine_state::Error>` if the last exec had an error.
-    pub fn get_error(&self) -> Option<engine_state::Error> {
+    pub fn get_error(&self) -> Option<Error> {
         self.get_last_exec_result()
             .expect("Expected to be called after run()")
             .get(0)
@@ -1013,7 +975,6 @@ where
     /// Returns the [`AddressableEntityHash`] of the mint, panics if it can't be found.
     pub fn get_mint_contract_hash(&self) -> AddressableEntityHash {
         self.get_system_entity_hash(MINT)
-            .cloned()
             .expect("Unable to obtain mint contract. Please run genesis first.")
     }
 
@@ -1021,7 +982,6 @@ where
     /// be found.
     pub fn get_handle_payment_contract_hash(&self) -> AddressableEntityHash {
         self.get_system_entity_hash(HANDLE_PAYMENT)
-            .cloned()
             .expect("Unable to obtain handle payment contract. Please run genesis first.")
     }
 
@@ -1029,21 +989,19 @@ where
     /// be found.
     pub fn get_standard_payment_contract_hash(&self) -> AddressableEntityHash {
         self.get_system_entity_hash(STANDARD_PAYMENT)
-            .cloned()
             .expect("Unable to obtain standard payment contract. Please run genesis first.")
     }
 
-    fn get_system_entity_hash(&self, contract_name: &str) -> Option<&AddressableEntityHash> {
-        self.system_contract_registry
-            .as_ref()
-            .and_then(|registry| registry.get(contract_name))
+    fn get_system_entity_hash(&self, contract_name: &str) -> Option<AddressableEntityHash> {
+        self.query_system_contract_registry(self.post_state_hash)?
+            .get(contract_name)
+            .copied()
     }
 
     /// Returns the [`AddressableEntityHash`] of the "auction" contract, panics if it can't be
     /// found.
     pub fn get_auction_contract_hash(&self) -> AddressableEntityHash {
         self.get_system_entity_hash(AUCTION)
-            .cloned()
             .expect("Unable to obtain auction contract. Please run genesis first.")
     }
 
@@ -1090,10 +1048,7 @@ where
     }
 
     /// Returns a `Result` containing an [`UpgradeSuccess`].
-    pub fn get_upgrade_result(
-        &self,
-        index: usize,
-    ) -> Option<&Result<UpgradeSuccess, engine_state::Error>> {
+    pub fn get_upgrade_result(&self, index: usize) -> Option<&Result<UpgradeSuccess, Error>> {
         self.upgrade_results.get(index)
     }
 
@@ -1115,7 +1070,6 @@ where
     pub fn get_handle_payment_contract(&self) -> EntityWithNamedKeys {
         let hash = self
             .get_system_entity_hash(HANDLE_PAYMENT)
-            .cloned()
             .expect("should have handle payment contract uref");
 
         let handle_payment_contract = Key::addressable_entity_key(EntityKindTag::System, hash);
@@ -1237,7 +1191,7 @@ where
     ) -> Option<AddressableEntity> {
         let entity_key = Key::addressable_entity_key(EntityKindTag::SmartContract, entity_hash);
 
-        let contract_value: StoredValue = match self.query(None, entity_key, &[]) {
+        let value: StoredValue = match self.query(None, entity_key, &[]) {
             Ok(stored_value) => stored_value,
             Err(_) => self
                 .query(
@@ -1248,8 +1202,8 @@ where
                 .expect("must have value"),
         };
 
-        if let StoredValue::AddressableEntity(contract) = contract_value {
-            Some(contract)
+        if let StoredValue::AddressableEntity(entity) = value {
+            Some(entity)
         } else {
             None
         }
@@ -1368,14 +1322,14 @@ where
     /// Gets [`EraValidators`].
     pub fn get_era_validators(&mut self) -> EraValidators {
         let state_hash = self.get_post_state_hash();
-        let request = GetEraValidatorsRequest::new(state_hash, *DEFAULT_PROTOCOL_VERSION);
-        let system_contract_registry = self
-            .system_contract_registry
-            .clone()
-            .expect("System contract registry not found. Please run genesis first.");
-        self.engine_state
-            .get_era_validators(Some(system_contract_registry), request)
-            .expect("get era validators should not error")
+        let request = EraValidatorsRequest::new(state_hash, *DEFAULT_PROTOCOL_VERSION);
+        let result = self.engine_state.get_era_validators(request);
+
+        if let EraValidatorsResult::Success { era_validators } = result {
+            era_validators
+        } else {
+            panic!("get era validators should be available");
+        }
     }
 
     /// Gets [`ValidatorWeights`] for a given [`EraId`].
@@ -1386,11 +1340,11 @@ where
 
     /// Gets [`Vec<BidKind>`].
     pub fn get_bids(&mut self) -> Vec<BidKind> {
-        let get_bids_request = GetBidsRequest::new(self.get_post_state_hash());
+        let get_bids_request = BidsRequest::new(self.get_post_state_hash());
 
-        let get_bids_result = self.engine_state.get_bids(get_bids_request).unwrap();
+        let get_bids_result = self.engine_state.get_bids(get_bids_request);
 
-        get_bids_result.into_success().unwrap()
+        get_bids_result.into_option().unwrap()
     }
 
     /// Returns named keys for an account entity by its account hash.
@@ -1515,7 +1469,10 @@ where
     }
 
     /// Gets all keys in global state by a prefix.
-    pub fn get_keys(&self, tag: KeyTag) -> Result<Vec<Key>, S::Error> {
+    pub fn get_keys(
+        &self,
+        tag: KeyTag,
+    ) -> Result<Vec<Key>, casper_storage::global_state::error::Error> {
         let state_root_hash = self.get_post_state_hash();
 
         let tracking_copy = self
@@ -1675,10 +1632,7 @@ where
     }
 
     /// Returns a `Result` containing a [`PruneResult`].
-    pub fn get_prune_result(
-        &self,
-        index: usize,
-    ) -> Option<&Result<PruneResult, engine_state::Error>> {
+    pub fn get_prune_result(&self, index: usize) -> Option<&Result<PruneResult, Error>> {
         self.prune_results.get(index)
     }
 

@@ -40,7 +40,7 @@
         "value": {
           "AddressableEntity": {
             "package_hash": "contract-package-6464646464646464646464646464646464646464646464646464646464646464",
-            "byte_code_hash": "contract-wasm-6565656565656565656565656565656565656565656565656565656565656565",
+            "byte_code_hash": "byte-code-6565656565656565656565656565656565656565656565656565656565656565",
             "entry_points": [
               {
                 "name": "public_entry_point_func",

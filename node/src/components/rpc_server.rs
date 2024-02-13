@@ -24,18 +24,14 @@ use datasize::DataSize;
 use futures::join;
 use tracing::{error, info, warn};
 
-use casper_execution_engine::engine_state::{
-    self, BalanceRequest, BalanceResult, GetBidsRequest, GetEraValidatorsError, QueryRequest,
-    QueryResult,
+use casper_storage::data_access_layer::{
+    BalanceRequest, BalanceResult, BidsRequest, EraValidatorsResult, QueryRequest, QueryResult,
 };
-use casper_types::{system::auction::EraValidators, Digest, Key, ProtocolVersion, URef};
+use casper_types::{Digest, Key, ProtocolVersion, URef};
 
 use super::Component;
 use crate::{
-    components::{
-        contract_runtime::EraValidatorsRequest, ComponentState, InitializedComponent,
-        PortBoundComponent,
-    },
+    components::{ComponentState, InitializedComponent, PortBoundComponent},
     effect::{
         requests::{
             AcceptTransactionRequest, BlockSynchronizerRequest, ChainspecRawBytesRequest,
@@ -140,7 +136,7 @@ impl RpcServer {
         state_root_hash: Digest,
         base_key: Key,
         path: Vec<String>,
-        responder: Responder<Result<QueryResult, engine_state::Error>>,
+        responder: Responder<QueryResult>,
     ) -> Effects<Event> {
         let query = QueryRequest::new(state_root_hash, base_key, path);
         effect_builder
@@ -156,9 +152,12 @@ impl RpcServer {
         effect_builder: EffectBuilder<REv>,
         state_root_hash: Digest,
         protocol_version: ProtocolVersion,
-        responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
+        responder: Responder<EraValidatorsResult>,
     ) -> Effects<Event> {
-        let request = EraValidatorsRequest::new(state_root_hash, protocol_version);
+        let request = casper_storage::data_access_layer::EraValidatorsRequest::new(
+            state_root_hash,
+            protocol_version,
+        );
         effect_builder
             .get_era_validators_from_contract_runtime(request)
             .event(move |result| Event::QueryEraValidatorsResult {
@@ -172,7 +171,7 @@ impl RpcServer {
         effect_builder: EffectBuilder<REv>,
         state_root_hash: Digest,
         purse_uref: URef,
-        responder: Responder<Result<BalanceResult, engine_state::Error>>,
+        responder: Responder<BalanceResult>,
     ) -> Effects<Event> {
         let query = BalanceRequest::new(state_root_hash, purse_uref);
         effect_builder
@@ -274,7 +273,7 @@ where
                     state_root_hash,
                     responder,
                 }) => {
-                    let get_bids_request = GetBidsRequest::new(state_root_hash);
+                    let get_bids_request = BidsRequest::new(state_root_hash);
                     effect_builder
                         .get_bids(get_bids_request)
                         .event(move |result| Event::GetBidsResult {

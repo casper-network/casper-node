@@ -1,8 +1,10 @@
 //! Support for global state queries.
-use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{Digest, Key, StoredValue};
 
-use crate::tracking_copy::TrackingCopyQueryResult;
+use crate::{
+    global_state::trie::merkle_proof::TrieMerkleProof,
+    tracking_copy::{TrackingCopyError, TrackingCopyQueryResult},
+};
 
 /// Result of a global state query request.
 #[derive(Debug)]
@@ -11,13 +13,6 @@ pub enum QueryResult {
     RootNotFound,
     /// Value not found.
     ValueNotFound(String),
-    /// Circular reference error.
-    CircularReference(String),
-    /// Depth limit reached.
-    DepthLimit {
-        /// Current depth limit.
-        depth: u64,
-    },
     /// Successful query.
     Success {
         /// Stored value under a path.
@@ -25,6 +20,8 @@ pub enum QueryResult {
         /// Merkle proof of the query.
         proofs: Vec<TrieMerkleProof<Key, StoredValue>>,
     },
+    /// Tracking Copy Error
+    Failure(TrackingCopyError),
 }
 
 /// Request for a global state query.
@@ -66,13 +63,16 @@ impl From<TrackingCopyQueryResult> for QueryResult {
         match tracking_copy_query_result {
             TrackingCopyQueryResult::ValueNotFound(message) => QueryResult::ValueNotFound(message),
             TrackingCopyQueryResult::CircularReference(message) => {
-                QueryResult::CircularReference(message)
+                QueryResult::Failure(TrackingCopyError::CircularReference(message))
             }
             TrackingCopyQueryResult::Success { value, proofs } => {
                 let value = Box::new(value);
                 QueryResult::Success { value, proofs }
             }
-            TrackingCopyQueryResult::DepthLimit { depth } => QueryResult::DepthLimit { depth },
+            TrackingCopyQueryResult::DepthLimit { depth } => {
+                QueryResult::Failure(TrackingCopyError::QueryDepthLimit { depth })
+            }
+            TrackingCopyQueryResult::RootNotFound => QueryResult::RootNotFound,
         }
     }
 }

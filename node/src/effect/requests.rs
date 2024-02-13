@@ -11,29 +11,25 @@ use std::{
 };
 
 use datasize::DataSize;
-use num_rational::Ratio;
 use serde::Serialize;
 use smallvec::SmallVec;
 use static_assertions::const_assert;
 
-use casper_execution_engine::engine_state::{
-    self,
-    balance::{BalanceRequest, BalanceResult},
-    era_validators::GetEraValidatorsError,
-    get_bids::{GetBidsRequest, GetBidsResult},
-    query::{QueryRequest, QueryResult},
+use casper_execution_engine::engine_state::{self};
+use casper_storage::data_access_layer::{
+    get_bids::{BidsRequest, BidsResult},
+    AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
+    EraValidatorsResult, ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult,
+    QueryRequest, QueryResult, RoundSeigniorageRateRequest, RoundSeigniorageRateResult,
+    TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
 };
-use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
-    addressable_entity::AddressableEntity,
-    bytesrepr::Bytes,
     contract_messages::Messages,
     execution::{ExecutionResult, ExecutionResultV2},
-    system::auction::EraValidators,
     Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash, Digest,
     DisplayIter, EraId, FinalitySignature, FinalitySignatureId, Key, ProtocolVersion, PublicKey,
     TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId, Transfer,
-    URef, U512,
+    URef,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -44,7 +40,6 @@ use crate::{
             TrieAccumulatorError, TrieAccumulatorResponse,
         },
         consensus::{ClContext, ProposedBlock, ValidatorChange},
-        contract_runtime::EraValidatorsRequest,
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
@@ -52,17 +47,14 @@ use crate::{
         transaction_acceptor,
         upgrade_watcher::NextUpgrade,
     },
-    contract_runtime::{
-        ContractRuntimeError, RoundSeigniorageRateRequest, SpeculativeExecutionState,
-        TotalSupplyRequest,
-    },
+    contract_runtime::SpeculativeExecutionState,
     reactor::main_reactor::ReactorState,
     rpcs::docs::OpenRpcSchema,
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
         ExecutableBlock, ExecutionInfo, FinalizedApprovals, LegacyDeploy, MetaBlockState, NodeId,
-        SignedBlock, StatusFeed, TransactionWithFinalizedApprovals, TrieOrChunk, TrieOrChunkId,
+        SignedBlock, StatusFeed, TransactionWithFinalizedApprovals,
     },
     utils::Source,
 };
@@ -752,7 +744,7 @@ pub(crate) enum RpcRequest {
         /// The path components starting from the key as base.
         path: Vec<String>,
         /// Responder to call with the result.
-        responder: Responder<Result<QueryResult, engine_state::Error>>,
+        responder: Responder<QueryResult>,
     },
     /// Query the global state at the given root hash.
     QueryEraValidators {
@@ -761,14 +753,14 @@ pub(crate) enum RpcRequest {
         /// The protocol version.
         protocol_version: ProtocolVersion,
         /// Responder to call with the result.
-        responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
+        responder: Responder<EraValidatorsResult>,
     },
     /// Get the bids at the given root hash.
     GetBids {
         /// The global state hash.
         state_root_hash: Digest,
         /// Responder to call with the result.
-        responder: Responder<Result<GetBidsResult, engine_state::Error>>,
+        responder: Responder<BidsResult>,
     },
 
     /// Query the global state at the given root hash.
@@ -778,7 +770,7 @@ pub(crate) enum RpcRequest {
         /// The purse URef.
         purse_uref: URef,
         /// Responder to call with the result.
-        responder: Responder<Result<BalanceResult, engine_state::Error>>,
+        responder: Responder<BalanceResult>,
     },
     /// Return the connected peers.
     GetPeers {
@@ -890,29 +882,29 @@ pub(crate) enum ContractRuntimeRequest {
     Query {
         /// Query request.
         #[serde(skip_serializing)]
-        query_request: QueryRequest,
+        request: QueryRequest,
         /// Responder to call with the query result.
-        responder: Responder<Result<QueryResult, engine_state::Error>>,
+        responder: Responder<QueryResult>,
     },
     /// A balance request.
     GetBalance {
         /// Balance request.
         #[serde(skip_serializing)]
-        balance_request: BalanceRequest,
+        request: BalanceRequest,
         /// Responder to call with the balance result.
-        responder: Responder<Result<BalanceResult, engine_state::Error>>,
+        responder: Responder<BalanceResult>,
     },
     /// Get the total supply on the chain.
     GetTotalSupply {
         #[serde(skip_serializing)]
-        total_supply_request: TotalSupplyRequest,
-        responder: Responder<Result<U512, engine_state::Error>>,
+        request: TotalSupplyRequest,
+        responder: Responder<TotalSupplyResult>,
     },
     /// Get the round seigniorage rate.
     GetRoundSeigniorageRate {
         #[serde(skip_serializing)]
-        round_seigniorage_rate_request: RoundSeigniorageRateRequest,
-        responder: Responder<Result<Ratio<U512>, engine_state::Error>>,
+        request: RoundSeigniorageRateRequest,
+        responder: Responder<RoundSeigniorageRateResult>,
     },
     /// Returns validator weights.
     GetEraValidators {
@@ -920,49 +912,46 @@ pub(crate) enum ContractRuntimeRequest {
         #[serde(skip_serializing)]
         request: EraValidatorsRequest,
         /// Responder to call with the result.
-        responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
+        responder: Responder<EraValidatorsResult>,
     },
     /// Return bids at a given state root hash
     GetBids {
         /// Get bids request.
         #[serde(skip_serializing)]
-        get_bids_request: GetBidsRequest,
+        request: BidsRequest,
         /// Responder to call with the result.
-        responder: Responder<Result<GetBidsResult, engine_state::Error>>,
+        responder: Responder<BidsResult>,
     },
     /// Returns the value of the execution results checksum stored in the ChecksumRegistry for the
     /// given state root hash.
     GetExecutionResultsChecksum {
         state_root_hash: Digest,
-        responder: Responder<Result<Option<Digest>, engine_state::Error>>,
+        responder: Responder<ExecutionResultsChecksumResult>,
     },
-    /// Returns an `AddressableEntity` if found under the given key.  If a legacy `Account` exists
-    /// under the given key, it will be converted to an `AddressableEntity` and returned.
+    /// Returns an `AddressableEntity` if found under the given key.  If a legacy `Account`
+    /// or contract exists under the given key, it will be migrated to an `AddressableEntity`
+    /// and returned. However, global state is not altered and the migrated record does not
+    /// actually exist.
     GetAddressableEntity {
         state_root_hash: Digest,
         key: Key,
-        responder: Responder<Option<AddressableEntity>>,
+        responder: Responder<AddressableEntityResult>,
     },
     /// Get a trie or chunk by its ID.
     GetTrie {
-        /// The ID of the trie (or chunk of a trie) to be read.
-        trie_or_chunk_id: TrieOrChunkId,
+        /// A request for a trie element.
+        #[serde(skip_serializing)]
+        request: TrieRequest,
         /// Responder to call with the result.
-        responder: Responder<Result<Option<TrieOrChunk>, ContractRuntimeError>>,
-    },
-    /// Get a trie by its ID.
-    GetTrieFull {
-        /// The ID of the trie to be read.
-        trie_key: Digest,
-        /// Responder to call with the result.
-        responder: Responder<Result<Option<Bytes>, engine_state::Error>>,
+        responder: Responder<TrieResult>,
     },
     /// Insert a trie into global storage
     PutTrie {
-        /// The hash of the value to get from the `TrieStore`
-        trie_bytes: TrieRaw,
-        /// Responder to call with the result. Contains the hash of the stored trie.
-        responder: Responder<Result<Digest, engine_state::Error>>,
+        /// A request to persist a trie element.
+        #[serde(skip_serializing)]
+        request: PutTrieRequest,
+        /// Responder to call with the result. Contains the hash of the persisted trie.
+        responder: Responder<PutTrieResult>,
     },
     /// Execute transaction without committing results
     SpeculativelyExecute {
@@ -983,20 +972,24 @@ impl Display for ContractRuntimeRequest {
             } => {
                 write!(formatter, "executable_block: {}", executable_block)
             }
-            ContractRuntimeRequest::Query { query_request, .. } => {
+            ContractRuntimeRequest::Query {
+                request: query_request,
+                ..
+            } => {
                 write!(formatter, "query request: {:?}", query_request)
             }
             ContractRuntimeRequest::GetBalance {
-                balance_request, ..
+                request: balance_request,
+                ..
             } => write!(formatter, "balance request: {:?}", balance_request),
             ContractRuntimeRequest::GetTotalSupply {
-                total_supply_request,
+                request: total_supply_request,
                 ..
             } => {
                 write!(formatter, "get total supply: {:?}", total_supply_request)
             }
             ContractRuntimeRequest::GetRoundSeigniorageRate {
-                round_seigniorage_rate_request,
+                request: round_seigniorage_rate_request,
                 ..
             } => {
                 write!(
@@ -1009,7 +1002,8 @@ impl Display for ContractRuntimeRequest {
                 write!(formatter, "get era validators: {:?}", request)
             }
             ContractRuntimeRequest::GetBids {
-                get_bids_request, ..
+                request: get_bids_request,
+                ..
             } => {
                 write!(formatter, "get bids request: {:?}", get_bids_request)
             }
@@ -1031,16 +1025,11 @@ impl Display for ContractRuntimeRequest {
                     key, state_root_hash
                 )
             }
-            ContractRuntimeRequest::GetTrie {
-                trie_or_chunk_id, ..
-            } => {
-                write!(formatter, "get trie_or_chunk_id: {}", trie_or_chunk_id)
+            ContractRuntimeRequest::GetTrie { request, .. } => {
+                write!(formatter, "get trie: {:?}", request)
             }
-            ContractRuntimeRequest::GetTrieFull { trie_key, .. } => {
-                write!(formatter, "get trie_key: {}", trie_key)
-            }
-            ContractRuntimeRequest::PutTrie { trie_bytes, .. } => {
-                write!(formatter, "trie: {:?}", trie_bytes)
+            ContractRuntimeRequest::PutTrie { request, .. } => {
+                write!(formatter, "trie: {:?}", request)
             }
             ContractRuntimeRequest::SpeculativelyExecute {
                 execution_prestate,

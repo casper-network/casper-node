@@ -3,13 +3,15 @@ mod tests;
 
 use std::{collections::BTreeMap, ops::Range, sync::Arc};
 
-use casper_execution_engine::engine_state::{self, GetEraValidatorsError};
+use casper_storage::data_access_layer::{
+    EraValidatorsRequest, RoundSeigniorageRateResult, TotalSupplyResult,
+};
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
+
 use num_rational::Ratio;
 use num_traits::{CheckedAdd, CheckedMul};
 
 use crate::{
-    contract_runtime::EraValidatorsRequest,
     effect::{
         requests::{ContractRuntimeRequest, StorageRequest},
         EffectBuilder,
@@ -67,12 +69,12 @@ pub enum RewardsError {
     ArithmeticOverflow,
 
     FailedToFetchBlockWithHeight(u64),
-    FailedToFetchEra(GetEraValidatorsError),
+    FailedToFetchEra(String),
     /// Fetching the era validators succedeed, but no info is present (should not happen).
     /// The `Digest` is the one that was queried.
     FailedToFetchEraValidators(Digest),
-    FailedToFetchTotalSupply(engine_state::Error),
-    FailedToFetchSeigniorageRate(engine_state::Error),
+    FailedToFetchTotalSupply,
+    FailedToFetchSeigniorageRate,
 }
 
 impl RewardsInfo {
@@ -178,26 +180,47 @@ impl RewardsInfo {
 
         let mut eras_info: BTreeMap<_, _> = stream::iter(eras_and_state_root_hashes)
             .then(|(era_id, state_root_hash)| async move {
-                let weights = effect_builder
+                let era_validators_result = effect_builder
                     .get_era_validators_from_contract_runtime(EraValidatorsRequest::new(
                         state_root_hash,
                         protocol_version,
                     ))
-                    .await
+                    .await;
+                let msg = format!("{}", era_validators_result);
+                let weights = era_validators_result
+                    .take_era_validators()
+                    .ok_or(msg)
                     .map_err(RewardsError::FailedToFetchEra)?
                     // We consume the map to not clone the value:
                     .into_iter()
                     .find(|(key, _)| key == &era_id)
                     .ok_or_else(|| RewardsError::FailedToFetchEraValidators(state_root_hash))?
                     .1;
-                let total_supply = effect_builder
-                    .get_total_supply(state_root_hash)
-                    .await
-                    .map_err(RewardsError::FailedToFetchTotalSupply)?;
-                let seignorate_rate = effect_builder
+
+                let total_supply = match effect_builder.get_total_supply(state_root_hash).await {
+                    TotalSupplyResult::RootNotFound
+                    | TotalSupplyResult::MintNotFound
+                    | TotalSupplyResult::ValueNotFound(_)
+                    | TotalSupplyResult::Failure(_) => {
+                        return Err(RewardsError::FailedToFetchTotalSupply)
+                    }
+                    TotalSupplyResult::Success { total_supply } => total_supply,
+                };
+
+                let seignorate_rate = match effect_builder
                     .get_round_seigniorage_rate(state_root_hash)
                     .await
-                    .map_err(RewardsError::FailedToFetchSeigniorageRate)?;
+                {
+                    RoundSeigniorageRateResult::RootNotFound
+                    | RoundSeigniorageRateResult::MintNotFound
+                    | RoundSeigniorageRateResult::ValueNotFound(_)
+                    | RoundSeigniorageRateResult::Failure(_) => {
+                        debug_assert!(false, "wtf");
+                        return Err(RewardsError::FailedToFetchSeigniorageRate);
+                    }
+                    RoundSeigniorageRateResult::Success { rate } => rate,
+                };
+
                 let reward_per_round = seignorate_rate * total_supply;
                 let total_weights = weights.values().copied().sum();
 

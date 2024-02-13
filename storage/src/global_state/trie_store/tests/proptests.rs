@@ -12,7 +12,7 @@ use crate::global_state::{
         gens::{trie_extension_arb, trie_leaf_arb, trie_node_arb},
         Trie,
     },
-    DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
+    DEFAULT_MAX_DB_SIZE, DEFAULT_MAX_READERS,
 };
 
 const DEFAULT_MIN_LENGTH: usize = 1;
@@ -36,8 +36,8 @@ fn lmdb_roundtrip_succeeds(inputs: Vec<Trie<Key, StoredValue>>) -> bool {
     let tmp_dir = tempdir().unwrap();
     let env = LmdbEnvironment::new(
         tmp_dir.path(),
-        DEFAULT_TEST_MAX_DB_SIZE,
-        DEFAULT_TEST_MAX_READERS,
+        DEFAULT_MAX_DB_SIZE,
+        DEFAULT_MAX_READERS,
         true,
     )
     .unwrap();

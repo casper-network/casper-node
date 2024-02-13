@@ -3,28 +3,23 @@ use std::{cmp, collections::BTreeMap, convert::TryInto, ops::Range, sync::Arc, t
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_execution_engine::{
-    engine_state::{
-        self,
-        execution_result::{ExecutionResultAndMessages, ExecutionResults},
-        step::EvictItem,
-        ChecksumRegistry, DeployItem, EngineState, ExecuteRequest,
-        ExecutionResult as EngineExecutionResult, GetEraValidatorsRequest, PruneConfig,
-        PruneResult, QueryRequest, QueryResult, StepError, StepRequest, StepSuccess,
-    },
-    execution,
+use casper_execution_engine::engine_state::{
+    self,
+    execution_result::{ExecutionResultAndMessages, ExecutionResults},
+    step::EvictItem,
+    DeployItem, EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult, PruneConfig,
+    PruneResult, StepError, StepRequest, StepSuccess,
 };
 use casper_storage::{
-    data_access_layer::DataAccessLayer,
+    data_access_layer::{DataAccessLayer, EraValidatorsRequest, EraValidatorsResult},
     global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
 };
 use casper_types::{
-    account::AccountHash,
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
-    AddressableEntity, BlockV2, CLValue, DeployHash, Digest, EntityAddr, EraEndV2, EraId, HashAddr,
-    Key, ProtocolVersion, PublicKey, StoredValue, Transaction, U512,
+    BlockV2, CLValue, ChecksumRegistry, DeployHash, Digest, EraEndV2, EraId, Key, ProtocolVersion,
+    PublicKey, Transaction, U512,
 };
 
 use crate::{
@@ -230,14 +225,25 @@ pub fn execute_finalized_block(
             state_root_hash =
                 engine_state.write_scratch_to_db(state_root_hash, scratch_state.into_inner())?;
 
-            // In this flow we execute using a recent state root hash where the system contract
-            // registry is guaranteed to exist.
-            let system_contract_registry = None;
+            let era_validators_result = engine_state
+                .get_era_validators(EraValidatorsRequest::new(state_root_hash, protocol_version));
 
-            let upcoming_era_validators = engine_state.get_era_validators(
-                system_contract_registry,
-                GetEraValidatorsRequest::new(state_root_hash, protocol_version),
-            )?;
+            let upcoming_era_validators = match era_validators_result {
+                EraValidatorsResult::AuctionNotFound => {
+                    panic!("auction not found");
+                }
+                EraValidatorsResult::RootNotFound => {
+                    panic!("root not found");
+                }
+                EraValidatorsResult::ValueNotFound(msg) => {
+                    panic!("validator snapshot not found: {}", msg);
+                }
+                EraValidatorsResult::Failure(tce) => {
+                    return Err(BlockExecutionError::GetEraValidators(tce));
+                }
+                EraValidatorsResult::Success { era_validators } => era_validators,
+            };
+
             Some(StepEffectsAndUpcomingEraValidators {
                 step_effects,
                 upcoming_era_validators,
@@ -399,7 +405,6 @@ fn commit_execution_results<S>(
 ) -> Result<(Digest, ExecutionResult, Messages), BlockExecutionError>
 where
     S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
 {
     let ee_execution_result = execution_results
         .into_iter()
@@ -443,7 +448,6 @@ fn commit_transforms<S>(
 ) -> Result<Digest, engine_state::Error>
 where
     S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
 {
     trace!(?state_root_hash, ?effects, "commit");
     let start = Instant::now();
@@ -466,7 +470,6 @@ pub fn execute_only<S>(
 ) -> Result<Option<(ExecutionResultV2, Messages)>, engine_state::Error>
 where
     S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
 {
     let SpeculativeExecutionState {
         state_root_hash,
@@ -514,7 +517,6 @@ fn execute<S>(
 ) -> Result<ExecutionResults, engine_state::Error>
 where
     S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
 {
     trace!(?execute_request, "execute");
     let start = Instant::now();
@@ -540,7 +542,6 @@ fn commit_step<S>(
 ) -> Result<StepSuccess, StepError>
 where
     S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
 {
     // Both inactive validators and equivocators are evicted
     let evict_items = inactive_validators
@@ -613,158 +614,6 @@ pub(crate) fn compute_execution_results_checksum<'a>(
     // chunk if required.
     serialized.hash().map_err(|_| {
         BlockExecutionError::FailedToComputeExecutionResultsChecksum(bytesrepr::Error::OutOfMemory)
-    })
-}
-
-pub(super) fn get_addressable_entity<S>(
-    engine_state: &EngineState<S>,
-    state_root_hash: Digest,
-    key: Key,
-) -> Option<AddressableEntity>
-where
-    S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
-{
-    match key {
-        Key::AddressableEntity(entity_addr) => {
-            get_addressable_entity_under_entity_hash(engine_state, state_root_hash, entity_addr)
-        }
-        Key::Account(account_hash) => {
-            get_addressable_entity_under_account_hash(engine_state, state_root_hash, account_hash)
-        }
-        Key::Hash(contract_hash) => {
-            get_addressable_entity_under_contract_hash(engine_state, state_root_hash, contract_hash)
-        }
-        _ => {
-            warn!(%key, "expected a Key::AddressableEntity, Key::Account, Key::Hash");
-            None
-        }
-    }
-}
-
-fn get_addressable_entity_under_entity_hash<S>(
-    engine_state: &EngineState<S>,
-    state_root_hash: Digest,
-    entity_addr: EntityAddr,
-) -> Option<AddressableEntity>
-where
-    S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
-{
-    let key = Key::AddressableEntity(entity_addr);
-    let query_request = QueryRequest::new(state_root_hash, key, vec![]);
-    let value = match engine_state.run_query(query_request) {
-        Ok(QueryResult::Success { value, .. }) => *value,
-        Ok(result) => {
-            debug!(?result, %key, "expected to find addressable entity");
-            return None;
-        }
-        Err(error) => {
-            warn!(%error, %key, "failed querying for addressable entity");
-            return None;
-        }
-    };
-    match value {
-        StoredValue::AddressableEntity(addressable_entity) => Some(addressable_entity),
-        _ => {
-            debug!(type_name = %value.type_name(), %key, "expected an AddressableEntity");
-            None
-        }
-    }
-}
-
-fn get_addressable_entity_under_account_hash<S>(
-    engine_state: &EngineState<S>,
-    state_root_hash: Digest,
-    account_hash: AccountHash,
-) -> Option<AddressableEntity>
-where
-    S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
-{
-    let account_key = Key::Account(account_hash);
-    let query_request = QueryRequest::new(state_root_hash, account_key, vec![]);
-    let value = match engine_state.run_query(query_request) {
-        Ok(QueryResult::Success { value, .. }) => *value,
-        Ok(result) => {
-            debug!(?result, %account_key, "expected to find stored value under account hash");
-            return None;
-        }
-        Err(error) => {
-            warn!(%error, %account_key, "failed querying for stored value under account hash");
-            return None;
-        }
-    };
-    match value {
-        StoredValue::CLValue(cl_value) => match cl_value.into_t::<Key>() {
-            Ok(Key::AddressableEntity(entity_addr)) => {
-                get_addressable_entity_under_entity_hash(engine_state, state_root_hash, entity_addr)
-            }
-            Ok(invalid_key) => {
-                warn!(
-                    %account_key,
-                    %invalid_key,
-                    "expected a Key::AddressableEntity to be stored under account hash"
-                );
-                None
-            }
-            Err(error) => {
-                warn!(%account_key, %error, "expected a Key to be stored under account hash");
-                None
-            }
-        },
-        StoredValue::Account(account) => Some(AddressableEntity::from(account)),
-        _ => {
-            warn!(
-                type_name = %value.type_name(),
-                %account_key,
-                "expected a CLValue or Account to be stored under account hash"
-            );
-            None
-        }
-    }
-}
-
-fn get_addressable_entity_under_contract_hash<S>(
-    engine_state: &EngineState<S>,
-    state_root_hash: Digest,
-    contract_hash: HashAddr,
-) -> Option<AddressableEntity>
-where
-    S: StateProvider + CommitProvider,
-    S::Error: Into<execution::Error>,
-{
-    // First try with an `AddressableEntityHash` derived from the contract hash.
-    get_addressable_entity_under_entity_hash(
-        engine_state,
-        state_root_hash,
-        EntityAddr::SmartContract(contract_hash)
-
-    ).or_else(|| {
-        // Didn't work; the contract was either not migrated yet or the `AddressableEntity`
-        // record was not available at this state root hash. Try to query with a
-        // contract key next.
-        let contract_key = Key::Hash(contract_hash);
-        let query_request = QueryRequest::new(state_root_hash, contract_key, vec![]);
-        let value = match engine_state.run_query(query_request) {
-            Ok(QueryResult::Success { value, .. }) => *value,
-            Ok(result) => {
-                debug!(?result, %contract_key, "expected to find a stored value for a contract hash");
-                return None;
-            }
-            Err(error) => {
-                warn!(%error, %contract_key, "failed querying for a contract hash");
-                return None;
-            }
-        };
-
-        match value {
-            StoredValue::Contract(contract) => Some(contract.into()),
-            _ => {
-                debug!(type_name = %value.type_name(), ?contract_hash, "expected a Contract");
-                None
-            }
-        }
     })
 }
 
