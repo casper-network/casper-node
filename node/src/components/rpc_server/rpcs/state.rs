@@ -10,7 +10,10 @@ use tracing::{debug, error, info, warn};
 
 use casper_json_rpc::ReservedErrorCode;
 use casper_storage::{
-    data_access_layer::{get_bids::GetBidsResult, BalanceResult, QueryResult},
+    data_access_layer::{
+        get_bids::BidsResult, BalanceResult, EraValidatorsResult, QueryResult, TrieElement,
+        TrieRequest, TrieResult,
+    },
     global_state::trie::merkle_proof::TrieMerkleProof,
 };
 use casper_types::{
@@ -373,8 +376,8 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             .await;
 
         let bids = match get_bids_result {
-            GetBidsResult::Success { bids } => bids,
-            GetBidsResult::RootNotFound => {
+            BidsResult::Success { bids } => bids,
+            BidsResult::RootNotFound => {
                 error!(
                     block_hash=?block.hash(),
                     ?state_root_hash,
@@ -388,7 +391,7 @@ impl RpcWithOptionalParams for GetAuctionInfo {
                     ),
                 ));
             }
-            GetBidsResult::Failure(error) => {
+            BidsResult::Failure(error) => {
                 error!(
                     block_hash=?block.hash(),
                     ?state_root_hash,
@@ -417,28 +420,25 @@ impl RpcWithOptionalParams for GetAuctionInfo {
             )
             .await;
 
-        let era_validators = match era_validators_result {
-            Ok(validators) => validators,
-            Err(error) => {
-                error!(block_hash=?block.hash(), ?state_root_hash, ?error, "failed to get era validators");
-                return Err(Error::new(
-                    ReservedErrorCode::InternalError,
-                    format!(
-                        "failed to get validators at block {:?}: {}",
-                        block.hash().inner(),
-                        error
-                    ),
-                ));
-            }
-        };
+        if let EraValidatorsResult::Success { era_validators } = era_validators_result {
+            let auction_state =
+                AuctionState::new(state_root_hash, block_height, era_validators, bids);
 
-        let auction_state = AuctionState::new(state_root_hash, block_height, era_validators, bids);
-
-        let result = Self::ResponseResult {
-            api_version,
-            auction_state,
-        };
-        Ok(result)
+            let result = Self::ResponseResult {
+                api_version,
+                auction_state,
+            };
+            return Ok(result);
+        }
+        error!(block_hash=?block.hash(), ?state_root_hash, ?era_validators_result, "failed to get era validators");
+        Err(Error::new(
+            ReservedErrorCode::InternalError,
+            format!(
+                "failed to get validators at block {:?}: {}",
+                block.hash().inner(),
+                era_validators_result
+            ),
+        ))
     }
 }
 
@@ -1037,22 +1037,29 @@ impl RpcWithParams for GetTrie {
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
         let trie_key = params.trie_key;
-
-        match effect_builder.get_trie_full(trie_key).await {
-            Ok(maybe_trie_bytes) => {
-                let result = Self::ResponseResult {
-                    api_version,
-                    maybe_trie_bytes,
-                };
-                Ok(result)
+        let request = TrieRequest::new(trie_key, None);
+        let response = effect_builder.get_trie(request).await;
+        match response {
+            TrieResult::ValueNotFound(msg) => {
+                warn!(?msg, "failed to get trie");
+                Err(Error::new(ErrorCode::FailedToGetTrie, msg))
             }
-            Err(error) => {
+            TrieResult::Failure(error) => {
                 warn!(?error, "failed to get trie");
                 Err(Error::new(
                     ErrorCode::FailedToGetTrie,
                     format!("{:?}", error),
                 ))
             }
+            TrieResult::Success { element } => match element {
+                TrieElement::Raw(raw) | TrieElement::Chunked(raw, _) => {
+                    let result = Self::ResponseResult {
+                        api_version,
+                        maybe_trie_bytes: Some(raw.into_inner()),
+                    };
+                    Ok(result)
+                }
+            },
         }
     }
 }

@@ -11,8 +11,10 @@ use tempfile::TempDir;
 use tokio::time::{self, error::Elapsed};
 use tracing::{error, info};
 
-use casper_execution_engine::engine_state::{GetBidsRequest, GetBidsResult};
-use casper_storage::global_state::state::{StateProvider, StateReader};
+use casper_storage::{
+    data_access_layer::{BidsRequest, BidsResult},
+    global_state::state::{StateProvider, StateReader},
+};
 use casper_types::{
     execution::{ExecutionResult, ExecutionResultV2, Transform, TransformKind},
     system::{
@@ -527,7 +529,7 @@ impl TestFixture {
             .contract_runtime
             .auction_state(*highest_block.state_root_hash());
 
-        if let GetBidsResult::Success { bids } = bids_result {
+        if let BidsResult::Success { bids } = bids_result {
             match bids.iter().find(|bid_kind| {
                 &bid_kind.validator_public_key() == validator_public_key
                     && bid_kind.delegator_public_key().as_ref() == delegator_public_key
@@ -676,7 +678,7 @@ fn is_ping(event: &MainEvent) -> bool {
     if let MainEvent::ConsensusMessageIncoming(ConsensusMessageIncoming { message, .. }) = event {
         if let ConsensusMessage::Protocol { ref payload, .. } = **message {
             return matches!(
-                payload.deserialize_incoming::<HighwayMessage::<ClContext>>(),
+                payload.deserialize_incoming::<HighwayMessage<ClContext>>(),
                 Ok(HighwayMessage::<ClContext>::NewVertex(HighwayVertex::Ping(
                     _
                 )))
@@ -739,9 +741,9 @@ impl SwitchBlocks {
     fn bids(&self, nodes: &Nodes, era_number: u64) -> Vec<BidKind> {
         let state_root_hash = *self.headers[era_number as usize].state_root_hash();
         for runner in nodes.values() {
-            let request = GetBidsRequest::new(state_root_hash);
+            let request = BidsRequest::new(state_root_hash);
             let engine_state = runner.main_reactor().contract_runtime().engine_state();
-            if let GetBidsResult::Success { bids } = engine_state.get_bids(request) {
+            if let BidsResult::Success { bids } = engine_state.get_bids(request) {
                 return bids;
             }
         }
@@ -964,7 +966,7 @@ async fn run_equivocator_network() {
 
     let era_count = 4;
 
-    let timeout = ONE_MIN * era_count as u32;
+    let timeout = ONE_MIN * (era_count + 1) as u32;
     info!("Waiting for {} eras to end.", era_count);
     fixture
         .run_until_stored_switch_block_header(EraId::new(era_count - 1), timeout)

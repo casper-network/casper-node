@@ -13,13 +13,6 @@ pub enum QueryResult {
     RootNotFound,
     /// Value not found.
     ValueNotFound(String),
-    /// Circular reference error.
-    CircularReference(String),
-    /// Depth limit reached.
-    DepthLimit {
-        /// Current depth limit.
-        depth: u64,
-    },
     /// Successful query.
     Success {
         /// Stored value under a path.
@@ -27,10 +20,8 @@ pub enum QueryResult {
         /// Merkle proof of the query.
         proofs: Vec<TrieMerkleProof<Key, StoredValue>>,
     },
-    /// Storage Error
-    StorageError(crate::global_state::error::Error),
     /// Tracking Copy Error
-    TrackingCopyError(TrackingCopyError),
+    Failure(TrackingCopyError),
 }
 
 /// Request for a global state query.
@@ -72,13 +63,15 @@ impl From<TrackingCopyQueryResult> for QueryResult {
         match tracking_copy_query_result {
             TrackingCopyQueryResult::ValueNotFound(message) => QueryResult::ValueNotFound(message),
             TrackingCopyQueryResult::CircularReference(message) => {
-                QueryResult::CircularReference(message)
+                QueryResult::Failure(TrackingCopyError::CircularReference(message))
             }
             TrackingCopyQueryResult::Success { value, proofs } => {
                 let value = Box::new(value);
                 QueryResult::Success { value, proofs }
             }
-            TrackingCopyQueryResult::DepthLimit { depth } => QueryResult::DepthLimit { depth },
+            TrackingCopyQueryResult::DepthLimit { depth } => {
+                QueryResult::Failure(TrackingCopyError::QueryDepthLimit { depth })
+            }
             TrackingCopyQueryResult::RootNotFound => QueryResult::RootNotFound,
         }
     }

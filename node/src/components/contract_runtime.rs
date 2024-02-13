@@ -22,32 +22,35 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use lmdb::DatabaseFlags;
-use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use prometheus::Registry;
 use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, info, trace};
 
-#[cfg(test)]
-use casper_execution_engine::engine_state::{GetBidsRequest, GetBidsResult};
-
 use casper_execution_engine::engine_state::{
     self, genesis::GenesisError, DeployItem, EngineConfigBuilder, EngineState, GenesisSuccess,
     UpgradeSuccess,
 };
+
+#[cfg(test)]
+use casper_storage::data_access_layer::{BidsRequest, BidsResult};
+
 use casper_storage::{
-    data_access_layer::{BlockStore, DataAccessLayer, QueryRequest, QueryResult},
+    data_access_layer::{
+        AddressableEntityRequest, BlockStore, DataAccessLayer, ExecutionResultsChecksumRequest,
+        FlushRequest, FlushResult, TrieRequest,
+    },
     global_state::{
+        error::Error as GlobalStateError,
         state::{lmdb::LmdbGlobalState, StateProvider},
         transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
 };
 use casper_types::{
-    addressable_entity::EntityKindTag, bytesrepr::Bytes, BlockHash, BlockHeaderV2, Chainspec,
-    ChainspecRawBytes, ChainspecRegistry, Digest, EraId, Key, ProtocolVersion,
-    SystemContractRegistry, Timestamp, Transaction, UpgradeConfig, U512,
+    BlockHash, BlockHeaderV2, Chainspec, ChainspecRawBytes, ChainspecRegistry, Digest, EraId,
+    ProtocolVersion, Timestamp, Transaction, UpgradeConfig,
 };
 
 use crate::{
@@ -57,7 +60,7 @@ use crate::{
             ContractRuntimeAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
             UnexecutedBlockAnnouncement,
         },
-        incoming::{TrieDemand, TrieRequest, TrieRequestIncoming},
+        incoming::{TrieDemand, TrieRequest as TrieRequestMessage, TrieRequestIncoming},
         requests::{ContractRuntimeRequest, NetworkRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
@@ -76,8 +79,7 @@ pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
 use operations::execute_only;
 pub(crate) use types::{
-    BlockAndExecutionResults, EraValidatorsRequest, ExecutionArtifact, RoundSeigniorageRateRequest,
-    StepEffectsAndUpcomingEraValidators, TotalSupplyRequest,
+    BlockAndExecutionResults, ExecutionArtifact, StepEffectsAndUpcomingEraValidators,
 };
 
 const COMPONENT_NAME: &str = "contract_runtime";
@@ -90,7 +92,7 @@ pub(crate) enum ContractRuntimeError {
     InvalidSerializedId(#[source] bincode::Error),
     // It was not possible to get trie with the specified id
     #[error("error retrieving trie by id: {0}")]
-    FailedToRetrieveTrieById(#[source] engine_state::Error),
+    FailedToRetrieveTrieById(#[source] GlobalStateError),
     /// Chunking error.
     #[error("failed to chunk the data {0}")]
     ChunkingError(#[source] ChunkingError),
@@ -277,9 +279,8 @@ pub(crate) struct ContractRuntime {
 
     /// Finalized blocks waiting for their pre-state hash to start executing.
     exec_queue: ExecQueue,
-    /// Cached instance of a [`SystemContractRegistry`].
-    #[data_size(skip)]
-    system_contract_registry: Option<SystemContractRegistry>,
+
+    /// The chainspec.
     chainspec: Arc<Chainspec>,
 
     #[data_size(skip)]
@@ -383,7 +384,6 @@ impl ContractRuntime {
             engine_state,
             metrics,
             exec_queue: Default::default(),
-            system_contract_registry: None,
             chainspec,
             data_access_layer,
         })
@@ -532,7 +532,7 @@ impl ContractRuntime {
                     }
                 };
 
-                tracing::info!("rewards successfully computed");
+                info!("rewards successfully computed");
 
                 rewards
             } else {
@@ -687,62 +687,29 @@ impl ContractRuntime {
     }
 
     /// Reads the trie (or chunk of a trie) under the given key and index.
-    pub(crate) fn get_trie(
+    pub(crate) fn fetch_trie_local(
         &self,
         serialized_id: &[u8],
     ) -> Result<FetchResponse<TrieOrChunk, TrieOrChunkId>, ContractRuntimeError> {
         trace!(?serialized_id, "get_trie");
-
-        let id: TrieOrChunkId = bincode::deserialize(serialized_id)?;
-        let maybe_trie = Self::do_get_trie(&self.engine_state, &self.metrics, id)?;
-        Ok(FetchResponse::from_opt(id, maybe_trie))
-    }
-
-    fn do_get_trie(
-        engine_state: &EngineState<DataAccessLayer<LmdbGlobalState>>,
-        metrics: &Metrics,
-        trie_or_chunk_id: TrieOrChunkId,
-    ) -> Result<Option<TrieOrChunk>, ContractRuntimeError> {
-        let start = Instant::now();
-        let TrieOrChunkId(chunk_index, trie_key) = trie_or_chunk_id;
-        let ret = match engine_state.get_trie_full(trie_key)? {
-            None => Ok(None),
-            Some(trie_raw) => Ok(Some(TrieOrChunk::new(trie_raw.into(), chunk_index)?)),
+        let trie_or_chunk_id: TrieOrChunkId = bincode::deserialize(serialized_id)?;
+        let data_access_layer = Arc::clone(&self.data_access_layer);
+        let maybe_trie = {
+            let start = Instant::now();
+            let TrieOrChunkId(chunk_index, trie_key) = trie_or_chunk_id;
+            let req = TrieRequest::new(trie_key, Some(chunk_index));
+            let maybe_raw = data_access_layer
+                .trie(req)
+                .into_legacy()
+                .map_err(ContractRuntimeError::FailedToRetrieveTrieById)?;
+            let ret = match maybe_raw {
+                Some(raw) => Some(TrieOrChunk::new(raw.into(), chunk_index)?),
+                None => None,
+            };
+            self.metrics.get_trie.observe(start.elapsed().as_secs_f64());
+            ret
         };
-        metrics.get_trie.observe(start.elapsed().as_secs_f64());
-        ret
-    }
-
-    fn get_trie_full(
-        engine_state: &EngineState<DataAccessLayer<LmdbGlobalState>>,
-        metrics: &Metrics,
-        trie_key: Digest,
-    ) -> Result<Option<Bytes>, engine_state::Error> {
-        let start = Instant::now();
-        let result = engine_state.get_trie_full(trie_key);
-        metrics.get_trie.observe(start.elapsed().as_secs_f64());
-        // Extract the inner Bytes, we don't want this change to ripple through the system right
-        // now.
-        result.map(|option| option.map(|trie_raw| trie_raw.into_inner()))
-    }
-
-    #[inline]
-    fn try_init_system_contract_registry_cache(&mut self) {
-        // The system contract registry is stable so we can use the latest state root hash that we
-        // know from the execution pre-state to try and initialize it
-        let state_root_hash = self
-            .execution_pre_state
-            .lock()
-            .expect("ContractRuntime: execution_pre_state poisoned mutex")
-            .pre_state_root_hash;
-
-        // Try to cache system contract registry if possible.
-        if self.system_contract_registry.is_none() {
-            self.system_contract_registry = self
-                .engine_state
-                .get_system_contract_registry(state_root_hash)
-                .ok();
-        };
+        Ok(FetchResponse::from_opt(trie_or_chunk_id, maybe_trie))
     }
 
     /// Returns the engine state, for testing only.
@@ -753,9 +720,9 @@ impl ContractRuntime {
 
     /// Returns auction state, for testing only.
     #[cfg(test)]
-    pub(crate) fn auction_state(&self, root_hash: Digest) -> GetBidsResult {
+    pub(crate) fn auction_state(&self, root_hash: Digest) -> BidsResult {
         let engine_state = Arc::clone(&self.engine_state);
-        let get_bids_request = GetBidsRequest::new(root_hash);
+        let get_bids_request = BidsRequest::new(root_hash);
         engine_state.get_bids(get_bids_request)
     }
 
@@ -768,8 +735,8 @@ impl ContractRuntime {
     where
         REv: From<NetworkRequest<Message>> + Send,
     {
-        let TrieRequest(ref serialized_id) = *message;
-        let fetch_response = match self.get_trie(serialized_id) {
+        let TrieRequestMessage(ref serialized_id) = *message;
+        let fetch_response = match self.fetch_trie_local(serialized_id) {
             Ok(fetch_response) => fetch_response,
             Err(error) => {
                 debug!("failed to get trie: {}", error);
@@ -795,8 +762,8 @@ impl ContractRuntime {
             ..
         }: TrieDemand,
     ) -> Effects<Event> {
-        let TrieRequest(ref serialized_id) = *request_msg;
-        let fetch_response = match self.get_trie(serialized_id) {
+        let TrieRequestMessage(ref serialized_id) = *request_msg;
+        let fetch_response = match self.fetch_trie_local(serialized_id) {
             Ok(fetch_response) => fetch_response,
             Err(error) => {
                 // Something is wrong in our trie store, but be courteous and still send a reply.
@@ -833,7 +800,7 @@ impl ContractRuntime {
     {
         match request {
             ContractRuntimeRequest::Query {
-                query_request,
+                request: query_request,
                 responder,
             } => {
                 trace!(?query_request, "query");
@@ -849,11 +816,10 @@ impl ContractRuntime {
                 .ignore()
             }
             ContractRuntimeRequest::GetBalance {
-                balance_request,
+                request: balance_request,
                 responder,
             } => {
                 trace!(?balance_request, "balance");
-                //let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 let data_access_layer = Arc::clone(&self.data_access_layer);
                 async move {
@@ -865,79 +831,154 @@ impl ContractRuntime {
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::GetEraValidators { request, responder } => {
-                trace!(?request, "get era validators request");
-                let engine_state = Arc::clone(&self.engine_state);
+            ContractRuntimeRequest::GetEraValidators {
+                request: era_validators_request,
+                responder,
+            } => {
+                trace!(?era_validators_request, "get era validators request");
                 let metrics = Arc::clone(&self.metrics);
-
-                self.try_init_system_contract_registry_cache();
-
-                let system_contract_registry = self.system_contract_registry.clone();
-                // Increment the counter to track the amount of times GetEraValidators was
-                // requested.
+                let data_access_layer = Arc::clone(&self.data_access_layer);
                 async move {
                     let start = Instant::now();
-                    let era_validators =
-                        engine_state.get_era_validators(system_contract_registry, request.into());
+                    let result = data_access_layer.era_validators(era_validators_request);
                     metrics
                         .get_era_validators
                         .observe(start.elapsed().as_secs_f64());
-                    trace!(?era_validators, "get era validators response");
-                    responder.respond(era_validators).await
-                }
-                .ignore()
-            }
-            ContractRuntimeRequest::GetTrie {
-                trie_or_chunk_id,
-                responder,
-            } => {
-                trace!(?trie_or_chunk_id, "get_trie request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let result = Self::do_get_trie(&engine_state, &metrics, trie_or_chunk_id);
-                    trace!(?result, "get_trie response");
+                    trace!(?result, "era validators result");
                     responder.respond(result).await
                 }
                 .ignore()
             }
-            ContractRuntimeRequest::GetTrieFull {
-                trie_key,
+            ContractRuntimeRequest::GetBids {
+                request: bids_request,
                 responder,
             } => {
-                trace!(?trie_key, "get_trie_full request");
-                let engine_state = Arc::clone(&self.engine_state);
+                trace!(?bids_request, "get bids request");
                 let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
                 async move {
-                    let result = Self::get_trie_full(&engine_state, &metrics, trie_key);
-                    trace!(?result, "get_trie_full response");
+                    let start = Instant::now();
+                    let result = data_access_layer.bids(bids_request);
+                    metrics.get_bids.observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "bids result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::GetExecutionResultsChecksum {
+                state_root_hash,
+                responder,
+            } => {
+                trace!(?state_root_hash, "get execution results checksum request");
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let request = ExecutionResultsChecksumRequest::new(state_root_hash);
+                    let result = data_access_layer.execution_result_checksum(request);
+                    metrics
+                        .execution_results_checksum
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "execution result checksum");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::GetAddressableEntity {
+                state_root_hash,
+                key,
+                responder,
+            } => {
+                trace!(?state_root_hash, "get addressable entity");
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let request = AddressableEntityRequest::new(state_root_hash, key);
+                    let result = data_access_layer.addressable_entity(request);
+                    metrics
+                        .addressable_entity
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "get addressable entity");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::GetTotalSupply {
+                request: total_supply_request,
+                responder,
+            } => {
+                trace!(?total_supply_request, "total supply request");
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let result = data_access_layer.total_supply(total_supply_request);
+                    metrics
+                        .get_total_supply
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "total supply results");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::GetRoundSeigniorageRate {
+                request: round_seigniorage_rate_request,
+                responder,
+            } => {
+                trace!(
+                    ?round_seigniorage_rate_request,
+                    "round seigniorage rate request"
+                );
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let result =
+                        data_access_layer.round_seigniorage_rate(round_seigniorage_rate_request);
+                    metrics
+                        .get_round_seigniorage_rate
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "round seigniorage rate results");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            // trie related events
+            ContractRuntimeRequest::GetTrie {
+                request: trie_request,
+                responder,
+            } => {
+                trace!(?trie_request, "trie request");
+                let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
+                async move {
+                    let start = Instant::now();
+                    let result = data_access_layer.trie(trie_request);
+                    metrics.get_trie.observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "trie response");
                     responder.respond(result).await
                 }
                 .ignore()
             }
             ContractRuntimeRequest::PutTrie {
-                trie_bytes,
+                request: put_trie_request,
                 responder,
             } => {
-                trace!(?trie_bytes, "put_trie request");
-                let engine_state = Arc::clone(&self.engine_state);
+                trace!(?put_trie_request, "put trie request");
                 let metrics = Arc::clone(&self.metrics);
+                let data_access_layer = Arc::clone(&self.data_access_layer);
                 async move {
                     let start = Instant::now();
-                    let result = engine_state.put_trie_if_all_children_present(trie_bytes.inner());
-                    // PERF: this *could* be called only periodically.
-                    if let Err(lmdb_error) = engine_state.flush_environment() {
-                        fatal!(
-                            effect_builder,
-                            "error flushing lmdb environment {:?}",
-                            lmdb_error
-                        )
-                        .await;
-                    } else {
-                        metrics.put_trie.observe(start.elapsed().as_secs_f64());
-                        trace!(?result, "put_trie response");
-                        responder.respond(result).await
+                    let result = data_access_layer.put_trie(put_trie_request);
+                    let flush_req = FlushRequest::new();
+                    // PERF: consider flushing periodically.
+                    if let FlushResult::Failure(gse) = data_access_layer.flush(flush_req) {
+                        fatal!(effect_builder, "error flushing data environment {:?}", gse).await;
                     }
+                    metrics.put_trie.observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "put trie response");
+                    responder.respond(result).await
                 }
                 .ignore()
             }
@@ -1016,49 +1057,6 @@ impl ContractRuntime {
                     .set(self.exec_queue.len().try_into().unwrap_or(i64::MIN));
                 effects
             }
-            ContractRuntimeRequest::GetBids {
-                get_bids_request,
-                responder,
-            } => {
-                trace!(?get_bids_request, "get bids request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-                async move {
-                    let start = Instant::now();
-                    let result = engine_state.get_bids(get_bids_request);
-                    metrics.get_bids.observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "get bids result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            ContractRuntimeRequest::GetExecutionResultsChecksum {
-                state_root_hash,
-                responder,
-            } => {
-                let result = self
-                    .engine_state
-                    .get_checksum_registry(state_root_hash)
-                    .map(|maybe_registry| {
-                        maybe_registry.and_then(|registry| {
-                            registry.get(EXECUTION_RESULTS_CHECKSUM_NAME).copied()
-                        })
-                    });
-                responder.respond(result).ignore()
-            }
-            ContractRuntimeRequest::GetAddressableEntity {
-                state_root_hash,
-                key,
-                responder,
-            } => {
-                let engine_state = Arc::clone(&self.engine_state);
-                async move {
-                    let result =
-                        operations::get_addressable_entity(&engine_state, state_root_hash, key);
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
             ContractRuntimeRequest::SpeculativelyExecute {
                 execution_prestate,
                 transaction,
@@ -1082,127 +1080,8 @@ impl ContractRuntime {
                     unreachable!()
                 }
             }
-            ContractRuntimeRequest::GetTotalSupply {
-                total_supply_request,
-                responder,
-            } => {
-                trace!(?total_supply_request, "get total supply request");
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-
-                async move {
-                    let start = Instant::now();
-                    let result = query_total_supply(engine_state, total_supply_request.state_hash);
-
-                    metrics
-                        .get_total_supply
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "total supply result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
-            ContractRuntimeRequest::GetRoundSeigniorageRate {
-                round_seigniorage_rate_request,
-                responder,
-            } => {
-                trace!(
-                    ?round_seigniorage_rate_request,
-                    "get round seigniorage rate request"
-                );
-                let engine_state = Arc::clone(&self.engine_state);
-                let metrics = Arc::clone(&self.metrics);
-
-                async move {
-                    let start = Instant::now();
-                    let result = query_round_seigniorage_rate(
-                        engine_state,
-                        round_seigniorage_rate_request.state_hash,
-                    );
-
-                    metrics
-                        .get_round_seigniorage_rate
-                        .observe(start.elapsed().as_secs_f64());
-                    trace!(?result, "round seigniorage rate result");
-                    responder.respond(result).await
-                }
-                .ignore()
-            }
         }
     }
-}
-
-fn query_total_supply(
-    engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
-    state_hash: Digest,
-) -> Result<U512, engine_state::Error> {
-    use casper_types::system::mint;
-    use engine_state::Error;
-
-    let mint = engine_state.get_system_mint_hash(state_hash)?;
-
-    let mint_key = Key::addressable_entity_key(EntityKindTag::System, mint);
-
-    let request = QueryRequest::new(
-        state_hash,
-        mint_key,
-        vec![mint::TOTAL_SUPPLY_KEY.to_owned()],
-    );
-
-    engine_state
-        .run_query(request)
-        .and_then(move |query_result| match query_result {
-            QueryResult::Success { value, proofs: _ } => value
-                .as_cl_value()
-                .ok_or_else(|| Error::Mint("Value not a CLValue".to_owned()))?
-                .clone()
-                .into_t()
-                .map_err(|e| Error::Mint(format!("CLValue not a U512: {e}"))),
-            QueryResult::ValueNotFound(s) => Err(Error::Mint(format!("ValueNotFound({s})"))),
-            QueryResult::CircularReference(s) => {
-                Err(Error::Mint(format!("CircularReference({s})")))
-            }
-            QueryResult::DepthLimit { depth } => Err(Error::Mint(format!("DepthLimit({depth})"))),
-            QueryResult::RootNotFound => Err(Error::RootNotFound(state_hash)),
-            QueryResult::StorageError(gse) => Err(Error::Storage(gse)),
-            QueryResult::TrackingCopyError(tce) => Err(Error::TrackingCopy(tce)),
-        })
-}
-
-fn query_round_seigniorage_rate(
-    engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
-    state_hash: Digest,
-) -> Result<Ratio<U512>, engine_state::Error> {
-    use casper_types::system::mint;
-    use engine_state::Error;
-
-    let mint = engine_state.get_system_mint_hash(state_hash)?;
-    let mint_key = Key::addressable_entity_key(EntityKindTag::System, mint);
-
-    let request = QueryRequest::new(
-        state_hash,
-        mint_key,
-        vec![mint::ROUND_SEIGNIORAGE_RATE_KEY.to_owned()],
-    );
-
-    engine_state
-        .run_query(request)
-        .and_then(move |query_result| match query_result {
-            QueryResult::Success { value, proofs: _ } => value
-                .as_cl_value()
-                .ok_or_else(|| Error::Mint("Value not a CLValue".to_owned()))?
-                .clone()
-                .into_t()
-                .map_err(|e| Error::Mint(format!("CLValue not a Ratio<U512>: {e}"))),
-            QueryResult::ValueNotFound(s) => Err(Error::Mint(format!("ValueNotFound({s})"))),
-            QueryResult::CircularReference(s) => {
-                Err(Error::Mint(format!("CircularReference({s})")))
-            }
-            QueryResult::DepthLimit { depth } => Err(Error::Mint(format!("DepthLimit({depth})"))),
-            QueryResult::RootNotFound => Err(Error::RootNotFound(state_hash)),
-            QueryResult::StorageError(gse) => Err(Error::Storage(gse)),
-            QueryResult::TrackingCopyError(tce) => Err(Error::TrackingCopy(tce)),
-        })
 }
 
 #[cfg(test)]
@@ -1329,7 +1208,7 @@ mod trie_chunking_tests {
     fn read_trie(contract_runtime: &ContractRuntime, id: TrieOrChunkId) -> TrieOrChunk {
         let serialized_id = bincode::serialize(&id).unwrap();
         match contract_runtime
-            .get_trie(&serialized_id)
+            .fetch_trie_local(&serialized_id)
             .expect("expected a successful read")
         {
             FetchResponse::Fetched(found) => found,
@@ -1380,7 +1259,7 @@ mod trie_chunking_tests {
         // there should be no chunk with index `count`
         let serialized_id = bincode::serialize(&TrieOrChunkId(count, hash)).unwrap();
         assert!(matches!(
-            contract_runtime.get_trie(&serialized_id),
+            contract_runtime.fetch_trie_local(&serialized_id),
             Err(ContractRuntimeError::ChunkingError(
                 ChunkingError::MerkleConstruction(_)
             ))
