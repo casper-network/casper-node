@@ -7,7 +7,6 @@ pub mod abi;
 pub mod cli;
 pub mod collections;
 pub mod host;
-pub mod manifest;
 pub mod schema;
 pub mod storage;
 pub mod types;
@@ -16,7 +15,6 @@ use std::{io, ptr::NonNull};
 
 use borsh::BorshSerialize;
 pub use casper_sdk_sys as sys;
-use manifest::ToManifest;
 use sys::CreateResult;
 use types::CallError;
 
@@ -69,7 +67,7 @@ pub trait ToCallData {
 /// To derive this contract you have to use `#[casper]` macro on top of impl block.
 ///
 /// This proc macro handles generation of a manifest.
-pub trait Contract: ToManifest {
+pub trait Contract {
     fn name() -> &'static str;
     fn create<T: ToCallData>(call_data: T) -> Result<CreateResult, CallError>;
     fn default_create() -> Result<CreateResult, CallError>;

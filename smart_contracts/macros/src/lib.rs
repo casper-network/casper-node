@@ -8,7 +8,7 @@ use proc_macro2::Span;
 use quote::{format_ident, quote};
 use syn::{
     parse_macro_input, token::Struct, Data, DeriveInput, Error, Fields, ItemEnum, ItemFn, ItemImpl,
-    ItemStruct, ItemUnion, Lit, LitByteStr, LitStr, Meta, Path, Type,
+    ItemStruct, ItemTrait, ItemUnion, Lit, LitByteStr, LitStr, Meta, Path, Type,
 };
 use vm_common::flags::{self, EntryPointFlags};
 
@@ -21,10 +21,19 @@ struct MethodAttribute {
     revert_on_error: bool,
 }
 
+#[derive(Debug, FromAttributes)]
+#[darling(attributes(casper))]
+struct ContractAttributes {
+    impl_traits: Option<darling::util::PathList>,
+}
+
 #[proc_macro_derive(Contract)]
 pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
     // Parse the input tokens into a syntax tree
     let contract = parse_macro_input!(input as DeriveInput);
+
+    let contract_attributes = ContractAttributes::from_attributes(&contract.attrs).unwrap();
+
     let name = &contract.ident;
     let _vis = &contract.vis;
 
@@ -34,7 +43,21 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
         Data::Union(_) => todo!("Union"),
     };
 
-    let manifest_name = format_ident!("{name}_MANIFEST");
+    // let manifest_name = format_ident!("{name}::MANIFEST");
+
+    let mut dynamic_manifest = Vec::new();
+    if let Some(traits) = contract_attributes.impl_traits {
+        for path in traits.iter() {
+            let ext_struct = format_ident!("{}Ext", path.require_ident().unwrap());
+            dynamic_manifest.push(quote! {
+                {
+                    const DISPATCHER: #ext_struct = <#ext_struct>::new::<#name>();
+                    DISPATCHER.0.as_slice()
+                }
+
+            });
+        }
+    }
 
     let f = quote! {
 
@@ -44,15 +67,36 @@ pub fn derive_casper_contract(input: TokenStream) -> TokenStream {
             }
 
             fn create<T:casper_sdk::ToCallData>(call_data: T) -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
-                let manifest: &[casper_sdk::sys::EntryPoint] = #manifest_name.as_slice();
-                // let input_data = call_data.input_data();
-                // Self::__casper_create(T::SELECTOR, input_data.as_ref().map(|v| v.as_slice()))
-                todo!()
+                let entry_points: &[&[casper_sdk::sys::EntryPoint]] = &[
+                    #(#dynamic_manifest,)*
+                    #name::MANIFEST.as_slice(),
+                ];
+
+
+                // TODO: Pass multiple manifests by ptr to avoid serialization
+                let entry_points_allocated: Vec<casper_sdk::sys::EntryPoint> = entry_points.into_iter().map(|i| i.into_iter().copied()).flatten().collect();
+                let manifest = casper_sdk::sys::Manifest {
+                    entry_points: entry_points_allocated.as_ptr(),
+                    entry_points_size: entry_points_allocated.len(),
+                };
+                let input_data = call_data.input_data();
+                casper_sdk::host::casper_create(None, &manifest, Some(T::SELECTOR), input_data.as_ref().map(|v| v.as_slice()))
             }
 
             fn default_create() -> Result<casper_sdk::sys::CreateResult, casper_sdk::types::CallError> {
-                // Self::__casper_default_create()
-                todo!()
+                let entry_points: &[&[casper_sdk::sys::EntryPoint]] = &[
+                    #(#dynamic_manifest,)*
+                    #name::MANIFEST.as_slice(),
+                ];
+
+
+                // TODO: Pass multiple manifests by ptr to avoid serialization
+                let entry_points_allocated: Vec<casper_sdk::sys::EntryPoint> = entry_points.into_iter().map(|i| i.into_iter().copied()).flatten().collect();
+                let manifest = casper_sdk::sys::Manifest {
+                    entry_points: entry_points_allocated.as_ptr(),
+                    entry_points_size: entry_points_allocated.len(),
+                };
+                casper_sdk::host::casper_create(None, &manifest, None, None)
             }
         }
     };
@@ -66,172 +110,331 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
     for attr in &mut attrs_iter {
         let item = item.clone();
         match attr {
+            // proc_macro::TokenTree::Ident(ident) if ident.to_string() == "extension" => {
             proc_macro::TokenTree::Ident(ident) if ident.to_string() == "entry_points" => {
-                // ident.
-                let mut populate_definitions = Vec::new();
+                // if let
+                if let Ok(mut item_trait) = syn::parse::<ItemTrait>(item.clone()) {
+                    // todo!("{item_trait:#?}");
+                    let trait_name = &item_trait.ident;
 
-                let mut entry_points = parse_macro_input!(item as ItemImpl);
+                    let vis = &item_trait.vis;
 
-                let struct_name = match entry_points.self_ty.as_ref() {
-                    Type::Path(ref path) => &path.path,
+                    let mut manifest_data = Vec::new();
 
-                    other => todo!("{other:?}"),
-                };
+                    let mut dispatch_table = Vec::new();
 
-                let mut defs = Vec::new();
+                    let dispatch_func_name = format_ident!("{trait_name}_dispatcher");
 
-                let mut names = Vec::new();
+                    let mut entry_point_index = 0usize;
+                    let mut extra_code = Vec::new();
 
-                let mut manifest_entry_points_data = Vec::new();
-                let mut manifest_entry_points = Vec::new();
-                let mut manifest_entry_point_enum_variants = Vec::new();
-                let mut manifest_entry_point_enum_match_name = Vec::new();
-                let mut manifest_entry_point_input_data = Vec::new();
+                    for entry_point in &mut item_trait.items {
+                        match entry_point {
+                            syn::TraitItem::Const(_) => todo!("Const"),
+                            syn::TraitItem::Fn(func) => {
+                                let name = func.sig.ident.clone();
+                                let name_str = name.to_string();
+                                let selector = compute_selector(name_str.as_bytes()).get();
 
-                let mut extra_code = Vec::new();
+                                let arg_names_and_types = func
+                                    .sig
+                                    .inputs
+                                    .iter()
+                                    .filter_map(|arg| match arg {
+                                        syn::FnArg::Receiver(_) => None,
+                                        syn::FnArg::Typed(typed) => match typed.pat.as_ref() {
+                                            syn::Pat::Ident(ident) => {
+                                                Some((&ident.ident, &typed.ty))
+                                            }
+                                            _ => todo!(),
+                                        },
+                                    })
+                                    .collect::<Vec<_>>();
 
-                for entry_point in &mut entry_points.items {
-                    let method_attribute;
-                    let mut flag_value = EntryPointFlags::empty();
+                                let arg_names: Vec<_> =
+                                    arg_names_and_types.iter().map(|(name, _ty)| name).collect();
+                                let arg_types: Vec<_> =
+                                    arg_names_and_types.iter().map(|(_name, ty)| ty).collect();
 
-                    let func = match entry_point {
-                        syn::ImplItem::Const(_) => todo!(),
-                        syn::ImplItem::Fn(ref mut func) => {
-                            match &func.vis {
-                                syn::Visibility::Public(_) => {}
-                                syn::Visibility::Inherited => {
-                                    // As the doc says this "usually means private"
-                                    continue;
-                                }
-                                syn::Visibility::Restricted(_restricted) => {}
-                            }
+                                manifest_data.push(quote! {
+                                    {
+                                        (
+                                            casper_sdk::Selector::new(#selector),
+                                            |instance: &mut dyn #trait_name| {
+                                                let _ret = casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
+                                                    instance.#name(#(#arg_names,)*)
+                                                });
+                                            },
+                                        )
+                                    }
+                                });
 
-                            method_attribute =
-                                MethodAttribute::from_attributes(&func.attrs).unwrap();
-                            func.attrs.clear();
+                                dispatch_table.push(quote! {
+                                    casper_sdk::sys::EntryPoint {
+                                        selector: #selector,
+                                        fptr: #dispatch_func_name::<T, #entry_point_index>,
+                                        flags: 0, // TODO?
+                                    }
+                                });
+                                entry_point_index += 1;
 
-                            let name = func.sig.ident.clone();
-                            names.push(name.clone());
+                                let ident = format_ident!(
+                                    "{trait_name}_{name}",
+                                    trait_name = trait_name,
+                                    name = name
+                                );
 
-                            let arg_names_and_types = func
-                                .sig
-                                .inputs
-                                .iter()
-                                .filter_map(|arg| match arg {
-                                    syn::FnArg::Receiver(_) => None,
-                                    syn::FnArg::Typed(typed) => match typed.pat.as_ref() {
-                                        syn::Pat::Ident(ident) => Some((&ident.ident, &typed.ty)),
-                                        _ => todo!(),
-                                    },
-                                })
-                                .collect::<Vec<_>>();
-
-                            let arg_names: Vec<_> =
-                                arg_names_and_types.iter().map(|(name, _ty)| name).collect();
-                            let arg_types: Vec<_> =
-                                arg_names_and_types.iter().map(|(_name, ty)| ty).collect();
-
-                            let arg_count = arg_names.len();
-
-                            // Entry point has &self or &mut self
-                            let mut entry_point_requires_state: bool = false;
-
-                            let handle_write_state = match func.sig.inputs.first() {
-                                Some(syn::FnArg::Receiver(receiver))
-                                    if receiver.mutability.is_some() =>
-                                {
-                                    entry_point_requires_state = true;
-
-                                    if receiver.reference.is_some() {
-                                        // &mut self does write updated state
-                                        Some(quote! {
-                                            casper_sdk::host::write_state(&instance).unwrap();
-                                        })
-                                    } else {
-                                        // mut self does not write updated state as the method call
-                                        // will consume self and there's nothing to persist.
+                                let input_data_content = if arg_names.is_empty() {
+                                    quote! {
                                         None
                                     }
-                                }
-                                Some(syn::FnArg::Receiver(receiver))
-                                    if receiver.mutability.is_none() =>
-                                {
-                                    entry_point_requires_state = true;
-
-                                    // &self does not write state
-                                    None
-                                }
-                                Some(syn::FnArg::Receiver(receiver))
-                                    if receiver.lifetime().is_some() =>
-                                {
-                                    panic!("Lifetimes are currently not supported");
-                                }
-                                Some(_) | None => None,
-                            };
-
-                            let preamble = if method_attribute.constructor {
-                                let sig = &func.sig;
-                                match func.sig.inputs.first() {
-                                    Some(syn::FnArg::Receiver(_receiver)) => {
-                                        panic!("Constructor should not take a receiver")
+                                } else {
+                                    quote! {
+                                        Some(borsh::to_vec(&self).expect("Serialization to succeed"))
                                     }
-                                    _ => {}
-                                }
-                                match &func.sig.output {
-                                    syn::ReturnType::Default => {
-                                        panic!(
-                                            "Constructor should return an instance of the struct"
-                                        );
+                                };
+
+                                extra_code.push(quote! {
+                                    #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
+                                    pub struct #ident {
+                                        #(pub #arg_names: #arg_types,)*
                                     }
-                                    syn::ReturnType::Type(_, ty) => match ty.as_ref() {
-                                        Type::Never(_) => {
-                                            panic!("Constructors should have a return value")
-                                        }
-                                        ty2 => {
-                                            quote! {
-                                                static_assertions::assert_type_eq_all(#struct_name, #ty2);
-                                            }
-                                        }
-                                    },
-                                }
-                            } else {
-                                quote! {}
-                            };
 
-                            let handle_ret = match func.sig.output {
-                                syn::ReturnType::Default => {
-                                    // Do not call casper_return if there is no return value
-                                    None
-                                }
-                                _ => {
-                                    // There is a return value so call casper_return.
-                                    Some(quote! {
-                                        let ret_bytes = borsh::to_vec(&_ret).unwrap();
-                                        casper_sdk::host::casper_return(flags, Some(&ret_bytes));
-                                    })
-                                }
-                            };
+                                    impl casper_sdk::ToCallData for #ident {
+                                        const SELECTOR: casper_sdk::Selector = casper_sdk::Selector::new(#selector);
 
-                            assert_eq!(arg_names.len(), arg_types.len());
-
-                            let mut entrypoint_params = Vec::new();
-
-                            for (name, ty) in &arg_names_and_types {
-                                entrypoint_params.push(quote! {
-                                    {
-                                        casper_sdk::sys::Param {
-                                            name_ptr: stringify!(#name).as_ptr(),
-                                            name_len: stringify!(#name).len(),
+                                        fn input_data(&self) -> Option<Vec<u8>> {
+                                            #input_data_content
                                         }
                                     }
                                 });
                             }
+                            syn::TraitItem::Type(_) => todo!("Type"),
+                            syn::TraitItem::Macro(_) => todo!("Macro"),
+                            syn::TraitItem::Verbatim(_) => todo!("Verbatim"),
+                            other => todo!("Other {other:?}"),
+                        }
+                    }
 
-                            let handle_err;
-                            let handle_call;
+                    let ext_struct_name = format_ident!("{trait_name}Ext");
 
-                            if method_attribute.constructor {
-                                manifest_entry_points_data.push(quote! {
+                    let container_name = format_ident!("{trait_name}_DISPATCH_TABLE");
+
+                    let manifest_data_len = manifest_data.len();
+
+                    let extension_struct = quote! {
+
+                        #[doc(hidden)]
+                        const #container_name: [(casper_sdk::Selector, fn(&mut dyn #trait_name) -> ()); #manifest_data_len] = [
+                            #(#manifest_data,)*
+                        ];
+
+                        #[doc(hidden)]
+                        #vis struct #ext_struct_name([casper_sdk::sys::EntryPoint; #manifest_data_len]);
+
+                        impl #ext_struct_name {
+                            #[doc(hidden)]
+                            #vis const fn new<T: #trait_name + borsh::BorshDeserialize + casper_sdk::Contract + Default>() -> Self {
+                                Self([
+                                    #(#dispatch_table,)*
+                                ])
+                            }
+                        }
+
+                        #vis extern "C" fn #dispatch_func_name<T: #trait_name + borsh::BorshDeserialize + casper_sdk::Contract + Default, const N: usize>() {
+                            let (_selector, ptr) = #container_name[N];
+                            // todo!("Dispatcher impl")
+                            // let inst =
+                            let mut instance: T = casper_sdk::host::read_state().unwrap();
+                            ptr(&mut instance);
+                            // todo ret?
+
+                        }
+                    };
+
+                    return quote! {
+                        #item_trait
+
+                        #extension_struct
+
+                        #(#extra_code)*
+                    }
+                    .into();
+                } else if let Ok(mut entry_points) = syn::parse::<ItemImpl>(item.clone()) {
+                    // ident.
+                    let mut populate_definitions = Vec::new();
+
+                    let impl_trait = match entry_points.trait_.as_ref() {
+                        Some((None, path, _for)) => Some(path),
+                        Some((Some(_not), _path, _for)) => {
+                            panic!("Exclamation mark not supported");
+                        }
+                        None => None,
+                    };
+
+                    let struct_name = match entry_points.self_ty.as_ref() {
+                        Type::Path(ref path) => &path.path,
+
+                        other => todo!("Unsupported {other:?}"),
+                    };
+
+                    let mut defs = Vec::new();
+
+                    let mut names = Vec::new();
+
+                    let mut manifest_entry_points_data = Vec::new();
+                    let mut manifest_entry_points = Vec::new();
+                    let mut manifest_entry_point_enum_variants = Vec::new();
+                    let mut manifest_entry_point_enum_match_name = Vec::new();
+                    let mut manifest_entry_point_input_data = Vec::new();
+
+                    let mut extra_code = Vec::new();
+
+                    for entry_point in &mut entry_points.items {
+                        let method_attribute;
+                        let mut flag_value = EntryPointFlags::empty();
+
+                        let func = match entry_point {
+                            syn::ImplItem::Const(_) => todo!("Const"),
+                            syn::ImplItem::Fn(ref mut func) => {
+                                match &func.vis {
+                                    syn::Visibility::Public(_) => {}
+                                    syn::Visibility::Inherited => {
+                                        // As the doc says this "usually means private"
+                                        continue;
+                                    }
+                                    syn::Visibility::Restricted(_restricted) => {}
+                                }
+
+                                method_attribute =
+                                    MethodAttribute::from_attributes(&func.attrs).unwrap();
+                                func.attrs.clear();
+
+                                let name = func.sig.ident.clone();
+                                names.push(name.clone());
+
+                                let arg_names_and_types = func
+                                    .sig
+                                    .inputs
+                                    .iter()
+                                    .filter_map(|arg| match arg {
+                                        syn::FnArg::Receiver(_) => None,
+                                        syn::FnArg::Typed(typed) => match typed.pat.as_ref() {
+                                            syn::Pat::Ident(ident) => {
+                                                Some((&ident.ident, &typed.ty))
+                                            }
+                                            _ => todo!(),
+                                        },
+                                    })
+                                    .collect::<Vec<_>>();
+
+                                let arg_names: Vec<_> =
+                                    arg_names_and_types.iter().map(|(name, _ty)| name).collect();
+                                let arg_types: Vec<_> =
+                                    arg_names_and_types.iter().map(|(_name, ty)| ty).collect();
+
+                                let arg_count = arg_names.len();
+
+                                // Entry point has &self or &mut self
+                                let mut entry_point_requires_state: bool = false;
+
+                                let handle_write_state = match func.sig.inputs.first() {
+                                    Some(syn::FnArg::Receiver(receiver))
+                                        if receiver.mutability.is_some() =>
+                                    {
+                                        entry_point_requires_state = true;
+
+                                        if receiver.reference.is_some() {
+                                            // &mut self does write updated state
+                                            Some(quote! {
+                                                casper_sdk::host::write_state(&instance).unwrap();
+                                            })
+                                        } else {
+                                            // mut self does not write updated state as the
+                                            // method call
+                                            // will consume self and there's nothing to persist.
+                                            None
+                                        }
+                                    }
+                                    Some(syn::FnArg::Receiver(receiver))
+                                        if receiver.mutability.is_none() =>
+                                    {
+                                        entry_point_requires_state = true;
+
+                                        // &self does not write state
+                                        None
+                                    }
+                                    Some(syn::FnArg::Receiver(receiver))
+                                        if receiver.lifetime().is_some() =>
+                                    {
+                                        panic!("Lifetimes are currently not supported");
+                                    }
+                                    Some(_) | None => None,
+                                };
+
+                                let preamble = if method_attribute.constructor {
+                                    let sig = &func.sig;
+                                    match func.sig.inputs.first() {
+                                        Some(syn::FnArg::Receiver(_receiver)) => {
+                                            panic!("Constructor should not take a receiver")
+                                        }
+                                        _ => {}
+                                    }
+                                    match &func.sig.output {
+                                        syn::ReturnType::Default => {
+                                            panic!(
+                                            "Constructor should return an instance of the struct"
+                                        );
+                                        }
+                                        syn::ReturnType::Type(_, ty) => match ty.as_ref() {
+                                            Type::Never(_) => {
+                                                panic!("Constructors should have a return value")
+                                            }
+                                            ty2 => {
+                                                quote! {
+                                                    static_assertions::assert_type_eq_all(#struct_name, #ty2);
+                                                }
+                                            }
+                                        },
+                                    }
+                                } else {
+                                    quote! {}
+                                };
+
+                                let handle_ret = match func.sig.output {
+                                    syn::ReturnType::Default => {
+                                        // Do not call casper_return if there is no return value
+                                        None
+                                    }
+                                    _ => {
+                                        // There is a return value so call casper_return.
+                                        Some(quote! {
+                                            let ret_bytes = borsh::to_vec(&_ret).unwrap();
+                                            casper_sdk::host::casper_return(flags, Some(&ret_bytes));
+                                        })
+                                    }
+                                };
+
+                                assert_eq!(arg_names.len(), arg_types.len());
+
+                                let mut entrypoint_params = Vec::new();
+
+                                for (name, ty) in &arg_names_and_types {
+                                    entrypoint_params.push(quote! {
+                                        {
+                                            casper_sdk::sys::Param {
+                                                name_ptr: stringify!(#name).as_ptr(),
+                                                name_len: stringify!(#name).len(),
+                                            }
+                                        }
+                                    });
+                                }
+
+                                let handle_err;
+                                let handle_call;
+
+                                if method_attribute.constructor {
+                                    manifest_entry_points_data.push(quote! {
 
                                     #[allow(non_upper_case_globals)]
                                     const #name: (&'static str, [casper_sdk::sys::Param; #arg_count], extern "C" fn() -> ()) = {
@@ -245,57 +448,53 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                                 });
 
-                                // handle_call = quote! {};
-                                handle_err = quote! {};
-                            } else {
-                                handle_err = if method_attribute.revert_on_error {
-                                    if let syn::ReturnType::Default = func.sig.output {
-                                        panic!(
+                                    // handle_call = quote! {};
+                                    handle_err = quote! {};
+                                } else {
+                                    handle_err = if method_attribute.revert_on_error {
+                                        if let syn::ReturnType::Default = func.sig.output {
+                                            panic!(
                                             "Cannot revert on error if there is no return value"
                                         );
-                                    }
-
-                                    quote! {
-                                        let _ret: &Result<_, _> = &_ret;
-                                        if _ret.is_err() {
-                                            flags |= vm_common::flags::ReturnFlags::REVERT;
                                         }
+
+                                        quote! {
+                                            let _ret: &Result<_, _> = &_ret;
+                                            if _ret.is_err() {
+                                                flags |= vm_common::flags::ReturnFlags::REVERT;
+                                            }
+                                        }
+                                    } else {
+                                        quote! {}
+                                    };
+                                }
+
+                                handle_call = if entry_point_requires_state {
+                                    quote! {
+                                        let mut instance: #struct_name = casper_sdk::host::read_state().unwrap();
+
+                                        let _ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
+                                            instance.#name(#(#arg_names,)*)
+                                        });
                                     }
                                 } else {
-                                    quote! {}
+                                    quote! {
+                                        let _ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
+                                            <#struct_name>::#name(#(#arg_names,)*)
+                                        });
+                                    }
                                 };
-
-                                // manifest_entry_points_data.push(quote! {
-
-                                // });
-                            }
-
-                            handle_call = if entry_point_requires_state {
-                                quote! {
-                                    let mut instance: #struct_name = casper_sdk::host::read_state().unwrap();
-
-                                    let _ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
-                                        instance.#name(#(#arg_names,)*)
-                                    });
+                                if method_attribute.constructor {
+                                    flag_value |= EntryPointFlags::CONSTRUCTOR;
                                 }
-                            } else {
-                                quote! {
-                                    let _ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
-                                        <#struct_name>::#name(#(#arg_names,)*)
-                                    });
-                                }
-                            };
-                            if method_attribute.constructor {
-                                flag_value |= EntryPointFlags::CONSTRUCTOR;
-                            }
 
-                            let bits = flag_value.bits();
+                                let bits = flag_value.bits();
 
-                            let name_str = name.to_string();
+                                let name_str = name.to_string();
 
-                            let selector = compute_selector(name_str.as_bytes()).get();
+                                let selector = compute_selector(name_str.as_bytes()).get();
 
-                            manifest_entry_points.push(quote! {
+                                manifest_entry_points.push(quote! {
                                 {
 
                                     #[allow(non_upper_case_globals)]
@@ -319,211 +518,223 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 }
                             });
 
-                            manifest_entry_point_enum_variants.push(quote! {
-                                #name {
-                                    #(#arg_names: #arg_types,)*
-                                }
-                            });
+                                manifest_entry_point_enum_variants.push(quote! {
+                                    #name {
+                                        #(#arg_names: #arg_types,)*
+                                    }
+                                });
 
-                            manifest_entry_point_enum_match_name.push(quote! {
-                                #name
-                            });
+                                manifest_entry_point_enum_match_name.push(quote! {
+                                    #name
+                                });
 
-                            manifest_entry_point_input_data.push(quote! {
-                                Self::#name { #(#arg_names,)* } => {
-                                    let into_tuple = (#(#arg_names,)*);
-                                    into_tuple.serialize(writer)
-                                }
-                            });
+                                manifest_entry_point_input_data.push(quote! {
+                                    Self::#name { #(#arg_names,)* } => {
+                                        let into_tuple = (#(#arg_names,)*);
+                                        into_tuple.serialize(writer)
+                                    }
+                                });
 
-                            match entry_points.self_ty.as_ref() {
-                                Type::Path(ref path) => {
-                                    // let struct_name = path.path
+                                match entry_points.self_ty.as_ref() {
+                                    Type::Path(ref path) => {
+                                        let ident = syn::Ident::new(
+                                            &format!("{}_{}", path.path.get_ident().unwrap(), name),
+                                            Span::call_site(),
+                                        );
 
-                                    // let ident = syn::Ident::new(&format!("{}_{}", path.path.,
-                                    // name), syn::export::Span:call_site());
-                                    let ident = syn::Ident::new(
-                                        &format!("{}_{}", path.path.get_ident().unwrap(), name),
-                                        Span::call_site(),
-                                    );
-                                    // let arg_struct = format_ident= !("{}_{name}_args",
-                                    // &path.path);
-
-                                    let input_data_content = if arg_names.is_empty() {
-                                        quote! {
-                                            None
-                                        }
-                                    } else {
-                                        quote! {
-                                            Some(borsh::to_vec(&self).expect("Serialization to succeed"))
-                                        }
-                                    };
-
-                                    extra_code.push(quote! {
-                                        #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
-                                        pub struct #ident {
-                                            #(pub #arg_names: #arg_types,)*
-                                        }
-
-                                        impl casper_sdk::ToCallData for #ident {
-                                            const SELECTOR: casper_sdk::Selector = casper_sdk::Selector::new(#selector);
-
-                                            fn input_data(&self) -> Option<Vec<u8>> {
-                                                #input_data_content
+                                        let input_data_content = if arg_names.is_empty() {
+                                            quote! {
+                                                None
                                             }
-                                        }
-                                    });
+                                        } else {
+                                            quote! {
+                                                Some(borsh::to_vec(&self).expect("Serialization to succeed"))
+                                            }
+                                        };
+
+                                        extra_code.push(quote! {
+                                            #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
+                                            pub struct #ident {
+                                                #(pub #arg_names: #arg_types,)*
+                                            }
+
+                                            impl casper_sdk::ToCallData for #ident {
+                                                const SELECTOR: casper_sdk::Selector = casper_sdk::Selector::new(#selector);
+
+                                                fn input_data(&self) -> Option<Vec<u8>> {
+                                                    #input_data_content
+                                                }
+                                            }
+                                        });
+                                    }
+
+                                    _ => todo!("Different self_ty currently unsupported"),
                                 }
-                                _ => todo!("Different self_ty currently unsupported"),
+
+                                func.clone()
                             }
+                            syn::ImplItem::Type(_) => todo!(),
+                            syn::ImplItem::Macro(_) => todo!(),
+                            syn::ImplItem::Verbatim(_) => todo!(),
+                            _ => todo!(),
+                        };
 
-                            func.clone()
-                        }
-                        syn::ImplItem::Type(_) => todo!(),
-                        syn::ImplItem::Macro(_) => todo!(),
-                        syn::ImplItem::Verbatim(_) => todo!(),
-                        _ => todo!(),
-                    };
+                        let func_name = &func.sig.ident;
 
-                    let func_name = &func.sig.ident;
-
-                    let result = match &func.sig.output {
-                        syn::ReturnType::Default => {
-                            populate_definitions.push(quote! {
-                                definitions.populate_one::<()>();
-                            });
-
-                            quote! { <() as casper_sdk::abi::CasperABI>::declaration() }
-                        }
-                        syn::ReturnType::Type(_, ty) => match ty.as_ref() {
-                            Type::Never(_) => {
+                        let result = match &func.sig.output {
+                            syn::ReturnType::Default => {
                                 populate_definitions.push(quote! {
                                     definitions.populate_one::<()>();
                                 });
 
                                 quote! { <() as casper_sdk::abi::CasperABI>::declaration() }
                             }
-                            _ => {
-                                populate_definitions.push(quote! {
-                                    definitions.populate_one::<#ty>();
-                                });
+                            syn::ReturnType::Type(_, ty) => match ty.as_ref() {
+                                Type::Never(_) => {
+                                    populate_definitions.push(quote! {
+                                        definitions.populate_one::<()>();
+                                    });
 
-                                quote! { <#ty as casper_sdk::abi::CasperABI>::declaration() }
+                                    quote! { <() as casper_sdk::abi::CasperABI>::declaration() }
+                                }
+                                _ => {
+                                    populate_definitions.push(quote! {
+                                        definitions.populate_one::<#ty>();
+                                    });
+
+                                    quote! { <#ty as casper_sdk::abi::CasperABI>::declaration() }
+                                }
+                            },
+                        };
+
+                        let mut args = Vec::new();
+
+                        for input in &func.sig.inputs {
+                            let typed = match input {
+                                syn::FnArg::Receiver(_receiver) => continue,
+                                syn::FnArg::Typed(typed) => typed,
+                            };
+                            // typed
+                            let name = match &typed.pat.as_ref() {
+                                syn::Pat::Const(_) => todo!("Const"),
+                                syn::Pat::Ident(ident) => ident,
+                                syn::Pat::Lit(_) => todo!("Lit"),
+                                syn::Pat::Macro(_) => todo!("Macro"),
+                                syn::Pat::Or(_) => todo!("Or"),
+                                syn::Pat::Paren(_) => todo!("Paren"),
+                                syn::Pat::Path(_) => todo!("Path"),
+                                syn::Pat::Range(_) => todo!("Range"),
+                                syn::Pat::Reference(_) => todo!("Reference"),
+                                syn::Pat::Rest(_) => todo!("Rest"),
+                                syn::Pat::Slice(_) => todo!("Slice"),
+                                syn::Pat::Struct(_) => todo!("Struct"),
+                                syn::Pat::Tuple(_) => todo!("Tuple"),
+                                syn::Pat::TupleStruct(_) => todo!("TupleStruct"),
+                                syn::Pat::Type(_) => todo!("Type"),
+                                syn::Pat::Verbatim(_) => todo!("Verbatim"),
+                                syn::Pat::Wild(_) => todo!("Wild"),
+                                _ => todo!(),
+                            };
+                            let ty = &typed.ty;
+
+                            populate_definitions.push(quote! {
+                                definitions.populate_one::<#ty>();
+                            });
+
+                            args.push(quote! {
+                                casper_sdk::schema::SchemaArgument {
+                                    name: stringify!(#name).into(),
+                                    decl: <#ty as casper_sdk::abi::CasperABI>::declaration(),
+                                }
+                            });
+                        }
+
+                        // let mut args = Vec::new();
+                        // for arg in &entry_point
+                        let bits = flag_value.bits();
+
+                        let selector = compute_selector(func_name.to_string().as_bytes()).get();
+
+                        defs.push(quote! {
+                            casper_sdk::schema::SchemaEntryPoint {
+                                name: stringify!(#func_name).into(),
+                                selector: #selector,
+                                arguments: vec![ #(#args,)* ],
+                                result: #result,
+                                flags: vm_common::flags::EntryPointFlags::from_bits(#bits).unwrap(),
                             }
-                        },
+                        });
+                    }
+
+                    // Create a expansion token from the length of `manifest_entry_points_data`
+                    // let manifest_entry_points_data_len = manifest_entry_points_data.len();
+                    let manifest_entry_points_len = manifest_entry_points.len();
+
+                    let st_name = struct_name.get_ident().unwrap();
+
+                    // let static_entry_points_name = format_ident!("{st_name}_MANIFEST");
+
+                    // Auto generated by a trait
+                    let handle_manifest = match impl_trait {
+                        Some(_path) => {
+                            // Do not generate a manifest if we're implementing a trait.
+                            // The expectation is that you list the traits below under
+                            // #[derive(Contract)] and the rest is handled by a macro
+                            None
+                        }
+                        None => Some(quote! {
+                            #[doc(hidden)]
+                            impl #struct_name {
+
+                                #[doc(hidden)]
+                                fn __casper_schema() -> casper_sdk::schema::Schema {
+                                    const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+                                    let entry_points = vec![
+                                        #(#defs,)*
+                                    ];
+
+                                    let definitions = {
+                                        let mut definitions = casper_sdk::abi::Definitions::default();
+                                        <#struct_name as casper_sdk::abi::CasperABI>::populate_definitions(&mut definitions);
+                                        #(#populate_definitions)*;
+                                        definitions
+                                    };
+
+                                    let state = <#struct_name as casper_sdk::abi::CasperABI>::declaration();
+                                    casper_sdk::schema::Schema {
+                                        name: stringify!(#struct_name).into(),
+                                        version: Some(VERSION.into()),
+                                        definitions,
+                                        state,
+                                        entry_points,
+                                    }
+                                }
+
+                                #[doc(hidden)]
+                                const MANIFEST: [casper_sdk::sys::EntryPoint; #manifest_entry_points_len] = [#(#manifest_entry_points,)*];
+                            }
+                        }),
                     };
 
-                    let mut args = Vec::new();
+                    let res = quote! {
+                        #entry_points
 
-                    for input in &func.sig.inputs {
-                        let typed = match input {
-                            syn::FnArg::Receiver(_receiver) => continue,
-                            syn::FnArg::Typed(typed) => typed,
-                        };
-                        // typed
-                        let name = match &typed.pat.as_ref() {
-                            syn::Pat::Const(_) => todo!("Const"),
-                            syn::Pat::Ident(ident) => ident,
-                            syn::Pat::Lit(_) => todo!("Lit"),
-                            syn::Pat::Macro(_) => todo!("Macro"),
-                            syn::Pat::Or(_) => todo!("Or"),
-                            syn::Pat::Paren(_) => todo!("Paren"),
-                            syn::Pat::Path(_) => todo!("Path"),
-                            syn::Pat::Range(_) => todo!("Range"),
-                            syn::Pat::Reference(_) => todo!("Reference"),
-                            syn::Pat::Rest(_) => todo!("Rest"),
-                            syn::Pat::Slice(_) => todo!("Slice"),
-                            syn::Pat::Struct(_) => todo!("Struct"),
-                            syn::Pat::Tuple(_) => todo!("Tuple"),
-                            syn::Pat::TupleStruct(_) => todo!("TupleStruct"),
-                            syn::Pat::Type(_) => todo!("Type"),
-                            syn::Pat::Verbatim(_) => todo!("Verbatim"),
-                            syn::Pat::Wild(_) => todo!("Wild"),
-                            _ => todo!(),
-                        };
-                        let ty = &typed.ty;
+                        #handle_manifest
 
-                        populate_definitions.push(quote! {
-                            definitions.populate_one::<#ty>();
-                        });
+                        #(#extra_code)*
+                    };
 
-                        args.push(quote! {
-                            casper_sdk::schema::SchemaArgument {
-                                name: stringify!(#name).into(),
-                                decl: <#ty as casper_sdk::abi::CasperABI>::declaration(),
-                            }
-                        });
-                    }
-
-                    // let mut args = Vec::new();
-                    // for arg in &entry_point
-                    let bits = flag_value.bits();
-
-                    let selector = compute_selector(func_name.to_string().as_bytes()).get();
-
-                    defs.push(quote! {
-                        casper_sdk::schema::SchemaEntryPoint {
-                            name: stringify!(#func_name).into(),
-                            selector: #selector,
-                            arguments: vec![ #(#args,)* ],
-                            result: #result,
-                            flags: vm_common::flags::EntryPointFlags::from_bits(#bits).unwrap(),
-                        }
-                    });
+                    return res.into();
+                } else {
+                    let err = syn::Error::new(
+                        Span::call_site(),
+                        "Entry points can be defined on a trait or an impl block.",
+                    );
+                    return TokenStream::from(err.to_compile_error());
                 }
-
-                // Create a expansion token from the length of `manifest_entry_points_data`
-                // let manifest_entry_points_data_len = manifest_entry_points_data.len();
-                let manifest_entry_points_len = manifest_entry_points.len();
-
-                let st_name = struct_name.get_ident().unwrap();
-
-                let static_entry_points_name = format_ident!("{st_name}_MANIFEST");
-
-                let res = quote! {
-                    #entry_points
-
-                    impl #struct_name {
-                        #[doc(hidden)]
-                        fn __casper_schema() -> casper_sdk::schema::Schema {
-                            const VERSION: &str = env!("CARGO_PKG_VERSION");
-
-                            let entry_points = vec![
-                                #(#defs,)*
-                            ];
-
-                            let definitions = {
-                                let mut definitions = casper_sdk::abi::Definitions::default();
-                                <#struct_name as casper_sdk::abi::CasperABI>::populate_definitions(&mut definitions);
-                                #(#populate_definitions)*;
-                                definitions
-                            };
-
-                            let state = <#struct_name as casper_sdk::abi::CasperABI>::declaration();
-                            casper_sdk::schema::Schema {
-                                name: stringify!(#struct_name).into(),
-                                version: Some(VERSION.into()),
-                                definitions,
-                                state,
-                                entry_points,
-                            }
-                        }
-                    }
-
-                    #[doc(hidden)]
-                    static #static_entry_points_name: [casper_sdk::sys::EntryPoint; #manifest_entry_points_len] = [#(#manifest_entry_points,)*];
-
-                    impl casper_sdk::manifest::ToManifest for #struct_name {
-                        fn to_manifest() -> &'static [casper_sdk::sys::EntryPoint] {
-                            #static_entry_points_name.as_slice()
-                        }
-                    }
-
-                    #(#extra_code)*
-                };
-
-                return res.into();
             }
+
             proc_macro::TokenTree::Ident(ident) if ident.to_string() == "contract" => {
                 todo!()
             }
@@ -547,30 +758,8 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                             _ => todo!(),
                         },
                     };
-                    // let ty = &input.
                     arg_names.push(name.clone());
                     arg_types.push(ty.clone());
-
-                    // let sig = &input.sig.inputs;
-                    // // let name = match typed.pat.as_ref() {
-                    // //     syn::Pat::Ident(ident) => &ident.ident,
-                    // //     _ => todo!(),
-                    // // };
-
-                    // // let name = input.n
-                    // let arg = quote! {
-                    //     unsafe { core::ptr::NonNull::new_unchecked(#name).as_ref() }.as_slice()
-                    // };
-
-                    // arg_casts.push(arg);
-                    // let arg_slice = quote! {
-                    //     #name: *mut casper_sdk::host::Slice
-                    // };
-                    // arg_slices.push(arg_slice);
-
-                    // arg_calls.push(quote! {
-                    //     name
-                    // })
                 }
 
                 // let arg_tokens =
@@ -607,7 +796,7 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         // ("foo", 1234) -> input
 
                         let input = casper_sdk::host::casper_copy_input();
-                        // let args = #mod_name::Arguments::try_from_slice(&input).unwrap();
+
                         let ( #(#arg_names,)* ) = BorshDeserialize::try_from_slice(&input).unwrap();
 
                         #mod_name::#func_name(#(#arg_names,)*);

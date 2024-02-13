@@ -6,11 +6,14 @@ pub struct Param {
     pub name_len: usize,
 }
 
+/// Signature of a function pointer that a host understands.
+pub type Fptr = extern "C" fn() -> ();
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct EntryPoint {
     pub selector: u32,
-    pub fptr: extern "C" fn() -> (),
+    pub fptr: Fptr,
     pub flags: u32,
 }
 

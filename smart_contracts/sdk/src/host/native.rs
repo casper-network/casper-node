@@ -213,7 +213,6 @@ impl Stub {
         let return_flags = ReturnFlags::from_bits_truncate(flags);
         let data = unsafe { slice::from_raw_parts(data_ptr, data_len) };
         let data = Bytes::copy_from_slice(data);
-        dbg!(&data);
         Err(NativeTrap::Return(return_flags, data))
     }
 
@@ -588,7 +587,6 @@ mod symbols {
         let _args = (&flags, &data_ptr, &data_len);
         let _call_result = with_stub(|stub| stub.casper_return(flags, data_ptr, data_len));
         let err = _call_result.unwrap_err(); // SAFE
-        dbg!(&err);
         LAST_TRAP.with(|last_trap| last_trap.borrow_mut().replace(err));
     }
 
