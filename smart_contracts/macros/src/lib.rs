@@ -19,6 +19,9 @@ struct MethodAttribute {
     constructor: bool,
     #[darling(default)]
     revert_on_error: bool,
+    /// Explicitly mark method as private so it's not externally callable.
+    #[darling(default)]
+    private: bool,
 }
 
 #[derive(Debug, FromAttributes)]
@@ -119,11 +122,9 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                     let vis = &item_trait.vis;
 
-                    let mut manifest_data = Vec::new();
+                    // let mut manifest_data = Vec::new();
 
                     let mut dispatch_table = Vec::new();
-
-                    let dispatch_func_name = format_ident!("{trait_name}_dispatcher");
 
                     let mut entry_point_index = 0usize;
                     let mut extra_code = Vec::new();
@@ -132,8 +133,19 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         match entry_point {
                             syn::TraitItem::Const(_) => todo!("Const"),
                             syn::TraitItem::Fn(func) => {
+                                let method_attribute =
+                                    MethodAttribute::from_attributes(&func.attrs).unwrap();
+                                func.attrs.clear();
+                                if method_attribute.private {
+                                    continue;
+                                }
+
                                 let name = func.sig.ident.clone();
                                 let name_str = name.to_string();
+
+                                let dispatch_func_name =
+                                    format_ident!("{trait_name}_{name}_dispatch");
+
                                 let selector = compute_selector(name_str.as_bytes()).get();
 
                                 let arg_names_and_types = func
@@ -156,23 +168,62 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 let arg_types: Vec<_> =
                                     arg_names_and_types.iter().map(|(_name, ty)| ty).collect();
 
-                                manifest_data.push(quote! {
-                                    {
-                                        (
-                                            casper_sdk::Selector::new(#selector),
-                                            |instance: &mut dyn #trait_name| {
-                                                let _ret = casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
+                                // if func.sig.inputs.first().is_none() {
+                                //     todo!("No inputs");
+                                // }
+                                let handle_dispatch = match func.sig.inputs.first() {
+                                    Some(syn::FnArg::Receiver(_receiver)) => {
+                                        quote! {
+                                            extern "C" fn #dispatch_func_name<T: #trait_name + borsh::BorshDeserialize + borsh::BorshSerialize + casper_sdk::Contract + Default>() {
+                                                let mut flags = vm_common::flags::ReturnFlags::empty();
+
+                                                let mut instance: T = casper_sdk::host::read_state().unwrap();
+                                                let ret = casper_sdk::host::start_noret(|(#(#arg_names,)*):(#(#arg_types,)*)| {
                                                     instance.#name(#(#arg_names,)*)
                                                 });
-                                            },
-                                        )
+
+                                                // TODO: code deduplication with #[casper(entry_points)] on impl block
+                                                // TODO: also, support for #[casper(constructor)] on traits would be great.
+
+                                                casper_sdk::host::write_state(&instance).unwrap();
+                                                let ret_bytes = borsh::to_vec(&ret).unwrap();
+                                                casper_sdk::host::casper_return(flags, Some(&ret_bytes));
+                                            }
+                                        }
                                     }
-                                });
+
+                                    None | Some(syn::FnArg::Typed(_)) => {
+                                        quote! {
+                                            extern "C" fn #dispatch_func_name<T: #trait_name + borsh::BorshDeserialize + borsh::BorshSerialize + casper_sdk::Contract + Default>() {
+                                                let _ret = casper_sdk::host::start(|(#(#arg_names,)*):(#(#arg_types,)*)| {
+                                                    <T as #trait_name>::#name(#(#arg_names,)*)
+                                                });
+                                            }
+                                        }
+                                        // let pat = &typed.pat;
+                                        // let ty = &typed.ty;
+                                        // match pat {
+                                        //     syn::Pat::Ident(ident) => {
+                                        //         let ident = &ident.ident;
+                                        //         quote! {
+                                        //             let mut instance: #trait_name =
+                                        // casper_sdk::host::read_state().unwrap();
+                                        //
+                                        // casper_sdk::host::write_state(&instance).unwrap();
+                                        //         }
+                                        //     }
+                                        //     _ => todo!(),
+                                        // }
+                                    }
+                                };
 
                                 dispatch_table.push(quote! {
                                     casper_sdk::sys::EntryPoint {
                                         selector: #selector,
-                                        fptr: #dispatch_func_name::<T, #entry_point_index>,
+                                        fptr: {
+                                            #handle_dispatch
+                                            #dispatch_func_name::<T>
+                                        },
                                         flags: 0, // TODO?
                                     }
                                 });
@@ -218,38 +269,43 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                     let ext_struct_name = format_ident!("{trait_name}Ext");
 
-                    let container_name = format_ident!("{trait_name}_DISPATCH_TABLE");
+                    // let container_name = format_ident!("{trait_name}_DISPATCH_TABLE");
 
-                    let manifest_data_len = manifest_data.len();
+                    let manifest_data_len = dispatch_table.len();
 
                     let extension_struct = quote! {
 
-                        #[doc(hidden)]
-                        const #container_name: [(casper_sdk::Selector, fn(&mut dyn #trait_name) -> ()); #manifest_data_len] = [
-                            #(#manifest_data,)*
-                        ];
+                        // #[doc(hidden)]
+                        // const #container_name: [(casper_sdk::Selector, fn(&mut dyn #trait_name) -> ()); #manifest_data_len] = [
+                        // #(#manifest_data,)*
+                        // ];
 
                         #[doc(hidden)]
                         #vis struct #ext_struct_name([casper_sdk::sys::EntryPoint; #manifest_data_len]);
 
                         impl #ext_struct_name {
                             #[doc(hidden)]
-                            #vis const fn new<T: #trait_name + borsh::BorshDeserialize + casper_sdk::Contract + Default>() -> Self {
+                            #vis const fn new<T: #trait_name + borsh::BorshDeserialize + borsh::BorshSerialize + casper_sdk::Contract + Default>() -> Self {
                                 Self([
                                     #(#dispatch_table,)*
                                 ])
                             }
                         }
 
-                        #vis extern "C" fn #dispatch_func_name<T: #trait_name + borsh::BorshDeserialize + casper_sdk::Contract + Default, const N: usize>() {
-                            let (_selector, ptr) = #container_name[N];
-                            // todo!("Dispatcher impl")
-                            // let inst =
-                            let mut instance: T = casper_sdk::host::read_state().unwrap();
-                            ptr(&mut instance);
-                            // todo ret?
+                        // #vis extern "C" fn #dispatch_func_name<T: #trait_name + borsh::BorshDeserialize + casper_sdk::Contract + Default, const SELECTOR: u32>() {
 
-                        }
+                        //     match SELECTOR {
+                        //         #(#dispatch_table,)*
+                        //     }
+                        //     // let (_selector, ptr) = #container_name[N];
+                        //     // todo!("Dispatcher impl")
+                        //     // let inst =
+                        //     // let mut instance: T = casper_sdk::host::read_state().unwrap();
+                        //     // ptr(&mut instance);
+
+                        //     // todo ret?
+
+                        // }
                     };
 
                     return quote! {
