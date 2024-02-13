@@ -4,3 +4,4 @@ mod genesis;
 mod handle_payment;
 mod standard_payment;
 mod upgrade;
+mod mint;
