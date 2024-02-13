@@ -61,7 +61,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         for uref in purses {
             let source_balance: U512 = match self.read_balance(uref)? {
                 Some(source_balance) => source_balance,
-                None => return Err(Error::SourceNotFound),
+                None => return Err(Error::PurseNotFound),
             };
 
             self.write_balance(uref, U512::zero())?;
