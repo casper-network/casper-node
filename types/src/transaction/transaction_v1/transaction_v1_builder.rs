@@ -18,7 +18,10 @@ use crate::{
     PackageAddr, PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, URef, U512,
 };
 #[cfg(any(feature = "testing", test))]
-use crate::{testing::TestRng, TransactionConfig, TransactionV1Approval, TransactionV1Hash};
+use crate::{
+    testing::TestRng, TransactionConfig, TransactionV1Approval, TransactionV1Category,
+    TransactionV1Hash,
+};
 pub use error::TransactionV1BuilderError;
 
 /// A builder for constructing a [`TransactionV1`].
@@ -270,6 +273,36 @@ impl<'a> TransactionV1Builder<'a> {
         TransactionV1Builder {
             chain_name: Some(rng.random_string(5..10)),
             timestamp: Timestamp::random(rng),
+            ttl: TimeDiff::from_millis(ttl_millis),
+            body,
+            pricing_mode: PricingMode::random(rng),
+            payment_amount: Some(
+                rng.gen_range(2_500_000_000..=TransactionConfig::default().block_gas_limit),
+            ),
+            initiator_addr: Some(InitiatorAddr::PublicKey(PublicKey::from(&secret_key))),
+            secret_key: Some(secret_key),
+            _phantom_data: PhantomData,
+            invalid_approvals: vec![],
+        }
+    }
+
+    /// Returns a new `TransactionV1Builder` which will build a random not expired transaction of
+    /// given category
+    ///
+    /// The transaction can be made invalid in the following ways:
+    ///   * unsigned by calling `with_no_secret_key`
+    ///   * given an invalid approval by calling `with_invalid_approval`
+    #[cfg(any(feature = "testing", test))]
+    pub fn new_random_not_expired_with_category(
+        rng: &mut TestRng,
+        category: &TransactionV1Category,
+    ) -> Self {
+        let secret_key = SecretKey::random(rng);
+        let ttl_millis = rng.gen_range(60_000..TransactionConfig::default().max_ttl.millis());
+        let body = TransactionV1Body::random_of_category(rng, category);
+        TransactionV1Builder {
+            chain_name: Some(rng.random_string(5..10)),
+            timestamp: Timestamp::now(),
             ttl: TimeDiff::from_millis(ttl_millis),
             body,
             pricing_mode: PricingMode::random(rng),

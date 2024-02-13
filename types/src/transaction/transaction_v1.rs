@@ -394,6 +394,82 @@ impl TransactionV1 {
         TransactionV1Builder::new_random(rng).build().unwrap()
     }
 
+    /// Returns a random transaction with "transfer" category.
+    ///
+    /// Note that the [`TransactionV1Builder`] can be used to create a random transaction with
+    /// more specific values.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn random_transfer(rng: &mut TestRng) -> Self {
+        let transaction = TransactionV1Builder::new_random_not_expired_with_category(
+            rng,
+            &TransactionV1Category::Transfer,
+        )
+        .build()
+        .unwrap();
+        assert!(matches!(
+            transaction.category(),
+            Ok(TransactionV1Category::Transfer)
+        ));
+        transaction
+    }
+
+    /// Returns a random transaction with "standard" category.
+    ///
+    /// Note that the [`TransactionV1Builder`] can be used to create a random transaction with
+    /// more specific values.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn random_standard(rng: &mut TestRng) -> Self {
+        let transaction = TransactionV1Builder::new_random_not_expired_with_category(
+            rng,
+            &TransactionV1Category::Standard,
+        )
+        .build()
+        .unwrap();
+        assert!(matches!(
+            transaction.category(),
+            Ok(TransactionV1Category::Standard)
+        ));
+        transaction
+    }
+
+    /// Returns a random transaction with "install/upgrade" category.
+    ///
+    /// Note that the [`TransactionV1Builder`] can be used to create a random transaction with
+    /// more specific values.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn random_install_upgrade(rng: &mut TestRng) -> Self {
+        let transaction = TransactionV1Builder::new_random_not_expired_with_category(
+            rng,
+            &TransactionV1Category::InstallUpgrade,
+        )
+        .build()
+        .unwrap();
+        assert!(matches!(
+            transaction.category(),
+            Ok(TransactionV1Category::InstallUpgrade)
+        ));
+        transaction
+    }
+
+    /// Returns a random transaction with "install/upgrade" category.
+    ///
+    /// Note that the [`TransactionV1Builder`] can be used to create a random transaction with
+    /// more specific values.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn random_staking(rng: &mut TestRng) -> Self {
+        let transaction = TransactionV1Builder::new_random_not_expired_with_category(
+            rng,
+            &TransactionV1Category::Staking,
+        )
+        .build()
+        .unwrap();
+        assert!(matches!(
+            transaction.category(),
+            Ok(TransactionV1Category::Staking)
+        ));
+        transaction
+    }
+
     /// Turns `self` into an invalid transaction by clearing the `chain_name`, invalidating the
     /// transaction header hash.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
