@@ -1,19 +1,20 @@
 use alloc::vec::Vec;
 use core::num::ParseIntError;
+#[cfg(test)]
+use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     BlockHash, Digest, DigestError,
 };
 
-#[cfg(test)]
-use rand::Rng;
-
-#[cfg(test)]
-use crate::testing::TestRng;
+const HASH_TAG: u8 = 0;
+const HEIGHT_TAG: u8 = 1;
 
 /// Identifier for possible ways to retrieve a block.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
@@ -36,9 +37,6 @@ impl BlockIdentifier {
         }
     }
 }
-
-const HASH_TAG: u8 = 0;
-const HEIGHT_TAG: u8 = 1;
 
 impl FromBytes for BlockIdentifier {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {

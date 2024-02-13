@@ -122,18 +122,17 @@ use casper_execution_engine::engine_state::{
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     binary_port::{
-        ConsensusStatus, ConsensusValidatorChanges, DbId, DbRawBytesSpec, GetAllValuesResult,
-        GetTrieFullResult, HighestBlockSequenceCheckResult, LastProgress, NetworkName,
-        SpeculativeExecutionResult, Uptime,
+        ConsensusStatus, ConsensusValidatorChanges, DbRawBytesSpec, GetAllValuesResult,
+        GetTrieFullResult, LastProgress, NetworkName, RecordId, SpeculativeExecutionResult, Uptime,
     },
     execution::{Effects as ExecutionEffects, ExecutionResult},
     package::Package,
     system::auction::EraValidators,
-    AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader,
-    BlockIdentifier, BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes,
-    DeployHash, Digest, EraId, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key,
-    NextUpgrade, ProtocolVersion, PublicKey, ReactorState, Timestamp, Transaction, TransactionHash,
-    TransactionHeader, TransactionId, Transfer, U512,
+    AddressableEntity, AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures,
+    BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest, EraId, ExecutionInfo,
+    FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key, NextUpgrade, ProtocolVersion,
+    PublicKey, ReactorState, Timestamp, Transaction, TransactionHash, TransactionHeader,
+    TransactionId, Transfer, U512,
 };
 
 use crate::{
@@ -1080,36 +1079,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Returns block hash and height for a given transaction.
-    pub(crate) async fn get_block_hash_and_height_for_transaction(
-        self,
-        transaction_hash: TransactionHash,
-    ) -> Option<BlockHashAndHeight>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetBlockHashAndHeightForTransaction {
-                transaction_hash,
-                responder,
-            },
-            QueueKind::ToStorage,
-        )
-        .await
-    }
-
-    /// Returns block hash for a given height.
-    pub(crate) async fn get_block_hash_for_height(self, height: u64) -> Option<BlockHash>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetBlockHashForHeight { height, responder },
-            QueueKind::ToStorage,
-        )
-        .await
-    }
-
     /// Puts the given approvals hashes into the linear block store.
     pub(crate) async fn put_approvals_hashes_to_storage(
         self,
@@ -1197,12 +1166,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn get_raw_data(self, db: DbId, key: Vec<u8>) -> Option<DbRawBytesSpec>
+    pub(crate) async fn get_raw_data(
+        self,
+        record_id: RecordId,
+        key: Vec<u8>,
+    ) -> Option<DbRawBytesSpec>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetRawData { db, key, responder },
+            |responder| StorageRequest::GetRawData {
+                record_id,
+                key,
+                responder,
+            },
             QueueKind::FromStorage,
         )
         .await
@@ -1409,24 +1386,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Checks if a block with the given hash is among the contiguous sequence of completed blocks.
-    pub(crate) async fn highest_completed_block_sequence_contains(
-        self,
-        block_identifier: BlockIdentifier,
-    ) -> HighestBlockSequenceCheckResult
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::HighestCompletedBlockSequenceContains {
-                block_identifier,
-                responder,
-            },
-            QueueKind::FromStorage,
-        )
-        .await
-    }
-
     /// Requests the height range of fully available blocks (not just block headers).
     pub(crate) async fn get_available_block_range_from_storage(self) -> AvailableBlockRange
     where
@@ -1609,6 +1568,42 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::GetTransactions {
                 transaction_hashes,
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
+    /// Gets the requested transaction from storage by TransactionHash.
+    pub(crate) async fn get_transaction_by_hash_from_storage(
+        self,
+        transaction_hash: TransactionHash,
+    ) -> Option<Transaction>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetTransactionByHash {
+                transaction_hash,
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
+    /// Gets execution info for the requested transaction from storage by TransactionHash.
+    pub(crate) async fn get_transaction_execution_info_from_storage(
+        self,
+        transaction_hash: TransactionHash,
+    ) -> Option<ExecutionInfo>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetTransactionExecutionInfo {
+                transaction_hash,
                 responder,
             },
             QueueKind::FromStorage,

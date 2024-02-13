@@ -1,18 +1,18 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, convert::TryInto, sync::Arc, time::Duration};
 
 use casper_types::{
     binary_port::{
         BinaryRequest, BinaryRequestHeader, BinaryResponse, BinaryResponseAndRequest,
-        ConsensusStatus, ConsensusValidatorChanges, DbId, ErrorCode, GetRequest, GetTrieFullResult,
-        GlobalStateQueryResult, HighestBlockSequenceCheckResult, LastProgress, NetworkName,
-        NodeStatus, NonPersistedDataRequest, PayloadType, Uptime,
+        ConsensusStatus, ConsensusValidatorChanges, ErrorCode, GetRequest, GetTrieFullResult,
+        GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
+        LastProgress, NetworkName, NodeStatus, PayloadType, RecordId, Uptime,
     },
     bytesrepr::{FromBytes, ToBytes},
     testing::TestRng,
-    AvailableBlockRange, BlockHash, BlockHashAndHeight, BlockHeader, BlockIdentifier,
-    BlockSynchronizerStatus, ChainspecRawBytes, Digest, Key, KeyTag, NextUpgrade, Peers,
+    AvailableBlockRange, BlockHash, BlockHeader, BlockIdentifier, BlockSynchronizerStatus,
+    ChainspecRawBytes, Digest, GlobalStateIdentifier, Key, KeyTag, NextUpgrade, Peers,
     ProtocolVersion, ReactorState, SecretKey, SignedBlock, StoredValue, Transaction,
-    TransactionHash, TransactionV1Builder, Transfer,
+    TransactionV1Builder, Transfer,
 };
 use juliet::{
     io::IoCoreBuilder,
@@ -35,6 +35,13 @@ use super::{InitialStakes, TestFixture};
 
 const GUARANTEED_BLOCK_HEIGHT: u64 = 2;
 
+struct TestData {
+    rng: TestRng,
+    chainspec_raw_bytes: ChainspecRawBytes,
+    highest_block: SignedBlock,
+    secret_signing_key: Arc<SecretKey>,
+}
+
 fn network_produced_blocks(
     nodes: &HashMap<NodeId, Runner<ConditionCheckReactor<FilterReactor<MainReactor>>>>,
     block_count: u64,
@@ -54,10 +61,7 @@ async fn setup() -> (
     JulietRpcClient<1>,
     (
         impl futures::Future<Output = (TestingNetwork<FilterReactor<MainReactor>>, TestRng)>,
-        TestRng,
-        ChainspecRawBytes,
-        SignedBlock,
-        Arc<SecretKey>,
+        TestData,
     ),
 ) {
     let mut fixture = TestFixture::new(
@@ -139,10 +143,12 @@ async fn setup() -> (
         client,
         (
             finish_cranking,
-            rng,
-            chainspec_raw_bytes,
-            highest_block,
-            secret_signing_key,
+            TestData {
+                rng,
+                chainspec_raw_bytes,
+                highest_block,
+                secret_signing_key,
+            },
         ),
     )
 }
@@ -196,15 +202,20 @@ async fn binary_port_component() {
 
     let (
         client,
-        (finish_cranking, mut rng, network_chainspec_raw_bytes, highest_block, secret_key),
+        (
+            finish_cranking,
+            TestData {
+                mut rng,
+                chainspec_raw_bytes: network_chainspec_raw_bytes,
+                highest_block,
+                secret_signing_key,
+            },
+        ),
     ) = setup().await;
 
     let test_cases = &[
-        block_hash_2_height(),
-        highest_complete_block(),
-        completed_blocks_contain_true(),
-        completed_blocks_contain_false(),
-        transaction_hash_2_block_hash_and_height(&mut rng),
+        block_header_info(*highest_block.block().hash()),
+        signed_block_info(*highest_block.block().hash()),
         peers(),
         uptime(),
         last_progress(),
@@ -224,11 +235,8 @@ async fn binary_port_component() {
         get_trie(*highest_block.block().state_root_hash()),
         try_spec_exec_invalid(&mut rng, highest_block.block().clone_header()),
         try_accept_transaction_invalid(&mut rng),
-        try_accept_transaction(&secret_key),
+        try_accept_transaction(&secret_signing_key),
     ];
-
-    let header = BinaryRequestHeader::new(ProtocolVersion::V1_0_0);
-    let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");
 
     for TestCase {
         name,
@@ -236,6 +244,9 @@ async fn binary_port_component() {
         asserter,
     } in test_cases
     {
+        let header = BinaryRequestHeader::new(ProtocolVersion::V1_0_0, request.tag());
+        let header_bytes = ToBytes::to_bytes(&header).expect("should serialize");
+
         let original_request_bytes = header_bytes
             .iter()
             .chain(
@@ -275,83 +286,34 @@ async fn binary_port_component() {
         .unwrap_or_else(|_| panic!("should finish cranking without timeout"));
 }
 
-fn block_hash_2_height() -> TestCase {
+fn block_header_info(hash: BlockHash) -> TestCase {
     TestCase {
-        name: "block_hash_2_height",
-        request: BinaryRequest::Get(GetRequest::NonPersistedData(
-            NonPersistedDataRequest::BlockHeight2Hash {
-                height: GUARANTEED_BLOCK_HEIGHT - 1,
-            },
-        )),
-        asserter: Box::new(|response| {
-            assert_response::<BlockHash, _>(response, Some(PayloadType::BlockHash), |_| true)
+        name: "block_header_info",
+        request: BinaryRequest::Get(
+            InformationRequest::BlockHeader(Some(BlockIdentifier::Hash(hash)))
+                .try_into()
+                .expect("should convert"),
+        ),
+        asserter: Box::new(move |response| {
+            assert_response::<BlockHeader, _>(response, Some(PayloadType::BlockHeader), |header| {
+                header.block_hash() == hash
+            })
         }),
     }
 }
 
-fn highest_complete_block() -> TestCase {
+fn signed_block_info(hash: BlockHash) -> TestCase {
     TestCase {
-        name: "highest_complete_block",
-        request: BinaryRequest::Get(GetRequest::NonPersistedData(
-            NonPersistedDataRequest::HighestCompleteBlock,
-        )),
-        asserter: Box::new(|response| {
-            assert_response::<BlockHashAndHeight, _>(
-                response,
-                Some(PayloadType::BlockHashAndHeight),
-                |block_data| block_data.block_height() >= GUARANTEED_BLOCK_HEIGHT,
-            )
-        }),
-    }
-}
-
-fn completed_blocks_contain_true() -> TestCase {
-    TestCase {
-        name: "completed_blocks_contain_true",
-        request: BinaryRequest::Get(GetRequest::NonPersistedData(
-            NonPersistedDataRequest::CompletedBlocksContain {
-                block_identifier: BlockIdentifier::Height(GUARANTEED_BLOCK_HEIGHT - 1),
-            },
-        )),
-        asserter: Box::new(|response| {
-            assert_response::<HighestBlockSequenceCheckResult, _>(
-                response,
-                Some(PayloadType::HighestBlockSequenceCheckResult),
-                HighestBlockSequenceCheckResult::into_inner,
-            )
-        }),
-    }
-}
-
-fn completed_blocks_contain_false() -> TestCase {
-    TestCase {
-        name: "completed_blocks_contain_false",
-        request: BinaryRequest::Get(GetRequest::NonPersistedData(
-            NonPersistedDataRequest::CompletedBlocksContain {
-                block_identifier: BlockIdentifier::Height(GUARANTEED_BLOCK_HEIGHT + 1000),
-            },
-        )),
-        asserter: Box::new(|response| {
-            assert_response::<HighestBlockSequenceCheckResult, _>(
-                response,
-                Some(PayloadType::HighestBlockSequenceCheckResult),
-                |res| !res.into_inner(),
-            )
-        }),
-    }
-}
-
-fn transaction_hash_2_block_hash_and_height(rng: &mut TestRng) -> TestCase {
-    TestCase {
-        name: "transaction_hash_2_block_hash_and_height",
-        request: BinaryRequest::Get(GetRequest::NonPersistedData(
-            NonPersistedDataRequest::TransactionHash2BlockHashAndHeight {
-                // TODO: Add similar test case but with an existing transaction
-                transaction_hash: TransactionHash::random(rng),
-            },
-        )),
-        asserter: Box::new(|response| {
-            assert_response::<Option<BlockHashAndHeight>, _>(response, None, |_| true)
+        name: "signed_block_info",
+        request: BinaryRequest::Get(
+            InformationRequest::SignedBlock(Some(BlockIdentifier::Hash(hash)))
+                .try_into()
+                .expect("should convert"),
+        ),
+        asserter: Box::new(move |response| {
+            assert_response::<SignedBlock, _>(response, Some(PayloadType::SignedBlock), |header| {
+                *header.block().hash() == hash
+            })
         }),
     }
 }
@@ -359,7 +321,10 @@ fn transaction_hash_2_block_hash_and_height(rng: &mut TestRng) -> TestCase {
 fn peers() -> TestCase {
     TestCase {
         name: "peers",
-        request: BinaryRequest::Get(GetRequest::NonPersistedData(NonPersistedDataRequest::Peers)),
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: InformationRequestTag::Peers.into(),
+            key: vec![],
+        }),
         asserter: Box::new(|response| {
             assert_response::<Peers, _>(response, Some(PayloadType::Peers), |peers| {
                 !peers.into_inner().is_empty()
@@ -371,9 +336,10 @@ fn peers() -> TestCase {
 fn uptime() -> TestCase {
     TestCase {
         name: "uptime",
-        request: BinaryRequest::Get(GetRequest::NonPersistedData(
-            NonPersistedDataRequest::Uptime,
-        )),
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: InformationRequestTag::Uptime.into(),
+            key: vec![],
+        }),
         asserter: Box::new(|response| {
             assert_response::<Uptime, _>(response, Some(PayloadType::Uptime), |uptime| {
                 uptime.into_inner() > 0
@@ -385,9 +351,10 @@ fn uptime() -> TestCase {
 fn last_progress() -> TestCase {
     TestCase {
         name: "last_progress",
-        request: BinaryRequest::Get(GetRequest::NonPersistedData(
-            NonPersistedDataRequest::LastProgress,
-        )),
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: InformationRequestTag::LastProgress.into(),
+            key: vec![],
+        }),
         asserter: Box::new(|response| {
             assert_response::<LastProgress, _>(
                 response,
@@ -401,9 +368,10 @@ fn last_progress() -> TestCase {
 fn reactor_state() -> TestCase {
     TestCase {
         name: "reactor_state",
-        request: BinaryRequest::Get(GetRequest::NonPersistedData(
-            NonPersistedDataRequest::ReactorState,
-        )),
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: InformationRequestTag::ReactorState.into(),
+            key: vec![],
+        }),
         asserter: Box::new(|response| {
             assert_response::<ReactorState, _>(
                 response,
@@ -417,9 +385,10 @@ fn reactor_state() -> TestCase {
 fn network_name() -> TestCase {
     TestCase {
         name: "network_name",
-        request: BinaryRequest::Get(GetRequest::NonPersistedData(
-            NonPersistedDataRequest::NetworkName,
-        )),
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: InformationRequestTag::NetworkName.into(),
+            key: vec![],
+        }),
         asserter: Box::new(|response| {
             assert_response::<NetworkName, _>(
                 response,
@@ -433,9 +402,10 @@ fn network_name() -> TestCase {
 fn consensus_validator_changes() -> TestCase {
     TestCase {
         name: "consensus_validator_changes",
-        request: BinaryRequest::Get(GetRequest::NonPersistedData(
-            NonPersistedDataRequest::ConsensusValidatorChanges,
-        )),
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: InformationRequestTag::ConsensusValidatorChanges.into(),
+            key: vec![],
+        }),
         asserter: Box::new(|response| {
             assert_response::<ConsensusValidatorChanges, _>(
                 response,
@@ -449,9 +419,10 @@ fn consensus_validator_changes() -> TestCase {
 fn block_synchronizer_status() -> TestCase {
     TestCase {
         name: "block_synchronizer_status",
-        request: BinaryRequest::Get(GetRequest::NonPersistedData(
-            NonPersistedDataRequest::BlockSynchronizerStatus,
-        )),
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: InformationRequestTag::BlockSynchronizerStatus.into(),
+            key: vec![],
+        }),
         asserter: Box::new(|response| {
             assert_response::<BlockSynchronizerStatus, _>(
                 response,
@@ -465,9 +436,10 @@ fn block_synchronizer_status() -> TestCase {
 fn available_block_range() -> TestCase {
     TestCase {
         name: "available_block_range",
-        request: BinaryRequest::Get(GetRequest::NonPersistedData(
-            NonPersistedDataRequest::AvailableBlockRange,
-        )),
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: InformationRequestTag::AvailableBlockRange.into(),
+            key: vec![],
+        }),
         asserter: Box::new(|response| {
             assert_response::<AvailableBlockRange, _>(
                 response,
@@ -481,9 +453,10 @@ fn available_block_range() -> TestCase {
 fn next_upgrade() -> TestCase {
     TestCase {
         name: "next_upgrade",
-        request: BinaryRequest::Get(GetRequest::NonPersistedData(
-            NonPersistedDataRequest::NextUpgrade,
-        )),
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: InformationRequestTag::NextUpgrade.into(),
+            key: vec![],
+        }),
         asserter: Box::new(|response| assert_response::<NextUpgrade, _>(response, None, |_| true)),
     }
 }
@@ -491,9 +464,10 @@ fn next_upgrade() -> TestCase {
 fn consensus_status() -> TestCase {
     TestCase {
         name: "consensus_status",
-        request: BinaryRequest::Get(GetRequest::NonPersistedData(
-            NonPersistedDataRequest::ConsensusStatus,
-        )),
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: InformationRequestTag::ConsensusStatus.into(),
+            key: vec![],
+        }),
         asserter: Box::new(|response| {
             assert_response::<ConsensusStatus, _>(
                 response,
@@ -507,9 +481,10 @@ fn consensus_status() -> TestCase {
 fn chainspec_raw_bytes(network_chainspec_raw_bytes: ChainspecRawBytes) -> TestCase {
     TestCase {
         name: "chainspec_raw_bytes",
-        request: BinaryRequest::Get(GetRequest::NonPersistedData(
-            NonPersistedDataRequest::ChainspecRawBytes,
-        )),
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: InformationRequestTag::ChainspecRawBytes.into(),
+            key: vec![],
+        }),
         asserter: Box::new(move |response| {
             assert_response::<ChainspecRawBytes, _>(
                 response,
@@ -523,9 +498,10 @@ fn chainspec_raw_bytes(network_chainspec_raw_bytes: ChainspecRawBytes) -> TestCa
 fn node_status() -> TestCase {
     TestCase {
         name: "node_status",
-        request: BinaryRequest::Get(GetRequest::NonPersistedData(
-            NonPersistedDataRequest::NodeStatus,
-        )),
+        request: BinaryRequest::Get(GetRequest::Information {
+            info_type_tag: InformationRequestTag::NodeStatus.into(),
+            key: vec![],
+        }),
         asserter: Box::new(move |response| {
             assert_response::<NodeStatus, _>(
                 response,
@@ -547,8 +523,8 @@ fn node_status() -> TestCase {
 fn get_block_header(expected: BlockHeader) -> TestCase {
     TestCase {
         name: "get_block_header",
-        request: BinaryRequest::Get(GetRequest::Db {
-            db_tag: DbId::BlockHeader.into(),
+        request: BinaryRequest::Get(GetRequest::Record {
+            record_type_tag: RecordId::BlockHeader.into(),
             key: expected.block_hash().to_bytes().unwrap(),
         }),
         asserter: Box::new(move |response| {
@@ -562,8 +538,8 @@ fn get_block_header(expected: BlockHeader) -> TestCase {
 fn get_block_transfers(expected: BlockHeader) -> TestCase {
     TestCase {
         name: "get_block_transfers",
-        request: BinaryRequest::Get(GetRequest::Db {
-            db_tag: DbId::Transfer.into(),
+        request: BinaryRequest::Get(GetRequest::Record {
+            record_type_tag: RecordId::Transfer.into(),
             key: expected.block_hash().to_bytes().unwrap(),
         }),
         asserter: Box::new(move |response| {
@@ -576,11 +552,11 @@ fn get_block_transfers(expected: BlockHeader) -> TestCase {
 fn get_era_summary(state_root_hash: Digest) -> TestCase {
     TestCase {
         name: "get_era_summary",
-        request: BinaryRequest::Get(GetRequest::State {
-            state_root_hash,
+        request: BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Item {
+            state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
             base_key: Key::EraSummary,
             path: vec![],
-        }),
+        })),
         asserter: Box::new(|response| {
             assert_response::<GlobalStateQueryResult, _>(
                 response,
@@ -597,10 +573,10 @@ fn get_era_summary(state_root_hash: Digest) -> TestCase {
 fn get_all_bids(state_root_hash: Digest) -> TestCase {
     TestCase {
         name: "get_all_bids",
-        request: BinaryRequest::Get(GetRequest::AllValues {
-            state_root_hash,
+        request: BinaryRequest::Get(GetRequest::State(GlobalStateRequest::AllItems {
+            state_identifier: Some(GlobalStateIdentifier::StateRootHash(state_root_hash)),
             key_tag: KeyTag::Bid,
-        }),
+        })),
         asserter: Box::new(|response| {
             assert_response::<Vec<StoredValue>, _>(
                 response,
@@ -614,7 +590,9 @@ fn get_all_bids(state_root_hash: Digest) -> TestCase {
 fn get_trie(digest: Digest) -> TestCase {
     TestCase {
         name: "get_trie",
-        request: BinaryRequest::Get(GetRequest::Trie { trie_key: digest }),
+        request: BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Trie {
+            trie_key: digest,
+        })),
         asserter: Box::new(|response| {
             assert_response::<GetTrieFullResult, _>(
                 response,

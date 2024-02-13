@@ -1,3 +1,4 @@
+mod global_state_identifier;
 mod type_mismatch;
 
 use alloc::{
@@ -24,6 +25,7 @@ use crate::{
     system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
     AddressableEntity, ByteCode, CLValue, DeployInfo, Transfer,
 };
+pub use global_state_identifier::GlobalStateIdentifier;
 pub use type_mismatch::TypeMismatch;
 
 #[allow(clippy::large_enum_variant)]

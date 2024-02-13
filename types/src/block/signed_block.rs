@@ -1,6 +1,10 @@
+use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
 
-use crate::{Block, BlockSignatures};
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    Block, BlockSignatures,
+};
 #[cfg(any(feature = "std", feature = "json-schema", test))]
 use serde::{Deserialize, Serialize};
 
@@ -34,6 +38,32 @@ impl SignedBlock {
     /// Converts `self` into the block and signatures.
     pub fn into_inner(self) -> (Block, BlockSignatures) {
         (self.block, self.block_signatures)
+    }
+}
+
+impl FromBytes for SignedBlock {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (block, bytes) = FromBytes::from_bytes(bytes)?;
+        let (block_signatures, bytes) = FromBytes::from_bytes(bytes)?;
+        Ok((SignedBlock::new(block, block_signatures), bytes))
+    }
+}
+
+impl ToBytes for SignedBlock {
+    fn to_bytes(&self) -> Result<Vec<u8>, crate::bytesrepr::Error> {
+        let mut buf = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn write_bytes(&self, bytes: &mut Vec<u8>) -> Result<(), crate::bytesrepr::Error> {
+        self.block.write_bytes(bytes)?;
+        self.block_signatures.write_bytes(bytes)?;
+        Ok(())
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.block.serialized_length() + self.block_signatures.serialized_length()
     }
 }
 

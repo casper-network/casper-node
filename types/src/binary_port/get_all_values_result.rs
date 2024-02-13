@@ -1,5 +1,3 @@
-//! Types for the `State::AllValues` request.
-
 use alloc::vec::Vec;
 
 use crate::StoredValue;

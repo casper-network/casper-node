@@ -5,8 +5,8 @@ use rand::Rng;
 use serde::Serialize;
 
 use casper_types::{
-    binary_port::{BinaryRequest, BinaryResponse, GetRequest},
-    Digest, KeyTag,
+    binary_port::{BinaryRequest, BinaryResponse, GetRequest, GlobalStateRequest},
+    Digest, GlobalStateIdentifier, KeyTag,
 };
 
 use crate::{
@@ -327,16 +327,17 @@ impl ReactorEvent for Event {
 }
 
 fn all_values_request() -> BinaryRequest {
-    BinaryRequest::Get(GetRequest::AllValues {
-        state_root_hash: Digest::hash([1u8; 32]),
+    let state_identifier = GlobalStateIdentifier::StateRootHash(Digest::hash([1u8; 32]));
+    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::AllItems {
+        state_identifier: Some(state_identifier),
         key_tag: KeyTag::Account,
-    })
+    }))
 }
 
 fn trie_request() -> BinaryRequest {
-    BinaryRequest::Get(GetRequest::Trie {
+    BinaryRequest::Get(GetRequest::State(GlobalStateRequest::Trie {
         trie_key: Digest::hash([1u8; 32]),
-    })
+    }))
 }
 
 fn got_contract_runtime_request(event: &Event) -> bool {

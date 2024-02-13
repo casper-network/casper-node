@@ -1,5 +1,3 @@
-//! The binary response.
-
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     ProtocolVersion,
@@ -11,8 +9,8 @@ use crate::testing::TestRng;
 
 use super::{
     binary_response_header::BinaryResponseHeader,
-    db_id::DbId,
     payload_type::{PayloadEntity, PayloadType},
+    record_id::RecordId,
     DbRawBytesSpec, ErrorCode,
 };
 
@@ -44,7 +42,7 @@ impl BinaryResponse {
 
     /// Creates new binary response from raw DB bytes.
     pub fn from_db_raw_bytes(
-        db_id: DbId,
+        record_id: RecordId,
         spec: Option<DbRawBytesSpec>,
         protocol_version: ProtocolVersion,
     ) -> Self {
@@ -54,7 +52,7 @@ impl BinaryResponse {
                 raw_bytes,
             }) => BinaryResponse {
                 header: BinaryResponseHeader::new(
-                    Some(PayloadType::new_from_db_id(db_id, is_legacy)),
+                    Some(PayloadType::new_from_record_id(record_id, is_legacy)),
                     protocol_version,
                 ),
                 payload: raw_bytes,

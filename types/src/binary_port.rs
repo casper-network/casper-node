@@ -3,36 +3,38 @@ mod binary_request;
 mod binary_response;
 mod binary_response_and_request;
 mod binary_response_header;
-mod db_id;
 mod error_code;
-mod get;
 mod get_all_values_result;
+mod get_request;
 mod global_state_query_result;
+mod information_request;
 mod minimal_block_info;
 #[cfg(any(feature = "std", test))]
 mod node_status;
-mod non_persistent_data_request;
 mod payload_type;
+mod record_id;
+mod state_request;
 mod type_wrappers;
 
 pub use binary_request::{BinaryRequest, BinaryRequestHeader, BinaryRequestTag};
 pub use binary_response::BinaryResponse;
 pub use binary_response_and_request::BinaryResponseAndRequest;
 pub use binary_response_header::BinaryResponseHeader;
-pub use db_id::DbId;
 pub use error_code::ErrorCode;
-pub use get::GetRequest;
 pub use get_all_values_result::GetAllValuesResult;
+pub use get_request::GetRequest;
 pub use global_state_query_result::GlobalStateQueryResult;
+pub use information_request::{InformationRequest, InformationRequestTag};
 #[cfg(any(feature = "std", test))]
 pub use minimal_block_info::MinimalBlockInfo;
 #[cfg(any(feature = "std", test))]
 pub use node_status::NodeStatus;
-pub use non_persistent_data_request::NonPersistedDataRequest;
 pub use payload_type::{PayloadEntity, PayloadType};
+pub use record_id::RecordId;
+pub use state_request::GlobalStateRequest;
 pub use type_wrappers::{
-    ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, HighestBlockSequenceCheckResult,
-    LastProgress, NetworkName, SpeculativeExecutionResult, Uptime,
+    ConsensusStatus, ConsensusValidatorChanges, GetTrieFullResult, LastProgress, NetworkName,
+    SpeculativeExecutionResult, TransactionWithExecutionInfo, Uptime,
 };
 
 use alloc::vec::Vec;

@@ -1,4 +1,5 @@
 use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
 #[cfg(feature = "std")]
 use std::error::Error as StdError;
@@ -11,7 +12,10 @@ use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 
 use super::{BlockHash, FinalitySignature};
-use crate::{crypto, EraId, PublicKey, Signature};
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    crypto, EraId, PublicKey, Signature,
+};
 
 /// An error returned during an attempt to merge two incompatible [`BlockSignatures`].
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -191,6 +195,43 @@ impl BlockSignatures {
             signature.is_verified()?;
         }
         Ok(())
+    }
+}
+
+impl FromBytes for BlockSignatures {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), crate::bytesrepr::Error> {
+        let (block_hash, bytes) = FromBytes::from_bytes(bytes)?;
+        let (era_id, bytes) = FromBytes::from_bytes(bytes)?;
+        let (proofs, bytes) = FromBytes::from_bytes(bytes)?;
+        Ok((
+            BlockSignatures {
+                block_hash,
+                era_id,
+                proofs,
+            },
+            bytes,
+        ))
+    }
+}
+
+impl ToBytes for BlockSignatures {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buf = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn write_bytes(&self, bytes: &mut Vec<u8>) -> Result<(), crate::bytesrepr::Error> {
+        self.block_hash.write_bytes(bytes)?;
+        self.era_id.write_bytes(bytes)?;
+        self.proofs.write_bytes(bytes)?;
+        Ok(())
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.block_hash.serialized_length()
+            + self.era_id.serialized_length()
+            + self.proofs.serialized_length()
     }
 }
 

@@ -3,7 +3,7 @@ use std::{
     net::SocketAddr,
 };
 
-use casper_types::binary_port::{BinaryRequest, BinaryResponse, GetRequest};
+use casper_types::binary_port::{BinaryRequest, BinaryResponse, GetRequest, GlobalStateRequest};
 use tokio::net::TcpStream;
 
 use crate::effect::Responder;
@@ -29,17 +29,22 @@ impl Display for Event {
             Event::AcceptConnection { peer, .. } => write!(f, "accept connection from {}", peer),
             Event::HandleRequest { request, .. } => match request {
                 BinaryRequest::Get(request) => match request {
-                    GetRequest::Db { db_tag, key } => {
-                        write!(f, "get from db with tag {} ({})", db_tag, key.len())
+                    GetRequest::Record {
+                        record_type_tag,
+                        key,
+                    } => {
+                        write!(f, "get record with tag {} ({})", record_type_tag, key.len())
                     }
-                    GetRequest::NonPersistedData(_) => write!(f, "get non-persisted data"),
-                    GetRequest::State { base_key, .. } => {
-                        write!(f, "get from global state ({})", base_key)
+                    GetRequest::Information { info_type_tag, key } => {
+                        write!(f, "get info with tag {} ({})", info_type_tag, key.len())
                     }
-                    GetRequest::AllValues { key_tag, .. } => {
-                        write!(f, "get all values ({})", key_tag)
+                    GetRequest::State(GlobalStateRequest::Item { base_key, .. }) => {
+                        write!(f, "get item from global state ({})", base_key)
                     }
-                    GetRequest::Trie { trie_key } => write!(f, "get trie ({})", trie_key),
+                    GetRequest::State(GlobalStateRequest::AllItems { key_tag, .. }) => {
+                        write!(f, "get all items ({})", key_tag)
+                    }
+                    GetRequest::State(GlobalStateRequest::Trie { .. }) => write!(f, "get trie"),
                 },
                 BinaryRequest::TryAcceptTransaction { transaction, .. } => {
                     write!(f, "try accept transaction ({})", transaction.hash())

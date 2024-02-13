@@ -1,5 +1,3 @@
-//! Binary port error.
-
 use core::{convert::TryFrom, fmt};
 
 /// The error code indicating the result of handling the binary request.

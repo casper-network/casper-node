@@ -6,7 +6,7 @@ use super::payload_type::PayloadEntity;
 use alloc::vec::Vec;
 
 #[cfg(any(feature = "testing", test))]
-use super::db_id::DbId;
+use super::record_id::RecordId;
 #[cfg(any(feature = "testing", test))]
 use crate::ProtocolVersion;
 
@@ -34,14 +34,14 @@ impl BinaryResponseAndRequest {
     /// Returns a new binary response with specified data and no original request.
     #[cfg(any(feature = "testing", test))]
     pub fn new_test_response<A: PayloadEntity + ToBytes>(
-        db_id: DbId,
+        record_id: RecordId,
         data: &A,
         protocol_version: ProtocolVersion,
     ) -> BinaryResponseAndRequest {
         use super::DbRawBytesSpec;
 
         let response = BinaryResponse::from_db_raw_bytes(
-            db_id,
+            record_id,
             Some(DbRawBytesSpec::new_current(&data.to_bytes().unwrap())),
             protocol_version,
         );
@@ -51,14 +51,14 @@ impl BinaryResponseAndRequest {
     /// Returns a new binary response with specified legacy data and no original request.
     #[cfg(any(feature = "testing", test))]
     pub fn new_legacy_test_response<A: PayloadEntity + serde::Serialize>(
-        db_id: DbId,
+        record_id: RecordId,
         data: &A,
         protocol_version: ProtocolVersion,
     ) -> BinaryResponseAndRequest {
         use super::DbRawBytesSpec;
 
         let response = BinaryResponse::from_db_raw_bytes(
-            db_id,
+            record_id,
             Some(DbRawBytesSpec::new_legacy(
                 &bincode::serialize(data).unwrap(),
             )),

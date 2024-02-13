@@ -15,12 +15,13 @@ use casper_execution_engine::engine_state::{
 use casper_types::{
     binary_port::{
         self, BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse,
-        BinaryResponseAndRequest, DbId, DbRawBytesSpec, GetAllValuesResult, GetRequest,
-        GlobalStateQueryResult, NodeStatus, NonPersistedDataRequest,
+        BinaryResponseAndRequest, DbRawBytesSpec, GetAllValuesResult, GetRequest,
+        GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
+        NodeStatus, RecordId, TransactionWithExecutionInfo,
     },
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockHashAndHeight, BlockHeader, Digest, Peers, ProtocolVersion, TimeDiff, Timestamp,
-    Transaction,
+    BlockHeader, BlockIdentifier, Digest, GlobalStateIdentifier, Peers, ProtocolVersion,
+    SignedBlock, TimeDiff, Timestamp, Transaction,
 };
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
@@ -309,8 +310,11 @@ where
 {
     match get_req {
         // this workaround is in place because get_block_transfers performs a lazy migration
-        GetRequest::Db { db_tag, key } if db_tag == u8::from(DbId::Transfer) => {
-            metrics.binary_port_get_db_count.inc();
+        GetRequest::Record {
+            record_type_tag,
+            key,
+        } if RecordId::try_from(record_type_tag) == Ok(RecordId::Transfer) => {
+            metrics.binary_port_get_record_count.inc();
             let Ok(block_hash) = bytesrepr::deserialize_from_slice(&key) else {
                 return BinaryResponse::new_error(binary_port::ErrorCode::BadRequest, protocol_version);
             };
@@ -323,14 +327,17 @@ where
                 return BinaryResponse::new_error(binary_port::ErrorCode::InternalError, protocol_version);
             };
             let bytes = DbRawBytesSpec::new_current(&serialized);
-            BinaryResponse::from_db_raw_bytes(DbId::Transfer, Some(bytes), protocol_version)
+            BinaryResponse::from_db_raw_bytes(RecordId::Transfer, Some(bytes), protocol_version)
         }
-        GetRequest::Db { db_tag, key } => {
-            metrics.binary_port_get_db_count.inc();
-            match DbId::try_from(db_tag) {
-                Ok(db_id) => {
-                    let maybe_raw_bytes = effect_builder.get_raw_data(db_id, key).await;
-                    BinaryResponse::from_db_raw_bytes(db_id, maybe_raw_bytes, protocol_version)
+        GetRequest::Record {
+            record_type_tag,
+            key,
+        } => {
+            metrics.binary_port_get_record_count.inc();
+            match RecordId::try_from(record_type_tag) {
+                Ok(record_id) => {
+                    let maybe_raw_bytes = effect_builder.get_raw_data(record_id, key).await;
+                    BinaryResponse::from_db_raw_bytes(record_id, maybe_raw_bytes, protocol_version)
                 }
                 Err(_) => BinaryResponse::new_error(
                     binary_port::ErrorCode::UnsupportedRequest,
@@ -338,42 +345,89 @@ where
                 ),
             }
         }
-        GetRequest::NonPersistedData(req) => {
-            metrics.binary_port_get_non_persisted_data_count.inc();
-            handle_non_persisted_data_request(req, effect_builder, protocol_version).await
+        GetRequest::Information { info_type_tag, key } => {
+            metrics.binary_port_get_info_count.inc();
+            let Ok(tag) = InformationRequestTag::try_from(info_type_tag) else {
+                return BinaryResponse::new_error(binary_port::ErrorCode::UnsupportedRequest, protocol_version);
+            };
+            let Ok(req) = InformationRequest::try_from((tag, &key[..])) else {
+                return BinaryResponse::new_error(binary_port::ErrorCode::BadRequest, protocol_version);
+            };
+            handle_info_request(req, effect_builder, protocol_version).await
         }
-        GetRequest::State {
-            state_root_hash,
+        GetRequest::State(req) => {
+            metrics.binary_port_get_state_count.inc();
+            handle_state_request(effect_builder, req, protocol_version, config).await
+        }
+    }
+}
+
+async fn handle_get_all_items<REv>(
+    state_identifier: Option<GlobalStateIdentifier>,
+    key_tag: casper_types::KeyTag,
+    effect_builder: EffectBuilder<REv>,
+    protocol_version: ProtocolVersion,
+) -> BinaryResponse
+where
+    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
+{
+    let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await else {
+        return BinaryResponse::new_empty(protocol_version)
+    };
+    let get_all_values_request = GetAllValuesRequest::new(state_root_hash, key_tag);
+    match effect_builder.get_all_values(get_all_values_request).await {
+        Ok(GetAllValuesResult::Success { values }) => {
+            BinaryResponse::from_value(values, protocol_version)
+        }
+        Ok(GetAllValuesResult::RootNotFound) => {
+            let error_code = binary_port::ErrorCode::RootNotFound;
+            BinaryResponse::new_error(error_code, protocol_version)
+        }
+        Err(_err) => {
+            BinaryResponse::new_error(binary_port::ErrorCode::InternalError, protocol_version)
+        }
+    }
+}
+
+async fn handle_state_request<REv>(
+    effect_builder: EffectBuilder<REv>,
+    request: GlobalStateRequest,
+    protocol_version: ProtocolVersion,
+    config: &Config,
+) -> BinaryResponse
+where
+    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
+{
+    match request {
+        GlobalStateRequest::Item {
+            state_identifier,
             base_key,
             path,
         } => {
-            metrics.binary_port_get_state_count.inc();
-            handle_get_state_request(
+            handle_get_item_request(
                 effect_builder,
-                state_root_hash,
+                state_identifier,
                 base_key,
                 path,
                 protocol_version,
             )
             .await
         }
-        GetRequest::AllValues {
-            state_root_hash,
+        GlobalStateRequest::AllItems {
+            state_identifier,
             key_tag,
         } => {
-            metrics.binary_port_get_all_values_count.inc();
             if !config.allow_request_get_all_values {
                 BinaryResponse::new_error(
                     binary_port::ErrorCode::FunctionDisabled,
                     protocol_version,
                 )
             } else {
-                handle_get_all_values(state_root_hash, key_tag, effect_builder, protocol_version)
+                handle_get_all_items(state_identifier, key_tag, effect_builder, protocol_version)
                     .await
             }
         }
-        GetRequest::Trie { trie_key } => {
-            metrics.binary_port_get_trie_count.inc();
+        GlobalStateRequest::Trie { trie_key } => {
             let response = if !config.allow_request_get_trie {
                 BinaryResponse::new_error(
                     binary_port::ErrorCode::FunctionDisabled,
@@ -393,40 +447,20 @@ where
     }
 }
 
-async fn handle_get_all_values<REv>(
-    state_root_hash: Digest,
-    key_tag: casper_types::KeyTag,
+async fn handle_get_item_request<REv>(
     effect_builder: EffectBuilder<REv>,
-    protocol_version: ProtocolVersion,
-) -> BinaryResponse
-where
-    REv: From<Event> + From<ContractRuntimeRequest>,
-{
-    let get_all_values_request = GetAllValuesRequest::new(state_root_hash, key_tag);
-    match effect_builder.get_all_values(get_all_values_request).await {
-        Ok(GetAllValuesResult::Success { values }) => {
-            BinaryResponse::from_value(values, protocol_version)
-        }
-        Ok(GetAllValuesResult::RootNotFound) => {
-            let error_code = binary_port::ErrorCode::RootNotFound;
-            BinaryResponse::new_error(error_code, protocol_version)
-        }
-        Err(_err) => {
-            BinaryResponse::new_error(binary_port::ErrorCode::InternalError, protocol_version)
-        }
-    }
-}
-
-async fn handle_get_state_request<REv>(
-    effect_builder: EffectBuilder<REv>,
-    state_root_hash: Digest,
+    state_identifier: Option<GlobalStateIdentifier>,
     base_key: casper_types::Key,
     path: Vec<String>,
     protocol_version: ProtocolVersion,
 ) -> BinaryResponse
 where
-    REv: From<Event> + From<ContractRuntimeRequest>,
+    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
 {
+    let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await else {
+        return BinaryResponse::new_empty(protocol_version)
+    };
+
     match effect_builder
         .query_global_state(QueryRequest::new(state_root_hash, base_key, path))
         .await
@@ -456,8 +490,8 @@ where
     }
 }
 
-async fn handle_non_persisted_data_request<REv>(
-    req: NonPersistedDataRequest,
+async fn handle_info_request<REv>(
+    req: InformationRequest,
     effect_builder: EffectBuilder<REv>,
     protocol_version: ProtocolVersion,
 ) -> BinaryResponse
@@ -470,79 +504,86 @@ where
         + From<BlockSynchronizerRequest>
         + From<UpgradeWatcherRequest>
         + From<ChainspecRawBytesRequest>
+        + From<ContractRuntimeRequest>
         + Send,
 {
     match req {
-        NonPersistedDataRequest::BlockHeight2Hash { height } => BinaryResponse::from_option(
-            effect_builder.get_block_hash_for_height(height).await,
-            protocol_version,
-        ),
-        NonPersistedDataRequest::HighestCompleteBlock => BinaryResponse::from_option(
-            effect_builder
-                .get_highest_complete_block_header_from_storage()
-                .await
-                .map(|block_header| {
-                    BlockHashAndHeight::new(block_header.block_hash(), block_header.height())
-                }),
-            protocol_version,
-        ),
-        NonPersistedDataRequest::CompletedBlocksContain { block_identifier } => {
+        InformationRequest::BlockHeader(identifier) => {
+            let Some(height) = resolve_block_height(effect_builder, identifier).await else {
+                return BinaryResponse::new_empty(protocol_version);
+            };
+            let maybe_header = effect_builder
+                .get_block_header_at_height_from_storage(height, true)
+                .await;
+            BinaryResponse::from_option(maybe_header, protocol_version)
+        }
+        InformationRequest::SignedBlock(identifier) => {
+            let Some(height) = resolve_block_height(effect_builder, identifier).await else {
+                return BinaryResponse::new_empty(protocol_version);
+            };
+            let Some(block) = effect_builder
+                .get_block_at_height_with_metadata_from_storage(height, true)
+                .await else {
+                return BinaryResponse::new_empty(protocol_version);
+            };
             BinaryResponse::from_value(
-                effect_builder
-                    .highest_completed_block_sequence_contains(block_identifier)
-                    .await,
+                SignedBlock::new(block.block, block.block_signatures),
                 protocol_version,
             )
         }
-        NonPersistedDataRequest::TransactionHash2BlockHashAndHeight { transaction_hash } => {
-            BinaryResponse::from_option(
-                effect_builder
-                    .get_block_hash_and_height_for_transaction(transaction_hash)
-                    .await,
+        InformationRequest::Transaction(hash) => {
+            let Some(transaction) = effect_builder.get_transaction_by_hash_from_storage(hash).await else {
+                return BinaryResponse::new_empty(protocol_version);
+            };
+            let execution_info = effect_builder
+                .get_transaction_execution_info_from_storage(hash)
+                .await;
+            BinaryResponse::from_value(
+                TransactionWithExecutionInfo::new(transaction, execution_info),
                 protocol_version,
             )
         }
-        NonPersistedDataRequest::Peers => BinaryResponse::from_value(
+        InformationRequest::Peers => BinaryResponse::from_value(
             Peers::from(effect_builder.network_peers().await),
             protocol_version,
         ),
-        NonPersistedDataRequest::Uptime => {
+        InformationRequest::Uptime => {
             BinaryResponse::from_value(effect_builder.get_uptime().await, protocol_version)
         }
-        NonPersistedDataRequest::LastProgress => {
+        InformationRequest::LastProgress => {
             BinaryResponse::from_value(effect_builder.get_last_progress().await, protocol_version)
         }
-        NonPersistedDataRequest::ReactorState => {
+        InformationRequest::ReactorState => {
             BinaryResponse::from_value(effect_builder.get_reactor_state().await, protocol_version)
         }
-        NonPersistedDataRequest::NetworkName => {
+        InformationRequest::NetworkName => {
             BinaryResponse::from_value(effect_builder.get_network_name().await, protocol_version)
         }
-        NonPersistedDataRequest::ConsensusValidatorChanges => BinaryResponse::from_value(
+        InformationRequest::ConsensusValidatorChanges => BinaryResponse::from_value(
             effect_builder.get_consensus_validator_changes().await,
             protocol_version,
         ),
-        NonPersistedDataRequest::BlockSynchronizerStatus => BinaryResponse::from_value(
+        InformationRequest::BlockSynchronizerStatus => BinaryResponse::from_value(
             effect_builder.get_block_synchronizer_status().await,
             protocol_version,
         ),
-        NonPersistedDataRequest::AvailableBlockRange => BinaryResponse::from_value(
+        InformationRequest::AvailableBlockRange => BinaryResponse::from_value(
             effect_builder
                 .get_available_block_range_from_storage()
                 .await,
             protocol_version,
         ),
-        NonPersistedDataRequest::NextUpgrade => {
+        InformationRequest::NextUpgrade => {
             BinaryResponse::from_option(effect_builder.get_next_upgrade().await, protocol_version)
         }
-        NonPersistedDataRequest::ConsensusStatus => {
+        InformationRequest::ConsensusStatus => {
             BinaryResponse::from_option(effect_builder.consensus_status().await, protocol_version)
         }
-        NonPersistedDataRequest::ChainspecRawBytes => BinaryResponse::from_value(
+        InformationRequest::ChainspecRawBytes => BinaryResponse::from_value(
             (*effect_builder.get_chainspec_raw_bytes().await).clone(),
             protocol_version,
         ),
-        NonPersistedDataRequest::NodeStatus => {
+        InformationRequest::NodeStatus => {
             let (
                 node_uptime,
                 network_name,
@@ -709,18 +750,11 @@ where
     }
 
     // we might receive a request added in a minor version if we're behind
-    let Ok((tag, _)) = u8::from_bytes(remainder) else {
-        return BinaryResponse::new_error(binary_port::ErrorCode::BadRequest, protocol_version);
+    let Ok(tag) = BinaryRequestTag::try_from(header.type_tag()) else {
+        return BinaryResponse::new_error(binary_port::ErrorCode::UnsupportedRequest, protocol_version);
     };
 
-    if BinaryRequestTag::try_from(tag).is_err() {
-        return BinaryResponse::new_error(
-            binary_port::ErrorCode::UnsupportedRequest,
-            protocol_version,
-        );
-    }
-
-    let Ok(request) = bytesrepr::deserialize_from_slice(remainder) else {
+    let Ok(request) = BinaryRequest::try_from((tag, remainder)) else {
         return BinaryResponse::new_error(binary_port::ErrorCode::BadRequest, protocol_version);
     };
 
@@ -882,4 +916,48 @@ fn new_rpc_builder(config: &Config) -> RpcBuilder<1> {
     let io_builder = IoCoreBuilder::new(protocol_builder)
         .buffer_size(ChannelId::new(0), config.client_request_buffer_size);
     RpcBuilder::new(io_builder)
+}
+
+async fn resolve_block_height<REv>(
+    effect_builder: EffectBuilder<REv>,
+    block_identifier: Option<BlockIdentifier>,
+) -> Option<u64>
+where
+    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
+{
+    match block_identifier {
+        Some(BlockIdentifier::Hash(block_hash)) => effect_builder
+            .get_block_header_from_storage(block_hash, true)
+            .await
+            .map(|header| header.height()),
+        Some(BlockIdentifier::Height(block_height)) => Some(block_height),
+        None => effect_builder
+            .get_highest_complete_block_from_storage()
+            .await
+            .map(|header| header.height()),
+    }
+}
+
+async fn resolve_state_root_hash<REv>(
+    effect_builder: EffectBuilder<REv>,
+    state_identifier: Option<GlobalStateIdentifier>,
+) -> Option<Digest>
+where
+    REv: From<Event> + From<ContractRuntimeRequest> + From<StorageRequest>,
+{
+    match state_identifier {
+        Some(GlobalStateIdentifier::BlockHash(block_hash)) => effect_builder
+            .get_block_header_from_storage(block_hash, true)
+            .await
+            .map(|header| *header.state_root_hash()),
+        Some(GlobalStateIdentifier::BlockHeight(block_height)) => effect_builder
+            .get_block_header_at_height_from_storage(block_height, true)
+            .await
+            .map(|header| *header.state_root_hash()),
+        Some(GlobalStateIdentifier::StateRootHash(state_root_hash)) => Some(state_root_hash),
+        None => effect_builder
+            .get_highest_complete_block_header_from_storage()
+            .await
+            .map(|header| *header.state_root_hash()),
+    }
 }

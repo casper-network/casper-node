@@ -373,7 +373,9 @@ fn get_naive_transaction_and_execution_info(
     transaction_hash: TransactionHash,
 ) -> Option<(Transaction, Option<ExecutionInfo>)> {
     let transaction = storage.get_transaction_by_hash(transaction_hash)?;
-    let execution_info = storage.get_execution_info(transaction.hash());
+    let execution_info = storage
+        .read_execution_info(transaction.hash())
+        .expect("should get info");
     Some((transaction, execution_info))
 }
 

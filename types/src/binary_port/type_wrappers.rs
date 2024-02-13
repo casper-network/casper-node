@@ -1,5 +1,3 @@
-//! Type aliases.
-
 use core::{convert::TryFrom, num::TryFromIntError, time::Duration};
 
 use alloc::{
@@ -14,7 +12,7 @@ use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contract_messages::Messages,
     execution::ExecutionResultV2,
-    EraId, PublicKey, TimeDiff, Timestamp, ValidatorChange,
+    EraId, ExecutionInfo, PublicKey, TimeDiff, Timestamp, Transaction, ValidatorChange,
 };
 
 // `bytesrepr` implementations for type wrappers are repetitive, hence this macro helper. We should
@@ -141,29 +139,6 @@ impl From<LastProgress> for Timestamp {
     }
 }
 
-/// Type representing results of checking whether a block is in the highest sequence of available
-/// blocks.
-#[derive(Debug, PartialEq, Eq)]
-pub struct HighestBlockSequenceCheckResult(bool);
-
-impl HighestBlockSequenceCheckResult {
-    /// Constructs new highest block sequence check result.
-    pub fn new(value: bool) -> Self {
-        Self(value)
-    }
-
-    /// Returns the inner value.
-    pub fn into_inner(self) -> bool {
-        self.0
-    }
-}
-
-impl From<HighestBlockSequenceCheckResult> for bool {
-    fn from(highest_block_sequence_check_result: HighestBlockSequenceCheckResult) -> Self {
-        highest_block_sequence_check_result.0
-    }
-}
-
 /// Type representing results of the speculative execution.
 #[derive(Debug, PartialEq, Eq)]
 pub struct SpeculativeExecutionResult(Option<(ExecutionResultV2, Messages)>);
@@ -251,11 +226,60 @@ impl FromBytes for ConsensusStatus {
     }
 }
 
+/// A transaction with execution info.
+#[derive(Debug, PartialEq, Eq)]
+pub struct TransactionWithExecutionInfo {
+    transaction: Transaction,
+    execution_info: Option<ExecutionInfo>,
+}
+
+impl TransactionWithExecutionInfo {
+    /// Constructs new transaction with execution info.
+    pub fn new(transaction: Transaction, execution_info: Option<ExecutionInfo>) -> Self {
+        Self {
+            transaction,
+            execution_info,
+        }
+    }
+
+    /// Converts `self` into the transaction and execution info.
+    pub fn into_inner(self) -> (Transaction, Option<ExecutionInfo>) {
+        (self.transaction, self.execution_info)
+    }
+}
+
+impl ToBytes for TransactionWithExecutionInfo {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.transaction.write_bytes(writer)?;
+        self.execution_info.write_bytes(writer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.transaction.serialized_length() + self.execution_info.serialized_length()
+    }
+}
+
+impl FromBytes for TransactionWithExecutionInfo {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (transaction, remainder) = FromBytes::from_bytes(bytes)?;
+        let (execution_info, remainder) = FromBytes::from_bytes(remainder)?;
+        Ok((
+            TransactionWithExecutionInfo::new(transaction, execution_info),
+            remainder,
+        ))
+    }
+}
+
 impl_bytesrepr_for_type_wrapper!(Uptime);
 impl_bytesrepr_for_type_wrapper!(ConsensusValidatorChanges);
 impl_bytesrepr_for_type_wrapper!(NetworkName);
 impl_bytesrepr_for_type_wrapper!(LastProgress);
-impl_bytesrepr_for_type_wrapper!(HighestBlockSequenceCheckResult);
 impl_bytesrepr_for_type_wrapper!(SpeculativeExecutionResult);
 impl_bytesrepr_for_type_wrapper!(GetTrieFullResult);
 
@@ -293,12 +317,6 @@ mod tests {
     fn last_progress_roundtrip() {
         let rng = &mut TestRng::new();
         bytesrepr::test_serialization_roundtrip(&LastProgress::new(Timestamp::random(rng)));
-    }
-
-    #[test]
-    fn highest_block_sequence_check_result_roundtrip() {
-        let rng = &mut TestRng::new();
-        bytesrepr::test_serialization_roundtrip(&HighestBlockSequenceCheckResult::new(rng.gen()));
     }
 
     #[test]

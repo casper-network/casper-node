@@ -70,16 +70,16 @@ use tracing::{debug, error, info, trace, warn};
 #[cfg(test)]
 use casper_types::Deploy;
 use casper_types::{
-    binary_port::{DbId, DbRawBytesSpec, HighestBlockSequenceCheckResult},
+    binary_port::{DbRawBytesSpec, RecordId},
     bytesrepr::{FromBytes, ToBytes},
     execution::{
         execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
     },
-    AvailableBlockRange, Block, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader,
-    BlockIdentifier, BlockSignatures, BlockV2, DeployApprovalsHash, DeployHash, Digest, EraId,
-    FinalitySignature, FinalizedApprovals, ProtocolVersion, PublicKey, SignedBlock,
-    SignedBlockHeader, StoredValue, Timestamp, Transaction, TransactionApprovalsHash,
-    TransactionHash, TransactionHeader, TransactionId, TransactionV1ApprovalsHash, Transfer,
+    AvailableBlockRange, Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, BlockV2,
+    DeployApprovalsHash, DeployHash, Digest, EraId, ExecutionInfo, FinalitySignature,
+    FinalizedApprovals, ProtocolVersion, PublicKey, SignedBlock, SignedBlockHeader, StoredValue,
+    Timestamp, Transaction, TransactionApprovalsHash, TransactionHash, TransactionHeader,
+    TransactionId, TransactionV1ApprovalsHash, Transfer,
 };
 
 use crate::{
@@ -103,8 +103,6 @@ use crate::{
     utils::{display_error, WithDir},
 };
 use block_hash_height_and_era::BlockHashHeightAndEra;
-#[cfg(test)]
-use casper_types::ExecutionInfo;
 pub use config::Config;
 use deploy_metadata_v1::DeployMetadataV1;
 use disjoint_sequences::{DisjointSequences, Sequence};
@@ -235,7 +233,7 @@ pub struct Storage {
     /// The maximum TTL of a deploy.
     max_ttl: MaxTtl,
     #[data_size(skip)]
-    db_mapper: HashMap<DbId, Box<dyn RawDataAccess + Send + 'static>>,
+    db_mapper: HashMap<RecordId, Box<dyn RawDataAccess + Send + 'static>>,
 }
 
 pub(crate) enum HighestOrphanedBlockResult {
@@ -379,18 +377,19 @@ impl Storage {
         let approvals_hashes_dbs =
             VersionedDatabases::new(&env, "approvals_hashes", "versioned_approvals_hashes")?;
 
-        let mut db_mapper: HashMap<DbId, Box<dyn RawDataAccess + Send + 'static>> = HashMap::new();
-        db_mapper.insert(DbId::Transaction, Box::new(transaction_dbs));
-        db_mapper.insert(DbId::ExecutionResult, Box::new(execution_result_dbs));
+        let mut db_mapper: HashMap<RecordId, Box<dyn RawDataAccess + Send + 'static>> =
+            HashMap::new();
+        db_mapper.insert(RecordId::Transaction, Box::new(transaction_dbs));
+        db_mapper.insert(RecordId::ExecutionResult, Box::new(execution_result_dbs));
         db_mapper.insert(
-            DbId::FinalizedTransactionApprovals,
+            RecordId::FinalizedTransactionApprovals,
             Box::new(finalized_transaction_approvals_dbs),
         );
-        db_mapper.insert(DbId::BlockHeader, Box::new(block_header_dbs));
-        db_mapper.insert(DbId::BlockMetadata, Box::new(block_metadata_db));
-        db_mapper.insert(DbId::Transfer, Box::new(transfer_db));
-        db_mapper.insert(DbId::BlockBody, Box::new(block_body_dbs));
-        db_mapper.insert(DbId::ApprovalsHashes, Box::new(approvals_hashes_dbs));
+        db_mapper.insert(RecordId::BlockHeader, Box::new(block_header_dbs));
+        db_mapper.insert(RecordId::BlockMetadata, Box::new(block_metadata_db));
+        db_mapper.insert(RecordId::Transfer, Box::new(transfer_db));
+        db_mapper.insert(RecordId::BlockBody, Box::new(block_body_dbs));
+        db_mapper.insert(RecordId::ApprovalsHashes, Box::new(approvals_hashes_dbs));
 
         // We now need to restore the block-height index. Log messages allow timing here.
         info!("indexing block store");
@@ -898,6 +897,28 @@ impl Storage {
                 };
                 responder.respond(maybe_transaction).ignore()
             }
+            StorageRequest::GetTransactionByHash {
+                transaction_hash,
+                responder,
+            } => {
+                let mut txn = self.env.begin_ro_txn()?;
+                let maybe_transaction = match self
+                    .get_transaction_with_finalized_approvals(&mut txn, &transaction_hash)?
+                {
+                    None => None,
+                    Some(transaction_with_finalized_approvals) => {
+                        let transaction = transaction_with_finalized_approvals.into_naive();
+                        (transaction.hash() == transaction_hash).then_some(transaction)
+                    }
+                };
+                responder.respond(maybe_transaction).ignore()
+            }
+            StorageRequest::GetTransactionExecutionInfo {
+                transaction_hash,
+                responder,
+            } => responder
+                .respond(self.read_execution_info(transaction_hash)?)
+                .ignore(),
             StorageRequest::IsTransactionStored {
                 transaction_id,
                 responder,
@@ -1093,55 +1114,18 @@ impl Storage {
                     .respond(self.key_block_height_for_activation_point)
                     .ignore()
             }
-            StorageRequest::GetRawData { key, responder, db } => {
+            StorageRequest::GetRawData {
+                key,
+                responder,
+                record_id,
+            } => {
                 let txn = self.env.begin_ro_txn()?;
-                if let Some(db) = self.db_mapper.get(&db) {
+                if let Some(db) = self.db_mapper.get(&record_id) {
                     responder.respond(db.get_raw_bytes(&txn, key.as_slice())?)
                 } else {
                     responder.respond(None)
                 }
                 .ignore()
-            }
-            StorageRequest::GetBlockHashAndHeightForTransaction {
-                transaction_hash,
-                responder,
-            } => {
-                let block_hash_and_height = self
-                    .transaction_hash_index
-                    .get(&transaction_hash)
-                    .copied()
-                    .map(BlockHashAndHeight::from);
-                responder.respond(block_hash_and_height).ignore()
-            }
-            StorageRequest::GetBlockHashForHeight { height, responder } => {
-                let block_hash = self.block_height_index.get(&height).copied();
-                responder.respond(block_hash).ignore()
-            }
-            StorageRequest::HighestCompletedBlockSequenceContains {
-                block_identifier,
-                responder,
-            } => {
-                let result = match block_identifier {
-                    BlockIdentifier::Hash(block_hash) => {
-                        self.read_block_header_by_hash(&block_hash)?
-                    }
-                    BlockIdentifier::Height(block_height) => {
-                        let only_from_available_block_range = true;
-                        self.read_block_header_by_height(
-                            block_height,
-                            only_from_available_block_range,
-                        )?
-                    }
-                };
-                let Some(header) = result else {
-                    return Ok(responder.respond(HighestBlockSequenceCheckResult::new(false)).ignore());
-                };
-
-                let height = header.height();
-                let result = self.get_available_block_range().contains(height);
-                responder
-                    .respond(HighestBlockSequenceCheckResult::new(result))
-                    .ignore()
             }
         })
     }
@@ -2611,6 +2595,22 @@ impl Storage {
         ))
     }
 
+    fn read_execution_info(
+        &self,
+        transaction_hash: TransactionHash,
+    ) -> Result<Option<ExecutionInfo>, FatalStorageError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        let Some(block_hash_height_and_era) = self.transaction_hash_index.get(&transaction_hash) else {
+            return Ok(None);
+        };
+        let execution_result = self.execution_result_dbs.get(&mut txn, &transaction_hash)?;
+        Ok(Some(ExecutionInfo {
+            block_hash: block_hash_height_and_era.block_hash,
+            block_height: block_hash_height_and_era.block_height,
+            execution_result,
+        }))
+    }
+
     fn update_chain_height_metrics(&self) {
         if let Some(metrics) = self.metrics.as_ref() {
             if let Some(sequence) = self.completed_blocks.highest_sequence() {
@@ -2860,23 +2860,6 @@ impl Storage {
             self.block_height_index.keys().last().copied()?
         };
         self.get_signed_block_by_height(height, only_from_available_block_range)
-    }
-
-    pub fn get_execution_info(&self, transaction_hash: TransactionHash) -> Option<ExecutionInfo> {
-        let mut txn = self
-            .env
-            .begin_ro_txn()
-            .expect("could not create RO transaction");
-        let block_hash_height_and_era = self.transaction_hash_index.get(&transaction_hash)?;
-        let execution_result = self
-            .execution_result_dbs
-            .get(&mut txn, &transaction_hash)
-            .expect("could not retrieve value from storage");
-        Some(ExecutionInfo {
-            block_hash: block_hash_height_and_era.block_hash,
-            block_height: block_hash_height_and_era.block_height,
-            execution_result,
-        })
     }
 }
 

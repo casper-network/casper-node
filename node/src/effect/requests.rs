@@ -28,17 +28,16 @@ use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     addressable_entity::AddressableEntity,
     binary_port::{
-        ConsensusStatus, ConsensusValidatorChanges, DbId, DbRawBytesSpec, GetAllValuesResult,
-        GetTrieFullResult, HighestBlockSequenceCheckResult, LastProgress, NetworkName,
-        SpeculativeExecutionResult, Uptime,
+        ConsensusStatus, ConsensusValidatorChanges, DbRawBytesSpec, GetAllValuesResult,
+        GetTrieFullResult, LastProgress, NetworkName, RecordId, SpeculativeExecutionResult, Uptime,
     },
     execution::ExecutionResult,
     system::auction::EraValidators,
-    AvailableBlockRange, Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockIdentifier,
-    BlockSignatures, BlockSynchronizerStatus, BlockV2, ChainspecRawBytes, DeployHash, Digest,
-    DisplayIter, EraId, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key,
-    NextUpgrade, ProtocolVersion, PublicKey, ReactorState, Timestamp, Transaction, TransactionHash,
-    TransactionHeader, TransactionId, Transfer, U512,
+    AvailableBlockRange, Block, BlockHash, BlockHeader, BlockSignatures, BlockSynchronizerStatus,
+    BlockV2, ChainspecRawBytes, DeployHash, Digest, DisplayIter, EraId, ExecutionInfo,
+    FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key, NextUpgrade, ProtocolVersion,
+    PublicKey, ReactorState, Timestamp, Transaction, TransactionHash, TransactionHeader,
+    TransactionId, Transfer, U512,
 };
 
 use super::{AutoClosingResponder, GossipTarget, Responder};
@@ -342,8 +341,8 @@ pub(crate) enum StorageRequest {
     },
     /// Retrieve block header with given hash.
     GetRawData {
-        /// From which database.
-        db: DbId,
+        /// Which record to get.
+        record_id: RecordId,
         /// bytesrepr serialized key.
         key: Vec<u8>,
         /// Responder to call with the result.  Returns `None` if the data doesn't exist in
@@ -397,6 +396,14 @@ pub(crate) enum StorageRequest {
     IsTransactionStored {
         transaction_id: TransactionId,
         responder: Responder<bool>,
+    },
+    GetTransactionByHash {
+        transaction_hash: TransactionHash,
+        responder: Responder<Option<Transaction>>,
+    },
+    GetTransactionExecutionInfo {
+        transaction_hash: TransactionHash,
+        responder: Responder<Option<ExecutionInfo>>,
     },
     /// Store execution results for a set of deploys of a single block.
     ///
@@ -492,21 +499,6 @@ pub(crate) enum StorageRequest {
     },
     /// Retrieve the height of the final block of the previous protocol version, if known.
     GetKeyBlockHeightForActivationPoint { responder: Responder<Option<u64>> },
-    /// Retrieve block hash and height for a given transaction.
-    GetBlockHashAndHeightForTransaction {
-        transaction_hash: TransactionHash,
-        responder: Responder<Option<BlockHashAndHeight>>,
-    },
-    /// Retrieve hash of block of a given height.
-    GetBlockHashForHeight {
-        height: u64,
-        responder: Responder<Option<BlockHash>>,
-    },
-    /// Checks if a block with the given hash is among the contiguous sequence of completed blocks.
-    HighestCompletedBlockSequenceContains {
-        block_identifier: BlockIdentifier,
-        responder: Responder<HighestBlockSequenceCheckResult>,
-    },
 }
 
 impl Display for StorageRequest {
@@ -574,6 +566,16 @@ impl Display for StorageRequest {
             StorageRequest::GetTransaction { transaction_id, .. } => {
                 write!(formatter, "get transaction {}", transaction_id)
             }
+            StorageRequest::GetTransactionByHash {
+                transaction_hash, ..
+            } => {
+                write!(formatter, "get transaction by hash {}", transaction_hash)
+            }
+            StorageRequest::GetTransactionExecutionInfo {
+                transaction_hash, ..
+            } => {
+                write!(formatter, "get execution info for {}", transaction_hash)
+            }
             StorageRequest::IsTransactionStored { transaction_id, .. } => {
                 write!(formatter, "is transaction {} stored", transaction_id)
             }
@@ -640,45 +642,10 @@ impl Display for StorageRequest {
             StorageRequest::GetRawData {
                 key,
                 responder: _responder,
-                db,
+                record_id,
             } => {
-                write!(formatter, "get raw data {}::{:?}", db, key)
+                write!(formatter, "get raw data {}::{:?}", record_id, key)
             }
-            StorageRequest::GetBlockHashAndHeightForTransaction {
-                transaction_hash,
-                responder: _responder,
-            } => {
-                write!(
-                    formatter,
-                    "get block hash and height for transaction {}",
-                    transaction_hash
-                )
-            }
-            StorageRequest::GetBlockHashForHeight {
-                height,
-                responder: _responder,
-            } => {
-                write!(formatter, "get block hash for height {}", height)
-            }
-            StorageRequest::HighestCompletedBlockSequenceContains {
-                block_identifier,
-                responder: _responder,
-            } => match block_identifier {
-                BlockIdentifier::Hash(hash) => {
-                    write!(
-                        formatter,
-                        "highest completed block sequence contains hash {}",
-                        hash
-                    )
-                }
-                BlockIdentifier::Height(height) => {
-                    write!(
-                        formatter,
-                        "highest completed block sequence contains height {}",
-                        height
-                    )
-                }
-            },
         }
     }
 }

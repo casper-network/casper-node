@@ -1,5 +1,3 @@
-//! Minimal info about a `Block` needed to satisfy the node status request.
-
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     Block, BlockHash, Digest, EraId, PublicKey, Timestamp,
