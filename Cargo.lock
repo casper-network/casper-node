@@ -3,6 +3,14 @@
 version = 3
 
 [[package]]
+name = "burn"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
+]
+
+[[package]]
 name = "activate-bid"
 version = "0.1.0"
 dependencies = [
