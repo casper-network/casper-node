@@ -62,7 +62,7 @@ fn should_slash_validator_and_their_delegators() {
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let fund_system_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

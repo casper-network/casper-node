@@ -1,5 +1,9 @@
 //! The registry of chainspec hash digests.
 
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use std::{collections::BTreeMap, convert::TryFrom};
 
 use serde::{Deserialize, Serialize};
@@ -123,6 +127,16 @@ impl FromBytes for ChainspecRegistry {
 impl CLTyped for ChainspecRegistry {
     fn cl_type() -> CLType {
         BytesreprChainspecRegistry::cl_type()
+    }
+}
+
+impl Distribution<ChainspecRegistry> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ChainspecRegistry {
+        ChainspecRegistry {
+            chainspec_raw_hash: rng.gen(),
+            genesis_accounts_raw_hash: rng.gen(),
+            global_state_raw_hash: rng.gen(),
+        }
     }
 }
 

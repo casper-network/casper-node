@@ -14,7 +14,7 @@ const DO_NOTHING_CONTRACT: &str = "do_nothing.wasm";
 #[test]
 fn should_run_ee_1225_verify_finalize_payment_invariants() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()

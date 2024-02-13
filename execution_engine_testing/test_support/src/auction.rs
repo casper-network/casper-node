@@ -4,32 +4,30 @@ use lmdb::{Cursor, Transaction};
 use rand::Rng;
 use tempfile::TempDir;
 
-use casper_execution_engine::engine_state::{
-    engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
-    genesis::ExecConfigBuilder,
-    run_genesis_request::RunGenesisRequest,
-    EngineState, ExecuteRequest,
-};
-use casper_storage::global_state::{
-    state::{CommitProvider, StateProvider},
-    trie::{Pointer, Trie},
+use casper_execution_engine::engine_state::{EngineState, ExecuteRequest};
+use casper_storage::{
+    data_access_layer::GenesisRequest,
+    global_state::{
+        state::{CommitProvider, StateProvider},
+        trie::{Pointer, Trie},
+    },
 };
 use casper_types::{
     account::AccountHash,
     bytesrepr::{self},
     runtime_args,
     system::auction,
-    ChainspecRegistry, Digest, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion,
-    PublicKey, SecretKey, StoredValue, U512,
+    ChainspecRegistry, Digest, GenesisAccount, GenesisConfigBuilder, GenesisValidator, Key, Motes,
+    ProtocolVersion, PublicKey, SecretKey, StoredValue, DEFAULT_REFUND_HANDLING, U512,
 };
 
 use crate::{
     transfer, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_WASM_CONFIG, SYSTEM_ADDR,
+    DEFAULT_AUCTION_DELAY, DEFAULT_FEE_HANDLING, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+    DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE,
+    DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY, DEFAULT_WASM_CONFIG, SYSTEM_ADDR,
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -280,7 +278,7 @@ pub fn run_genesis_and_create_initial_accounts(
     }
     let run_genesis_request =
         create_run_genesis_request(validator_keys.len() as u32 + 2, genesis_accounts);
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     // Setup the system account with enough cspr
     let transfer = ExecuteRequestBuilder::transfer(
@@ -313,8 +311,8 @@ pub fn run_genesis_and_create_initial_accounts(
 fn create_run_genesis_request(
     validator_slots: u32,
     genesis_accounts: Vec<GenesisAccount>,
-) -> RunGenesisRequest {
-    let exec_config = ExecConfigBuilder::default()
+) -> GenesisRequest {
+    let genesis_config = GenesisConfigBuilder::default()
         .with_accounts(genesis_accounts)
         .with_wasm_config(*DEFAULT_WASM_CONFIG)
         .with_system_config(*DEFAULT_SYSTEM_CONFIG)
@@ -328,10 +326,10 @@ fn create_run_genesis_request(
         .with_fee_handling(DEFAULT_FEE_HANDLING)
         .build();
 
-    RunGenesisRequest::new(
+    GenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
-        exec_config,
+        genesis_config,
         ChainspecRegistry::new_with_genesis(&[], &[]),
     )
 }

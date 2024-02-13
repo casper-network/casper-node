@@ -701,7 +701,7 @@ struct TestContext {
 
 fn setup() -> (LmdbWasmTestBuilder, TestContext) {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let session_args = runtime_args! {
         mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),

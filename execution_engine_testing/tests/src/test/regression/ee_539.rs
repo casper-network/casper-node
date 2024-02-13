@@ -22,7 +22,7 @@ fn should_run_ee_539_serialize_action_thresholds_regression() {
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .expect_success()
         .commit();

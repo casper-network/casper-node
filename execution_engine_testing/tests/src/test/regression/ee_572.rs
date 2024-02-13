@@ -48,7 +48,7 @@ fn should_run_ee_572_regression() {
 
     // Create Accounts
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .expect_success()
         .commit();

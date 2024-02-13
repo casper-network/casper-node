@@ -17,15 +17,14 @@ use num_traits::CheckedMul;
 use casper_execution_engine::engine_state::{
     execute_request::ExecuteRequest,
     execution_result::ExecutionResult,
-    run_genesis_request::RunGenesisRequest,
     step::{StepRequest, StepSuccess},
-    EngineConfig, EngineConfigBuilder, EngineState, Error, GenesisSuccess, PruneConfig,
-    PruneResult, StepError, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
+    EngineConfig, EngineConfigBuilder, EngineState, Error, PruneConfig, PruneResult, StepError,
+    UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
 };
 use casper_storage::{
     data_access_layer::{
         BalanceResult, BidsRequest, BlockStore, DataAccessLayer, EraValidatorsRequest,
-        EraValidatorsResult, QueryRequest, QueryResult,
+        EraValidatorsResult, GenesisRequest, GenesisResult, QueryRequest, QueryResult,
     },
     global_state::{
         state::{
@@ -568,25 +567,25 @@ impl<S> WasmTestBuilder<S>
 where
     S: StateProvider + CommitProvider,
 {
-    /// Takes a [`RunGenesisRequest`], executes the request and returns Self.
-    pub fn run_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
-        let GenesisSuccess {
-            post_state_hash,
-            effects,
-        } = self
-            .engine_state
-            .commit_genesis(
-                run_genesis_request.genesis_config_hash(),
-                run_genesis_request.protocol_version(),
-                run_genesis_request.ee_config(),
-                run_genesis_request.chainspec_registry().clone(),
-            )
-            .expect("Unable to get genesis response");
-
-        self.genesis_hash = Some(post_state_hash);
-        self.post_state_hash = Some(post_state_hash);
-        self.system_account = self.get_entity_by_account_hash(*SYSTEM_ADDR);
-        self.genesis_effects = Some(effects);
+    /// Takes a [`GenesisRequest`], executes the request and returns Self.
+    pub fn run_genesis(&mut self, request: GenesisRequest) -> &mut Self {
+        match self.engine_state.commit_genesis(request) {
+            GenesisResult::Fatal(msg) => {
+                panic!("{}", msg);
+            }
+            GenesisResult::Failure(err) => {
+                panic!("{:?}", err);
+            }
+            GenesisResult::Success {
+                post_state_hash,
+                effects,
+            } => {
+                self.genesis_hash = Some(post_state_hash);
+                self.post_state_hash = Some(post_state_hash);
+                self.system_account = self.get_entity_by_account_hash(*SYSTEM_ADDR);
+                self.genesis_effects = Some(effects);
+            }
+        }
         self
     }
 

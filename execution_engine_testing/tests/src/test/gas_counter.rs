@@ -56,7 +56,7 @@ fn should_fail_to_overflow_gas_counter() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request).commit();
 
@@ -151,7 +151,7 @@ fn should_correctly_measure_gas_for_opcodes() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let exec_request = {
         let deploy_item = DeployItemBuilder::new()

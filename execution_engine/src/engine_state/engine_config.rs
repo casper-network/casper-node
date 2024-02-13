@@ -8,6 +8,7 @@ use num_traits::One;
 
 use casper_types::{
     account::AccountHash, FeeHandling, PublicKey, RefundHandling, SystemConfig, WasmConfig,
+    DEFAULT_REFUND_HANDLING,
 };
 
 /// Default value for a maximum query depth configuration option.
@@ -37,10 +38,7 @@ pub const DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS: u64 =
 pub const DEFAULT_ALLOW_AUCTION_BIDS: bool = true;
 /// Default value for allowing unrestricted transfers.
 pub const DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS: bool = true;
-/// Default gas cost refund ratio.
-pub const DEFAULT_REFUND_HANDLING: RefundHandling = RefundHandling::Refund {
-    refund_ratio: Ratio::new_raw(99, 100),
-};
+
 /// Default fee handling.
 pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::PayToProposer;
 /// Default compute rewards.

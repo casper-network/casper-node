@@ -36,7 +36,7 @@ fn setup() -> LmdbWasmTestBuilder {
     };
 
     let mut ctx = LmdbWasmTestBuilder::default();
-    ctx.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+    ctx.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .expect_success()
         .commit()

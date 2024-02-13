@@ -160,7 +160,7 @@ fn validator_scores_should_reflect_delegates() {
     let mut builder = LmdbWasmTestBuilder::default();
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();

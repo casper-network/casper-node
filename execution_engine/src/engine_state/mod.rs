@@ -5,9 +5,7 @@ mod error;
 pub mod execute_request;
 pub(crate) mod execution_kind;
 pub mod execution_result;
-pub mod genesis;
 mod prune;
-pub mod run_genesis_request;
 pub mod step;
 mod transfer;
 pub mod upgrade;
@@ -31,7 +29,8 @@ use casper_storage::{
         balance::BalanceResult,
         get_bids::{BidsRequest, BidsResult},
         query::{QueryRequest, QueryResult},
-        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, PutTrieRequest, TrieRequest,
+        DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FlushRequest, FlushResult,
+        GenesisRequest, GenesisResult, PutTrieRequest, TrieRequest,
     },
     global_state::{
         self,
@@ -67,9 +66,9 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, ApiError, BlockTime, ByteCodeHash,
-    CLValue, ChainspecRegistry, ChecksumRegistry, DeployHash, DeployInfo, Digest, EntityAddr,
-    EntryPoints, ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Package, PackageHash,
-    Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, SystemContractRegistry, URef,
+    CLValue, ChecksumRegistry, DeployHash, DeployInfo, Digest, EntityAddr, EntryPoints,
+    ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Package, PackageHash, Phase,
+    ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, SystemContractRegistry, URef,
     UpgradeConfig, U512,
 };
 
@@ -84,9 +83,7 @@ pub use self::{
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ForcedTransferResult},
-    genesis::{ExecConfig, GenesisConfig, GenesisSuccess},
     prune::{PruneConfig, PruneResult},
-    run_genesis_request::RunGenesisRequest,
     step::{RewardItem, SlashItem, StepError, StepRequest, StepSuccess},
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::UpgradeSuccess,
@@ -96,14 +93,12 @@ use crate::{
     engine_state::{
         execution_kind::ExecutionKind,
         execution_result::{ExecutionResultBuilder, ExecutionResults},
-        genesis::GenesisInstaller,
         upgrade::{ProtocolUpgradeError, SystemUpgrader},
     },
     execution::{self, DirectSystemContractCall, Executor},
     runtime::RuntimeStack,
 };
 
-const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
 /// The maximum amount of motes that payment code execution can cost.
 pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
 /// The maximum amount of gas a payment code can use.
@@ -112,10 +107,6 @@ pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
 /// executing payment code, as such amount is held as collateral to compensate for
 /// code execution.
 pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
-
-/// A special contract wasm hash for contracts representing Accounts.
-pub static ACCOUNT_BYTE_CODE_HASH: Lazy<ByteCodeHash> =
-    Lazy::new(|| ByteCodeHash::new(DEFAULT_ADDRESS));
 
 /// Gas/motes conversion rate of wasmless transfer cost is always 1 regardless of what user wants to
 /// pay.
@@ -197,10 +188,10 @@ impl EngineState<LmdbGlobalState> {
 
     /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
     pub fn flush_environment(&self) -> Result<(), global_state::error::Error> {
-        if self.state.environment().is_manual_sync_enabled() {
-            self.state.environment().sync()?
+        match self.state.flush(FlushRequest::new()) {
+            FlushResult::ManualSyncDisabled | FlushResult::Success => Ok(()),
+            FlushResult::Failure(err) => Err(err),
         }
-        Ok(())
     }
 
     /// Provide a local cached-only version of engine-state.
@@ -263,52 +254,14 @@ where
     /// This process is run only once per network to initiate the system. By definition users are
     /// unable to execute smart contracts on a network without a genesis.
     ///
-    /// Takes genesis configuration passed through [`ExecConfig`] and creates the system contracts,
-    /// sets up the genesis accounts, and sets up the auction state based on that. At the end of
-    /// the process, [`SystemContractRegistry`] is persisted under the special global state space
-    /// [`Key::SystemContractRegistry`].
+    /// Takes genesis configuration passed through [`GenesisRequest`] and creates the system
+    /// contracts, sets up the genesis accounts, and sets up the auction state based on that. At
+    /// the end of the process, [`SystemContractRegistry`] is persisted under the special global
+    /// state space [`Key::SystemContractRegistry`].
     ///
-    /// Returns a [`GenesisSuccess`] for a successful operation, or an error otherwise.
-    pub fn commit_genesis(
-        &self,
-        genesis_config_hash: Digest,
-        protocol_version: ProtocolVersion,
-        ee_config: &ExecConfig,
-        chainspec_registry: ChainspecRegistry,
-    ) -> Result<GenesisSuccess, Error> {
-        // Preliminaries
-        let initial_root_hash = self.state.empty_root();
-
-        let tracking_copy = match self.tracking_copy(initial_root_hash) {
-            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
-            // NOTE: As genesis is run once per instance condition below is considered programming
-            // error
-            Ok(None) => panic!("state has not been initialized properly"),
-            Err(error) => return Err(Error::TrackingCopy(error)),
-        };
-
-        let mut genesis_installer: GenesisInstaller<S> = GenesisInstaller::new(
-            genesis_config_hash,
-            protocol_version,
-            ee_config.clone(),
-            tracking_copy,
-        );
-
-        genesis_installer.install(chainspec_registry)?;
-
-        // Commit the transforms.
-        let effects = genesis_installer.finalize();
-
-        let post_state_hash = self
-            .state
-            .commit(initial_root_hash, effects.clone())
-            .map_err(Into::<execution::Error>::into)?;
-
-        // Return the result
-        Ok(GenesisSuccess {
-            post_state_hash,
-            effects,
-        })
+    /// Returns a [`GenesisResult`].
+    pub fn commit_genesis(&self, request: GenesisRequest) -> GenesisResult {
+        self.state.genesis(request)
     }
 
     /// Commits upgrade.
@@ -810,7 +763,7 @@ where
         let mut generator =
             AddressGenerator::new(account.main_purse().addr().as_ref(), Phase::System);
 
-        let contract_wasm_hash = *ACCOUNT_BYTE_CODE_HASH;
+        let byte_code_hash = ByteCodeHash::default();
         let entity_hash = AddressableEntityHash::new(generator.new_hash_address());
         let package_hash = PackageHash::new(generator.new_hash_address());
 
@@ -837,7 +790,7 @@ where
 
         let entity = AddressableEntity::new(
             package_hash,
-            contract_wasm_hash,
+            byte_code_hash,
             entry_points,
             protocol_version,
             account.main_purse(),
