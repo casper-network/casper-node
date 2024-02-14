@@ -293,16 +293,21 @@ impl<'a> TransactionV1Builder<'a> {
     ///   * unsigned by calling `with_no_secret_key`
     ///   * given an invalid approval by calling `with_invalid_approval`
     #[cfg(any(feature = "testing", test))]
-    pub fn new_random_not_expired_with_category(
+    pub fn new_random_with_category_and_timestamp_and_ttl(
         rng: &mut TestRng,
         category: &TransactionV1Category,
+        timestamp: Option<Timestamp>,
+        ttl: Option<TimeDiff>,
     ) -> Self {
         let secret_key = SecretKey::random(rng);
-        let ttl_millis = rng.gen_range(60_000..TransactionConfig::default().max_ttl.millis());
+        let ttl_millis = ttl.map_or(
+            rng.gen_range(60_000..TransactionConfig::default().max_ttl.millis()),
+            |ttl| ttl.millis(),
+        );
         let body = TransactionV1Body::random_of_category(rng, category);
         TransactionV1Builder {
             chain_name: Some(rng.random_string(5..10)),
-            timestamp: Timestamp::now(),
+            timestamp: timestamp.unwrap_or(Timestamp::now()),
             ttl: TimeDiff::from_millis(ttl_millis),
             body,
             pricing_mode: PricingMode::random(rng),

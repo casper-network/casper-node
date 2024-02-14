@@ -369,7 +369,15 @@ impl AppendableBlock {
     /// Returns `true` if the number of transactions is already the maximum allowed count, i.e. no
     /// more transactions can be added to this block.
     fn has_max_standard_count(&self) -> bool {
-        self.transactions.len() == self.transaction_config.block_max_standard_count as usize
+        self.non_transfer_standard_count()
+            == self.transaction_config.block_max_standard_count as usize
+    }
+
+    /// Returns the number of non-transfer transactions in the block.
+    fn non_transfer_standard_count(&self) -> usize {
+        self.category_count(&TransactionV1Category::Standard)
+            + self.category_count(&TransactionV1Category::InstallUpgrade)
+            + self.category_count(&TransactionV1Category::Staking)
     }
 
     /// Returns `true` if adding the deploy with 'additional_approvals` approvals would exceed the
@@ -382,7 +390,7 @@ impl AppendableBlock {
         let remaining_deploy_slots = self.transaction_config.block_max_transfer_count as usize
             - self.category_count(&TransactionV1Category::Transfer)
             + self.transaction_config.block_max_standard_count as usize
-            - self.transactions.len();
+            - self.non_transfer_standard_count();
         // safe to subtract because the chainspec is validated at load time
         additional_approvals > remaining_approval_slots - remaining_deploy_slots + 1
     }

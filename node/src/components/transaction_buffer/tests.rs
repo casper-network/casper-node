@@ -1,7 +1,9 @@
 use prometheus::Registry;
-use rand::Rng;
+use rand::{seq::SliceRandom, Rng};
 
-use casper_types::{testing::TestRng, Deploy, EraId, TestBlockBuilder, TimeDiff, Transaction};
+use casper_types::{
+    testing::TestRng, Deploy, EraId, TestBlockBuilder, TimeDiff, Transaction, TransactionV1,
+};
 
 use super::*;
 use crate::{
@@ -11,72 +13,122 @@ use crate::{
     utils,
 };
 
-enum TransactionType {
+#[derive(Debug)]
+enum TransactionCategory {
+    TransferLegacy,
     Transfer,
+    StandardLegacy,
     Standard,
-    Random,
+    InstallUpgrade,
+    Staking,
+}
+
+impl TransactionCategory {
+    fn random(rng: &mut TestRng) -> Self {
+        match rng.gen_range(0..6) {
+            0 => TransactionCategory::TransferLegacy,
+            1 => TransactionCategory::Transfer,
+            2 => TransactionCategory::StandardLegacy,
+            3 => TransactionCategory::Standard,
+            4 => TransactionCategory::InstallUpgrade,
+            _ => TransactionCategory::Staking,
+        }
+    }
+}
+
+fn get_appendable_block(
+    rng: &mut TestRng,
+    transaction_buffer: &mut TransactionBuffer,
+    categories: impl Iterator<Item = &'static TransactionCategory>,
+    transaction_limit: usize,
+) {
+    let transactions: Vec<_> = categories
+        .take(transaction_limit + 50)
+        .into_iter()
+        .map(|category| create_valid_transaction(rng, category, None, None))
+        .collect();
+    transactions
+        .iter()
+        .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));
+    assert_container_sizes(transaction_buffer, transactions.len(), 0, 0);
+
+    // now check how many transfers were added in the block; should not exceed the config limits.
+    let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
+    assert!(appendable_block.transaction_and_transfer_set().len() <= transaction_limit,);
+    assert_eq!(transaction_buffer.hold.len(), 1);
+    assert_container_sizes(
+        transaction_buffer,
+        transactions.len(),
+        0,
+        appendable_block.transaction_and_transfer_set().len(),
+    );
 }
 
 // Generates valid transactions
-fn create_valid_transactions(
+fn create_valid_transaction(
     rng: &mut TestRng,
-    size: usize,
-    transaction_type: TransactionType,
+    transaction_category: &TransactionCategory,
     strict_timestamp: Option<Timestamp>,
     with_ttl: Option<TimeDiff>,
-) -> Vec<Transaction> {
-    let mut transactions = Vec::with_capacity(size);
+) -> Transaction {
+    let transaction_ttl = match with_ttl {
+        Some(ttl) => ttl,
+        None => TimeDiff::from_seconds(rng.gen_range(30..100)),
+    };
+    let transaction_timestamp = match strict_timestamp {
+        Some(timestamp) => timestamp,
+        None => Timestamp::now(),
+    };
 
-    for _ in 0..size {
-        let transaction_ttl = match with_ttl {
-            Some(ttl) => ttl,
-            None => TimeDiff::from_seconds(rng.gen_range(30..100)),
-        };
-        let transaction_timestamp = match strict_timestamp {
-            Some(timestamp) => timestamp,
-            None => Timestamp::now(),
-        };
-        match transaction_type {
-            TransactionType::Transfer => {
-                transactions.push(Transaction::from(
-                    Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
-                        rng,
-                        transaction_timestamp,
-                        transaction_ttl,
-                    ),
-                ));
-            }
-            TransactionType::Standard => {
-                if strict_timestamp.is_some() {
-                    unimplemented!();
-                }
-                let transaction =
-                    Transaction::from(Deploy::random_with_valid_session_package_by_name(rng));
-                assert!(transaction.verify().is_ok());
-                transactions.push(transaction);
-            }
-            TransactionType::Random => {
-                transactions.push(Transaction::from(Deploy::random_with_timestamp_and_ttl(
-                    rng,
-                    transaction_timestamp,
-                    transaction_ttl,
-                )));
-            }
+    match transaction_category {
+        TransactionCategory::TransferLegacy => {
+            Transaction::Deploy(Deploy::random_valid_native_transfer_with_timestamp_and_ttl(
+                rng,
+                transaction_timestamp,
+                transaction_ttl,
+            ))
         }
+        TransactionCategory::Transfer => Transaction::V1(TransactionV1::random_transfer(
+            rng,
+            strict_timestamp,
+            with_ttl,
+        )),
+        TransactionCategory::StandardLegacy => {
+            Transaction::Deploy(match (strict_timestamp, with_ttl) {
+                (Some(timestamp), Some(ttl)) if Timestamp::now() > timestamp + ttl => {
+                    Deploy::random_expired_deploy(rng)
+                }
+                _ => Deploy::random_with_valid_session_package_by_name(rng),
+            })
+        }
+        TransactionCategory::Standard => Transaction::V1(TransactionV1::random_standard(
+            rng,
+            strict_timestamp,
+            with_ttl,
+        )),
+        TransactionCategory::InstallUpgrade => Transaction::V1(
+            TransactionV1::random_install_upgrade(rng, strict_timestamp, with_ttl),
+        ),
+        TransactionCategory::Staking => Transaction::V1(TransactionV1::random_staking(
+            rng,
+            strict_timestamp,
+            with_ttl,
+        )),
     }
-
-    transactions
 }
 
-fn create_invalid_transactions(rng: &mut TestRng, size: usize) -> Vec<Transaction> {
-    let mut transactions =
-        create_valid_transactions(rng, size, TransactionType::Random, None, None);
-
-    for transaction in transactions.iter_mut() {
-        transaction.invalidate();
-    }
-
-    transactions
+fn create_invalid_transactions(
+    rng: &mut TestRng,
+    transaction_category: &TransactionCategory,
+    size: usize,
+) -> Vec<Transaction> {
+    (0..size)
+        .map(|_| {
+            let mut transaction = create_valid_transaction(rng, transaction_category, None, None);
+            transaction.invalidate();
+            transaction
+        })
+        .collect()
 }
 
 /// Checks sizes of the transaction_buffer containers. Also checks the metrics recorded.
@@ -123,173 +175,188 @@ fn assert_container_sizes(
     );
 }
 
+const fn all_categories() -> &'static [TransactionCategory] {
+    &[
+        TransactionCategory::InstallUpgrade,
+        TransactionCategory::Staking,
+        TransactionCategory::Standard,
+        TransactionCategory::StandardLegacy,
+        TransactionCategory::Transfer,
+        TransactionCategory::TransferLegacy,
+    ]
+}
+
 #[test]
 fn register_transaction_and_check_size() {
     let mut rng = TestRng::new();
-    let mut transaction_buffer = TransactionBuffer::new(
-        TransactionConfig::default(),
-        Config::default(),
-        &Registry::new(),
-    )
-    .unwrap();
 
-    // Try to register valid transactions
-    let num_valid_transactions: usize = rng.gen_range(50..500);
-    let valid_transactions = create_valid_transactions(
-        &mut rng,
-        num_valid_transactions,
-        TransactionType::Random,
-        None,
-        None,
-    );
-    valid_transactions
-        .iter()
-        .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));
-    assert_container_sizes(&transaction_buffer, valid_transactions.len(), 0, 0);
+    for category in all_categories() {
+        let mut transaction_buffer = TransactionBuffer::new(
+            TransactionConfig::default(),
+            Config::default(),
+            &Registry::new(),
+        )
+        .unwrap();
 
-    // Try to register invalid transactions
-    let num_invalid_transactions: usize = rng.gen_range(10..100);
-    let invalid_transactions = create_invalid_transactions(&mut rng, num_invalid_transactions);
-    invalid_transactions
-        .iter()
-        .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));
-    assert_container_sizes(&transaction_buffer, valid_transactions.len(), 0, 0);
+        // Try to register valid transactions
+        let num_valid_transactions: usize = rng.gen_range(50..500);
+        let valid_transactions: Vec<_> = (0..num_valid_transactions)
+            .map(|_| create_valid_transaction(&mut rng, category, None, None))
+            .collect();
+        valid_transactions
+            .iter()
+            .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));
+        assert_container_sizes(&transaction_buffer, valid_transactions.len(), 0, 0);
 
-    // Try to register a duplicate transaction
-    let duplicate_transaction = valid_transactions
-        .get(rng.gen_range(0..num_valid_transactions))
-        .unwrap()
-        .clone();
-    transaction_buffer.register_transaction(duplicate_transaction);
-    assert_container_sizes(&transaction_buffer, valid_transactions.len(), 0, 0);
+        // Try to register invalid transactions
+        let num_invalid_transactions: usize = rng.gen_range(10..100);
+        let invalid_transactions =
+            create_invalid_transactions(&mut rng, category, num_invalid_transactions);
+        invalid_transactions
+            .iter()
+            .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));
+        assert_container_sizes(&transaction_buffer, valid_transactions.len(), 0, 0);
 
-    // Insert transaction without footprint
-    let bad_transaction = Transaction::from(Deploy::random_without_payment_amount(&mut rng));
-    transaction_buffer.register_transaction(bad_transaction);
-    assert_container_sizes(&transaction_buffer, valid_transactions.len(), 0, 0);
+        // Try to register a duplicate transaction
+        let duplicate_transaction = valid_transactions
+            .get(rng.gen_range(0..num_valid_transactions))
+            .unwrap()
+            .clone();
+        transaction_buffer.register_transaction(duplicate_transaction);
+        assert_container_sizes(&transaction_buffer, valid_transactions.len(), 0, 0);
+
+        // Insert transaction without footprint
+        let bad_transaction = Transaction::from(Deploy::random_without_payment_amount(&mut rng));
+        transaction_buffer.register_transaction(bad_transaction);
+        assert_container_sizes(&transaction_buffer, valid_transactions.len(), 0, 0);
+    }
 }
 
 #[test]
 fn register_block_with_valid_transactions() {
     let mut rng = TestRng::new();
-    let mut transaction_buffer = TransactionBuffer::new(
-        TransactionConfig::default(),
-        Config::default(),
-        &Registry::new(),
-    )
-    .unwrap();
 
-    let transactions = create_valid_transactions(&mut rng, 10, TransactionType::Random, None, None);
-    let txns: Vec<_> = transactions.to_vec();
-    let era_id = EraId::new(rng.gen_range(0..6));
-    let height = era_id.value() * 10 + rng.gen_range(0..10);
-    let is_switch = rng.gen_bool(0.1);
-    let block = TestBlockBuilder::new()
-        .era(era_id)
-        .height(height)
-        .switch_block(is_switch)
-        .transactions(&txns)
-        .build(&mut rng);
+    for category in all_categories() {
+        let mut transaction_buffer = TransactionBuffer::new(
+            TransactionConfig::default(),
+            Config::default(),
+            &Registry::new(),
+        )
+        .unwrap();
 
-    transaction_buffer.register_block(&block);
-    assert_container_sizes(
-        &transaction_buffer,
-        transactions.len(),
-        transactions.len(),
-        0,
-    );
+        let txns: Vec<_> = (0..10)
+            .map(|_| create_valid_transaction(&mut rng, category, None, None))
+            .collect();
+        let era_id = EraId::new(rng.gen_range(0..6));
+        let height = era_id.value() * 10 + rng.gen_range(0..10);
+        let is_switch = rng.gen_bool(0.1);
+        let block = TestBlockBuilder::new()
+            .era(era_id)
+            .height(height)
+            .switch_block(is_switch)
+            .transactions(&txns)
+            .build(&mut rng);
+
+        transaction_buffer.register_block(&block);
+        assert_container_sizes(&transaction_buffer, txns.len(), txns.len(), 0);
+    }
 }
 
 #[test]
 fn register_finalized_block_with_valid_transactions() {
     let mut rng = TestRng::new();
-    let mut transaction_buffer = TransactionBuffer::new(
-        TransactionConfig::default(),
-        Config::default(),
-        &Registry::new(),
-    )
-    .unwrap();
 
-    let transactions = create_valid_transactions(&mut rng, 10, TransactionType::Random, None, None);
-    let txns: Vec<_> = transactions.to_vec();
-    let block = FinalizedBlock::random(&mut rng, &txns);
+    for category in all_categories() {
+        let mut transaction_buffer = TransactionBuffer::new(
+            TransactionConfig::default(),
+            Config::default(),
+            &Registry::new(),
+        )
+        .unwrap();
 
-    transaction_buffer.register_block_finalized(&block);
-    assert_container_sizes(
-        &transaction_buffer,
-        transactions.len(),
-        transactions.len(),
-        0,
-    );
+        let txns: Vec<_> = (0..10)
+            .map(|_| create_valid_transaction(&mut rng, category, None, None))
+            .collect();
+        let block = FinalizedBlock::random(&mut rng, &txns);
+
+        transaction_buffer.register_block_finalized(&block);
+        assert_container_sizes(&transaction_buffer, txns.len(), txns.len(), 0);
+    }
 }
 
 #[test]
 fn get_proposable_transactions() {
     let mut rng = TestRng::new();
-    let mut transaction_buffer = TransactionBuffer::new(
-        TransactionConfig::default(),
-        Config::default(),
-        &Registry::new(),
-    )
-    .unwrap();
 
-    // populate transaction buffer with some transactions
-    let transactions = create_valid_transactions(&mut rng, 50, TransactionType::Random, None, None);
-    transactions
-        .iter()
-        .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));
-    assert_container_sizes(&transaction_buffer, transactions.len(), 0, 0);
+    for category in all_categories() {
+        let mut transaction_buffer = TransactionBuffer::new(
+            TransactionConfig::default(),
+            Config::default(),
+            &Registry::new(),
+        )
+        .unwrap();
 
-    // Create a block with some transactions and register it with the transaction_buffer
-    let block_transactions =
-        create_valid_transactions(&mut rng, 10, TransactionType::Random, None, None);
-    let txns: Vec<_> = block_transactions.to_vec();
-    let block = FinalizedBlock::random(&mut rng, &txns);
-    transaction_buffer.register_block_finalized(&block);
-    assert_container_sizes(
-        &transaction_buffer,
-        transactions.len() + block_transactions.len(),
-        block_transactions.len(),
-        0,
-    );
+        // populate transaction buffer with some transactions
+        let transactions: Vec<_> = (0..50)
+            .map(|_| create_valid_transaction(&mut rng, category, None, None))
+            .collect();
+        transactions
+            .iter()
+            .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));
+        assert_container_sizes(&transaction_buffer, transactions.len(), 0, 0);
 
-    // Check which transactions are proposable. Should return the transactions that were not
-    // included in the block since those should be dead.
-    let proposable = transaction_buffer.proposable();
-    assert_eq!(proposable.len(), transactions.len());
-    let proposable_transaction_hashes: HashSet<_> = proposable
-        .iter()
-        .map(|(th, _)| th.transaction_hash())
-        .collect();
-    for transaction in transactions.iter() {
-        assert!(proposable_transaction_hashes.contains(&transaction.hash()));
-    }
+        // Create a block with some transactions and register it with the transaction_buffer
+        let block_transactions: Vec<_> = (0..10)
+            .map(|_| create_valid_transaction(&mut rng, category, None, None))
+            .collect();
+        let txns: Vec<_> = block_transactions.to_vec();
+        let block = FinalizedBlock::random(&mut rng, &txns);
+        transaction_buffer.register_block_finalized(&block);
+        assert_container_sizes(
+            &transaction_buffer,
+            transactions.len() + block_transactions.len(),
+            block_transactions.len(),
+            0,
+        );
 
-    // Get an appendable block. This should put the transactions on hold.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
-    assert_eq!(transaction_buffer.hold.len(), 1);
-    assert_container_sizes(
-        &transaction_buffer,
-        transactions.len() + block_transactions.len(),
-        block_transactions.len(),
-        appendable_block.transaction_and_transfer_set().len(),
-    );
+        // Check which transactions are proposable. Should return the transactions that were not
+        // included in the block since those should be dead.
+        let proposable = transaction_buffer.proposable();
+        assert_eq!(proposable.len(), transactions.len());
+        let proposable_transaction_hashes: HashSet<_> = proposable
+            .iter()
+            .map(|(th, _)| th.transaction_hash())
+            .collect();
+        for transaction in transactions.iter() {
+            assert!(proposable_transaction_hashes.contains(&transaction.hash()));
+        }
 
-    // Check that held blocks are not proposable
-    let proposable = transaction_buffer.proposable();
-    assert_eq!(
-        proposable.len(),
-        transactions.len() - appendable_block.transaction_and_transfer_set().len()
-    );
-    for transaction in proposable.iter() {
-        assert!(!appendable_block
-            .transaction_and_transfer_set()
-            .contains(&transaction.0.transaction_hash()));
+        // Get an appendable block. This should put the transactions on hold.
+        let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
+        assert_eq!(transaction_buffer.hold.len(), 1);
+        assert_container_sizes(
+            &transaction_buffer,
+            transactions.len() + block_transactions.len(),
+            block_transactions.len(),
+            appendable_block.transaction_and_transfer_set().len(),
+        );
+
+        // Check that held blocks are not proposable
+        let proposable = transaction_buffer.proposable();
+        assert_eq!(
+            proposable.len(),
+            transactions.len() - appendable_block.transaction_and_transfer_set().len()
+        );
+        for transaction in proposable.iter() {
+            assert!(!appendable_block
+                .transaction_and_transfer_set()
+                .contains(&transaction.0.transaction_hash()));
+        }
     }
 }
 
 #[test]
-fn get_appendable_block_with_native_transfers() {
+fn get_appendable_block_when_transfers_are_of_one_category() {
     let mut rng = TestRng::new();
     let transaction_config = TransactionConfig {
         block_max_transfer_count: 200,
@@ -299,18 +366,53 @@ fn get_appendable_block_with_native_transfers() {
         block_max_approval_count: 210,
         ..Default::default()
     };
+    for category in &[
+        TransactionCategory::TransferLegacy,
+        TransactionCategory::Transfer,
+    ] {
+        let mut transaction_buffer =
+            TransactionBuffer::new(transaction_config, Config::default(), &Registry::new())
+                .unwrap();
+
+        get_appendable_block(
+            &mut rng,
+            &mut transaction_buffer,
+            std::iter::repeat_with(|| category),
+            transaction_config.block_max_transfer_count as usize,
+        );
+    }
+}
+
+#[test]
+fn get_appendable_block_when_transfers_are_both_legacy_and_v1() {
+    let mut rng = TestRng::new();
+    let transaction_config = TransactionConfig {
+        block_max_transfer_count: 200,
+        block_max_staking_count: 0,
+        block_max_install_upgrade_count: 0,
+        block_max_standard_count: 10,
+        block_max_approval_count: 210,
+        ..Default::default()
+    };
+
     let mut transaction_buffer =
         TransactionBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
+
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
-        TransactionType::Transfer,
+        [
+            TransactionCategory::TransferLegacy,
+            TransactionCategory::Transfer,
+        ]
+        .iter()
+        .cycle(),
         transaction_config.block_max_transfer_count as usize,
     );
 }
 
 #[test]
-fn get_appendable_block_with_standard_transactions() {
+fn get_appendable_block_when_standards_are_of_one_category() {
     let mut rng = TestRng::new();
     let transaction_config = TransactionConfig {
         block_max_transfer_count: 200,
@@ -320,18 +422,24 @@ fn get_appendable_block_with_standard_transactions() {
         block_max_approval_count: 210,
         ..Default::default()
     };
-    let mut transaction_buffer =
-        TransactionBuffer::new(transaction_config, Config::default(), &Registry::new()).unwrap();
-    get_appendable_block(
-        &mut rng,
-        &mut transaction_buffer,
-        TransactionType::Standard,
-        transaction_config.block_max_standard_count as usize,
-    );
+    for category in &[
+        TransactionCategory::Standard,
+        TransactionCategory::StandardLegacy,
+    ] {
+        let mut transaction_buffer =
+            TransactionBuffer::new(transaction_config, Config::default(), &Registry::new())
+                .unwrap();
+        get_appendable_block(
+            &mut rng,
+            &mut transaction_buffer,
+            std::iter::repeat_with(|| category),
+            transaction_config.block_max_standard_count as usize,
+        );
+    }
 }
 
 #[test]
-fn get_appendable_block_with_random_transactions() {
+fn get_appendable_block_when_standards_are_both_legacy_and_v1() {
     let mut rng = TestRng::new();
     let transaction_config = TransactionConfig {
         block_max_transfer_count: 200,
@@ -346,35 +454,13 @@ fn get_appendable_block_with_random_transactions() {
     get_appendable_block(
         &mut rng,
         &mut transaction_buffer,
-        TransactionType::Random,
-        (transaction_config.block_max_transfer_count + transaction_config.block_max_standard_count)
-            as usize,
-    );
-}
-
-fn get_appendable_block(
-    rng: &mut TestRng,
-    transaction_buffer: &mut TransactionBuffer,
-    transaction_type: TransactionType,
-    transaction_limit: usize,
-) {
-    // populate transaction buffer with more transfers than a block can fit
-    let transactions =
-        create_valid_transactions(rng, transaction_limit + 50, transaction_type, None, None);
-    transactions
+        [
+            TransactionCategory::StandardLegacy,
+            TransactionCategory::Standard,
+        ]
         .iter()
-        .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));
-    assert_container_sizes(transaction_buffer, transactions.len(), 0, 0);
-
-    // now check how many transfers were added in the block; should not exceed the config limits.
-    let appendable_block = transaction_buffer.appendable_block(Timestamp::now());
-    assert!(appendable_block.transaction_and_transfer_set().len() <= transaction_limit,);
-    assert_eq!(transaction_buffer.hold.len(), 1);
-    assert_container_sizes(
-        transaction_buffer,
-        transactions.len(),
-        0,
-        appendable_block.transaction_and_transfer_set().len(),
+        .cycle(),
+        transaction_config.block_max_standard_count as usize,
     );
 }
 
@@ -390,21 +476,20 @@ fn register_transactions_and_blocks() {
 
     // try to register valid transactions
     let num_valid_transactions: usize = rng.gen_range(50..500);
-    let valid_transactions = create_valid_transactions(
-        &mut rng,
-        num_valid_transactions,
-        TransactionType::Random,
-        None,
-        None,
-    );
+    let category = TransactionCategory::random(&mut rng);
+    let valid_transactions: Vec<_> = (0..num_valid_transactions)
+        .map(|_| create_valid_transaction(&mut rng, &category, None, None))
+        .collect();
     valid_transactions
         .iter()
         .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));
     assert_container_sizes(&transaction_buffer, valid_transactions.len(), 0, 0);
 
     // register a block with transactions
-    let block_transaction =
-        create_valid_transactions(&mut rng, 5, TransactionType::Random, None, None);
+    let category = TransactionCategory::random(&mut rng);
+    let block_transaction: Vec<_> = (0..5)
+        .map(|_| create_valid_transaction(&mut rng, &category, None, None))
+        .collect();
     let txns: Vec<_> = block_transaction.to_vec();
     let era = rng.gen_range(0..6);
     let height = era * 10 + rng.gen_range(0..10);
@@ -539,8 +624,87 @@ impl MockReactor {
 }
 
 #[tokio::test]
-async fn expire_transactions_and_check_announcement() {
+async fn expire_transactions_and_check_announcement_when_transactions_are_of_one_category() {
     let mut rng = TestRng::new();
+
+    for category in all_categories() {
+        let mut transaction_buffer = TransactionBuffer::new(
+            TransactionConfig::default(),
+            Config::default(),
+            &Registry::new(),
+        )
+        .unwrap();
+
+        let reactor = MockReactor::new();
+        let event_queue_handle = EventQueueHandle::without_shutdown(reactor.scheduler);
+        let effect_builder = EffectBuilder::new(event_queue_handle);
+
+        // generate and register some already expired transactions
+        let ttl = TimeDiff::from_seconds(rng.gen_range(30..300));
+        let past_timestamp = Timestamp::now()
+            .saturating_sub(ttl)
+            .saturating_sub(TimeDiff::from_seconds(5));
+
+        let num_transactions: usize = rng.gen_range(5..50);
+        let expired_transactions: Vec<_> = (0..num_transactions)
+            .map(|_| create_valid_transaction(&mut rng, category, Some(past_timestamp), Some(ttl)))
+            .collect();
+
+        expired_transactions
+            .iter()
+            .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));
+        assert_container_sizes(&transaction_buffer, expired_transactions.len(), 0, 0);
+
+        // include the last expired transaction in a block and register it
+        let era = rng.gen_range(0..6);
+        let expired_txns: Vec<_> = expired_transactions.to_vec();
+        let block = TestBlockBuilder::new()
+            .era(era)
+            .height(era * 10 + rng.gen_range(0..10))
+            .transactions(expired_txns.last())
+            .build(&mut rng);
+
+        transaction_buffer.register_block(&block);
+        assert_container_sizes(&transaction_buffer, expired_transactions.len(), 1, 0);
+
+        // generate and register some valid transactions
+        let transactions: Vec<_> = (0..num_transactions)
+            .map(|_| create_valid_transaction(&mut rng, category, None, None))
+            .collect();
+        transactions
+            .iter()
+            .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));
+        assert_container_sizes(
+            &transaction_buffer,
+            transactions.len() + expired_transactions.len(),
+            1,
+            0,
+        );
+
+        // expire transactions and check that they were announced as expired
+        let mut effects = transaction_buffer.expire(effect_builder);
+        tokio::spawn(effects.remove(0)).await.unwrap();
+
+        // the transactions which should be announced as expired are all the expired ones not in a
+        // block, i.e. all but the last one of `expired_transactions`
+        let expired_transaction_hashes: HashSet<_> = expired_transactions
+            .iter()
+            .take(expired_transactions.len() - 1)
+            .map(|transaction| transaction.hash())
+            .collect();
+        reactor
+            .expect_transaction_buffer_expire_announcement(&expired_transaction_hashes)
+            .await;
+
+        // the valid transactions should still be in the buffer
+        assert_container_sizes(&transaction_buffer, transactions.len(), 0, 0);
+    }
+}
+
+#[tokio::test]
+async fn expire_transactions_and_check_announcement_when_transactions_are_of_random_categories() {
+    let mut rng = TestRng::new();
+
     let mut transaction_buffer = TransactionBuffer::new(
         TransactionConfig::default(),
         Config::default(),
@@ -559,13 +723,13 @@ async fn expire_transactions_and_check_announcement() {
         .saturating_sub(TimeDiff::from_seconds(5));
 
     let num_transactions: usize = rng.gen_range(5..50);
-    let expired_transactions = create_valid_transactions(
-        &mut rng,
-        num_transactions,
-        TransactionType::Transfer,
-        Some(past_timestamp),
-        Some(ttl),
-    );
+    let expired_transactions: Vec<_> = (0..num_transactions)
+        .map(|_| {
+            let random_category = all_categories().choose(&mut rng).unwrap();
+            create_valid_transaction(&mut rng, random_category, Some(past_timestamp), Some(ttl))
+        })
+        .collect();
+
     expired_transactions
         .iter()
         .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));
@@ -584,13 +748,12 @@ async fn expire_transactions_and_check_announcement() {
     assert_container_sizes(&transaction_buffer, expired_transactions.len(), 1, 0);
 
     // generate and register some valid transactions
-    let transactions = create_valid_transactions(
-        &mut rng,
-        num_transactions,
-        TransactionType::Transfer,
-        None,
-        None,
-    );
+    let transactions: Vec<_> = (0..num_transactions)
+        .map(|_| {
+            let random_category = all_categories().choose(&mut rng).unwrap();
+            create_valid_transaction(&mut rng, random_category, None, None)
+        })
+        .collect();
     transactions
         .iter()
         .for_each(|transaction| transaction_buffer.register_transaction(transaction.clone()));

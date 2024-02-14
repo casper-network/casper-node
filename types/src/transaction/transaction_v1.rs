@@ -399,10 +399,16 @@ impl TransactionV1 {
     /// Note that the [`TransactionV1Builder`] can be used to create a random transaction with
     /// more specific values.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random_transfer(rng: &mut TestRng) -> Self {
-        let transaction = TransactionV1Builder::new_random_not_expired_with_category(
+    pub fn random_transfer(
+        rng: &mut TestRng,
+        timestamp: Option<Timestamp>,
+        ttl: Option<TimeDiff>,
+    ) -> Self {
+        let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
             rng,
             &TransactionV1Category::Transfer,
+            timestamp,
+            ttl,
         )
         .build()
         .unwrap();
@@ -418,10 +424,16 @@ impl TransactionV1 {
     /// Note that the [`TransactionV1Builder`] can be used to create a random transaction with
     /// more specific values.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random_standard(rng: &mut TestRng) -> Self {
-        let transaction = TransactionV1Builder::new_random_not_expired_with_category(
+    pub fn random_standard(
+        rng: &mut TestRng,
+        timestamp: Option<Timestamp>,
+        ttl: Option<TimeDiff>,
+    ) -> Self {
+        let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
             rng,
             &TransactionV1Category::Standard,
+            timestamp,
+            ttl,
         )
         .build()
         .unwrap();
@@ -437,10 +449,16 @@ impl TransactionV1 {
     /// Note that the [`TransactionV1Builder`] can be used to create a random transaction with
     /// more specific values.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random_install_upgrade(rng: &mut TestRng) -> Self {
-        let transaction = TransactionV1Builder::new_random_not_expired_with_category(
+    pub fn random_install_upgrade(
+        rng: &mut TestRng,
+        timestamp: Option<Timestamp>,
+        ttl: Option<TimeDiff>,
+    ) -> Self {
+        let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
             rng,
             &TransactionV1Category::InstallUpgrade,
+            timestamp,
+            ttl,
         )
         .build()
         .unwrap();
@@ -456,10 +474,16 @@ impl TransactionV1 {
     /// Note that the [`TransactionV1Builder`] can be used to create a random transaction with
     /// more specific values.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random_staking(rng: &mut TestRng) -> Self {
-        let transaction = TransactionV1Builder::new_random_not_expired_with_category(
+    pub fn random_staking(
+        rng: &mut TestRng,
+        timestamp: Option<Timestamp>,
+        ttl: Option<TimeDiff>,
+    ) -> Self {
+        let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
             rng,
             &TransactionV1Category::Staking,
+            timestamp,
+            ttl,
         )
         .build()
         .unwrap();
