@@ -11,7 +11,7 @@ use casper_execution_engine::{
     engine_state::{EngineConfigBuilder, Error, ExecuteRequest},
     execution,
 };
-use casper_storage::data_access_layer::GenesisRequest;
+use casper_storage::{data_access_layer::GenesisRequest, tracking_copy::TrackingCopyError};
 use casper_types::{
     account::{AccountHash, Weight},
     bytesrepr::ToBytes,
@@ -336,7 +336,7 @@ fn administrator_account_should_disable_any_account() {
     let error = builder.get_error().expect("should have error");
     assert!(matches!(
         error,
-        Error::Exec(execution::Error::DeploymentAuthorizationFailure)
+        Error::TrackingCopy(TrackingCopyError::DeploymentAuthorizationFailure)
     ));
 
     let account_1_disabled = builder

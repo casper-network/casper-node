@@ -123,7 +123,7 @@ pub enum GenesisError {
     /// Genesis process requires initial accounts.
     MissingGenesisAccounts,
     /// A tracking copy error.
-    TrackingCopyError(TrackingCopyError),
+    TrackingCopy(TrackingCopyError),
 }
 
 impl fmt::Display for GenesisError {
@@ -262,10 +262,8 @@ where
         Ok(total_supply_uref.into())
     }
 
-    fn create_handle_payment(
-        &self,
-        handle_payment_payment_purse: URef,
-    ) -> Result<AddressableEntityHash, Box<GenesisError>> {
+    fn create_handle_payment(&self) -> Result<AddressableEntityHash, Box<GenesisError>> {
+        let handle_payment_payment_purse = self.create_purse(U512::zero())?;
         let named_keys = {
             let mut named_keys = NamedKeys::new();
             let named_key = Key::URef(handle_payment_payment_purse);
@@ -563,11 +561,7 @@ where
         Ok(contract_hash)
     }
 
-    pub fn create_accounts(
-        &self,
-        total_supply_key: Key,
-        payment_purse_uref: URef,
-    ) -> Result<(), Box<GenesisError>> {
+    pub fn create_accounts(&self, total_supply_key: Key) -> Result<(), Box<GenesisError>> {
         let accounts = {
             let mut ret: Vec<GenesisAccount> = self.config.accounts_iter().cloned().collect();
             let system_account = GenesisAccount::system();
@@ -593,14 +587,7 @@ where
         for account in accounts {
             let account_starting_balance = account.balance().value();
 
-            let main_purse = match account {
-                GenesisAccount::System
-                    if self.config.administrative_accounts().next().is_some() =>
-                {
-                    payment_purse_uref
-                }
-                _ => self.create_purse(account_starting_balance)?,
-            };
+            let main_purse = self.create_purse(account_starting_balance)?;
 
             self.store_addressable_entity(
                 EntityKind::Account(account.account_hash()),
@@ -872,16 +859,14 @@ where
         // Create mint
         let total_supply_key = self.create_mint()?;
 
-        let payment_purse_uref = self.create_purse(U512::zero())?;
-
         // Create all genesis accounts
-        self.create_accounts(total_supply_key, payment_purse_uref)?;
+        self.create_accounts(total_supply_key)?;
 
         // Create the auction and setup the stake of all genesis validators.
         self.create_auction(total_supply_key)?;
 
         // Create handle payment
-        self.create_handle_payment(payment_purse_uref)?;
+        self.create_handle_payment()?;
 
         self.store_chainspec_registry(chainspec_registry)?;
 

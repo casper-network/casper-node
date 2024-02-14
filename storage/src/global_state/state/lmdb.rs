@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use std::{collections::HashMap, ops::Deref, sync::Arc};
 
 use lmdb::{DatabaseFlags, RwTransaction};
@@ -11,8 +12,8 @@ use casper_types::{
 
 use crate::{
     data_access_layer::{
-        FlushRequest, FlushResult, PutTrieRequest, PutTrieResult, TrieElement, TrieRequest,
-        TrieResult,
+        DataAccessLayer, FlushRequest, FlushResult, PutTrieRequest, PutTrieResult, TrieElement,
+        TrieRequest, TrieResult,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -29,7 +30,7 @@ use crate::{
             lmdb::{LmdbTrieStore, ScratchTrieStore},
             operations::{
                 keys_with_prefix, missing_children, prune, put_trie, read, read_with_proof,
-                PruneResult, ReadResult,
+                PruneResult as OpPruneResult, PruneResult, ReadResult,
             },
         },
         DEFAULT_MAX_DB_SIZE, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_READERS,
@@ -383,6 +384,45 @@ impl StateProvider for LmdbGlobalState {
 
         scratch_trie_store.write_root_to_db(state_root_hash)?;
         Ok(PruneResult::Pruned(state_root_hash))
+    }
+}
+
+impl DataAccessLayer<LmdbGlobalState> {
+    /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
+    pub fn flush_environment(&self) -> Result<(), GlobalStateError> {
+        if self.state().environment().is_manual_sync_enabled() {
+            self.state().environment().sync()?
+        }
+        Ok(())
+    }
+
+    /// Provide a local cached-only version of engine-state.
+    pub fn get_scratch_engine_state(&self) -> ScratchGlobalState {
+        self.state().create_scratch()
+    }
+
+    /// Writes state cached in an `EngineState<ScratchEngineState>` to LMDB.
+    pub fn write_scratch_to_db(
+        &self,
+        state_root_hash: Digest,
+        scratch_global_state: ScratchGlobalState,
+    ) -> Result<Digest, GlobalStateError> {
+        let (stored_values, keys_to_prune) = scratch_global_state.into_inner();
+        let post_state_hash = self
+            .state()
+            .put_stored_values(state_root_hash, stored_values)?;
+        if keys_to_prune.is_empty() {
+            return Ok(post_state_hash);
+        }
+        let prune_keys = keys_to_prune.iter().cloned().collect_vec();
+        match self.state().prune_keys(post_state_hash, &prune_keys) {
+            Ok(result) => match result {
+                OpPruneResult::Pruned(post_state_hash) => Ok(post_state_hash),
+                OpPruneResult::DoesNotExist => Err(GlobalStateError::FailedToPrune(prune_keys)),
+                OpPruneResult::RootNotFound => Err(GlobalStateError::RootNotFound),
+            },
+            Err(err) => Err(err),
+        }
     }
 }
 

@@ -1,7 +1,7 @@
+mod mint_native;
 pub mod runtime_provider;
 pub mod storage_provider;
 pub mod system_provider;
-pub mod transfer;
 
 use num_rational::Ratio;
 use num_traits::CheckedMul;
@@ -10,7 +10,7 @@ use casper_types::{
     account::AccountHash,
     system::{
         mint::{Error, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
-        CallStackElement,
+        Caller,
     },
     Key, PublicKey, SystemEntityRegistry, URef, U512,
 };
@@ -19,6 +19,8 @@ use crate::system::mint::{
     runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
     system_provider::SystemProvider,
 };
+
+pub use crate::system::mint::mint_native::NativeMintRuntime;
 
 /// Mint trait.
 pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
@@ -80,7 +82,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             .ok_or(Error::ArithmeticOverflow)?;
 
         // update total supply
-        self.write(total_supply_uref, reduced_total_supply)?;
+        self.write_amount(total_supply_uref, reduced_total_supply)?;
 
         Ok(())
     }
@@ -103,13 +105,13 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         id: Option<u64>,
     ) -> Result<(), Error> {
         if !self.allow_unrestricted_transfers() {
-            let registry = match self.get_system_contract_registry() {
+            let registry = match self.get_system_entity_registry() {
                 Ok(registry) => registry,
                 Err(_) => SystemEntityRegistry::new(),
             };
-            let immediate_caller = self.get_immediate_caller().cloned();
+            let immediate_caller = self.get_immediate_caller();
             match immediate_caller {
-                Some(CallStackElement::AddressableEntity {
+                Some(Caller::AddressableEntity {
                     entity_hash: contract_hash,
                     ..
                 }) if registry.has_contract_hash(&contract_hash) => {
@@ -117,20 +119,20 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                     // transfer)
                 }
 
-                Some(CallStackElement::Session { account_hash: _ })
+                Some(Caller::Session { account_hash: _ })
                     if self.is_called_from_standard_payment() =>
                 {
                     // Standard payment acts as a session without separate stack frame and calls
                     // into mint's transfer.
                 }
 
-                Some(CallStackElement::Session { account_hash })
+                Some(Caller::Session { account_hash })
                     if account_hash == PublicKey::System.to_account_hash() =>
                 {
                     // System calls a session code.
                 }
 
-                Some(CallStackElement::Session { account_hash }) => {
+                Some(Caller::Session { account_hash }) => {
                     // For example: a session using transfer host functions, or calling the mint's
                     // entrypoint directly
 
@@ -179,7 +181,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                     }
                 }
 
-                Some(CallStackElement::AddressableEntity {
+                Some(Caller::AddressableEntity {
                     package_hash: _,
                     entity_hash: _,
                 }) => {
@@ -198,9 +200,16 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
         }
 
         if !source.is_readable() {
+            // TODO: I don't think we should check is_readable on the source or the target.
+            // is_writeable(), which is checked for below is what actually matters.
+            // ie it doesn't matter if the initiator can READ the balance, what matters is
+            // if they can transfer the token, which is controlled by having WRITE access.
             return Err(Error::InvalidAccessRights);
         }
         if !source.is_writeable() || !target.is_addable() {
+            // TODO: Similarly, I don't think we should enforce is addable on the target
+            // Unlike other uses of URefs (such as a counter), in this context the value represents
+            // a deposit of token. Generally, deposit of a desirable resource is permissive.
             return Err(Error::InvalidAccessRights);
         }
         let source_balance: U512 = match self.read_balance(source)? {

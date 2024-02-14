@@ -9,7 +9,7 @@ use crate::{
 };
 
 /// Default gas cost for a wasmless transfer.
-pub const DEFAULT_WASMLESS_TRANSFER_COST: u32 = 100_000_000;
+pub const DEFAULT_WASMLESS_TRANSFER_COST: u32 = 0; // 100_000_000; TODO: reinstate when adding new payment logic
 
 /// Definition of costs in the system.
 ///
