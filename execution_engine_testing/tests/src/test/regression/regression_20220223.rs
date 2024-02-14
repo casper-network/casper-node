@@ -241,7 +241,7 @@ fn should_fail_to_mint_transfer_over_the_limit() {
     let mut builder = setup();
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let test_purse_2 = default_account
@@ -277,7 +277,7 @@ fn should_fail_to_mint_transfer_over_the_limit() {
 
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
     let validator_1_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,

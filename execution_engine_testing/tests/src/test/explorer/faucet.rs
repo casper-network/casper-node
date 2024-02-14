@@ -7,8 +7,8 @@ use casper_engine_test_support::{
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    account::AccountHash, package::PackageKindTag, runtime_args, system::mint, ApiError, Key,
-    PublicKey, SecretKey, U512,
+    account::AccountHash, addressable_entity::EntityKindTag, runtime_args, system::mint, ApiError,
+    Key, PublicKey, SecretKey, U512,
 };
 
 // test constants.
@@ -34,7 +34,7 @@ const FAUCET_CALL_BY_USER_WITH_AUTHORIZED_ACCOUNT_SET: u16 = 25;
 #[test]
 fn should_install_faucet_contract() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let fund_installer_account_request = FundAccountRequestBuilder::new()
         .with_target_account(INSTALLER_ACCOUNT)
@@ -54,7 +54,8 @@ fn should_install_faucet_contract() {
         .commit();
 
     let installer_named_keys = builder
-        .get_expected_addressable_entity_by_account_hash(INSTALLER_ACCOUNT)
+        .get_entity_with_named_keys_by_account_hash(INSTALLER_ACCOUNT)
+        .expect("must have entity")
         .named_keys()
         .clone();
 
@@ -132,7 +133,7 @@ fn should_install_faucet_contract() {
 #[test]
 fn should_allow_installer_to_set_variables() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let mut helper = FaucetDeployHelper::new()
         .with_installer_account(INSTALLER_ACCOUNT)
@@ -154,7 +155,7 @@ fn should_allow_installer_to_set_variables() {
 
     let faucet_contract_hash = helper.query_and_set_faucet_contract_hash(&builder);
     let faucet_entity_key =
-        Key::addressable_entity_key(PackageKindTag::SmartContract, faucet_contract_hash);
+        Key::addressable_entity_key(EntityKindTag::SmartContract, faucet_contract_hash);
 
     assert_eq!(
         helper.query_faucet_purse_balance(&builder),
@@ -226,7 +227,7 @@ fn should_allow_installer_to_set_variables() {
 fn should_fund_new_account() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let faucet_purse_fund_amount = U512::from(9_000_000_000u64);
     let faucet_distributions_per_interval = 3;
@@ -293,7 +294,7 @@ fn should_fund_existing_account() {
     let user_account = AccountHash::new([7u8; 32]);
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let faucet_purse_fund_amount = U512::from(9_000_000_000u64);
     let faucet_distributions_per_interval = 3;
@@ -366,7 +367,7 @@ fn should_not_fund_once_exhausted() {
     let user_account = AccountHash::new([2u8; 32]);
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let faucet_fund_amount = U512::from(400_000_000_000_000u64);
     let half_of_faucet_fund_amount = faucet_fund_amount / 2;
@@ -396,7 +397,7 @@ fn should_not_fund_once_exhausted() {
 
     let faucet_contract_hash = get_faucet_entity_hash(&builder, installer_account);
     let faucet_entity_key =
-        Key::addressable_entity_key(PackageKindTag::SmartContract, faucet_contract_hash);
+        Key::addressable_entity_key(EntityKindTag::SmartContract, faucet_contract_hash);
     let faucet_purse = get_faucet_purse(&builder, installer_account);
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
 
@@ -564,7 +565,7 @@ fn should_allow_installer_to_fund_freely() {
     let user_account = AccountHash::new([2u8; 32]);
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let faucet_fund_amount = U512::from(200_000_000_000u64);
     let half_of_faucet_fund_amount = faucet_fund_amount / 2;
@@ -591,7 +592,7 @@ fn should_allow_installer_to_fund_freely() {
 
     let faucet_contract_hash = get_faucet_entity_hash(&builder, installer_account);
     let faucet_entity_key =
-        Key::addressable_entity_key(PackageKindTag::SmartContract, faucet_contract_hash);
+        Key::addressable_entity_key(EntityKindTag::SmartContract, faucet_contract_hash);
     let faucet_purse = get_faucet_purse(&builder, installer_account);
 
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
@@ -664,7 +665,7 @@ fn should_not_fund_if_zero_distributions_per_interval() {
     let user_account = AccountHash::new([2u8; 32]);
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     // Fund installer account
     let fund_installer_account_request = FundAccountRequestBuilder::new()
@@ -722,7 +723,7 @@ fn should_allow_funding_by_an_authorized_account() {
     let half_of_faucet_fund_amount = faucet_fund_amount / 2;
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let mut helper = FaucetDeployHelper::new()
         .with_installer_account(installer_account)
@@ -750,7 +751,8 @@ fn should_allow_funding_by_an_authorized_account() {
         .commit();
 
     let installer_named_keys = builder
-        .get_expected_addressable_entity_by_account_hash(installer_account)
+        .get_entity_with_named_keys_by_account_hash(installer_account)
+        .expect("must have entity")
         .named_keys()
         .clone();
 
@@ -871,7 +873,7 @@ fn should_refund_proper_amount() {
     let user_account = AccountHash::new([7u8; 32]);
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let payment_amount = U512::from(10_000_000_000u64);
 
@@ -933,16 +935,16 @@ fn faucet_costs() {
     // This test will fail if execution costs vary.  The expected costs should not be updated
     // without understanding why the cost has changed.  If the costs do change, it should be
     // reflected in the "Costs by Entry Point" section of the faucet crate's README.md.
-    const EXPECTED_FAUCET_INSTALL_COST: u64 = 88_383_544_080;
-    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 110_689_570;
-    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_776_789_130;
-    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 2_618_699_930;
+    const EXPECTED_FAUCET_INSTALL_COST: u64 = 91_331_256_210;
+    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 110_508_680;
+    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 2_774_087_900;
+    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 2_618_374_600;
 
     let installer_account = AccountHash::new([1u8; 32]);
     let user_account: AccountHash = AccountHash::new([2u8; 32]);
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let fund_installer_account_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,

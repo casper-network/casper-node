@@ -52,7 +52,7 @@ fn should_run_ee_890_gracefully_reject_start_node_in_session() {
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .commit();
     let message = builder.exec_error_message(0).expect("should fail");
@@ -80,7 +80,7 @@ fn should_run_ee_890_gracefully_reject_start_node_in_payment() {
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .commit();
     let message = builder.exec_error_message(0).expect("should fail");

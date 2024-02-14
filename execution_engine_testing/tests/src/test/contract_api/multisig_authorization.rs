@@ -177,7 +177,7 @@ fn test_multisig_auth(
 
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     for account in ROLE_A_KEYS.iter().chain(&ROLE_B_KEYS) {
         let add_key_request = {

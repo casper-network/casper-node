@@ -17,7 +17,7 @@ use casper_types::{
         },
         mint::TOTAL_SUPPLY_KEY,
     },
-    GenesisAccount, GenesisValidator, Motes, PublicKey, SecretKey, U512,
+    EntityAddr, GenesisAccount, GenesisValidator, Motes, PublicKey, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
@@ -62,7 +62,7 @@ fn should_slash_validator_and_their_delegators() {
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let fund_system_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -200,8 +200,10 @@ fn should_slash_validator_and_their_delegators() {
     //
     // Slash - only `withdraw_bid` amount is slashed
     //
-    let total_supply_before_slashing: U512 =
-        builder.get_value(builder.get_mint_contract_hash(), TOTAL_SUPPLY_KEY);
+    let total_supply_before_slashing: U512 = builder.get_value(
+        EntityAddr::System(builder.get_mint_contract_hash().value()),
+        TOTAL_SUPPLY_KEY,
+    );
 
     let slash_request_2 = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -221,8 +223,10 @@ fn should_slash_validator_and_their_delegators() {
     let bids = builder.get_bids();
     assert!(bids.validator_bid(&VALIDATOR_1).is_none());
 
-    let total_supply_after_slashing: U512 =
-        builder.get_value(builder.get_mint_contract_hash(), TOTAL_SUPPLY_KEY);
+    let total_supply_after_slashing: U512 = builder.get_value(
+        EntityAddr::System(builder.get_mint_contract_hash().value()),
+        TOTAL_SUPPLY_KEY,
+    );
 
     assert_eq!(
         total_supply_after_slashing + VALIDATOR_1_STAKE + DELEGATE_AMOUNT_1,

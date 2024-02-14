@@ -15,7 +15,7 @@ const ARG_AMOUNT: &str = "amount";
 fn should_run_main_purse_contract_default_account() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    let builder = builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    let builder = builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -44,7 +44,7 @@ fn should_run_main_purse_contract_account_1() {
     .build();
 
     let builder = builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .expect_success()
         .commit();

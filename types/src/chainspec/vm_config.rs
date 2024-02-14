@@ -8,7 +8,6 @@ mod opcode_costs;
 mod standard_payment_costs;
 mod storage_costs;
 mod system_config;
-mod upgrade_config;
 mod wasm_config;
 
 pub use auction_costs::{AuctionCosts, DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST};
@@ -38,5 +37,4 @@ pub use opcode_costs::{
 pub use standard_payment_costs::StandardPaymentCosts;
 pub use storage_costs::StorageCosts;
 pub use system_config::{SystemConfig, DEFAULT_WASMLESS_TRANSFER_COST};
-pub use upgrade_config::UpgradeConfig;
 pub use wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY};

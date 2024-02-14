@@ -9,13 +9,17 @@ mod tests;
 use std::{convert::TryFrom, net::SocketAddr, sync::Arc};
 
 use bytes::Bytes;
-use casper_execution_engine::engine_state::{
-    get_all_values::GetAllValuesRequest, QueryRequest, QueryResult,
+use casper_storage::{
+    data_access_layer::{
+        get_all_values::{AllValuesRequest, AllValuesResult},
+        QueryRequest, QueryResult, TrieRequest,
+    },
+    global_state::trie::TrieRaw,
 };
 use casper_types::{
     binary_port::{
         self, BinaryRequest, BinaryRequestHeader, BinaryRequestTag, BinaryResponse,
-        BinaryResponseAndRequest, DbRawBytesSpec, GetAllValuesResult, GetRequest,
+        BinaryResponseAndRequest, DbRawBytesSpec, GetRequest, GetTrieFullResult,
         GlobalStateQueryResult, GlobalStateRequest, InformationRequest, InformationRequestTag,
         NodeStatus, RecordId, TransactionWithExecutionInfo,
     },
@@ -374,16 +378,14 @@ where
     let Some(state_root_hash) = resolve_state_root_hash(effect_builder, state_identifier).await else {
         return BinaryResponse::new_empty(protocol_version)
     };
-    let get_all_values_request = GetAllValuesRequest::new(state_root_hash, key_tag);
+    let get_all_values_request = AllValuesRequest::new(state_root_hash, key_tag);
     match effect_builder.get_all_values(get_all_values_request).await {
-        Ok(GetAllValuesResult::Success { values }) => {
-            BinaryResponse::from_value(values, protocol_version)
-        }
-        Ok(GetAllValuesResult::RootNotFound) => {
+        AllValuesResult::Success { values } => BinaryResponse::from_value(values, protocol_version),
+        AllValuesResult::RootNotFound => {
             let error_code = binary_port::ErrorCode::RootNotFound;
             BinaryResponse::new_error(error_code, protocol_version)
         }
-        Err(_err) => {
+        AllValuesResult::Failure(_err) => {
             BinaryResponse::new_error(binary_port::ErrorCode::InternalError, protocol_version)
         }
     }
@@ -434,8 +436,12 @@ where
                     protocol_version,
                 )
             } else {
-                match effect_builder.get_trie_full(trie_key).await {
-                    Ok(result) => BinaryResponse::from_value(result, protocol_version),
+                let req = TrieRequest::new(trie_key, None);
+                match effect_builder.get_trie(req).await.into_legacy() {
+                    Ok(result) => BinaryResponse::from_value(
+                        GetTrieFullResult::new(result.map(TrieRaw::into_inner)),
+                        protocol_version,
+                    ),
                     Err(_err) => BinaryResponse::new_error(
                         binary_port::ErrorCode::InternalError,
                         protocol_version,
@@ -465,7 +471,7 @@ where
         .query_global_state(QueryRequest::new(state_root_hash, base_key, path))
         .await
     {
-        Ok(QueryResult::Success { value, proofs }) => match proofs.to_bytes() {
+        QueryResult::Success { value, proofs } => match proofs.to_bytes() {
             Ok(proofs) => BinaryResponse::from_value(
                 GlobalStateQueryResult::new(*value, base16::encode_lower(&proofs)),
                 protocol_version,
@@ -475,15 +481,15 @@ where
                 BinaryResponse::new_error(error_code, protocol_version)
             }
         },
-        Ok(QueryResult::RootNotFound) => {
+        QueryResult::RootNotFound => {
             let error_code = binary_port::ErrorCode::RootNotFound;
             BinaryResponse::new_error(error_code, protocol_version)
         }
-        Ok(_) => {
+        QueryResult::ValueNotFound(_) => {
             let error_code = binary_port::ErrorCode::NotFound;
             BinaryResponse::new_error(error_code, protocol_version)
         }
-        Err(_) => {
+        QueryResult::Failure(_) => {
             let error_code = binary_port::ErrorCode::QueryFailedToExecute;
             BinaryResponse::new_error(error_code, protocol_version)
         }

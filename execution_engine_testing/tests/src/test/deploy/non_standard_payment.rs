@@ -42,7 +42,7 @@ fn should_charge_non_main_purse() {
     )
     .build();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder
         .exec(setup_exec_request)
@@ -54,7 +54,7 @@ fn should_charge_non_main_purse() {
 
     // get account_1
     let account_1 = builder
-        .get_entity_by_account_hash(ACCOUNT_1_ADDR)
+        .get_entity_with_named_keys_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
     // get purse
     let purse_key = account_1.named_keys().get(TEST_PURSE_NAME).unwrap();

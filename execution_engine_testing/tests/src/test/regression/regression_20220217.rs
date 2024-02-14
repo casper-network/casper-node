@@ -115,7 +115,7 @@ fn regression_20220217_mint_by_hash_transfer_from_other_purse() {
     let mut builder = setup();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let purse_1 = account
         .named_keys()
@@ -155,7 +155,7 @@ fn regression_20220217_mint_by_hash_transfer_from_someones_purse() {
     let mut builder = setup();
 
     let account_1 = builder
-        .get_entity_by_account_hash(ACCOUNT_1_ADDR)
+        .get_entity_with_named_keys_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
     let account_1_purse = account_1
         .named_keys()
@@ -165,7 +165,7 @@ fn regression_20220217_mint_by_hash_transfer_from_someones_purse() {
         .expect("should have account main purse");
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let purse_1 = default_account
@@ -209,7 +209,7 @@ fn regression_20220217_should_not_transfer_funds_on_unrelated_purses() {
     let mut builder = setup();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let purse_1 = account
         .named_keys()
@@ -256,7 +256,7 @@ fn regression_20220217_should_not_transfer_funds_on_unrelated_purses() {
 
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let fund_account_1_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,
@@ -399,7 +399,7 @@ fn mint_by_hash_transfer_should_fail_because_lack_of_target_uref_access() {
     // TODO create two named purses and verify we can pass source and target known non-main purses
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)

@@ -1,16 +1,16 @@
 use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 
-use casper_storage::global_state::state::StateReader;
-use casper_types::{
-    account::AccountHash, system::mint, AccessRights, AddressableEntity, ApiError, CLType,
-    CLValueError, Key, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
-};
-
-use crate::{
-    engine_state::Error,
-    execution::Error as ExecError,
+use casper_storage::{
+    global_state::{error::Error as GlobalStateError, state::StateReader},
     tracking_copy::{TrackingCopy, TrackingCopyExt},
 };
+use casper_types::{
+    account::AccountHash, addressable_entity::NamedKeys, system::mint, AccessRights,
+    AddressableEntity, ApiError, CLType, CLValueError, Key, ProtocolVersion, PublicKey,
+    RuntimeArgs, StoredValue, URef, U512,
+};
+
+use crate::{engine_state::Error, execution::Error as ExecError};
 
 /// A target mode indicates if a native transfer's arguments will resolve to an existing purse, or
 /// will have to create a new account first.
@@ -130,8 +130,7 @@ impl TransferRuntimeArgsBuilder {
     /// Checks if a purse exists.
     fn purse_exists<R>(&self, uref: URef, tracking_copy: Rc<RefCell<TrackingCopy<R>>>) -> bool
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<ExecError>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         let key = match tracking_copy
             .borrow_mut()
@@ -152,11 +151,11 @@ impl TransferRuntimeArgsBuilder {
     fn resolve_source_uref<R>(
         &self,
         account: &AddressableEntity,
+        named_keys: NamedKeys,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<URef, Error>
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<ExecError>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         let imputed_runtime_args = &self.inner;
         let arg_name = mint::ARG_SOURCE;
@@ -169,8 +168,7 @@ impl TransferRuntimeArgsBuilder {
                 }
 
                 let normalized_uref = Key::URef(uref).normalize();
-                let maybe_named_key = account
-                    .named_keys()
+                let maybe_named_key = named_keys
                     .keys()
                     .find(|&named_key| named_key.normalize() == normalized_uref);
 
@@ -221,8 +219,7 @@ impl TransferRuntimeArgsBuilder {
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<NewTransferTargetMode, Error>
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<ExecError>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         let imputed_runtime_args = &self.inner;
         let arg_name = mint::ARG_TARGET;
@@ -317,12 +314,12 @@ impl TransferRuntimeArgsBuilder {
     pub fn build<R>(
         mut self,
         from: &AddressableEntity,
+        entity_named_keys: NamedKeys,
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<TransferArgs, Error>
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<ExecError>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         let (to, target_uref) = match self
             .resolve_transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))?
@@ -340,7 +337,8 @@ impl TransferRuntimeArgsBuilder {
             }
         };
 
-        let source_uref = self.resolve_source_uref(from, Rc::clone(&tracking_copy))?;
+        let source_uref =
+            self.resolve_source_uref(from, entity_named_keys, Rc::clone(&tracking_copy))?;
 
         if source_uref.addr() == target_uref.addr() {
             return Err(Error::reverter(ApiError::InvalidPurse));

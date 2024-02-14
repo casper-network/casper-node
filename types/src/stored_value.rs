@@ -17,6 +17,7 @@ use serde_bytes::ByteBuf;
 
 use crate::{
     account::Account,
+    addressable_entity::NamedKeyValue,
     bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contract_messages::{MessageChecksum, MessageTopicSummary},
     contract_wasm::ContractWasm,
@@ -42,12 +43,13 @@ enum Tag {
     Bid = 8,
     Withdraw = 9,
     Unbonding = 10,
-    AddressableEntity = 11,
-    BidKind = 12,
-    Package = 13,
+    BidKind = 11,
+    Package = 12,
+    AddressableEntity = 13,
     ByteCode = 14,
     MessageTopic = 15,
     Message = 16,
+    NamedKeyValue = 17,
 }
 
 /// A value stored in Global State.
@@ -94,6 +96,8 @@ pub enum StoredValue {
     MessageTopic(MessageTopicSummary),
     /// Variant that stores a message digest.
     Message(MessageChecksum),
+    /// A NamedKey record.
+    NamedKey(NamedKeyValue),
 }
 
 impl StoredValue {
@@ -253,10 +257,18 @@ impl StoredValue {
         }
     }
 
-    /// Returns the `Package` if this is a `Package` variant.
+    /// Returns the `ContractPackage` if this is a `ContractPackage` variant.
     pub fn into_contract_package(self) -> Option<ContractPackage> {
         match self {
             StoredValue::ContractPackage(contract_package) => Some(contract_package),
+            _ => None,
+        }
+    }
+
+    /// Returns the `Package` if this is a `Package` variant.
+    pub fn into_package(self) -> Option<Package> {
+        match self {
+            StoredValue::Package(package) => Some(package),
             _ => None,
         }
     }
@@ -347,6 +359,7 @@ impl StoredValue {
             StoredValue::Package(_) => "Package".to_string(),
             StoredValue::MessageTopic(_) => "MessageTopic".to_string(),
             StoredValue::Message(_) => "Message".to_string(),
+            StoredValue::NamedKey(_) => "NamedKeyValue".to_string(),
         }
     }
 
@@ -369,6 +382,7 @@ impl StoredValue {
             StoredValue::ByteCode(_) => Tag::ByteCode,
             StoredValue::MessageTopic(_) => Tag::MessageTopic,
             StoredValue::Message(_) => Tag::Message,
+            StoredValue::NamedKey(_) => Tag::NamedKeyValue,
         }
     }
 }
@@ -601,6 +615,20 @@ impl TryFrom<StoredValue> for BidKind {
     }
 }
 
+impl TryFrom<StoredValue> for NamedKeyValue {
+    type Error = TypeMismatch;
+
+    fn try_from(value: StoredValue) -> Result<Self, Self::Error> {
+        match value {
+            StoredValue::NamedKey(named_key_value) => Ok(named_key_value),
+            _ => Err(TypeMismatch::new(
+                "NamedKeyValue".to_string(),
+                value.type_name(),
+            )),
+        }
+    }
+}
+
 impl ToBytes for StoredValue {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -632,6 +660,7 @@ impl ToBytes for StoredValue {
                     message_topic_summary.serialized_length()
                 }
                 StoredValue::Message(message_digest) => message_digest.serialized_length(),
+                StoredValue::NamedKey(named_key_value) => named_key_value.serialized_length(),
             }
     }
 
@@ -659,6 +688,7 @@ impl ToBytes for StoredValue {
                 message_topic_summary.write_bytes(writer)?
             }
             StoredValue::Message(message_digest) => message_digest.write_bytes(writer)?,
+            StoredValue::NamedKey(named_key_value) => named_key_value.write_bytes(writer)?,
         };
         Ok(())
     }
@@ -716,6 +746,11 @@ impl FromBytes for StoredValue {
                 }),
             tag if tag == Tag::Message as u8 => MessageChecksum::from_bytes(remainder)
                 .map(|(checksum, remainder)| (StoredValue::Message(checksum), remainder)),
+            tag if tag == Tag::NamedKeyValue as u8 => {
+                NamedKeyValue::from_bytes(remainder).map(|(named_key_value, remainder)| {
+                    (StoredValue::NamedKey(named_key_value), remainder)
+                })
+            }
             _ => Err(Error::Formatting),
         }
     }
@@ -759,6 +794,8 @@ mod serde_helpers {
         MessageTopic(&'a MessageTopicSummary),
         /// Variant that stores a [`MessageChecksum`].
         Message(&'a MessageChecksum),
+        /// A record for NamedKey.
+        NamedKey(&'a NamedKeyValue),
     }
 
     #[derive(Deserialize)]
@@ -797,6 +834,8 @@ mod serde_helpers {
         MessageTopic(MessageTopicSummary),
         /// Variant that stores [`MessageChecksum`].
         Message(MessageChecksum),
+        /// A record for NamedKey.
+        NamedKey(NamedKeyValue),
     }
 
     impl<'a> From<&'a StoredValue> for BinarySerHelper<'a> {
@@ -823,6 +862,7 @@ mod serde_helpers {
                     BinarySerHelper::MessageTopic(message_topic_summary)
                 }
                 StoredValue::Message(message_digest) => BinarySerHelper::Message(message_digest),
+                StoredValue::NamedKey(payload) => BinarySerHelper::NamedKey(payload),
             }
         }
     }
@@ -853,6 +893,7 @@ mod serde_helpers {
                     StoredValue::MessageTopic(message_topic_summary)
                 }
                 BinaryDeserHelper::Message(message_digest) => StoredValue::Message(message_digest),
+                BinaryDeserHelper::NamedKey(payload) => StoredValue::NamedKey(payload),
             }
         }
     }

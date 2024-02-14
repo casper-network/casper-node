@@ -2,14 +2,17 @@
 use datasize::DataSize;
 use thiserror::Error;
 
-use casper_storage::global_state::{self, state::CommitError};
+use casper_storage::{
+    global_state::{self, state::CommitError},
+    system::{genesis::GenesisError, protocol_upgrade::ProtocolUpgradeError},
+    tracking_copy::TrackingCopyError,
+};
 use casper_types::{
     account::AccountHash, binary_port, bytesrepr, system::mint, ApiError, Digest, Key, KeyTag,
     PackageHash, ProtocolVersion,
 };
 
 use crate::{
-    engine_state::{genesis::GenesisError, upgrade::ProtocolUpgradeError},
     execution,
     runtime::{stack, PreprocessingError},
 };
@@ -114,6 +117,9 @@ pub enum Error {
     /// Failed to prune listed keys.
     #[error("Pruning attempt failed.")]
     FailedToPrune(Vec<Key>),
+    /// Storage error.
+    #[error("Tracking copy error: {0}")]
+    TrackingCopy(TrackingCopyError),
 }
 
 impl Error {
@@ -159,6 +165,12 @@ impl From<Box<GenesisError>> for Error {
 impl From<stack::RuntimeStackOverflow> for Error {
     fn from(_: stack::RuntimeStackOverflow) -> Self {
         Self::RuntimeStackOverflow
+    }
+}
+
+impl From<TrackingCopyError> for Error {
+    fn from(e: TrackingCopyError) -> Self {
+        Error::TrackingCopy(e)
     }
 }
 

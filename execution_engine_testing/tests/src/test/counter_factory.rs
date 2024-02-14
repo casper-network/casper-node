@@ -7,8 +7,8 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
-    addressable_entity::DEFAULT_ENTRY_POINT_NAME, package::PackageKindTag, runtime_args,
-    AddressableEntityHash, ByteCodeKind, Key, RuntimeArgs, U512,
+    addressable_entity::{EntityKindTag, DEFAULT_ENTRY_POINT_NAME},
+    runtime_args, AddressableEntityHash, ByteCodeAddr, Key, RuntimeArgs, U512,
 };
 
 const CONTRACT_COUNTER_FACTORY: &str = "counter_factory.wasm";
@@ -89,7 +89,7 @@ fn contract_factory_wasm_should_have_expected_exports() {
     let (builder, contract_hash) = setup();
 
     let factory_contract_entity_key =
-        Key::addressable_entity_key(PackageKindTag::SmartContract, contract_hash);
+        Key::addressable_entity_key(EntityKindTag::SmartContract, contract_hash);
 
     let factory_contract = builder
         .query(None, factory_contract_entity_key, &[])
@@ -98,10 +98,9 @@ fn contract_factory_wasm_should_have_expected_exports() {
         .cloned()
         .expect("should be contract");
 
-    let factory_contract_byte_code_key = Key::byte_code_key(
-        ByteCodeKind::V1CasperWasm,
+    let factory_contract_byte_code_key = Key::byte_code_key(ByteCodeAddr::new_wasm_addr(
         factory_contract.byte_code_addr(),
-    );
+    ));
 
     let factory_contract_wasm = builder
         .query(None, factory_contract_byte_code_key, &[])
@@ -153,7 +152,7 @@ fn should_install_and_use_factory_pattern() {
     builder.exec(exec_request_2).commit().expect_success();
 
     let counter_factory_contract = builder
-        .get_addressable_entity(contract_hash)
+        .get_entity_with_named_keys_by_entity_hash(contract_hash)
         .expect("should have contract hash");
 
     let new_counter_1 = counter_factory_contract
@@ -181,10 +180,9 @@ fn should_install_and_use_factory_pattern() {
     let counter_1_wasm = builder
         .query(
             None,
-            Key::byte_code_key(
-                ByteCodeKind::V1CasperWasm,
+            Key::byte_code_key(ByteCodeAddr::new_wasm_addr(
                 new_counter_1_contract.byte_code_addr(),
-            ),
+            )),
             &[],
         )
         .expect("should have contract wasm")
@@ -224,7 +222,7 @@ fn should_install_and_use_factory_pattern() {
 
 fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -236,7 +234,7 @@ fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
     builder.exec(exec_request).commit().expect_success();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have entity for account");
 
     let contract_hash_key = account

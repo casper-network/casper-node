@@ -1,6 +1,7 @@
 use std::time::Duration;
 use tracing::{debug, error, info, trace};
 
+use casper_storage::data_access_layer::{GenesisResult, ProtocolUpgradeResult};
 use casper_types::{BlockHash, BlockHeader, Digest, EraId, PublicKey, ReactorState, Timestamp};
 
 use crate::{
@@ -329,10 +330,15 @@ impl MainReactor {
             self.chainspec.clone().as_ref(),
             self.chainspec_raw_bytes.clone().as_ref(),
         ) {
-            Ok(success) => success.post_state_hash,
-            Err(error) => {
-                return GenesisInstruction::Fatal(error.to_string());
+            GenesisResult::Fatal(msg) => {
+                return GenesisInstruction::Fatal(msg);
             }
+            GenesisResult::Failure(err) => {
+                return GenesisInstruction::Fatal(format!("genesis error: {}", err));
+            }
+            GenesisResult::Success {
+                post_state_hash, ..
+            } => post_state_hash,
         };
 
         info!(
@@ -426,39 +432,44 @@ impl MainReactor {
             self.chainspec.protocol_config.activation_point.era_id(),
             self.chainspec_raw_bytes.clone(),
         ) {
-            Ok(cfg) => match self.contract_runtime.commit_upgrade(cfg) {
-                Ok(success) => {
-                    let post_state_hash = success.post_state_hash;
-                    info!(%network_name, %post_state_hash, "{:?}: committed upgrade", self.state);
+            Ok(cfg) => {
+                // apply protocol changes to global state
+                match self.contract_runtime.commit_upgrade(cfg) {
+                    ProtocolUpgradeResult::RootNotFound => Err("Root not found".to_string()),
+                    ProtocolUpgradeResult::Failure(err) => Err(err.to_string()),
+                    ProtocolUpgradeResult::Success {
+                        post_state_hash, ..
+                    } => {
+                        info!(%network_name, %post_state_hash, "{:?}: committed upgrade", self.state);
 
-                    let next_block_height = header.height() + 1;
-                    self.initialize_contract_runtime(
-                        next_block_height,
-                        post_state_hash,
-                        header.block_hash(),
-                        *header.accumulated_seed(),
-                    );
+                        let next_block_height = header.height() + 1;
+                        self.initialize_contract_runtime(
+                            next_block_height,
+                            post_state_hash,
+                            header.block_hash(),
+                            *header.accumulated_seed(),
+                        );
 
-                    let finalized_block = FinalizedBlock::new(
-                        BlockPayload::default(),
-                        Some(InternalEraReport::default()),
-                        header.timestamp(),
-                        header.next_block_era_id(),
-                        next_block_height,
-                        PublicKey::System,
-                    );
-                    Ok(effect_builder
-                        .enqueue_block_for_execution(
-                            ExecutableBlock::from_finalized_block_and_transactions(
-                                finalized_block,
-                                vec![],
-                            ),
-                            MetaBlockState::new_not_to_be_gossiped(),
-                        )
-                        .ignore())
+                        let finalized_block = FinalizedBlock::new(
+                            BlockPayload::default(),
+                            Some(InternalEraReport::default()),
+                            header.timestamp(),
+                            header.next_block_era_id(),
+                            next_block_height,
+                            PublicKey::System,
+                        );
+                        Ok(effect_builder
+                            .enqueue_block_for_execution(
+                                ExecutableBlock::from_finalized_block_and_transactions(
+                                    finalized_block,
+                                    vec![],
+                                ),
+                                MetaBlockState::new_not_to_be_gossiped(),
+                            )
+                            .ignore())
+                    }
                 }
-                Err(err) => Err(err.to_string()),
-            },
+            }
             Err(msg) => Err(msg),
         }
     }

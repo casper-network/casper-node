@@ -19,14 +19,16 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use crate::{
     addressable_entity, bytesrepr,
     bytesrepr::{Bytes, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    checksummed_hex,
-    key::ByteCodeAddr,
-    uref, CLType, CLTyped,
+    checksummed_hex, uref, CLType, CLTyped, HashAddr,
 };
 
 const BYTE_CODE_MAX_DISPLAY_LEN: usize = 16;
 const KEY_HASH_LENGTH: usize = 32;
-const WASM_STRING_PREFIX: &str = "contract-wasm-";
+const WASM_STRING_PREFIX: &str = "byte-code-";
+
+const BYTE_CODE_PREFIX: &str = "byte-code-";
+const V1_WASM_PREFIX: &str = "v1-wasm-";
+const EMPTY_PREFIX: &str = "empty-";
 
 /// Associated error type of `TryFrom<&[u8]>` for `ByteCodeHash`.
 #[derive(Debug)]
@@ -80,20 +82,162 @@ impl Display for FromStrError {
     }
 }
 
+/// An address for ByteCode records stored in global state.
+#[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub enum ByteCodeAddr {
+    /// An address for byte code to be executed against the V1 Casper execution engine.
+    V1CasperWasm(HashAddr),
+    /// An empty byte code record
+    Empty,
+}
+
+impl ByteCodeAddr {
+    /// Constructs a new Byte code address for Wasm.
+    pub const fn new_wasm_addr(hash_addr: HashAddr) -> Self {
+        Self::V1CasperWasm(hash_addr)
+    }
+
+    /// Returns the tag of the byte code address.
+    pub fn tag(&self) -> ByteCodeKind {
+        match self {
+            Self::Empty => ByteCodeKind::Empty,
+            Self::V1CasperWasm(_) => ByteCodeKind::V1CasperWasm,
+        }
+    }
+
+    /// Formats the `ByteCodeAddr` for users getting and putting.
+    pub fn to_formatted_string(&self) -> String {
+        format!("{}", self)
+    }
+
+    /// Parses a string formatted as per `Self::to_formatted_string()` into a
+    /// `ByteCodeAddr`.
+    pub fn from_formatted_string(input: &str) -> Result<Self, FromStrError> {
+        if let Some(byte_code) = input.strip_prefix(BYTE_CODE_PREFIX) {
+            let (addr_str, tag) = if let Some(str) = byte_code.strip_prefix(EMPTY_PREFIX) {
+                (str, ByteCodeKind::Empty)
+            } else if let Some(str) = byte_code.strip_prefix(V1_WASM_PREFIX) {
+                (str, ByteCodeKind::V1CasperWasm)
+            } else {
+                return Err(FromStrError::InvalidPrefix);
+            };
+            let addr = checksummed_hex::decode(addr_str).map_err(FromStrError::Hex)?;
+            let byte_code_addr = HashAddr::try_from(addr.as_ref()).map_err(FromStrError::Hash)?;
+            return match tag {
+                ByteCodeKind::V1CasperWasm => Ok(ByteCodeAddr::V1CasperWasm(byte_code_addr)),
+                ByteCodeKind::Empty => Ok(ByteCodeAddr::Empty),
+            };
+        }
+
+        Err(FromStrError::InvalidPrefix)
+    }
+}
+
+impl ToBytes for ByteCodeAddr {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+            + match self {
+                Self::Empty => 0,
+                Self::V1CasperWasm(_) => KEY_HASH_LENGTH,
+            }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        match self {
+            Self::Empty => writer.push(self.tag() as u8),
+            Self::V1CasperWasm(addr) => {
+                writer.push(self.tag() as u8);
+                writer.extend(addr.to_bytes()?);
+            }
+        }
+        Ok(())
+    }
+}
+
+impl FromBytes for ByteCodeAddr {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (tag, remainder): (ByteCodeKind, &[u8]) = FromBytes::from_bytes(bytes)?;
+        match tag {
+            ByteCodeKind::Empty => Ok((ByteCodeAddr::Empty, remainder)),
+            ByteCodeKind::V1CasperWasm => {
+                let (addr, remainder) = HashAddr::from_bytes(remainder)?;
+                Ok((ByteCodeAddr::new_wasm_addr(addr), remainder))
+            }
+        }
+    }
+}
+
+impl Display for ByteCodeAddr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ByteCodeAddr::V1CasperWasm(addr) => {
+                write!(
+                    f,
+                    "{}{}{}",
+                    BYTE_CODE_PREFIX,
+                    V1_WASM_PREFIX,
+                    base16::encode_lower(&addr)
+                )
+            }
+            ByteCodeAddr::Empty => {
+                write!(
+                    f,
+                    "{}{}{}",
+                    BYTE_CODE_PREFIX,
+                    EMPTY_PREFIX,
+                    base16::encode_lower(&[0u8; 32])
+                )
+            }
+        }
+    }
+}
+
+impl Debug for ByteCodeAddr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ByteCodeAddr::V1CasperWasm(addr) => {
+                write!(f, "ByteCodeAddr::V1CasperWasm({:?})", addr)
+            }
+            ByteCodeAddr::Empty => {
+                write!(f, "ByteCodeAddr::Empty")
+            }
+        }
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl Distribution<ByteCodeAddr> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ByteCodeAddr {
+        match rng.gen_range(0..=1) {
+            1 => ByteCodeAddr::V1CasperWasm(rng.gen()),
+            0 => ByteCodeAddr::Empty,
+            _ => unreachable!(),
+        }
+    }
+}
+
 /// A newtype wrapping a `HashAddr` which is the raw bytes of
 /// the ByteCodeHash
-#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-pub struct ByteCodeHash(ByteCodeAddr);
+pub struct ByteCodeHash(HashAddr);
 
 impl ByteCodeHash {
     /// Constructs a new `ByteCodeHash` from the raw bytes of the contract wasm hash.
-    pub const fn new(value: ByteCodeAddr) -> ByteCodeHash {
+    pub const fn new(value: HashAddr) -> ByteCodeHash {
         ByteCodeHash(value)
     }
 
     /// Returns the raw bytes of the contract hash as an array.
-    pub fn value(&self) -> ByteCodeAddr {
+    pub fn value(&self) -> HashAddr {
         self.0
     }
 
@@ -113,8 +257,14 @@ impl ByteCodeHash {
         let remainder = input
             .strip_prefix(WASM_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
-        let bytes = ByteCodeAddr::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
+        let bytes = HashAddr::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
         Ok(ByteCodeHash(bytes))
+    }
+}
+
+impl Default for ByteCodeHash {
+    fn default() -> Self {
+        Self::new([0u8; KEY_HASH_LENGTH])
     }
 }
 
@@ -160,8 +310,8 @@ impl FromBytes for ByteCodeHash {
     }
 }
 
-impl From<[u8; 32]> for ByteCodeHash {
-    fn from(bytes: [u8; 32]) -> Self {
+impl From<[u8; KEY_HASH_LENGTH]> for ByteCodeHash {
+    fn from(bytes: [u8; KEY_HASH_LENGTH]) -> Self {
         ByteCodeHash(bytes)
     }
 }
@@ -182,7 +332,7 @@ impl<'de> Deserialize<'de> for ByteCodeHash {
             let formatted_string = String::deserialize(deserializer)?;
             ByteCodeHash::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
         } else {
-            let bytes = ByteCodeAddr::deserialize(deserializer)?;
+            let bytes = HashAddr::deserialize(deserializer)?;
             Ok(ByteCodeHash(bytes))
         }
     }
@@ -198,7 +348,7 @@ impl TryFrom<&[u8]> for ByteCodeHash {
     type Error = TryFromSliceForContractHashError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, TryFromSliceForContractHashError> {
-        ByteCodeAddr::try_from(bytes)
+        HashAddr::try_from(bytes)
             .map(ByteCodeHash::new)
             .map_err(|_| TryFromSliceForContractHashError(()))
     }
@@ -208,7 +358,7 @@ impl TryFrom<&Vec<u8>> for ByteCodeHash {
     type Error = TryFromSliceForContractHashError;
 
     fn try_from(bytes: &Vec<u8>) -> Result<Self, Self::Error> {
-        ByteCodeAddr::try_from(bytes as &[u8])
+        HashAddr::try_from(bytes as &[u8])
             .map(ByteCodeHash::new)
             .map_err(|_| TryFromSliceForContractHashError(()))
     }
@@ -410,15 +560,14 @@ mod tests {
     #[test]
     fn contract_wasm_hash_from_slice() {
         let bytes: Vec<u8> = (0..32).collect();
-        let byte_code_hash =
-            ByteCodeAddr::try_from(&bytes[..]).expect("should create byte code hash");
+        let byte_code_hash = HashAddr::try_from(&bytes[..]).expect("should create byte code hash");
         let contract_hash = ByteCodeHash::new(byte_code_hash);
         assert_eq!(&bytes, &contract_hash.as_bytes());
     }
 
     #[test]
     fn contract_wasm_hash_from_str() {
-        let byte_code_hash = ByteCodeHash([3; 32]);
+        let byte_code_hash = ByteCodeHash([3; KEY_HASH_LENGTH]);
         let encoded = byte_code_hash.to_formatted_string();
         let decoded = ByteCodeHash::from_formatted_str(&encoded).unwrap();
         assert_eq!(byte_code_hash, decoded);
@@ -438,6 +587,29 @@ mod tests {
         let invalid_hex =
             "contract-wasm-000000000000000000000000000000000000000000000000000000000000000g";
         assert!(ByteCodeHash::from_formatted_str(invalid_hex).is_err());
+    }
+
+    #[test]
+    fn byte_code_addr_from_str() {
+        let empty_addr = ByteCodeAddr::Empty;
+        let encoded = empty_addr.to_formatted_string();
+        let decoded = ByteCodeAddr::from_formatted_string(&encoded).unwrap();
+        assert_eq!(empty_addr, decoded);
+
+        let wasm_addr = ByteCodeAddr::V1CasperWasm([3; 32]);
+        let encoded = wasm_addr.to_formatted_string();
+        let decoded = ByteCodeAddr::from_formatted_string(&encoded).unwrap();
+        assert_eq!(wasm_addr, decoded);
+    }
+
+    #[test]
+    fn byte_code_serialization_roundtrip() {
+        let rng = &mut TestRng::new();
+        let wasm_addr = ByteCodeAddr::V1CasperWasm(rng.gen());
+        bytesrepr::test_serialization_roundtrip(&wasm_addr);
+
+        let empty_addr = ByteCodeAddr::Empty;
+        bytesrepr::test_serialization_roundtrip(&empty_addr);
     }
 
     #[test]

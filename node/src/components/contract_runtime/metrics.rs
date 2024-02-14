@@ -20,6 +20,9 @@ const RUN_EXECUTE_HELP: &str = "time in seconds to execute but not commit a cont
 const APPLY_EFFECT_NAME: &str = "contract_runtime_apply_commit";
 const APPLY_EFFECT_HELP: &str = "time in seconds to commit the execution effects of a contract";
 
+const COMMIT_GENESIS_NAME: &str = "contract_runtime_commit_genesis";
+const COMMIT_GENESIS_HELP: &str = "time in seconds to commit an genesis";
+
 const COMMIT_UPGRADE_NAME: &str = "contract_runtime_commit_upgrade";
 const COMMIT_UPGRADE_HELP: &str = "time in seconds to commit an upgrade";
 
@@ -47,6 +50,12 @@ const GET_ALL_VALUES_NAME: &str = "contract_runtime_get_all_values";
 const GET_ALL_VALUES_NAME_HELP: &str =
     "time in seconds to get all values under a give key from global state";
 
+const EXECUTION_RESULTS_CHECKSUM_NAME: &str = "contract_runtime_execution_results_checksum";
+const EXECUTION_RESULTS_CHECKSUM_HELP: &str = "contract_runtime_execution_results_checksum";
+
+const ADDRESSABLE_ENTITY_NAME: &str = "contract_runtime_addressable_entity";
+const ADDRESSABLE_ENTITY_HELP: &str = "contract_runtime_addressable_entity";
+
 const PUT_TRIE_NAME: &str = "contract_runtime_put_trie";
 const PUT_TRIE_HELP: &str = "time in seconds to put a trie";
 
@@ -68,6 +77,7 @@ const EXEC_QUEUE_SIZE_HELP: &str =
 pub struct Metrics {
     pub(super) run_execute: Histogram,
     pub(super) apply_effect: Histogram,
+    pub(super) commit_genesis: Histogram,
     pub(super) commit_upgrade: Histogram,
     pub(super) run_query: Histogram,
     pub(super) commit_step: Histogram,
@@ -76,6 +86,8 @@ pub struct Metrics {
     pub(super) get_round_seigniorage_rate: Histogram,
     pub(super) get_era_validators: Histogram,
     pub(super) get_all_values: Histogram,
+    pub(super) execution_results_checksum: Histogram,
+    pub(super) addressable_entity: Histogram,
     pub(super) put_trie: Histogram,
     pub(super) get_trie: Histogram,
     pub(super) exec_block: Histogram,
@@ -130,6 +142,12 @@ impl Metrics {
                 COMMIT_STEP_HELP,
                 common_buckets.clone(),
             )?,
+            commit_genesis: utils::register_histogram_metric(
+                registry,
+                COMMIT_GENESIS_NAME,
+                COMMIT_GENESIS_HELP,
+                common_buckets.clone(),
+            )?,
             commit_upgrade: utils::register_histogram_metric(
                 registry,
                 COMMIT_UPGRADE_NAME,
@@ -166,6 +184,18 @@ impl Metrics {
                 GET_ALL_VALUES_NAME_HELP,
                 common_buckets.clone(),
             )?,
+            execution_results_checksum: utils::register_histogram_metric(
+                registry,
+                EXECUTION_RESULTS_CHECKSUM_NAME,
+                EXECUTION_RESULTS_CHECKSUM_HELP,
+                common_buckets.clone(),
+            )?,
+            addressable_entity: utils::register_histogram_metric(
+                registry,
+                ADDRESSABLE_ENTITY_NAME,
+                ADDRESSABLE_ENTITY_HELP,
+                common_buckets.clone(),
+            )?,
             get_trie: utils::register_histogram_metric(
                 registry,
                 GET_TRIE_NAME,
@@ -195,6 +225,7 @@ impl Drop for Metrics {
     fn drop(&mut self) {
         unregister_metric!(self.registry, self.run_execute);
         unregister_metric!(self.registry, self.apply_effect);
+        unregister_metric!(self.registry, self.commit_genesis);
         unregister_metric!(self.registry, self.commit_upgrade);
         unregister_metric!(self.registry, self.run_query);
         unregister_metric!(self.registry, self.commit_step);
@@ -203,6 +234,7 @@ impl Drop for Metrics {
         unregister_metric!(self.registry, self.get_round_seigniorage_rate);
         unregister_metric!(self.registry, self.get_era_validators);
         unregister_metric!(self.registry, self.get_all_values);
+        unregister_metric!(self.registry, self.execution_results_checksum);
         unregister_metric!(self.registry, self.put_trie);
         unregister_metric!(self.registry, self.get_trie);
         unregister_metric!(self.registry, self.exec_block);

@@ -4,11 +4,11 @@ use std::{
 };
 
 use casper_engine_test_support::{LmdbWasmTestBuilder, UpgradeRequestBuilder};
-use casper_execution_engine::engine_state::SystemContractRegistry;
 use casper_types::{
     contracts::ContractHash,
     system::{self, mint},
-    AccessRights, CLValue, Digest, EraId, Key, ProtocolVersion, StoredValue, URef,
+    AccessRights, ByteCodeHash, CLValue, Digest, EraId, Key, ProtocolVersion, StoredValue,
+    SystemEntityRegistry, URef,
 };
 use rand::Rng;
 
@@ -51,7 +51,7 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
             .as_cl_value()
             .cloned()
             .expect("should have cl value");
-        let registry: SystemContractRegistry =
+        let registry: SystemEntityRegistry =
             cl_value.into_t().expect("should have system registry");
         registry
             .get(system::MINT)
@@ -110,7 +110,7 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
         new_contract.package_hash().value()
     );
     assert_eq!(
-        old_contract.contract_wasm_hash().value(),
+        ByteCodeHash::default().value(),
         new_contract.byte_code_hash().value()
     );
     assert_ne!(old_contract.entry_points(), new_contract.entry_points());
@@ -134,7 +134,7 @@ fn apply_global_state_update(
         .as_cl_value()
         .expect("must be CLValue")
         .clone()
-        .into_t::<SystemContractRegistry>()
+        .into_t::<SystemEntityRegistry>()
         .expect("must convert to btree map");
 
     let mut global_state_update = BTreeMap::<Key, StoredValue>::new();
@@ -142,7 +142,7 @@ fn apply_global_state_update(
         .expect("must convert to StoredValue")
         .into();
 
-    global_state_update.insert(Key::SystemContractRegistry, registry);
+    global_state_update.insert(Key::SystemEntityRegistry, registry);
 
     global_state_update
 }

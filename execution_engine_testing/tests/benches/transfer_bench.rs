@@ -54,7 +54,7 @@ fn bootstrap(data_dir: &Path, accounts: Vec<AccountHash>, amount: U512) -> LmdbW
     let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir, engine_config);
 
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .expect_success()
         .commit();
@@ -79,15 +79,12 @@ fn create_purses(
     builder.exec(exec_request).expect_success().commit();
 
     // Return creates purses for given account by filtering named key.
-    let entity = builder
-        .get_entity_by_account_hash(source)
-        .expect("must have contract");
+    let named_keys = builder.get_named_keys_by_account_hash(source);
 
     (0..total_purses)
         .map(|index| {
             let purse_lookup_key = format!("purse:{}", index);
-            let purse_uref = entity
-                .named_keys()
+            let purse_uref = named_keys
                 .get(&purse_lookup_key)
                 .and_then(Key::as_uref)
                 .unwrap_or_else(|| panic!("should get named key {} as uref", purse_lookup_key));

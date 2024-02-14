@@ -2,7 +2,7 @@ use std::{collections::BTreeSet, convert::TryFrom};
 
 use casper_wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
-use casper_storage::global_state::state::StateReader;
+use casper_storage::global_state::{error::Error as GlobalStateError, state::StateReader};
 use casper_types::{
     account::AccountHash,
     addressable_entity::{EntryPoints, NamedKeys},
@@ -10,7 +10,7 @@ use casper_types::{
     bytesrepr::{self, ToBytes},
     contract_messages::MessageTopicOperation,
     crypto,
-    package::{PackageKind, PackageStatus},
+    package::PackageStatus,
     system::auction::EraInfo,
     AddressableEntityHash, ApiError, EntityVersion, EraId, Gas, Group, HostFunction,
     HostFunctionCost, Key, PackageHash, StoredValue, URef, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
@@ -22,8 +22,7 @@ use crate::resolvers::v1_function_index::FunctionIndex;
 
 impl<'a, R> Externals for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn invoke_index(
         &mut self,
@@ -547,8 +546,8 @@ where
                     [hash_dest_ptr, access_dest_ptr],
                 )?;
                 let package_status = PackageStatus::new(is_locked);
-                let (hash_addr, access_addr) = self
-                    .create_contract_package_at_hash(package_status, PackageKind::SmartContract)?;
+                let (hash_addr, access_addr) =
+                    self.create_contract_package_at_hash(package_status)?;
 
                 self.function_address(hash_addr, hash_dest_ptr)?;
                 self.function_address(access_addr, access_dest_ptr)?;

@@ -1,17 +1,16 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    utils::create_genesis_config, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    ARG_AMOUNT, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    engine_state::{run_genesis_request::RunGenesisRequest, Error as EngineError},
-    execution::Error,
-};
+use casper_execution_engine::{engine_state::Error as EngineError, execution::Error};
+use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
-    account::AccountHash, package::PackageKindTag, runtime_args, system::mint, AccessRights,
-    AddressableEntityHash, ApiError, CLType, CLValue, GenesisAccount, Key, Motes, RuntimeArgs,
-    StoredValue, U512,
+    account::AccountHash, addressable_entity::EntityKindTag, runtime_args, system::mint,
+    AccessRights, AddressableEntityHash, ApiError, CLType, CLValue, GenesisAccount, Key, Motes,
+    RuntimeArgs, StoredValue, U512,
 };
 use std::{convert::TryFrom, path::PathBuf};
 
@@ -27,7 +26,7 @@ const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let fund_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,
@@ -53,16 +52,18 @@ fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
         .commit()
         .expect_success();
 
-    let contract = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+    let default_account_entity = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
-    assert!(contract
+    assert!(default_account_entity
         .named_keys()
         .contains(dictionary::MALICIOUS_KEY_NAME));
-    assert!(contract.named_keys().contains(dictionary::DICTIONARY_REF));
+    assert!(default_account_entity
+        .named_keys()
+        .contains(dictionary::DICTIONARY_REF));
 
-    let entity_hash = contract
+    let entity_hash = default_account_entity
         .named_keys()
         .get(dictionary::CONTRACT_HASH_NAME)
         .cloned()
@@ -92,7 +93,7 @@ fn query_dictionary_item(
                     .into_entity_hash()
                     .expect("must convert to contract hash");
 
-                let entity_key = Key::addressable_entity_key(PackageKindTag::Account, entity_hash);
+                let entity_key = Key::addressable_entity_key(EntityKindTag::Account, entity_hash);
 
                 return query_dictionary_item(
                     builder,
@@ -104,18 +105,20 @@ fn query_dictionary_item(
                 return Err("Provided base key is not an account".to_string());
             }
         }
-        Key::AddressableEntity(..) => {
+        Key::AddressableEntity(entity_addr) => {
             if let Some(name) = dictionary_name {
                 let stored_value = builder.query(None, key, &[])?;
 
-                let named_keys = match &stored_value {
-                    StoredValue::AddressableEntity(contract) => contract.named_keys(),
+                match &stored_value {
+                    StoredValue::AddressableEntity(_) => {}
                     _ => {
                         return Err(
                             "Provided base key is nether an account or a contract".to_string()
                         )
                     }
                 };
+
+                let named_keys = builder.get_named_keys(entity_addr);
 
                 let dictionary_uref = named_keys
                     .get(&name)
@@ -155,7 +158,7 @@ fn should_modify_with_owned_access_rights() {
     .build();
 
     let contract = builder
-        .get_addressable_entity(contract_hash)
+        .get_entity_with_named_keys_by_entity_hash(contract_hash)
         .expect("should have account");
 
     let stored_dictionary_key = contract
@@ -317,12 +320,9 @@ fn should_write_with_write_access_rights() {
 
     builder.exec(call_request).commit();
 
-    let contract = builder
-        .get_addressable_entity(contract_hash)
-        .expect("should have account");
+    let contract_named_keys = builder.get_named_keys_by_contract_entity_hash(contract_hash);
 
-    let stored_dictionary_key = contract
-        .named_keys()
+    let stored_dictionary_key = contract_named_keys
         .get(dictionary::DICTIONARY_NAME)
         .expect("dictionary");
     let dictionary_root_uref = stored_dictionary_key.into_uref().expect("should be uref");
@@ -343,7 +343,7 @@ fn should_not_write_with_forged_uref() {
     let (mut builder, contract_hash) = setup();
 
     let contract = builder
-        .get_addressable_entity(contract_hash)
+        .get_entity_with_named_keys_by_entity_hash(contract_hash)
         .expect("should have account");
 
     let stored_dictionary_key = contract
@@ -386,7 +386,7 @@ fn should_not_write_with_forged_uref() {
 fn should_fail_put_with_invalid_dictionary_item_key() {
     let (mut builder, contract_hash) = setup();
     let contract = builder
-        .get_addressable_entity(contract_hash)
+        .get_entity_with_named_keys_by_entity_hash(contract_hash)
         .expect("should have account");
 
     let _stored_dictionary_key = contract
@@ -423,7 +423,7 @@ fn should_fail_put_with_invalid_dictionary_item_key() {
 fn should_fail_get_with_invalid_dictionary_item_key() {
     let (mut builder, contract_hash) = setup();
     let contract = builder
-        .get_addressable_entity(contract_hash)
+        .get_entity_with_named_keys_by_entity_hash(contract_hash)
         .expect("should have account");
 
     let _stored_dictionary_key = contract
@@ -460,7 +460,7 @@ fn should_fail_get_with_invalid_dictionary_item_key() {
 fn dictionary_put_should_fail_with_large_item_key() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let fund_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,
@@ -501,7 +501,7 @@ fn dictionary_put_should_fail_with_large_item_key() {
 fn dictionary_get_should_fail_with_large_item_key() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let fund_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,
@@ -546,12 +546,13 @@ fn should_query_dictionary_items_with_test_builder() {
         None,
     );
 
-    let mut genesis_config = DEFAULT_GENESIS_CONFIG.clone();
-    genesis_config.ee_config_mut().push_account(genesis_account);
-    let run_genesis_request = RunGenesisRequest::new(
+    let mut accounts = vec![genesis_account];
+    accounts.extend((*DEFAULT_ACCOUNTS).clone());
+    let genesis_config = create_genesis_config(accounts);
+    let genesis_request = GenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
-        genesis_config.protocol_version(),
-        genesis_config.take_ee_config(),
+        *DEFAULT_PROTOCOL_VERSION,
+        genesis_config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
@@ -567,12 +568,12 @@ fn should_query_dictionary_items_with_test_builder() {
     let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request).commit();
+    builder.run_genesis(genesis_request).commit();
 
     builder.exec(exec_request).commit().expect_success();
 
     let default_account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let entity_hash = default_account
@@ -621,7 +622,7 @@ fn should_query_dictionary_items_with_test_builder() {
         // Query through contract's named keys
         let queried_value = query_dictionary_item(
             &builder,
-            Key::addressable_entity_key(PackageKindTag::SmartContract, entity_hash),
+            Key::addressable_entity_key(EntityKindTag::SmartContract, entity_hash),
             Some(dictionary::DICTIONARY_NAME.to_string()),
             dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
         )
@@ -663,7 +664,7 @@ fn should_query_dictionary_items_with_test_builder() {
 #[test]
 fn should_be_able_to_perform_dictionary_read() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let dictionary_session_call =
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, DICTIONARY_READ, RuntimeArgs::new())
@@ -679,7 +680,7 @@ fn should_be_able_to_perform_dictionary_read() {
 #[test]
 fn should_be_able_to_perform_read_from_key() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let read_from_key_session_call =
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, READ_FROM_KEY, RuntimeArgs::new())

@@ -373,6 +373,11 @@ impl TrieRaw {
     pub fn inner(&self) -> &Bytes {
         &self.0
     }
+
+    /// Returns a hash of the inner bytes.
+    pub fn hash(&self) -> Digest {
+        Digest::hash_into_chunks_if_necessary(self.inner())
+    }
 }
 
 impl ToBytes for TrieRaw {

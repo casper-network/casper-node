@@ -17,7 +17,7 @@ fn call_get_arg(args: RuntimeArgs) -> Result<(), String> {
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, CONTRACT_GET_ARG, args).build();
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .commit();
 

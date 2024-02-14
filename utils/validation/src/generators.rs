@@ -9,9 +9,9 @@ use casper_types::{
         AssociatedKeys as AccountAssociatedKeys, Weight as AccountWeight,
     },
     addressable_entity::{
-        ActionThresholds, AddressableEntity, AssociatedKeys, MessageTopics, NamedKeys,
+        ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind, MessageTopics, NamedKeys,
     },
-    package::{EntityVersions, Groups, Package, PackageKind, PackageStatus},
+    package::{EntityVersions, Groups, Package, PackageStatus},
     system::auction::{
         Bid, BidAddr, BidKind, Delegator, EraInfo, SeigniorageAllocation, UnbondingPurse,
         ValidatorBid, WithdrawPurse,
@@ -208,7 +208,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         const BALANCE_KEY: Key = Key::Balance([42; 32]);
         const WITHDRAW_KEY: Key = Key::Withdraw(AccountHash::new([42; 32]));
         const DICTIONARY_KEY: Key = Key::Dictionary([42; 32]);
-        const SYSTEM_CONTRACT_REGISTRY_KEY: Key = Key::SystemContractRegistry;
+        const SYSTEM_CONTRACT_REGISTRY_KEY: Key = Key::SystemEntityRegistry;
         const ERA_SUMMARY_KEY: Key = Key::EraSummary;
         const UNBOND_KEY: Key = Key::Unbond(AccountHash::new([42; 32]));
         const CHAINSPEC_REGISTRY_KEY: Key = Key::ChainspecRegistry;
@@ -341,16 +341,6 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             ABITestCase::from_inputs(vec![StoredValue::ByteCode(byte_code).into()])?,
         );
 
-        let contract_named_keys = {
-            let mut named_keys = NamedKeys::new();
-            named_keys.insert("hash".to_string(), Key::Hash([43; 32]));
-            named_keys.insert(
-                "uref".to_string(),
-                Key::URef(URef::new([17; 32], AccessRights::READ_ADD_WRITE)),
-            );
-            named_keys
-        };
-
         let entry_points = {
             let mut entry_points = EntryPoints::new();
             let public_contract_entry_point = EntryPoint::new(
@@ -372,13 +362,13 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         let entity = AddressableEntity::new(
             PackageHash::new([100; 32]),
             ByteCodeHash::new([101; 32]),
-            contract_named_keys,
             entry_points,
             ProtocolVersion::V1_0_0,
             URef::default(),
             AssociatedKeys::default(),
             ActionThresholds::default(),
             MessageTopics::default(),
+            EntityKind::SmartContract,
         );
         stored_value.insert(
             "AddressableEntity".to_string(),
@@ -409,7 +399,6 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             disabled_versions,
             groups,
             PackageStatus::Locked,
-            PackageKind::SmartContract,
         );
 
         stored_value.insert(

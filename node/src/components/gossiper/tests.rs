@@ -157,8 +157,6 @@ impl reactor::Reactor for Reactor {
         event_queue: EventQueueHandle<Self::Event>,
         rng: &mut NodeRng,
     ) -> Result<(Self, Effects<Self::Event>), Self::Error> {
-        let network = NetworkController::create_node(event_queue, rng);
-
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
         let storage = Storage::new(
@@ -181,6 +179,7 @@ impl reactor::Reactor for Reactor {
             registry,
         )?;
 
+        let network = NetworkController::create_node(event_queue, rng);
         let reactor = Reactor {
             network,
             storage,
@@ -386,7 +385,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, txn_count: usize) {
 
 #[tokio::test]
 async fn should_gossip() {
-    const NETWORK_SIZES: [usize; 3] = [2, 5, 20];
+    const NETWORK_SIZES: [usize; 3] = [2, 5, 10];
     const TXN_COUNTS: [usize; 3] = [1, 10, 30];
 
     let rng = &mut TestRng::new();

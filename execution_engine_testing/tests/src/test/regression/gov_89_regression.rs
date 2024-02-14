@@ -16,8 +16,8 @@ use casper_types::{
     system::auction::{
         BidsExt, DelegationRate, SeigniorageRecipientsSnapshot, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    CLValue, EraId, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion, PublicKey,
-    SecretKey, StoredValue, U512,
+    CLValue, EntityAddr, EraId, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion,
+    PublicKey, SecretKey, StoredValue, U512,
 };
 
 static ACCOUNT_1_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
@@ -60,7 +60,7 @@ fn initialize_builder() -> LmdbWasmTestBuilder {
         tmp
     };
     let run_genesis_request = utils::create_run_genesis_request(accounts);
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
     builder
 }
 
@@ -86,8 +86,10 @@ fn should_not_create_any_purse() {
         .with_era_end_timestamp_millis(eras_end_timestamp_millis_1.as_millis().try_into().unwrap())
         .build();
 
-    let before_auction_seigniorage: SeigniorageRecipientsSnapshot =
-        builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
+    let before_auction_seigniorage: SeigniorageRecipientsSnapshot = builder.get_value(
+        EntityAddr::System(auction_hash.value()),
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+    );
 
     let bids_before_slashing = builder.get_bids();
     assert!(
@@ -129,8 +131,10 @@ fn should_not_create_any_purse() {
     );
 
     // seigniorage snapshot should have changed after auction
-    let after_auction_seigniorage: SeigniorageRecipientsSnapshot =
-        builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
+    let after_auction_seigniorage: SeigniorageRecipientsSnapshot = builder.get_value(
+        EntityAddr::System(auction_hash.value()),
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+    );
     assert!(
         !before_auction_seigniorage
             .keys()

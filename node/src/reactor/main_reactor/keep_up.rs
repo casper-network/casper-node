@@ -6,14 +6,13 @@ use std::{
 use either::Either;
 use tracing::{debug, error, info, warn};
 
-use casper_execution_engine::engine_state::GetEraValidatorsError;
+use casper_storage::data_access_layer::EraValidatorsRequest;
 use casper_types::{ActivationPoint, BlockHash, BlockHeader, EraId, Timestamp};
 
 use crate::{
     components::{
         block_accumulator::{SyncIdentifier, SyncInstruction},
         block_synchronizer::BlockSynchronizerProgress,
-        contract_runtime::EraValidatorsRequest,
         storage::HighestOrphanedBlockResult,
         sync_leaper,
         sync_leaper::{LeapActivityError, LeapState},
@@ -337,6 +336,7 @@ impl MainReactor {
             let before_era_validators_result = effect_builder
                 .get_era_validators_from_contract_runtime(before_era_validators_request)
                 .await;
+
             let after_era_validators_request = EraValidatorsRequest::new(
                 global_states_metadata.after_state_hash,
                 global_states_metadata.after_protocol_version,
@@ -345,20 +345,16 @@ impl MainReactor {
                 .get_era_validators_from_contract_runtime(after_era_validators_request)
                 .await;
 
-            // Check the results.
-            // A return value of `Ok` means that validators were read successfully.
-            // An `Err` will contain a vector of (block_hash, global_state_hash) pairs to be
-            // fetched by the `GlobalStateSynchronizer`, along with a vector of peers to ask.
-            match (before_era_validators_result, after_era_validators_result) {
-                // Both states were present - return the result.
-                (Ok(before_era_validators), Ok(after_era_validators)) => {
+            let lhs = before_era_validators_result.take_era_validators();
+            let rhs = after_era_validators_result.take_era_validators();
+
+            match (lhs, rhs) {
+                // ++ -> return era validator weights for before & after
+                (Some(before_era_validators), Some(after_era_validators)) => {
                     Ok((before_era_validators, after_era_validators))
                 }
-                // Both were absent - fetch global states for both blocks.
-                (
-                    Err(GetEraValidatorsError::RootNotFound),
-                    Err(GetEraValidatorsError::RootNotFound),
-                ) => Err(vec![
+                // -- => Both were absent - fetch global states for both blocks.
+                (None, None) => Err(vec![
                     (
                         global_states_metadata.before_hash,
                         global_states_metadata.before_state_hash,
@@ -368,26 +364,16 @@ impl MainReactor {
                         global_states_metadata.after_state_hash,
                     ),
                 ]),
-                // The after-block's global state was missing - return the hashes.
-                (Ok(_), Err(GetEraValidatorsError::RootNotFound)) => Err(vec![(
+                // +- => The after-block's global state was missing - return the hashes.
+                (Some(_), None) => Err(vec![(
                     global_states_metadata.after_hash,
                     global_states_metadata.after_state_hash,
                 )]),
-                // The before-block's global state was missing - return the hashes.
-                (Err(GetEraValidatorsError::RootNotFound), Ok(_)) => Err(vec![(
+                // -+ => The before-block's global state was missing - return the hashes.
+                (None, Some(_)) => Err(vec![(
                     global_states_metadata.before_hash,
                     global_states_metadata.before_state_hash,
                 )]),
-                // We got some error other than `RootNotFound` - just log the error and don't
-                // synchronize anything.
-                (before_result, after_result) => {
-                    error!(
-                        ?before_result,
-                        ?after_result,
-                        "couldn't read era validators from global state in block"
-                    );
-                    Err(vec![])
-                }
             }
         }
         .result(

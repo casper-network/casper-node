@@ -47,7 +47,7 @@ static DELEGATE_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(500_000));
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let id: Option<u64> = None;
 
@@ -75,7 +75,7 @@ fn setup() -> LmdbWasmTestBuilder {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let id: Option<u64> = None;
 
