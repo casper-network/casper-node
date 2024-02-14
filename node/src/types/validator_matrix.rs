@@ -14,8 +14,7 @@ use static_assertions::const_assert;
 use tracing::info;
 
 use casper_types::{
-    BlockHeaderV2, ChainNameDigest, EraId, FinalitySignature, FinalitySignatureV2, PublicKey,
-    SecretKey, U512,
+    BlockHeaderV2, ChainNameDigest, EraId, FinalitySignatureV2, PublicKey, SecretKey, U512,
 };
 
 const MAX_VALIDATOR_MATRIX_ENTRIES: usize = 6;
@@ -276,21 +275,18 @@ impl ValidatorMatrix {
     pub(crate) fn create_finality_signature(
         &self,
         block_header: &BlockHeaderV2,
-    ) -> Option<FinalitySignature> {
+    ) -> Option<FinalitySignatureV2> {
         if self
             .is_self_validator_in_era(block_header.era_id())
             .unwrap_or(false)
         {
-            return Some(
-                FinalitySignatureV2::create(
-                    block_header.block_hash(),
-                    block_header.height(),
-                    block_header.era_id(),
-                    self.chainspec_name_hash,
-                    &self.secret_signing_key,
-                )
-                .into(),
-            );
+            return Some(FinalitySignatureV2::create(
+                block_header.block_hash(),
+                block_header.height(),
+                block_header.era_id(),
+                self.chainspec_name_hash,
+                &self.secret_signing_key,
+            ));
         }
         None
     }
@@ -303,7 +299,6 @@ impl ValidatorMatrix {
         self.read_inner().keys().copied().collect_vec()
     }
 
-    #[cfg(test)]
     pub fn chain_name_hash(&self) -> ChainNameDigest {
         self.chainspec_name_hash
     }

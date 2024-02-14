@@ -75,10 +75,11 @@ use casper_types::{
     execution::{
         execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
     },
-    Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, BlockSignaturesV1, BlockV2,
-    DeployApprovalsHash, DeployHash, Digest, EraId, FinalitySignature, ProtocolVersion, PublicKey,
-    SignedBlockHeader, StoredValue, Timestamp, Transaction, TransactionApprovalsHash,
-    TransactionHash, TransactionHeader, TransactionId, TransactionV1ApprovalsHash, Transfer,
+    Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, BlockSignaturesV1,
+    BlockSignaturesV2, BlockV2, ChainNameDigest, DeployApprovalsHash, DeployHash, Digest, EraId,
+    FinalitySignature, ProtocolVersion, PublicKey, SignedBlockHeader, StoredValue, Timestamp,
+    Transaction, TransactionApprovalsHash, TransactionHash, TransactionHeader, TransactionId,
+    TransactionV1ApprovalsHash, Transfer,
 };
 
 use crate::{
@@ -203,6 +204,8 @@ pub struct Storage {
     metrics: Option<Metrics>,
     /// The maximum TTL of a deploy.
     max_ttl: MaxTtl,
+    /// The hash of the chain name.
+    chain_name_hash: ChainNameDigest,
 }
 
 pub(crate) enum HighestOrphanedBlockResult {
@@ -474,6 +477,7 @@ impl Storage {
             recent_era_count,
             max_ttl,
             metrics,
+            chain_name_hash: ChainNameDigest::new(Digest::hash(network_name.as_bytes())),
         };
 
         if force_resync {
@@ -950,7 +954,7 @@ impl Storage {
                 }
                 let block_signatures = match self.get_block_signatures(&mut txn, &block_hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignaturesV1::new(block_hash, block.era_id()).into(),
+                    None => self.get_default_block_signatures(&block),
                 };
                 if block_signatures.is_verified().is_err() {
                     error!(?block, "invalid block signatures for block");
@@ -1002,7 +1006,7 @@ impl Storage {
                 let hash = block.hash();
                 let block_signatures = match self.get_block_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignaturesV1::new(*hash, block.era_id()).into(),
+                    None => self.get_default_block_signatures(&block),
                 };
                 responder
                     .respond(Some(BlockWithMetadata {
@@ -1033,7 +1037,7 @@ impl Storage {
                 let hash = block.hash();
                 let block_signatures = match self.get_block_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignaturesV1::new(*hash, block.era_id()).into(),
+                    None => self.get_default_block_signatures(&block),
                 };
                 responder
                     .respond(Some(SignedBlock {
@@ -1063,7 +1067,7 @@ impl Storage {
                 let hash = highest_block.hash();
                 let block_signatures = match self.get_block_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignaturesV1::new(*hash, highest_block.era_id()).into(),
+                    None => self.get_default_block_signatures(&highest_block),
                 };
                 responder
                     .respond(Some(SignedBlock {
@@ -1283,10 +1287,34 @@ impl Storage {
         let mut block_signatures = self
             .block_metadata_dbs
             .get(&mut txn, signature.block_hash())?
-            .unwrap_or_else(|| {
-                BlockSignaturesV1::new(*signature.block_hash(), signature.era_id()).into()
+            .unwrap_or_else(|| match &*signature {
+                FinalitySignature::V1(signature) => {
+                    BlockSignaturesV1::new(*signature.block_hash(), signature.era_id()).into()
+                }
+                FinalitySignature::V2(signature) => BlockSignaturesV2::new(
+                    *signature.block_hash(),
+                    signature.block_height(),
+                    signature.era_id(),
+                    signature.chain_name_hash(),
+                )
+                .into(),
             });
-        block_signatures.insert_signature(signature.public_key().clone(), *signature.signature());
+
+        match (&mut block_signatures, *signature) {
+            (BlockSignatures::V1(ref mut block_signatures), FinalitySignature::V1(signature)) => {
+                block_signatures
+                    .insert_signature(signature.public_key().clone(), *signature.signature());
+            }
+            (BlockSignatures::V2(ref mut block_signatures), FinalitySignature::V2(signature)) => {
+                block_signatures
+                    .insert_signature(signature.public_key().clone(), *signature.signature());
+            }
+            (_, signature) => {
+                return Err(FatalStorageError::VariantMismatch(VariantMismatch(
+                    Box::new(*signature.block_hash()),
+                )));
+            }
+        }
         let outcome = self.block_metadata_dbs.put(
             &mut txn,
             block_signatures.block_hash(),
@@ -2051,7 +2079,18 @@ impl Storage {
 
         let block_signatures = match self.get_block_signatures(txn, &block_header_hash)? {
             Some(signatures) => signatures,
-            None => BlockSignaturesV1::new(block_header_hash, block_header.era_id()).into(),
+            None => match &block_header {
+                BlockHeader::V1(header) => BlockSignatures::V1(BlockSignaturesV1::new(
+                    header.block_hash(),
+                    header.era_id(),
+                )),
+                BlockHeader::V2(header) => BlockSignatures::V2(BlockSignaturesV2::new(
+                    header.block_hash(),
+                    header.height(),
+                    header.era_id(),
+                    self.chain_name_hash,
+                )),
+            },
         };
 
         Ok(Some(SignedBlockHeader::new(block_header, block_signatures)))
@@ -2656,6 +2695,19 @@ impl Storage {
             request.chunk_index(),
             execution_results,
         ))
+    }
+
+    fn get_default_block_signatures(&self, block: &Block) -> BlockSignatures {
+        match block {
+            Block::V1(block) => BlockSignaturesV1::new(*block.hash(), block.era_id()).into(),
+            Block::V2(block) => BlockSignaturesV2::new(
+                *block.hash(),
+                block.height(),
+                block.era_id(),
+                self.chain_name_hash,
+            )
+            .into(),
+        }
     }
 
     fn update_chain_height_metrics(&self) {

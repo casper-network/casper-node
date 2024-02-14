@@ -27,8 +27,8 @@ use tracing::{debug, error, info, warn};
 
 use casper_types::{
     Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, DeployId, EraId, FinalitySignature,
-    PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId,
-    U512,
+    FinalitySignatureV2, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash,
+    TransactionHeader, TransactionId, U512,
 };
 
 #[cfg(test)]
@@ -161,7 +161,7 @@ pub(crate) struct MainReactor {
     transaction_gossiper: Gossiper<{ Transaction::ID_IS_COMPLETE_ITEM }, Transaction>,
     block_gossiper: Gossiper<{ BlockV2::ID_IS_COMPLETE_ITEM }, BlockV2>,
     finality_signature_gossiper:
-        Gossiper<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, FinalitySignature>,
+        Gossiper<{ FinalitySignatureV2::ID_IS_COMPLETE_ITEM }, FinalitySignatureV2>,
 
     // record retrieval
     sync_leaper: SyncLeaper,
@@ -512,7 +512,9 @@ impl reactor::Reactor for MainReactor {
                     self.event_stream_server.handle_event(
                         effect_builder,
                         rng,
-                        event_stream_server::Event::FinalitySignature(finality_signature),
+                        event_stream_server::Event::FinalitySignature(Box::new(
+                            (*finality_signature).into(),
+                        )),
                     ),
                 ));
 
@@ -668,17 +670,25 @@ impl reactor::Reactor for MainReactor {
                     finality_signature,
                     peer,
                 },
-            ) => reactor::wrap_effects(
-                MainEvent::BlockAccumulator,
-                self.block_accumulator.handle_event(
-                    effect_builder,
-                    rng,
-                    block_accumulator::Event::ReceivedFinalitySignature {
-                        finality_signature,
-                        sender: peer,
-                    },
-                ),
-            ),
+            ) => {
+                // If the signature is not convertible to the current version it means
+                // that it is historical.
+                if let FinalitySignature::V2(sig) = *finality_signature {
+                    reactor::wrap_effects(
+                        MainEvent::BlockAccumulator,
+                        self.block_accumulator.handle_event(
+                            effect_builder,
+                            rng,
+                            block_accumulator::Event::ReceivedFinalitySignature {
+                                finality_signature: Box::new(sig),
+                                sender: peer,
+                            },
+                        ),
+                    )
+                } else {
+                    Effects::new()
+                }
+            }
 
             // DEPLOYS
             MainEvent::TransactionAcceptor(event) => reactor::wrap_effects(
@@ -1121,12 +1131,12 @@ impl reactor::Reactor for MainReactor {
             config.gossip,
             registry,
         )?;
-        let finality_signature_gossiper =
-            Gossiper::<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, _>::new(
-                "finality_signature_gossiper",
-                config.gossip,
-                registry,
-            )?;
+        let finality_signature_gossiper = Gossiper::<
+            { FinalitySignatureV2::ID_IS_COMPLETE_ITEM },
+            _,
+        >::new(
+            "finality_signature_gossiper", config.gossip, registry
+        )?;
 
         // consensus
         let consensus = EraSupervisor::new(
@@ -1395,7 +1405,7 @@ impl MainReactor {
                     effects.extend(reactor::wrap_effects(
                         MainEvent::Storage,
                         effect_builder
-                            .put_finality_signature_to_storage(finality_signature.clone())
+                            .put_finality_signature_to_storage(finality_signature.clone().into())
                             .ignore(),
                     ));
 

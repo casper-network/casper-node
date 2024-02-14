@@ -10,7 +10,7 @@ use std::{
 use datasize::DataSize;
 use serde::Serialize;
 
-use casper_types::FinalitySignature;
+use casper_types::FinalitySignatureV2;
 
 use super::AutoClosingResponder;
 use crate::{
@@ -80,7 +80,7 @@ pub(crate) type ConsensusDemand = DemandIncoming<consensus::ConsensusRequestMess
 pub(crate) type TrieResponseIncoming = MessageIncoming<TrieResponse>;
 
 /// A new finality signature arrived over the network.
-pub(crate) type FinalitySignatureIncoming = MessageIncoming<FinalitySignature>;
+pub(crate) type FinalitySignatureIncoming = MessageIncoming<FinalitySignatureV2>;
 
 /// A request for an object out of storage arrived.
 ///

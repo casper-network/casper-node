@@ -735,14 +735,20 @@ impl LargestSpecimen for FinalizedBlock {
 
 impl LargestSpecimen for FinalitySignature {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-        FinalitySignature::V2(FinalitySignatureV2::new(
+        FinalitySignature::V2(LargestSpecimen::largest_specimen(estimator, cache))
+    }
+}
+
+impl LargestSpecimen for FinalitySignatureV2 {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        FinalitySignatureV2::new(
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
-        ))
+        )
     }
 }
 

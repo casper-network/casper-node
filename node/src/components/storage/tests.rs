@@ -2352,14 +2352,14 @@ fn should_initialize_block_metadata_db() {
     let chain_name_hash = ChainNameDigest::random(&mut harness.rng);
 
     let block_1 = TestBlockBuilder::new().build(&mut harness.rng);
-    let fs_1_1 = FinalitySignature::random_for_block(
+    let fs_1_1 = FinalitySignatureV2::random_for_block(
         *block_1.hash(),
         block_1.height(),
         block_1.header().era_id(),
         chain_name_hash,
         &mut harness.rng,
     );
-    let fs_1_2 = FinalitySignature::random_for_block(
+    let fs_1_2 = FinalitySignatureV2::random_for_block(
         *block_1.hash(),
         block_1.height(),
         block_1.header().era_id(),
@@ -2368,14 +2368,14 @@ fn should_initialize_block_metadata_db() {
     );
 
     let block_2 = TestBlockBuilder::new().build(&mut harness.rng);
-    let fs_2_1 = FinalitySignature::random_for_block(
+    let fs_2_1 = FinalitySignatureV2::random_for_block(
         *block_2.hash(),
         block_2.height(),
         block_2.header().era_id(),
         chain_name_hash,
         &mut harness.rng,
     );
-    let fs_2_2 = FinalitySignature::random_for_block(
+    let fs_2_2 = FinalitySignatureV2::random_for_block(
         *block_2.hash(),
         block_2.height(),
         block_2.header().era_id(),
@@ -2384,14 +2384,14 @@ fn should_initialize_block_metadata_db() {
     );
 
     let block_3 = TestBlockBuilder::new().build(&mut harness.rng);
-    let fs_3_1 = FinalitySignature::random_for_block(
+    let fs_3_1 = FinalitySignatureV2::random_for_block(
         *block_3.hash(),
         block_3.height(),
         block_3.header().era_id(),
         chain_name_hash,
         &mut harness.rng,
     );
-    let fs_3_2 = FinalitySignature::random_for_block(
+    let fs_3_2 = FinalitySignatureV2::random_for_block(
         *block_3.hash(),
         block_3.height(),
         block_3.header().era_id(),
@@ -2401,43 +2401,47 @@ fn should_initialize_block_metadata_db() {
 
     let block_4 = TestBlockBuilder::new().build(&mut harness.rng);
 
-    let _ = storage.put_finality_signature(Box::new(fs_1_1.clone()));
-    let _ = storage.put_finality_signature(Box::new(fs_1_2.clone()));
-    let _ = storage.put_finality_signature(Box::new(fs_2_1.clone()));
-    let _ = storage.put_finality_signature(Box::new(fs_2_2.clone()));
-    let _ = storage.put_finality_signature(Box::new(fs_3_1.clone()));
-    let _ = storage.put_finality_signature(Box::new(fs_3_2.clone()));
+    let _ = storage.put_finality_signature(Box::new(fs_1_1.clone().into()));
+    let _ = storage.put_finality_signature(Box::new(fs_1_2.clone().into()));
+    let _ = storage.put_finality_signature(Box::new(fs_2_1.clone().into()));
+    let _ = storage.put_finality_signature(Box::new(fs_2_2.clone().into()));
+    let _ = storage.put_finality_signature(Box::new(fs_3_1.clone().into()));
+    let _ = storage.put_finality_signature(Box::new(fs_3_2.clone().into()));
 
     assert_signatures(
         &storage,
         *block_1.hash(),
-        vec![fs_1_1.clone(), fs_1_2.clone()],
+        vec![fs_1_1.clone().into(), fs_1_2.clone().into()],
     );
     assert_signatures(
         &storage,
         *block_2.hash(),
-        vec![fs_2_1.clone(), fs_2_2.clone()],
+        vec![fs_2_1.clone().into(), fs_2_2.clone().into()],
     );
     assert_signatures(
         &storage,
         *block_3.hash(),
-        vec![fs_3_1.clone(), fs_3_2.clone()],
+        vec![fs_3_1.clone().into(), fs_3_2.clone().into()],
     );
     assert_signatures(&storage, *block_4.hash(), vec![]);
 
     // Purging empty set of blocks should not change state.
     let to_be_purged = HashSet::new();
     let _ = initialize_block_metadata_dbs(&storage.env, storage.block_metadata_dbs, to_be_purged);
-    assert_signatures(&storage, *block_1.hash(), vec![fs_1_1, fs_1_2]);
+    assert_signatures(
+        &storage,
+        *block_1.hash(),
+        vec![fs_1_1.into(), fs_1_2.into()],
+    );
     assert_signatures(
         &storage,
         *block_2.hash(),
-        vec![fs_2_1.clone(), fs_2_2.clone()],
+        vec![fs_2_1.clone().into(), fs_2_2.clone().into()],
     );
     assert_signatures(
         &storage,
         *block_3.hash(),
-        vec![fs_3_1.clone(), fs_3_2.clone()],
+        vec![fs_3_1.clone().into(), fs_3_2.clone().into()],
     );
 
     // Purging for block_1 should leave sigs for block_2 and block_3 intact.
@@ -2447,12 +2451,12 @@ fn should_initialize_block_metadata_db() {
     assert_signatures(
         &storage,
         *block_2.hash(),
-        vec![fs_2_1.clone(), fs_2_2.clone()],
+        vec![fs_2_1.clone().into(), fs_2_2.clone().into()],
     );
     assert_signatures(
         &storage,
         *block_3.hash(),
-        vec![fs_3_1.clone(), fs_3_2.clone()],
+        vec![fs_3_1.clone().into(), fs_3_2.clone().into()],
     );
     assert_signatures(&storage, *block_4.hash(), vec![]);
 
@@ -2460,8 +2464,16 @@ fn should_initialize_block_metadata_db() {
     let to_be_purged = HashSet::from_iter([*block_4.hash()]);
     let _ = initialize_block_metadata_dbs(&storage.env, storage.block_metadata_dbs, to_be_purged);
     assert_signatures(&storage, *block_1.hash(), vec![]);
-    assert_signatures(&storage, *block_2.hash(), vec![fs_2_1, fs_2_2]);
-    assert_signatures(&storage, *block_3.hash(), vec![fs_3_1, fs_3_2]);
+    assert_signatures(
+        &storage,
+        *block_2.hash(),
+        vec![fs_2_1.into(), fs_2_2.into()],
+    );
+    assert_signatures(
+        &storage,
+        *block_3.hash(),
+        vec![fs_3_1.into(), fs_3_2.into()],
+    );
     assert_signatures(&storage, *block_4.hash(), vec![]);
 
     // Purging for all blocks should leave no signatures.

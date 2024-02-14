@@ -150,36 +150,30 @@ impl BlockSignatures {
             });
         }
 
-        if let (BlockSignatures::V2(self_), BlockSignatures::V2(other)) = (&self, &other) {
-            if self_.block_height != other.block_height {
-                return Err(BlockSignaturesMergeError::BlockHeightMismatch {
-                    self_height: self_.block_height,
-                    other_height: other.block_height,
-                });
-            }
-
-            if self_.chain_name_hash != other.chain_name_hash {
-                return Err(BlockSignaturesMergeError::ChainNameHashMismatch {
-                    self_chain_name_hash: self_.chain_name_hash,
-                    other_chain_name_hash: other.chain_name_hash,
-                });
-            }
-        }
-
         match (self, &mut other) {
             (BlockSignatures::V1(self_), BlockSignatures::V1(other)) => {
                 self_.proofs.append(&mut other.proofs);
             }
             (BlockSignatures::V2(self_), BlockSignatures::V2(other)) => {
+                if self_.block_height != other.block_height {
+                    return Err(BlockSignaturesMergeError::BlockHeightMismatch {
+                        self_height: self_.block_height,
+                        other_height: other.block_height,
+                    });
+                }
+
+                if self_.chain_name_hash != other.chain_name_hash {
+                    return Err(BlockSignaturesMergeError::ChainNameHashMismatch {
+                        self_chain_name_hash: self_.chain_name_hash,
+                        other_chain_name_hash: other.chain_name_hash,
+                    });
+                }
+
                 self_.proofs.append(&mut other.proofs);
             }
-            (BlockSignatures::V1(self_), BlockSignatures::V2(other)) => {
-                self_.proofs.append(&mut other.proofs);
-            }
-            (BlockSignatures::V2(self_), BlockSignatures::V1(other)) => {
-                self_.proofs.append(&mut other.proofs);
-            }
+            _ => return Err(BlockSignaturesMergeError::VersionMismatch),
         }
+
         Ok(())
     }
 
@@ -336,6 +330,8 @@ pub enum BlockSignaturesMergeError {
         /// The `other` chain name hash.
         other_chain_name_hash: ChainNameDigest,
     },
+    /// A mismatch between the versions of the block signatures.
+    VersionMismatch,
 }
 
 impl Display for BlockSignaturesMergeError {
@@ -383,6 +379,12 @@ impl Display for BlockSignaturesMergeError {
                     "mismatch between chain name hashes while merging block signatures - self: {}, \
                     other: {}",
                     self_chain_name_hash, other_chain_name_hash
+                )
+            }
+            BlockSignaturesMergeError::VersionMismatch => {
+                write!(
+                    formatter,
+                    "mismatch between versions of block signatures while merging"
                 )
             }
         }
