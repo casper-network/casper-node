@@ -21,7 +21,7 @@ use casper_types::{
         ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_REWARDS_MAP, ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR,
         METHOD_DISTRIBUTE, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    EraId, Key, ProtocolVersion, PublicKey, SecretKey, U512,
+    EntityAddr, EraId, Key, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
@@ -251,7 +251,7 @@ fn should_distribute_delegation_rate_zero() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -515,7 +515,7 @@ fn should_withdraw_bids_after_distribute() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -816,7 +816,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -1229,7 +1229,7 @@ fn should_distribute_delegation_rate_half() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -1459,7 +1459,7 @@ fn should_distribute_delegation_rate_full() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -1640,7 +1640,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -1941,7 +1941,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -2271,7 +2271,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -2626,7 +2626,7 @@ fn should_increase_total_supply_after_distribute() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -2803,7 +2803,7 @@ fn should_not_create_purses_during_distribute() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -2964,7 +2964,7 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     // initial token supply
     let initial_supply = builder.total_supply(None);
@@ -3154,7 +3154,7 @@ fn should_not_restake_after_full_unbond() {
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     // advance past the initial auction delay due to special condition of post-genesis behavior.
 
@@ -3285,7 +3285,7 @@ fn delegator_full_unbond_during_first_reward_era() {
     const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     // advance past the initial auction delay due to special condition of post-genesis behavior.
     builder.advance_eras_by_default_auction_delay();
@@ -3367,8 +3367,10 @@ fn delegator_full_unbond_during_first_reward_era() {
     // the delegator is scheduled to receive rewards this era.
 
     let auction_hash = builder.get_auction_contract_hash();
-    let seigniorage_snapshot: SeigniorageRecipientsSnapshot =
-        builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
+    let seigniorage_snapshot: SeigniorageRecipientsSnapshot = builder.get_value(
+        EntityAddr::System(auction_hash.value()),
+        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+    );
 
     let validator_seigniorage = seigniorage_snapshot
         .get(&builder.get_era())

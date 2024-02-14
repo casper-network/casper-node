@@ -5,7 +5,7 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    engine_state::{EngineConfigBuilder, Error, SystemContractRegistry},
+    engine_state::{EngineConfigBuilder, Error},
     execution,
 };
 use casper_types::{
@@ -13,7 +13,8 @@ use casper_types::{
     runtime_args,
     system::{auction, auction::DelegationRate, mint},
     AccessRights, AddressableEntityHash, CLTyped, CLValue, Digest, EraId, Key, PackageHash,
-    ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
+    ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, URef,
+    U512,
 };
 
 use crate::lmdb_fixture;
@@ -35,7 +36,7 @@ const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let transfer = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,
@@ -86,7 +87,7 @@ fn apply_global_state_update(
         .as_cl_value()
         .expect("must be CLValue")
         .clone()
-        .into_t::<SystemContractRegistry>()
+        .into_t::<SystemEntityRegistry>()
         .expect("must convert to btree map");
 
     let mut global_state_update = BTreeMap::<Key, StoredValue>::new();
@@ -94,7 +95,7 @@ fn apply_global_state_update(
         .expect("must convert to StoredValue")
         .into();
 
-    global_state_update.insert(Key::SystemContractRegistry, registry);
+    global_state_update.insert(Key::SystemEntityRegistry, registry);
 
     global_state_update
 }
@@ -114,7 +115,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let entity_hash_key = account
@@ -123,7 +124,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
         .cloned()
         .unwrap();
     let entity_hash = entity_hash_key
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .unwrap();
     let package_hash_key = account
@@ -318,7 +319,7 @@ fn gh_1470_call_contract_should_ignore_optional_args() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let contract_hash_key = account
@@ -327,7 +328,7 @@ fn gh_1470_call_contract_should_ignore_optional_args() {
         .cloned()
         .unwrap();
     let entity_hash = contract_hash_key
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .unwrap();
     let package_hash_key = account
@@ -384,7 +385,7 @@ fn gh_1470_call_contract_should_not_accept_extra_args() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let contract_hash_key = account
@@ -393,7 +394,7 @@ fn gh_1470_call_contract_should_not_accept_extra_args() {
         .cloned()
         .unwrap();
     let entity_hash = contract_hash_key
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .unwrap();
     let package_hash_key = account
@@ -450,7 +451,7 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
 
     let entity_hash_key = account
@@ -459,7 +460,7 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
         .cloned()
         .unwrap();
     let entity_hash = entity_hash_key
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .unwrap();
     let package_hash_key = account
@@ -556,7 +557,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let entity_hash_key = account
@@ -565,7 +566,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
         .cloned()
         .unwrap();
     let entity_hash = entity_hash_key
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .unwrap();
     let package_hash_key = account

@@ -30,19 +30,19 @@ fn should_measure_gas_cost() {
     .build();
 
     // Create Accounts
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .expect("should be hash")
         .into();
 
@@ -98,19 +98,19 @@ fn should_measure_nested_host_function_call_cost() {
     .build();
 
     // Create Accounts
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .expect("should be hash")
         .into();
 
@@ -176,19 +176,19 @@ fn should_measure_argument_size_in_host_function_call() {
     .build();
 
     // Create Accounts
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .expect("should be hash")
         .into();
 

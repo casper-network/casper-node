@@ -1,8 +1,6 @@
 use std::{collections::BTreeSet, iter::FromIterator};
 
-use casper_execution_engine::engine_state::{
-    genesis::ExecConfigBuilder, EngineConfigBuilder, RunGenesisRequest,
-};
+use casper_execution_engine::engine_state::EngineConfigBuilder;
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 
@@ -12,13 +10,15 @@ use casper_engine_test_support::{
     DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
     DEFAULT_VALIDATOR_SLOTS, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
+use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     runtime_args,
     system::{
         auction::{self, DelegationRate, EraValidators, VESTING_SCHEDULE_LENGTH_MILLIS},
         mint,
     },
-    GenesisAccount, GenesisValidator, Motes, PublicKey, SecretKey, U256, U512,
+    GenesisAccount, GenesisConfigBuilder, GenesisValidator, Motes, PublicKey, SecretKey, U256,
+    U512,
 };
 
 const MINIMUM_BONDED_AMOUNT: u64 = 1_000;
@@ -105,7 +105,7 @@ fn initialize_builder() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
 
     let run_genesis_request = utils::create_run_genesis_request(GENESIS_ACCOUNTS.clone());
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let fund_request = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,
@@ -253,12 +253,12 @@ fn should_retain_genesis_validator_slot_protection() {
 
         let run_genesis_request = {
             let accounts = GENESIS_ACCOUNTS.clone();
-            let exec_config = ExecConfigBuilder::default()
+            let exec_config = GenesisConfigBuilder::default()
                 .with_accounts(accounts)
                 .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
                 .build();
 
-            RunGenesisRequest::new(
+            GenesisRequest::new(
                 *DEFAULT_GENESIS_CONFIG_HASH,
                 *DEFAULT_PROTOCOL_VERSION,
                 exec_config,
@@ -267,7 +267,7 @@ fn should_retain_genesis_validator_slot_protection() {
         };
 
         let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(engine_config);
-        builder.run_genesis(&run_genesis_request);
+        builder.run_genesis(run_genesis_request);
 
         let fund_request = ExecuteRequestBuilder::transfer(
             *DEFAULT_ACCOUNT_ADDR,

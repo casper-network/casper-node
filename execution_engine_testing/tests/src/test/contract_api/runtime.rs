@@ -6,7 +6,8 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{runtime_context::RANDOM_BYTES_COUNT, ADDRESS_LENGTH};
+use casper_execution_engine::runtime_context::RANDOM_BYTES_COUNT;
+use casper_storage::address_generator::ADDRESS_LENGTH;
 use casper_types::{crypto, runtime_args, BLAKE2B_DIGEST_LENGTH};
 
 const ARG_BYTES: &str = "bytes";
@@ -23,7 +24,7 @@ const RANDOM_BYTES_PAYMENT_RESULT: &str = "random_bytes_payment_result";
 
 fn get_value<const COUNT: usize>(builder: &LmdbWasmTestBuilder, result: &str) -> [u8; COUNT] {
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let uref = account.named_keys().get(result).expect("should have value");
@@ -41,7 +42,7 @@ fn get_value<const COUNT: usize>(builder: &LmdbWasmTestBuilder, result: &str) ->
 #[test]
 fn should_return_different_random_bytes_on_different_phases() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let execute_request = {
         let mut rng = rand::thread_rng();
@@ -78,7 +79,7 @@ fn should_return_different_random_bytes_on_each_call() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let all_addresses: HashSet<_> = (0..RUNS)
         .map(|_| {
@@ -108,7 +109,7 @@ fn should_hash() {
     let mut rng = rand::thread_rng();
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     for _ in 0..RUNS {
         let input: [u8; INPUT_LENGTH] = rng.gen();

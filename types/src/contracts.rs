@@ -26,7 +26,7 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
     checksummed_hex,
     contract_wasm::ContractWasmHash,
-    package::{PackageKind, PackageStatus},
+    package::PackageStatus,
     uref,
     uref::URef,
     AddressableEntityHash, CLType, CLTyped, EntityVersionKey, EntryPoint, EntryPoints, Groups,
@@ -855,7 +855,6 @@ impl From<ContractPackage> for Package {
             disabled_versions,
             value.groups,
             lock_status,
-            PackageKind::SmartContract,
         )
     }
 }

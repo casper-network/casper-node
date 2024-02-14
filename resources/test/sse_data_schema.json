@@ -1681,19 +1681,6 @@
             }
           },
           "additionalProperties": false
-        },
-        {
-          "description": "Hex-encoded entity address of the initiator.",
-          "type": "object",
-          "required": [
-            "EntityAddr"
-          ],
-          "properties": {
-            "EntityAddr": {
-              "type": "string"
-            }
-          },
-          "additionalProperties": false
         }
       ]
     },

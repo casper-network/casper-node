@@ -3,6 +3,8 @@ use std::{collections::HashMap, time::Duration};
 use async_trait::async_trait;
 use tracing::error;
 
+use casper_storage::data_access_layer::{TrieElement, TrieRequest, TrieResult};
+
 use crate::{
     components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
     effect::{requests::ContractRuntimeRequest, EffectBuilder},
@@ -31,10 +33,33 @@ impl ItemFetcher<TrieOrChunk> for Fetcher<TrieOrChunk> {
         effect_builder: EffectBuilder<REv>,
         id: TrieOrChunkId,
     ) -> Option<TrieOrChunk> {
-        effect_builder.get_trie(id).await.unwrap_or_else(|error| {
-            error!(?error, "get_trie_request");
-            None
-        })
+        let TrieOrChunkId(chunk_index, trie_key) = id;
+        let request = TrieRequest::new(trie_key, Some(chunk_index));
+        let result = effect_builder.get_trie(request).await;
+        match result {
+            TrieResult::ValueNotFound(_) => None,
+            TrieResult::Failure(err) => {
+                error!(%err, "failed to get trie element locally");
+                None
+            }
+            TrieResult::Success { element } => match element {
+                TrieElement::Raw(raw) => match TrieOrChunk::new(raw.into(), 0) {
+                    Ok(voc) => Some(voc),
+                    Err(err) => {
+                        error!(%err, "raw chunking error");
+                        None
+                    }
+                },
+                TrieElement::Chunked(raw, chunk_id) => match TrieOrChunk::new(raw.into(), chunk_id)
+                {
+                    Ok(voc) => Some(voc),
+                    Err(err) => {
+                        error!(%err, "chunking error");
+                        None
+                    }
+                },
+            },
+        }
     }
 
     fn put_to_storage<'a, REv>(

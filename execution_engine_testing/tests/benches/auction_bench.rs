@@ -1,8 +1,6 @@
 use std::{path::Path, time::Duration};
 
-use casper_execution_engine::engine_state::{
-    genesis::ExecConfigBuilder, EngineConfig, ExecuteRequest, RunGenesisRequest,
-};
+use casper_execution_engine::engine_state::{EngineConfig, ExecuteRequest};
 use criterion::{
     criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, Criterion, Throughput,
 };
@@ -18,12 +16,13 @@ use casper_engine_test_support::{
     DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
     DEFAULT_WASM_CONFIG, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
+use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     account::AccountHash,
     runtime_args,
     system::auction::{self},
-    GenesisAccount, GenesisValidator, Motes, ProtocolVersion, PublicKey, SecretKey,
-    DEFAULT_DELEGATE_COST, U512,
+    GenesisAccount, GenesisConfigBuilder, GenesisValidator, Motes, ProtocolVersion, PublicKey,
+    SecretKey, DEFAULT_DELEGATE_COST, U512,
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -71,7 +70,7 @@ fn run_genesis_and_create_initial_accounts(
     }
     let run_genesis_request =
         create_run_genesis_request(validator_keys.len() as u32 + 2, genesis_accounts);
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     // Setup the system account with enough cspr
     let transfer = ExecuteRequestBuilder::transfer(
@@ -105,9 +104,9 @@ fn run_genesis_and_create_initial_accounts(
 fn create_run_genesis_request(
     validator_slots: u32,
     genesis_accounts: Vec<GenesisAccount>,
-) -> RunGenesisRequest {
+) -> GenesisRequest {
     let exec_config = {
-        ExecConfigBuilder::new()
+        GenesisConfigBuilder::new()
             .with_accounts(genesis_accounts)
             .with_wasm_config(*DEFAULT_WASM_CONFIG)
             .with_system_config(*DEFAULT_SYSTEM_CONFIG)
@@ -119,7 +118,7 @@ fn create_run_genesis_request(
             .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
             .build()
     };
-    RunGenesisRequest::new(
+    GenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
         exec_config,

@@ -11,7 +11,8 @@ use serde_json::json;
 use tempfile::TempDir;
 
 use casper_engine_test_support::LmdbWasmTestBuilder;
-use casper_execution_engine::engine_state::{run_genesis_request::RunGenesisRequest, EngineConfig};
+use casper_execution_engine::engine_state::EngineConfig;
+use casper_storage::data_access_layer::GenesisRequest;
 #[cfg(test)]
 use casper_types::{AccessRights, Key, URef};
 use casper_types::{Digest, ProtocolVersion};
@@ -46,7 +47,7 @@ fn path_to_lmdb_fixtures() -> PathBuf {
 /// Contains serialized genesis config.
 #[derive(Serialize, Deserialize)]
 pub struct LmdbFixtureState {
-    /// Serializes as unstructured JSON value because [`RunGenesisRequest`] might change over time
+    /// Serializes as unstructured JSON value because [`GenesisRequest`] might change over time
     /// and likely old fixture might not deserialize cleanly in the future.
     pub genesis_request: serde_json::Value,
     pub post_state_hash: Digest,
@@ -102,7 +103,7 @@ pub fn builder_from_global_state_fixture(
 /// control.
 pub fn generate_fixture(
     name: &str,
-    genesis_request: RunGenesisRequest,
+    genesis_request: GenesisRequest,
     post_genesis_setup: impl FnOnce(&mut LmdbWasmTestBuilder),
 ) -> Result<(), Box<dyn std::error::Error>> {
     let lmdb_fixtures_root = path_to_lmdb_fixtures();
@@ -122,7 +123,7 @@ pub fn generate_fixture(
     let engine_config = EngineConfig::default();
     let mut builder = LmdbWasmTestBuilder::new_with_config(&fixture_root, engine_config);
 
-    builder.run_genesis(&genesis_request);
+    builder.run_genesis(genesis_request.clone());
 
     // You can customize the fixture post genesis with a callable.
     post_genesis_setup(&mut builder);

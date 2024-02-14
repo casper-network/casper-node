@@ -48,7 +48,7 @@ const DELEGATION_RATE: DelegationRate = 42;
 fn should_run_successful_bond_and_unbond_and_slashing() {
     let default_public_key_arg = DEFAULT_ACCOUNT_PUBLIC_KEY.clone();
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -198,7 +198,7 @@ fn should_fail_bonding_with_insufficient_funds_directly() {
     let transfer_amount = U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE);
     let delegation_rate: DelegationRate = 10;
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let transfer_args = runtime_args! {
         mint::ARG_TARGET => new_validator_hash,
@@ -275,7 +275,7 @@ fn should_fail_bonding_with_insufficient_funds() {
     let mut builder = LmdbWasmTestBuilder::default();
 
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .commit();
 
@@ -325,7 +325,7 @@ fn should_fail_unbonding_validator_with_locked_funds() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let exec_request_2 = ExecuteRequestBuilder::standard(
         account_1_hash,
@@ -371,7 +371,7 @@ fn should_fail_unbonding_validator_without_bonding_first() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request).commit();
 
@@ -400,7 +400,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -556,7 +556,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let new_unbonding_delay = DEFAULT_UNBONDING_DELAY + 5;
 

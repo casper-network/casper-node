@@ -12,8 +12,10 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, warn};
 
-use casper_execution_engine::engine_state;
-use casper_storage::global_state::trie::TrieRaw;
+use casper_storage::{
+    data_access_layer::{PutTrieRequest, PutTrieResult},
+    global_state::{error::Error as GlobalStateError, trie::TrieRaw},
+};
 use casper_types::{BlockHash, Digest, DisplayIter, Timestamp};
 
 use super::{TrieAccumulator, TrieAccumulatorError, TrieAccumulatorEvent, TrieAccumulatorResponse};
@@ -66,8 +68,8 @@ impl fmt::Display for TrieHash {
 pub(crate) enum Error {
     #[error("trie accumulator encountered an error while fetching a trie; unreliable peers {}", DisplayIter::new(.0))]
     TrieAccumulator(Vec<NodeId>),
-    #[error("ContractRuntime failed to put a trie into global state: {0}; unreliable peers {}", DisplayIter::new(.1))]
-    PutTrie(engine_state::Error, Vec<NodeId>),
+    #[error("Failed to persist trie element in global state: {0}; unreliable peers {}", DisplayIter::new(.1))]
+    PutTrie(GlobalStateError, Vec<NodeId>),
     #[error("no peers available to ask for a trie")]
     NoPeersAvailable,
     #[error("received request for {hash_requested} while syncing another root hash: {hash_being_synced}")]
@@ -110,10 +112,10 @@ pub(crate) enum Event {
         trie_accumulator_result: Result<TrieAccumulatorResponse, TrieAccumulatorError>,
     },
     PutTrieResult {
-        trie_hash: TrieHash,
-        trie_raw: TrieRaw,
         #[serde(skip)]
-        put_trie_result: Result<TrieHash, engine_state::Error>,
+        raw: TrieRaw,
+        #[serde(skip)]
+        result: PutTrieResult,
     },
     #[from]
     TrieAccumulatorEvent(TrieAccumulatorEvent),
@@ -420,12 +422,12 @@ impl GlobalStateSynchronizer {
 
         self.touch();
 
+        let request = PutTrieRequest::new((*trie_raw).clone());
         effect_builder
-            .put_trie_if_all_children_present((*trie_raw).clone())
+            .put_trie_if_all_children_present(request)
             .event(move |put_trie_result| Event::PutTrieResult {
-                trie_hash,
-                trie_raw: *trie_raw,
-                put_trie_result: put_trie_result.map(TrieHash),
+                raw: *trie_raw,
+                result: put_trie_result,
             })
     }
 
@@ -463,9 +465,8 @@ impl GlobalStateSynchronizer {
 
     fn handle_put_trie_result<REv>(
         &mut self,
-        trie_hash: TrieHash,
-        trie_raw: TrieRaw,
-        put_trie_result: Result<TrieHash, engine_state::Error>,
+        requested_hash: Digest,
+        put_trie_result: PutTrieResult,
         effect_builder: EffectBuilder<REv>,
     ) -> Effects<Event>
     where
@@ -474,30 +475,32 @@ impl GlobalStateSynchronizer {
         let mut effects = Effects::new();
 
         match put_trie_result {
-            Ok(digest) if digest == trie_hash => {
-                effects.extend(self.handle_trie_written(effect_builder, digest))
+            PutTrieResult::Success { hash } if hash == requested_hash => {
+                effects.extend(self.handle_trie_written(effect_builder, TrieHash(hash)))
             }
-            Ok(digest) => {
+            PutTrieResult::Success { hash } => {
                 error!(
-                    %digest,
-                    %trie_hash,
+                    %hash,
+                    %requested_hash,
                     "trie was stored under a different hash than was used to request it - \
                     it's a bug"
                 );
             }
-            Err(engine_state::Error::MissingTrieNodeChildren(missing_children)) => {
-                effects.extend(self.handle_trie_missing_children(
-                    effect_builder,
-                    trie_hash,
-                    trie_raw,
-                    missing_children.into_iter().map(TrieHash).collect(),
-                ))
-            }
-            Err(error) => {
-                warn!(%trie_hash, %error, "couldn't put trie into global state");
+            PutTrieResult::Failure(GlobalStateError::MissingTrieNodeChildren(
+                trie_hash,
+                trie_raw,
+                missing_children,
+            )) => effects.extend(self.handle_trie_missing_children(
+                effect_builder,
+                TrieHash(trie_hash),
+                trie_raw,
+                missing_children.into_iter().map(TrieHash).collect(),
+            )),
+            PutTrieResult::Failure(gse) => {
+                warn!(%requested_hash, %gse, "couldn't put trie into global state");
                 if let Some(request_state) = &mut self.request_state {
                     let unreliable_peers = request_state.unreliable_peers.iter().copied().collect();
-                    effects.extend(self.cancel_request(Error::PutTrie(error, unreliable_peers)));
+                    effects.extend(self.cancel_request(Error::PutTrie(gse, unreliable_peers)));
                 }
             }
         }
@@ -539,14 +542,14 @@ impl GlobalStateSynchronizer {
 
         let mut effects: Effects<Event> = ready_tries
             .into_iter()
-            .flat_map(|(trie_hash, trie_awaiting)| {
+            .flat_map(|(_, trie_awaiting)| {
                 let trie_raw = trie_awaiting.into_trie_raw();
+                let request = PutTrieRequest::new(trie_raw.clone());
                 effect_builder
-                    .put_trie_if_all_children_present(trie_raw.clone())
-                    .event(move |put_trie_result| Event::PutTrieResult {
-                        trie_hash,
-                        trie_raw,
-                        put_trie_result: put_trie_result.map(TrieHash),
+                    .put_trie_if_all_children_present(request)
+                    .event(move |result| Event::PutTrieResult {
+                        raw: trie_raw,
+                        result,
                     })
             })
             .collect();
@@ -575,12 +578,12 @@ impl GlobalStateSynchronizer {
             // simulate fetching having been completed in order to start fetching any children that
             // might be still missing
             let trie_raw = trie_awaiting.trie_raw.clone();
+            let request = PutTrieRequest::new(trie_raw.clone());
             effect_builder
-                .put_trie_if_all_children_present(trie_raw.clone())
-                .event(move |put_trie_result| Event::PutTrieResult {
-                    trie_hash,
-                    trie_raw,
-                    put_trie_result: put_trie_result.map(TrieHash),
+                .put_trie_if_all_children_present(request)
+                .event(move |result| Event::PutTrieResult {
+                    raw: trie_raw,
+                    result,
                 })
         } else {
             // otherwise, add to the queue
@@ -645,10 +648,9 @@ where
                 trie_accumulator_result,
             } => self.handle_fetched_trie(trie_hash, trie_accumulator_result, effect_builder),
             Event::PutTrieResult {
-                trie_hash,
-                trie_raw,
-                put_trie_result,
-            } => self.handle_put_trie_result(trie_hash, trie_raw, put_trie_result, effect_builder),
+                raw: trie_raw,
+                result: put_trie_result,
+            } => self.handle_put_trie_result(trie_raw.hash(), put_trie_result, effect_builder),
             Event::TrieAccumulatorEvent(event) => reactor::wrap_effects(
                 Event::TrieAccumulatorEvent,
                 self.trie_accumulator

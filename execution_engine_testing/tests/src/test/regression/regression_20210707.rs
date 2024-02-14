@@ -1,14 +1,15 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    DeployItemBuilder, EntityWithNamedKeys, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     engine_state::{Error as CoreError, ExecuteRequest},
     execution::Error as ExecError,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntity,
-    AddressableEntityHash, PublicKey, RuntimeArgs, SecretKey, URef, U512,
+    account::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntityHash,
+    PublicKey, RuntimeArgs, SecretKey, URef, U512,
 };
 use once_cell::sync::Lazy;
 
@@ -65,13 +66,13 @@ fn transfer(sender: AccountHash, target: AccountHash, amount: u64) -> ExecuteReq
     .build()
 }
 
-fn get_account_entity_hash(entity: &AddressableEntity) -> AddressableEntityHash {
+fn get_account_entity_hash(entity: &EntityWithNamedKeys) -> AddressableEntityHash {
     entity
         .named_keys()
         .get(CONTRACT_HASH_NAME)
         .cloned()
         .expect("should have contract hash")
-        .into_entity_addr()
+        .into_entity_hash_addr()
         .map(AddressableEntityHash::new)
         .unwrap()
 }
@@ -90,7 +91,7 @@ fn assert_forged_uref_error(error: CoreError, forged_uref: URef) {
 fn should_transfer_funds_from_contract_to_new_account() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let store_request = setup_regression_contract();
 
@@ -103,7 +104,9 @@ fn should_transfer_funds_from_contract_to_new_account() {
     builder.exec(store_request).commit().expect_success();
     builder.exec(fund_request).commit().expect_success();
 
-    let account = builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+    let account = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
     let contract_hash = get_account_entity_hash(&account);
 
@@ -128,7 +131,7 @@ fn should_transfer_funds_from_contract_to_new_account() {
 fn should_transfer_funds_from_contract_to_existing_account() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let store_request = setup_regression_contract();
 
@@ -148,7 +151,9 @@ fn should_transfer_funds_from_contract_to_existing_account() {
     builder.exec(fund_request_1).commit().expect_success();
     builder.exec(fund_request_2).commit().expect_success();
 
-    let account = builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+    let account = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
     let contract_hash = get_account_entity_hash(&account);
 
@@ -171,7 +176,7 @@ fn should_transfer_funds_from_contract_to_existing_account() {
 fn should_not_transfer_funds_from_forged_purse_to_account_native_transfer() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let store_request = setup_regression_contract();
 
@@ -211,7 +216,7 @@ fn should_not_transfer_funds_from_forged_purse_to_account_native_transfer() {
 fn should_not_transfer_funds_from_forged_purse_to_owned_purse() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let store_request = setup_regression_contract();
 
@@ -231,9 +236,13 @@ fn should_not_transfer_funds_from_forged_purse_to_owned_purse() {
     builder.exec(fund_request_1).commit().expect_success();
     builder.exec(fund_request_2).commit().expect_success();
 
-    let account = builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+    let account = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
-    let bob = builder.get_expected_addressable_entity_by_account_hash(*BOB_ADDR);
+    let bob = builder
+        .get_entity_with_named_keys_by_account_hash(*BOB_ADDR)
+        .unwrap();
     let bob_main_purse = bob.main_purse();
 
     let contract_hash = get_account_entity_hash(&account);
@@ -261,7 +270,7 @@ fn should_not_transfer_funds_from_forged_purse_to_owned_purse() {
 fn should_not_transfer_funds_into_bob_purse() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let store_request = setup_regression_contract();
 
@@ -274,7 +283,9 @@ fn should_not_transfer_funds_into_bob_purse() {
     builder.exec(store_request).commit().expect_success();
     builder.exec(fund_request_1).commit().expect_success();
 
-    let account = builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+    let account = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
     let bob = builder.get_expected_addressable_entity_by_account_hash(*BOB_ADDR);
     let bob_main_purse = bob.main_purse();
@@ -304,7 +315,7 @@ fn should_not_transfer_funds_into_bob_purse() {
 fn should_not_transfer_from_hardcoded_purse() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let store_request = setup_regression_contract();
 
@@ -317,7 +328,9 @@ fn should_not_transfer_from_hardcoded_purse() {
     builder.exec(store_request).commit().expect_success();
     builder.exec(fund_request_1).commit().expect_success();
 
-    let account = builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+    let account = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
     let contract_hash = get_account_entity_hash(&account);
 
@@ -343,7 +356,7 @@ fn should_not_transfer_from_hardcoded_purse() {
 fn should_not_refund_to_bob_and_charge_alice() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let store_request = setup_regression_contract();
 
@@ -363,7 +376,9 @@ fn should_not_refund_to_bob_and_charge_alice() {
     builder.exec(fund_request_1).commit().expect_success();
     builder.exec(fund_request_2).commit().expect_success();
 
-    let account = builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+    let account = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
     let bob = builder.get_expected_addressable_entity_by_account_hash(*BOB_ADDR);
     let bob_main_purse = bob.main_purse();
@@ -399,7 +414,7 @@ fn should_not_refund_to_bob_and_charge_alice() {
 fn should_not_charge_alice_for_execution() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let store_request = setup_regression_contract();
 
@@ -419,7 +434,9 @@ fn should_not_charge_alice_for_execution() {
     builder.exec(fund_request_1).commit().expect_success();
     builder.exec(fund_request_2).commit().expect_success();
 
-    let account = builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+    let account = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
     let bob = builder.get_expected_addressable_entity_by_account_hash(*BOB_ADDR);
     let bob_main_purse = bob.main_purse();
@@ -455,7 +472,7 @@ fn should_not_charge_alice_for_execution() {
 fn should_not_charge_for_execution_from_hardcoded_purse() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let store_request = setup_regression_contract();
 
@@ -475,7 +492,9 @@ fn should_not_charge_for_execution_from_hardcoded_purse() {
     builder.exec(fund_request_1).commit().expect_success();
     builder.exec(fund_request_2).commit().expect_success();
 
-    let account = builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
+    let account = builder
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
     let contract_hash = get_account_entity_hash(&account);
 

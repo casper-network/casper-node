@@ -80,7 +80,7 @@ fn too_many_locals_should_exceed_stack_height() {
     );
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let success_request = ExecuteRequestBuilder::module_bytes(
         *DEFAULT_ACCOUNT_ADDR,
