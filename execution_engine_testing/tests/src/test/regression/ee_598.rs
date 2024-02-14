@@ -78,7 +78,7 @@ fn should_handle_unbond_for_more_than_stake_as_full_unbond_of_stake_ee_598_regre
     };
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     builder.exec(seed_request).expect_success().commit();
 

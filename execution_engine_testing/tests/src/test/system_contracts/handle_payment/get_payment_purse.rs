@@ -23,7 +23,7 @@ fn should_run_get_payment_purse_contract_default_account() {
     )
     .build();
     LmdbWasmTestBuilder::default()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .expect_success()
         .commit();
@@ -47,7 +47,7 @@ fn should_run_get_payment_purse_contract_account_1() {
     )
     .build();
     LmdbWasmTestBuilder::default()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .expect_success()
         .commit()

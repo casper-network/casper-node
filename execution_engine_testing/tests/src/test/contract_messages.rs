@@ -224,7 +224,7 @@ fn should_emit_messages() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder);
     let query_view = ContractQueryView::new(&builder, contract_hash);
@@ -316,7 +316,7 @@ fn should_emit_message_on_empty_topic_in_new_block() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder);
     let query_view = ContractQueryView::new(&builder, contract_hash);
@@ -355,7 +355,7 @@ fn should_add_topics() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
     let contract_hash = install_messages_emitter_contract(&builder);
     let query_view = ContractQueryView::new(&builder, contract_hash);
 
@@ -419,7 +419,7 @@ fn should_not_add_duplicate_topics() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder);
     let query_view = ContractQueryView::new(&builder, contract_hash);
@@ -472,7 +472,7 @@ fn should_not_exceed_configured_limits() {
     ));
     builder
         .borrow_mut()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder);
 
@@ -558,7 +558,7 @@ fn should_carry_message_topics_on_upgraded_contract() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let _ = install_messages_emitter_contract(&builder);
     let contract_hash = upgrade_messages_emitter_contract(&builder);
@@ -585,7 +585,7 @@ fn should_not_emit_messages_from_account() {
     let builder = RefCell::new(LmdbWasmTestBuilder::default());
     builder
         .borrow_mut()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     // Request to run a deploy that tries to register a message topic without a stored contract.
     let install_request = ExecuteRequestBuilder::standard(
@@ -625,7 +625,7 @@ fn should_charge_expected_gas_for_storage() {
     ));
     builder
         .borrow_mut()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder);
     let query_view = ContractQueryView::new(&builder, contract_hash);
@@ -729,7 +729,7 @@ fn should_charge_increasing_gas_cost_for_multiple_messages_emitted() {
     ));
     builder
         .borrow_mut()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let contract_hash = install_messages_emitter_contract(&builder);
 

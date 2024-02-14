@@ -652,7 +652,7 @@ fn init_wasmless_transform_builder(create_account_2: bool) -> LmdbWasmTestBuilde
     .build();
 
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(create_account_1_request)
         .expect_success()
         .commit();
@@ -989,7 +989,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
     );
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)

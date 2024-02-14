@@ -666,6 +666,7 @@ dependencies = [
  "casper-types",
  "datasize",
  "either",
+ "itertools 0.10.5",
  "linked-hash-map",
  "lmdb-rkv",
  "num",

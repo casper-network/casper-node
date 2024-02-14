@@ -18,7 +18,7 @@ use casper_types::{
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeHash,
     CLValue, ChecksumRegistry, EntityAddr, EntityKind, EntryPoints, Key, KeyTag, Motes, Package,
     PackageHash, Phase, ProtocolVersion, StoredValue, StoredValueTypeMismatch,
-    SystemContractRegistry, URef,
+    SystemEntityRegistry, URef,
 };
 
 use crate::tracking_copy::{TrackingCopy, TrackingCopyError};
@@ -88,7 +88,7 @@ pub trait TrackingCopyExt<R> {
     fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Self::Error>;
 
     /// Gets the system contract registry.
-    fn get_system_contracts(&mut self) -> Result<SystemContractRegistry, Self::Error>;
+    fn get_system_contracts(&mut self) -> Result<SystemEntityRegistry, Self::Error>;
 
     /// Gets the system checksum registry.
     fn get_checksum_registry(&mut self) -> Result<Option<ChecksumRegistry>, Self::Error>;
@@ -452,17 +452,17 @@ where
         }
     }
 
-    fn get_system_contracts(&mut self) -> Result<SystemContractRegistry, Self::Error> {
-        match self.get(&Key::SystemContractRegistry)? {
+    fn get_system_contracts(&mut self) -> Result<SystemEntityRegistry, Self::Error> {
+        match self.get(&Key::SystemEntityRegistry)? {
             Some(StoredValue::CLValue(registry)) => {
-                let registry: SystemContractRegistry =
+                let registry: SystemEntityRegistry =
                     CLValue::into_t(registry).map_err(Self::Error::from)?;
                 Ok(registry)
             }
             Some(other) => Err(TrackingCopyError::TypeMismatch(
                 StoredValueTypeMismatch::new("CLValue".to_string(), other.type_name()),
             )),
-            None => Err(TrackingCopyError::KeyNotFound(Key::SystemContractRegistry)),
+            None => Err(TrackingCopyError::KeyNotFound(Key::SystemEntityRegistry)),
         }
     }
 

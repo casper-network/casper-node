@@ -32,7 +32,7 @@ use casper_types::{
     AccountConfig, AccountsConfig, ActivationPoint, AddressableEntityHash, Block, BlockHash,
     BlockHeader, BlockV2, CLValue, Chainspec, ChainspecRawBytes, ConsensusProtocolName, Deploy,
     EntityAddr, EraId, Key, Motes, ProtocolVersion, PublicKey, Rewards, SecretKey, StoredValue,
-    SystemContractRegistry, TimeDiff, Timestamp, Transaction, TransactionHash, ValidatorConfig,
+    SystemEntityRegistry, TimeDiff, Timestamp, Transaction, TransactionHash, ValidatorConfig,
     U512,
 };
 
@@ -571,10 +571,12 @@ impl TestFixture {
             .expect("should not have have storage error")
             .expect("should have block");
 
+        let bids_request = BidsRequest::new(*highest_block.state_root_hash());
         let bids_result = runner
             .main_reactor()
             .contract_runtime
-            .auction_state(*highest_block.state_root_hash());
+            .data_provider()
+            .bids(bids_request);
 
         if let BidsResult::Success { bids } = bids_result {
             match bids.iter().find(|bid_kind| {
@@ -629,11 +631,11 @@ impl TestFixture {
             .checkout(*highest_block.state_root_hash())
             .expect("should checkout")
             .expect("should have view")
-            .read(&Key::SystemContractRegistry)
+            .read(&Key::SystemEntityRegistry)
             .expect("should not have gs storage error")
             .expect("should have stored value");
 
-        let system_contract_registry: SystemContractRegistry = match maybe_registry {
+        let system_contract_registry: SystemEntityRegistry = match maybe_registry {
             StoredValue::CLValue(cl_value) => CLValue::into_t(cl_value).unwrap(),
             _ => {
                 panic!("expected CLValue")

@@ -13,7 +13,9 @@ pub mod balance;
 pub mod era_validators;
 mod execution_results_checksum;
 mod flush;
+mod genesis;
 pub mod get_bids;
+mod protocol_upgrade;
 pub mod query;
 mod round_seigniorage;
 mod total_supply;
@@ -27,7 +29,9 @@ pub use execution_results_checksum::{
     EXECUTION_RESULTS_CHECKSUM_NAME,
 };
 pub use flush::{FlushRequest, FlushResult};
+pub use genesis::{GenesisRequest, GenesisResult};
 pub use get_bids::{BidsRequest, BidsResult};
+pub use protocol_upgrade::{ProtocolUpgradeRequest, ProtocolUpgradeResult};
 pub use query::{QueryRequest, QueryResult};
 pub use round_seigniorage::{RoundSeigniorageRateRequest, RoundSeigniorageRateResult};
 pub use total_supply::{TotalSupplyRequest, TotalSupplyResult};

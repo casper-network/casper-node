@@ -1,11 +1,11 @@
 use num_rational::Ratio;
 use std::collections::BTreeMap;
 
-use crate::{ChainspecRegistry, Digest, EraId, Key, ProtocolVersion, StoredValue};
+use crate::{ChainspecRegistry, Digest, EraId, FeeHandling, Key, ProtocolVersion, StoredValue};
 
 /// Represents the configuration of a protocol upgrade.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UpgradeConfig {
+pub struct ProtocolUpgradeConfig {
     pre_state_hash: Digest,
     current_protocol_version: ProtocolVersion,
     new_protocol_version: ProtocolVersion,
@@ -17,9 +17,10 @@ pub struct UpgradeConfig {
     new_unbonding_delay: Option<u64>,
     global_state_update: BTreeMap<Key, StoredValue>,
     chainspec_registry: ChainspecRegistry,
+    fee_handling: FeeHandling,
 }
 
-impl UpgradeConfig {
+impl ProtocolUpgradeConfig {
     /// Create new upgrade config.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -34,8 +35,9 @@ impl UpgradeConfig {
         new_unbonding_delay: Option<u64>,
         global_state_update: BTreeMap<Key, StoredValue>,
         chainspec_registry: ChainspecRegistry,
+        fee_handling: FeeHandling,
     ) -> Self {
-        UpgradeConfig {
+        ProtocolUpgradeConfig {
             pre_state_hash,
             current_protocol_version,
             new_protocol_version,
@@ -47,6 +49,7 @@ impl UpgradeConfig {
             new_unbonding_delay,
             global_state_update,
             chainspec_registry,
+            fee_handling,
         }
     }
 
@@ -108,5 +111,10 @@ impl UpgradeConfig {
     /// Sets new pre state hash.
     pub fn with_pre_state_hash(&mut self, pre_state_hash: Digest) {
         self.pre_state_hash = pre_state_hash;
+    }
+
+    /// Fee handling setting.
+    pub fn fee_handling(&self) -> FeeHandling {
+        self.fee_handling
     }
 }

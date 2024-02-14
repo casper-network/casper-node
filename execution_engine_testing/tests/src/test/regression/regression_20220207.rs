@@ -17,7 +17,7 @@ const UNAPPROVED_SPENDING_AMOUNT_ERR: Error = Error::Exec(ExecError::Revert(ApiE
 #[test]
 fn should_not_transfer_above_approved_limit() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let args = runtime_args! {
         mint::ARG_AMOUNT => U512::from(1000u64), // What we approved.
@@ -38,7 +38,7 @@ fn should_not_transfer_above_approved_limit() {
 #[test]
 fn should_transfer_within_approved_limit() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let args = runtime_args! {
         mint::ARG_AMOUNT => U512::from(1000u64),
@@ -57,7 +57,7 @@ fn should_transfer_within_approved_limit() {
 #[test]
 fn should_fail_without_amount_arg() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let args = runtime_args! {
         // If `amount` arg is absent, host assumes that limit is 0.

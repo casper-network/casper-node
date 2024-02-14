@@ -17,7 +17,7 @@ const CONTRACT_HASH_KEY: &str = "contract_hash";
 
 fn setup() -> (LmdbWasmTestBuilder, PackageHash, AddressableEntityHash) {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let install_contract_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

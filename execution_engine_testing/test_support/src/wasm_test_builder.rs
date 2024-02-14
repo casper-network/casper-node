@@ -17,15 +17,15 @@ use num_traits::CheckedMul;
 use casper_execution_engine::engine_state::{
     execute_request::ExecuteRequest,
     execution_result::ExecutionResult,
-    run_genesis_request::RunGenesisRequest,
     step::{StepRequest, StepSuccess},
-    EngineConfig, EngineConfigBuilder, EngineState, Error, GenesisSuccess, PruneConfig,
-    PruneResult, StepError, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
+    EngineConfig, EngineConfigBuilder, EngineState, Error, PruneConfig, PruneResult, StepError,
+    DEFAULT_MAX_QUERY_DEPTH,
 };
 use casper_storage::{
     data_access_layer::{
         BalanceResult, BidsRequest, BlockStore, DataAccessLayer, EraValidatorsRequest,
-        EraValidatorsResult, QueryRequest, QueryResult,
+        EraValidatorsResult, GenesisRequest, GenesisResult, ProtocolUpgradeRequest,
+        ProtocolUpgradeResult, QueryRequest, QueryResult,
     },
     global_state::{
         state::{
@@ -55,9 +55,9 @@ use casper_types::{
     },
     AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, ByteCodeAddr, ByteCodeHash,
     CLTyped, CLValue, Contract, DeployHash, DeployInfo, Digest, EntityAddr, EraId, Gas,
-    HandlePaymentCosts, Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolVersion,
-    PublicKey, RefundHandling, StoredValue, SystemContractRegistry, Transfer, TransferAddr, URef,
-    UpgradeConfig, OS_PAGE_SIZE, U512,
+    HandlePaymentCosts, Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolUpgradeConfig,
+    ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemEntityRegistry, Transfer,
+    TransferAddr, URef, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 
@@ -118,7 +118,7 @@ pub struct WasmTestBuilder<S> {
     engine_state: Rc<EngineState<S>>,
     /// [`ExecutionResult`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation.
     exec_results: Vec<Vec<Rc<ExecutionResult>>>,
-    upgrade_results: Vec<Result<UpgradeSuccess, Error>>,
+    upgrade_results: Vec<ProtocolUpgradeResult>,
     prune_results: Vec<Result<PruneResult, Error>>,
     genesis_hash: Option<Digest>,
     /// Post state hash.
@@ -184,10 +184,10 @@ impl GlobalStateMode {
 
 impl LmdbWasmTestBuilder {
     /// Upgrades the execution engine using the scratch trie.
-    pub fn upgrade_with_upgrade_request_using_scratch(
+    pub fn upgrade_using_scratch(
         &mut self,
         engine_config: EngineConfig,
-        upgrade_config: &mut UpgradeConfig,
+        upgrade_config: &mut ProtocolUpgradeConfig,
     ) -> &mut Self {
         let pre_state_hash = self.post_state_hash.expect("should have state hash");
         upgrade_config.with_pre_state_hash(pre_state_hash);
@@ -197,25 +197,23 @@ impl LmdbWasmTestBuilder {
 
         let scratch_state = self.engine_state.get_scratch_engine_state();
         let pre_state_hash = upgrade_config.pre_state_hash();
-        let mut result = scratch_state
-            .commit_upgrade(upgrade_config.clone())
-            .unwrap();
-        result.post_state_hash = self
-            .engine_state
-            .write_scratch_to_db(pre_state_hash, scratch_state.into_inner())
-            .unwrap();
-        self.engine_state.flush_environment().unwrap();
-
-        let result = Ok(result);
-
-        if let Ok(UpgradeSuccess {
-            post_state_hash,
-            effects: _,
-        }) = result
-        {
-            self.post_state_hash = Some(post_state_hash);
-        }
-
+        let req = ProtocolUpgradeRequest::new(upgrade_config.clone());
+        let result = {
+            let result = scratch_state.commit_upgrade(req);
+            if let ProtocolUpgradeResult::Success { effects, .. } = result {
+                let post_state_hash = self
+                    .engine_state
+                    .write_scratch_to_db(pre_state_hash, scratch_state.into_inner())
+                    .unwrap();
+                self.post_state_hash = Some(post_state_hash);
+                ProtocolUpgradeResult::Success {
+                    post_state_hash,
+                    effects,
+                }
+            } else {
+                result
+            }
+        };
         self.upgrade_results.push(result);
         self
     }
@@ -568,36 +566,36 @@ impl<S> WasmTestBuilder<S>
 where
     S: StateProvider + CommitProvider,
 {
-    /// Takes a [`RunGenesisRequest`], executes the request and returns Self.
-    pub fn run_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
-        let GenesisSuccess {
-            post_state_hash,
-            effects,
-        } = self
-            .engine_state
-            .commit_genesis(
-                run_genesis_request.genesis_config_hash(),
-                run_genesis_request.protocol_version(),
-                run_genesis_request.ee_config(),
-                run_genesis_request.chainspec_registry().clone(),
-            )
-            .expect("Unable to get genesis response");
-
-        self.genesis_hash = Some(post_state_hash);
-        self.post_state_hash = Some(post_state_hash);
-        self.system_account = self.get_entity_by_account_hash(*SYSTEM_ADDR);
-        self.genesis_effects = Some(effects);
+    /// Takes a [`GenesisRequest`], executes the request and returns Self.
+    pub fn run_genesis(&mut self, request: GenesisRequest) -> &mut Self {
+        match self.engine_state.commit_genesis(request) {
+            GenesisResult::Fatal(msg) => {
+                panic!("{}", msg);
+            }
+            GenesisResult::Failure(err) => {
+                panic!("{:?}", err);
+            }
+            GenesisResult::Success {
+                post_state_hash,
+                effects,
+            } => {
+                self.genesis_hash = Some(post_state_hash);
+                self.post_state_hash = Some(post_state_hash);
+                self.system_account = self.get_entity_by_account_hash(*SYSTEM_ADDR);
+                self.genesis_effects = Some(effects);
+            }
+        }
         self
     }
 
     fn query_system_contract_registry(
         &self,
         post_state_hash: Option<Digest>,
-    ) -> Option<SystemContractRegistry> {
-        match self.query(post_state_hash, Key::SystemContractRegistry, &[]) {
+    ) -> Option<SystemEntityRegistry> {
+        match self.query(post_state_hash, Key::SystemEntityRegistry, &[]) {
             Ok(StoredValue::CLValue(cl_registry)) => {
                 let system_contract_registry =
-                    CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
+                    CLValue::into_t::<SystemEntityRegistry>(cl_registry).unwrap();
                 Some(system_contract_registry)
             }
             Ok(_) => None,
@@ -808,7 +806,7 @@ where
     pub fn upgrade_with_upgrade_request(
         &mut self,
         engine_config: EngineConfig,
-        upgrade_config: &mut UpgradeConfig,
+        upgrade_config: &mut ProtocolUpgradeConfig,
     ) -> &mut Self {
         self.upgrade_with_upgrade_request_and_config(Some(engine_config), upgrade_config)
     }
@@ -819,7 +817,7 @@ where
     pub fn upgrade_with_upgrade_request_and_config(
         &mut self,
         engine_config: Option<EngineConfig>,
-        upgrade_config: &mut UpgradeConfig,
+        upgrade_config: &mut ProtocolUpgradeConfig,
     ) -> &mut Self {
         let engine_config = engine_config.unwrap_or_else(|| self.engine_state.config().clone());
 
@@ -830,12 +828,12 @@ where
             Rc::get_mut(&mut self.engine_state).expect("should have unique ownership");
         engine_state_mut.update_config(engine_config);
 
-        let result = self.engine_state.commit_upgrade(upgrade_config.clone());
+        let req = ProtocolUpgradeRequest::new(upgrade_config.clone());
+        let result = self.engine_state.commit_upgrade(req);
 
-        if let Ok(UpgradeSuccess {
-            post_state_hash,
-            effects: _,
-        }) = result
+        if let ProtocolUpgradeResult::Success {
+            post_state_hash, ..
+        } = result
         {
             self.post_state_hash = Some(post_state_hash);
         }
@@ -1048,7 +1046,7 @@ where
     }
 
     /// Returns a `Result` containing an [`UpgradeSuccess`].
-    pub fn get_upgrade_result(&self, index: usize) -> Option<&Result<UpgradeSuccess, Error>> {
+    pub fn get_upgrade_result(&self, index: usize) -> Option<&ProtocolUpgradeResult> {
         self.upgrade_results.get(index)
     }
 
@@ -1058,10 +1056,9 @@ where
         let result = self
             .upgrade_results
             .last()
-            .expect("Expected to be called after a system upgrade.")
-            .as_ref();
+            .expect("Expected to be called after a system upgrade.");
 
-        result.unwrap_or_else(|_| panic!("Expected success, got: {:?}", result));
+        assert!(result.is_success(), "Expected success, got: {:?}", result);
 
         self
     }

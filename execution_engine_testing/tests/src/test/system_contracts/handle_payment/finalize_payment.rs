@@ -41,7 +41,7 @@ fn initialize() -> LmdbWasmTestBuilder {
     )
     .build();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -94,7 +94,7 @@ fn finalize_payment_should_refund_to_specified_purse() {
         ARG_PURSE_NAME => LOCAL_REFUND_PURSE,
     };
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let create_purse_request = {
         ExecuteRequestBuilder::standard(

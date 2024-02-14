@@ -98,18 +98,18 @@ pub fn execute_finalized_block(
     key_block_height_for_activation_point: u64,
     prune_batch_size: u64,
 ) -> Result<BlockAndExecutionResults, BlockExecutionError> {
-    if executable_block.height != execution_pre_state.next_block_height {
+    if executable_block.height != execution_pre_state.next_block_height() {
         return Err(BlockExecutionError::WrongBlockHeight {
             executable_block: Box::new(executable_block),
             execution_pre_state: Box::new(execution_pre_state),
         });
     }
-    let ExecutionPreState {
-        pre_state_root_hash,
-        parent_hash,
-        parent_seed,
-        next_block_height,
-    } = execution_pre_state;
+
+    let pre_state_root_hash = execution_pre_state.pre_state_root_hash();
+    let parent_hash = execution_pre_state.parent_hash();
+    let parent_seed = execution_pre_state.parent_seed();
+    let next_block_height = execution_pre_state.next_block_height();
+
     let mut state_root_hash = pre_state_root_hash;
     let mut execution_results: Vec<ExecutionArtifact> =
         Vec::with_capacity(executable_block.transactions.len());

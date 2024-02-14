@@ -44,7 +44,7 @@ fn read_value<T: CLTyped + FromBytes>(builder: &mut LmdbWasmTestBuilder, key: Ke
 fn should_run_named_keys_contract() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     run_command(&mut builder, COMMAND_CREATE_UREF1);
 

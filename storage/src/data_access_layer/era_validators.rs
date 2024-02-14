@@ -55,6 +55,7 @@ impl EraValidatorsResult {
         matches!(self, EraValidatorsResult::Success { .. })
     }
 
+    /// Takes era validators.
     pub fn take_era_validators(self) -> Option<EraValidators> {
         match self {
             EraValidatorsResult::AuctionNotFound

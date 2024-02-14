@@ -20,7 +20,7 @@ fn named_dictionaries_should_work_as_expected() {
         .collect();
 
     let builder = &mut LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
     builder
         .exec(
             ExecuteRequestBuilder::standard(

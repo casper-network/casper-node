@@ -20,6 +20,9 @@ const RUN_EXECUTE_HELP: &str = "time in seconds to execute but not commit a cont
 const APPLY_EFFECT_NAME: &str = "contract_runtime_apply_commit";
 const APPLY_EFFECT_HELP: &str = "time in seconds to commit the execution effects of a contract";
 
+const COMMIT_GENESIS_NAME: &str = "contract_runtime_commit_genesis";
+const COMMIT_GENESIS_HELP: &str = "time in seconds to commit an genesis";
+
 const COMMIT_UPGRADE_NAME: &str = "contract_runtime_commit_upgrade";
 const COMMIT_UPGRADE_HELP: &str = "time in seconds to commit an upgrade";
 
@@ -73,6 +76,7 @@ const EXEC_QUEUE_SIZE_HELP: &str =
 pub struct Metrics {
     pub(super) run_execute: Histogram,
     pub(super) apply_effect: Histogram,
+    pub(super) commit_genesis: Histogram,
     pub(super) commit_upgrade: Histogram,
     pub(super) run_query: Histogram,
     pub(super) commit_step: Histogram,
@@ -135,6 +139,12 @@ impl Metrics {
                 registry,
                 COMMIT_STEP_NAME,
                 COMMIT_STEP_HELP,
+                common_buckets.clone(),
+            )?,
+            commit_genesis: utils::register_histogram_metric(
+                registry,
+                COMMIT_GENESIS_NAME,
+                COMMIT_GENESIS_HELP,
                 common_buckets.clone(),
             )?,
             commit_upgrade: utils::register_histogram_metric(
@@ -214,6 +224,7 @@ impl Drop for Metrics {
     fn drop(&mut self) {
         unregister_metric!(self.registry, self.run_execute);
         unregister_metric!(self.registry, self.apply_effect);
+        unregister_metric!(self.registry, self.commit_genesis);
         unregister_metric!(self.registry, self.commit_upgrade);
         unregister_metric!(self.registry, self.run_query);
         unregister_metric!(self.registry, self.commit_step);

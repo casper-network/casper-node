@@ -58,7 +58,6 @@ use casper_types::{
 };
 
 use crate::{
-    engine_state::ACCOUNT_BYTE_CODE_HASH,
     execution::{self, Error},
     runtime::host_function_flag::HostFunctionFlag,
     runtime_context::RuntimeContext,
@@ -2481,7 +2480,7 @@ where
         match result? {
             Ok(()) => {
                 let protocol_version = self.context.protocol_version();
-                let contract_wasm_hash = *ACCOUNT_BYTE_CODE_HASH;
+                let byte_code_hash = ByteCodeHash::default();
                 let entity_hash = AddressableEntityHash::new(self.context.new_hash_address()?);
                 let package_hash = PackageHash::new(self.context.new_hash_address()?);
                 let main_purse = target_purse;
@@ -2491,7 +2490,7 @@ where
 
                 let entity = AddressableEntity::new(
                     package_hash,
-                    contract_wasm_hash,
+                    byte_code_hash,
                     entry_points,
                     protocol_version,
                     main_purse,

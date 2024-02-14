@@ -52,6 +52,12 @@ impl FromBytes for FeeHandling {
     }
 }
 
+impl Default for FeeHandling {
+    fn default() -> Self {
+        FeeHandling::PayToProposer
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
