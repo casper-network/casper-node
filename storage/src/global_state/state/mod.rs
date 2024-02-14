@@ -380,16 +380,17 @@ pub trait StateProvider {
                                         TrackingCopyError::CLValue(error),
                                     );
                                 }
-                            };
-                        };
-                        warn!(
-                            %key,
-                            type_name = %value.type_name(),
-                            "expected a CLValue::Key or Account to be stored under account hash"
-                        );
-                        return AddressableEntityResult::Failure(
-                            TrackingCopyError::UnexpectedStoredValueVariant,
-                        );
+                            }
+                        } else {
+                            warn!(
+                                %key,
+                                type_name = %value.type_name(),
+                                "expected a CLValue::Key or Account to be stored under account hash"
+                            );
+                            return AddressableEntityResult::Failure(
+                                TrackingCopyError::UnexpectedStoredValueVariant,
+                            );
+                        }
                     }
                 }
             }
