@@ -278,6 +278,7 @@ fn should_accumulate_fees_after_upgrade() {
             .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
             .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
             .with_activation_point(EraId::default())
+            .with_fee_handling(FeeHandling::Accumulate)
             .build()
     };
 

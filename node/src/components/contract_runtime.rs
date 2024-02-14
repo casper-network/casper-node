@@ -26,24 +26,25 @@ use lmdb::DatabaseFlags;
 use prometheus::Registry;
 use tracing::{debug, error, info, trace};
 
-use casper_execution_engine::engine_state::{
-    self, DeployItem, EngineConfigBuilder, EngineState, UpgradeSuccess,
-};
+use casper_execution_engine::engine_state::{DeployItem, EngineConfigBuilder, EngineState};
 
 use casper_storage::{
     data_access_layer::{
         AddressableEntityRequest, BlockStore, DataAccessLayer, ExecutionResultsChecksumRequest,
-        FlushRequest, FlushResult, GenesisRequest, GenesisResult, TrieRequest,
+        FlushRequest, FlushResult, GenesisRequest, GenesisResult, ProtocolUpgradeRequest,
+        ProtocolUpgradeResult, TrieRequest,
     },
     global_state::{
         state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
         transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
-    system::genesis::GenesisError,
+    system::{genesis::GenesisError, protocol_upgrade::ProtocolUpgradeError},
     tracking_copy::TrackingCopyError,
 };
-use casper_types::{Chainspec, ChainspecRawBytes, ChainspecRegistry, Transaction, UpgradeConfig};
+use casper_types::{
+    Chainspec, ChainspecRawBytes, ChainspecRegistry, ProtocolUpgradeConfig, Transaction,
+};
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
@@ -214,6 +215,8 @@ impl ContractRuntime {
         chainspec: &Chainspec,
         chainspec_raw_bytes: &ChainspecRawBytes,
     ) -> GenesisResult {
+        debug!("commit_genesis");
+        let start = Instant::now();
         let protocol_version = chainspec.protocol_config.version;
         let chainspec_hash = chainspec.hash();
         let genesis_config = chainspec.into();
@@ -239,6 +242,10 @@ impl ContractRuntime {
 
         let data_access_layer = Arc::clone(&self.data_access_layer);
         let result = data_access_layer.genesis(genesis_request);
+        self.metrics
+            .commit_genesis
+            .observe(start.elapsed().as_secs_f64());
+        debug!(?result, "upgrade result");
         if result.is_success() {
             let flush_req = FlushRequest::new();
             if let FlushResult::Failure(err) = data_access_layer.flush(flush_req) {
@@ -250,24 +257,30 @@ impl ContractRuntime {
         result
     }
 
+    /// Commits protocol upgrade.
     pub(crate) fn commit_upgrade(
         &self,
-        upgrade_config: UpgradeConfig,
-    ) -> Result<UpgradeSuccess, engine_state::Error> {
+        upgrade_config: ProtocolUpgradeConfig,
+    ) -> ProtocolUpgradeResult {
         debug!(?upgrade_config, "upgrade");
         let start = Instant::now();
-        let scratch_state = self.engine_state.get_scratch_engine_state();
-        let pre_state_hash = upgrade_config.pre_state_hash();
-        let mut result = scratch_state.commit_upgrade(upgrade_config)?;
-        result.post_state_hash = self
-            .engine_state
-            .write_scratch_to_db(pre_state_hash, scratch_state.into_inner())?;
-        self.engine_state.flush_environment()?;
+
+        let upgrade_request = ProtocolUpgradeRequest::new(upgrade_config);
+        let data_access_layer = Arc::clone(&self.data_access_layer);
+        let result = data_access_layer.protocol_upgrade(upgrade_request);
         self.metrics
             .commit_upgrade
             .observe(start.elapsed().as_secs_f64());
         debug!(?result, "upgrade result");
-        Ok(result)
+        if result.is_success() {
+            let flush_req = FlushRequest::new();
+            if let FlushResult::Failure(err) = data_access_layer.flush(flush_req) {
+                return ProtocolUpgradeResult::Failure(ProtocolUpgradeError::TrackingCopyError(
+                    err.into(),
+                ));
+            }
+        }
+        result
     }
 
     /// Handles a contract runtime request.

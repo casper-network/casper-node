@@ -20,7 +20,7 @@ use casper_types::{
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCodeHash, CLValue,
     ContextAccessRights, DeployHash, EntityAddr, EntityKind, EntryPointType, EntryPoints, Gas, Key,
     PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue,
-    SystemContractRegistry, Tagged, URef, KEY_HASH_LENGTH, U256, U512,
+    SystemEntityRegistry, Tagged, URef, KEY_HASH_LENGTH, U256, U512,
 };
 use tempfile::TempDir;
 
@@ -128,7 +128,7 @@ fn new_runtime_context<'a>(
         new_tracking_copy(account_hash, entity_address, addressable_entity.clone());
 
     let default_system_registry = {
-        let mut registry = SystemContractRegistry::new();
+        let mut registry = SystemEntityRegistry::new();
         registry.insert(MINT.to_string(), AddressableEntityHash::default());
         registry.insert(HANDLE_PAYMENT.to_string(), AddressableEntityHash::default());
         registry.insert(
@@ -139,7 +139,7 @@ fn new_runtime_context<'a>(
         StoredValue::CLValue(CLValue::from_t(registry).unwrap())
     };
 
-    tracking_copy.write(Key::SystemContractRegistry, default_system_registry);
+    tracking_copy.write(Key::SystemEntityRegistry, default_system_registry);
 
     let runtime_context = RuntimeContext::new(
         named_keys,
@@ -381,7 +381,7 @@ fn contract_key_addable_valid() {
         .write(contract_key, entity_as_stored_value.clone());
 
     let default_system_registry = {
-        let mut registry = SystemContractRegistry::new();
+        let mut registry = SystemEntityRegistry::new();
         registry.insert(MINT.to_string(), AddressableEntityHash::default());
         registry.insert(HANDLE_PAYMENT.to_string(), AddressableEntityHash::default());
         registry.insert(
@@ -394,7 +394,7 @@ fn contract_key_addable_valid() {
 
     tracking_copy
         .borrow_mut()
-        .write(Key::SystemContractRegistry, default_system_registry);
+        .write(Key::SystemEntityRegistry, default_system_registry);
 
     let uref_as_key = create_uref_as_key(&mut address_generator, AccessRights::WRITE);
     let uref_name = "NewURef".to_owned();

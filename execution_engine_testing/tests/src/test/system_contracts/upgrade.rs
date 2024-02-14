@@ -19,7 +19,7 @@ use casper_types::{
         mint::ROUND_SEIGNIORAGE_RATE_KEY,
     },
     BrTableCost, CLValue, ControlFlowCosts, EntityAddr, EraId, HostFunctionCosts, Key,
-    MessageLimits, OpcodeCosts, ProtocolVersion, StorageCosts, StoredValue, SystemContractRegistry,
+    MessageLimits, OpcodeCosts, ProtocolVersion, StorageCosts, StoredValue, SystemEntityRegistry,
     WasmConfig, DEFAULT_ADD_COST, DEFAULT_BIT_COST, DEFAULT_CONST_COST,
     DEFAULT_CONTROL_FLOW_BLOCK_OPCODE, DEFAULT_CONTROL_FLOW_BR_IF_OPCODE,
     DEFAULT_CONTROL_FLOW_BR_OPCODE, DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER,
@@ -238,12 +238,12 @@ fn should_not_downgrade() {
 
     builder.upgrade_with_upgrade_request_and_config(None, &mut downgrade_request);
 
-    let maybe_upgrade_result = builder.get_upgrade_result(1).expect("should have response");
+    let upgrade_result = builder.get_upgrade_result(1).expect("should have response");
 
     assert!(
-        maybe_upgrade_result.is_err(),
+        !upgrade_result.is_success(),
         "expected failure got {:?}",
-        maybe_upgrade_result
+        upgrade_result
     );
 }
 
@@ -269,9 +269,9 @@ fn should_not_skip_major_versions() {
 
     builder.upgrade_with_upgrade_request_and_config(None, &mut upgrade_request);
 
-    let maybe_upgrade_result = builder.get_upgrade_result(0).expect("should have response");
+    let upgrade_result = builder.get_upgrade_result(0).expect("should have response");
 
-    assert!(maybe_upgrade_result.is_err(), "expected failure");
+    assert!(upgrade_result.is_err(), "expected failure");
 }
 
 #[ignore]
@@ -297,9 +297,9 @@ fn should_allow_skip_minor_versions() {
 
     builder.upgrade_with_upgrade_request_and_config(None, &mut upgrade_request);
 
-    let maybe_upgrade_result = builder.get_upgrade_result(0).expect("should have response");
+    let upgrade_result = builder.get_upgrade_result(0).expect("should have response");
 
-    assert!(!maybe_upgrade_result.is_err(), "expected success");
+    assert!(upgrade_result.is_success(), "expected success");
 }
 
 #[ignore]
@@ -734,7 +734,7 @@ fn should_correctly_migrate_and_prune_system_contract_records() {
             .as_cl_value()
             .cloned()
             .expect("should have cl value");
-        let registry: SystemContractRegistry =
+        let registry: SystemEntityRegistry =
             cl_value.into_t().expect("should have system registry");
 
         registry
@@ -748,7 +748,7 @@ fn should_correctly_migrate_and_prune_system_contract_records() {
         .expect("must convert to StoredValue")
         .into();
 
-    global_state_update.insert(Key::SystemContractRegistry, registry);
+    global_state_update.insert(Key::SystemEntityRegistry, registry);
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()

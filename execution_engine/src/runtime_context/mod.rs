@@ -35,7 +35,7 @@ use casper_types::{
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
     CLValueDictionary, ContextAccessRights, DeployHash, EntityAddr, EntryPointType, Gas,
     GrantedAccess, Key, KeyTag, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
-    RuntimeArgs, StoredValue, SystemContractRegistry, Transfer, TransferAddr, URef, URefAddr,
+    RuntimeArgs, StoredValue, SystemEntityRegistry, Transfer, TransferAddr, URef, URefAddr,
     DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
@@ -763,7 +763,7 @@ where
             | Key::Bid(_)
             | Key::Withdraw(_)
             | Key::Dictionary(_)
-            | Key::SystemContractRegistry
+            | Key::SystemEntityRegistry
             | Key::EraSummary
             | Key::Unbond(_)
             | Key::ChainspecRegistry
@@ -801,7 +801,7 @@ where
             | Key::Bid(_)
             | Key::Withdraw(_)
             | Key::Dictionary(_)
-            | Key::SystemContractRegistry
+            | Key::SystemEntityRegistry
             | Key::EraSummary
             | Key::Unbond(_)
             | Key::ChainspecRegistry
@@ -833,7 +833,7 @@ where
             | Key::Bid(_)
             | Key::Withdraw(_)
             | Key::Dictionary(_)
-            | Key::SystemContractRegistry
+            | Key::SystemEntityRegistry
             | Key::EraSummary
             | Key::Unbond(_)
             | Key::ChainspecRegistry
@@ -1360,7 +1360,7 @@ where
     }
 
     /// Returns system contract registry by querying the global state.
-    pub fn system_contract_registry(&self) -> Result<SystemContractRegistry, Error> {
+    pub fn system_contract_registry(&self) -> Result<SystemEntityRegistry, Error> {
         self.tracking_copy
             .borrow_mut()
             .get_system_contracts()

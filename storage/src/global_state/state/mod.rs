@@ -30,9 +30,10 @@ use crate::{
         era_validators::EraValidatorsResult, AddressableEntityRequest, AddressableEntityResult,
         BalanceRequest, BalanceResult, BidsRequest, BidsResult, EraValidatorsRequest,
         ExecutionResultsChecksumRequest, ExecutionResultsChecksumResult, FlushRequest, FlushResult,
-        GenesisRequest, GenesisResult, PutTrieRequest, PutTrieResult, QueryRequest, QueryResult,
-        RoundSeigniorageRateRequest, RoundSeigniorageRateResult, TotalSupplyRequest,
-        TotalSupplyResult, TrieRequest, TrieResult, EXECUTION_RESULTS_CHECKSUM_NAME,
+        GenesisRequest, GenesisResult, ProtocolUpgradeRequest, ProtocolUpgradeResult,
+        PutTrieRequest, PutTrieResult, QueryRequest, QueryResult, RoundSeigniorageRateRequest,
+        RoundSeigniorageRateResult, TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+        EXECUTION_RESULTS_CHECKSUM_NAME,
     },
     global_state::{
         error::Error as GlobalStateError,
@@ -48,6 +49,7 @@ use crate::{
         auction::bidding::{BiddingRequest, BiddingResult},
         genesis::{GenesisError, GenesisInstaller},
         mint::transfer::{TransferRequest, TransferResult},
+        protocol_upgrade::{ProtocolUpgradeError, ProtocolUpgrader},
     },
     tracking_copy::{TrackingCopy, TrackingCopyError, TrackingCopyExt},
 };
@@ -128,6 +130,39 @@ pub trait CommitProvider: StateProvider {
                 effects,
             },
             Err(err) => GenesisResult::Failure(GenesisError::TrackingCopyError(
+                TrackingCopyError::Storage(err),
+            )),
+        }
+    }
+
+    fn protocol_upgrade(&self, request: ProtocolUpgradeRequest) -> ProtocolUpgradeResult {
+        let pre_state_hash = request.pre_state_hash();
+        let tc = match self.tracking_copy(pre_state_hash) {
+            Ok(Some(tc)) => Rc::new(RefCell::new(tc)),
+            Ok(None) => return ProtocolUpgradeResult::RootNotFound,
+            Err(err) => {
+                return ProtocolUpgradeResult::Failure(ProtocolUpgradeError::TrackingCopyError(
+                    TrackingCopyError::Storage(err),
+                ))
+            }
+        };
+
+        let protocol_upgrader: ProtocolUpgrader<Self> =
+            ProtocolUpgrader::new(request.config().clone(), tc.clone());
+
+        if let Err(err) = protocol_upgrader.upgrade(pre_state_hash) {
+            return err.into();
+        }
+
+        let effects = tc.borrow().effects();
+
+        // commit
+        match self.commit(pre_state_hash, effects.clone()) {
+            Ok(post_state_hash) => ProtocolUpgradeResult::Success {
+                post_state_hash,
+                effects,
+            },
+            Err(err) => ProtocolUpgradeResult::Failure(ProtocolUpgradeError::TrackingCopyError(
                 TrackingCopyError::Storage(err),
             )),
         }

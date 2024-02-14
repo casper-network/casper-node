@@ -108,8 +108,8 @@ pub use chainspec::{
     GenesisConfig, GenesisConfigBuilder, GenesisValidator, GlobalStateUpdate,
     GlobalStateUpdateConfig, GlobalStateUpdateError, HandlePaymentCosts, HighwayConfig,
     HostFunction, HostFunctionCost, HostFunctionCosts, LegacyRequiredFinality, MessageLimits,
-    MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig, RefundHandling, StandardPaymentCosts,
-    StorageCosts, SystemConfig, TransactionConfig, TransactionV1Config, UpgradeConfig,
+    MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig, ProtocolUpgradeConfig, RefundHandling,
+    StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig, TransactionV1Config,
     ValidatorConfig, WasmConfig, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
@@ -134,7 +134,7 @@ pub use cl_type::{named_key_type, CLType, CLTyped};
 
 pub use cl_value::{
     handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError, ChecksumRegistry,
-    DictionaryValue as CLValueDictionary, SystemContractRegistry,
+    DictionaryValue as CLValueDictionary, SystemEntityRegistry,
 };
 pub use contract_wasm::ContractWasm;
 #[doc(inline)]

@@ -208,7 +208,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         const BALANCE_KEY: Key = Key::Balance([42; 32]);
         const WITHDRAW_KEY: Key = Key::Withdraw(AccountHash::new([42; 32]));
         const DICTIONARY_KEY: Key = Key::Dictionary([42; 32]);
-        const SYSTEM_CONTRACT_REGISTRY_KEY: Key = Key::SystemContractRegistry;
+        const SYSTEM_CONTRACT_REGISTRY_KEY: Key = Key::SystemEntityRegistry;
         const ERA_SUMMARY_KEY: Key = Key::EraSummary;
         const UNBOND_KEY: Key = Key::Unbond(AccountHash::new([42; 32]));
         const CHAINSPEC_REGISTRY_KEY: Key = Key::ChainspecRegistry;

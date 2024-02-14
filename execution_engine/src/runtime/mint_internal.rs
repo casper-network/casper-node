@@ -14,8 +14,7 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, CallStackElement},
-    AddressableEntity, CLTyped, CLValue, Key, Phase, StoredValue, SystemContractRegistry, URef,
-    U512,
+    AddressableEntity, CLTyped, CLValue, Key, Phase, StoredValue, SystemEntityRegistry, URef, U512,
 };
 
 use super::Runtime;
@@ -77,7 +76,7 @@ where
         self.context.engine_config().is_administrator(account_hash)
     }
 
-    fn get_system_contract_registry(&self) -> Result<SystemContractRegistry, ProviderError> {
+    fn get_system_contract_registry(&self) -> Result<SystemEntityRegistry, ProviderError> {
         self.context.system_contract_registry().map_err(|err| {
             error!(%err, "unable to obtain system contract registry during transfer");
             ProviderError::SystemContractRegistry

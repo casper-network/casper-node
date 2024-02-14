@@ -41,7 +41,7 @@ use casper_types::{
     ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, Chainspec, ChainspecRegistry, Digest,
     EntityAddr, EntryPoints, EraId, FeeHandling, GenesisAccount, GenesisConfig,
     GenesisConfigBuilder, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
-    RefundHandling, StoredValue, SystemConfig, SystemContractRegistry, Tagged, URef, WasmConfig,
+    RefundHandling, StoredValue, SystemConfig, SystemEntityRegistry, Tagged, URef, WasmConfig,
     U512,
 };
 
@@ -54,21 +54,6 @@ use crate::{
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
 
 const NO_WASM: bool = true;
-
-/// Represents an outcome of a successful genesis run.
-#[derive(Debug)]
-pub struct GenesisSuccess {
-    /// State hash after genesis is committed to the global state.
-    pub post_state_hash: Digest,
-    /// Effects of a successful genesis.
-    pub effects: Effects,
-}
-
-impl fmt::Display for GenesisSuccess {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "Success: {} {:?}", self.post_state_hash, self.effects)
-    }
-}
 
 /// Error returned as a result of a failed genesis process.
 #[derive(Clone, Debug)]
@@ -269,10 +254,9 @@ where
             partial_registry.insert(HANDLE_PAYMENT.to_string(), DEFAULT_ADDRESS.into());
             let cl_registry = CLValue::from_t(partial_registry)
                 .map_err(|error| GenesisError::CLValue(error.to_string()))?;
-            self.tracking_copy.borrow_mut().write(
-                Key::SystemContractRegistry,
-                StoredValue::CLValue(cl_registry),
-            );
+            self.tracking_copy
+                .borrow_mut()
+                .write(Key::SystemEntityRegistry, StoredValue::CLValue(cl_registry));
         }
 
         Ok(total_supply_uref.into())
@@ -841,22 +825,21 @@ where
         let partial_cl_registry = self
             .tracking_copy
             .borrow_mut()
-            .read(&Key::SystemContractRegistry)
+            .read(&Key::SystemEntityRegistry)
             .map_err(|_| GenesisError::FailedToCreateSystemRegistry)?
             .ok_or_else(|| {
                 GenesisError::CLValue("failed to convert registry as stored value".to_string())
             })?
             .into_cl_value()
             .ok_or_else(|| GenesisError::CLValue("failed to convert to CLValue".to_string()))?;
-        let mut partial_registry = CLValue::into_t::<SystemContractRegistry>(partial_cl_registry)
+        let mut partial_registry = CLValue::into_t::<SystemEntityRegistry>(partial_cl_registry)
             .map_err(|error| GenesisError::CLValue(error.to_string()))?;
         partial_registry.insert(contract_name.to_string(), contract_hash);
         let cl_registry = CLValue::from_t(partial_registry)
             .map_err(|error| GenesisError::CLValue(error.to_string()))?;
-        self.tracking_copy.borrow_mut().write(
-            Key::SystemContractRegistry,
-            StoredValue::CLValue(cl_registry),
-        );
+        self.tracking_copy
+            .borrow_mut()
+            .write(Key::SystemEntityRegistry, StoredValue::CLValue(cl_registry));
         Ok(())
     }
 
