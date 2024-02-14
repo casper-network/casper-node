@@ -1,20 +1,24 @@
-use casper_storage::global_state::state::StateReader;
+use tracing::error;
+
+use casper_storage::{
+    global_state::{error::Error as GlobalStateError, state::StateReader},
+    system::{
+        error::ProviderError,
+        mint::{
+            runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+            system_provider::SystemProvider, Mint,
+        },
+    },
+};
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, CallStackElement},
-    AddressableEntity, CLTyped, CLValue, Key, Phase, StoredValue, URef, U512,
+    AddressableEntity, CLTyped, CLValue, Key, Phase, StoredValue, SystemEntityRegistry, URef, U512,
 };
 
 use super::Runtime;
-use crate::{
-    engine_state::SystemContractRegistry,
-    execution,
-    system::mint::{
-        runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
-        system_provider::SystemProvider, Mint,
-    },
-};
+use crate::execution;
 
 impl From<execution::Error> for Option<Error> {
     fn from(exec_error: execution::Error) -> Self {
@@ -30,8 +34,7 @@ impl From<execution::Error> for Option<Error> {
 
 impl<'a, R> RuntimeProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn get_caller(&self) -> AccountHash {
         self.context.get_caller()
@@ -73,12 +76,15 @@ where
         self.context.engine_config().is_administrator(account_hash)
     }
 
-    fn allow_unrestricted_transfers(&self) -> bool {
-        self.context.engine_config().allow_unrestricted_transfers()
+    fn get_system_contract_registry(&self) -> Result<SystemEntityRegistry, ProviderError> {
+        self.context.system_contract_registry().map_err(|err| {
+            error!(%err, "unable to obtain system contract registry during transfer");
+            ProviderError::SystemContractRegistry
+        })
     }
 
-    fn get_system_contract_registry(&self) -> Result<SystemContractRegistry, execution::Error> {
-        self.context.system_contract_registry()
+    fn allow_unrestricted_transfers(&self) -> bool {
+        self.context.engine_config().allow_unrestricted_transfers()
     }
 
     fn is_called_from_standard_payment(&self) -> bool {
@@ -88,17 +94,20 @@ where
     fn read_addressable_entity_by_account_hash(
         &mut self,
         account_hash: AccountHash,
-    ) -> Result<Option<AddressableEntity>, execution::Error> {
+    ) -> Result<Option<AddressableEntity>, ProviderError> {
         self.context
             .read_addressable_entity_by_account_hash(account_hash)
+            .map_err(|err| {
+                error!(%err, "error reading addressable entity by account hash");
+                ProviderError::AddressableEntityByAccountHash(account_hash)
+            })
     }
 }
 
 // TODO: update Mint + StorageProvider to better handle errors
 impl<'a, R> StorageProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn new_uref<T: CLTyped + ToBytes>(&mut self, init: T) -> Result<URef, Error> {
         let cl_value: CLValue = CLValue::from_t(init).map_err(|_| Error::CLValue)?;
@@ -168,8 +177,7 @@ where
 
 impl<'a, R> SystemProvider for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn record_transfer(
         &mut self,
@@ -186,9 +194,4 @@ where
     }
 }
 
-impl<'a, R> Mint for Runtime<'a, R>
-where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<execution::Error>,
-{
-}
+impl<'a, R> Mint for Runtime<'a, R> where R: StateReader<Key, StoredValue, Error = GlobalStateError> {}

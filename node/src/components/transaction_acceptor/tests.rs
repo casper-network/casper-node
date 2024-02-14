@@ -20,8 +20,11 @@ use tempfile::TempDir;
 use thiserror::Error;
 use tokio::time;
 
-use casper_execution_engine::engine_state::{BalanceResult, QueryResult, MAX_PAYMENT_AMOUNT};
-use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
+use casper_execution_engine::engine_state::MAX_PAYMENT_AMOUNT;
+use casper_storage::{
+    data_access_layer::{AddressableEntityResult, BalanceResult, QueryResult},
+    global_state::trie::merkle_proof::TrieMerkleProof,
+};
 use casper_types::{
     account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight},
     addressable_entity::{AddressableEntity, NamedKeys},
@@ -68,7 +71,6 @@ enum Event {
     Storage(#[serde(skip_serializing)] storage::Event),
     #[from]
     TransactionAcceptor(#[serde(skip_serializing)] super::Event),
-    #[from]
     ControlAnnouncement(ControlAnnouncement),
     #[from]
     FatalAnnouncement(FatalAnnouncement),
@@ -93,6 +95,12 @@ impl From<MakeBlockExecutableRequest> for Event {
 impl From<MarkBlockCompletedRequest> for Event {
     fn from(request: MarkBlockCompletedRequest) -> Self {
         Event::Storage(storage::Event::MarkBlockCompletedRequest(request))
+    }
+}
+
+impl From<ControlAnnouncement> for Event {
+    fn from(control_announcement: ControlAnnouncement) -> Self {
+        Event::ControlAnnouncement(control_announcement)
     }
 }
 
@@ -717,7 +725,7 @@ impl reactor::Reactor for Reactor {
             }
             Event::ContractRuntime(event) => match event {
                 ContractRuntimeRequest::Query {
-                    query_request,
+                    request: query_request,
                     responder,
                 } => {
                     let query_result = if let Key::Package(_) = query_request.key() {
@@ -758,10 +766,10 @@ impl reactor::Reactor for Reactor {
                     } else {
                         panic!("expect only queries using Key::Package variant");
                     };
-                    responder.respond(Ok(query_result)).ignore()
+                    responder.respond(query_result).ignore()
                 }
                 ContractRuntimeRequest::GetBalance {
-                    balance_request,
+                    request: balance_request,
                     responder,
                 } => {
                     let proof = TrieMerkleProof::new(
@@ -786,7 +794,7 @@ impl reactor::Reactor for Reactor {
                                 proof: Box::new(proof),
                             }
                         };
-                    responder.respond(Ok(balance_result)).ignore()
+                    responder.respond(balance_result).ignore()
                 }
                 ContractRuntimeRequest::GetAddressableEntity {
                     state_root_hash: _,
@@ -800,10 +808,12 @@ impl reactor::Reactor for Reactor {
                         self.test_scenario,
                         TestScenario::FromPeerMissingAccount(_)
                     ) {
-                        None
+                        AddressableEntityResult::ValueNotFound("missing account".to_string())
                     } else if let Key::Account(account_hash) = key {
                         let account = create_account(account_hash, self.test_scenario);
-                        Some(AddressableEntity::from(account))
+                        AddressableEntityResult::Success {
+                            entity: AddressableEntity::from(account),
+                        }
                     } else if let Key::Hash(..) = key {
                         match self.test_scenario {
                             TestScenario::FromPeerCustomPaymentContract(
@@ -819,7 +829,9 @@ impl reactor::Reactor for Reactor {
                             | TestScenario::FromClientSessionContract(
                                 _,
                                 ContractScenario::MissingContractAtHash,
-                            ) => None,
+                            ) => AddressableEntityResult::ValueNotFound(
+                                "missing contract".to_string(),
+                            ),
                             TestScenario::FromPeerCustomPaymentContract(
                                 ContractScenario::MissingEntryPoint,
                             )
@@ -835,7 +847,9 @@ impl reactor::Reactor for Reactor {
                                 ContractScenario::MissingEntryPoint,
                             ) => {
                                 let contract = Contract::default();
-                                Some(AddressableEntity::from(contract))
+                                AddressableEntityResult::Success {
+                                    entity: AddressableEntity::from(contract),
+                                }
                             }
                             _ => panic!("unexpected GetAddressableEntity: {:?}", key),
                         }

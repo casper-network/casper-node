@@ -61,7 +61,7 @@ fn should_run_ee_1129_underfunded_delegate_call() {
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let auction = builder.get_auction_contract_hash();
 
@@ -125,7 +125,7 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let auction = builder.get_auction_contract_hash();
 
@@ -174,7 +174,7 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
 fn should_run_ee_1129_underfunded_mint_contract_call() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -222,7 +222,7 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
 fn should_not_panic_when_calling_session_contract_by_uref() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -270,7 +270,7 @@ fn should_not_panic_when_calling_session_contract_by_uref() {
 fn should_not_panic_when_calling_payment_contract_by_uref() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -316,7 +316,7 @@ fn should_not_panic_when_calling_payment_contract_by_uref() {
 fn should_not_panic_when_calling_contract_package_by_uref() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -369,7 +369,7 @@ fn should_not_panic_when_calling_contract_package_by_uref() {
 fn should_not_panic_when_calling_payment_versioned_contract_by_uref() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let install_exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -436,7 +436,7 @@ fn do_nothing_without_memory() -> Vec<u8> {
 fn should_not_panic_when_calling_module_without_memory() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let exec_request = {
         let deploy = DeployItemBuilder::new()

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use casper_execution_engine::engine_state::{EngineConfigBuilder, SystemContractRegistry};
+use casper_execution_engine::engine_state::EngineConfigBuilder;
 use num_rational::Ratio;
 
 use casper_engine_test_support::{
@@ -19,19 +19,19 @@ use casper_types::{
         mint::ROUND_SEIGNIORAGE_RATE_KEY,
     },
     BrTableCost, CLValue, ControlFlowCosts, EntityAddr, EraId, HostFunctionCosts, Key,
-    MessageLimits, OpcodeCosts, ProtocolVersion, StorageCosts, StoredValue, WasmConfig,
-    DEFAULT_ADD_COST, DEFAULT_BIT_COST, DEFAULT_CONST_COST, DEFAULT_CONTROL_FLOW_BLOCK_OPCODE,
-    DEFAULT_CONTROL_FLOW_BR_IF_OPCODE, DEFAULT_CONTROL_FLOW_BR_OPCODE,
-    DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER, DEFAULT_CONTROL_FLOW_BR_TABLE_OPCODE,
-    DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE, DEFAULT_CONTROL_FLOW_CALL_OPCODE,
-    DEFAULT_CONTROL_FLOW_DROP_OPCODE, DEFAULT_CONTROL_FLOW_ELSE_OPCODE,
-    DEFAULT_CONTROL_FLOW_END_OPCODE, DEFAULT_CONTROL_FLOW_IF_OPCODE,
-    DEFAULT_CONTROL_FLOW_LOOP_OPCODE, DEFAULT_CONTROL_FLOW_RETURN_OPCODE,
-    DEFAULT_CONTROL_FLOW_SELECT_OPCODE, DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST,
-    DEFAULT_DIV_COST, DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST,
-    DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST, DEFAULT_NOP_COST, DEFAULT_STORE_COST,
-    DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY, U256, U512,
+    MessageLimits, OpcodeCosts, ProtocolVersion, StorageCosts, StoredValue, SystemEntityRegistry,
+    WasmConfig, DEFAULT_ADD_COST, DEFAULT_BIT_COST, DEFAULT_CONST_COST,
+    DEFAULT_CONTROL_FLOW_BLOCK_OPCODE, DEFAULT_CONTROL_FLOW_BR_IF_OPCODE,
+    DEFAULT_CONTROL_FLOW_BR_OPCODE, DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER,
+    DEFAULT_CONTROL_FLOW_BR_TABLE_OPCODE, DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE,
+    DEFAULT_CONTROL_FLOW_CALL_OPCODE, DEFAULT_CONTROL_FLOW_DROP_OPCODE,
+    DEFAULT_CONTROL_FLOW_ELSE_OPCODE, DEFAULT_CONTROL_FLOW_END_OPCODE,
+    DEFAULT_CONTROL_FLOW_IF_OPCODE, DEFAULT_CONTROL_FLOW_LOOP_OPCODE,
+    DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE,
+    DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DIV_COST, DEFAULT_GLOBAL_COST,
+    DEFAULT_GROW_MEMORY_COST, DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST,
+    DEFAULT_LOCAL_COST, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST, DEFAULT_NOP_COST,
+    DEFAULT_STORE_COST, DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY, U256, U512,
 };
 
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
@@ -92,7 +92,7 @@ fn get_upgraded_wasm_config() -> WasmConfig {
 fn should_upgrade_only_protocol_version() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let old_wasm_config = *builder.get_engine_state().config().wasm_config();
 
@@ -126,7 +126,7 @@ fn should_upgrade_only_protocol_version() {
 fn should_allow_only_wasm_costs_patch_version() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -164,7 +164,7 @@ fn should_allow_only_wasm_costs_patch_version() {
 fn should_allow_only_wasm_costs_minor_version() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -202,7 +202,7 @@ fn should_allow_only_wasm_costs_minor_version() {
 fn should_not_downgrade() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let old_wasm_config = *builder.get_engine_state().config().wasm_config();
 
@@ -238,12 +238,12 @@ fn should_not_downgrade() {
 
     builder.upgrade_with_upgrade_request_and_config(None, &mut downgrade_request);
 
-    let maybe_upgrade_result = builder.get_upgrade_result(1).expect("should have response");
+    let upgrade_result = builder.get_upgrade_result(1).expect("should have response");
 
     assert!(
-        maybe_upgrade_result.is_err(),
+        !upgrade_result.is_success(),
         "expected failure got {:?}",
-        maybe_upgrade_result
+        upgrade_result
     );
 }
 
@@ -252,7 +252,7 @@ fn should_not_downgrade() {
 fn should_not_skip_major_versions() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
 
@@ -269,9 +269,9 @@ fn should_not_skip_major_versions() {
 
     builder.upgrade_with_upgrade_request_and_config(None, &mut upgrade_request);
 
-    let maybe_upgrade_result = builder.get_upgrade_result(0).expect("should have response");
+    let upgrade_result = builder.get_upgrade_result(0).expect("should have response");
 
-    assert!(maybe_upgrade_result.is_err(), "expected failure");
+    assert!(upgrade_result.is_err(), "expected failure");
 }
 
 #[ignore]
@@ -279,7 +279,7 @@ fn should_not_skip_major_versions() {
 fn should_allow_skip_minor_versions() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
 
@@ -297,9 +297,9 @@ fn should_allow_skip_minor_versions() {
 
     builder.upgrade_with_upgrade_request_and_config(None, &mut upgrade_request);
 
-    let maybe_upgrade_result = builder.get_upgrade_result(0).expect("should have response");
+    let upgrade_result = builder.get_upgrade_result(0).expect("should have response");
 
-    assert!(!maybe_upgrade_result.is_err(), "expected success");
+    assert!(upgrade_result.is_success(), "expected success");
 }
 
 #[ignore]
@@ -307,7 +307,7 @@ fn should_allow_skip_minor_versions() {
 fn should_upgrade_only_validator_slots() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -364,7 +364,7 @@ fn should_upgrade_only_validator_slots() {
 fn should_upgrade_only_auction_delay() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -421,7 +421,7 @@ fn should_upgrade_only_auction_delay() {
 fn should_upgrade_only_locked_funds_period() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -478,7 +478,7 @@ fn should_upgrade_only_locked_funds_period() {
 fn should_upgrade_only_round_seigniorage_rate() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -539,7 +539,7 @@ fn should_upgrade_only_round_seigniorage_rate() {
 fn should_upgrade_only_unbonding_delay() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -598,7 +598,7 @@ fn should_upgrade_only_unbonding_delay() {
 fn should_apply_global_state_upgrade() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -664,7 +664,7 @@ fn should_apply_global_state_upgrade() {
 fn should_increase_max_associated_keys_after_upgrade() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let sem_ver = PROTOCOL_VERSION.value();
     let new_protocol_version =
@@ -734,7 +734,7 @@ fn should_correctly_migrate_and_prune_system_contract_records() {
             .as_cl_value()
             .cloned()
             .expect("should have cl value");
-        let registry: SystemContractRegistry =
+        let registry: SystemEntityRegistry =
             cl_value.into_t().expect("should have system registry");
 
         registry
@@ -748,7 +748,7 @@ fn should_correctly_migrate_and_prune_system_contract_records() {
         .expect("must convert to StoredValue")
         .into();
 
-    global_state_update.insert(Key::SystemContractRegistry, registry);
+    global_state_update.insert(Key::SystemEntityRegistry, registry);
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()

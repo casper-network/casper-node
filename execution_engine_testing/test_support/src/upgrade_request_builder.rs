@@ -3,7 +3,8 @@ use std::collections::BTreeMap;
 use num_rational::Ratio;
 
 use casper_types::{
-    ChainspecRegistry, Digest, EraId, Key, ProtocolVersion, StoredValue, UpgradeConfig,
+    ChainspecRegistry, Digest, EraId, FeeHandling, Key, ProtocolUpgradeConfig, ProtocolVersion,
+    StoredValue,
 };
 
 /// Builds an `UpgradeConfig`.
@@ -19,6 +20,7 @@ pub struct UpgradeRequestBuilder {
     new_unbonding_delay: Option<u64>,
     global_state_update: BTreeMap<Key, StoredValue>,
     chainspec_registry: ChainspecRegistry,
+    fee_handling: FeeHandling,
 }
 
 impl UpgradeRequestBuilder {
@@ -99,9 +101,15 @@ impl UpgradeRequestBuilder {
         self
     }
 
-    /// Consumes the `UpgradeRequestBuilder` and returns an [`UpgradeConfig`].
-    pub fn build(self) -> UpgradeConfig {
-        UpgradeConfig::new(
+    /// Sets the Chainspec registry.
+    pub fn with_fee_handling(mut self, fee_handling: FeeHandling) -> Self {
+        self.fee_handling = fee_handling;
+        self
+    }
+
+    /// Consumes the `UpgradeRequestBuilder` and returns an [`ProtocolUpgradeConfig`].
+    pub fn build(self) -> ProtocolUpgradeConfig {
+        ProtocolUpgradeConfig::new(
             self.pre_state_hash,
             self.current_protocol_version,
             self.new_protocol_version,
@@ -113,6 +121,7 @@ impl UpgradeRequestBuilder {
             self.new_unbonding_delay,
             self.global_state_update,
             self.chainspec_registry,
+            self.fee_handling,
         )
     }
 }
@@ -131,6 +140,7 @@ impl Default for UpgradeRequestBuilder {
             new_unbonding_delay: None,
             global_state_update: Default::default(),
             chainspec_registry: ChainspecRegistry::new_with_optional_global_state(&[], None),
+            fee_handling: FeeHandling::default(),
         }
     }
 }

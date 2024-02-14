@@ -134,7 +134,7 @@ fn test_match(
 
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     for account in [*ACCOUNT_1_ADDR, *ACCOUNT_2_ADDR] {
         let add_key_request = {

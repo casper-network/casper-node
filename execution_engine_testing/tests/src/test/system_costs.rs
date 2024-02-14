@@ -66,7 +66,7 @@ const ARG_AMOUNT: &str = "amount";
 fn add_bid_and_withdraw_bid_have_expected_costs() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let system_contract_hashes_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -195,7 +195,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
         .build();
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
@@ -324,7 +324,7 @@ fn delegate_and_undelegate_have_expected_costs() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let system_contract_hashes_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -512,7 +512,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
@@ -641,7 +641,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
 fn mint_transfer_has_expected_costs() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let transfer_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -711,7 +711,7 @@ fn mint_transfer_has_expected_costs() {
 fn should_charge_for_erroneous_system_contract_calls() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let auction_hash = builder.get_auction_contract_hash();
     let mint_hash = builder.get_mint_contract_hash();
@@ -842,7 +842,7 @@ fn should_charge_for_erroneous_system_contract_calls() {
 fn should_verify_do_nothing_charges_only_for_standard_payment() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -882,7 +882,7 @@ fn should_verify_do_nothing_charges_only_for_standard_payment() {
 fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let new_opcode_costs = OpcodeCosts {
         bit: 0,

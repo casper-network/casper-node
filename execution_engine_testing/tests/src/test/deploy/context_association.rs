@@ -30,7 +30,7 @@ fn should_put_system_contract_hashes_to_account_context() {
     };
 
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(request)
         .expect_success()
         .commit();

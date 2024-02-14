@@ -5,7 +5,7 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    engine_state::{EngineConfigBuilder, Error, SystemContractRegistry},
+    engine_state::{EngineConfigBuilder, Error},
     execution,
 };
 use casper_types::{
@@ -13,7 +13,8 @@ use casper_types::{
     runtime_args,
     system::{auction, auction::DelegationRate, mint},
     AccessRights, AddressableEntityHash, CLTyped, CLValue, Digest, EraId, Key, PackageHash,
-    ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
+    ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, URef,
+    U512,
 };
 
 use crate::lmdb_fixture;
@@ -35,7 +36,7 @@ const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let transfer = ExecuteRequestBuilder::transfer(
         *DEFAULT_ACCOUNT_ADDR,
@@ -86,7 +87,7 @@ fn apply_global_state_update(
         .as_cl_value()
         .expect("must be CLValue")
         .clone()
-        .into_t::<SystemContractRegistry>()
+        .into_t::<SystemEntityRegistry>()
         .expect("must convert to btree map");
 
     let mut global_state_update = BTreeMap::<Key, StoredValue>::new();
@@ -94,7 +95,7 @@ fn apply_global_state_update(
         .expect("must convert to StoredValue")
         .into();
 
-    global_state_update.insert(Key::SystemContractRegistry, registry);
+    global_state_update.insert(Key::SystemEntityRegistry, registry);
 
     global_state_update
 }

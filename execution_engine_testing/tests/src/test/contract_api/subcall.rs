@@ -43,7 +43,7 @@ fn should_charge_gas_for_subcall() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(do_nothing_request).expect_success().commit();
 
@@ -131,7 +131,7 @@ fn should_add_all_gas_for_subcall() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder
         .exec(add_zero_gas_from_session_request)
@@ -187,7 +187,7 @@ fn expensive_subcall_should_cost_more() {
     let mut builder = LmdbWasmTestBuilder::default();
 
     // store the contracts first
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder
         .exec(store_do_nothing_request)

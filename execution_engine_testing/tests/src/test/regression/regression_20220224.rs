@@ -12,7 +12,7 @@ const CONTRACT_REVERT: &str = "revert.wasm";
 #[test]
 fn should_not_transfer_above_approved_limit_in_payment_code() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let exec_request = {
         let account_hash = *DEFAULT_ACCOUNT_ADDR;

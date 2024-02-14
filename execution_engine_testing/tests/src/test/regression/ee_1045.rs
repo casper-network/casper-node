@@ -111,7 +111,7 @@ fn should_run_ee_1045_squash_validators() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let genesis_validator_weights = builder
         .get_validator_weights(INITIAL_ERA_ID)

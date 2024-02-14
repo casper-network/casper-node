@@ -2,7 +2,7 @@ use std::{collections::BTreeSet, convert::TryFrom};
 
 use casper_wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
-use casper_storage::global_state::state::StateReader;
+use casper_storage::global_state::{error::Error as GlobalStateError, state::StateReader};
 use casper_types::{
     account::AccountHash,
     addressable_entity::{EntryPoints, NamedKeys},
@@ -22,8 +22,7 @@ use crate::resolvers::v1_function_index::FunctionIndex;
 
 impl<'a, R> Externals for Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     fn invoke_index(
         &mut self,

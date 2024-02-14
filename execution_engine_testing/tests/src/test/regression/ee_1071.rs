@@ -20,7 +20,7 @@ fn should_run_ee_1071_regression() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 

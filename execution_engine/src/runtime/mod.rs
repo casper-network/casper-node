@@ -23,7 +23,11 @@ use tracing::error;
 #[cfg(feature = "test-support")]
 use casper_wasmi::RuntimeValue;
 
-use casper_storage::global_state::state::StateReader;
+use casper_storage::{
+    global_state::{error::Error as GlobalStateError, state::StateReader},
+    system::{auction::Auction, handle_payment::HandlePayment, mint::Mint},
+    tracking_copy::TrackingCopyExt,
+};
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
@@ -54,12 +58,9 @@ use casper_types::{
 };
 
 use crate::{
-    engine_state::ACCOUNT_BYTE_CODE_HASH,
     execution::{self, Error},
     runtime::host_function_flag::HostFunctionFlag,
     runtime_context::RuntimeContext,
-    system::{auction::Auction, handle_payment::HandlePayment, mint::Mint},
-    tracking_copy::TrackingCopyExt,
 };
 pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
 pub use wasm_prep::{
@@ -90,8 +91,7 @@ pub struct Runtime<'a, R> {
 
 impl<'a, R> Runtime<'a, R>
 where
-    R: StateReader<Key, StoredValue>,
-    R::Error: Into<Error>,
+    R: StateReader<Key, StoredValue, Error = GlobalStateError>,
 {
     /// Creates a new runtime instance.
     pub(crate) fn new(context: RuntimeContext<'a, R>) -> Self {
@@ -2480,7 +2480,7 @@ where
         match result? {
             Ok(()) => {
                 let protocol_version = self.context.protocol_version();
-                let contract_wasm_hash = *ACCOUNT_BYTE_CODE_HASH;
+                let byte_code_hash = ByteCodeHash::default();
                 let entity_hash = AddressableEntityHash::new(self.context.new_hash_address()?);
                 let package_hash = PackageHash::new(self.context.new_hash_address()?);
                 let main_purse = target_purse;
@@ -2490,7 +2490,7 @@ where
 
                 let entity = AddressableEntity::new(
                     package_hash,
-                    contract_wasm_hash,
+                    byte_code_hash,
                     entry_points,
                     protocol_version,
                     main_purse,

@@ -128,6 +128,14 @@ pub(crate) trait Component<REv> {
     /// The event type that is handled by the component.
     type Event;
 
+    /// Name of the component.
+    fn name(&self) -> &str;
+
+    /// Activate/deactivate a failpoint.
+    fn activate_failpoint(&mut self, _activation: &FailpointActivation) {
+        // Default is to ignore failpoints.
+    }
+
     /// Processes an event, outputting zero or more effects.
     ///
     /// This function must not ever perform any blocking or CPU intensive work, as it is expected
@@ -138,14 +146,6 @@ pub(crate) trait Component<REv> {
         rng: &mut NodeRng,
         event: Self::Event,
     ) -> Effects<Self::Event>;
-
-    /// Name of the component.
-    fn name(&self) -> &str;
-
-    /// Activate/deactivate a failpoint.
-    fn activate_failpoint(&mut self, _activation: &FailpointActivation) {
-        // Default is to ignore failpoints.
-    }
 }
 
 pub(crate) trait InitializedComponent<REv>: Component<REv> {

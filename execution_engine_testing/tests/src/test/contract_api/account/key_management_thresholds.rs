@@ -24,7 +24,7 @@ fn should_verify_key_management_permission_with_low_weight() {
     )
     .build();
     LmdbWasmTestBuilder::default()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .expect_success()
         .commit()
@@ -61,7 +61,7 @@ fn should_verify_key_management_permission_with_sufficient_weight() {
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
     LmdbWasmTestBuilder::default()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .expect_success()
         .commit()

@@ -200,7 +200,7 @@ pub enum Key {
     /// which a dictionary is stored.
     Dictionary(DictionaryAddr),
     /// A `Key` under which system contract hashes are stored.
-    SystemContractRegistry,
+    SystemEntityRegistry,
     /// A `Key` under which current era info is stored.
     EraSummary,
     /// A `Key` under which unbond information is stored.
@@ -385,7 +385,7 @@ impl Key {
             Key::Bid(_) => String::from("Key::Bid"),
             Key::Withdraw(_) => String::from("Key::Unbond"),
             Key::Dictionary(_) => String::from("Key::Dictionary"),
-            Key::SystemContractRegistry => String::from("Key::SystemContractRegistry"),
+            Key::SystemEntityRegistry => String::from("Key::SystemContractRegistry"),
             Key::EraSummary => String::from("Key::EraSummary"),
             Key::Unbond(_) => String::from("Key::Unbond"),
             Key::ChainspecRegistry => String::from("Key::ChainspecRegistry"),
@@ -448,7 +448,7 @@ impl Key {
                     base16::encode_lower(&dictionary_addr)
                 )
             }
-            Key::SystemContractRegistry => {
+            Key::SystemEntityRegistry => {
                 format!(
                     "{}{}",
                     SYSTEM_CONTRACT_REGISTRY_PREFIX,
@@ -633,7 +633,7 @@ impl Key {
                     "Failed to deserialize system registry key".to_string(),
                 )
             })?;
-            return Ok(Key::SystemContractRegistry);
+            return Ok(Key::SystemEntityRegistry);
         }
 
         if let Some(registry_address) = input.strip_prefix(CHAINSPEC_REGISTRY_PREFIX) {
@@ -984,7 +984,7 @@ impl Display for Key {
             Key::Dictionary(addr) => {
                 write!(f, "Key::Dictionary({})", base16::encode_lower(addr))
             }
-            Key::SystemContractRegistry => write!(
+            Key::SystemEntityRegistry => write!(
                 f,
                 "Key::SystemContractRegistry({})",
                 base16::encode_lower(&PADDING_BYTES)
@@ -1049,7 +1049,7 @@ impl Tagged<KeyTag> for Key {
             Key::Bid(_) => KeyTag::Bid,
             Key::Withdraw(_) => KeyTag::Withdraw,
             Key::Dictionary(_) => KeyTag::Dictionary,
-            Key::SystemContractRegistry => KeyTag::SystemContractRegistry,
+            Key::SystemEntityRegistry => KeyTag::SystemContractRegistry,
             Key::EraSummary => KeyTag::EraSummary,
             Key::Unbond(_) => KeyTag::Unbond,
             Key::ChainspecRegistry => KeyTag::ChainspecRegistry,
@@ -1152,7 +1152,7 @@ impl ToBytes for Key {
             Key::Bid(_) => KEY_BID_SERIALIZED_LENGTH,
             Key::Withdraw(_) => KEY_WITHDRAW_SERIALIZED_LENGTH,
             Key::Dictionary(_) => KEY_DICTIONARY_SERIALIZED_LENGTH,
-            Key::SystemContractRegistry => KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH,
+            Key::SystemEntityRegistry => KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH,
             Key::EraSummary => KEY_ERA_SUMMARY_SERIALIZED_LENGTH,
             Key::Unbond(_) => KEY_UNBOND_SERIALIZED_LENGTH,
             Key::ChainspecRegistry => KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH,
@@ -1191,7 +1191,7 @@ impl ToBytes for Key {
             Key::Withdraw(account_hash) => account_hash.write_bytes(writer),
             Key::Dictionary(addr) => addr.write_bytes(writer),
             Key::Unbond(account_hash) => account_hash.write_bytes(writer),
-            Key::SystemContractRegistry
+            Key::SystemEntityRegistry
             | Key::EraSummary
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry => PADDING_BYTES.write_bytes(writer),
@@ -1258,7 +1258,7 @@ impl FromBytes for Key {
             }
             tag if tag == KeyTag::SystemContractRegistry as u8 => {
                 let (_, rem) = <[u8; 32]>::from_bytes(remainder)?;
-                Ok((Key::SystemContractRegistry, rem))
+                Ok((Key::SystemEntityRegistry, rem))
             }
             tag if tag == KeyTag::EraSummary as u8 => {
                 let (_, rem) = <[u8; 32]>::from_bytes(remainder)?;
@@ -1320,7 +1320,7 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::Bid(_) => unimplemented!(),
         Key::Withdraw(_) => unimplemented!(),
         Key::Dictionary(_) => unimplemented!(),
-        Key::SystemContractRegistry => unimplemented!(),
+        Key::SystemEntityRegistry => unimplemented!(),
         Key::EraSummary => unimplemented!(),
         Key::Unbond(_) => unimplemented!(),
         Key::ChainspecRegistry => unimplemented!(),
@@ -1348,7 +1348,7 @@ impl Distribution<Key> for Standard {
             7 => Key::Bid(rng.gen()),
             8 => Key::Withdraw(rng.gen()),
             9 => Key::Dictionary(rng.gen()),
-            10 => Key::SystemContractRegistry,
+            10 => Key::SystemEntityRegistry,
             11 => Key::EraSummary,
             12 => Key::Unbond(rng.gen()),
             13 => Key::ChainspecRegistry,
@@ -1431,7 +1431,7 @@ mod serde_helpers {
                 Key::Bid(account_hash) => BinarySerHelper::Bid(account_hash),
                 Key::Withdraw(account_hash) => BinarySerHelper::Withdraw(account_hash),
                 Key::Dictionary(addr) => BinarySerHelper::Dictionary(addr),
-                Key::SystemContractRegistry => BinarySerHelper::SystemContractRegistry,
+                Key::SystemEntityRegistry => BinarySerHelper::SystemContractRegistry,
                 Key::EraSummary => BinarySerHelper::EraSummary,
                 Key::Unbond(account_hash) => BinarySerHelper::Unbond(account_hash),
                 Key::ChainspecRegistry => BinarySerHelper::ChainspecRegistry,
@@ -1461,7 +1461,7 @@ mod serde_helpers {
                 BinaryDeserHelper::Bid(account_hash) => Key::Bid(account_hash),
                 BinaryDeserHelper::Withdraw(account_hash) => Key::Withdraw(account_hash),
                 BinaryDeserHelper::Dictionary(addr) => Key::Dictionary(addr),
-                BinaryDeserHelper::SystemContractRegistry => Key::SystemContractRegistry,
+                BinaryDeserHelper::SystemContractRegistry => Key::SystemEntityRegistry,
                 BinaryDeserHelper::EraSummary => Key::EraSummary,
                 BinaryDeserHelper::Unbond(account_hash) => Key::Unbond(account_hash),
                 BinaryDeserHelper::ChainspecRegistry => Key::ChainspecRegistry,
@@ -1533,7 +1533,7 @@ mod tests {
     const DELEGATOR_BID_KEY: Key = Key::BidAddr(BidAddr::new_delegator_addr(([2; 32], [9; 32])));
     const WITHDRAW_KEY: Key = Key::Withdraw(AccountHash::new([42; 32]));
     const DICTIONARY_KEY: Key = Key::Dictionary([42; 32]);
-    const SYSTEM_CONTRACT_REGISTRY_KEY: Key = Key::SystemContractRegistry;
+    const SYSTEM_CONTRACT_REGISTRY_KEY: Key = Key::SystemEntityRegistry;
     const ERA_SUMMARY_KEY: Key = Key::EraSummary;
     const UNBOND_KEY: Key = Key::Unbond(AccountHash::new([42; 32]));
     const CHAINSPEC_REGISTRY_KEY: Key = Key::ChainspecRegistry;

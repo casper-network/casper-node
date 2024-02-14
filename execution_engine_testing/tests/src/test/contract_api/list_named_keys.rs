@@ -14,7 +14,7 @@ const ARG_NEW_NAMED_KEYS: &str = "new_named_keys";
 #[test]
 fn should_list_named_keys() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let initial_named_keys: NamedKeys = NamedKeys::new();
 

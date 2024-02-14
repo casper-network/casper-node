@@ -34,7 +34,7 @@ fn should_run_get_phase_contract() {
     };
 
     LmdbWasmTestBuilder::default()
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request)
         .commit()
         .expect_success();
