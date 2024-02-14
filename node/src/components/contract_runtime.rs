@@ -26,7 +26,7 @@ use lmdb::DatabaseFlags;
 use prometheus::Registry;
 use tracing::{debug, error, info, trace};
 
-use casper_execution_engine::engine_state::{DeployItem, EngineConfigBuilder, EngineState};
+use casper_execution_engine::engine_state::{EngineConfigBuilder, EngineState};
 
 use casper_storage::{
     data_access_layer::{
@@ -42,9 +42,7 @@ use casper_storage::{
     system::{genesis::GenesisError, protocol_upgrade::ProtocolUpgradeError},
     tracking_copy::TrackingCopyError,
 };
-use casper_types::{
-    Chainspec, ChainspecRawBytes, ChainspecRegistry, ProtocolUpgradeConfig, Transaction,
-};
+use casper_types::{Chainspec, ChainspecRawBytes, ChainspecRegistry, ProtocolUpgradeConfig};
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
@@ -72,8 +70,8 @@ pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
 use operations::speculatively_execute;
 pub(crate) use types::{
-    BlockAndExecutionResults, ExecutionArtifact, ExecutionPreState, SpeculativeExecutionState,
-    StepEffectsAndUpcomingEraValidators,
+    BlockAndExecutionResults, ExecutionArtifact, ExecutionPreState, SpeculativeExecutionError,
+    SpeculativeExecutionState, StepEffectsAndUpcomingEraValidators,
 };
 use utils::{exec_or_requeue, run_intensive_task};
 
@@ -137,6 +135,7 @@ impl ContractRuntime {
             .with_allow_unrestricted_transfers(chainspec.core_config.allow_unrestricted_transfers)
             .with_refund_handling(chainspec.core_config.refund_handling)
             .with_fee_handling(chainspec.core_config.fee_handling)
+            .with_protocol_version(chainspec.protocol_version())
             .build();
 
         let engine_state = EngineState::new(data_access_layer, engine_config);
@@ -565,24 +564,19 @@ impl ContractRuntime {
                 transaction,
                 responder,
             } => {
-                if let Transaction::Deploy(deploy) = *transaction {
-                    let engine_state = Arc::clone(&self.engine_state);
-                    async move {
-                        let result = run_intensive_task(move || {
-                            speculatively_execute(
-                                engine_state.as_ref(),
-                                execution_prestate,
-                                DeployItem::from(deploy.clone()),
-                            )
-                        })
-                        .await;
-                        responder.respond(result).await
-                    }
-                    .ignore()
-                } else {
-                    unreachable!()
-                    //async move { responder.respond(Ok(None)).await }.ignore()
+                let engine_state = Arc::clone(&self.engine_state);
+                async move {
+                    let result = run_intensive_task(move || {
+                        speculatively_execute(
+                            engine_state.as_ref(),
+                            execution_prestate,
+                            *transaction,
+                        )
+                    })
+                    .await;
+                    responder.respond(result).await
                 }
+                .ignore()
             }
         }
     }

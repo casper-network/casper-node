@@ -2,6 +2,7 @@
 pub mod deploy_item;
 pub mod engine_config;
 mod error;
+/// Module containing the [`ExecuteRequest`] and associated items.
 pub mod execute_request;
 pub(crate) mod execution_kind;
 pub mod execution_result;
@@ -25,10 +26,9 @@ use casper_storage::{
         balance::BalanceResult,
         get_bids::{BidsRequest, BidsResult},
         query::{QueryRequest, QueryResult},
-        transfer::TransferConfig,
+        transfer::{TransferConfig, TransferRequest},
         DataAccessLayer, EraValidatorsRequest, EraValidatorsResult, FlushRequest, FlushResult,
-        GenesisRequest, GenesisResult, ProtocolUpgradeRequest, ProtocolUpgradeResult,
-        TransferRequest, TrieRequest,
+        GenesisRequest, GenesisResult, ProtocolUpgradeRequest, ProtocolUpgradeResult, TrieRequest,
     },
     global_state::{
         self,
@@ -56,9 +56,10 @@ use casper_types::{
         handle_payment::{self, ACCUMULATION_PURSE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT,
     },
-    AddressableEntity, AddressableEntityHash, BlockTime, DeployHash, DeployInfo, Digest,
-    EntityAddr, ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Phase, ProtocolVersion,
-    PublicKey, RuntimeArgs, StoredValue, SystemEntityRegistry, URef, U512,
+    AddressableEntity, AddressableEntityHash, BlockTime, Digest, EntityAddr, FeeHandling, Gas, Key,
+    KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
+    SystemEntityRegistry, TransactionHash, TransactionInfo, TransactionSessionKind,
+    TransactionV1Hash, URef, U512,
 };
 
 pub use self::{
@@ -68,7 +69,9 @@ pub use self::{
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     },
     error::Error,
-    execute_request::ExecuteRequest,
+    execute_request::{
+        ExecuteRequest, NewRequestError, Payment, PaymentInfo, Session, SessionInfo,
+    },
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ForcedTransferResult},
     prune::{PruneConfig, PruneResult},
@@ -76,7 +79,7 @@ pub use self::{
 };
 
 use crate::{
-    engine_state::{execution_kind::ExecutionKind, execution_result::ExecutionResults},
+    engine_state::execution_kind::ExecutionKind,
     execution::{self, DirectSystemContractCall, Executor},
     runtime::RuntimeStack,
 };
@@ -307,49 +310,6 @@ where
         self.state.query(query_request)
     }
 
-    /// Runs a deploy execution request.
-    ///
-    /// For each deploy stored in the request it will execute it.
-    ///
-    /// Currently a special shortcut is taken to distinguish a native transfer, from a deploy.
-    ///
-    /// Return execution results which contains results from each deploy ran.
-    pub fn run_execute(&self, mut exec_request: ExecuteRequest) -> Result<ExecutionResults, Error> {
-        let executor = Executor::new(self.config().clone());
-
-        let deploys = exec_request.take_deploys();
-        let mut results = ExecutionResults::with_capacity(deploys.len());
-
-        for deploy_item in deploys {
-            let result = match deploy_item.session {
-                ExecutableDeployItem::Transfer { .. } => self.transfer(
-                    &executor,
-                    exec_request.protocol_version,
-                    exec_request.parent_state_hash,
-                    BlockTime::new(exec_request.block_time),
-                    deploy_item,
-                    exec_request.proposer.clone(),
-                ),
-                _ => self.deploy(
-                    &executor,
-                    exec_request.protocol_version,
-                    exec_request.parent_state_hash,
-                    BlockTime::new(exec_request.block_time),
-                    deploy_item,
-                    exec_request.proposer.clone(),
-                ),
-            };
-            match result {
-                Ok(result) => results.push_back(result),
-                Err(error) => {
-                    return Err(error);
-                }
-            };
-        }
-
-        Ok(results)
-    }
-
     fn get_named_keys(
         &self,
         entity_addr: EntityAddr,
@@ -378,7 +338,7 @@ where
         Ok(BalanceResult::Success { motes, proof })
     }
 
-    /// Executes a native transfer.
+    /// Executes a transfer.
     ///
     /// Native transfers do not involve WASM at all, and also skip executing payment code.
     /// Therefore this is the fastest and cheapest way to transfer tokens from account to account.
@@ -419,48 +379,57 @@ where
             .map_err(|_| Error::RootNotFound(prestate_hash))
     }
 
-    /// Executes a deploy.
+    /// Executes a transaction.
     ///
-    /// A deploy execution consists of running the payment code, which is expected to deposit funds
-    /// into the payment purse, and then running the session code with a specific gas limit. For
-    /// running payment code, we lock [`MAX_PAYMENT`] amount of motes from the user as collateral.
-    /// If both the payment code and the session code execute successfully, a fraction of the
-    /// unspent collateral will be transferred back to the proposer of the deploy, as specified
-    /// in the request.
+    /// A transaction execution consists of running the payment code, which is expected to deposit
+    /// funds into the payment purse, and then running the session code with a specific gas limit.
+    /// For running payment code, we lock [`MAX_PAYMENT`] amount of motes from the user as
+    /// collateral. If both the payment code and the session code execute successfully, a fraction
+    /// of the unspent collateral will be transferred back to the proposer of the transaction, as
+    /// specified in the request.
     ///
     /// Returns [`ExecutionResult`], or an error condition.
-    #[allow(clippy::too_many_arguments)]
-    pub fn deploy(
+    pub fn execute_transaction(
         &self,
-        executor: &Executor,
-        protocol_version: ProtocolVersion,
-        prestate_hash: Digest,
-        blocktime: BlockTime,
-        deploy_item: DeployItem,
-        proposer: PublicKey,
+        ExecuteRequest {
+            pre_state_hash,
+            block_time,
+            transaction_hash,
+            gas_price,
+            initiator_addr,
+            payment,
+            payment_entry_point,
+            payment_args,
+            session,
+            session_entry_point,
+            session_args,
+            authorization_keys,
+            proposer,
+        }: ExecuteRequest,
     ) -> Result<ExecutionResult, Error> {
         // spec: https://casperlabs.atlassian.net/wiki/spaces/EN/pages/123404576/Payment+code+execution+specification
+        let executor = Executor::new(self.config().clone());
+        let protocol_version = self.config.protocol_version();
 
         // Create tracking copy (which functions as a deploy context)
         // validation_spec_2: prestate_hash check
         // do this second; as there is no reason to proceed if the prestate hash is invalid
-        let tracking_copy = match self.tracking_copy(prestate_hash) {
+        let tracking_copy = match self.tracking_copy(pre_state_hash) {
             Err(gse) => return Ok(ExecutionResult::precondition_failure(Error::Storage(gse))),
-            Ok(None) => return Err(Error::RootNotFound(prestate_hash)),
+            Ok(None) => return Err(Error::RootNotFound(pre_state_hash)),
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
 
         // Get addr bytes from `address` (which is actually a Key)
         // validation_spec_3: account validity
 
-        let authorization_keys = deploy_item.authorization_keys;
-        let account_hash = deploy_item.address;
+        let account_hash = initiator_addr.account_hash();
 
-        if let Err(e) = tracking_copy
+        if let Err(error) = tracking_copy
             .borrow_mut()
             .migrate_account(account_hash, protocol_version)
         {
-            return Ok(ExecutionResult::precondition_failure(e.into()));
+            return Ok(ExecutionResult::precondition_failure(error.into()));
         }
 
         // Get account from tracking copy
@@ -475,13 +444,13 @@ where
                     &self.config().administrative_accounts,
                 ) {
                 Ok((addressable_entity, entity_hash)) => (addressable_entity, entity_hash),
-                Err(e) => return Ok(ExecutionResult::precondition_failure(e.into())),
+                Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
             }
         };
 
-        let entity_kind = entity.entity_kind();
+        let entity_kind = entity.kind();
 
-        let entity_addr = EntityAddr::new_with_tag(entity_kind, entity_hash.value());
+        let entity_addr = EntityAddr::new_of_kind(entity_kind, entity_hash.value());
 
         let entity_named_keys = match self.get_named_keys(entity_addr, Rc::clone(&tracking_copy)) {
             Ok(named_keys) => named_keys,
@@ -490,27 +459,38 @@ where
             }
         };
 
-        let payment = deploy_item.payment;
-        let session = deploy_item.session;
-
-        let deploy_hash = deploy_item.deploy_hash;
-
-        let session_args = session.args().clone();
-
         // Create session code `A` from provided session bytes
         // validation_spec_1: valid wasm bytes
         // we do this upfront as there is no reason to continue if session logic is invalid
-        let session_execution_kind = match ExecutionKind::new(
-            Rc::clone(&tracking_copy),
-            &entity_named_keys,
-            session,
-            &protocol_version,
-            Phase::Session,
-        ) {
-            Ok(execution_kind) => execution_kind,
-            Err(error) => {
-                return Ok(ExecutionResult::precondition_failure(error));
-            }
+        let session_execution_kind = match &session {
+            Session::Stored(invocation_target) => match ExecutionKind::new_stored(
+                &mut *tracking_copy.borrow_mut(),
+                invocation_target.clone(),
+                session_entry_point,
+                &entity_named_keys,
+                protocol_version,
+            ) {
+                Ok(execution_kind) => execution_kind,
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(error));
+                }
+            },
+            Session::ModuleBytes {
+                kind: TransactionSessionKind::Standard,
+                module_bytes,
+            } => ExecutionKind::new_standard(module_bytes),
+            Session::ModuleBytes {
+                kind: TransactionSessionKind::Installer,
+                module_bytes,
+            } => ExecutionKind::new_installer(module_bytes),
+            Session::ModuleBytes {
+                kind: TransactionSessionKind::Upgrader,
+                module_bytes,
+            } => ExecutionKind::new_upgrader(module_bytes),
+            Session::ModuleBytes {
+                kind: TransactionSessionKind::Isolated,
+                module_bytes,
+            } => ExecutionKind::new_isolated(module_bytes),
         };
 
         // Get account main purse balance key
@@ -559,17 +539,15 @@ where
 
         // Get handle payment system contract details
         // payment_code_spec_6: system contract validity
-        let system_contract_registry = tracking_copy.borrow_mut().get_system_entity_registry()?;
+        let system_entity_registry = tracking_copy.borrow_mut().get_system_entity_registry()?;
 
-        let handle_payment_contract_hash = system_contract_registry
-            .get(HANDLE_PAYMENT)
-            .ok_or_else(|| {
+        let handle_payment_contract_hash =
+            system_entity_registry.get(HANDLE_PAYMENT).ok_or_else(|| {
                 error!("Missing system handle payment contract hash");
                 Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
             })?;
 
-        let handle_payment_addr =
-            EntityAddr::new_system_entity_addr(handle_payment_contract_hash.value());
+        let handle_payment_addr = EntityAddr::new_system(handle_payment_contract_hash.value());
 
         let handle_payment_named_keys =
             match self.get_named_keys(handle_payment_addr, Rc::clone(&tracking_copy)) {
@@ -581,10 +559,9 @@ where
 
         // Get payment purse Key from handle payment contract
         // payment_code_spec_6: system contract validity
-        let payment_purse_key =
-            match handle_payment_named_keys.get(handle_payment::PAYMENT_PURSE_KEY) {
-                Some(key) => *key,
-                None => return Ok(ExecutionResult::precondition_failure(Error::Deploy)),
+        let Some(payment_purse_key) =
+            handle_payment_named_keys.get(handle_payment::PAYMENT_PURSE_KEY).copied() else {
+                return Ok(ExecutionResult::precondition_failure(Error::Deploy));
             };
 
         let payment_purse_uref = payment_purse_key
@@ -595,7 +572,7 @@ where
         let mut execution_result_builder = execution_result::ExecutionResultBuilder::new();
 
         let rewards_target_purse =
-            match self.get_rewards_purse(protocol_version, proposer, prestate_hash) {
+            match self.get_rewards_purse(protocol_version, proposer, pre_state_hash) {
                 Ok(target_purse) => target_purse,
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
             };
@@ -615,36 +592,78 @@ where
         };
 
         // Execute provided payment code
+        //
+        // payment_code_spec_1: init pay environment w/ gas limit == (max_payment_cost /
+        // gas_price)
+        let Some(payment_gas_limit) = Gas::from_motes(max_payment_cost, gas_price) else {
+            return Ok(ExecutionResult::precondition_failure(Error::GasConversionOverflow));
+        };
         let payment_result = {
-            // payment_code_spec_1: init pay environment w/ gas limit == (max_payment_cost /
-            // gas_price)
-            let payment_gas_limit = match Gas::from_motes(max_payment_cost, deploy_item.gas_price) {
-                Some(gas) => gas,
-                None => {
-                    return Ok(ExecutionResult::precondition_failure(
-                        Error::GasConversionOverflow,
-                    ))
+            let maybe_custom_payment = match &payment {
+                Payment::Standard => None,
+                Payment::Stored(invocation_target) => {
+                    match ExecutionKind::new_stored(
+                        &mut *tracking_copy.borrow_mut(),
+                        invocation_target.clone(),
+                        payment_entry_point,
+                        &entity_named_keys,
+                        protocol_version,
+                    ) {
+                        Ok(execution_kind) => Some(execution_kind),
+                        Err(error) => {
+                            return Ok(ExecutionResult::precondition_failure(error));
+                        }
+                    }
                 }
+                Payment::ModuleBytes(module_bytes) => {
+                    match ExecutionKind::new_for_payment(module_bytes) {
+                        Ok(execution_kind) => Some(execution_kind),
+                        Err(error) => {
+                            return Ok(ExecutionResult::precondition_failure(error));
+                        }
+                    }
+                }
+                Payment::UseSession => match session_execution_kind.convert_for_payment() {
+                    Ok(execution_kind) => Some(execution_kind),
+                    Err(error) => {
+                        return Ok(ExecutionResult::precondition_failure(error));
+                    }
+                },
             };
 
-            // Create payment code module from bytes
-            // validation_spec_1: valid wasm bytes
-            let phase = Phase::Payment;
+            if let Some(custom_payment) = maybe_custom_payment {
+                // Create payment code module from bytes
+                // validation_spec_1: valid wasm bytes
+                let payment_stack = RuntimeStack::from_account_hash(
+                    account_hash,
+                    self.config.max_runtime_call_stack_height() as usize,
+                );
 
-            let payment_stack = RuntimeStack::from_account_hash(
-                deploy_item.address,
-                self.config.max_runtime_call_stack_height() as usize,
-            );
+                // payment_code_spec_2: execute payment code
+                let payment_access_rights =
+                    entity.extract_access_rights(entity_hash, &entity_named_keys);
 
-            // payment_code_spec_2: execute payment code
-            let payment_access_rights =
-                entity.extract_access_rights(entity_hash, &entity_named_keys);
+                let mut payment_named_keys = entity_named_keys.clone();
 
-            let mut payment_named_keys = entity_named_keys.clone();
-
-            let payment_args = payment.args().clone();
-
-            if payment.is_standard_payment(phase) {
+                executor.exec(
+                    custom_payment,
+                    payment_args,
+                    entity_hash,
+                    &entity,
+                    entity_kind,
+                    &mut payment_named_keys,
+                    payment_access_rights,
+                    authorization_keys.clone(),
+                    account_hash,
+                    block_time,
+                    transaction_hash,
+                    payment_gas_limit,
+                    protocol_version,
+                    Rc::clone(&tracking_copy),
+                    Phase::Payment,
+                    payment_stack,
+                )
+            } else {
                 // Todo potentially could be moved to Executor::Exec
                 match executor.exec_standard_payment(
                     payment_args,
@@ -652,8 +671,8 @@ where
                     entity_kind,
                     authorization_keys.clone(),
                     account_hash,
-                    blocktime,
-                    deploy_hash,
+                    block_time,
+                    transaction_hash,
                     payment_gas_limit,
                     protocol_version,
                     Rc::clone(&tracking_copy),
@@ -664,37 +683,6 @@ where
                         return Ok(ExecutionResult::precondition_failure(error));
                     }
                 }
-            } else {
-                let payment_execution_kind = match ExecutionKind::new(
-                    Rc::clone(&tracking_copy),
-                    &entity_named_keys,
-                    payment,
-                    &protocol_version,
-                    phase,
-                ) {
-                    Ok(execution_kind) => execution_kind,
-                    Err(error) => {
-                        return Ok(ExecutionResult::precondition_failure(error));
-                    }
-                };
-                executor.exec(
-                    payment_execution_kind,
-                    payment_args,
-                    entity_hash,
-                    &entity,
-                    entity_kind,
-                    &mut payment_named_keys,
-                    payment_access_rights,
-                    authorization_keys.clone(),
-                    account_hash,
-                    blocktime,
-                    deploy_hash,
-                    payment_gas_limit,
-                    protocol_version,
-                    Rc::clone(&tracking_copy),
-                    phase,
-                    payment_stack,
-                )
             }
         };
         log_execution_result("payment result", &payment_result);
@@ -710,7 +698,7 @@ where
                 error,
                 max_payment_cost,
                 account_main_purse_balance,
-                payment_result.cost(),
+                payment_result.gas(),
                 entity_main_purse_key,
                 rewards_target_purse_balance_key,
             ) {
@@ -719,23 +707,20 @@ where
             }
         }
 
-        let payment_result_cost = payment_result.cost();
         // payment_code_spec_3: fork based upon payment purse balance and cost of
         // payment code execution
 
         // Get handle payment system contract details
         // payment_code_spec_6: system contract validity
-        let system_contract_registry = tracking_copy.borrow_mut().get_system_entity_registry()?;
+        let system_entity_registry = tracking_copy.borrow_mut().get_system_entity_registry()?;
 
-        let handle_payment_contract_hash = system_contract_registry
-            .get(HANDLE_PAYMENT)
-            .ok_or_else(|| {
+        let handle_payment_contract_hash =
+            system_entity_registry.get(HANDLE_PAYMENT).ok_or_else(|| {
                 error!("Missing system handle payment contract hash");
                 Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
             })?;
 
-        let handle_payment_addr =
-            EntityAddr::new_system_entity_addr(handle_payment_contract_hash.value());
+        let handle_payment_addr = EntityAddr::new_system(handle_payment_contract_hash.value());
 
         let handle_payment_named_keys =
             match self.get_named_keys(handle_payment_addr, Rc::clone(&tracking_copy)) {
@@ -774,7 +759,7 @@ where
         };
 
         if let Some(forced_transfer) =
-            payment_result.check_forced_transfer(payment_purse_balance, deploy_item.gas_price)
+            payment_result.check_forced_transfer(payment_purse_balance, gas_price)
         {
             // Get rewards purse balance key
             // payment_code_spec_6: system contract validity
@@ -786,20 +771,11 @@ where
                     .unwrap_or(Error::InsufficientPayment),
             };
 
-            let gas_cost = match Gas::from_motes(max_payment_cost, deploy_item.gas_price) {
-                Some(gas) => gas,
-                None => {
-                    return Ok(ExecutionResult::precondition_failure(
-                        Error::GasConversionOverflow,
-                    ))
-                }
-            };
-
             match ExecutionResult::new_payment_code_error(
                 error,
                 max_payment_cost,
                 account_main_purse_balance,
-                gas_cost,
+                payment_gas_limit,
                 entity_main_purse_key,
                 rewards_target_purse_balance_key,
             ) {
@@ -809,6 +785,7 @@ where
         };
 
         // Transfer the contents of the rewards purse to block proposer
+        let payment_result_gas = payment_result.gas();
         execution_result_builder.set_payment_execution_result(payment_result);
 
         // Begin session logic handling
@@ -816,7 +793,7 @@ where
         let session_tracking_copy = Rc::new(RefCell::new(post_payment_tracking_copy.fork()));
 
         let session_stack = RuntimeStack::from_account_hash(
-            deploy_item.address,
+            account_hash,
             self.config.max_runtime_call_stack_height() as usize,
         );
 
@@ -830,17 +807,10 @@ where
             // session_code_spec_1: gas limit = ((balance of handle payment payment purse) /
             // gas_price)
             // - (gas spent during payment execution)
-            let session_gas_limit: Gas =
-                match Gas::from_motes(payment_purse_balance, deploy_item.gas_price)
-                    .and_then(|gas| gas.checked_sub(payment_result_cost))
-                {
-                    Some(gas) => gas,
-                    None => {
-                        return Ok(ExecutionResult::precondition_failure(
-                            Error::GasConversionOverflow,
-                        ))
-                    }
-                };
+            let Some(session_gas_limit) = Gas::from_motes(payment_purse_balance, gas_price)
+                .and_then(|gas| gas.checked_sub(payment_result_gas)) else {
+                return Ok(ExecutionResult::precondition_failure(Error::GasConversionOverflow));
+            };
 
             executor.exec(
                 session_execution_kind,
@@ -852,8 +822,8 @@ where
                 session_access_rights,
                 authorization_keys.clone(),
                 account_hash,
-                blocktime,
-                deploy_hash,
+                block_time,
+                transaction_hash,
                 session_gas_limit,
                 protocol_version,
                 Rc::clone(&session_tracking_copy),
@@ -863,26 +833,26 @@ where
         };
         log_execution_result("session result", &session_result);
 
-        // Create + persist deploy info.
+        // Create + persist transaction info.
         {
-            let transfers = session_result.transfers();
-            let cost = payment_result_cost.value() + session_result.cost().value();
-            let deploy_info = DeployInfo::new(
-                deploy_hash,
+            let transfers = session_result.transfers().clone();
+            let gas = payment_result_gas + session_result.gas();
+            let txn_info = TransactionInfo::new(
+                transaction_hash,
                 transfers,
-                account_hash,
+                initiator_addr,
                 entity.main_purse(),
-                cost,
+                gas,
             );
             session_tracking_copy.borrow_mut().write(
-                Key::DeployInfo(deploy_hash),
-                StoredValue::DeployInfo(deploy_info),
+                Key::TransactionInfo(transaction_hash),
+                StoredValue::TransactionInfo(txn_info),
             );
         }
 
         // Session execution was zero cost or provided wasm was malformed.
         // Check if the payment purse can cover the minimum floor for session execution.
-        if (session_result.cost().is_zero() && payment_purse_balance < max_payment_cost)
+        if (session_result.gas().is_zero() && payment_purse_balance < max_payment_cost)
             || should_charge_for_errors_in_wasm(&session_result)
         {
             // When session code structure is valid but still has 0 cost we should propagate the
@@ -896,7 +866,7 @@ where
                 error,
                 max_payment_cost,
                 account_main_purse_balance,
-                session_result.cost(),
+                session_result.gas(),
                 entity_main_purse_key,
                 rewards_target_purse_balance_key,
             ) {
@@ -905,7 +875,7 @@ where
             }
         }
 
-        let post_session_rc = if session_result.is_failure() {
+        let post_session_tc = if session_result.is_failure() {
             // If session code fails we do not include its effects,
             // so we start again from the post-payment state.
             Rc::new(RefCell::new(post_payment_tracking_copy.fork()))
@@ -920,21 +890,19 @@ where
 
         // payment_code_spec_5: run finalize process
         let finalize_result: ExecutionResult = {
-            let post_session_tc = post_session_rc.borrow();
+            let post_session_tc = post_session_tc.borrow();
             let finalization_tc = Rc::new(RefCell::new(post_session_tc.fork()));
 
             let handle_payment_args = {
-                //((gas spent during payment code execution) + (gas spent during session code execution)) * gas_price
-                let finalize_cost_motes = match Motes::from_gas(
-                    execution_result_builder.total_cost(),
-                    deploy_item.gas_price,
-                ) {
-                    Some(motes) => motes,
-                    None => {
-                        return Ok(ExecutionResult::precondition_failure(
-                            Error::GasConversionOverflow,
-                        ))
-                    }
+                // ((gas spent during payment code execution) + (gas spent during session code
+                // execution)) * gas_price
+                let Some(finalize_cost_motes) = Motes::from_gas(
+                    execution_result_builder.gas_used(),
+                    gas_price,
+                ) else {
+                    return Ok(ExecutionResult::precondition_failure(
+                        Error::GasConversionOverflow,
+                    ))
                 };
 
                 let maybe_runtime_args = RuntimeArgs::try_new(|args| {
@@ -954,12 +922,11 @@ where
 
             // The Handle Payment keys may have changed because of effects during payment and/or
             // session, so we need to look them up again from the tracking copy
-            let system_contract_registry =
+            let system_entity_registry =
                 finalization_tc.borrow_mut().get_system_entity_registry()?;
 
-            let handle_payment_contract_hash = system_contract_registry
-                .get(HANDLE_PAYMENT)
-                .ok_or_else(|| {
+            let handle_payment_contract_hash =
+                system_entity_registry.get(HANDLE_PAYMENT).ok_or_else(|| {
                     error!("Missing system handle payment contract hash");
                     Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
                 })?;
@@ -972,8 +939,7 @@ where
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
             };
 
-            let handle_payment_addr =
-                EntityAddr::new_system_entity_addr(handle_payment_contract_hash.value());
+            let handle_payment_addr = EntityAddr::new_system(handle_payment_contract_hash.value());
 
             let handle_payment_named_keys = match finalization_tc
                 .borrow_mut()
@@ -1000,8 +966,8 @@ where
                     EntityKind::Account(system_account_hash),
                     authorization_keys,
                     system_account_hash,
-                    blocktime,
-                    deploy_hash,
+                    block_time,
+                    transaction_hash,
                     gas_limit,
                     protocol_version,
                     finalization_tc,
@@ -1110,15 +1076,15 @@ where
     ) -> EraValidatorsResult {
         let state_root_hash = get_era_validators_request.state_hash();
 
-        let system_contract_registry = match self.get_system_contract_registry(state_root_hash) {
-            Ok(system_contract_registry) => system_contract_registry,
+        let system_entity_registry = match self.get_system_entity_registry(state_root_hash) {
+            Ok(system_entity_registry) => system_entity_registry,
             Err(error) => {
                 error!(%state_root_hash, %error, "auction not found");
                 return EraValidatorsResult::AuctionNotFound;
             }
         };
 
-        let query_request = match system_contract_registry.get(AUCTION).copied() {
+        let query_request = match system_entity_registry.get(AUCTION).copied() {
             Some(auction_hash) => QueryRequest::new(
                 state_root_hash,
                 Key::addressable_entity_key(EntityKindTag::System, auction_hash),
@@ -1233,11 +1199,11 @@ where
 
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
 
-        let deploy_hash = {
+        let txn_hash = {
             // seeds address generator w/ era_end_timestamp_millis
             let mut bytes = time.into_bytes()?;
             bytes.append(&mut next_block_height.into_bytes()?);
-            DeployHash::new(Digest::hash(&bytes))
+            TransactionHash::V1(TransactionV1Hash::new(Digest::hash(&bytes)))
         };
 
         let system_account_hash = PublicKey::System.to_account_hash();
@@ -1253,7 +1219,7 @@ where
                     authorization_keys.clone(),
                     system_account_hash,
                     BlockTime::default(),
-                    deploy_hash,
+                    txn_hash,
                     gas_limit,
                     protocol_version,
                     Rc::clone(&tracking_copy),
@@ -1282,7 +1248,7 @@ where
                     authorization_keys,
                     system_account_hash,
                     BlockTime::default(),
-                    deploy_hash,
+                    txn_hash,
                     gas_limit,
                     protocol_version,
                     Rc::clone(&tracking_copy),
@@ -1334,11 +1300,11 @@ where
         };
 
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
-        let deploy_hash = {
+        let txn_hash = {
             // seeds address generator w/ era_end_timestamp_millis
             let mut bytes = step_request.era_end_timestamp_millis.into_bytes()?;
             bytes.append(&mut step_request.next_era_id.into_bytes()?);
-            DeployHash::new(Digest::hash(&bytes))
+            TransactionHash::V1(TransactionV1Hash::new(Digest::hash(&bytes)))
         };
 
         let slashed_validators: Vec<PublicKey> = step_request.slashed_validators();
@@ -1363,7 +1329,7 @@ where
                     authorization_keys.clone(),
                     system_account_hash,
                     BlockTime::default(),
-                    deploy_hash,
+                    txn_hash,
                     gas_limit,
                     step_request.protocol_version,
                     Rc::clone(&tracking_copy),
@@ -1404,7 +1370,7 @@ where
             authorization_keys,
             system_account_hash,
             BlockTime::default(),
-            deploy_hash,
+            txn_hash,
             gas_limit,
             step_request.protocol_version,
             Rc::clone(&tracking_copy),
@@ -1491,8 +1457,8 @@ where
         Ok(BalanceResult::Success { motes, proof })
     }
 
-    /// Obtains an instance of a system contract registry for a given state root hash.
-    pub fn get_system_contract_registry(
+    /// Obtains an instance of a system entity registry for a given state root hash.
+    pub fn get_system_entity_registry(
         &self,
         state_root_hash: Digest,
     ) -> Result<SystemEntityRegistry, Error> {
@@ -1504,15 +1470,15 @@ where
             .borrow_mut()
             .get_system_entity_registry()
             .map_err(|error| {
-                warn!(%error, "Failed to retrieve system contract registry");
-                Error::MissingSystemContractRegistry
+                warn!(%error, "Failed to retrieve system entity registry");
+                Error::MissingSystemEntityRegistry
             });
         result
     }
 
     /// Returns mint system contract hash.
     pub fn get_system_mint_hash(&self, state_hash: Digest) -> Result<AddressableEntityHash, Error> {
-        let registry = self.get_system_contract_registry(state_hash)?;
+        let registry = self.get_system_entity_registry(state_hash)?;
         let mint_hash = registry.get(MINT).ok_or_else(|| {
             error!("Missing system mint contract hash");
             Error::MissingSystemContractHash(MINT.to_string())
@@ -1525,7 +1491,7 @@ where
         &self,
         state_hash: Digest,
     ) -> Result<AddressableEntityHash, Error> {
-        let registry = self.get_system_contract_registry(state_hash)?;
+        let registry = self.get_system_entity_registry(state_hash)?;
         let auction_hash = registry.get(AUCTION).ok_or_else(|| {
             error!("Missing system auction contract hash");
             Error::MissingSystemContractHash(AUCTION.to_string())
@@ -1538,7 +1504,7 @@ where
         &self,
         state_hash: Digest,
     ) -> Result<AddressableEntityHash, Error> {
-        let registry = self.get_system_contract_registry(state_hash)?;
+        let registry = self.get_system_entity_registry(state_hash)?;
         let handle_payment = registry.get(HANDLE_PAYMENT).ok_or_else(|| {
             error!("Missing system handle payment contract hash");
             Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
@@ -1557,12 +1523,12 @@ fn log_execution_result(preamble: &'static str, result: &ExecutionResult) {
     match result {
         ExecutionResult::Success {
             transfers,
-            cost,
+            gas,
             effects,
             messages,
         } => {
             debug!(
-                %cost,
+                %gas,
                 transfer_count = %transfers.len(),
                 transforms_count = %effects.len(),
                 messages_count = %messages.len(),
@@ -1573,13 +1539,13 @@ fn log_execution_result(preamble: &'static str, result: &ExecutionResult) {
         ExecutionResult::Failure {
             error,
             transfers,
-            cost,
+            gas,
             effects,
             messages,
         } => {
             debug!(
                 %error,
-                %cost,
+                %gas,
                 transfer_count = %transfers.len(),
                 transforms_count = %effects.len(),
                 messages_count = %messages.len(),
@@ -1595,7 +1561,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
         ExecutionResult::Failure {
             error,
             transfers: _,
-            cost: _,
+            gas: _,
             effects: _,
             messages: _,
         } => match error {
@@ -1643,7 +1609,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::InvalidEntity(_)
                 | ExecError::MissingArgument { .. }
                 | ExecError::DictionaryItemKeyExceedsLength
-                | ExecError::MissingSystemContractRegistry
+                | ExecError::MissingSystemEntityRegistry
                 | ExecError::MissingSystemContractHash(_)
                 | ExecError::RuntimeStackOverflow
                 | ExecError::ValueTooLarge
@@ -1655,11 +1621,10 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::Transform(_)
                 | ExecError::InvalidEntryPointType
                 | ExecError::InvalidMessageTopicOperation
-                | ExecError::InvalidUtf8Encoding(_) => false,
-                ExecError::DisabledUnrestrictedTransfers => false,
+                | ExecError::InvalidUtf8Encoding(_)
+                | ExecError::DisabledUnrestrictedTransfers => false,
             },
-            Error::WasmPreprocessing(_) => true,
-            Error::WasmSerialization(_) => true,
+            Error::WasmPreprocessing(_) | Error::WasmSerialization(_) => true,
             Error::RootNotFound(_)
             | Error::InvalidProtocolVersion(_)
             | Error::Genesis(_)
@@ -1676,8 +1641,9 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
             | Error::InvalidKeyVariant
             | Error::ProtocolUpgrade(_)
             | Error::InvalidDeployItemVariant(_)
+            | Error::EmptyCustomPaymentModuleBytes
             | Error::CommitError(_)
-            | Error::MissingSystemContractRegistry
+            | Error::MissingSystemEntityRegistry
             | Error::MissingSystemContractHash(_)
             | Error::MissingChecksumRegistry
             | Error::RuntimeStackOverflow

@@ -184,6 +184,11 @@ impl TransactionV1 {
         self.body.args()
     }
 
+    /// Consumes `self`, returning the runtime args of the transaction.
+    pub fn take_args(self) -> RuntimeArgs {
+        self.body.take_args()
+    }
+
     /// Returns the target of the transaction.
     pub fn target(&self) -> &TransactionTarget {
         self.body.target()
@@ -207,6 +212,18 @@ impl TransactionV1 {
     /// Returns the approvals for this transaction.
     pub fn approvals(&self) -> &BTreeSet<TransactionV1Approval> {
         &self.approvals
+    }
+
+    /// Consumes `self`, returning a tuple of its constituent parts.
+    pub fn destructure(
+        self,
+    ) -> (
+        TransactionV1Hash,
+        TransactionV1Header,
+        TransactionV1Body,
+        BTreeSet<TransactionV1Approval>,
+    ) {
+        (self.hash, self.header, self.body, self.approvals)
     }
 
     /// Adds a signature of this transaction's hash to its approvals.

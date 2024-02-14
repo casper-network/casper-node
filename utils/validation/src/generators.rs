@@ -11,15 +11,15 @@ use casper_types::{
     addressable_entity::{
         ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind, MessageTopics, NamedKeys,
     },
-    package::{EntityVersions, Groups, Package, PackageStatus},
     system::auction::{
         Bid, BidAddr, BidKind, Delegator, EraInfo, SeigniorageAllocation, UnbondingPurse,
         ValidatorBid, WithdrawPurse,
     },
     AccessRights, AddressableEntityHash, ByteCode, ByteCodeHash, ByteCodeKind, CLType, CLTyped,
-    CLValue, DeployHash, DeployInfo, EntityVersionKey, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, EraId, Group, Key, PackageHash, Parameter, ProtocolVersion,
-    PublicKey, SecretKey, StoredValue, Transfer, TransferAddr, URef, U512,
+    CLValue, DeployHash, DeployInfo, EntityVersionKey, EntityVersions, EntryPoint,
+    EntryPointAccess, EntryPointType, EntryPoints, EraId, Gas, Group, Groups, InitiatorAddr, Key,
+    Package, PackageHash, PackageStatus, Parameter, ProtocolVersion, PublicKey, SecretKey,
+    StoredValue, TransactionHash, Transfer, TransferAddr, URef, U512,
 };
 use casper_validation::{
     abi::{ABIFixture, ABITestCase},
@@ -67,13 +67,13 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
     };
 
     let transfer = Transfer::new(
-        DeployHash::from_raw([44; 32]),
-        AccountHash::new([100; 32]),
+        TransactionHash::from(DeployHash::from_raw([44; 32])),
+        InitiatorAddr::from(AccountHash::new([100; 32])),
         Some(AccountHash::new([101; 32])),
         URef::new([10; 32], AccessRights::WRITE),
         URef::new([11; 32], AccessRights::WRITE),
         U512::from(15_000_000_000u64),
-        U512::from(2_500_000_000u64),
+        Gas::new(2_500_000_000u64),
         Some(1),
     );
     let deploy_info = DeployInfo::new(
@@ -208,7 +208,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         const BALANCE_KEY: Key = Key::Balance([42; 32]);
         const WITHDRAW_KEY: Key = Key::Withdraw(AccountHash::new([42; 32]));
         const DICTIONARY_KEY: Key = Key::Dictionary([42; 32]);
-        const SYSTEM_CONTRACT_REGISTRY_KEY: Key = Key::SystemEntityRegistry;
+        const SYSTEM_ENTITY_REGISTRY_KEY: Key = Key::SystemEntityRegistry;
         const ERA_SUMMARY_KEY: Key = Key::EraSummary;
         const UNBOND_KEY: Key = Key::Unbond(AccountHash::new([42; 32]));
         const CHAINSPEC_REGISTRY_KEY: Key = Key::ChainspecRegistry;
@@ -269,8 +269,8 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             ABITestCase::from_inputs(vec![DICTIONARY_KEY.into()])?,
         );
         keys.insert(
-            "SystemContractRegistry".to_string(),
-            ABITestCase::from_inputs(vec![SYSTEM_CONTRACT_REGISTRY_KEY.into()])?,
+            "SystemEntityRegistry".to_string(),
+            ABITestCase::from_inputs(vec![SYSTEM_ENTITY_REGISTRY_KEY.into()])?,
         );
         keys.insert(
             "EraSummary".to_string(),

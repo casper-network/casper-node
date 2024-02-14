@@ -49,7 +49,7 @@ const TRANSFER_FROM_MAIN_PURSE_AMOUNT: u64 = 2_000_000_u64;
 #[ignore]
 #[test]
 fn host_function_metrics_has_acceptable_size() {
-    let size = utils::read_wasm_file_bytes(CONTRACT_HOST_FUNCTION_METRICS).len();
+    let size = utils::read_wasm_file(CONTRACT_HOST_FUNCTION_METRICS).len();
     assert!(
         size <= HOST_FUNCTION_METRICS_MAX_SIZE,
         "Performance regression: contract host-function-metrics became {} bytes long; up to {} bytes long would be acceptable.",

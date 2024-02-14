@@ -128,7 +128,7 @@ fn finalize_payment_should_refund_to_specified_purse() {
     let exec_request = {
         let genesis_account_hash = *DEFAULT_ACCOUNT_ADDR;
 
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_session_code("do_nothing.wasm", RuntimeArgs::default())
@@ -136,7 +136,7 @@ fn finalize_payment_should_refund_to_specified_purse() {
             .with_authorization_keys(&[genesis_account_hash])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();

@@ -75,7 +75,7 @@ fn should_run_ee_1129_underfunded_delegate_call() {
         auction::ARG_AMOUNT => bid_amount,
     };
 
-    let deploy = DeployItemBuilder::new()
+    let deploy_item = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_stored_session_hash(auction, auction::METHOD_DELEGATE, args)
         .with_empty_payment_bytes(runtime_args! {
@@ -85,15 +85,13 @@ fn should_run_ee_1129_underfunded_delegate_call() {
         .with_deploy_hash(deploy_hash)
         .build();
 
-    let exec_request = ExecuteRequestBuilder::new().push_deploy(deploy).build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
     builder.exec(exec_request).commit();
 
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .get(0)
-        .expect("should have first result")
         .as_error()
         .cloned()
         .expect("should have error");
@@ -139,7 +137,7 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
             auction::ARG_DELEGATION_RATE => delegation_rate,
     };
 
-    let deploy = DeployItemBuilder::new()
+    let deploy_item = DeployItemBuilder::new()
         .with_address(*VALIDATOR_1_ADDR)
         .with_stored_session_hash(auction, auction::METHOD_ADD_BID, args)
         .with_empty_payment_bytes(runtime_args! {
@@ -149,15 +147,13 @@ fn should_run_ee_1129_underfunded_add_bid_call() {
         .with_deploy_hash(deploy_hash)
         .build();
 
-    let exec_request = ExecuteRequestBuilder::new().push_deploy(deploy).build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
     builder.exec(exec_request).commit();
 
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .get(0)
-        .expect("should have first result")
         .as_error()
         .cloned()
         .expect("should have error");
@@ -184,7 +180,7 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
     .build();
 
     let exec_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_session_named_key(CONTRACT_KEY, ENTRY_POINT_NAME, RuntimeArgs::default())
             .with_empty_payment_bytes(runtime_args! {
@@ -194,7 +190,7 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
             .with_deploy_hash([42; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder.exec(install_exec_request).expect_success().commit();
@@ -204,8 +200,6 @@ fn should_run_ee_1129_underfunded_mint_contract_call() {
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .get(0)
-        .expect("should have first result")
         .as_error()
         .cloned()
         .expect("should have error");
@@ -232,7 +226,7 @@ fn should_not_panic_when_calling_session_contract_by_uref() {
     .build();
 
     let exec_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_session_named_key(ACCESS_KEY, ENTRY_POINT_NAME, RuntimeArgs::default())
             .with_empty_payment_bytes(runtime_args! {
@@ -242,7 +236,7 @@ fn should_not_panic_when_calling_session_contract_by_uref() {
             .with_deploy_hash([42; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder.exec(install_exec_request).expect_success().commit();
@@ -252,8 +246,6 @@ fn should_not_panic_when_calling_session_contract_by_uref() {
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .get(0)
-        .expect("should have first result")
         .as_error()
         .cloned()
         .expect("should have error");
@@ -280,7 +272,7 @@ fn should_not_panic_when_calling_payment_contract_by_uref() {
     .build();
 
     let exec_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::new())
             .with_stored_payment_named_key(ACCESS_KEY, ENTRY_POINT_NAME, RuntimeArgs::new())
@@ -288,7 +280,7 @@ fn should_not_panic_when_calling_payment_contract_by_uref() {
             .with_deploy_hash([42; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder.exec(install_exec_request).expect_success().commit();
@@ -298,8 +290,6 @@ fn should_not_panic_when_calling_payment_contract_by_uref() {
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .get(0)
-        .expect("should have first result")
         .as_error()
         .cloned()
         .expect("should have error");
@@ -326,7 +316,7 @@ fn should_not_panic_when_calling_contract_package_by_uref() {
     .build();
 
     let exec_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 ACCESS_KEY,
@@ -341,7 +331,7 @@ fn should_not_panic_when_calling_contract_package_by_uref() {
             .with_deploy_hash([42; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder.exec(install_exec_request).expect_success().commit();
@@ -351,8 +341,6 @@ fn should_not_panic_when_calling_contract_package_by_uref() {
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .get(0)
-        .expect("should have first result")
         .as_error()
         .cloned()
         .expect("should have error");
@@ -379,7 +367,7 @@ fn should_not_panic_when_calling_payment_versioned_contract_by_uref() {
     .build();
 
     let exec_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::new())
             .with_stored_versioned_payment_contract_by_name(
@@ -392,7 +380,7 @@ fn should_not_panic_when_calling_payment_versioned_contract_by_uref() {
             .with_deploy_hash([42; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder.exec(install_exec_request).expect_success().commit();
@@ -402,8 +390,6 @@ fn should_not_panic_when_calling_payment_versioned_contract_by_uref() {
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .get(0)
-        .expect("should have first result")
         .as_error()
         .cloned()
         .expect("should have error");
@@ -439,7 +425,7 @@ fn should_not_panic_when_calling_module_without_memory() {
     builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let exec_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_bytes(do_nothing_without_memory(), RuntimeArgs::new())
             .with_empty_payment_bytes(runtime_args! {
@@ -449,7 +435,7 @@ fn should_not_panic_when_calling_module_without_memory() {
             .with_deploy_hash([42; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder.exec(exec_request).commit();
@@ -457,8 +443,6 @@ fn should_not_panic_when_calling_module_without_memory() {
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .get(0)
-        .expect("should have first result")
         .as_error()
         .cloned()
         .expect("should have error");

@@ -15,7 +15,6 @@ use serde::Serialize;
 use smallvec::SmallVec;
 use static_assertions::const_assert;
 
-use casper_execution_engine::engine_state::{self};
 use casper_storage::data_access_layer::{
     get_bids::{BidsRequest, BidsResult},
     AddressableEntityResult, BalanceRequest, BalanceResult, EraValidatorsRequest,
@@ -40,6 +39,7 @@ use crate::{
             TrieAccumulatorError, TrieAccumulatorResponse,
         },
         consensus::{ClContext, ProposedBlock, ValidatorChange},
+        contract_runtime::{SpeculativeExecutionError, SpeculativeExecutionState},
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
@@ -47,7 +47,6 @@ use crate::{
         transaction_acceptor,
         upgrade_watcher::NextUpgrade,
     },
-    contract_runtime::SpeculativeExecutionState,
     reactor::main_reactor::ReactorState,
     rpcs::docs::OpenRpcSchema,
     types::{
@@ -960,7 +959,7 @@ pub(crate) enum ContractRuntimeRequest {
         /// Transaction to execute.
         transaction: Box<Transaction>,
         /// Results
-        responder: Responder<Result<Option<(ExecutionResultV2, Messages)>, engine_state::Error>>,
+        responder: Responder<Result<(ExecutionResultV2, Messages), SpeculativeExecutionError>>,
     },
 }
 

@@ -4,8 +4,8 @@ use rand::Rng;
 
 use casper_execution_engine::engine_state::deploy_item::DeployItem;
 use casper_types::{
-    account::AccountHash, AddressableEntityHash, DeployHash, EntityVersion, ExecutableDeployItem,
-    HashAddr, PackageHash, RuntimeArgs,
+    account::AccountHash, bytesrepr::Bytes, AddressableEntityHash, DeployHash, EntityVersion,
+    ExecutableDeployItem, HashAddr, PackageHash, RuntimeArgs,
 };
 
 use crate::{utils, DEFAULT_GAS_PRICE};
@@ -38,7 +38,11 @@ impl DeployItemBuilder {
     }
 
     /// Sets the payment bytes for the deploy.
-    pub fn with_payment_bytes(mut self, module_bytes: Vec<u8>, args: RuntimeArgs) -> Self {
+    pub fn with_payment_bytes<T: Into<Bytes>>(
+        mut self,
+        module_bytes: T,
+        args: RuntimeArgs,
+    ) -> Self {
         self.deploy_item.payment_code = Some(ExecutableDeployItem::ModuleBytes {
             module_bytes: module_bytes.into(),
             args,
@@ -53,7 +57,7 @@ impl DeployItemBuilder {
 
     /// Sets the payment bytes of a deploy by reading a file and passing [`RuntimeArgs`].
     pub fn with_payment_code<T: AsRef<Path>>(self, file_name: T, args: RuntimeArgs) -> Self {
-        let module_bytes = utils::read_wasm_file_bytes(file_name);
+        let module_bytes = utils::read_wasm_file(file_name);
         self.with_payment_bytes(module_bytes, args)
     }
 
@@ -120,7 +124,11 @@ impl DeployItemBuilder {
     }
 
     /// Sets the session bytes for the deploy.
-    pub fn with_session_bytes(mut self, module_bytes: Vec<u8>, args: RuntimeArgs) -> Self {
+    pub fn with_session_bytes<T: Into<Bytes>>(
+        mut self,
+        module_bytes: T,
+        args: RuntimeArgs,
+    ) -> Self {
         self.deploy_item.session_code = Some(ExecutableDeployItem::ModuleBytes {
             module_bytes: module_bytes.into(),
             args,
@@ -130,7 +138,7 @@ impl DeployItemBuilder {
 
     /// Sets the session code for the deploy using a wasm file.
     pub fn with_session_code<T: AsRef<Path>>(self, file_name: T, args: RuntimeArgs) -> Self {
-        let module_bytes = utils::read_wasm_file_bytes(file_name);
+        let module_bytes = utils::read_wasm_file(file_name);
         self.with_session_bytes(module_bytes, args)
     }
 

@@ -14,8 +14,8 @@ use super::{
     InitiatorAddrAndSecretKey, PricingMode, TransactionV1, TransactionV1Body,
 };
 use crate::{
-    account::AccountHash, bytesrepr::Bytes, CLValue, CLValueError, EntityAddr, EntityVersion,
-    PackageAddr, PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, URef, U512,
+    bytesrepr::Bytes, AddressableEntityHash, CLValue, CLValueError, EntityVersion, PackageHash,
+    PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, TransferTarget, URef, U512,
 };
 #[cfg(any(feature = "testing", test))]
 use crate::{testing::TestRng, TransactionConfig, TransactionV1Approval, TransactionV1Hash};
@@ -78,14 +78,13 @@ impl<'a> TransactionV1Builder<'a> {
     }
 
     /// Returns a new `TransactionV1Builder` suitable for building a native transfer transaction.
-    pub fn new_transfer<A: Into<U512>>(
-        source: URef,
-        target: URef,
+    pub fn new_transfer<A: Into<U512>, T: Into<TransferTarget>>(
         amount: A,
-        maybe_to: Option<AccountHash>,
+        maybe_source: Option<URef>,
+        target: T,
         maybe_id: Option<u64>,
     ) -> Result<Self, CLValueError> {
-        let args = arg_handling::new_transfer_args(source, target, amount, maybe_to, maybe_id)?;
+        let args = arg_handling::new_transfer_args(amount, maybe_source, target, maybe_id)?;
         let body = TransactionV1Body::new(
             args,
             TransactionTarget::Native,
@@ -196,10 +195,10 @@ impl<'a> TransactionV1Builder<'a> {
     /// Returns a new `TransactionV1Builder` suitable for building a transaction targeting a stored
     /// entity.
     pub fn new_targeting_invocable_entity<E: Into<String>>(
-        addr: EntityAddr,
+        hash: AddressableEntityHash,
         entry_point: E,
     ) -> Self {
-        let id = TransactionInvocationTarget::new_invocable_entity(addr.value());
+        let id = TransactionInvocationTarget::new_invocable_entity(hash);
         Self::new_targeting_stored(id, entry_point)
     }
 
@@ -216,11 +215,11 @@ impl<'a> TransactionV1Builder<'a> {
     /// Returns a new `TransactionV1Builder` suitable for building a transaction targeting a
     /// package.
     pub fn new_targeting_package<E: Into<String>>(
-        addr: PackageAddr,
+        hash: PackageHash,
         version: Option<EntityVersion>,
         entry_point: E,
     ) -> Self {
-        let id = TransactionInvocationTarget::new_package(addr, version);
+        let id = TransactionInvocationTarget::new_package(hash, version);
         Self::new_targeting_stored(id, entry_point)
     }
 
@@ -327,8 +326,8 @@ impl<'a> TransactionV1Builder<'a> {
     ///
     /// If not provided, the public key derived from the secret key used in the builder will be
     /// used as the `InitiatorAddr::PublicKey` in the transaction.
-    pub fn with_initiator_addr(mut self, initiator_addr: InitiatorAddr) -> Self {
-        self.initiator_addr = Some(initiator_addr);
+    pub fn with_initiator_addr<I: Into<InitiatorAddr>>(mut self, initiator_addr: I) -> Self {
+        self.initiator_addr = Some(initiator_addr.into());
         self
     }
 

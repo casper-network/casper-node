@@ -147,15 +147,10 @@ fn gh_1470_call_contract_should_verify_group_access() {
 
     builder.exec(call_contract_request).commit();
 
-    let response = builder
+    let exec_result = builder
         .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let call_contract_error = exec_response
-        .as_error()
-        .cloned()
-        .expect("should have error");
+    let call_contract_error = exec_result.as_error().cloned().expect("should have error");
 
     let call_versioned_contract_request = {
         let args = runtime_args! {
@@ -167,12 +162,10 @@ fn gh_1470_call_contract_should_verify_group_access() {
 
     builder.exec(call_versioned_contract_request).commit();
 
-    let response = builder
+    let exec_result = builder
         .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let call_versioned_contract_error = exec_response.as_error().expect("should have error");
+    let call_versioned_contract_error = exec_result.as_error().expect("should have error");
 
     match (&call_contract_error, &call_versioned_contract_error) {
         (
@@ -484,15 +477,10 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
 
     builder.exec(call_contract_request).commit();
 
-    let response = builder
+    let exec_result = builder
         .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let call_contract_error = exec_response
-        .as_error()
-        .cloned()
-        .expect("should have error");
+    let call_contract_error = exec_result.as_error().cloned().expect("should have error");
 
     let call_versioned_contract_request = {
         let args = runtime_args! {
@@ -505,12 +493,10 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
 
     builder.exec(call_versioned_contract_request).commit();
 
-    let response = builder
+    let exec_result = builder
         .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let call_versioned_contract_error = exec_response.as_error().expect("should have error");
+    let call_versioned_contract_error = exec_result.as_error().expect("should have error");
 
     let expected = gh_1470_regression::Arg1Type::cl_type();
     let found = gh_1470_regression::Arg3Type::cl_type();
@@ -591,15 +577,10 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
 
     builder.exec(call_contract_request).commit();
 
-    let response = builder
+    let exec_result = builder
         .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let call_contract_error = exec_response
-        .as_error()
-        .cloned()
-        .expect("should have error");
+    let call_contract_error = exec_result.as_error().cloned().expect("should have error");
 
     let call_versioned_contract_request = {
         let args = runtime_args! {
@@ -612,12 +593,10 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
 
     builder.exec(call_versioned_contract_request).commit();
 
-    let response = builder
+    let exec_result = builder
         .get_last_exec_result()
         .expect("should have last response");
-    assert_eq!(response.len(), 1);
-    let exec_response = response.last().expect("should have response");
-    let call_versioned_contract_error = exec_response.as_error().expect("should have error");
+    let call_versioned_contract_error = exec_result.as_error().expect("should have error");
 
     let expected = gh_1470_regression::Arg3Type::cl_type();
     let found = gh_1470_regression::Arg4Type::cl_type();
@@ -684,9 +663,7 @@ fn should_transfer_after_major_version_bump_from_1_2_0() {
         mint::ARG_ID => Some(1u64),
     };
 
-    let transfer = ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args)
-        .with_protocol_version(new_protocol_version)
-        .build();
+    let transfer = ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args).build();
 
     println!("About to execute");
 
@@ -729,9 +706,7 @@ fn should_transfer_after_minor_version_bump_from_1_2_0() {
         .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
-    let transfer = ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args)
-        .with_protocol_version(new_protocol_version)
-        .build();
+    let transfer = ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args).build();
     builder.exec(transfer).expect_success().commit();
 }
 
@@ -771,7 +746,6 @@ fn should_add_bid_after_major_bump() {
             auction::ARG_DELEGATION_RATE => BID_DELEGATION_RATE,
         },
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     builder.exec(add_bid_request).expect_success().commit();
@@ -820,7 +794,6 @@ fn should_add_bid_after_minor_bump() {
             auction::ARG_DELEGATION_RATE => BID_DELEGATION_RATE,
         },
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     builder.exec(add_bid_request).expect_success().commit();
@@ -865,7 +838,6 @@ fn should_wasm_transfer_after_major_bump() {
             ARG_TARGET => AccountHash::new([1; 32]),
         },
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     builder.exec(wasm_transfer).expect_success().commit();
@@ -913,7 +885,6 @@ fn should_wasm_transfer_after_minor_bump() {
             ARG_TARGET => AccountHash::new([1; 32]),
         },
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     builder.exec(wasm_transfer).expect_success().commit();

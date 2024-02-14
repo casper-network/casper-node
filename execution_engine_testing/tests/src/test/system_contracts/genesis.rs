@@ -7,11 +7,12 @@ use casper_engine_test_support::{
     DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
+use casper_execution_engine::engine_state::engine_config::DEFAULT_FEE_HANDLING;
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     account::AccountHash, addressable_entity::EntityKindTag, system::auction::DelegationRate,
     GenesisAccount, GenesisConfigBuilder, GenesisValidator, Key, Motes, ProtocolVersion, PublicKey,
-    SecretKey, StoredValue, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING, U512,
+    SecretKey, StoredValue, DEFAULT_REFUND_HANDLING, U512,
 };
 
 const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];

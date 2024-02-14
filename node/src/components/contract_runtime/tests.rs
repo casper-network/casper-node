@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{iter, sync::Arc, time::Duration};
 
 use derive_more::{Display, From};
 use prometheus::Registry;
@@ -8,7 +8,7 @@ use tempfile::TempDir;
 
 use casper_types::{
     bytesrepr::Bytes, runtime_args, BlockHash, Chainspec, ChainspecRawBytes, Deploy, Digest, EraId,
-    ExecutableDeployItem, PublicKey, SecretKey, TimeDiff, Timestamp, U512,
+    ExecutableDeployItem, PublicKey, SecretKey, TimeDiff, Timestamp, Transaction, U512,
 };
 
 use super::*;
@@ -304,7 +304,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
         },
     };
 
-    let txns: Vec<Transaction> = std::iter::repeat_with(|| {
+    let txns: Vec<Transaction> = iter::repeat_with(|| {
         let target_public_key = PublicKey::random(rng);
         let session = ExecutableDeployItem::Transfer {
             args: runtime_args! {
@@ -396,6 +396,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
 mod trie_chunking_tests {
     use std::sync::Arc;
 
+    use casper_execution_engine::engine_state::engine_config::DEFAULT_FEE_HANDLING;
     use casper_storage::global_state::{
         state::StateProvider,
         trie::{Pointer, Trie},
@@ -406,7 +407,7 @@ mod trie_chunking_tests {
         execution::{Transform, TransformKind},
         testing::TestRng,
         ActivationPoint, CLValue, Chainspec, ChunkWithProof, CoreConfig, Digest, EraId, Key,
-        ProtocolConfig, StoredValue, TimeDiff, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,
+        ProtocolConfig, StoredValue, TimeDiff, DEFAULT_REFUND_HANDLING,
     };
     use prometheus::Registry;
     use tempfile::tempdir;

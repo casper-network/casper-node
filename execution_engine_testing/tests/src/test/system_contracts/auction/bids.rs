@@ -837,16 +837,12 @@ fn should_release_founder_stake() {
 
         builder.exec(full_unbond).commit();
 
-        let error = {
-            let response = builder
-                .get_last_exec_result()
-                .expect("should have last exec result");
-            let exec_response = response.last().expect("should have response");
-            exec_response
-                .as_error()
-                .cloned()
-                .expect("should have error")
-        };
+        let error = builder
+            .get_last_exec_result()
+            .expect("should have last exec result")
+            .as_error()
+            .cloned()
+            .expect("should have error");
         assert_matches!(
             error,
             engine_state::Error::Exec(execution::Error::Revert(ApiError::AuctionError(15)))
@@ -2360,16 +2356,12 @@ fn should_not_partially_undelegate_uninitialized_vesting_schedule() {
     .build();
 
     builder.exec(partial_undelegate).commit();
-    let error = {
-        let response = builder
-            .get_last_exec_result()
-            .expect("should have last exec result");
-        let exec_response = response.last().expect("should have response");
-        exec_response
-            .as_error()
-            .cloned()
-            .expect("should have error")
-    };
+    let error = builder
+        .get_last_exec_result()
+        .expect("should have last exec result")
+        .as_error()
+        .cloned()
+        .expect("should have error");
 
     assert!(matches!(
         error,
@@ -2434,16 +2426,12 @@ fn should_not_fully_undelegate_uninitialized_vesting_schedule() {
     .build();
 
     builder.exec(full_undelegate).commit();
-    let error = {
-        let response = builder
-            .get_last_exec_result()
-            .expect("should have last exec result");
-        let exec_response = response.last().expect("should have response");
-        exec_response
-            .as_error()
-            .cloned()
-            .expect("should have error")
-    };
+    let error = builder
+        .get_last_exec_result()
+        .expect("should have last exec result")
+        .as_error()
+        .cloned()
+        .expect("should have error");
 
     assert!(matches!(
         error,
@@ -2566,16 +2554,12 @@ fn should_not_undelegate_vfta_holder_stake() {
     )
     .build();
     builder.exec(partial_unbond).commit();
-    let error = {
-        let response = builder
-            .get_last_exec_result()
-            .expect("should have last exec result");
-        let exec_response = response.last().expect("should have response");
-        exec_response
-            .as_error()
-            .cloned()
-            .expect("should have error")
-    };
+    let error = builder
+        .get_last_exec_result()
+        .expect("should have last exec result")
+        .as_error()
+        .cloned()
+        .expect("should have error");
 
     assert!(matches!(
         error,
@@ -2632,16 +2616,12 @@ fn should_release_vfta_holder_stake() {
 
         builder.exec(full_undelegate).commit();
 
-        let error = {
-            let response = builder
-                .get_last_exec_result()
-                .expect("should have last exec result");
-            let exec_response = response.last().expect("should have response");
-            exec_response
-                .as_error()
-                .cloned()
-                .expect("should have error")
-        };
+        let error = builder
+            .get_last_exec_result()
+            .expect("should have last exec result")
+            .as_error()
+            .cloned()
+            .expect("should have error");
 
         assert!(
             matches!(

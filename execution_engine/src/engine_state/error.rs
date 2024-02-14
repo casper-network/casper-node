@@ -74,12 +74,15 @@ pub enum Error {
     /// Invalid deploy item variant.
     #[error("Unsupported deploy item variant: {0}")]
     InvalidDeployItemVariant(String),
+    /// Empty module bytes cannot be used for custom payment.
+    #[error("empty module bytes cannot be used for custom payment")]
+    EmptyCustomPaymentModuleBytes,
     /// Commit error.
     #[error(transparent)]
     CommitError(#[from] CommitError),
-    /// Missing system contract registry.
-    #[error("Missing system contract registry")]
-    MissingSystemContractRegistry,
+    /// Missing system entity registry.
+    #[error("Missing system entity registry")]
+    MissingSystemEntityRegistry,
     /// Missing system contract hash.
     #[error("Missing system contract hash: {0}")]
     MissingSystemContractHash(String),

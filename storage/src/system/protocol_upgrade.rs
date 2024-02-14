@@ -12,7 +12,6 @@ use casper_types::{
     },
     bytesrepr::{self, ToBytes},
     execution::Effects,
-    package::{EntityVersions, Groups, PackageStatus},
     system::{
         auction::{
             BidAddr, BidKind, ValidatorBid, AUCTION_DELAY_KEY, LOCKED_FUNDS_PERIOD_KEY,
@@ -23,9 +22,10 @@ use casper_types::{
         SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeAddr, ByteCodeHash,
-    ByteCodeKind, CLValue, CLValueError, Digest, EntityAddr, EntryPoints, FeeHandling, Key, KeyTag,
-    Package, PackageHash, Phase, ProtocolUpgradeConfig, ProtocolVersion, PublicKey, StoredValue,
-    SystemEntityRegistry, URef, U512,
+    ByteCodeKind, CLValue, CLValueError, Digest, EntityAddr, EntityVersions, EntryPoints,
+    FeeHandling, Groups, Key, KeyTag, Package, PackageHash, PackageStatus, Phase,
+    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, StoredValue, SystemEntityRegistry, URef,
+    U512,
 };
 
 use crate::{
@@ -73,8 +73,8 @@ pub enum ProtocolUpgradeError {
     /// (De)serialization error.
     #[error("Bytesrepr error: {0}")]
     Bytesrepr(String),
-    /// Failed to create system contract registry.
-    #[error("Failed to insert system contract registry")]
+    /// Failed to create system entity registry.
+    #[error("Failed to insert system entity registry")]
     FailedToCreateSystemRegistry,
     /// Found unexpected variant of a stored value.
     #[error("Unexpected stored value variant")]
@@ -206,8 +206,8 @@ where
         }
     }
 
-    fn system_contract_registry(&self) -> Result<SystemEntityRegistry, ProtocolUpgradeError> {
-        debug!("system contract registry");
+    fn system_entity_registry(&self) -> Result<SystemEntityRegistry, ProtocolUpgradeError> {
+        debug!("system entity registry");
         let registry = if let Ok(registry) =
             self.tracking_copy.borrow_mut().get_system_entity_registry()
         {
@@ -240,7 +240,7 @@ where
     /// Handle system entities.
     pub fn handle_system_entities(&self) -> Result<SystemEntityAddresses, ProtocolUpgradeError> {
         debug!("handle system entities");
-        let mut registry = self.system_contract_registry()?;
+        let mut registry = self.system_entity_registry()?;
 
         let mint = *registry.get(MINT).ok_or_else(|| {
             error!("Missing system mint entity hash");
@@ -355,7 +355,7 @@ where
             .write(entity_key, StoredValue::AddressableEntity(new_entity));
 
         if let Some(named_keys) = maybe_named_keys {
-            let entity_addr = EntityAddr::new_system_entity_addr(contract_hash.value());
+            let entity_addr = EntityAddr::new_system(contract_hash.value());
 
             for (string, key) in named_keys.into_inner().into_iter() {
                 let entry_addr = NamedKeyAddr::new_from_string(entity_addr, string.clone())
@@ -446,7 +446,7 @@ where
         if let Some(StoredValue::AddressableEntity(system_entity)) = self
             .tracking_copy
             .borrow_mut()
-            .read(&Key::AddressableEntity(EntityAddr::new_system_entity_addr(
+            .read(&Key::AddressableEntity(EntityAddr::new_system(
                 contract_hash.value(),
             )))
             .map_err(|_| {
@@ -598,7 +598,7 @@ where
         let (addressable_entity, maybe_named_keys, _) =
             self.retrieve_system_entity(*handle_payment_hash, system_contract)?;
 
-        let entity_addr = EntityAddr::new_system_entity_addr(handle_payment_hash.value());
+        let entity_addr = EntityAddr::new_system(handle_payment_hash.value());
 
         if let Some(named_keys) = maybe_named_keys {
             for (string, key) in named_keys.into_inner().into_iter() {
@@ -669,7 +669,7 @@ where
         if let Some(new_validator_slots) = self.config.new_validator_slots() {
             debug!(%new_validator_slots, "handle new validator slots");
             // if new total validator slots is provided, update auction contract state
-            let auction_addr = EntityAddr::new_system_entity_addr(auction.value());
+            let auction_addr = EntityAddr::new_system(auction.value());
             let auction_named_keys = self
                 .tracking_copy
                 .borrow_mut()
@@ -695,7 +695,7 @@ where
     ) -> Result<(), ProtocolUpgradeError> {
         if let Some(new_auction_delay) = self.config.new_auction_delay() {
             debug!(%new_auction_delay, "handle new auction delay");
-            let auction_addr = EntityAddr::new_system_entity_addr(auction.value());
+            let auction_addr = EntityAddr::new_system(auction.value());
 
             let auction_named_keys = self
                 .tracking_copy
@@ -722,7 +722,7 @@ where
     ) -> Result<(), ProtocolUpgradeError> {
         if let Some(new_locked_funds_period) = self.config.new_locked_funds_period_millis() {
             debug!(%new_locked_funds_period,"handle new locked funds period millis");
-            let auction_addr = EntityAddr::new_system_entity_addr(auction.value());
+            let auction_addr = EntityAddr::new_system(auction.value());
 
             let auction_named_keys = self
                 .tracking_copy
@@ -751,7 +751,7 @@ where
         // based on the previous unbonding delay.
         if let Some(new_unbonding_delay) = self.config.new_unbonding_delay() {
             debug!(%new_unbonding_delay,"handle new unbonding delay");
-            let auction_addr = EntityAddr::new_system_entity_addr(auction.value());
+            let auction_addr = EntityAddr::new_system(auction.value());
 
             let auction_named_keys = self
                 .tracking_copy
@@ -783,7 +783,7 @@ where
                 Ratio::new(numer.into(), denom.into())
             };
 
-            let mint_addr = EntityAddr::new_system_entity_addr(mint.value());
+            let mint_addr = EntityAddr::new_system(mint.value());
 
             let mint_named_keys = self.tracking_copy.borrow_mut().get_named_keys(mint_addr)?;
 

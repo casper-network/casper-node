@@ -131,7 +131,6 @@ fn should_observe_stack_height_limit() {
             module_bytes,
             RuntimeArgs::default(),
         )
-        .with_protocol_version(*NEW_PROTOCOL_VERSION)
         .build()
     };
 
@@ -155,7 +154,6 @@ fn should_observe_stack_height_limit() {
             module_bytes,
             RuntimeArgs::default(),
         )
-        .with_protocol_version(*NEW_PROTOCOL_VERSION)
         .build()
     };
 

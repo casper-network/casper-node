@@ -4,11 +4,9 @@ use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state::{
-    self,
-    execution_result::{ExecutionResultAndMessages, ExecutionResults},
-    step::EvictItem,
-    DeployItem, EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult, PruneConfig,
-    PruneResult, StepError, StepRequest, StepSuccess,
+    self, execution_result::ExecutionResultAndMessages, step::EvictItem, EngineState,
+    ExecuteRequest, ExecutionResult as EngineExecutionResult, PruneConfig, PruneResult, StepError,
+    StepRequest, StepSuccess,
 };
 use casper_storage::{
     data_access_layer::{
@@ -22,16 +20,16 @@ use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     contract_messages::Messages,
     execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
-    BlockV2, CLValue, ChecksumRegistry, DeployHash, Digest, EraEndV2, EraId, Gas, Key,
-    ProtocolVersion, PublicKey, Transaction, U512,
+    BlockTime, BlockV2, CLValue, ChecksumRegistry, Digest, EraEndV2, EraId, Gas, Key,
+    ProtocolVersion, PublicKey, Transaction, TransactionHash, TransactionHeader, U512,
 };
 
 use crate::{
     components::{
         contract_runtime::{
             error::BlockExecutionError, types::StepEffectsAndUpcomingEraValidators,
-            BlockAndExecutionResults, ExecutionPreState, Metrics, SpeculativeExecutionState,
-            APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
+            BlockAndExecutionResults, ExecutionPreState, Metrics, SpeculativeExecutionError,
+            SpeculativeExecutionState, APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
         },
         fetcher::FetchItem,
     },
@@ -69,7 +67,7 @@ pub fn execute_finalized_block(
     let mut state_root_hash = pre_state_root_hash;
     let mut execution_results: Vec<ExecutionArtifact> =
         Vec::with_capacity(executable_block.transactions.len());
-    // Run any deploys that must be executed
+    // Run any transactions that must be executed
     let block_time = executable_block.timestamp.millis();
     let start = Instant::now();
     let txn_ids = executable_block
@@ -96,9 +94,10 @@ pub fn execute_finalized_block(
     }
 
     for transaction in executable_block.transactions {
-        let (deploy_hash, deploy) = match transaction {
+        let (txn_hash, txn) = match transaction {
             Transaction::Deploy(deploy) => {
                 let deploy_hash = *deploy.hash();
+                let txn_hash = TransactionHash::Deploy(deploy_hash);
                 if deploy.is_transfer() {
                     // native transfers are routed to the data provider
                     let authorization_keys = deploy
@@ -122,11 +121,9 @@ pub fn execute_finalized_block(
                     );
                     // native transfer auto-commits
                     let transfer_result = data_access_layer.transfer(transfer_req);
-                    trace!(?deploy_hash, ?transfer_result, "native transfer result");
-                    match EngineExecutionResult::from_transfer_result(
-                        transfer_result,
-                        Gas::new(U512::zero()),
-                    ) {
+                    trace!(%txn_hash, ?transfer_result, "native transfer result");
+                    match EngineExecutionResult::from_transfer_result(transfer_result, Gas::zero())
+                    {
                         Err(_) => return Err(BlockExecutionError::RootNotFound(state_root_hash)),
                         Ok(exec_result) => {
                             let ExecutionResultAndMessages {
@@ -136,8 +133,8 @@ pub fn execute_finalized_block(
                             let versioned_execution_result =
                                 ExecutionResult::from(execution_result);
                             execution_results.push(ExecutionArtifact::new(
-                                deploy_hash,
-                                deploy.header().clone(),
+                                txn_hash,
+                                TransactionHeader::Deploy(deploy.header().clone()),
                                 versioned_execution_result,
                                 messages,
                             ));
@@ -145,42 +142,51 @@ pub fn execute_finalized_block(
                     }
                     continue;
                 }
-                (deploy_hash, deploy)
+                (
+                    TransactionHash::Deploy(deploy_hash),
+                    Transaction::Deploy(deploy),
+                )
             }
-            Transaction::V1(_) => continue,
+            txn @ Transaction::V1(_) => (txn.hash(), txn),
         };
 
-        let deploy_header = deploy.header().clone();
+        if txn.is_native() {
+            todo!("route native transactions to data access layer");
+        }
+
+        let txn_header = match &txn {
+            Transaction::Deploy(deploy) => TransactionHeader::from(deploy.header().clone()),
+            Transaction::V1(v1_txn) => TransactionHeader::from(v1_txn.header().clone()),
+        };
         let execute_request = ExecuteRequest::new(
             state_root_hash,
-            block_time,
-            vec![DeployItem::from(deploy)],
-            protocol_version,
-            PublicKey::clone(&executable_block.proposer),
-        );
+            BlockTime::new(block_time),
+            txn,
+            (*executable_block.proposer).clone(),
+        )?;
 
-        let result = execute(&scratch_state, metrics.clone(), execute_request)?;
+        let exec_result_and_msgs = execute(&scratch_state, metrics.clone(), execute_request)?;
 
-        trace!(?deploy_hash, ?result, "deploy execution result");
+        trace!(%txn_hash, ?exec_result_and_msgs, "transaction execution result");
         // As for now a given state is expected to exist.
-        let (state_hash, execution_result, messages) = commit_execution_results(
+        let new_state_root_hash = commit_execution_result(
             &scratch_state,
             // data_access_layer,
             metrics.clone(),
             state_root_hash,
-            deploy_hash,
-            result,
+            txn_hash,
+            &exec_result_and_msgs.execution_result,
         )?;
         execution_results.push(ExecutionArtifact::new(
-            deploy_hash,
-            deploy_header,
-            execution_result,
-            messages,
+            txn_hash,
+            txn_header,
+            ExecutionResult::from(exec_result_and_msgs.execution_result),
+            exec_result_and_msgs.messages,
         ));
-        state_root_hash = state_hash;
+        state_root_hash = new_state_root_hash;
     }
 
-    // Write the deploy approvals' and execution results' checksums to global state.
+    // Write the transaction approvals' and execution results' checksums to global state.
     let execution_results_checksum = compute_execution_results_checksum(
         execution_results
             .iter()
@@ -416,138 +422,84 @@ pub fn execute_finalized_block(
 }
 
 /// Commits the execution results.
-fn commit_execution_results<S>(
+fn commit_execution_result<S>(
     engine_state: &EngineState<S>,
     // data_access_layer: &DataAccessLayer<S>,
     metrics: Option<Arc<Metrics>>,
     state_root_hash: Digest,
-    deploy_hash: DeployHash,
-    execution_results: ExecutionResults,
-) -> Result<(Digest, ExecutionResult, Messages), BlockExecutionError>
+    txn_hash: TransactionHash,
+    execution_result: &ExecutionResultV2,
+) -> Result<Digest, BlockExecutionError>
 where
     S: StateProvider + CommitProvider,
 {
-    let ee_execution_result = execution_results
-        .into_iter()
-        .exactly_one()
-        .map_err(|_| BlockExecutionError::MoreThanOneExecutionResult)?;
-
-    let effects = match &ee_execution_result {
-        EngineExecutionResult::Success { effects, cost, .. } => {
-            // We do want to see the deploy hash and cost in the logs.
-            // We don't need to see the effects in the logs.
-            debug!(?deploy_hash, %cost, "execution succeeded");
+    let start = Instant::now();
+    let effects = match execution_result {
+        ExecutionResultV2::Success { effects, gas, .. } => {
+            debug!(%txn_hash, %gas, "execution succeeded");
             effects.clone()
         }
-        EngineExecutionResult::Failure {
-            error,
+        ExecutionResultV2::Failure {
+            error_message,
             effects,
-            cost,
+            gas,
             ..
         } => {
-            // Failure to execute a contract is a user error, not a system error.
-            // We do want to see the deploy hash, error, and cost in the logs.
-            // We don't need to see the effects in the logs.
-            debug!(?deploy_hash, ?error, %cost, "execution failure");
+            debug!(%txn_hash, %error_message, %gas, "execution failed");
             effects.clone()
         }
     };
-    let new_state_root = commit_transforms(engine_state, metrics, state_root_hash, effects)?;
-    // let new_state_root = commit_transforms(data_access_layer, metrics, state_root_hash,
-    // effects)?;
-    let ExecutionResultAndMessages {
-        execution_result,
-        messages,
-    } = ExecutionResultAndMessages::from(ee_execution_result);
-    let versioned_execution_result = ExecutionResult::from(execution_result);
-    Ok((new_state_root, versioned_execution_result, messages))
-}
-
-fn commit_transforms<S>(
-    engine_state: &EngineState<S>,
-    // data_access_layer: &DataAccessLayer<S>,
-    metrics: Option<Arc<Metrics>>,
-    state_root_hash: Digest,
-    effects: Effects,
-) -> Result<Digest, engine_state::Error>
-// ) -> Result<Digest, GlobalStateError>
-where
-    S: StateProvider + CommitProvider,
-{
-    trace!(?state_root_hash, ?effects, "commit");
-    let start = Instant::now();
-    let result = engine_state.commit_effects(state_root_hash, effects);
-    // let result = data_access_layer.commit(state_root_hash, effects);
+    let commit_result = engine_state.commit_effects(state_root_hash, effects);
     if let Some(metrics) = metrics {
         metrics.apply_effect.observe(start.elapsed().as_secs_f64());
     }
-    trace!(?result, "commit result");
-    result.map(Digest::from)
-    // result
+    commit_result.map_err(BlockExecutionError::from)
 }
 
 /// Execute the transaction without committing the effects.
 /// Intended to be used for discovery operations on read-only nodes.
 ///
 /// Returns effects of the execution.
-pub fn speculatively_execute<S>(
+pub(super) fn speculatively_execute<S>(
     engine_state: &EngineState<S>,
     execution_state: SpeculativeExecutionState,
-    deploy: DeployItem,
-) -> Result<Option<(ExecutionResultV2, Messages)>, engine_state::Error>
+    txn: Transaction,
+) -> Result<(ExecutionResultV2, Messages), SpeculativeExecutionError>
 where
     S: StateProvider + CommitProvider,
 {
     let SpeculativeExecutionState {
         state_root_hash,
         block_time,
-        protocol_version,
+        protocol_version: _,
     } = execution_state;
-    let deploy_hash = deploy.deploy_hash;
+    if txn.is_native() {
+        todo!("route native transactions to data access layer");
+    }
     let execute_request = ExecuteRequest::new(
         state_root_hash,
-        block_time.millis(),
-        vec![deploy],
-        protocol_version,
+        BlockTime::new(block_time.millis()),
+        txn,
         PublicKey::System,
-    );
-    let results = execute(engine_state, None, execute_request);
-    results.map(|mut execution_results| {
-        let len = execution_results.len();
-        if len != 1 {
-            warn!(
-                ?deploy_hash,
-                "got more ({}) execution results from a single transaction", len
-            );
-            None
-        } else {
-            // We know it must be 1, we could unwrap and then wrap
-            // with `Some(_)` but `pop_front` already returns an `Option`.
-            // We need to transform the `engine_state::ExecutionResult` into
-            // `casper_types::ExecutionResult` as well.
-            execution_results.pop_front().map(|result| {
-                let ExecutionResultAndMessages {
-                    execution_result,
-                    messages,
-                } = result.into();
-
-                (execution_result, messages)
-            })
-        }
-    })
+    )?;
+    execute(engine_state, None, execute_request)
+        .map(|res_and_msgs| (res_and_msgs.execution_result, res_and_msgs.messages))
+        .map_err(SpeculativeExecutionError::from)
 }
 
 fn execute<S>(
     engine_state: &EngineState<S>,
     metrics: Option<Arc<Metrics>>,
     execute_request: ExecuteRequest,
-) -> Result<ExecutionResults, engine_state::Error>
+) -> Result<ExecutionResultAndMessages, engine_state::Error>
 where
     S: StateProvider + CommitProvider,
 {
     trace!(?execute_request, "execute");
     let start = Instant::now();
-    let result = engine_state.run_execute(execute_request);
+    let result = engine_state
+        .execute_transaction(execute_request)
+        .map(ExecutionResultAndMessages::from);
     if let Some(metrics) = metrics {
         metrics.run_execute.observe(start.elapsed().as_secs_f64());
     }

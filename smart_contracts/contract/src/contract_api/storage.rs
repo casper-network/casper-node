@@ -7,9 +7,8 @@ use casper_types::{
     addressable_entity::{EntryPoints, NamedKeys},
     api_error,
     bytesrepr::{self, FromBytes, ToBytes},
-    package::EntityVersion,
-    AccessRights, AddressableEntityHash, ApiError, CLTyped, CLValue, HashAddr, Key, PackageHash,
-    URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, UREF_SERIALIZED_LENGTH,
+    AccessRights, AddressableEntityHash, ApiError, CLTyped, CLValue, EntityVersion, HashAddr, Key,
+    PackageHash, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, UREF_SERIALIZED_LENGTH,
 };
 
 use crate::{

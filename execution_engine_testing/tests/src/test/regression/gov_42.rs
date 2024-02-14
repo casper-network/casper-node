@@ -19,7 +19,6 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::engine_state::MAX_PAYMENT;
 use casper_types::{runtime_args, Gas, RuntimeArgs};
-use num_traits::Zero;
 
 use crate::{
     test::regression::test_utils::{
@@ -62,14 +61,14 @@ fn run_test_case(input_wasm_bytes: &[u8], expected_error: &str, execution_phase:
                 expected_error,
             ),
         };
-        let deploy = deploy_item_builder
+        let deploy_item = deploy_item_builder
             .with_address(account_hash)
             .with_authorization_keys(&[account_hash])
             .with_deploy_hash(deploy_hash)
             .build();
 
         (
-            ExecuteRequestBuilder::new().push_deploy(deploy),
+            ExecuteRequestBuilder::from_deploy_item(deploy_item),
             expected_error_message,
         )
     };

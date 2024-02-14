@@ -845,14 +845,9 @@ fn should_allow_funding_by_an_authorized_account() {
         .expect_failure()
         .commit();
 
-    let exec_results = builder
+    let exec_result = builder
         .get_last_exec_result()
         .expect("failed to get exec results");
-
-    let exec_result = exec_results
-        .first()
-        .expect("an exec result must exist")
-        .clone();
 
     let error = exec_result.as_error().unwrap();
     assert!(

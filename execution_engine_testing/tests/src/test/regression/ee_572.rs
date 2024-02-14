@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, runtime_args, Key, U512};
@@ -68,6 +68,7 @@ fn should_run_ee_572_regression() {
             .expect("Could not find contract pointer")
     };
 
+    // Attempt to forge a new URef with escalated privileges
     let exec_request_4 = ExecuteRequestBuilder::standard(
         ACCOUNT_2_ADDR,
         CONTRACT_ESCALATE,
@@ -78,12 +79,12 @@ fn should_run_ee_572_regression() {
     .build();
 
     // Attempt to forge a new URef with escalated privileges
-    let response = builder
+    let _ = builder
         .exec(exec_request_4)
         .get_exec_result_owned(3)
         .expect("should have a response");
 
-    let error_message = utils::get_error_message(response);
+    let error_message = builder.get_error_message().unwrap();
 
     assert!(
         error_message.contains("ForgedReference"),

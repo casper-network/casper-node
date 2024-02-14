@@ -20,7 +20,7 @@ fn should_raise_precondition_authorization_failure_invalid_account() {
     let transferred_amount = 1;
 
     let exec_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_session_code(
@@ -32,7 +32,7 @@ fn should_raise_precondition_authorization_failure_invalid_account() {
             .with_authorization_keys(&[nonexistent_account_addr])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     let mut builder = LmdbWasmTestBuilder::default();
@@ -57,7 +57,7 @@ fn should_raise_precondition_authorization_failure_invalid_account() {
 fn should_raise_precondition_authorization_failure_empty_authorized_keys() {
     let empty_keys: [AccountHash; 0] = [];
     let exec_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code("do_nothing.wasm", RuntimeArgs::default())
             .with_empty_payment_bytes(RuntimeArgs::default())
@@ -66,7 +66,7 @@ fn should_raise_precondition_authorization_failure_empty_authorized_keys() {
             .with_authorization_keys(&empty_keys)
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     let mut builder = LmdbWasmTestBuilder::default();
@@ -95,7 +95,7 @@ fn should_raise_precondition_authorization_failure_invalid_authorized_keys() {
     let transferred_amount = 1;
 
     let exec_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_session_code(
@@ -107,7 +107,7 @@ fn should_raise_precondition_authorization_failure_invalid_authorized_keys() {
             .with_authorization_keys(&[nonexistent_account_addr])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     let mut builder = LmdbWasmTestBuilder::default();

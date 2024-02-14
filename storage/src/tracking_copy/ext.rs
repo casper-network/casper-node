@@ -44,7 +44,7 @@ pub trait TrackingCopyExt<R> {
     /// Gets a package by hash.
     fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Self::Error>;
 
-    /// Gets the system contract registry.
+    /// Gets the system entity registry.
     fn get_system_entity_registry(&mut self) -> Result<SystemEntityRegistry, Self::Error>;
 
     /// Gets the system checksum registry.

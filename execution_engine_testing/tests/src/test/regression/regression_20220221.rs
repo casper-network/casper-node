@@ -87,7 +87,6 @@ fn regression_20220221_should_distribute_to_many_validators() {
                 mint::ARG_ID => <Option<u64>>::None,
             },
         )
-        .with_protocol_version(*NEW_PROTOCOL_VERSION)
         .build();
 
         builder.exec(transfer_request).commit().expect_success();
@@ -106,7 +105,6 @@ fn regression_20220221_should_distribute_to_many_validators() {
             auction::METHOD_ADD_BID,
             session_args,
         )
-        .with_protocol_version(*NEW_PROTOCOL_VERSION)
         .build();
 
         builder.exec(execute_request).expect_success().commit();

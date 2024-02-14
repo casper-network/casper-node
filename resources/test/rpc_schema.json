@@ -166,12 +166,12 @@
               "name": "transaction",
               "value": {
                 "Version1": {
-                  "hash": "6aaf4a54499e3757eb4be6967503dcc431e4623bf8bb57a14c1729a114a1aaa2",
+                  "hash": "fc3c2ad84d579b41d46b0ed187b828404db17a168369af6452713dbcc0d1a0a0",
                   "header": {
                     "chain_name": "casper-example",
                     "timestamp": "2020-11-17T00:39:24.072Z",
                     "ttl": "1h",
-                    "body_hash": "d2433e28993036fbdf7c963cd753893fefe619e7dbb5c0cafa5cb03bcf3ff9db",
+                    "body_hash": "8c36f401d829378219b676ac6cceef90b08171499f5f5726ab5021df46d8b824",
                     "pricing_mode": {
                       "GasPriceMultiplier": 1
                     },
@@ -185,8 +185,10 @@
                       [
                         "source",
                         {
-                          "cl_type": "URef",
-                          "bytes": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a07",
+                          "cl_type": {
+                            "Option": "URef"
+                          },
+                          "bytes": "010a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a07",
                           "parsed": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007"
                         }
                       ],
@@ -207,18 +209,6 @@
                         }
                       ],
                       [
-                        "to",
-                        {
-                          "cl_type": {
-                            "Option": {
-                              "ByteArray": 32
-                            }
-                          },
-                          "bytes": "012828282828282828282828282828282828282828282828282828282828282828",
-                          "parsed": "2828282828282828282828282828282828282828282828282828282828282828"
-                        }
-                      ],
-                      [
                         "id",
                         {
                           "cl_type": {
@@ -236,7 +226,7 @@
                   "approvals": [
                     {
                       "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "signature": "012152c1eab67f63faa6a482ec4847ecd145c3b2c3e2affe763303ecb4ccf8618a1b2d24de7313fbf8a2ac1b5256471cc6bbf21745af15516331e5fc3d4a2fa201"
+                      "signature": "014e1ceede22e4182d0d069a269a24ac5a5375de3da9787fafaecb368e48546e3dc52e5ac14e371f6bf13acac919f3eee9f94610c26c69a70e155967a3decc7500"
                     }
                   ]
                 }
@@ -248,7 +238,7 @@
             "value": {
               "api_version": "2.0.0",
               "transaction_hash": {
-                "Version1": "6aaf4a54499e3757eb4be6967503dcc431e4623bf8bb57a14c1729a114a1aaa2"
+                "Version1": "fc3c2ad84d579b41d46b0ed187b828404db17a168369af6452713dbcc0d1a0a0"
               }
             }
           }
@@ -405,7 +395,7 @@
                       "transfer-5959595959595959595959595959595959595959595959595959595959595959",
                       "transfer-8282828282828282828282828282828282828282828282828282828282828282"
                     ],
-                    "cost": "123456"
+                    "gas": "123456"
                   }
                 }
               }
@@ -483,7 +473,7 @@
             {
               "name": "transaction_hash",
               "value": {
-                "Version1": "6aaf4a54499e3757eb4be6967503dcc431e4623bf8bb57a14c1729a114a1aaa2"
+                "Version1": "fc3c2ad84d579b41d46b0ed187b828404db17a168369af6452713dbcc0d1a0a0"
               }
             },
             {
@@ -497,12 +487,12 @@
               "api_version": "2.0.0",
               "transaction": {
                 "Version1": {
-                  "hash": "6aaf4a54499e3757eb4be6967503dcc431e4623bf8bb57a14c1729a114a1aaa2",
+                  "hash": "fc3c2ad84d579b41d46b0ed187b828404db17a168369af6452713dbcc0d1a0a0",
                   "header": {
                     "chain_name": "casper-example",
                     "timestamp": "2020-11-17T00:39:24.072Z",
                     "ttl": "1h",
-                    "body_hash": "d2433e28993036fbdf7c963cd753893fefe619e7dbb5c0cafa5cb03bcf3ff9db",
+                    "body_hash": "8c36f401d829378219b676ac6cceef90b08171499f5f5726ab5021df46d8b824",
                     "pricing_mode": {
                       "GasPriceMultiplier": 1
                     },
@@ -516,8 +506,10 @@
                       [
                         "source",
                         {
-                          "cl_type": "URef",
-                          "bytes": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a07",
+                          "cl_type": {
+                            "Option": "URef"
+                          },
+                          "bytes": "010a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a07",
                           "parsed": "uref-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a-007"
                         }
                       ],
@@ -538,18 +530,6 @@
                         }
                       ],
                       [
-                        "to",
-                        {
-                          "cl_type": {
-                            "Option": {
-                              "ByteArray": 32
-                            }
-                          },
-                          "bytes": "012828282828282828282828282828282828282828282828282828282828282828",
-                          "parsed": "2828282828282828282828282828282828282828282828282828282828282828"
-                        }
-                      ],
-                      [
                         "id",
                         {
                           "cl_type": {
@@ -567,7 +547,7 @@
                   "approvals": [
                     {
                       "signer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "signature": "012152c1eab67f63faa6a482ec4847ecd145c3b2c3e2affe763303ecb4ccf8618a1b2d24de7313fbf8a2ac1b5256471cc6bbf21745af15516331e5fc3d4a2fa201"
+                      "signature": "014e1ceede22e4182d0d069a269a24ac5a5375de3da9787fafaecb368e48546e3dc52e5ac14e371f6bf13acac919f3eee9f94610c26c69a70e155967a3decc7500"
                     }
                   ]
                 }
@@ -593,7 +573,7 @@
                       "transfer-5959595959595959595959595959595959595959595959595959595959595959",
                       "transfer-8282828282828282828282828282828282828282828282828282828282828282"
                     ],
-                    "cost": "123456"
+                    "gas": "123456"
                   }
                 }
               }
@@ -1539,14 +1519,18 @@
               "block_hash": "0707070707070707070707070707070707070707070707070707070707070707",
               "transfers": [
                 {
-                  "deploy_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-                  "from": "account-hash-0000000000000000000000000000000000000000000000000000000000000000",
-                  "to": null,
-                  "source": "uref-0000000000000000000000000000000000000000000000000000000000000000-000",
-                  "target": "uref-0000000000000000000000000000000000000000000000000000000000000000-000",
-                  "amount": "0",
-                  "gas": "0",
-                  "id": null
+                  "transaction_hash": {
+                    "Version1": "0909090909090909090909090909090909090909090909090909090909090909"
+                  },
+                  "from": {
+                    "PublicKey": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c"
+                  },
+                  "to": "account-hash-0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+                  "source": "uref-0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b-007",
+                  "target": "uref-0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c-000",
+                  "amount": "3000000000",
+                  "gas": "2500000000",
+                  "id": 9
                 }
               ]
             }
@@ -4016,31 +4000,31 @@
         "type": "object",
         "required": [
           "amount",
-          "deploy_hash",
           "from",
           "gas",
           "source",
-          "target"
+          "target",
+          "transaction_hash"
         ],
         "properties": {
-          "deploy_hash": {
-            "description": "Hex-encoded Deploy hash of Deploy that created the transfer.",
+          "transaction_hash": {
+            "description": "Transaction that created the transfer.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/DeployHash"
+                "$ref": "#/components/schemas/TransactionHash"
               }
             ]
           },
           "from": {
-            "description": "Account from which transfer was executed",
+            "description": "Entity from which transfer was executed.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/AccountHash"
+                "$ref": "#/components/schemas/InitiatorAddr"
               }
             ]
           },
           "to": {
-            "description": "Account to which funds are transferred",
+            "description": "Account to which funds are transferred.",
             "anyOf": [
               {
                 "$ref": "#/components/schemas/AccountHash"
@@ -4051,7 +4035,7 @@
             ]
           },
           "source": {
-            "description": "Source purse",
+            "description": "Source purse.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/URef"
@@ -4059,7 +4043,7 @@
             ]
           },
           "target": {
-            "description": "Target purse",
+            "description": "Target purse.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/URef"
@@ -4067,7 +4051,7 @@
             ]
           },
           "amount": {
-            "description": "Transfer amount",
+            "description": "Transfer amount.",
             "allOf": [
               {
                 "$ref": "#/components/schemas/U512"
@@ -4075,15 +4059,15 @@
             ]
           },
           "gas": {
-            "description": "Gas",
+            "description": "Gas.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/U512"
+                "$ref": "#/components/schemas/Gas"
               }
             ]
           },
           "id": {
-            "description": "User-defined id",
+            "description": "User-defined ID.",
             "type": [
               "integer",
               "null"
@@ -4093,6 +4077,14 @@
           }
         },
         "additionalProperties": false
+      },
+      "Gas": {
+        "description": "The `Gas` struct represents a `U512` amount of gas.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/U512"
+          }
+        ]
       },
       "Bid": {
         "description": "An entry in the validator map.",
@@ -4508,7 +4500,7 @@
         "additionalProperties": false
       },
       "ExecutionResultV2": {
-        "description": "The result of executing a single deploy.",
+        "description": "The result of executing a single transaction.",
         "oneOf": [
           {
             "description": "The result of a failed execution.",
@@ -4520,14 +4512,14 @@
               "Failure": {
                 "type": "object",
                 "required": [
-                  "cost",
                   "effects",
                   "error_message",
+                  "gas",
                   "transfers"
                 ],
                 "properties": {
                   "effects": {
-                    "description": "The effects of executing the deploy.",
+                    "description": "The effects of executing the transaction.",
                     "allOf": [
                       {
                         "$ref": "#/components/schemas/Effects"
@@ -4535,22 +4527,22 @@
                     ]
                   },
                   "transfers": {
-                    "description": "A record of transfers performed while executing the deploy.",
+                    "description": "A record of transfers performed while executing the transaction.",
                     "type": "array",
                     "items": {
                       "$ref": "#/components/schemas/TransferAddr"
                     }
                   },
-                  "cost": {
-                    "description": "The cost in Motes of executing the deploy.",
+                  "gas": {
+                    "description": "The gas consumed executing the transaction.",
                     "allOf": [
                       {
-                        "$ref": "#/components/schemas/U512"
+                        "$ref": "#/components/schemas/Gas"
                       }
                     ]
                   },
                   "error_message": {
-                    "description": "The error message associated with executing the deploy.",
+                    "description": "The error message associated with executing the transaction.",
                     "type": "string"
                   }
                 },
@@ -4569,13 +4561,13 @@
               "Success": {
                 "type": "object",
                 "required": [
-                  "cost",
                   "effects",
+                  "gas",
                   "transfers"
                 ],
                 "properties": {
                   "effects": {
-                    "description": "The effects of executing the deploy.",
+                    "description": "The effects of executing the transaction.",
                     "allOf": [
                       {
                         "$ref": "#/components/schemas/Effects"
@@ -4583,17 +4575,17 @@
                     ]
                   },
                   "transfers": {
-                    "description": "A record of transfers performed while executing the deploy.",
+                    "description": "A record of transfers performed while executing the transaction.",
                     "type": "array",
                     "items": {
                       "$ref": "#/components/schemas/TransferAddr"
                     }
                   },
-                  "cost": {
-                    "description": "The cost in Motes of executing the deploy.",
+                  "gas": {
+                    "description": "The gas consumed executing the transaction.",
                     "allOf": [
                       {
-                        "$ref": "#/components/schemas/U512"
+                        "$ref": "#/components/schemas/Gas"
                       }
                     ]
                   }
@@ -5129,6 +5121,19 @@
             "properties": {
               "NamedKey": {
                 "$ref": "#/components/schemas/NamedKeyValue"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "description": "Info about a transaction.",
+            "type": "object",
+            "required": [
+              "TransactionInfo"
+            ],
+            "properties": {
+              "TransactionInfo": {
+                "$ref": "#/components/schemas/TransactionInfo"
               }
             },
             "additionalProperties": false
@@ -5811,6 +5816,59 @@
             ]
           }
         }
+      },
+      "TransactionInfo": {
+        "description": "Information relating to the given Transaction, stored in global state under .",
+        "type": "object",
+        "required": [
+          "from",
+          "gas",
+          "source",
+          "transaction_hash",
+          "transfers"
+        ],
+        "properties": {
+          "transaction_hash": {
+            "description": "The transaction hash.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TransactionHash"
+              }
+            ]
+          },
+          "transfers": {
+            "description": "Transfers done during execution of the transaction.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TransferAddr"
+            }
+          },
+          "from": {
+            "description": "Identifier of the initiator of the transaction.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/InitiatorAddr"
+              }
+            ]
+          },
+          "source": {
+            "description": "Source purse used for payment of the transaction.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/URef"
+              }
+            ]
+          },
+          "gas": {
+            "description": "Gas used in executing the transaction.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Gas"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "GlobalStateIdentifier": {
         "description": "Identifier for possible ways to query Global State",

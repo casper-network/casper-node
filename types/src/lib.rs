@@ -52,7 +52,7 @@ pub mod gens;
 mod json_pretty_printer;
 mod key;
 mod motes;
-pub mod package;
+mod package;
 mod phase;
 mod protocol_version;
 mod semver;
@@ -64,6 +64,7 @@ mod tagged;
 pub mod testing;
 mod timestamp;
 mod transaction;
+mod transaction_info;
 mod transfer;
 mod transfer_result;
 mod uint;
@@ -98,9 +99,8 @@ pub use block::{
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use block::{TestBlockBuilder, TestBlockV1Builder};
-
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
-pub use byte_code::{ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind};
+pub use byte_code::{ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, ACCOUNT_BYTE_CODE_HASH};
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{
     AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,
@@ -111,7 +111,7 @@ pub use chainspec::{
     HostFunction, HostFunctionCost, HostFunctionCosts, LegacyRequiredFinality, MessageLimits,
     MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig, ProtocolUpgradeConfig, RefundHandling,
     StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig, TransactionV1Config,
-    ValidatorConfig, WasmConfig, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
+    ValidatorConfig, WasmConfig, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, DEFAULT_REFUND_HANDLING,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{
@@ -124,15 +124,13 @@ pub use chainspec::{
     DEFAULT_CONTROL_FLOW_IF_OPCODE, DEFAULT_CONTROL_FLOW_LOOP_OPCODE,
     DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE,
     DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DELEGATE_COST, DEFAULT_DIV_COST,
-    DEFAULT_FEE_HANDLING, DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST,
-    DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST,
-    DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MIN_TRANSFER_MOTES,
-    DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST, DEFAULT_REFUND_HANDLING,
+    DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_INTEGER_COMPARISON_COST,
+    DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MAX_STACK_HEIGHT,
+    DEFAULT_MIN_TRANSFER_MOTES, DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST,
     DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST,
     DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY,
 };
 pub use cl_type::{named_key_type, CLType, CLTyped};
-
 pub use cl_value::{
     handle_stored_dictionary_value, CLTypeMismatch, CLValue, CLValueError, ChecksumRegistry,
     DictionaryValue as CLValueDictionary, SystemEntityRegistry,
@@ -159,6 +157,7 @@ pub use motes::Motes;
 #[doc(inline)]
 pub use package::{
     EntityVersion, EntityVersionKey, EntityVersions, Group, Groups, Package, PackageHash,
+    PackageStatus, ENTITY_INITIAL_VERSION,
 };
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
@@ -184,6 +183,7 @@ pub use transaction::{
 pub use transaction::{
     DeployBuilder, DeployBuilderError, TransactionV1Builder, TransactionV1BuilderError,
 };
+pub use transaction_info::TransactionInfo;
 pub use transfer::{
     FromStrError as TransferFromStrError, Transfer, TransferAddr, TRANSFER_ADDR_LENGTH,
 };

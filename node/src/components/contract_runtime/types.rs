@@ -2,13 +2,15 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use datasize::DataSize;
 use serde::Serialize;
+use thiserror::Error;
 
+use casper_execution_engine::engine_state::{Error as EngineStateError, NewRequestError};
 use casper_storage::data_access_layer::EraValidatorsRequest;
 use casper_types::{
     contract_messages::Messages,
     execution::{Effects, ExecutionResult},
-    BlockHash, BlockHeaderV2, BlockV2, DeployHash, DeployHeader, Digest, EraId, ProtocolVersion,
-    PublicKey, Timestamp, U512,
+    BlockHash, BlockHeaderV2, BlockV2, Digest, EraId, ProtocolVersion, PublicKey, Timestamp,
+    TransactionHash, TransactionHeader, U512,
 };
 
 use crate::types::ApprovalsHashes;
@@ -64,22 +66,22 @@ pub(crate) struct StepEffectsAndUpcomingEraValidators {
 
 #[derive(Clone, Debug, DataSize, PartialEq, Eq, Serialize)]
 pub(crate) struct ExecutionArtifact {
-    pub(crate) deploy_hash: DeployHash,
-    pub(crate) deploy_header: DeployHeader,
+    pub(crate) transaction_hash: TransactionHash,
+    pub(crate) transaction_header: TransactionHeader,
     pub(crate) execution_result: ExecutionResult,
     pub(crate) messages: Messages,
 }
 
 impl ExecutionArtifact {
     pub(crate) fn new(
-        deploy_hash: DeployHash,
-        deploy_header: DeployHeader,
+        transaction_hash: TransactionHash,
+        transaction_header: TransactionHeader,
         execution_result: ExecutionResult,
         messages: Messages,
     ) -> Self {
         Self {
-            deploy_hash,
-            deploy_header,
+            transaction_hash,
+            transaction_header,
             execution_result,
             messages,
         }
@@ -173,4 +175,14 @@ impl ExecutionPreState {
     pub fn parent_seed(&self) -> Digest {
         self.parent_seed
     }
+}
+
+#[derive(Debug, Error)]
+pub enum SpeculativeExecutionError {
+    /// An error that occurred while constructing the execution request.
+    #[error(transparent)]
+    NewRequest(#[from] NewRequestError),
+    /// An error that occurred while constructing the execution request.
+    #[error(transparent)]
+    EngineState(#[from] EngineStateError),
 }

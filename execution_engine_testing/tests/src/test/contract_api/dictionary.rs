@@ -234,9 +234,8 @@ fn should_not_write_with_read_access_rights() {
 
     builder.exec(call_request).commit();
 
-    let exec_results = builder.get_last_exec_result().expect("should have results");
-    assert_eq!(exec_results.len(), 1);
-    let error = exec_results[0].as_error().expect("should have error");
+    let exec_result = builder.get_last_exec_result().expect("should have results");
+    let error = exec_result.as_error().expect("should have error");
     assert!(
         matches!(
             error,
@@ -286,10 +285,8 @@ fn should_not_read_with_write_access_rights() {
 
     builder.exec(call_request).commit();
 
-    let exec_results = builder.get_last_exec_result().expect("should have results");
-
-    assert_eq!(exec_results.len(), 1);
-    let error = exec_results[0].as_error().expect("should have error");
+    let exec_result = builder.get_last_exec_result().expect("should have results");
+    let error = exec_result.as_error().expect("should have error");
     assert!(
         matches!(
             error,
@@ -367,9 +364,8 @@ fn should_not_write_with_forged_uref() {
 
     builder.exec(call_request).commit();
 
-    let exec_results = builder.get_last_exec_result().expect("should have results");
-    assert_eq!(exec_results.len(), 1);
-    let error = exec_results[0].as_error().expect("should have error");
+    let exec_result = builder.get_last_exec_result().expect("should have results");
+    let error = exec_result.as_error().expect("should have error");
     assert!(
         matches!(
             error,
@@ -405,9 +401,8 @@ fn should_fail_put_with_invalid_dictionary_item_key() {
     .build();
 
     builder.exec(call_request).commit();
-    let exec_results = builder.get_last_exec_result().expect("should have results");
-    assert_eq!(exec_results.len(), 1);
-    let error = exec_results[0].as_error().expect("should have error");
+    let exec_result = builder.get_last_exec_result().expect("should have results");
+    let error = exec_result.as_error().expect("should have error");
     assert!(
         matches!(
             error,
@@ -442,9 +437,8 @@ fn should_fail_get_with_invalid_dictionary_item_key() {
     .build();
 
     builder.exec(call_request).commit();
-    let exec_results = builder.get_last_exec_result().expect("should have results");
-    assert_eq!(exec_results.len(), 1);
-    let error = exec_results[0].as_error().expect("should have error");
+    let exec_result = builder.get_last_exec_result().expect("should have results");
+    let error = exec_result.as_error().expect("should have error");
     assert!(
         matches!(
             error,
@@ -483,9 +477,8 @@ fn dictionary_put_should_fail_with_large_item_key() {
 
     builder.exec(fund_request).commit().expect_success();
     builder.exec(install_contract_request).commit();
-    let exec_results = builder.get_last_exec_result().expect("should have results");
-    assert_eq!(exec_results.len(), 1);
-    let error = exec_results[0].as_error().expect("should have error");
+    let exec_result = builder.get_last_exec_result().expect("should have results");
+    let error = exec_result.as_error().expect("should have error");
     assert!(
         matches!(
             error,
@@ -524,9 +517,8 @@ fn dictionary_get_should_fail_with_large_item_key() {
 
     builder.exec(fund_request).commit().expect_success();
     builder.exec(install_contract_request).commit();
-    let exec_results = builder.get_last_exec_result().expect("should have results");
-    assert_eq!(exec_results.len(), 1);
-    let error = exec_results[0].as_error().expect("should have error");
+    let exec_result = builder.get_last_exec_result().expect("should have results");
+    let error = exec_result.as_error().expect("should have error");
     assert!(
         matches!(
             error,

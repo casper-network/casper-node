@@ -30,6 +30,9 @@ const BYTE_CODE_PREFIX: &str = "byte-code-";
 const V1_WASM_PREFIX: &str = "v1-wasm-";
 const EMPTY_PREFIX: &str = "empty-";
 
+/// A special contract wasm hash for contracts representing Accounts.
+pub const ACCOUNT_BYTE_CODE_HASH: ByteCodeHash = ByteCodeHash::new([0; 32]);
+
 /// Associated error type of `TryFrom<&[u8]>` for `ByteCodeHash`.
 #[derive(Debug)]
 pub struct TryFromSliceForContractHashError(());

@@ -32,14 +32,14 @@ pub enum TransactionHeader {
 }
 
 impl From<DeployHeader> for TransactionHeader {
-    fn from(hash: DeployHeader) -> Self {
-        Self::Deploy(hash)
+    fn from(header: DeployHeader) -> Self {
+        Self::Deploy(header)
     }
 }
 
 impl From<TransactionV1Header> for TransactionHeader {
-    fn from(hash: TransactionV1Header) -> Self {
-        Self::V1(hash)
+    fn from(header: TransactionV1Header) -> Self {
+        Self::V1(header)
     }
 }
 

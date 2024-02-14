@@ -12,7 +12,7 @@ use casper_types::{
 };
 use rand::Rng;
 
-use crate::lmdb_fixture::{self, CONTRACT_REGISTRY_SPECIAL_ADDRESS};
+use crate::lmdb_fixture::{self, ENTRY_REGISTRY_SPECIAL_ADDRESS};
 
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 
@@ -45,8 +45,8 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
         lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
     let mint_contract_hash = {
         let stored_value: StoredValue = builder
-            .query(None, CONTRACT_REGISTRY_SPECIAL_ADDRESS, &[])
-            .expect("should query system contract registry");
+            .query(None, ENTRY_REGISTRY_SPECIAL_ADDRESS, &[])
+            .expect("should query system entity registry");
         let cl_value = stored_value
             .as_cl_value()
             .cloned()

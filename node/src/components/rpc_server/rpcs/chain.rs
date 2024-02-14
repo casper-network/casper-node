@@ -11,8 +11,9 @@ use serde::{Deserialize, Serialize};
 
 use casper_storage::data_access_layer::QueryResult;
 use casper_types::{
-    Block, BlockHash, BlockHeaderV2, Digest, DigestError, JsonBlockWithSignatures, Key,
-    ProtocolVersion, Transfer,
+    account::AccountHash, AccessRights, Block, BlockHash, BlockHeaderV2, Digest, DigestError, Gas,
+    InitiatorAddr, JsonBlockWithSignatures, Key, ProtocolVersion, PublicKey, SecretKey,
+    TransactionHash, TransactionV1Hash, Transfer, URef, U512,
 };
 
 use super::{
@@ -43,7 +44,16 @@ static GET_BLOCK_TRANSFERS_RESULT: Lazy<GetBlockTransfersResult> =
     Lazy::new(|| GetBlockTransfersResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
         block_hash: Some(*BlockHash::example()),
-        transfers: Some(vec![Transfer::default()]),
+        transfers: Some(vec![Transfer::new(
+            TransactionHash::V1(TransactionV1Hash::new(Digest::from([9; Digest::LENGTH]))),
+            InitiatorAddr::PublicKey(PublicKey::from(SecretKey::example())),
+            Some(AccountHash::new([10; 32])),
+            URef::new([11; 32], AccessRights::all()),
+            URef::new([12; 32], AccessRights::empty()),
+            U512::from(3_000_000_000_u64),
+            Gas::new(2_500_000_000_u64),
+            Some(9),
+        )]),
     });
 static GET_STATE_ROOT_HASH_PARAMS: Lazy<GetStateRootHashParams> =
     Lazy::new(|| GetStateRootHashParams {

@@ -129,13 +129,13 @@ max_ttl = '18 hours'
 # Maximum transaction size in bytes.  Size is of the transaction when serialized via ToBytes.
 max_transaction_size = 1_048_576
 # Maximum number of transfer transactions allowed in a block.
-block_max_transfer_count = 1000
+block_max_transfer_count = 500
 # Maximum number of staking transactions allowed in a block.
-block_max_staking_count = 200
+block_max_staking_count = 100
 # Maximum number of installer/upgrader transactions allowed in a block.
 block_max_install_upgrade_count = 2
 # Maximum number of other transactions (non-transfer, non-staking, non-installer/upgrader) allowed in a block.
-block_max_standard_count = 100
+block_max_standard_count = 50
 # The maximum number of approvals permitted in a single block.
 block_max_approval_count = 2600
 # Maximum block size in bytes including transactions contained by the block.  0 means unlimited.

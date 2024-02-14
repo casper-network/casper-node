@@ -88,8 +88,7 @@ fn contract_transforms_should_be_ordered_in_the_effects() {
         .commit();
 
     let exec_result = builder.get_exec_result_owned(1).unwrap();
-    assert_eq!(exec_result.len(), 1);
-    let effects = exec_result[0].effects();
+    let effects = exec_result.effects();
 
     let contract = builder
         .get_entity_with_named_keys_by_entity_hash(contract_hash)

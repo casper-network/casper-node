@@ -12,10 +12,9 @@ use casper_contract::{
 };
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
-    package::ENTITY_INITIAL_VERSION,
     runtime_args,
     system::{handle_payment, standard_payment},
-    CLType, CLTyped, Key, PackageHash, Parameter, RuntimeArgs, URef, U512,
+    CLType, CLTyped, Key, PackageHash, Parameter, RuntimeArgs, URef, ENTITY_INITIAL_VERSION, U512,
 };
 
 const PACKAGE_HASH_KEY: &str = "package_hash_key";

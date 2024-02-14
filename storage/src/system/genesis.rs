@@ -24,7 +24,6 @@ use casper_types::{
     },
     bytesrepr,
     execution::Effects,
-    package::{EntityVersions, Groups, PackageStatus},
     system::{
         auction::{
             self, BidAddr, BidKind, DelegationRate, Delegator, SeigniorageRecipient,
@@ -39,10 +38,10 @@ use casper_types::{
     },
     AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, ByteCode,
     ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLValue, Chainspec, ChainspecRegistry, Digest,
-    EntityAddr, EntryPoints, EraId, FeeHandling, GenesisAccount, GenesisConfig,
-    GenesisConfigBuilder, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
-    RefundHandling, StoredValue, SystemConfig, SystemEntityRegistry, Tagged, URef, WasmConfig,
-    U512,
+    EntityAddr, EntityVersions, EntryPoints, EraId, FeeHandling, GenesisAccount, GenesisConfig,
+    GenesisConfigBuilder, Groups, Key, Motes, Package, PackageHash, PackageStatus, Phase,
+    ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemConfig, SystemEntityRegistry,
+    Tagged, URef, WasmConfig, U512,
 };
 
 use crate::{
@@ -288,7 +287,7 @@ where
             EntityKind::System(SystemEntityType::HandlePayment),
         )?;
 
-        self.store_system_contract_registry(HANDLE_PAYMENT, contract_hash)?;
+        self.store_system_entity_registry(HANDLE_PAYMENT, contract_hash)?;
 
         Ok(contract_hash)
     }
@@ -556,7 +555,7 @@ where
             EntityKind::System(SystemEntityType::Auction),
         )?;
 
-        self.store_system_contract_registry(AUCTION, contract_hash)?;
+        self.store_system_entity_registry(AUCTION, contract_hash)?;
 
         Ok(contract_hash)
     }
@@ -750,11 +749,9 @@ where
             .write(byte_code_key, StoredValue::ByteCode(byte_code));
 
         let entity_addr = match entity_kind.tag() {
-            EntityKindTag::System => EntityAddr::new_system_entity_addr(entity_hash.value()),
-            EntityKindTag::Account => EntityAddr::new_account_entity_addr(entity_hash.value()),
-            EntityKindTag::SmartContract => {
-                EntityAddr::new_contract_entity_addr(entity_hash.value())
-            }
+            EntityKindTag::System => EntityAddr::new_system(entity_hash.value()),
+            EntityKindTag::Account => EntityAddr::new_account(entity_hash.value()),
+            EntityKindTag::SmartContract => EntityAddr::new_smart_contract(entity_hash.value()),
         };
 
         let entity_key: Key = entity_addr.into();
@@ -785,7 +782,7 @@ where
         contract_hash: AddressableEntityHash,
         named_keys: NamedKeys,
     ) -> Result<(), Box<GenesisError>> {
-        let entity_addr = EntityAddr::new_system_entity_addr(contract_hash.value());
+        let entity_addr = EntityAddr::new_system(contract_hash.value());
 
         for (string, key) in named_keys.iter() {
             let named_key_entry = NamedKeyAddr::new_from_string(entity_addr, string.clone())
@@ -804,7 +801,7 @@ where
         Ok(())
     }
 
-    fn store_system_contract_registry(
+    fn store_system_entity_registry(
         &self,
         contract_name: &str,
         contract_hash: AddressableEntityHash,

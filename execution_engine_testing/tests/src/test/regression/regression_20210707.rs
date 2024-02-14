@@ -393,7 +393,7 @@ fn should_not_refund_to_bob_and_charge_alice() {
             ARG_SOURCE => bob_main_purse,
             ARG_AMOUNT => *DEFAULT_PAYMENT,
         };
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             // Just do nothing if ever we'd get into session execution
             .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
@@ -402,7 +402,7 @@ fn should_not_refund_to_bob_and_charge_alice() {
             .with_deploy_hash([77; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder.exec(call_request).commit();
@@ -451,7 +451,7 @@ fn should_not_charge_alice_for_execution() {
             ARG_SOURCE => bob_main_purse,
             ARG_AMOUNT => *DEFAULT_PAYMENT,
         };
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             // Just do nothing if ever we'd get into session execution
             .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
@@ -460,7 +460,7 @@ fn should_not_charge_alice_for_execution() {
             .with_deploy_hash([77; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder.exec(call_request).commit();
@@ -505,7 +505,7 @@ fn should_not_charge_for_execution_from_hardcoded_purse() {
         let args = runtime_args! {
             ARG_AMOUNT => *DEFAULT_PAYMENT,
         };
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             // Just do nothing if ever we'd get into session execution
             .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
@@ -514,7 +514,7 @@ fn should_not_charge_for_execution_from_hardcoded_purse() {
             .with_deploy_hash([77; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder.exec(call_request).commit();

@@ -53,7 +53,6 @@ fn ee_1160_wasmless_transfer_should_empty_account() {
         .commit();
 
     let last_result = builder.get_exec_result_owned(0).unwrap();
-    let last_result = &last_result[0];
 
     assert!(last_result.as_error().is_none(), "{:?}", last_result);
     assert!(!last_result.transfers().is_empty());
@@ -115,7 +114,6 @@ fn ee_1160_transfer_larger_than_balance_should_fail() {
     .expect("gas overflow");
 
     let last_result = builder.get_exec_result_owned(0).unwrap();
-    let last_result = &last_result[0];
     assert_eq!(
         balance_before - wasmless_transfer_motes.value(),
         balance_after
@@ -182,7 +180,6 @@ fn ee_1160_large_wasmless_transfer_should_avoid_overflow() {
     );
 
     let last_result = builder.get_exec_result_owned(0).unwrap();
-    let last_result = &last_result[0];
     // TODO: reenable when new payment logic is added
     // assert_eq!(last_result.cost(), wasmless_transfer_gas_cost);
 

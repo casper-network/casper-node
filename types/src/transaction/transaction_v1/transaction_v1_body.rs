@@ -24,7 +24,7 @@ use crate::bytesrepr::{self, FromBytes, ToBytes};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{
     bytesrepr::Bytes, testing::TestRng, PublicKey, TransactionInvocationTarget, TransactionRuntime,
-    TransactionSessionKind,
+    TransactionSessionKind, TransferTarget,
 };
 
 /// The body of a [`TransactionV1`].
@@ -68,6 +68,11 @@ impl TransactionV1Body {
         &self.args
     }
 
+    /// Consumes `self`, returning the runtime args of the transaction.
+    pub fn take_args(self) -> RuntimeArgs {
+        self.args
+    }
+
     /// Returns the target of the transaction.
     pub fn target(&self) -> &TransactionTarget {
         &self.target
@@ -81,6 +86,18 @@ impl TransactionV1Body {
     /// Returns the scheduling kind of the transaction.
     pub fn scheduling(&self) -> &TransactionScheduling {
         &self.scheduling
+    }
+
+    /// Consumes `self`, returning its constituent parts.
+    pub fn destructure(
+        self,
+    ) -> (
+        RuntimeArgs,
+        TransactionTarget,
+        TransactionEntryPoint,
+        TransactionScheduling,
+    ) {
+        (self.args, self.target, self.entry_point, self.scheduling)
     }
 
     #[cfg(any(feature = "std", test))]
@@ -178,16 +195,14 @@ impl TransactionV1Body {
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..8) {
             0 => {
-                let source = rng.gen();
-                let target = rng.gen();
                 let amount = rng.gen_range(
                     TransactionConfig::default().native_transfer_minimum_motes..=u64::MAX,
                 );
-                let maybe_to = rng.gen::<bool>().then(|| rng.gen());
+                let maybe_source = if rng.gen() { Some(rng.gen()) } else { None };
+                let target = TransferTarget::random(rng);
                 let maybe_id = rng.gen::<bool>().then(|| rng.gen());
-                let args =
-                    arg_handling::new_transfer_args(source, target, amount, maybe_to, maybe_id)
-                        .unwrap();
+                let args = arg_handling::new_transfer_args(amount, maybe_source, target, maybe_id)
+                    .unwrap();
                 TransactionV1Body::new(
                     args,
                     TransactionTarget::Native,

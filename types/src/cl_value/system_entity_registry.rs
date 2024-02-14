@@ -12,12 +12,12 @@ use crate::{
     AddressableEntityHash, CLType, CLTyped,
 };
 
-/// The system contract registry.
+/// The system entity registry.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
 pub struct SystemEntityRegistry(BTreeMap<String, AddressableEntityHash>);
 
 impl SystemEntityRegistry {
-    /// Returns a new `SystemContractRegistry`.
+    /// Returns a new `SystemEntityRegistry`.
     #[allow(clippy::new_without_default)] // This empty `new()` will be replaced in the future.
     pub fn new() -> Self {
         SystemEntityRegistry(BTreeMap::new())
@@ -80,8 +80,8 @@ mod tests {
 
     #[test]
     fn bytesrepr_roundtrip() {
-        let mut system_contract_registry = SystemEntityRegistry::new();
-        system_contract_registry.insert("a".to_string(), AddressableEntityHash::new([9; 32]));
-        bytesrepr::test_serialization_roundtrip(&system_contract_registry);
+        let mut system_entity_registry = SystemEntityRegistry::new();
+        system_entity_registry.insert("a".to_string(), AddressableEntityHash::new([9; 32]));
+        bytesrepr::test_serialization_roundtrip(&system_entity_registry);
     }
 }

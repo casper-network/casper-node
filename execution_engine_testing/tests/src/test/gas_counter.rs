@@ -60,12 +60,10 @@ fn should_fail_to_overflow_gas_counter() {
 
     builder.exec(exec_request).commit();
 
-    let responses = builder
+    let exec_result = builder
         .get_exec_result_owned(0)
         .expect("should have response");
-    let response = responses.get(0).expect("should have first element");
-
-    let lhs = response.as_error().expect("should have error");
+    let lhs = exec_result.as_error().expect("should have error");
     assert_matches!(
         lhs,
         Error::WasmPreprocessing(PreprocessingError::OperationForbiddenByGasRules)

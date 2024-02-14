@@ -29,20 +29,6 @@ use crate::{
     AddressableEntityHash, CLType, CLTyped, HashAddr, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
 };
 
-/// Maximum number of distinct user groups.
-pub const MAX_GROUPS: u8 = 10;
-/// Maximum number of URefs which can be assigned across all user groups.
-pub const MAX_TOTAL_UREFS: usize = 100;
-
-/// The tag for Contract Packages associated with Wasm stored on chain.
-pub const PACKAGE_KIND_WASM_TAG: u8 = 0;
-/// The tag for Contract Package associated with a native contract implementation.
-pub const PACKAGE_KIND_SYSTEM_CONTRACT_TAG: u8 = 1;
-/// The tag for Contract Package associated with an Account hash.
-pub const PACKAGE_KIND_ACCOUNT_TAG: u8 = 2;
-/// The tag for Contract Packages associated with legacy packages.
-pub const PACKAGE_KIND_LEGACY_TAG: u8 = 3;
-
 const PACKAGE_STRING_PREFIX: &str = "contract-package-";
 // We need to support the legacy prefix of "contract-package-wasm".
 const PACKAGE_STRING_LEGACY_EXTRA_PREFIX: &str = "wasm";

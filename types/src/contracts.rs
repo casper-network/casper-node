@@ -33,11 +33,6 @@ use crate::{
     HashAddr, Key, Package, ProtocolVersion, KEY_HASH_LENGTH,
 };
 
-/// Maximum number of distinct user groups.
-pub const MAX_GROUPS: u8 = 10;
-/// Maximum number of URefs which can be assigned across all user groups.
-pub const MAX_TOTAL_UREFS: usize = 100;
-
 const CONTRACT_STRING_PREFIX: &str = "contract-";
 const PACKAGE_STRING_PREFIX: &str = "contract-package-";
 // We need to support the legacy prefix of "contract-package-wasm".

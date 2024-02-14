@@ -42,7 +42,6 @@ use casper_types::{
     },
     contracts::ContractPackage,
     crypto,
-    package::PackageStatus,
     system::{
         self,
         auction::{self, EraInfo},
@@ -50,10 +49,10 @@ use casper_types::{
         STANDARD_PAYMENT,
     },
     AccessRights, ApiError, ByteCode, ByteCodeAddr, ByteCodeHash, ByteCodeKind, CLTyped, CLValue,
-    ContextAccessRights, ContractWasm, DeployHash, EntityAddr, EntityKind, EntityVersion,
-    EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups, HostFunction,
-    HostFunctionCost, Key, NamedArg, Package, PackageHash, Phase, PublicKey, RuntimeArgs,
-    StoredValue, Tagged, Transfer, TransferResult, TransferredTo, URef,
+    ContextAccessRights, ContractWasm, EntityAddr, EntityKind, EntityVersion, EntityVersionKey,
+    EntityVersions, Gas, GrantedAccess, Group, Groups, HostFunction, HostFunctionCost,
+    InitiatorAddr, Key, NamedArg, Package, PackageHash, PackageStatus, Phase, PublicKey,
+    RuntimeArgs, StoredValue, Tagged, Transfer, TransferResult, TransferredTo, URef,
     DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
@@ -565,7 +564,7 @@ where
         let gas_counter = self.gas_counter();
 
         let mint_hash = self.context.get_system_contract(MINT)?;
-        let mint_addr = EntityAddr::new_system_entity_addr(mint_hash.value());
+        let mint_addr = EntityAddr::new_system(mint_hash.value());
 
         let mint_named_keys = self
             .context
@@ -1244,7 +1243,7 @@ where
             }
         };
 
-        if let EntityKind::Account(_) = entity.entity_kind() {
+        if let EntityKind::Account(_) = entity.kind() {
             return Err(Error::InvalidContext);
         }
 
@@ -1365,7 +1364,7 @@ where
             all_urefs
         };
 
-        let entity_addr = EntityAddr::new_with_tag(entity.entity_kind(), entity_hash.value());
+        let entity_addr = EntityAddr::new_of_kind(entity.kind(), entity_hash.value());
 
         let entity_named_keys = self
             .context
@@ -1387,7 +1386,7 @@ where
             stack
         };
 
-        if let EntityKind::System(system_contract_type) = entity.entity_kind() {
+        if let EntityKind::System(system_contract_type) = entity.kind() {
             let entry_point_name = entry_point.name();
 
             match system_contract_type {
@@ -1423,7 +1422,7 @@ where
         let module: Module = {
             let byte_code_addr = entity.byte_code_addr();
 
-            let byte_code_key = match entity.entity_kind() {
+            let byte_code_key = match entity.kind() {
                 EntityKind::System(_) | EntityKind::Account(_) => {
                     Key::ByteCode(ByteCodeAddr::Empty)
                 }
@@ -1441,7 +1440,7 @@ where
             casper_wasm::deserialize_buffer(byte_code.bytes())?
         };
 
-        let entity_tag = entity.entity_kind().tag();
+        let entity_tag = entity.kind().tag();
 
         let mut named_keys = entity_named_keys;
 
@@ -1768,13 +1767,13 @@ where
             byte_code,
         )?;
 
-        let entity_kind = updated_session_entity.entity_kind();
+        let entity_kind = updated_session_entity.kind();
 
         if entity_kind != EntityKind::SmartContract {
             return Err(Error::InvalidContext);
         }
 
-        let entity_addr = EntityAddr::new_contract_entity_addr(entity_hash.value());
+        let entity_addr = EntityAddr::new_smart_contract(entity_hash.value());
 
         self.context
             .metered_write_gs_unsafe(Key::AddressableEntity(entity_addr), updated_session_entity)?;
@@ -1830,7 +1829,7 @@ where
             byte_code,
         )?;
 
-        let entity_addr = EntityAddr::new_contract_entity_addr(entity_hash);
+        let entity_addr = EntityAddr::new_smart_contract(entity_hash);
 
         let entity_key = Key::AddressableEntity(entity_addr);
 
@@ -2056,10 +2055,11 @@ where
 
         let transfer_addr = self.context.new_transfer_addr()?;
         let transfer = {
-            let deploy_hash: DeployHash = self.context.get_deploy_hash();
-            let from: AccountHash = self.context.get_caller();
-            let fee: U512 = U512::zero(); // TODO
-            Transfer::new(deploy_hash, from, maybe_to, source, target, amount, fee, id)
+            // TODO - update once decision is made on recording transfers.
+            let txn_hash = self.context.get_transaction_hash();
+            let from = InitiatorAddr::AccountHash(self.context.get_caller());
+            let fee = Gas::zero(); // TODO
+            Transfer::new(txn_hash, from, maybe_to, source, target, amount, fee, id)
         };
         {
             let transfers = self.context.transfers_mut();
@@ -3363,7 +3363,7 @@ where
                     AssociatedKeys::default()
                 };
 
-                let contract_addr = EntityAddr::new_contract_entity_addr(contract_hash.value());
+                let contract_addr = EntityAddr::new_smart_contract(contract_hash.value());
 
                 self.context
                     .write_named_keys(contract_addr, contract.named_keys().clone())?;

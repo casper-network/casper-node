@@ -44,10 +44,7 @@ fn should_charge_for_user_error(
 
     let response = builder
         .get_exec_result_owned(0)
-        .expect("should have result")
-        .get(0)
-        .cloned()
-        .expect("should have first result");
+        .expect("should have result");
     // TODO: reenable when new payment logic is added
     // assert_eq!(response.cost(), transfer_cost);
     assert_eq!(

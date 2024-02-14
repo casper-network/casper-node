@@ -12,8 +12,8 @@ use casper_types::{
     bytesrepr::FromBytes,
     system::{auction, handle_payment, mint, AUCTION, HANDLE_PAYMENT, MINT},
     AddressableEntity, AddressableEntityHash, ApiError, BlockTime, CLTyped, ContextAccessRights,
-    DeployHash, EntityAddr, EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs,
-    StoredValue, Tagged, URef, U512,
+    EntityAddr, EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, Tagged,
+    TransactionHash, URef, U512,
 };
 
 use crate::{
@@ -59,7 +59,7 @@ impl Executor {
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
-        deploy_hash: DeployHash,
+        txn_hash: TransactionHash,
         gas_limit: Gas,
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -77,7 +77,11 @@ impl Executor {
         };
 
         let address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_ref(), phase);
+            let hash_slice = match &txn_hash {
+                TransactionHash::Deploy(hash) => hash.as_ref(),
+                TransactionHash::V1(hash) => hash.as_ref(),
+            };
+            let generator = AddressGenerator::new(hash_slice, phase);
             Rc::new(RefCell::new(generator))
         };
 
@@ -95,7 +99,7 @@ impl Executor {
             tracking_copy,
             blocktime,
             protocol_version,
-            deploy_hash,
+            txn_hash,
             phase,
             args.clone(),
             gas_limit,
@@ -106,17 +110,20 @@ impl Executor {
         let mut runtime = Runtime::new(context);
 
         let result = match execution_kind {
-            ExecutionKind::Module(module_bytes) => {
-                runtime.execute_module_bytes(&module_bytes, stack)
+            ExecutionKind::Standard(module_bytes)
+            | ExecutionKind::Installer(module_bytes)
+            | ExecutionKind::Upgrader(module_bytes)
+            | ExecutionKind::Isolated(module_bytes) => {
+                runtime.execute_module_bytes(module_bytes, stack)
             }
-            ExecutionKind::Contract {
-                entity_hash: contract_hash,
-                entry_point_name,
+            ExecutionKind::Stored {
+                entity_hash,
+                entry_point,
             } => {
                 // These args are passed through here as they are required to construct the new
                 // `Runtime` during the contract's execution (i.e. inside
                 // `Runtime::execute_contract`).
-                runtime.call_contract_with_stack(contract_hash, &entry_point_name, args, stack)
+                runtime.call_contract_with_stack(entity_hash, &entry_point, args, stack)
             }
         };
 
@@ -124,14 +131,14 @@ impl Executor {
             Ok(_) => ExecutionResult::Success {
                 effects: runtime.context().effects(),
                 transfers: runtime.context().transfers().to_owned(),
-                cost: runtime.context().gas_counter(),
+                gas: runtime.context().gas_counter(),
                 messages: runtime.context().messages(),
             },
             Err(error) => ExecutionResult::Failure {
                 error: error.into(),
                 effects: runtime.context().effects(),
                 transfers: runtime.context().transfers().to_owned(),
-                cost: runtime.context().gas_counter(),
+                gas: runtime.context().gas_counter(),
                 messages: runtime.context().messages(),
             },
         }
@@ -149,7 +156,7 @@ impl Executor {
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
-        deploy_hash: DeployHash,
+        txn_hash: TransactionHash,
         gas_limit: Gas,
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -162,14 +169,18 @@ impl Executor {
         T: FromBytes + CLTyped,
     {
         let address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_ref(), phase);
+            let hash_slice = match &txn_hash {
+                TransactionHash::Deploy(hash) => hash.as_ref(),
+                TransactionHash::V1(hash) => hash.as_ref(),
+            };
+            let generator = AddressGenerator::new(hash_slice, phase);
             Rc::new(RefCell::new(generator))
         };
 
-        // Today lack of existence of the system contract registry and lack of entry
+        // Today lack of existence of the system entity registry and lack of entry
         // for the minimum defined system contracts (mint, auction, handle_payment)
         // should cause the EE to panic. Do not remove the panics.
-        let system_contract_registry = tracking_copy
+        let system_entity_registry = tracking_copy
             .borrow_mut()
             .get_system_entity_registry()
             .unwrap_or_else(|error| panic!("Could not retrieve system contracts: {:?}", error));
@@ -185,13 +196,13 @@ impl Executor {
             DirectSystemContractCall::Slash
             | DirectSystemContractCall::RunAuction
             | DirectSystemContractCall::DistributeRewards => {
-                let auction_hash = system_contract_registry
+                let auction_hash = system_entity_registry
                     .get(AUCTION)
                     .expect("should have auction hash");
                 *auction_hash
             }
             DirectSystemContractCall::Transfer => {
-                let mint_hash = system_contract_registry
+                let mint_hash = system_entity_registry
                     .get(MINT)
                     .expect("should have mint hash");
                 *mint_hash
@@ -199,7 +210,7 @@ impl Executor {
             DirectSystemContractCall::FinalizePayment
             | DirectSystemContractCall::GetPaymentPurse
             | DirectSystemContractCall::DistributeAccumulatedFees => {
-                let handle_payment_hash = system_contract_registry
+                let handle_payment_hash = system_entity_registry
                     .get(HANDLE_PAYMENT)
                     .expect("should have handle payment");
                 *handle_payment_hash
@@ -214,7 +225,7 @@ impl Executor {
             Err(error) => return (None, ExecutionResult::precondition_failure(error.into())),
         };
 
-        let entity_addr = EntityAddr::new_with_tag(entity_kind, entity_hash.value());
+        let entity_addr = EntityAddr::new_of_kind(entity_kind, entity_hash.value());
 
         let mut named_keys = match tracking_copy.borrow_mut().get_named_keys(entity_addr) {
             Ok(named_key) => named_key,
@@ -235,7 +246,7 @@ impl Executor {
             tracking_copy,
             blocktime,
             protocol_version,
-            deploy_hash,
+            txn_hash,
             phase,
             runtime_args.clone(),
             gas_limit,
@@ -258,7 +269,7 @@ impl Executor {
                 Ok(ret) => ExecutionResult::Success {
                     effects: runtime.context().effects(),
                     transfers: runtime.context().transfers().to_owned(),
-                    cost: runtime.context().gas_counter(),
+                    gas: runtime.context().gas_counter(),
                     messages: runtime.context().messages(),
                 }
                 .take_with_ret(ret),
@@ -266,7 +277,7 @@ impl Executor {
                     effects,
                     error: Error::CLValue(error).into(),
                     transfers: runtime.context().transfers().to_owned(),
-                    cost: runtime.context().gas_counter(),
+                    gas: runtime.context().gas_counter(),
                     messages,
                 }
                 .take_without_ret(),
@@ -275,7 +286,7 @@ impl Executor {
                 effects,
                 error: error.into(),
                 transfers: runtime.context().transfers().to_owned(),
-                cost: runtime.context().gas_counter(),
+                gas: runtime.context().gas_counter(),
                 messages,
             }
             .take_without_ret(),
@@ -297,7 +308,7 @@ impl Executor {
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         blocktime: BlockTime,
         protocol_version: ProtocolVersion,
-        deploy_hash: DeployHash,
+        txn_hash: TransactionHash,
         phase: Phase,
         runtime_args: RuntimeArgs,
         gas_limit: Gas,
@@ -323,7 +334,7 @@ impl Executor {
             self.config.clone(),
             blocktime,
             protocol_version,
-            deploy_hash,
+            txn_hash,
             phase,
             runtime_args,
             gas_limit,
@@ -344,7 +355,7 @@ impl Executor {
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
-        deploy_hash: DeployHash,
+        txn_hash: TransactionHash,
         payment_gas_limit: Gas,
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -369,7 +380,7 @@ impl Executor {
             authorization_keys.clone(),
             account_hash,
             blocktime,
-            deploy_hash,
+            txn_hash,
             payment_gas_limit,
             protocol_version,
             Rc::clone(&tracking_copy),
@@ -413,7 +424,7 @@ impl Executor {
             authorization_keys,
             account_hash,
             blocktime,
-            deploy_hash,
+            txn_hash,
             payment_gas_limit,
             protocol_version,
             Rc::clone(&tracking_copy),
@@ -447,7 +458,7 @@ impl Executor {
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
-        deploy_hash: DeployHash,
+        txn_hash: TransactionHash,
         payment_gas_limit: Gas,
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -465,7 +476,7 @@ impl Executor {
             authorization_keys,
             account_hash,
             blocktime,
-            deploy_hash,
+            txn_hash,
             payment_gas_limit,
             protocol_version,
             Rc::clone(&tracking_copy),
@@ -484,7 +495,7 @@ impl Executor {
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
-        deploy_hash: DeployHash,
+        txn_hash: TransactionHash,
         gas_limit: Gas,
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -503,7 +514,7 @@ impl Executor {
             authorization_keys,
             account_hash,
             blocktime,
-            deploy_hash,
+            txn_hash,
             gas_limit,
             protocol_version,
             Rc::clone(&tracking_copy),

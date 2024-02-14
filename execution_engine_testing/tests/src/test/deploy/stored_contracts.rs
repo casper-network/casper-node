@@ -6,9 +6,8 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
-    account::AccountHash,
-    package::{EntityVersion, ENTITY_INITIAL_VERSION},
-    runtime_args, EntityVersionKey, EraId, PackageHash, ProtocolVersion, RuntimeArgs, U512,
+    account::AccountHash, runtime_args, EntityVersion, EntityVersionKey, EraId, PackageHash,
+    ProtocolVersion, RuntimeArgs, ENTITY_INITIAL_VERSION, U512,
 };
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
@@ -61,7 +60,7 @@ fn install_custom_payment(
         .into_package_hash()
         .expect("should be a hash");
 
-    let exec_cost = builder.last_exec_result().cost().value();
+    let exec_cost = builder.get_last_exec_result().unwrap().gas().value();
 
     (default_account, package_hash, exec_cost)
 }
@@ -77,7 +76,7 @@ fn should_exec_non_stored_code() {
     let transferred_amount = 1;
 
     let exec_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(
                 format!("{}.wasm", TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME),
@@ -93,7 +92,7 @@ fn should_exec_non_stored_code() {
             .with_deploy_hash([1; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     let mut builder = LmdbWasmTestBuilder::default();
@@ -156,7 +155,7 @@ fn should_fail_if_calling_non_existent_entry_point() {
     // next make another deploy that attempts to use the stored payment logic
     // but passing the name for an entry point that does not exist.
     let exec_request_stored_payment = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(format!("{}.wasm", DO_NOTHING_NAME), RuntimeArgs::default())
             .with_stored_payment_hash(
@@ -168,7 +167,7 @@ fn should_fail_if_calling_non_existent_entry_point() {
             .with_deploy_hash([1; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder.exec(exec_request_stored_payment).commit();
@@ -213,7 +212,7 @@ fn should_exec_stored_code_by_hash() {
 
     {
         let transfer_using_stored_payment = {
-            let deploy = DeployItemBuilder::new()
+            let deploy_item = DeployItemBuilder::new()
                 .with_address(*DEFAULT_ACCOUNT_ADDR)
                 .with_stored_versioned_payment_contract_by_hash(
                     custom_payment_package_hash.value(),
@@ -231,7 +230,7 @@ fn should_exec_stored_code_by_hash() {
                 .with_deploy_hash([2; 32])
                 .build();
 
-            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+            ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
         };
 
         builder.exec(transfer_using_stored_payment).expect_failure();
@@ -259,7 +258,7 @@ fn should_not_transfer_above_balance_using_stored_payment_code_by_hash() {
 
     let exec_request_stored_payment = {
         let account_1_account_hash = ACCOUNT_1_ADDR;
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(
                 format!("{}.wasm", TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME),
@@ -277,7 +276,7 @@ fn should_not_transfer_above_balance_using_stored_payment_code_by_hash() {
             .with_deploy_hash([2; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder
@@ -311,7 +310,7 @@ fn should_empty_account_using_stored_payment_code_by_hash() {
     {
         let exec_request_stored_payment = {
             let account_1_account_hash = ACCOUNT_1_ADDR;
-            let deploy = DeployItemBuilder::new()
+            let deploy_item = DeployItemBuilder::new()
                 .with_address(*DEFAULT_ACCOUNT_ADDR)
                 .with_session_code(
                     format!("{}.wasm", TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME),
@@ -329,7 +328,7 @@ fn should_empty_account_using_stored_payment_code_by_hash() {
                 .with_deploy_hash([2; 32])
                 .build();
 
-            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+            ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
         };
 
         builder.exec(exec_request_stored_payment).expect_failure();
@@ -358,7 +357,7 @@ fn should_exec_stored_code_by_named_hash() {
     {
         let exec_request_stored_payment = {
             let account_1_account_hash = ACCOUNT_1_ADDR;
-            let deploy = DeployItemBuilder::new()
+            let deploy_item = DeployItemBuilder::new()
                 .with_address(*DEFAULT_ACCOUNT_ADDR)
                 .with_session_code(
                     format!("{}.wasm", TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME),
@@ -376,7 +375,7 @@ fn should_exec_stored_code_by_named_hash() {
                 .with_deploy_hash([2; 32])
                 .build();
 
-            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+            ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
         };
 
         builder.exec(exec_request_stored_payment).expect_failure();
@@ -432,7 +431,7 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
 
     // next make another deploy that USES stored payment logic
     let exec_request_stored_payment = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(format!("{}.wasm", DO_NOTHING_NAME), RuntimeArgs::default())
             .with_stored_payment_named_key(
@@ -446,10 +445,7 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
             .with_deploy_hash([2; 32])
             .build();
 
-        ExecuteRequestBuilder::new()
-            .push_deploy(deploy)
-            .with_protocol_version(new_protocol_version)
-            .build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder.exec(exec_request_stored_payment).commit();
@@ -511,7 +507,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
 
     // next make another deploy that USES stored payment logic
     let exec_request_stored_payment = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(format!("{}.wasm", DO_NOTHING_NAME), RuntimeArgs::default())
             .with_stored_payment_hash(
@@ -523,10 +519,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
             .with_deploy_hash([2; 32])
             .build();
 
-        ExecuteRequestBuilder::new()
-            .push_deploy(deploy)
-            .with_protocol_version(new_protocol_version)
-            .build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder.exec(exec_request_stored_payment).commit();
@@ -606,7 +599,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     // Call stored session code
 
     let exec_request_stored_payment = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_session_named_key(
                 DO_NOTHING_CONTRACT_HASH_NAME,
@@ -622,10 +615,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
             .with_deploy_hash([2; 32])
             .build();
 
-        ExecuteRequestBuilder::new()
-            .push_deploy(deploy)
-            .with_protocol_version(new_protocol_version)
-            .build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder.exec(exec_request_stored_payment).commit();
@@ -688,7 +678,7 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
     // Call stored session code
 
     let exec_request_stored_payment = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 DO_NOTHING_CONTRACT_PACKAGE_HASH_NAME,
@@ -706,10 +696,7 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
             .with_deploy_hash([2; 32])
             .build();
 
-        ExecuteRequestBuilder::new()
-            .push_deploy(deploy)
-            .with_protocol_version(new_protocol_version)
-            .build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder.exec(exec_request_stored_payment).commit();
@@ -783,7 +770,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
         .expect("standard_payment named key should be hash");
 
     let exec_request_stored_payment = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_session_named_key(
                 DO_NOTHING_CONTRACT_HASH_NAME,
@@ -799,10 +786,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
             .with_deploy_hash([2; 32])
             .build();
 
-        ExecuteRequestBuilder::new()
-            .push_deploy(deploy)
-            .with_protocol_version(new_protocol_version)
-            .build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder.exec(exec_request_stored_payment).commit();
@@ -853,7 +837,6 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
         STORED_PAYMENT_CONTRACT_NAME,
         RuntimeArgs::default(),
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     let exec_request_2 = ExecuteRequestBuilder::standard(
@@ -861,7 +844,6 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
         &format!("{}_stored.wasm", DO_NOTHING_NAME),
         RuntimeArgs::default(),
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     // store both contracts
@@ -881,7 +863,7 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
         .expect("standard_payment named key should be hash");
 
     let exec_request_stored_payment = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 DO_NOTHING_CONTRACT_PACKAGE_HASH_NAME,
@@ -898,10 +880,7 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
             .with_deploy_hash([3; 32])
             .build();
 
-        ExecuteRequestBuilder::new()
-            .push_deploy(deploy)
-            .with_protocol_version(new_protocol_version)
-            .build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder

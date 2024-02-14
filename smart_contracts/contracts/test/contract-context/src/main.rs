@@ -11,8 +11,8 @@ use casper_contract::{
 };
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
-    package::ENTITY_INITIAL_VERSION,
     runtime_args, AddressableEntityHash, CLType, EntityVersion, Key, PackageHash,
+    ENTITY_INITIAL_VERSION,
 };
 
 const PACKAGE_HASH_KEY: &str = "package_hash_key";

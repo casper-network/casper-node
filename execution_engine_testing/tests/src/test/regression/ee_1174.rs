@@ -44,8 +44,6 @@ fn should_run_ee_1174_delegation_rate_too_high() {
     let error = builder
         .get_last_exec_result()
         .expect("should have results")
-        .get(0)
-        .expect("should have first result")
         .as_error()
         .cloned()
         .expect("should have error");

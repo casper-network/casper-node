@@ -103,7 +103,7 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
             auction::ARG_DELEGATION_RATE => DELEGATION_RATE,
         };
 
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(sender)
             .with_stored_session_hash(contract_hash, entry_point, session_args)
             .with_empty_payment_bytes(payment_args)
@@ -111,7 +111,7 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
             .with_deploy_hash([43; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     exec_and_assert_costs(
@@ -141,7 +141,7 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
         };
         let deploy_hash = [55; 32];
 
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(sender)
             .with_stored_session_hash(contract_hash, entry_point, session_args)
             .with_empty_payment_bytes(payment_args)
@@ -149,7 +149,7 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
             .with_deploy_hash(deploy_hash)
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     exec_and_assert_costs(
@@ -179,7 +179,7 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
         };
         let deploy_hash = [56; 32];
 
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(sender)
             .with_stored_session_hash(contract_hash, entry_point, session_args)
             .with_empty_payment_bytes(payment_args)
@@ -187,7 +187,7 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
             .with_deploy_hash(deploy_hash)
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     exec_and_assert_costs(
@@ -215,7 +215,7 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
             auction::ARG_AMOUNT => unbond_amount,
         };
 
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(sender)
             .with_stored_session_hash(contract_hash, entry_point, session_args)
             .with_empty_payment_bytes(payment_args)
@@ -223,7 +223,7 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
             .with_deploy_hash([58; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     exec_and_assert_costs(

@@ -90,7 +90,7 @@ fn refund_tests(builder: &mut LmdbWasmTestBuilder, account_hash: AccountHash) {
         .commit();
 
     let refund_purse_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(account_hash)
             .with_deploy_hash([2; 32])
             .with_session_code("do_nothing.wasm", RuntimeArgs::default())
@@ -106,7 +106,7 @@ fn refund_tests(builder: &mut LmdbWasmTestBuilder, account_hash: AccountHash) {
             .with_authorization_keys(&[account_hash])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder.exec(refund_purse_request).expect_success().commit();

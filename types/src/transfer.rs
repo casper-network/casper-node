@@ -19,7 +19,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
-    checksummed_hex, serde_helpers, CLType, CLTyped, DeployHash, URef, U512,
+    checksummed_hex, CLType, CLTyped, Gas, InitiatorAddr, TransactionHash, URef, U512,
 };
 
 /// The length of a transfer address.
@@ -27,34 +27,26 @@ pub const TRANSFER_ADDR_LENGTH: usize = 32;
 pub(super) const TRANSFER_ADDR_FORMATTED_STRING_PREFIX: &str = "transfer-";
 
 /// Represents a transfer from one purse to another
-#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Transfer {
-    /// Deploy that created the transfer
-    #[serde(with = "serde_helpers::deploy_hash_as_array")]
-    #[cfg_attr(
-        feature = "json-schema",
-        schemars(
-            with = "DeployHash",
-            description = "Hex-encoded Deploy hash of Deploy that created the transfer."
-        )
-    )]
-    pub deploy_hash: DeployHash,
-    /// Account from which transfer was executed
-    pub from: AccountHash,
-    /// Account to which funds are transferred
+    /// Transaction that created the transfer.
+    pub transaction_hash: TransactionHash,
+    /// Entity from which transfer was executed.
+    pub from: InitiatorAddr,
+    /// Account to which funds are transferred.
     pub to: Option<AccountHash>,
-    /// Source purse
+    /// Source purse.
     pub source: URef,
-    /// Target purse
+    /// Target purse.
     pub target: URef,
-    /// Transfer amount
+    /// Transfer amount.
     pub amount: U512,
-    /// Gas
-    pub gas: U512,
-    /// User-defined id
+    /// Gas.
+    pub gas: Gas,
+    /// User-defined ID.
     pub id: Option<u64>,
 }
 
@@ -62,17 +54,17 @@ impl Transfer {
     /// Creates a [`Transfer`].
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        deploy_hash: DeployHash,
-        from: AccountHash,
+        transaction_hash: TransactionHash,
+        from: InitiatorAddr,
         to: Option<AccountHash>,
         source: URef,
         target: URef,
         amount: U512,
-        gas: U512,
+        gas: Gas,
         id: Option<u64>,
     ) -> Self {
         Transfer {
-            deploy_hash,
+            transaction_hash,
             from,
             to,
             source,
@@ -84,48 +76,15 @@ impl Transfer {
     }
 }
 
-impl FromBytes for Transfer {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (deploy_hash, rem) = FromBytes::from_bytes(bytes)?;
-        let (from, rem) = AccountHash::from_bytes(rem)?;
-        let (to, rem) = <Option<AccountHash>>::from_bytes(rem)?;
-        let (source, rem) = URef::from_bytes(rem)?;
-        let (target, rem) = URef::from_bytes(rem)?;
-        let (amount, rem) = U512::from_bytes(rem)?;
-        let (gas, rem) = U512::from_bytes(rem)?;
-        let (id, rem) = <Option<u64>>::from_bytes(rem)?;
-        Ok((
-            Transfer {
-                deploy_hash,
-                from,
-                to,
-                source,
-                target,
-                amount,
-                gas,
-                id,
-            },
-            rem,
-        ))
-    }
-}
-
 impl ToBytes for Transfer {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut result = bytesrepr::allocate_buffer(self)?;
-        self.deploy_hash.write_bytes(&mut result)?;
-        self.from.write_bytes(&mut result)?;
-        self.to.write_bytes(&mut result)?;
-        self.source.write_bytes(&mut result)?;
-        self.target.write_bytes(&mut result)?;
-        self.amount.write_bytes(&mut result)?;
-        self.gas.write_bytes(&mut result)?;
-        self.id.write_bytes(&mut result)?;
-        Ok(result)
+        let mut buf = Vec::new();
+        self.write_bytes(&mut buf)?;
+        Ok(buf)
     }
 
     fn serialized_length(&self) -> usize {
-        self.deploy_hash.serialized_length()
+        self.transaction_hash.serialized_length()
             + self.from.serialized_length()
             + self.to.serialized_length()
             + self.source.serialized_length()
@@ -136,15 +95,40 @@ impl ToBytes for Transfer {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.deploy_hash.write_bytes(writer)?;
+        self.transaction_hash.write_bytes(writer)?;
         self.from.write_bytes(writer)?;
         self.to.write_bytes(writer)?;
         self.source.write_bytes(writer)?;
         self.target.write_bytes(writer)?;
         self.amount.write_bytes(writer)?;
         self.gas.write_bytes(writer)?;
-        self.id.write_bytes(writer)?;
-        Ok(())
+        self.id.write_bytes(writer)
+    }
+}
+
+impl FromBytes for Transfer {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (transaction_hash, remainder) = TransactionHash::from_bytes(bytes)?;
+        let (from, remainder) = InitiatorAddr::from_bytes(remainder)?;
+        let (to, remainder) = <Option<AccountHash>>::from_bytes(remainder)?;
+        let (source, remainder) = URef::from_bytes(remainder)?;
+        let (target, remainder) = URef::from_bytes(remainder)?;
+        let (amount, remainder) = U512::from_bytes(remainder)?;
+        let (gas, remainder) = Gas::from_bytes(remainder)?;
+        let (id, remainder) = <Option<u64>>::from_bytes(remainder)?;
+        Ok((
+            Transfer {
+                transaction_hash,
+                from,
+                to,
+                source,
+                target,
+                amount,
+                gas,
+                id,
+            },
+            remainder,
+        ))
     }
 }
 
@@ -263,13 +247,13 @@ impl<'de> Deserialize<'de> for TransferAddr {
 }
 
 impl Display for TransferAddr {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", base16::encode_lower(&self.0))
     }
 }
 
 impl Debug for TransferAddr {
-    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "TransferAddr({})", base16::encode_lower(&self.0))
     }
 }
@@ -293,8 +277,7 @@ impl ToBytes for TransferAddr {
 
     #[inline(always)]
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.0.write_bytes(writer)?;
-        Ok(())
+        self.0.write_bytes(writer)
     }
 }
 
@@ -324,16 +307,16 @@ pub mod gens {
     use proptest::prelude::{prop::option, Arbitrary, Strategy};
 
     use crate::{
-        deploy_info::gens::{account_hash_arb, deploy_hash_arb},
         gens::{u512_arb, uref_arb},
-        Transfer,
+        transaction_info::gens::{account_hash_arb, initiator_addr_arb, txn_hash_arb},
+        Gas, Transfer,
     };
 
     /// Creates an arbitrary [`Transfer`]
     pub fn transfer_arb() -> impl Strategy<Value = Transfer> {
         (
-            deploy_hash_arb(),
-            account_hash_arb(),
+            txn_hash_arb(),
+            initiator_addr_arb(),
             option::of(account_hash_arb()),
             uref_arb(),
             uref_arb(),
@@ -341,18 +324,18 @@ pub mod gens {
             u512_arb(),
             option::of(<u64>::arbitrary()),
         )
-            .prop_map(|(deploy_hash, from, to, source, target, amount, gas, id)| {
-                Transfer {
-                    deploy_hash,
+            .prop_map(
+                |(transaction_hash, from, to, source, target, amount, gas, id)| Transfer {
+                    transaction_hash,
                     from,
                     to,
                     source,
                     target,
                     amount,
-                    gas,
+                    gas: Gas::new(gas),
                     id,
-                }
-            })
+                },
+            )
     }
 }
 

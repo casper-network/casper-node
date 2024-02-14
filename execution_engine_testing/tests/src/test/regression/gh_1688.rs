@@ -90,7 +90,7 @@ fn test(request_builder: impl FnOnce(PackageHash, AddressableEntityHash) -> Exec
 #[test]
 fn should_run_gh_1688_regression_stored_versioned_contract_by_hash() {
     test(|contract_package_hash, _contract_hash| {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_hash(
                 contract_package_hash.value(),
@@ -102,7 +102,7 @@ fn should_run_gh_1688_regression_stored_versioned_contract_by_hash() {
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([42; 32])
             .build();
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     });
 }
 
@@ -110,7 +110,7 @@ fn should_run_gh_1688_regression_stored_versioned_contract_by_hash() {
 #[test]
 fn should_run_gh_1688_regression_stored_versioned_contract_by_name() {
     test(|_contract_package_hash, _contract_hash| {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_KEY,
@@ -123,7 +123,7 @@ fn should_run_gh_1688_regression_stored_versioned_contract_by_name() {
             .with_deploy_hash([42; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     });
 }
 
@@ -131,7 +131,7 @@ fn should_run_gh_1688_regression_stored_versioned_contract_by_name() {
 #[test]
 fn should_run_gh_1688_regression_stored_contract_by_hash() {
     test(|_contract_package_hash, contract_hash| {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_session_hash(contract_hash, METHOD_PUT_KEY, RuntimeArgs::default())
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
@@ -139,7 +139,7 @@ fn should_run_gh_1688_regression_stored_contract_by_hash() {
             .with_deploy_hash([42; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     });
 }
 
@@ -147,7 +147,7 @@ fn should_run_gh_1688_regression_stored_contract_by_hash() {
 #[test]
 fn should_run_gh_1688_regression_stored_contract_by_name() {
     test(|_contract_package_hash, _contract_hash| {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_session_named_key(
                 CONTRACT_HASH_KEY,
@@ -159,6 +159,6 @@ fn should_run_gh_1688_regression_stored_contract_by_name() {
             .with_deploy_hash([42; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     });
 }

@@ -14,15 +14,15 @@ use crate::utils::{hash_from_str, print_entry};
 
 const DATABASE_NAME: &str = "PROTOCOL_DATA_STORE";
 
-pub(crate) fn generate_system_contract_registry(matches: &ArgMatches<'_>) {
+pub(crate) fn generate_system_entity_registry(matches: &ArgMatches<'_>) {
     let data_dir = Path::new(matches.value_of("data_dir").unwrap_or("."));
     match matches.value_of("hash") {
-        None => generate_system_contract_registry_using_protocol_data(data_dir),
-        Some(hash) => generate_system_contract_registry_using_global_state(data_dir, hash),
+        None => generate_system_entity_registry_using_protocol_data(data_dir),
+        Some(hash) => generate_system_entity_registry_using_global_state(data_dir, hash),
     }
 }
 
-fn generate_system_contract_registry_using_protocol_data(data_dir: &Path) {
+fn generate_system_entity_registry_using_protocol_data(data_dir: &Path) {
     let database_path = data_dir.join("data.lmdb");
 
     let env = Environment::new()
@@ -103,7 +103,7 @@ fn generate_system_contract_registry_using_protocol_data(data_dir: &Path) {
     );
 }
 
-fn generate_system_contract_registry_using_global_state(data_dir: &Path, state_hash: &str) {
+fn generate_system_entity_registry_using_global_state(data_dir: &Path, state_hash: &str) {
     let builder =
         LmdbWasmTestBuilder::open_raw(data_dir, Default::default(), hash_from_str(state_hash));
 

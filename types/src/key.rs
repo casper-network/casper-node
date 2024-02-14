@@ -45,8 +45,8 @@ use crate::{
     package::PackageHash,
     system::auction::{BidAddr, BidAddrTag},
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
-    ByteCodeAddr, DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError,
-    TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
+    ByteCodeAddr, DeployHash, Digest, EraId, Tagged, TransactionHash, TransactionV1Hash,
+    TransferAddr, TransferFromStrError, TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
 };
 
 const HASH_PREFIX: &str = "hash-";
@@ -57,12 +57,15 @@ const BID_PREFIX: &str = "bid-";
 const WITHDRAW_PREFIX: &str = "withdraw-";
 const DICTIONARY_PREFIX: &str = "dictionary-";
 const UNBOND_PREFIX: &str = "unbond-";
-const SYSTEM_CONTRACT_REGISTRY_PREFIX: &str = "system-contract-registry-";
+const SYSTEM_ENTITY_REGISTRY_PREFIX: &str = "system-entity-registry-";
 const ERA_SUMMARY_PREFIX: &str = "era-summary-";
 const CHAINSPEC_REGISTRY_PREFIX: &str = "chainspec-registry-";
 const CHECKSUM_REGISTRY_PREFIX: &str = "checksum-registry-";
 const BID_ADDR_PREFIX: &str = "bid-addr-";
 const PACKAGE_PREFIX: &str = "package-";
+const TXN_INFO_PREFIX: &str = "txn-";
+const TXN_INFO_DEPLOY_PREFIX: &str = "d-";
+const TXN_INFO_V1_PREFIX: &str = "v1-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -91,7 +94,7 @@ const KEY_BID_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LEN
 const KEY_WITHDRAW_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_UNBOND_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_DICTIONARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DICTIONARY_LENGTH;
-const KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH: usize =
+const KEY_SYSTEM_ENTITY_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_ERA_SUMMARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH: usize =
@@ -130,7 +133,7 @@ pub enum KeyTag {
     Bid = 7,
     Withdraw = 8,
     Dictionary = 9,
-    SystemContractRegistry = 10,
+    SystemEntityRegistry = 10,
     EraSummary = 11,
     Unbond = 12,
     ChainspecRegistry = 13,
@@ -141,6 +144,7 @@ pub enum KeyTag {
     ByteCode = 18,
     Message = 19,
     NamedKey = 20,
+    TransactionInfo = 21,
 }
 
 impl Display for KeyTag {
@@ -156,7 +160,7 @@ impl Display for KeyTag {
             KeyTag::Bid => write!(f, "Bid"),
             KeyTag::Withdraw => write!(f, "Withdraw"),
             KeyTag::Dictionary => write!(f, "Dictionary"),
-            KeyTag::SystemContractRegistry => write!(f, "SystemContractRegistry"),
+            KeyTag::SystemEntityRegistry => write!(f, "SystemEntityRegistry"),
             KeyTag::EraSummary => write!(f, "EraSummary"),
             KeyTag::Unbond => write!(f, "Unbond"),
             KeyTag::ChainspecRegistry => write!(f, "ChainspecRegistry"),
@@ -167,6 +171,7 @@ impl Display for KeyTag {
             KeyTag::ByteCode => write!(f, "ByteCode"),
             KeyTag::Message => write!(f, "Message"),
             KeyTag::NamedKey => write!(f, "NamedKey"),
+            KeyTag::TransactionInfo => write!(f, "TransactionInfo"),
         }
     }
 }
@@ -199,7 +204,7 @@ pub enum Key {
     /// A `Key` whose value is derived by hashing a [`URef`] address and arbitrary data, under
     /// which a dictionary is stored.
     Dictionary(DictionaryAddr),
-    /// A `Key` under which system contract hashes are stored.
+    /// A `Key` under which system entity hashes are stored.
     SystemEntityRegistry,
     /// A `Key` under which current era info is stored.
     EraSummary,
@@ -221,6 +226,8 @@ pub enum Key {
     Message(MessageAddr),
     /// A `Key` under which a single named key entry is stored.
     NamedKey(NamedKeyAddr),
+    /// A `Key` under which info about a transaction is stored.
+    TransactionInfo(TransactionHash),
 }
 
 #[cfg(feature = "json-schema")]
@@ -265,8 +272,8 @@ pub enum FromStrError {
     Withdraw(String),
     /// Dictionary parse error.
     Dictionary(String),
-    /// System contract registry parse error.
-    SystemContractRegistry(String),
+    /// System entity registry parse error.
+    SystemEntityRegistry(String),
     /// Era summary parse error.
     EraSummary(String),
     /// Unbond parse error.
@@ -287,6 +294,8 @@ pub enum FromStrError {
     Message(contract_messages::FromStrError),
     /// Named key parse error.
     NamedKey(String),
+    /// TransactionInfo parse error.
+    TransactionInfo(String),
     /// Unknown prefix.
     UnknownPrefix,
 }
@@ -332,7 +341,7 @@ impl Display for FromStrError {
             FromStrError::Dictionary(error) => {
                 write!(f, "dictionary-key from string error: {}", error)
             }
-            FromStrError::SystemContractRegistry(error) => {
+            FromStrError::SystemEntityRegistry(error) => {
                 write!(
                     f,
                     "system-contract-registry-key from string error: {}",
@@ -365,6 +374,9 @@ impl Display for FromStrError {
             FromStrError::NamedKey(error) => {
                 write!(f, "named-key from string error: {}", error)
             }
+            FromStrError::TransactionInfo(error) => {
+                write!(f, "transaction-info-key from string error: {}", error)
+            }
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
         }
     }
@@ -385,17 +397,18 @@ impl Key {
             Key::Bid(_) => String::from("Key::Bid"),
             Key::Withdraw(_) => String::from("Key::Unbond"),
             Key::Dictionary(_) => String::from("Key::Dictionary"),
-            Key::SystemEntityRegistry => String::from("Key::SystemContractRegistry"),
+            Key::SystemEntityRegistry => String::from("Key::SystemEntityRegistry"),
             Key::EraSummary => String::from("Key::EraSummary"),
             Key::Unbond(_) => String::from("Key::Unbond"),
             Key::ChainspecRegistry => String::from("Key::ChainspecRegistry"),
             Key::ChecksumRegistry => String::from("Key::ChecksumRegistry"),
             Key::BidAddr(_) => String::from("Key::BidAddr"),
             Key::Package(_) => String::from("Key::Package"),
-            Key::AddressableEntity(..) => String::from("Key::AddressableEntity"),
-            Key::ByteCode(..) => String::from("Key::ByteCode"),
+            Key::AddressableEntity(_) => String::from("Key::AddressableEntity"),
+            Key::ByteCode(_) => String::from("Key::ByteCode"),
             Key::Message(_) => String::from("Key::Message"),
             Key::NamedKey(_) => String::from("Key::NamedKey"),
+            Key::TransactionInfo(_) => String::from("Key::TransactionInfo"),
         }
     }
 
@@ -422,11 +435,11 @@ impl Key {
             Key::Hash(addr) => format!("{}{}", HASH_PREFIX, base16::encode_lower(&addr)),
             Key::URef(uref) => uref.to_formatted_string(),
             Key::Transfer(transfer_addr) => transfer_addr.to_formatted_string(),
-            Key::DeployInfo(addr) => {
+            Key::DeployInfo(deploy_hash) => {
                 format!(
                     "{}{}",
                     DEPLOY_INFO_PREFIX,
-                    base16::encode_lower(addr.as_ref())
+                    base16::encode_lower(deploy_hash.as_ref())
                 )
             }
             Key::EraInfo(era_id) => {
@@ -451,7 +464,7 @@ impl Key {
             Key::SystemEntityRegistry => {
                 format!(
                     "{}{}",
-                    SYSTEM_CONTRACT_REGISTRY_PREFIX,
+                    SYSTEM_ENTITY_REGISTRY_PREFIX,
                     base16::encode_lower(&PADDING_BYTES)
                 )
             }
@@ -495,6 +508,24 @@ impl Key {
             Key::NamedKey(named_key) => {
                 format!("{}", named_key)
             }
+            Key::TransactionInfo(txn_hash) => match txn_hash {
+                TransactionHash::Deploy(deploy_hash) => {
+                    format!(
+                        "{}{}{}",
+                        TXN_INFO_PREFIX,
+                        TXN_INFO_DEPLOY_PREFIX,
+                        base16::encode_lower(deploy_hash.as_ref())
+                    )
+                }
+                TransactionHash::V1(txn_v1_hash) => {
+                    format!(
+                        "{}{}{}",
+                        TXN_INFO_PREFIX,
+                        TXN_INFO_V1_PREFIX,
+                        base16::encode_lower(txn_v1_hash.as_ref())
+                    )
+                }
+            },
         }
     }
 
@@ -625,11 +656,11 @@ impl Key {
             return Ok(Key::Dictionary(addr));
         }
 
-        if let Some(registry_address) = input.strip_prefix(SYSTEM_CONTRACT_REGISTRY_PREFIX) {
+        if let Some(registry_address) = input.strip_prefix(SYSTEM_ENTITY_REGISTRY_PREFIX) {
             let padded_bytes = checksummed_hex::decode(registry_address)
-                .map_err(|error| FromStrError::SystemContractRegistry(error.to_string()))?;
+                .map_err(|error| FromStrError::SystemEntityRegistry(error.to_string()))?;
             let _padding: [u8; 32] = TryFrom::try_from(padded_bytes.as_ref()).map_err(|_| {
-                FromStrError::SystemContractRegistry(
+                FromStrError::SystemEntityRegistry(
                     "Failed to deserialize system registry key".to_string(),
                 )
             })?;
@@ -688,6 +719,28 @@ impl Key {
             Ok(named_key) => return Ok(Key::NamedKey(named_key)),
             Err(addressable_entity::FromStrError::InvalidPrefix) => {}
             Err(error) => return Err(FromStrError::NamedKey(error.to_string())),
+        }
+
+        if let Some(txn_hash) = input.strip_prefix(TXN_INFO_PREFIX) {
+            let txn_hash = if let Some(deploy_hash) = txn_hash.strip_prefix(TXN_INFO_DEPLOY_PREFIX)
+            {
+                let hash_bytes = checksummed_hex::decode(deploy_hash)
+                    .map_err(|error| FromStrError::TransactionInfo(error.to_string()))?;
+                let hash = Digest::try_from(hash_bytes.as_slice())
+                    .map_err(|error| FromStrError::TransactionInfo(error.to_string()))?;
+                TransactionHash::from(DeployHash::new(hash))
+            } else if let Some(txn_v1_hash) = txn_hash.strip_prefix(TXN_INFO_V1_PREFIX) {
+                let hash_bytes = checksummed_hex::decode(txn_v1_hash)
+                    .map_err(|error| FromStrError::TransactionInfo(error.to_string()))?;
+                let hash = Digest::try_from(hash_bytes.as_slice())
+                    .map_err(|error| FromStrError::TransactionInfo(error.to_string()))?;
+                TransactionHash::from(TransactionV1Hash::new(hash))
+            } else {
+                return Err(FromStrError::TransactionInfo(
+                    "invalid transaction info prefix".to_string(),
+                ));
+            };
+            return Ok(Key::TransactionInfo(txn_hash));
         }
 
         Err(FromStrError::UnknownPrefix)
@@ -841,11 +894,9 @@ impl Key {
         entity_hash: AddressableEntityHash,
     ) -> Self {
         let entity_addr = match entity_kind_tag {
-            EntityKindTag::System => EntityAddr::new_system_entity_addr(entity_hash.value()),
-            EntityKindTag::Account => EntityAddr::new_account_entity_addr(entity_hash.value()),
-            EntityKindTag::SmartContract => {
-                EntityAddr::new_contract_entity_addr(entity_hash.value())
-            }
+            EntityKindTag::System => EntityAddr::new_system(entity_hash.value()),
+            EntityKindTag::Account => EntityAddr::new_account(entity_hash.value()),
+            EntityKindTag::SmartContract => EntityAddr::new_smart_contract(entity_hash.value()),
         };
 
         Key::AddressableEntity(entity_addr)
@@ -986,7 +1037,7 @@ impl Display for Key {
             }
             Key::SystemEntityRegistry => write!(
                 f,
-                "Key::SystemContractRegistry({})",
+                "Key::SystemEntityRegistry({})",
                 base16::encode_lower(&PADDING_BYTES)
             ),
             Key::EraSummary => write!(
@@ -1026,6 +1077,16 @@ impl Display for Key {
             Key::NamedKey(named_key_addr) => {
                 write!(f, "Key::NamedKey({})", named_key_addr)
             }
+            Key::TransactionInfo(TransactionHash::Deploy(deploy_hash)) => write!(
+                f,
+                "Key::TransactionInfo(deploy-{})",
+                base16::encode_lower(deploy_hash.as_ref())
+            ),
+            Key::TransactionInfo(TransactionHash::V1(txn_v1_hash)) => write!(
+                f,
+                "Key::TransactionInfo(txn-v1-{})",
+                base16::encode_lower(txn_v1_hash.as_ref())
+            ),
         }
     }
 }
@@ -1049,7 +1110,7 @@ impl Tagged<KeyTag> for Key {
             Key::Bid(_) => KeyTag::Bid,
             Key::Withdraw(_) => KeyTag::Withdraw,
             Key::Dictionary(_) => KeyTag::Dictionary,
-            Key::SystemEntityRegistry => KeyTag::SystemContractRegistry,
+            Key::SystemEntityRegistry => KeyTag::SystemEntityRegistry,
             Key::EraSummary => KeyTag::EraSummary,
             Key::Unbond(_) => KeyTag::Unbond,
             Key::ChainspecRegistry => KeyTag::ChainspecRegistry,
@@ -1060,6 +1121,7 @@ impl Tagged<KeyTag> for Key {
             Key::ByteCode(..) => KeyTag::ByteCode,
             Key::Message(_) => KeyTag::Message,
             Key::NamedKey(_) => KeyTag::NamedKey,
+            Key::TransactionInfo(_) => KeyTag::TransactionInfo,
         }
     }
 }
@@ -1152,7 +1214,7 @@ impl ToBytes for Key {
             Key::Bid(_) => KEY_BID_SERIALIZED_LENGTH,
             Key::Withdraw(_) => KEY_WITHDRAW_SERIALIZED_LENGTH,
             Key::Dictionary(_) => KEY_DICTIONARY_SERIALIZED_LENGTH,
-            Key::SystemEntityRegistry => KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH,
+            Key::SystemEntityRegistry => KEY_SYSTEM_ENTITY_REGISTRY_SERIALIZED_LENGTH,
             Key::EraSummary => KEY_ERA_SUMMARY_SERIALIZED_LENGTH,
             Key::Unbond(_) => KEY_UNBOND_SERIALIZED_LENGTH,
             Key::ChainspecRegistry => KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH,
@@ -1164,16 +1226,21 @@ impl ToBytes for Key {
                 }
             },
             Key::Package(_) => KEY_PACKAGE_SERIALIZED_LENGTH,
-            Key::AddressableEntity(..) => {
-                U8_SERIALIZED_LENGTH + KEY_ID_SERIALIZED_LENGTH + ADDR_LENGTH
+            Key::AddressableEntity(entity_addr) => {
+                KEY_ID_SERIALIZED_LENGTH + entity_addr.serialized_length()
             }
             Key::ByteCode(byte_code_addr) => {
-                U8_SERIALIZED_LENGTH + byte_code_addr.serialized_length()
+                KEY_ID_SERIALIZED_LENGTH + byte_code_addr.serialized_length()
             }
             Key::Message(message_addr) => {
                 KEY_ID_SERIALIZED_LENGTH + message_addr.serialized_length()
             }
-            Key::NamedKey(named_key) => U8_SERIALIZED_LENGTH + named_key.serialized_length(),
+            Key::NamedKey(named_key_addr) => {
+                KEY_ID_SERIALIZED_LENGTH + named_key_addr.serialized_length()
+            }
+            Key::TransactionInfo(txn_hash) => {
+                KEY_ID_SERIALIZED_LENGTH + txn_hash.serialized_length()
+            }
         }
     }
 
@@ -1208,6 +1275,7 @@ impl ToBytes for Key {
             Key::ByteCode(byte_code_addr) => byte_code_addr.write_bytes(writer),
             Key::Message(message_addr) => message_addr.write_bytes(writer),
             Key::NamedKey(named_key_addr) => named_key_addr.write_bytes(writer),
+            Key::TransactionInfo(txn_hash) => txn_hash.write_bytes(writer),
         }
     }
 }
@@ -1256,7 +1324,7 @@ impl FromBytes for Key {
                 let (addr, rem) = DictionaryAddr::from_bytes(remainder)?;
                 Ok((Key::Dictionary(addr), rem))
             }
-            tag if tag == KeyTag::SystemContractRegistry as u8 => {
+            tag if tag == KeyTag::SystemEntityRegistry as u8 => {
                 let (_, rem) = <[u8; 32]>::from_bytes(remainder)?;
                 Ok((Key::SystemEntityRegistry, rem))
             }
@@ -1300,6 +1368,10 @@ impl FromBytes for Key {
                 let (named_key_addr, rem) = NamedKeyAddr::from_bytes(remainder)?;
                 Ok((Key::NamedKey(named_key_addr), rem))
             }
+            tag if tag == KeyTag::TransactionInfo as u8 => {
+                let (txn_hash, rem) = TransactionHash::from_bytes(remainder)?;
+                Ok((Key::TransactionInfo(txn_hash), rem))
+            }
             _ => Err(Error::Formatting),
         }
     }
@@ -1331,13 +1403,14 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::ByteCode(..) => unimplemented!(),
         Key::Message(_) => unimplemented!(),
         Key::NamedKey(_) => unimplemented!(),
+        Key::TransactionInfo(_) => unimplemented!(),
     }
 }
 
 #[cfg(any(feature = "testing", test))]
 impl Distribution<Key> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
-        match rng.gen_range(0..=18) {
+        match rng.gen_range(0..=21) {
             0 => Key::Account(rng.gen()),
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),
@@ -1358,6 +1431,12 @@ impl Distribution<Key> for Standard {
             17 => Key::AddressableEntity(rng.gen()),
             18 => Key::ByteCode(rng.gen()),
             19 => Key::Message(rng.gen()),
+            20 => Key::NamedKey(NamedKeyAddr::new_named_key_entry(rng.gen(), rng.gen())),
+            21 => Key::TransactionInfo(if rng.gen() {
+                TransactionHash::Deploy(DeployHash::from_raw(rng.gen()))
+            } else {
+                TransactionHash::V1(TransactionV1Hash::from_raw(rng.gen()))
+            }),
             _ => unreachable!(),
         }
     }
@@ -1379,7 +1458,7 @@ mod serde_helpers {
         Bid(&'a AccountHash),
         Withdraw(&'a AccountHash),
         Dictionary(&'a HashAddr),
-        SystemContractRegistry,
+        SystemEntityRegistry,
         EraSummary,
         Unbond(&'a AccountHash),
         ChainspecRegistry,
@@ -1390,6 +1469,7 @@ mod serde_helpers {
         ByteCode(&'a ByteCodeAddr),
         Message(&'a MessageAddr),
         NamedKey(&'a NamedKeyAddr),
+        TransactionInfo(&'a TransactionHash),
     }
 
     #[derive(Deserialize)]
@@ -1405,7 +1485,7 @@ mod serde_helpers {
         Bid(AccountHash),
         Withdraw(AccountHash),
         Dictionary(DictionaryAddr),
-        SystemContractRegistry,
+        SystemEntityRegistry,
         EraSummary,
         Unbond(AccountHash),
         ChainspecRegistry,
@@ -1416,6 +1496,7 @@ mod serde_helpers {
         ByteCode(ByteCodeAddr),
         Message(MessageAddr),
         NamedKey(NamedKeyAddr),
+        TransactionInfo(TransactionHash),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -1431,7 +1512,7 @@ mod serde_helpers {
                 Key::Bid(account_hash) => BinarySerHelper::Bid(account_hash),
                 Key::Withdraw(account_hash) => BinarySerHelper::Withdraw(account_hash),
                 Key::Dictionary(addr) => BinarySerHelper::Dictionary(addr),
-                Key::SystemEntityRegistry => BinarySerHelper::SystemContractRegistry,
+                Key::SystemEntityRegistry => BinarySerHelper::SystemEntityRegistry,
                 Key::EraSummary => BinarySerHelper::EraSummary,
                 Key::Unbond(account_hash) => BinarySerHelper::Unbond(account_hash),
                 Key::ChainspecRegistry => BinarySerHelper::ChainspecRegistry,
@@ -1443,7 +1524,8 @@ mod serde_helpers {
                     BinarySerHelper::AddressableEntity(entity_addr)
                 }
                 Key::ByteCode(byte_code_addr) => BinarySerHelper::ByteCode(byte_code_addr),
-                Key::NamedKey(named_key) => BinarySerHelper::NamedKey(named_key),
+                Key::NamedKey(named_key_addr) => BinarySerHelper::NamedKey(named_key_addr),
+                Key::TransactionInfo(txn_hash) => BinarySerHelper::TransactionInfo(txn_hash),
             }
         }
     }
@@ -1461,7 +1543,7 @@ mod serde_helpers {
                 BinaryDeserHelper::Bid(account_hash) => Key::Bid(account_hash),
                 BinaryDeserHelper::Withdraw(account_hash) => Key::Withdraw(account_hash),
                 BinaryDeserHelper::Dictionary(addr) => Key::Dictionary(addr),
-                BinaryDeserHelper::SystemContractRegistry => Key::SystemEntityRegistry,
+                BinaryDeserHelper::SystemEntityRegistry => Key::SystemEntityRegistry,
                 BinaryDeserHelper::EraSummary => Key::EraSummary,
                 BinaryDeserHelper::Unbond(account_hash) => Key::Unbond(account_hash),
                 BinaryDeserHelper::ChainspecRegistry => Key::ChainspecRegistry,
@@ -1474,6 +1556,7 @@ mod serde_helpers {
                 }
                 BinaryDeserHelper::ByteCode(byte_code_addr) => Key::ByteCode(byte_code_addr),
                 BinaryDeserHelper::NamedKey(named_key_addr) => Key::NamedKey(named_key_addr),
+                BinaryDeserHelper::TransactionInfo(txn_hash) => Key::TransactionInfo(txn_hash),
             }
         }
     }
@@ -1514,7 +1597,7 @@ mod tests {
         AccessRights, URef,
     };
 
-    const ENTITY_PREFIX: &str = "addressable-entity-";
+    const ENTITY_PREFIX: &str = "entity-addr-";
     const ACCOUNT_ENTITY_PREFIX: &str = "account-";
 
     const BYTE_CODE_PREFIX: &str = "byte-code-";
@@ -1533,22 +1616,22 @@ mod tests {
     const DELEGATOR_BID_KEY: Key = Key::BidAddr(BidAddr::new_delegator_addr(([2; 32], [9; 32])));
     const WITHDRAW_KEY: Key = Key::Withdraw(AccountHash::new([42; 32]));
     const DICTIONARY_KEY: Key = Key::Dictionary([42; 32]);
-    const SYSTEM_CONTRACT_REGISTRY_KEY: Key = Key::SystemEntityRegistry;
+    const SYSTEM_ENTITY_REGISTRY_KEY: Key = Key::SystemEntityRegistry;
     const ERA_SUMMARY_KEY: Key = Key::EraSummary;
     const UNBOND_KEY: Key = Key::Unbond(AccountHash::new([42; 32]));
     const CHAINSPEC_REGISTRY_KEY: Key = Key::ChainspecRegistry;
     const CHECKSUM_REGISTRY_KEY: Key = Key::ChecksumRegistry;
     const PACKAGE_KEY: Key = Key::Package([42; 32]);
     const ADDRESSABLE_ENTITY_SYSTEM_KEY: Key =
-        Key::AddressableEntity(EntityAddr::new_system_entity_addr([42; 32]));
+        Key::AddressableEntity(EntityAddr::new_system([42; 32]));
     const ADDRESSABLE_ENTITY_ACCOUNT_KEY: Key =
-        Key::AddressableEntity(EntityAddr::new_account_entity_addr([42; 32]));
+        Key::AddressableEntity(EntityAddr::new_account([42; 32]));
     const ADDRESSABLE_ENTITY_SMART_CONTRACT_KEY: Key =
-        Key::AddressableEntity(EntityAddr::new_contract_entity_addr([42; 32]));
+        Key::AddressableEntity(EntityAddr::new_smart_contract([42; 32]));
     const BYTE_CODE_EMPTY_KEY: Key = Key::ByteCode(ByteCodeAddr::Empty);
     const BYTE_CODE_V1_WASM_KEY: Key = Key::ByteCode(ByteCodeAddr::V1CasperWasm([42; 32]));
     const MESSAGE_TOPIC_KEY: Key = Key::Message(MessageAddr::new_topic_addr(
-        AddressableEntityHash::new([42u8; 32]),
+        AddressableEntityHash::new([42; 32]),
         TopicNameHash::new([42; 32]),
     ));
     const MESSAGE_KEY: Key = Key::Message(MessageAddr::new_message_addr(
@@ -1557,9 +1640,13 @@ mod tests {
         15,
     ));
     const NAMED_KEY: Key = Key::NamedKey(NamedKeyAddr::new_named_key_entry(
-        EntityAddr::new_contract_entity_addr([42; 32]),
+        EntityAddr::new_smart_contract([42; 32]),
         [43; 32],
     ));
+    const TRANSACTION_INFO_DEPLOY_KEY: Key =
+        Key::TransactionInfo(TransactionHash::Deploy(DeployHash::from_raw([42; 32])));
+    const TRANSACTION_INFO_V1_KEY: Key =
+        Key::TransactionInfo(TransactionHash::V1(TransactionV1Hash::from_raw([42; 32])));
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
@@ -1571,7 +1658,7 @@ mod tests {
         BID_KEY,
         WITHDRAW_KEY,
         DICTIONARY_KEY,
-        SYSTEM_CONTRACT_REGISTRY_KEY,
+        SYSTEM_ENTITY_REGISTRY_KEY,
         ERA_SUMMARY_KEY,
         UNBOND_KEY,
         CHAINSPEC_REGISTRY_KEY,
@@ -1588,6 +1675,7 @@ mod tests {
         MESSAGE_TOPIC_KEY,
         MESSAGE_KEY,
         NAMED_KEY,
+        TRANSACTION_INFO_V1_KEY,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
     const TOPIC_NAME_HEX_STRING: &str =
@@ -1697,9 +1785,9 @@ mod tests {
             format!("Key::Dictionary({})", HEX_STRING)
         );
         assert_eq!(
-            format!("{}", SYSTEM_CONTRACT_REGISTRY_KEY),
+            format!("{}", SYSTEM_ENTITY_REGISTRY_KEY),
             format!(
-                "Key::SystemContractRegistry({})",
+                "Key::SystemEntityRegistry({})",
                 base16::encode_lower(&PADDING_BYTES)
             )
         );
@@ -1756,14 +1844,21 @@ mod tests {
             format!("{}", MESSAGE_TOPIC_KEY),
             format!("Key::Message({}-{})", HEX_STRING, HEX_STRING)
         );
-
         assert_eq!(
             format!("{}", MESSAGE_KEY),
             format!(
                 "Key::Message({}-{}-{})",
                 HEX_STRING, TOPIC_NAME_HEX_STRING, MESSAGE_INDEX_HEX_STRING
             )
-        )
+        );
+        assert_eq!(
+            format!("{}", TRANSACTION_INFO_DEPLOY_KEY),
+            format!("Key::TransactionInfo(deploy-{})", HEX_STRING)
+        );
+        assert_eq!(
+            format!("{}", TRANSACTION_INFO_V1_KEY),
+            format!("Key::TransactionInfo(txn-v1-{})", HEX_STRING)
+        );
     }
 
     #[test]
@@ -1979,7 +2074,7 @@ mod tests {
             .unwrap_err()
             .to_string()
             .starts_with("dictionary-key from string error: "));
-        assert!(Key::from_formatted_str(SYSTEM_CONTRACT_REGISTRY_PREFIX)
+        assert!(Key::from_formatted_str(SYSTEM_ENTITY_REGISTRY_PREFIX)
             .unwrap_err()
             .to_string()
             .starts_with("system-contract-registry-key from string error: "));
@@ -2023,6 +2118,11 @@ mod tests {
                 .to_string()
                 .starts_with("byte-code-key from string error: ")
         );
+        println!("{}", Key::from_formatted_str(TXN_INFO_PREFIX).unwrap_err());
+        assert!(Key::from_formatted_str(TXN_INFO_PREFIX)
+            .unwrap_err()
+            .to_string()
+            .starts_with("transaction-info-key from string error: "));
         let invalid_prefix = "a-0000000000000000000000000000000000000000000000000000000000000000";
         assert_eq!(
             Key::from_formatted_str(invalid_prefix)
@@ -2097,15 +2197,11 @@ mod tests {
         round_trip(&Key::Dictionary(zeros));
         round_trip(&Key::Unbond(AccountHash::new(zeros)));
         round_trip(&Key::Package(zeros));
-        round_trip(&Key::AddressableEntity(EntityAddr::new_system_entity_addr(
+        round_trip(&Key::AddressableEntity(EntityAddr::new_system(zeros)));
+        round_trip(&Key::AddressableEntity(EntityAddr::new_account(zeros)));
+        round_trip(&Key::AddressableEntity(EntityAddr::new_smart_contract(
             zeros,
         )));
-        round_trip(&Key::AddressableEntity(
-            EntityAddr::new_account_entity_addr(zeros),
-        ));
-        round_trip(&Key::AddressableEntity(
-            EntityAddr::new_contract_entity_addr(zeros),
-        ));
         round_trip(&Key::ByteCode(ByteCodeAddr::Empty));
         round_trip(&Key::ByteCode(ByteCodeAddr::V1CasperWasm(zeros)));
         round_trip(&Key::Message(MessageAddr::new_topic_addr(
@@ -2116,6 +2212,12 @@ mod tests {
             zeros.into(),
             nines.into(),
             1,
+        )));
+        round_trip(&Key::TransactionInfo(TransactionHash::Deploy(
+            DeployHash::from_raw(zeros),
+        )));
+        round_trip(&Key::TransactionInfo(TransactionHash::V1(
+            TransactionV1Hash::from_raw(zeros),
         )));
     }
 }

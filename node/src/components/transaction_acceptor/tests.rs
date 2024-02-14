@@ -407,7 +407,7 @@ impl TestScenario {
                     }
                     ContractScenario::MissingContractAtHash => {
                         let txn = TransactionV1Builder::new_targeting_invocable_entity(
-                            EntityAddr::SmartContract(HashAddr::default()),
+                            AddressableEntityHash::new(HashAddr::default()),
                             "call",
                         )
                         .with_chain_name("casper-example")
@@ -419,7 +419,7 @@ impl TestScenario {
                     }
                     ContractScenario::MissingEntryPoint => {
                         let txn = TransactionV1Builder::new_targeting_invocable_entity(
-                            EntityAddr::SmartContract(HashAddr::default()),
+                            AddressableEntityHash::new(HashAddr::default()),
                             "non-existent-entry-point",
                         )
                         .with_chain_name("casper-example")
@@ -469,7 +469,7 @@ impl TestScenario {
                 }
                 ContractPackageScenario::MissingPackageAtHash => {
                     let txn = TransactionV1Builder::new_targeting_package(
-                        PackageAddr::default(),
+                        PackageHash::new(PackageAddr::default()),
                         None,
                         "call",
                     )
@@ -482,7 +482,7 @@ impl TestScenario {
                 }
                 ContractPackageScenario::MissingContractVersion => {
                     let txn = TransactionV1Builder::new_targeting_package(
-                        PackageAddr::default(),
+                        PackageHash::new(PackageAddr::default()),
                         Some(6),
                         "call",
                     )

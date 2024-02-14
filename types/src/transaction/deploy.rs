@@ -70,9 +70,7 @@ pub use error::{
     DecodeFromJsonError as DeployDecodeFromJsonError, DeployConfigFailure, Error as DeployError,
     ExcessiveSizeError as DeployExcessiveSizeError,
 };
-pub use executable_deploy_item::{
-    ExecutableDeployItem, ExecutableDeployItemIdentifier, TransferTarget,
-};
+pub use executable_deploy_item::{ExecutableDeployItem, ExecutableDeployItemIdentifier};
 
 #[cfg(feature = "json-schema")]
 static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
@@ -299,6 +297,25 @@ impl Deploy {
     /// Returns the `Approval`s for this deploy.
     pub fn approvals(&self) -> &BTreeSet<DeployApproval> {
         &self.approvals
+    }
+
+    /// Consumes `self`, returning a tuple of its constituent parts.
+    pub fn destructure(
+        self,
+    ) -> (
+        DeployHash,
+        DeployHeader,
+        ExecutableDeployItem,
+        ExecutableDeployItem,
+        BTreeSet<DeployApproval>,
+    ) {
+        (
+            self.hash,
+            self.header,
+            self.payment,
+            self.session,
+            self.approvals,
+        )
     }
 
     /// Adds a signature of this `Deploy`'s hash to its approvals.

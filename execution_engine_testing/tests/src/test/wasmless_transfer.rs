@@ -520,10 +520,7 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
 
     let result = builder
         .get_last_exec_result()
-        .expect("Expected to be called after run()")
-        .get(0)
-        .cloned()
-        .expect("Unable to get first deploy result");
+        .expect("Expected to be called after run()");
 
     assert!(result.is_failure(), "was expected to fail");
 
@@ -1018,9 +1015,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
             .with_deploy_hash([42; 32])
             .build();
-        ExecuteRequestBuilder::from_deploy_item(deploy_item)
-            .with_protocol_version(new_protocol_version)
-            .build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder

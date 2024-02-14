@@ -11,13 +11,12 @@ use casper_types::{
         ActionThresholds, AddressableEntity, AssociatedKeys, EntityKind, MessageTopics,
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    package::PackageStatus,
     system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
     AccessRights, AddressableEntityHash, ByteCodeHash, CLType, CLTyped, CLValue, DeployHash,
     DeployInfo, EntityVersionKey, EntityVersions, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Group, Groups, Key, Package, PackageHash, Parameter, ProtocolVersion, PublicKey,
-    SecretKey, Transfer, TransferAddr, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, U128, U256,
-    U512, UREF_ADDR_LENGTH,
+    EntryPoints, Gas, Group, Groups, InitiatorAddr, Key, Package, PackageHash, PackageStatus,
+    Parameter, ProtocolVersion, PublicKey, SecretKey, TransactionHash, TransactionV1Hash, Transfer,
+    TransferAddr, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, U128, U256, U512, UREF_ADDR_LENGTH,
 };
 
 static KB: usize = 1024;
@@ -622,13 +621,13 @@ fn deserialize_bid(delegators_len: u32, b: &mut Bencher) {
 
 fn sample_transfer() -> Transfer {
     Transfer::new(
-        DeployHash::default(),
-        AccountHash::default(),
+        TransactionHash::V1(TransactionV1Hash::default()),
+        InitiatorAddr::AccountHash(AccountHash::default()),
         None,
         URef::default(),
         URef::default(),
         U512::MAX,
-        U512::from_dec_str("123123123123").unwrap(),
+        Gas::new(U512::from_dec_str("123123123123").unwrap()),
         Some(1u64),
     )
 }

@@ -14,11 +14,11 @@ use casper_execution_engine::engine_state::MAX_PAYMENT;
 use casper_storage::data_access_layer::BalanceRequest;
 use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, contracts::ContractHash,
-    package::Package, system::auction::ARG_AMOUNT, AddressableEntityHash,
-    AddressableEntityIdentifier, BlockHeader, Chainspec, EntityAddr, EntityVersion,
-    EntityVersionKey, ExecutableDeployItem, ExecutableDeployItemIdentifier, InitiatorAddr, Key,
-    PackageAddr, PackageHash, PackageIdentifier, ProtocolVersion, Transaction, TransactionConfig,
-    TransactionEntryPoint, TransactionInvocationTarget, TransactionTarget, U512,
+    system::auction::ARG_AMOUNT, AddressableEntityHash, AddressableEntityIdentifier, BlockHeader,
+    Chainspec, EntityAddr, EntityVersion, EntityVersionKey, ExecutableDeployItem,
+    ExecutableDeployItemIdentifier, InitiatorAddr, Key, Package, PackageAddr, PackageHash,
+    PackageIdentifier, ProtocolVersion, Transaction, TransactionConfig, TransactionEntryPoint,
+    TransactionInvocationTarget, TransactionTarget, U512,
 };
 
 use crate::{

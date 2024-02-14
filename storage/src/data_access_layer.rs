@@ -10,6 +10,7 @@ use crate::tracking_copy::TrackingCopy;
 mod addressable_entity;
 pub mod balance;
 pub mod era_validators;
+mod execute;
 mod execution_results_checksum;
 mod flush;
 mod genesis;

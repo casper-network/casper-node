@@ -48,7 +48,7 @@ fn should_return_different_random_bytes_on_different_phases() {
         let mut rng = rand::thread_rng();
         let deploy_hash = rng.gen();
         let address = *DEFAULT_ACCOUNT_ADDR;
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(address)
             .with_session_code(RANDOM_BYTES_WASM, runtime_args! {})
             .with_payment_code(
@@ -60,7 +60,7 @@ fn should_return_different_random_bytes_on_different_phases() {
             .with_authorization_keys(&[address])
             .with_deploy_hash(deploy_hash)
             .build();
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder.exec(execute_request).commit().expect_success();

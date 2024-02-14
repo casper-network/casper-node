@@ -2742,31 +2742,31 @@
       "type": "object",
       "required": [
         "amount",
-        "deploy_hash",
         "from",
         "gas",
         "source",
-        "target"
+        "target",
+        "transaction_hash"
       ],
       "properties": {
-        "deploy_hash": {
-          "description": "Hex-encoded Deploy hash of Deploy that created the transfer.",
+        "transaction_hash": {
+          "description": "Transaction that created the transfer.",
           "allOf": [
             {
-              "$ref": "#/definitions/DeployHash"
+              "$ref": "#/definitions/TransactionHash"
             }
           ]
         },
         "from": {
-          "description": "Account from which transfer was executed",
+          "description": "Entity from which transfer was executed.",
           "allOf": [
             {
-              "$ref": "#/definitions/AccountHash"
+              "$ref": "#/definitions/InitiatorAddr"
             }
           ]
         },
         "to": {
-          "description": "Account to which funds are transferred",
+          "description": "Account to which funds are transferred.",
           "anyOf": [
             {
               "$ref": "#/definitions/AccountHash"
@@ -2777,7 +2777,7 @@
           ]
         },
         "source": {
-          "description": "Source purse",
+          "description": "Source purse.",
           "allOf": [
             {
               "$ref": "#/definitions/URef"
@@ -2785,7 +2785,7 @@
           ]
         },
         "target": {
-          "description": "Target purse",
+          "description": "Target purse.",
           "allOf": [
             {
               "$ref": "#/definitions/URef"
@@ -2793,7 +2793,7 @@
           ]
         },
         "amount": {
-          "description": "Transfer amount",
+          "description": "Transfer amount.",
           "allOf": [
             {
               "$ref": "#/definitions/U512"
@@ -2801,15 +2801,15 @@
           ]
         },
         "gas": {
-          "description": "Gas",
+          "description": "Gas.",
           "allOf": [
             {
-              "$ref": "#/definitions/U512"
+              "$ref": "#/definitions/Gas"
             }
           ]
         },
         "id": {
-          "description": "User-defined id",
+          "description": "User-defined ID.",
           "type": [
             "integer",
             "null"
@@ -2819,6 +2819,14 @@
         }
       },
       "additionalProperties": false
+    },
+    "Gas": {
+      "description": "The `Gas` struct represents a `U512` amount of gas.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/U512"
+        }
+      ]
     },
     "Bid": {
       "description": "An entry in the validator map.",
@@ -3234,7 +3242,7 @@
       "additionalProperties": false
     },
     "ExecutionResultV2": {
-      "description": "The result of executing a single deploy.",
+      "description": "The result of executing a single transaction.",
       "oneOf": [
         {
           "description": "The result of a failed execution.",
@@ -3246,14 +3254,14 @@
             "Failure": {
               "type": "object",
               "required": [
-                "cost",
                 "effects",
                 "error_message",
+                "gas",
                 "transfers"
               ],
               "properties": {
                 "effects": {
-                  "description": "The effects of executing the deploy.",
+                  "description": "The effects of executing the transaction.",
                   "allOf": [
                     {
                       "$ref": "#/definitions/Effects"
@@ -3261,22 +3269,22 @@
                   ]
                 },
                 "transfers": {
-                  "description": "A record of transfers performed while executing the deploy.",
+                  "description": "A record of transfers performed while executing the transaction.",
                   "type": "array",
                   "items": {
                     "$ref": "#/definitions/TransferAddr"
                   }
                 },
-                "cost": {
-                  "description": "The cost in Motes of executing the deploy.",
+                "gas": {
+                  "description": "The gas consumed executing the transaction.",
                   "allOf": [
                     {
-                      "$ref": "#/definitions/U512"
+                      "$ref": "#/definitions/Gas"
                     }
                   ]
                 },
                 "error_message": {
-                  "description": "The error message associated with executing the deploy.",
+                  "description": "The error message associated with executing the transaction.",
                   "type": "string"
                 }
               },
@@ -3295,13 +3303,13 @@
             "Success": {
               "type": "object",
               "required": [
-                "cost",
                 "effects",
+                "gas",
                 "transfers"
               ],
               "properties": {
                 "effects": {
-                  "description": "The effects of executing the deploy.",
+                  "description": "The effects of executing the transaction.",
                   "allOf": [
                     {
                       "$ref": "#/definitions/Effects"
@@ -3309,17 +3317,17 @@
                   ]
                 },
                 "transfers": {
-                  "description": "A record of transfers performed while executing the deploy.",
+                  "description": "A record of transfers performed while executing the transaction.",
                   "type": "array",
                   "items": {
                     "$ref": "#/definitions/TransferAddr"
                   }
                 },
-                "cost": {
-                  "description": "The cost in Motes of executing the deploy.",
+                "gas": {
+                  "description": "The gas consumed executing the transaction.",
                   "allOf": [
                     {
-                      "$ref": "#/definitions/U512"
+                      "$ref": "#/definitions/Gas"
                     }
                   ]
                 }

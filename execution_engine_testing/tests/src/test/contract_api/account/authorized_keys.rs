@@ -76,10 +76,7 @@ fn should_raise_auth_failure_with_invalid_key() {
 
     let deploy_result = builder
         .get_exec_result_owned(0)
-        .expect("should have exec response")
-        .get(0)
-        .cloned()
-        .expect("should have at least one deploy result");
+        .expect("should have exec response");
 
     assert!(
         deploy_result.has_precondition_failure(),
@@ -132,10 +129,7 @@ fn should_raise_auth_failure_with_invalid_keys() {
 
     let deploy_result = builder
         .get_exec_result_owned(0)
-        .expect("should have exec response")
-        .get(0)
-        .cloned()
-        .expect("should have at least one deploy result");
+        .expect("should have exec response");
 
     assert!(deploy_result.has_precondition_failure());
     let message = format!("{}", deploy_result.as_error().unwrap());
@@ -234,10 +228,7 @@ fn should_raise_deploy_authorization_failure() {
     {
         let deploy_result = builder
             .get_exec_result_owned(0)
-            .expect("should have exec response")
-            .get(0)
-            .cloned()
-            .expect("should have at least one deploy result");
+            .expect("should have exec response");
 
         assert!(deploy_result.has_precondition_failure());
         let message = format!("{}", deploy_result.as_error().unwrap());
@@ -296,10 +287,7 @@ fn should_raise_deploy_authorization_failure() {
     {
         let deploy_result = builder
             .get_exec_result_owned(0)
-            .expect("should have exec response")
-            .get(0)
-            .cloned()
-            .expect("should have at least one deploy result");
+            .expect("should have exec response");
 
         assert!(deploy_result.has_precondition_failure());
         let message = format!("{}", deploy_result.as_error().unwrap());
@@ -461,10 +449,7 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
     builder.clear_results().exec(exec_request_3).commit();
     let deploy_result = builder
         .get_exec_result_owned(0)
-        .expect("should have exec response")
-        .get(0)
-        .cloned()
-        .expect("should have at least one deploy result");
+        .expect("should have exec response");
 
     assert!(
         deploy_result.has_precondition_failure(),
@@ -549,10 +534,7 @@ fn should_not_authorize_transfer_without_deploy_key_threshold() {
 
     let response = builder
         .get_exec_result_owned(3)
-        .expect("should have response")
-        .first()
-        .cloned()
-        .expect("should have first result");
+        .expect("should have response");
     let error = response.as_error().expect("should have error");
     assert!(matches!(
         error,

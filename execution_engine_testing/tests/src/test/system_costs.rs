@@ -212,7 +212,6 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
         SYSTEM_CONTRACT_HASHES_NAME,
         RuntimeArgs::default(),
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
     builder
         .exec(system_contract_hashes_request)
@@ -239,7 +238,6 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
             auction::ARG_DELEGATION_RATE => BID_DELEGATION_RATE,
         },
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     let balance_before = builder.get_purse_balance(account.main_purse());
@@ -276,7 +274,6 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
             auction::ARG_AMOUNT => U512::from(BOND_AMOUNT),
         },
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     let balance_before = builder.get_purse_balance(account.main_purse());
@@ -529,7 +526,6 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
         SYSTEM_CONTRACT_HASHES_NAME,
         RuntimeArgs::default(),
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
     builder
         .exec(system_contract_hashes_request)
@@ -556,7 +552,6 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             auction::ARG_AMOUNT => U512::from(BID_AMOUNT),
         },
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
@@ -593,7 +588,6 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             auction::ARG_NEW_VALIDATOR => VALIDATOR_2.clone()
         },
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(redelegate_request).expect_success().commit();
@@ -618,7 +612,6 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             auction::ARG_AMOUNT => U512::from(BID_AMOUNT - DEFAULT_MINIMUM_DELEGATION_AMOUNT),
         },
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     let balance_before = builder.get_purse_balance(account.main_purse());
@@ -815,8 +808,6 @@ fn should_charge_for_erroneous_system_contract_calls() {
         let _error = builder
             .get_last_exec_result()
             .expect("should have results")
-            .get(0)
-            .expect("should have first result")
             .as_error()
             .unwrap_or_else(|| panic!("should have error while executing {}", entrypoint));
 
@@ -982,7 +973,6 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
             auction::ARG_DELEGATION_RATE => BID_DELEGATION_RATE,
         },
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     // Verify that user is called and deploy raises runtime error

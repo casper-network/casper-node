@@ -171,7 +171,9 @@ impl From<ForwardMetaBlock> for MetaBlock {
 mod tests {
     use std::convert::TryInto;
 
-    use casper_types::{execution::ExecutionResultV2, testing::TestRng, Deploy, TestBlockBuilder};
+    use casper_types::{
+        execution::ExecutionResultV2, testing::TestRng, TestBlockBuilder, TransactionV1,
+    };
 
     use super::*;
 
@@ -180,10 +182,10 @@ mod tests {
         let rng = &mut TestRng::new();
 
         let block = Arc::new(TestBlockBuilder::new().build(rng));
-        let deploy = Deploy::random(rng);
+        let txn = TransactionV1::random(rng);
         let execution_results = vec![ExecutionArtifact::new(
-            *deploy.hash(),
-            deploy.take_header(),
+            TransactionHash::V1(*txn.hash()),
+            TransactionHeader::V1(txn.take_header()),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
             Vec::new(),
         )];
@@ -235,10 +237,10 @@ mod tests {
         let rng = &mut TestRng::new();
 
         let block = Arc::new(TestBlockBuilder::new().build(rng));
-        let deploy = Deploy::random(rng);
+        let txn = TransactionV1::random(rng);
         let execution_results = vec![ExecutionArtifact::new(
-            *deploy.hash(),
-            deploy.take_header(),
+            TransactionHash::V1(*txn.hash()),
+            TransactionHeader::V1(txn.take_header()),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
             Vec::new(),
         )];
@@ -273,10 +275,10 @@ mod tests {
                 .switch_block(true)
                 .build(rng),
         );
-        let deploy = Deploy::random(rng);
+        let txn = TransactionV1::random(rng);
         let execution_results = vec![ExecutionArtifact::new(
-            *deploy.hash(),
-            deploy.take_header(),
+            TransactionHash::V1(*txn.hash()),
+            TransactionHeader::V1(txn.take_header()),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
             Vec::new(),
         )];
@@ -306,17 +308,17 @@ mod tests {
         let rng = &mut TestRng::new();
 
         let block = Arc::new(TestBlockBuilder::new().build(rng));
-        let deploy1 = Deploy::random(rng);
+        let txn1 = TransactionV1::random(rng);
         let execution_results1 = vec![ExecutionArtifact::new(
-            *deploy1.hash(),
-            deploy1.take_header(),
+            TransactionHash::V1(*txn1.hash()),
+            TransactionHeader::V1(txn1.take_header()),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
             Vec::new(),
         )];
-        let deploy2 = Deploy::random(rng);
+        let txn2 = TransactionV1::random(rng);
         let execution_results2 = vec![ExecutionArtifact::new(
-            *deploy2.hash(),
-            deploy2.take_header(),
+            TransactionHash::V1(*txn2.hash()),
+            TransactionHeader::V1(txn2.take_header()),
             ExecutionResult::from(ExecutionResultV2::random(rng)),
             Vec::new(),
         )];

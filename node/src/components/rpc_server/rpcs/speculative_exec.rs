@@ -20,7 +20,10 @@ use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     Error, ErrorCode, ReactorEventT, RpcWithParams,
 };
-use crate::{components::contract_runtime::SpeculativeExecutionState, effect::EffectBuilder};
+use crate::{
+    components::contract_runtime::{SpeculativeExecutionError, SpeculativeExecutionState},
+    effect::EffectBuilder,
+};
 
 static SPECULATIVE_EXEC_TXN_PARAMS: Lazy<SpeculativeExecTxnParams> =
     Lazy::new(|| SpeculativeExecTxnParams {
@@ -174,7 +177,7 @@ async fn handle_request<REv: ReactorEventT>(
         .await;
 
     match result {
-        Ok(Some((execution_result, messages))) => {
+        Ok((execution_result, messages)) => {
             let result = SpeculativeExecTxnResult {
                 api_version,
                 block_hash,
@@ -183,24 +186,24 @@ async fn handle_request<REv: ReactorEventT>(
             };
             Ok(result)
         }
-        Ok(None) => Err(Error::new(
-            ErrorCode::NoSuchBlock,
-            "block hash not found".to_string(),
-        )),
-        Err(error) => {
+        Err(SpeculativeExecutionError::NewRequest(error)) => {
+            let rpc_error = Error::new(ErrorCode::InvalidTransaction, error.to_string());
+            Err(rpc_error)
+        }
+        Err(SpeculativeExecutionError::EngineState(error)) => {
             let rpc_error = match error {
                 EngineStateError::RootNotFound(_) => Error::new(ErrorCode::NoSuchStateRoot, ""),
                 EngineStateError::WasmPreprocessing(error) => {
-                    Error::new(ErrorCode::InvalidDeploy, error.to_string())
+                    Error::new(ErrorCode::InvalidTransaction, error.to_string())
                 }
                 EngineStateError::InvalidDeployItemVariant(error) => {
-                    Error::new(ErrorCode::InvalidDeploy, error)
+                    Error::new(ErrorCode::InvalidTransaction, error)
                 }
                 EngineStateError::InvalidProtocolVersion(_) => Error::new(
-                    ErrorCode::InvalidDeploy,
+                    ErrorCode::InvalidTransaction,
                     format!("deploy used invalid protocol version {}", error),
                 ),
-                EngineStateError::Deploy => Error::new(ErrorCode::InvalidDeploy, ""),
+                EngineStateError::Deploy => Error::new(ErrorCode::InvalidTransaction, ""),
                 EngineStateError::Genesis(_)
                 | EngineStateError::WasmSerialization(_)
                 | EngineStateError::Exec(_)
@@ -214,7 +217,7 @@ async fn handle_request<REv: ReactorEventT>(
                 | EngineStateError::InvalidKeyVariant
                 | EngineStateError::ProtocolUpgrade(_)
                 | EngineStateError::CommitError(_)
-                | EngineStateError::MissingSystemContractRegistry
+                | EngineStateError::MissingSystemEntityRegistry
                 | EngineStateError::MissingSystemContractHash(_)
                 | EngineStateError::RuntimeStackOverflow
                 | EngineStateError::FailedToGetKeys(_)

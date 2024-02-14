@@ -20,8 +20,8 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, Caller},
     AccessRights, AddressableEntity, CLTyped, CLValue, ContextAccessRights, DeployHash, Digest,
-    Key, Phase, ProtocolVersion, PublicKey, StoredValue, SystemEntityRegistry, Transfer,
-    TransferAddr, URef, U512,
+    Gas, InitiatorAddr, Key, Phase, ProtocolVersion, PublicKey, StoredValue, SystemEntityRegistry,
+    TransactionHash, Transfer, TransferAddr, URef, U512,
 };
 
 pub struct NativeMintRuntime<S> {
@@ -105,8 +105,8 @@ where
             .borrow_mut()
             .get_system_entity_registry()
             .map_err(|tce| {
-                error!(%tce, "unable to obtain system contract registry during transfer");
-                ProviderError::SystemContractRegistry
+                error!(%tce, "unable to obtain system entity registry during transfer");
+                ProviderError::SystemEntityRegistry
             })
     }
 
@@ -276,9 +276,9 @@ where
         let transfer = {
             // the below line is incorrect; new transaction hash is not currently supported here
             // ...the transfer struct needs to be upgraded to TransactionHash
-            let deploy_hash = DeployHash::new(transaction_hash);
-            let from: AccountHash = self.get_caller();
-            let fee: U512 = U512::zero();
+            let deploy_hash = TransactionHash::Deploy(DeployHash::new(transaction_hash));
+            let from = InitiatorAddr::AccountHash(self.get_caller());
+            let fee = Gas::zero();
             Transfer::new(deploy_hash, from, maybe_to, source, target, amount, fee, id)
         };
         {

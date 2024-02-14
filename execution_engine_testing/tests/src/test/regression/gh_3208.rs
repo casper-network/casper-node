@@ -204,7 +204,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
             auction::ARG_AMOUNT => *DEFAULT_PROPOSER_ACCOUNT_INITIAL_STAKE,
         };
 
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(sender)
             .with_stored_session_hash(contract_hash, entry_point, session_args)
             .with_empty_payment_bytes(payment_args)
@@ -212,7 +212,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
             .with_deploy_hash([58; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     let withdraw_bid_request_2 = {
@@ -225,7 +225,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
             auction::ARG_AMOUNT => *DEFAULT_PROPOSER_ACCOUNT_INITIAL_STAKE,
         };
 
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(sender)
             .with_stored_session_hash(contract_hash, entry_point, session_args)
             .with_empty_payment_bytes(payment_args)
@@ -233,7 +233,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
             .with_deploy_hash([59; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder
@@ -344,7 +344,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule_a
             auction::ARG_AMOUNT => *DEFAULT_PROPOSER_ACCOUNT_INITIAL_STAKE,
         };
 
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(sender)
             .with_stored_session_hash(contract_hash, entry_point, session_args)
             .with_empty_payment_bytes(payment_args)
@@ -352,7 +352,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule_a
             .with_deploy_hash([58; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder

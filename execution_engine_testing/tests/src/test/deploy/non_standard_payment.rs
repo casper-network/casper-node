@@ -69,7 +69,7 @@ fn should_charge_non_main_purse() {
 
     // should be able to pay for exec using new purse
     let account_payment_exec_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(ACCOUNT_1_ADDR)
             .with_session_code(DO_NOTHING_WASM, RuntimeArgs::default())
             .with_payment_code(
@@ -83,7 +83,7 @@ fn should_charge_non_main_purse() {
             .with_deploy_hash([3; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();

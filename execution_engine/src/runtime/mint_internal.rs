@@ -72,9 +72,9 @@ where
     }
 
     fn get_system_entity_registry(&self) -> Result<SystemEntityRegistry, ProviderError> {
-        self.context.system_contract_registry().map_err(|err| {
-            error!(%err, "unable to obtain system contract registry during transfer");
-            ProviderError::SystemContractRegistry
+        self.context.system_entity_registry().map_err(|err| {
+            error!(%err, "unable to obtain system entity registry during transfer");
+            ProviderError::SystemEntityRegistry
         })
     }
 

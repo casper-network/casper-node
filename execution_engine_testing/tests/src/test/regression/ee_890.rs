@@ -40,7 +40,7 @@ fn make_do_nothing_with_start() -> Vec<u8> {
 fn should_run_ee_890_gracefully_reject_start_node_in_session() {
     let wasm_binary = make_do_nothing_with_start();
 
-    let deploy_1 = DeployItemBuilder::new()
+    let deploy_item = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_session_bytes(wasm_binary, RuntimeArgs::new())
         .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
@@ -48,14 +48,14 @@ fn should_run_ee_890_gracefully_reject_start_node_in_session() {
         .with_deploy_hash([123; 32])
         .build();
 
-    let exec_request_1 = ExecuteRequestBuilder::new().push_deploy(deploy_1).build();
+    let exec_request_1 = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder
         .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(exec_request_1)
         .commit();
-    let message = builder.exec_error_message(0).expect("should fail");
+    let message = builder.get_error_message().expect("should fail");
     assert!(
         message.contains("UnsupportedWasmStart"),
         "Error message {:?} does not contain expected pattern",
@@ -68,7 +68,7 @@ fn should_run_ee_890_gracefully_reject_start_node_in_session() {
 fn should_run_ee_890_gracefully_reject_start_node_in_payment() {
     let wasm_binary = make_do_nothing_with_start();
 
-    let deploy_1 = DeployItemBuilder::new()
+    let deploy_item = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_session_code(DO_NOTHING_WASM, RuntimeArgs::new())
         .with_payment_bytes(wasm_binary, RuntimeArgs::new())
@@ -76,14 +76,14 @@ fn should_run_ee_890_gracefully_reject_start_node_in_payment() {
         .with_deploy_hash([123; 32])
         .build();
 
-    let exec_request_1 = ExecuteRequestBuilder::new().push_deploy(deploy_1).build();
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder
         .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
-        .exec(exec_request_1)
+        .exec(exec_request)
         .commit();
-    let message = builder.exec_error_message(0).expect("should fail");
+    let message = builder.get_error_message().expect("should fail");
     assert!(
         message.contains("UnsupportedWasmStart"),
         "Error message {:?} does not contain expected pattern",

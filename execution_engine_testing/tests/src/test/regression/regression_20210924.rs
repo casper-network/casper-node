@@ -1,5 +1,3 @@
-use num_traits::Zero;
-
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
@@ -21,7 +19,7 @@ fn should_charge_minimum_for_do_nothing_session() {
         let session_args = RuntimeArgs::default();
         let deploy_hash = [42; 32];
 
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(account_hash)
             .with_session_bytes(wasm_utils::do_nothing_bytes(), session_args)
             .with_empty_payment_bytes(runtime_args! {
@@ -31,9 +29,8 @@ fn should_charge_minimum_for_do_nothing_session() {
             .with_deploy_hash(deploy_hash)
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy)
-    }
-    .build();
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    };
 
     let mut builder = LmdbWasmTestBuilder::default();
 
@@ -79,7 +76,7 @@ fn should_execute_do_minimum_session() {
         let session_args = RuntimeArgs::default();
         let deploy_hash = [42; 32];
 
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(account_hash)
             .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
             .with_empty_payment_bytes(runtime_args! {
@@ -89,9 +86,8 @@ fn should_execute_do_minimum_session() {
             .with_deploy_hash(deploy_hash)
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy)
-    }
-    .build();
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    };
 
     let mut builder = LmdbWasmTestBuilder::default();
 
@@ -133,7 +129,7 @@ fn should_charge_minimum_for_do_nothing_payment() {
         let session_args = RuntimeArgs::default();
         let deploy_hash = [42; 32];
 
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(account_hash)
             .with_session_bytes(wasm_utils::do_nothing_bytes(), session_args)
             .with_payment_bytes(
@@ -146,9 +142,8 @@ fn should_charge_minimum_for_do_nothing_payment() {
             .with_deploy_hash(deploy_hash)
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy)
-    }
-    .build();
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
+    };
 
     let mut builder = LmdbWasmTestBuilder::default();
 

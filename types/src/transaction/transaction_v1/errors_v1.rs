@@ -1,4 +1,4 @@
-use alloc::string::String;
+use alloc::{string::String, vec::Vec};
 use core::{
     array::TryFromSliceError,
     fmt::{self, Display, Formatter},
@@ -13,7 +13,7 @@ use serde::Serialize;
 use super::super::TransactionEntryPoint;
 #[cfg(doc)]
 use super::TransactionV1;
-use crate::{crypto, CLType, TimeDiff, Timestamp, U512};
+use crate::{bytesrepr, crypto, CLType, DisplayIter, TimeDiff, Timestamp, U512};
 
 /// Returned when a [`TransactionV1`] fails validation.
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -97,14 +97,22 @@ pub enum TransactionV1ConfigFailure {
         arg_name: String,
     },
 
-    /// Given runtime arg is not expected type.
+    /// Given runtime arg is not one of the expected types.
     UnexpectedArgType {
         /// The name of the invalid arg.
         arg_name: String,
-        /// The expected type for the given runtime arg.
-        expected: CLType,
+        /// The choice of valid types for the given runtime arg.
+        expected: Vec<CLType>,
         /// The provided type of the given runtime arg.
         got: CLType,
+    },
+
+    /// Failed to deserialize the given runtime arg.
+    InvalidArg {
+        /// The name of the invalid arg.
+        arg_name: String,
+        /// The deserialization error.
+        error: bytesrepr::Error,
     },
 
     /// Insufficient transfer amount.
@@ -217,8 +225,12 @@ impl Display for TransactionV1ConfigFailure {
             } => {
                 write!(
                     formatter,
-                    "expected type of '{arg_name}' runtime argument to be {expected}, but got {got}"
+                    "expected type of '{arg_name}' runtime argument to be one of {}, but got {got}",
+                    DisplayIter::new(expected)
                 )
+            }
+            TransactionV1ConfigFailure::InvalidArg { arg_name, error } => {
+                write!(formatter, "invalid runtime argument '{arg_name}': {error}")
             }
             TransactionV1ConfigFailure::InsufficientTransferAmount { minimum, attempted } => {
                 write!(
@@ -250,6 +262,7 @@ impl StdError for TransactionV1ConfigFailure {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
             TransactionV1ConfigFailure::InvalidApproval { error, .. } => Some(error),
+            TransactionV1ConfigFailure::InvalidArg { error, .. } => Some(error),
             TransactionV1ConfigFailure::InvalidChainName { .. }
             | TransactionV1ConfigFailure::ExcessiveSize(_)
             | TransactionV1ConfigFailure::ExcessiveTimeToLive { .. }

@@ -33,10 +33,10 @@ use casper_types::{
     handle_stored_dictionary_value,
     system::auction::EraInfo,
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
-    CLValueDictionary, ContextAccessRights, DeployHash, EntityAddr, EntryPointType, Gas,
-    GrantedAccess, Key, KeyTag, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
-    RuntimeArgs, StoredValue, StoredValueTypeMismatch, SystemEntityRegistry, Transfer,
-    TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
+    CLValueDictionary, ContextAccessRights, EntityAddr, EntryPointType, Gas, GrantedAccess, Key,
+    KeyTag, Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
+    StoredValueTypeMismatch, SystemEntityRegistry, TransactionHash, Transfer, TransferAddr, URef,
+    URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{engine_state::EngineConfig, execution::Error};
@@ -54,7 +54,7 @@ pub struct RuntimeContext<'a, R> {
     args: RuntimeArgs,
     authorization_keys: BTreeSet<AccountHash>,
     blocktime: BlockTime,
-    deploy_hash: DeployHash,
+    transaction_hash: TransactionHash,
     gas_limit: Gas,
     gas_counter: Gas,
     address_generator: Rc<RefCell<AddressGenerator>>,
@@ -96,9 +96,9 @@ where
         engine_config: EngineConfig,
         blocktime: BlockTime,
         protocol_version: ProtocolVersion,
-        deploy_hash: DeployHash,
+        transaction_hash: TransactionHash,
         phase: Phase,
-        runtime_args: RuntimeArgs,
+        args: RuntimeArgs,
         gas_limit: Gas,
         gas_counter: Gas,
         transfers: Vec<TransferAddr>,
@@ -116,13 +116,13 @@ where
             entry_point_type,
             named_keys,
             access_rights,
-            args: runtime_args,
+            args,
             entity,
             entity_key,
             authorization_keys,
             account_hash,
             blocktime,
-            deploy_hash,
+            transaction_hash,
             gas_limit,
             gas_counter,
             address_generator,
@@ -157,7 +157,7 @@ where
 
         let blocktime = self.blocktime;
         let protocol_version = self.protocol_version;
-        let deploy_hash = self.deploy_hash;
+        let transaction_hash = self.transaction_hash;
         let phase = self.phase;
 
         let gas_limit = self.gas_limit;
@@ -177,7 +177,7 @@ where
             authorization_keys,
             account_hash,
             blocktime,
-            deploy_hash,
+            transaction_hash,
             gas_limit,
             gas_counter,
             address_generator,
@@ -264,9 +264,9 @@ where
         self.blocktime
     }
 
-    /// Returns the deploy hash.
-    pub fn get_deploy_hash(&self) -> DeployHash {
-        self.deploy_hash
+    /// Returns the transaction hash.
+    pub fn get_transaction_hash(&self) -> TransactionHash {
+        self.transaction_hash
     }
 
     /// Extends access rights with a new map.
@@ -690,6 +690,7 @@ where
                 self.validate_cl_value(named_key_value.get_key_as_cl_value())?;
                 self.validate_cl_value(named_key_value.get_name_as_cl_value())
             }
+            StoredValue::TransactionInfo(_) => Ok(()),
         }
     }
 
@@ -770,10 +771,11 @@ where
             | Key::ChecksumRegistry
             | Key::BidAddr(_)
             | Key::Package(_)
-            | Key::AddressableEntity(..)
-            | Key::ByteCode(..)
+            | Key::AddressableEntity(_)
+            | Key::ByteCode(_)
             | Key::Message(_)
-            | Key::NamedKey(_) => true,
+            | Key::NamedKey(_)
+            | Key::TransactionInfo(_) => true,
         }
     }
 
@@ -809,7 +811,8 @@ where
             | Key::BidAddr(_)
             | Key::Package(_)
             | Key::ByteCode(..)
-            | Key::Message(_) => false,
+            | Key::Message(_)
+            | Key::TransactionInfo(_) => false,
         }
     }
 
@@ -842,7 +845,8 @@ where
             | Key::Package(_)
             | Key::AddressableEntity(..)
             | Key::ByteCode(..)
-            | Key::Message(_) => false,
+            | Key::Message(_)
+            | Key::TransactionInfo(_) => false,
         }
     }
 
@@ -879,7 +883,7 @@ where
         contract_hash: &AddressableEntityHash,
     ) -> Result<bool, Error> {
         Ok(self
-            .system_contract_registry()?
+            .system_entity_registry()?
             .has_contract_hash(contract_hash))
     }
 
@@ -1357,7 +1361,7 @@ where
 
     /// Gets system contract by name.
     pub(crate) fn get_system_contract(&self, name: &str) -> Result<AddressableEntityHash, Error> {
-        let registry = self.system_contract_registry()?;
+        let registry = self.system_entity_registry()?;
         let hash = registry.get(name).ok_or_else(|| {
             error!("Missing system contract hash: {}", name);
             Error::MissingSystemContractHash(name.to_string())
@@ -1373,13 +1377,13 @@ where
         ))
     }
 
-    /// Returns system contract registry by querying the global state.
-    pub fn system_contract_registry(&self) -> Result<SystemEntityRegistry, Error> {
+    /// Returns system entity registry by querying the global state.
+    pub fn system_entity_registry(&self) -> Result<SystemEntityRegistry, Error> {
         self.tracking_copy
             .borrow_mut()
             .get_system_entity_registry()
             .map_err(|err| {
-                error!("Missing system contract registry");
+                error!("Missing system entity registry");
                 Error::TrackingCopy(err)
             })
     }

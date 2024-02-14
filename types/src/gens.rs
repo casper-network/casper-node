@@ -18,37 +18,34 @@ use proptest::{
 };
 
 use crate::{
-    account::{self, action_thresholds::gens::account_action_thresholds_arb, AccountHash},
-    addressable_entity::{MessageTopics, NamedKeys, Parameters, Weight},
+    account::{
+        self, action_thresholds::gens::account_action_thresholds_arb,
+        associated_keys::gens::account_associated_keys_arb, Account, AccountHash,
+    },
+    addressable_entity::{
+        action_thresholds::gens::action_thresholds_arb, associated_keys::gens::associated_keys_arb,
+        MessageTopics, NamedKeyValue, NamedKeys, Parameters, Weight,
+    },
+    byte_code::ByteCodeKind,
     contract_messages::{MessageChecksum, MessageTopicSummary, TopicNameHash},
+    contracts::{
+        Contract, ContractHash, ContractPackage, ContractPackageStatus, ContractVersionKey,
+        ContractVersions,
+    },
     crypto::{self, gens::public_key_arb_no_system},
+    deploy_info::gens::deploy_info_arb,
     package::{EntityVersionKey, EntityVersions, Groups, PackageStatus},
     system::auction::{
-        gens::era_info_arb, DelegationRate, Delegator, UnbondingPurse, WithdrawPurse,
-        DELEGATION_RATE_DENOMINATOR,
+        gens::era_info_arb, Bid, BidAddr, BidKind, DelegationRate, Delegator, UnbondingPurse,
+        ValidatorBid, WithdrawPurse, DELEGATION_RATE_DENOMINATOR,
     },
-    transfer::TransferAddr,
+    transaction_info::gens::{deploy_hash_arb, transfer_addr_arb, txn_info_arb},
+    transfer::{gens::transfer_arb, TransferAddr},
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
     EntityKind, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key,
     NamedArg, Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256,
     U512,
 };
-
-use crate::{
-    account::{associated_keys::gens::account_associated_keys_arb, Account},
-    addressable_entity::{
-        action_thresholds::gens::action_thresholds_arb, associated_keys::gens::associated_keys_arb,
-        NamedKeyValue,
-    },
-    byte_code::ByteCodeKind,
-    contracts::{
-        Contract, ContractHash, ContractPackage, ContractPackageStatus, ContractVersionKey,
-        ContractVersions,
-    },
-    deploy_info::gens::{deploy_hash_arb, transfer_addr_arb},
-    system::auction::{Bid, BidAddr, BidKind, ValidatorBid},
-};
-pub use crate::{deploy_info::gens::deploy_info_arb, transfer::gens::transfer_arb};
 
 pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {
     collection::vec(any::<u8>(), 32).prop_map(|b| {
@@ -718,29 +715,31 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         unbondings_arb(1..50).prop_map(StoredValue::Unbonding),
         message_topic_summary_arb().prop_map(StoredValue::MessageTopic),
         message_summary_arb().prop_map(StoredValue::Message),
-        named_key_value_arb().prop_map(StoredValue::NamedKey)
+        named_key_value_arb().prop_map(StoredValue::NamedKey),
+        txn_info_arb().prop_map(StoredValue::TransactionInfo),
     ]
     .prop_map(|stored_value|
-        // The following match statement is here only to make sure
-        // we don't forget to update the generator when a new variant is added.
-        match stored_value {
-            StoredValue::CLValue(_) => stored_value,
-            StoredValue::Account(_) => stored_value,
-            StoredValue::ContractWasm(_) => stored_value,
-            StoredValue::Contract(_) => stored_value,
-            StoredValue::ContractPackage(_) => stored_value,
-            StoredValue::Transfer(_) => stored_value,
-            StoredValue::DeployInfo(_) => stored_value,
-            StoredValue::EraInfo(_) => stored_value,
-            StoredValue::Bid(_) => stored_value,
-            StoredValue::Withdraw(_) => stored_value,
-            StoredValue::Unbonding(_) => stored_value,
-            StoredValue::AddressableEntity(_) => stored_value,
-            StoredValue::BidKind(_) => stored_value,
-            StoredValue::Package(_) => stored_value,
-            StoredValue::ByteCode(_) => stored_value,
-            StoredValue::MessageTopic(_) => stored_value,
-            StoredValue::Message(_) => stored_value,
-            StoredValue::NamedKey(_) => stored_value,
-        })
+            // The following match statement is here only to make sure
+            // we don't forget to update the generator when a new variant is added.
+            match stored_value {
+                StoredValue::CLValue(_) => stored_value,
+                StoredValue::Account(_) => stored_value,
+                StoredValue::ContractWasm(_) => stored_value,
+                StoredValue::Contract(_) => stored_value,
+                StoredValue::ContractPackage(_) => stored_value,
+                StoredValue::Transfer(_) => stored_value,
+                StoredValue::DeployInfo(_) => stored_value,
+                StoredValue::EraInfo(_) => stored_value,
+                StoredValue::Bid(_) => stored_value,
+                StoredValue::Withdraw(_) => stored_value,
+                StoredValue::Unbonding(_) => stored_value,
+                StoredValue::AddressableEntity(_) => stored_value,
+                StoredValue::BidKind(_) => stored_value,
+                StoredValue::Package(_) => stored_value,
+                StoredValue::ByteCode(_) => stored_value,
+                StoredValue::MessageTopic(_) => stored_value,
+                StoredValue::Message(_) => stored_value,
+                StoredValue::NamedKey(_) => stored_value,
+                StoredValue::TransactionInfo(_) => stored_value,
+            })
 }

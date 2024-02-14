@@ -621,7 +621,7 @@ impl TestFixture {
             .expect("should have block");
 
         // we need the native auction addr so we can directly call it w/o wasm
-        // we can get it out of the system contract registry which is just a
+        // we can get it out of the system entity registry which is just a
         // value in global state under a stable key.
         let maybe_registry = reactor
             .contract_runtime
@@ -634,14 +634,14 @@ impl TestFixture {
             .expect("should not have gs storage error")
             .expect("should have stored value");
 
-        let system_contract_registry: SystemEntityRegistry = match maybe_registry {
+        let system_entity_registry: SystemEntityRegistry = match maybe_registry {
             StoredValue::CLValue(cl_value) => CLValue::into_t(cl_value).unwrap(),
             _ => {
                 panic!("expected CLValue")
             }
         };
 
-        *system_contract_registry.get(system_contract_name).unwrap()
+        *system_entity_registry.get(system_contract_name).unwrap()
     }
 
     async fn inject_transaction(&mut self, txn: Transaction) {
@@ -691,13 +691,11 @@ impl TestFixture {
                 effects.transforms().to_vec()
             }
             ExecutionResult::V2(ExecutionResultV2::Failure {
-                cost,
-                error_message,
-                ..
+                gas, error_message, ..
             }) => {
                 panic!(
-                    "transaction execution failed: {} cost: {}",
-                    error_message, cost
+                    "transaction execution failed: {} gas: {}",
+                    error_message, gas
                 );
             }
         }

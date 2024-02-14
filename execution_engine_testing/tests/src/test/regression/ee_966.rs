@@ -63,7 +63,7 @@ fn make_session_code_with_memory_pages(initial_pages: u32, max_pages: Option<u32
 }
 
 fn make_request_with_session_bytes(session_code: Vec<u8>) -> ExecuteRequest {
-    let deploy = DeployItemBuilder::new()
+    let deploy_item = DeployItemBuilder::new()
         .with_address(*DEFAULT_ACCOUNT_ADDR)
         .with_session_bytes(session_code, RuntimeArgs::new())
         .with_empty_payment_bytes(runtime_args! {
@@ -73,7 +73,7 @@ fn make_request_with_session_bytes(session_code: Vec<u8>) -> ExecuteRequest {
         .with_deploy_hash([42; 32])
         .build();
 
-    ExecuteRequestBuilder::new().push_deploy(deploy).build()
+    ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
 }
 
 #[ignore]
@@ -104,10 +104,10 @@ fn should_run_ee_966_cant_have_too_much_initial_memory() {
 
     builder.exec(exec_request).commit();
 
-    let exec_response = &builder
+    let exec_result = &builder
         .get_exec_result_owned(0)
-        .expect("should have exec response")[0];
-    let error = exec_response.as_error().expect("should have error");
+        .expect("should have exec response");
+    let error = exec_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::Interpreter(_)));
 }
 
@@ -156,10 +156,10 @@ fn should_run_ee_966_cant_have_too_much_max_memory() {
 
     builder.exec(exec_request).commit();
 
-    let exec_response = &builder
+    let exec_result = &builder
         .get_exec_result_owned(0)
-        .expect("should have exec response")[0];
-    let error = exec_response.as_error().expect("should have error");
+        .expect("should have exec response");
+    let error = exec_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::Interpreter(_)));
 }
 
@@ -179,10 +179,10 @@ fn should_run_ee_966_cant_have_way_too_much_max_memory() {
 
     builder.exec(exec_request).commit();
 
-    let exec_response = &builder
+    let exec_result = &builder
         .get_exec_result_owned(0)
-        .expect("should have exec response")[0];
-    let error = exec_response.as_error().expect("should have error");
+        .expect("should have exec response");
+    let error = exec_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::Interpreter(_)));
 }
 
@@ -200,10 +200,10 @@ fn should_run_ee_966_cant_have_larger_initial_than_max_memory() {
 
     builder.exec(exec_request).commit();
 
-    let exec_response = &builder
+    let exec_result = &builder
         .get_exec_result_owned(0)
-        .expect("should have exec response")[0];
-    let error = exec_response.as_error().expect("should have error");
+        .expect("should have exec response");
+    let error = exec_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::Interpreter(_)));
 }
 
@@ -223,10 +223,10 @@ fn should_run_ee_966_regression_fail_when_growing_mem_past_max() {
 
     builder.exec(exec_request).commit();
 
-    let results = &builder
+    let exec_result = &builder
         .get_exec_result_owned(0)
-        .expect("should have exec response")[0];
-    let error = results.as_error().expect("should have error");
+        .expect("should have exec response");
+    let error = exec_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::Revert(ApiError::OutOfMemory)));
 }
 
@@ -250,10 +250,10 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
     // This request should fail - as it's exceeding default memory limit
     //
 
-    let results = &builder
+    let exec_result = &builder
         .get_exec_result_owned(0)
-        .expect("should have exec response")[0];
-    let error = results.as_error().expect("should have error");
+        .expect("should have exec response");
+    let error = exec_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(ExecError::Revert(ApiError::OutOfMemory)));
 
     //
@@ -281,7 +281,6 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
         CONTRACT_EE_966_REGRESSION,
         RuntimeArgs::default(),
     )
-    .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
     builder.exec(exec_request_2).commit().expect_success();

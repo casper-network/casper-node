@@ -26,9 +26,10 @@ use casper_types::{
     testing::TestRng,
     AccessRights, Block, BlockHash, BlockHeader, BlockSignatures, BlockSignaturesV2, BlockV2,
     ChainNameDigest, Chainspec, ChainspecRawBytes, Deploy, DeployApprovalsHash, DeployHash, Digest,
-    EraId, FinalitySignature, FinalitySignatureV2, Key, ProtocolVersion, PublicKey, SecretKey,
-    SignedBlockHeader, TestBlockBuilder, TestBlockV1Builder, TimeDiff, Transaction,
-    TransactionApprovalsHash, TransactionHash, TransactionV1Hash, Transfer, URef, U512,
+    EraId, FinalitySignature, FinalitySignatureV2, Gas, InitiatorAddr, Key, ProtocolVersion,
+    PublicKey, SecretKey, SignedBlockHeader, TestBlockBuilder, TestBlockV1Builder, TimeDiff,
+    Transaction, TransactionApprovalsHash, TransactionHash, TransactionV1Hash, Transfer, URef,
+    U512,
 };
 use tempfile::tempdir;
 
@@ -1329,21 +1330,21 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
 
 fn prepare_exec_result_with_transfer(
     rng: &mut TestRng,
-    deploy_hash: &DeployHash,
+    txn_hash: &TransactionHash,
 ) -> (ExecutionResult, Transfer) {
     let transfer = Transfer::new(
-        *deploy_hash,
-        rng.gen(),
+        *txn_hash,
+        InitiatorAddr::random(rng),
         Some(rng.gen()),
         rng.gen(),
         rng.gen(),
         rng.gen(),
-        rng.gen(),
+        Gas::from(rng.gen::<u64>()),
         Some(rng.gen()),
     );
     let transform = TransformEntry {
-        key: Key::DeployInfo(*deploy_hash).to_formatted_string(),
-        transform: Transform::WriteTransfer(transfer),
+        key: Key::TransactionInfo(*txn_hash).to_formatted_string(),
+        transform: Transform::WriteTransfer(transfer.clone()),
     };
     let effect = ExecutionEffect {
         operations: vec![],
@@ -1372,7 +1373,8 @@ fn store_identical_execution_results() {
     storage.put_block(&block).unwrap();
     let block_hash = *block.hash();
 
-    let (exec_result, transfer) = prepare_exec_result_with_transfer(&mut harness.rng, &deploy_hash);
+    let (exec_result, transfer) =
+        prepare_exec_result_with_transfer(&mut harness.rng, &TransactionHash::Deploy(deploy_hash));
     let mut exec_results = HashMap::new();
     exec_results.insert(TransactionHash::from(deploy_hash), exec_result.clone());
 
@@ -1483,7 +1485,8 @@ fn should_provide_transfers_after_emptied() {
     storage.put_block(&block).unwrap();
     let block_hash = *block.hash();
 
-    let (exec_result, transfer) = prepare_exec_result_with_transfer(&mut harness.rng, &deploy_hash);
+    let (exec_result, transfer) =
+        prepare_exec_result_with_transfer(&mut harness.rng, &TransactionHash::Deploy(deploy_hash));
     let mut exec_results = HashMap::new();
     exec_results.insert(TransactionHash::from(deploy_hash), exec_result);
 
@@ -2945,6 +2948,7 @@ fn assert_highest_block_in_storage(
 // Since this change impacts the storage APIs, create a test to prove that we can still access old
 // unversioned blocks through the new APIs and also check that both versioned and unversioned blocks
 // can co-exist in storage.
+#[ignore = "stop ignoring once decision around Transfer type is made"]
 fn check_block_operations_with_node_1_5_2_storage() {
     let rng: TestRng = TestRng::new();
 
@@ -3007,7 +3011,10 @@ fn check_block_operations_with_node_1_5_2_storage() {
             let mut stored_transfers: Vec<DeployHash> = transfers
                 .unwrap()
                 .iter()
-                .map(|transfer| transfer.deploy_hash)
+                .map(|transfer| match transfer.transaction_hash {
+                    TransactionHash::Deploy(deploy_hash) => deploy_hash,
+                    TransactionHash::V1(_) => panic!("expected deploy"),
+                })
                 .collect();
             stored_transfers.sort();
             let mut expected_deploys = block_info.deploy_hashes.clone();

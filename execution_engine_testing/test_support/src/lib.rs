@@ -9,18 +9,14 @@
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
-/// Utility methods for running the auction in a test or bench context.
-pub mod auction;
 mod chainspec_config;
 mod deploy_item_builder;
 mod execute_request_builder;
 mod step_request_builder;
-
-/// Utilities for running transfers in a test or bench context.
-pub mod transfer;
 mod upgrade_request_builder;
 pub mod utils;
 mod wasm_test_builder;
+// mod execute_request_builder;
 
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
@@ -28,14 +24,14 @@ use once_cell::sync::Lazy;
 #[doc(inline)]
 #[allow(deprecated)]
 pub use casper_execution_engine::engine_state::engine_config::{
-    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+    DEFAULT_FEE_HANDLING, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
 };
 use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     account::AccountHash, ChainspecRegistry, Digest, GenesisAccount, GenesisConfig,
     GenesisConfigBuilder, Motes, ProtocolVersion, PublicKey, SecretKey, SystemConfig, WasmConfig,
-    DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING, U512,
+    DEFAULT_REFUND_HANDLING, U512,
 };
 
 pub use chainspec_config::ChainspecConfig;

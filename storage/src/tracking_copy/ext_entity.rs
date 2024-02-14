@@ -6,11 +6,9 @@ use casper_types::{
         ActionThresholds, AssociatedKeys, EntityKindTag, MessageTopics, NamedKeyAddr,
         NamedKeyValue, NamedKeys, Weight,
     },
-    bytesrepr,
-    package::{EntityVersions, Groups, PackageStatus},
-    AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue,
-    EntityAddr, EntityKind, EntryPoints, Key, Package, PackageHash, Phase, ProtocolVersion,
-    StoredValue, StoredValueTypeMismatch,
+    bytesrepr, AccessRights, Account, AddressableEntity, AddressableEntityHash, ByteCodeHash,
+    CLValue, EntityAddr, EntityKind, EntityVersions, EntryPoints, Groups, Key, Package,
+    PackageHash, PackageStatus, Phase, ProtocolVersion, StoredValue, StoredValueTypeMismatch,
 };
 
 use crate::{
@@ -328,7 +326,7 @@ where
             .map_err(Self::Error::SetThresholdFailure)?
         };
 
-        let entity_addr = EntityAddr::new_account_entity_addr(entity_hash.value());
+        let entity_addr = EntityAddr::new_account(entity_hash.value());
 
         self.migrate_named_keys(entity_addr, account.named_keys().clone())?;
 

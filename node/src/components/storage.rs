@@ -2973,14 +2973,14 @@ fn successful_transfers(execution_result: &ExecutionResult) -> Vec<Transfer> {
                 if let execution_result_v1::Transform::WriteTransfer(transfer) =
                     &transform_entry.transform
                 {
-                    transfers.push(*transfer);
+                    transfers.push(transfer.clone());
                 }
             }
         }
         ExecutionResult::V2(ExecutionResultV2::Success { effects, .. }) => {
             for transform in effects.transforms() {
                 if let TransformKind::Write(StoredValue::Transfer(transfer)) = transform.kind() {
-                    transfers.push(*transfer);
+                    transfers.push(transfer.clone());
                 }
             }
         }

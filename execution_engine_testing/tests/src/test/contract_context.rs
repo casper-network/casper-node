@@ -3,7 +3,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 
-use casper_types::{package::ENTITY_INITIAL_VERSION, runtime_args, Key, RuntimeArgs};
+use casper_types::{runtime_args, Key, RuntimeArgs, ENTITY_INITIAL_VERSION};
 
 const CONTRACT_HEADERS: &str = "contract_context.wasm";
 const PACKAGE_HASH_KEY: &str = "package_hash_key";

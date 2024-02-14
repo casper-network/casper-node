@@ -18,16 +18,17 @@ use casper_types::{
     execution::TransformKind,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCodeHash, CLValue,
-    ContextAccessRights, DeployHash, EntityAddr, EntityKind, EntryPointType, EntryPoints, Gas, Key,
+    ContextAccessRights, EntityAddr, EntityKind, EntryPointType, EntryPoints, Gas, Key,
     PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue,
-    SystemEntityRegistry, Tagged, URef, KEY_HASH_LENGTH, U256, U512,
+    SystemEntityRegistry, Tagged, TransactionHash, TransactionV1Hash, URef, KEY_HASH_LENGTH, U256,
+    U512,
 };
 use tempfile::TempDir;
 
 use super::{Error, RuntimeContext};
 use crate::engine_state::EngineConfig;
 
-const DEPLOY_HASH: [u8; 32] = [1u8; 32];
+const TXN_HASH_RAW: [u8; 32] = [1u8; 32];
 const PHASE: Phase = Phase::Session;
 const GAS_LIMIT: u64 = 500_000_000_000_000u64;
 
@@ -154,7 +155,7 @@ fn new_runtime_context<'a>(
         TEST_ENGINE_CONFIG.clone(),
         BlockTime::new(0),
         ProtocolVersion::V1_0_0,
-        DeployHash::from_raw([1u8; 32]),
+        TransactionHash::V1(TransactionV1Hash::from_raw([1u8; 32])),
         Phase::Session,
         RuntimeArgs::new(),
         Gas::new(U512::from(GAS_LIMIT)),
@@ -233,7 +234,7 @@ fn last_transform_kind_on_addressable_entity(
 #[test]
 fn use_uref_valid() {
     // Test fixture
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref_as_key = create_uref_as_key(&mut rng, AccessRights::READ_WRITE);
     let mut named_keys = NamedKeys::new();
     named_keys.insert(String::new(), uref_as_key);
@@ -249,7 +250,7 @@ fn use_uref_valid() {
 #[test]
 fn use_uref_forged() {
     // Test fixture
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref = create_uref_as_key(&mut rng, AccessRights::READ_WRITE);
     let named_keys = NamedKeys::new();
     // named_keys.insert(String::new(), Key::from(uref));
@@ -297,7 +298,7 @@ fn entity_key_readable_valid() {
 fn account_key_addable_returns_type_mismatch() {
     // Account key is not addable anymore as we do not store an account underneath they key
     // but instead there is a CLValue which acts as an indirection to the corresponding entity.
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref_as_key = create_uref_as_key(&mut rng, AccessRights::READ);
     let mut named_keys = NamedKeys::new();
     named_keys.insert(String::new(), uref_as_key);
@@ -364,7 +365,7 @@ fn contract_key_addable_valid() {
     let entity_hash = AddressableEntityHash::new([1u8; 32]);
     let (_account_key, entity_key, entity) = new_addressable_entity(account_hash, entity_hash);
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
-    let mut address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut address_generator = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
 
     let mut rng = rand::thread_rng();
     let contract_key = random_contract_key(&mut rng);
@@ -418,7 +419,7 @@ fn contract_key_addable_valid() {
         EngineConfig::default(),
         BlockTime::new(0),
         ProtocolVersion::V1_0_0,
-        DeployHash::from_raw(DEPLOY_HASH),
+        TransactionHash::V1(TransactionV1Hash::from_raw(TXN_HASH_RAW)),
         PHASE,
         RuntimeArgs::new(),
         Gas::new(U512::from(GAS_LIMIT)),
@@ -439,7 +440,7 @@ fn contract_key_addable_invalid() {
     let entity_hash = AddressableEntityHash::new([1u8; 32]);
     let (_, entity_key, entity) = new_addressable_entity(account_hash, entity_hash);
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
-    let mut address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut address_generator = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let mut rng = rand::thread_rng();
     let contract_key = random_contract_key(&mut rng);
 
@@ -476,7 +477,7 @@ fn contract_key_addable_invalid() {
         EngineConfig::default(),
         BlockTime::new(0),
         ProtocolVersion::V1_0_0,
-        DeployHash::from_raw(DEPLOY_HASH),
+        TransactionHash::V1(TransactionV1Hash::from_raw(TXN_HASH_RAW)),
         PHASE,
         RuntimeArgs::new(),
         Gas::new(U512::from(GAS_LIMIT)),
@@ -493,7 +494,7 @@ fn contract_key_addable_invalid() {
 
 #[test]
 fn uref_key_readable_valid() {
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref_key = create_uref_as_key(&mut rng, AccessRights::READ);
 
     let mut named_keys = NamedKeys::new();
@@ -506,7 +507,7 @@ fn uref_key_readable_valid() {
 
 #[test]
 fn uref_key_readable_invalid() {
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref_key = create_uref_as_key(&mut rng, AccessRights::WRITE);
 
     let mut named_keys = NamedKeys::new();
@@ -519,7 +520,7 @@ fn uref_key_readable_invalid() {
 
 #[test]
 fn uref_key_writeable_valid() {
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref_key = create_uref_as_key(&mut rng, AccessRights::WRITE);
 
     let mut named_keys = NamedKeys::new();
@@ -536,7 +537,7 @@ fn uref_key_writeable_valid() {
 
 #[test]
 fn uref_key_writeable_invalid() {
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref_key = create_uref_as_key(&mut rng, AccessRights::READ);
 
     let mut named_keys = NamedKeys::new();
@@ -553,7 +554,7 @@ fn uref_key_writeable_invalid() {
 
 #[test]
 fn uref_key_addable_valid() {
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref_key = create_uref_as_key(&mut rng, AccessRights::ADD_WRITE);
 
     let mut named_keys = NamedKeys::new();
@@ -569,7 +570,7 @@ fn uref_key_addable_valid() {
 
 #[test]
 fn uref_key_addable_invalid() {
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref_key = create_uref_as_key(&mut rng, AccessRights::WRITE);
 
     let mut named_keys = NamedKeys::new();
@@ -978,7 +979,7 @@ fn validate_valid_purse_of_an_account() {
 #[test]
 fn should_meter_for_gas_storage_write() {
     // Test fixture
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref_as_key = create_uref_as_key(&mut rng, AccessRights::READ_WRITE);
 
     let mut named_keys = NamedKeys::new();
@@ -1013,7 +1014,7 @@ fn should_meter_for_gas_storage_write() {
 #[test]
 fn should_meter_for_gas_storage_add() {
     // Test fixture
-    let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
+    let mut rng = AddressGenerator::new(&TXN_HASH_RAW, PHASE);
     let uref_as_key = create_uref_as_key(&mut rng, AccessRights::ADD_WRITE);
 
     let mut named_keys = NamedKeys::new();

@@ -8,7 +8,7 @@ use casper_engine_test_support::{
     DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_UNBONDING_DELAY, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 
-use crate::{lmdb_fixture, lmdb_fixture::CONTRACT_REGISTRY_SPECIAL_ADDRESS};
+use crate::{lmdb_fixture, lmdb_fixture::ENTRY_REGISTRY_SPECIAL_ADDRESS};
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     runtime_args, system,
@@ -703,7 +703,6 @@ fn should_increase_max_associated_keys_after_upgrade() {
                 ARG_ACCOUNT => account_hash,
             },
         )
-        .with_protocol_version(new_protocol_version)
         .build();
 
         builder.exec(add_request).expect_success().commit();
@@ -726,10 +725,10 @@ fn should_correctly_migrate_and_prune_system_contract_records() {
     let (mut builder, lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_3_1);
 
-    let legacy_system_contract_registry = {
+    let legacy_system_entity_registry = {
         let stored_value: StoredValue = builder
-            .query(None, CONTRACT_REGISTRY_SPECIAL_ADDRESS, &[])
-            .expect("should query system contract registry");
+            .query(None, ENTRY_REGISTRY_SPECIAL_ADDRESS, &[])
+            .expect("should query system entity registry");
         let cl_value = stored_value
             .as_cl_value()
             .cloned()
@@ -744,7 +743,7 @@ fn should_correctly_migrate_and_prune_system_contract_records() {
 
     let mut global_state_update = BTreeMap::<Key, StoredValue>::new();
 
-    let registry = CLValue::from_t(legacy_system_contract_registry.clone())
+    let registry = CLValue::from_t(legacy_system_entity_registry.clone())
         .expect("must convert to StoredValue")
         .into();
 
@@ -766,7 +765,7 @@ fn should_correctly_migrate_and_prune_system_contract_records() {
     let system_names = vec![system::MINT, system::AUCTION, system::HANDLE_PAYMENT];
 
     for name in system_names {
-        let legacy_hash = *legacy_system_contract_registry
+        let legacy_hash = *legacy_system_entity_registry
             .get(name)
             .expect("must have hash");
 

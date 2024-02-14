@@ -15,7 +15,7 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
     let genesis_account_hash = *DEFAULT_ACCOUNT_ADDR;
 
     let exec_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_deploy_hash([1; 32])
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_payment_code(
@@ -26,7 +26,7 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
             .with_authorization_keys(&[genesis_account_hash])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     let mut builder = LmdbWasmTestBuilder::default();

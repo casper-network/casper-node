@@ -659,6 +659,9 @@ where
                 StoredValue::Message(_) => {
                     return Ok(query.into_not_found_result("Message value found."));
                 }
+                StoredValue::TransactionInfo(_) => {
+                    return Ok(query.into_not_found_result("TransactionInfo value found."));
+                }
             }
         }
     }

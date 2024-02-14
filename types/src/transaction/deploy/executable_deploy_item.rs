@@ -16,14 +16,13 @@ use serde::{Deserialize, Serialize};
 #[cfg(doc)]
 use super::Deploy;
 use crate::{
-    account::AccountHash,
     addressable_entity::DEFAULT_ENTRY_POINT_NAME,
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     package::{EntityVersion, PackageHash},
     runtime_args, serde_helpers,
     system::mint::ARG_AMOUNT,
     AddressableEntityHash, AddressableEntityIdentifier, Gas, Motes, PackageIdentifier, Phase,
-    PublicKey, RuntimeArgs, URef, U512,
+    RuntimeArgs, TransferTarget, URef, U512,
 };
 #[cfg(any(feature = "testing", test))]
 use crate::{testing::TestRng, CLValue};
@@ -218,10 +217,10 @@ impl ExecutableDeployItem {
     /// Returns a new `ExecutableDeployItem` suitable for use as session code for a transfer.
     ///
     /// If `maybe_source` is None, the account's main purse is used as the source.
-    pub fn new_transfer<A: Into<U512>>(
+    pub fn new_transfer<A: Into<U512>, T: Into<TransferTarget>>(
         amount: A,
         maybe_source: Option<URef>,
-        target: TransferTarget,
+        target: T,
         maybe_transfer_id: Option<u64>,
     ) -> Self {
         let mut args = RuntimeArgs::new();
@@ -233,7 +232,7 @@ impl ExecutableDeployItem {
                 .expect("should serialize source arg");
         }
 
-        match target {
+        match target.into() {
             TransferTarget::PublicKey(public_key) => args
                 .insert(TRANSFER_ARG_TARGET, public_key)
                 .expect("should serialize public key target arg"),
@@ -799,17 +798,6 @@ impl Distribution<ExecutableDeployItem> for Standard {
             _ => unreachable!(),
         }
     }
-}
-
-/// The various types which can be used as the `target` runtime argument of a native transfer.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq)]
-pub enum TransferTarget {
-    /// A public key.
-    PublicKey(PublicKey),
-    /// An account hash.
-    AccountHash(AccountHash),
-    /// A URef.
-    URef(URef),
 }
 
 #[cfg(test)]

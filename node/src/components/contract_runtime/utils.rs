@@ -82,7 +82,7 @@ pub(super) async fn exec_or_requeue<REv>(
         executable_block.rewards = Some(if chainspec.core_config.compute_rewards {
             let rewards = match rewards::fetch_data_and_calculate_rewards_for_era(
                 effect_builder,
-                chainspec,
+                chainspec.as_ref(),
                 executable_block.clone(),
             )
             .await
@@ -193,7 +193,7 @@ pub(super) async fn exec_or_requeue<REv>(
     let execution_results_map: HashMap<_, _> = execution_results
         .iter()
         .cloned()
-        .map(|artifact| (artifact.deploy_hash.into(), artifact.execution_result))
+        .map(|artifact| (artifact.transaction_hash, artifact.execution_result))
         .collect();
     if meta_block_state.register_as_stored().was_updated() {
         effect_builder

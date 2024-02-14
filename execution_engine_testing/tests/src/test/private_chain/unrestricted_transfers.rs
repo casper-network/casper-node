@@ -472,7 +472,7 @@ fn should_not_allow_payment_to_purse_in_stored_payment() {
         let session_args = RuntimeArgs::default();
 
         const PAY_ENTRYPOINT: &str = "pay";
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(sender)
             .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
             .with_stored_payment_named_key(
@@ -483,7 +483,7 @@ fn should_not_allow_payment_to_purse_in_stored_payment() {
             .with_authorization_keys(&[sender])
             .with_deploy_hash(deploy_hash)
             .build();
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder.exec(exec_request_1).expect_failure().commit();
@@ -728,14 +728,14 @@ fn should_allow_custom_payment_by_paying_to_system_account() {
         };
         let session_args = RuntimeArgs::default();
 
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(sender)
             .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
             .with_payment_code("non_standard_payment.wasm", payment_args)
             .with_authorization_keys(&[sender])
             .with_deploy_hash(deploy_hash)
             .build();
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder.exec(exec_request_1).expect_success().commit();
@@ -774,14 +774,14 @@ fn should_allow_wasm_transfer_to_system() {
             "amount" => U512::one(),
         };
 
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(sender)
             .with_session_code("transfer_to_account_u512.wasm", session_args)
             .with_payment_bytes(Vec::new(), payment_args)
             .with_authorization_keys(&[sender])
             .with_deploy_hash(deploy_hash)
             .build();
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder.exec(exec_request_1).expect_success().commit();

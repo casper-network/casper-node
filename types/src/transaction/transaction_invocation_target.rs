@@ -75,8 +75,8 @@ pub enum TransactionInvocationTarget {
 
 impl TransactionInvocationTarget {
     /// Returns a new `TransactionInvocationTarget::InvocableEntity`.
-    pub fn new_invocable_entity(addr: HashAddr) -> Self {
-        TransactionInvocationTarget::InvocableEntity(addr)
+    pub fn new_invocable_entity(hash: AddressableEntityHash) -> Self {
+        TransactionInvocationTarget::InvocableEntity(hash.value())
     }
 
     /// Returns a new `TransactionInvocationTarget::InvocableEntityAlias`.
@@ -85,8 +85,11 @@ impl TransactionInvocationTarget {
     }
 
     /// Returns a new `TransactionInvocationTarget::Package`.
-    pub fn new_package(addr: PackageAddr, version: Option<EntityVersion>) -> Self {
-        TransactionInvocationTarget::Package { addr, version }
+    pub fn new_package(hash: PackageHash, version: Option<EntityVersion>) -> Self {
+        TransactionInvocationTarget::Package {
+            addr: hash.value(),
+            version,
+        }
     }
 
     /// Returns a new `TransactionInvocationTarget::PackageAlias`.

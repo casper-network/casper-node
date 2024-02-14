@@ -17,6 +17,7 @@ mod transaction_scheduling;
 mod transaction_session_kind;
 mod transaction_target;
 mod transaction_v1;
+mod transfer_target;
 
 use alloc::{collections::BTreeSet, vec::Vec};
 use core::fmt::{self, Debug, Display, Formatter};
@@ -41,12 +42,12 @@ use crate::{
     Digest, Timestamp,
 };
 #[cfg(feature = "json-schema")]
-use crate::{account::ACCOUNT_HASH_LENGTH, SecretKey, TimeDiff, URef};
+use crate::{SecretKey, TimeDiff, URef};
 pub use addressable_entity_identifier::AddressableEntityIdentifier;
 pub use deploy::{
     Deploy, DeployApproval, DeployApprovalsHash, DeployConfigFailure, DeployDecodeFromJsonError,
     DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash, DeployHeader, DeployId,
-    ExecutableDeployItem, ExecutableDeployItemIdentifier, TransferTarget,
+    ExecutableDeployItem, ExecutableDeployItemIdentifier,
 };
 #[cfg(any(feature = "std", test))]
 pub use deploy::{DeployBuilder, DeployBuilderError};
@@ -73,6 +74,7 @@ pub use transaction_v1::{
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1::{TransactionV1Builder, TransactionV1BuilderError};
+pub use transfer_target::TransferTarget;
 
 const DEPLOY_TAG: u8 = 0;
 const V1_TAG: u8 = 1;
@@ -88,10 +90,9 @@ pub(super) static TRANSACTION: Lazy<Transaction> = Lazy::new(|| {
         "uref-1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b-000",
     )
     .unwrap();
-    let to = Some(AccountHash::new([40; ACCOUNT_HASH_LENGTH]));
     let id = Some(999);
 
-    let v1_txn = TransactionV1Builder::new_transfer(source, target, 30_000_000_000_u64, to, id)
+    let v1_txn = TransactionV1Builder::new_transfer(30_000_000_000_u64, Some(source), target, id)
         .unwrap()
         .with_chain_name("casper-example")
         .with_timestamp(*Timestamp::example())
@@ -170,6 +171,17 @@ impl Transaction {
         }
     }
 
+    /// Returns the number of Motes per unit of Gas the transaction will pay for execution.
+    pub fn gas_price(&self) -> u64 {
+        match self {
+            Transaction::Deploy(deploy) => deploy.gas_price(),
+            Transaction::V1(v1_txn) => match v1_txn.header().pricing_mode() {
+                PricingMode::GasPriceMultiplier(price) => *price,
+                PricingMode::Fixed | PricingMode::Reserved => 1,
+            },
+        }
+    }
+
     /// Returns `true` if the transaction has expired.
     pub fn expired(&self, current_instant: Timestamp) -> bool {
         match self {
@@ -199,6 +211,14 @@ impl Transaction {
                 .iter()
                 .map(|approval| approval.signer().to_account_hash())
                 .collect(),
+        }
+    }
+
+    /// Returns `true` if `self` represents a native transfer deploy or a native V1 transaction.
+    pub fn is_native(&self) -> bool {
+        match self {
+            Transaction::Deploy(deploy) => deploy.session().is_transfer(),
+            Transaction::V1(v1_txn) => *v1_txn.target() == TransactionTarget::Native,
         }
     }
 

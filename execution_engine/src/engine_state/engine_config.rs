@@ -7,8 +7,8 @@ use num_rational::Ratio;
 use num_traits::One;
 
 use casper_types::{
-    account::AccountHash, FeeHandling, PublicKey, RefundHandling, SystemConfig, WasmConfig,
-    DEFAULT_REFUND_HANDLING,
+    account::AccountHash, FeeHandling, ProtocolVersion, PublicKey, RefundHandling, SystemConfig,
+    WasmConfig, DEFAULT_REFUND_HANDLING,
 };
 
 /// Default value for a maximum query depth configuration option.
@@ -43,6 +43,8 @@ pub const DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS: bool = true;
 pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::PayToProposer;
 /// Default compute rewards.
 pub const DEFAULT_COMPUTE_REWARDS: bool = true;
+/// Default protocol version.
+pub const DEFAULT_PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 
 /// The runtime configuration of the execution engine
 #[derive(Debug, Clone)]
@@ -62,6 +64,7 @@ pub struct EngineConfig {
     max_delegators_per_validator: Option<u32>,
     wasm_config: WasmConfig,
     system_config: SystemConfig,
+    protocol_version: ProtocolVersion,
     /// A private network specifies a list of administrative accounts.
     pub(crate) administrative_accounts: BTreeSet<AccountHash>,
     /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
@@ -99,6 +102,7 @@ impl Default for EngineConfig {
             refund_handling: DEFAULT_REFUND_HANDLING,
             fee_handling: DEFAULT_FEE_HANDLING,
             compute_rewards: DEFAULT_COMPUTE_REWARDS,
+            protocol_version: DEFAULT_PROTOCOL_VERSION,
         }
     }
 }
@@ -123,6 +127,7 @@ impl EngineConfig {
         max_delegators_per_validator: Option<u32>,
         wasm_config: WasmConfig,
         system_config: SystemConfig,
+        protocol_version: ProtocolVersion,
     ) -> EngineConfig {
         Self {
             max_query_depth,
@@ -134,6 +139,7 @@ impl EngineConfig {
             max_delegators_per_validator,
             wasm_config,
             system_config,
+            protocol_version,
             administrative_accounts: Default::default(),
             allow_auction_bids: DEFAULT_ALLOW_AUCTION_BIDS,
             allow_unrestricted_transfers: DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS,
@@ -161,6 +167,11 @@ impl EngineConfig {
     /// Returns the current system config.
     pub fn system_config(&self) -> &SystemConfig {
         &self.system_config
+    }
+
+    /// Returns the current protocol version.
+    pub fn protocol_version(&self) -> ProtocolVersion {
+        self.protocol_version
     }
 
     /// Returns the minimum delegation amount in motes.
@@ -234,6 +245,7 @@ pub struct EngineConfigBuilder {
     max_delegators_per_validator: Option<u32>,
     wasm_config: Option<WasmConfig>,
     system_config: Option<SystemConfig>,
+    protocol_version: Option<ProtocolVersion>,
     administrative_accounts: Option<BTreeSet<PublicKey>>,
     allow_auction_bids: Option<bool>,
     allow_unrestricted_transfers: Option<bool>,
@@ -296,6 +308,12 @@ impl EngineConfigBuilder {
     /// Sets the system config options.
     pub fn with_system_config(mut self, system_config: SystemConfig) -> Self {
         self.system_config = Some(system_config);
+        self
+    }
+
+    /// Sets the protocol version.
+    pub fn with_protocol_version(mut self, protocol_version: ProtocolVersion) -> Self {
+        self.protocol_version = Some(protocol_version);
         self
     }
 
@@ -374,6 +392,7 @@ impl EngineConfigBuilder {
             .unwrap_or(DEFAULT_MINIMUM_DELEGATION_AMOUNT);
         let wasm_config = self.wasm_config.unwrap_or_default();
         let system_config = self.system_config.unwrap_or_default();
+        let protocol_version = self.protocol_version.unwrap_or(DEFAULT_PROTOCOL_VERSION);
         let administrative_accounts = {
             self.administrative_accounts
                 .unwrap_or_default()
@@ -406,6 +425,7 @@ impl EngineConfigBuilder {
             minimum_delegation_amount,
             wasm_config,
             system_config,
+            protocol_version,
             administrative_accounts,
             allow_auction_bids,
             allow_unrestricted_transfers,

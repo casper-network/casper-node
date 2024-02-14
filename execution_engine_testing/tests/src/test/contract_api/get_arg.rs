@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{runtime_args, ApiError, RuntimeArgs, U512};
@@ -25,11 +25,7 @@ fn call_get_arg(args: RuntimeArgs) -> Result<(), String> {
         return Ok(());
     }
 
-    let response = builder
-        .get_exec_result_owned(0)
-        .expect("should have a response");
-
-    let error_message = utils::get_error_message(response);
+    let error_message = builder.get_error_message().expect("should have a result");
 
     Err(error_message)
 }

@@ -26,10 +26,7 @@ fn should_run_ee_532_non_existent_account_regression_test() {
 
     let deploy_result = builder
         .get_exec_result_owned(0)
-        .expect("should have exec response")
-        .get(0)
-        .cloned()
-        .expect("should have at least one deploy result");
+        .expect("should have exec response");
 
     assert!(
         deploy_result.has_precondition_failure(),

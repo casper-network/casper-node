@@ -259,8 +259,7 @@ pub trait CommitProvider: StateProvider {
             &administrative_accounts,
         ) {
             Ok((entity, entity_hash)) => {
-                let entity_addr =
-                    EntityAddr::new_with_tag(entity.entity_kind(), entity_hash.value());
+                let entity_addr = EntityAddr::new_of_kind(entity.kind(), entity_hash.value());
                 (entity, entity_addr)
             }
             Err(tce) => return TransferResult::Failure(TransferError::TrackingCopy(tce)),

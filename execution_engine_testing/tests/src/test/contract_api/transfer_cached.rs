@@ -41,8 +41,7 @@ fn should_transfer_to_account_with_correct_balances() {
     let pre_state_hash = builder.get_post_state_hash();
 
     // Default account to account 1
-    let mut exec_builder = ExecuteRequestBuilder::new();
-    exec_builder = exec_builder.push_deploy(transfer(
+    let exec_builder = ExecuteRequestBuilder::from_deploy_item(transfer(
         *DEFAULT_ACCOUNT_ADDR,
         runtime_args! {
            ARG_TARGET => *ACCOUNT_1_ADDR,
@@ -98,48 +97,48 @@ fn should_transfer_from_default_and_then_to_another_account() {
     let pre_state_hash = builder.get_post_state_hash();
 
     // Default account to account 1
-    let mut exec_builder = ExecuteRequestBuilder::new();
     // We must first transfer the amount account 1 will transfer to account 2, along with the fee
     // account 1 will need to pay for that transfer.
-    exec_builder = exec_builder.push_deploy(transfer(
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(transfer(
         *DEFAULT_ACCOUNT_ADDR,
         runtime_args! {
            ARG_TARGET => *ACCOUNT_1_ADDR,
            ARG_AMOUNT => *TRANSFER_AMOUNT + DEFAULT_WASMLESS_TRANSFER_COST,
            ARG_ID => ID_NONE,
         },
-    ));
+    ))
+    .build();
     builder
-        .scratch_exec_and_commit(exec_builder.build())
+        .scratch_exec_and_commit(exec_request)
         .expect_success();
 
-    let mut exec_builder = ExecuteRequestBuilder::new();
-    exec_builder = exec_builder.push_deploy(transfer(
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(transfer(
         *ACCOUNT_1_ADDR,
         runtime_args! {
             ARG_TARGET => *ACCOUNT_2_ADDR,
             ARG_AMOUNT => *TRANSFER_AMOUNT,
             ARG_ID => ID_NONE,
         },
-    ));
+    ))
+    .build();
 
     builder
-        .scratch_exec_and_commit(exec_builder.build())
+        .scratch_exec_and_commit(exec_request)
         .expect_success();
 
     // Double spend test for account 1
-    let mut exec_builder = ExecuteRequestBuilder::new();
-    exec_builder = exec_builder.push_deploy(transfer(
+    let exec_request = ExecuteRequestBuilder::from_deploy_item(transfer(
         *ACCOUNT_1_ADDR,
         runtime_args! {
             ARG_TARGET => *ACCOUNT_2_ADDR,
             ARG_AMOUNT => *TRANSFER_AMOUNT,
             ARG_ID => ID_NONE,
         },
-    ));
+    ))
+    .build();
 
     builder
-        .scratch_exec_and_commit(exec_builder.build())
+        .scratch_exec_and_commit(exec_request)
         .expect_failure();
 
     builder.write_scratch_to_db();

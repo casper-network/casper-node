@@ -13,7 +13,7 @@ fn should_run_get_phase_contract() {
     let default_account = *DEFAULT_ACCOUNT_ADDR;
 
     let exec_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_session_code(
@@ -30,7 +30,7 @@ fn should_run_get_phase_contract() {
             .with_authorization_keys(&[default_account])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     LmdbWasmTestBuilder::default()

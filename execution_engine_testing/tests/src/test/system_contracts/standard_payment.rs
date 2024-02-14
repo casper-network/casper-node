@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use assert_matches::assert_matches;
 
 use casper_engine_test_support::{
-    utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_KEY, DEFAULT_GAS_PRICE, DEFAULT_PAYMENT,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
@@ -50,13 +50,11 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
         ExecuteRequestBuilder::standard(ACCOUNT_1_ADDR, REVERT_WASM, RuntimeArgs::default())
             .build();
 
-    let account_1_response = builder
+    let error_message = builder
         .exec(account_1_request)
         .commit()
-        .get_exec_result_owned(1)
+        .get_error_message()
         .expect("there should be a response");
-
-    let error_message = utils::get_error_message(account_1_response);
 
     assert!(
         error_message.contains("InsufficientPayment"),
@@ -81,7 +79,7 @@ fn should_forward_payment_execution_runtime_error() {
     let transferred_amount = U512::from(1);
 
     let exec_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_payment_code(REVERT_WASM, RuntimeArgs::default())
@@ -92,7 +90,7 @@ fn should_forward_payment_execution_runtime_error() {
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     let mut builder = LmdbWasmTestBuilder::default();
@@ -131,12 +129,11 @@ fn should_forward_payment_execution_runtime_error() {
         "no net resources should be gained or lost post-distribution"
     );
 
-    let response = builder
+    let exec_result = builder
         .get_exec_result_owned(0)
         .expect("there should be a response");
 
-    let execution_result = utils::get_success_result(&response);
-    let error = execution_result.as_error().expect("should have error");
+    let error = exec_result.as_error().expect("should have error");
     assert_matches!(
         error,
         Error::Exec(execution::Error::Revert(ApiError::User(100)))
@@ -154,7 +151,7 @@ fn should_forward_payment_execution_gas_limit_error() {
     builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let exec_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_payment_code(ENDLESS_LOOP_WASM, RuntimeArgs::default())
@@ -165,7 +162,7 @@ fn should_forward_payment_execution_gas_limit_error() {
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
@@ -200,17 +197,16 @@ fn should_forward_payment_execution_gas_limit_error() {
         "no net resources should be gained or lost post-distribution"
     );
 
-    let response = builder
+    let exec_result = builder
         .get_exec_result_owned(0)
         .expect("there should be a response");
 
-    let execution_result = utils::get_success_result(&response);
-    let error = execution_result.as_error().expect("should have error");
+    let error = exec_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(execution::Error::GasLimit));
     let payment_gas_limit = Gas::from_motes(Motes::new(*MAX_PAYMENT), DEFAULT_GAS_PRICE)
         .expect("should convert to gas");
     assert_eq!(
-        execution_result.cost(),
+        exec_result.gas(),
         payment_gas_limit,
         "cost should equal gas limit"
     );
@@ -224,7 +220,7 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
     let transferred_amount = 1;
 
     let exec_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
@@ -235,7 +231,7 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     let mut builder = LmdbWasmTestBuilder::default();
@@ -245,17 +241,16 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
         .exec(exec_request)
         .commit();
 
-    let response = builder
+    let exec_result = builder
         .get_exec_result_owned(0)
         .expect("there should be a response");
 
-    let execution_result = utils::get_success_result(&response);
-    let error = execution_result.as_error().expect("should have error");
+    let error = exec_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(execution::Error::GasLimit));
     let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), DEFAULT_GAS_PRICE)
         .expect("should convert to gas");
     assert_eq!(
-        execution_result.cost(),
+        exec_result.gas(),
         session_gas_limit,
         "cost should equal gas limit"
     );
@@ -267,7 +262,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
     let payment_purse_amount = *DEFAULT_PAYMENT;
 
     let exec_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
@@ -275,7 +270,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     let mut builder = LmdbWasmTestBuilder::default();
@@ -296,12 +291,11 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
         "balance should be less than initial balance"
     );
 
-    let response = builder
+    let exec_result = builder
         .get_exec_result_owned(0)
         .expect("there should be a response");
 
-    let success_result = utils::get_success_result(&response);
-    let gas = success_result.cost();
+    let gas = exec_result.gas();
     let motes = Motes::from_gas(gas, DEFAULT_GAS_PRICE).expect("should have motes");
 
     let tally = motes.value() + modified_balance;
@@ -311,13 +305,12 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
         "no net resources should be gained or lost post-distribution"
     );
 
-    let execution_result = utils::get_success_result(&response);
-    let error = execution_result.as_error().expect("should have error");
+    let error = exec_result.as_error().expect("should have error");
     assert_matches!(error, Error::Exec(execution::Error::GasLimit));
     let session_gas_limit = Gas::from_motes(Motes::new(payment_purse_amount), DEFAULT_GAS_PRICE)
         .expect("should convert to gas");
     assert_eq!(
-        execution_result.cost(),
+        exec_result.gas(),
         session_gas_limit,
         "cost should equal gas limit"
     );
@@ -331,7 +324,7 @@ fn should_correctly_charge_when_session_code_fails() {
     let transferred_amount = 1;
 
     let exec_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
@@ -342,7 +335,7 @@ fn should_correctly_charge_when_session_code_fails() {
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     let mut builder = LmdbWasmTestBuilder::default();
@@ -381,7 +374,7 @@ fn should_correctly_charge_when_session_code_succeeds() {
     let transferred_amount = 1;
 
     let exec_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_deploy_hash([1; 32])
             .with_session_code(
@@ -392,7 +385,7 @@ fn should_correctly_charge_when_session_code_succeeds() {
             .with_authorization_keys(&[*DEFAULT_ACCOUNT_KEY])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     let mut builder = LmdbWasmTestBuilder::default();
@@ -438,7 +431,7 @@ fn should_finalize_to_rewards_purse() {
     let transferred_amount = 1;
 
     let exec_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
@@ -449,7 +442,7 @@ fn should_finalize_to_rewards_purse() {
             .with_deploy_hash([1; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     let mut builder = LmdbWasmTestBuilder::default();
@@ -478,7 +471,7 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
     let mut builder = LmdbWasmTestBuilder::default();
 
     let setup_exec_request = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(
                 TRANSFER_PURSE_TO_ACCOUNT_WASM,
@@ -489,7 +482,7 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
             .with_deploy_hash([1; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     // create another account via transfer
@@ -500,7 +493,7 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
         .commit();
 
     let exec_request_from_genesis = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_session_code(DO_NOTHING_WASM, RuntimeArgs::default())
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
@@ -508,11 +501,11 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
             .with_deploy_hash([2; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     let exec_request_from_account_1 = {
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(ACCOUNT_1_ADDR)
             .with_session_code(DO_NOTHING_WASM, RuntimeArgs::default())
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => payment_purse_amount })
@@ -520,7 +513,7 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
             .with_deploy_hash([1; 32])
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     // run two independent deploys

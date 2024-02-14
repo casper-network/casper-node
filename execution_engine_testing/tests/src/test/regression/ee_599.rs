@@ -87,7 +87,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_purse_to_purse() {
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    let error_msg = builder.exec_error_message(0).expect("should have error");
+    let error_msg = builder.get_error_message().expect("should have error");
     assert!(
         error_msg.contains(EXPECTED_ERROR),
         "Got error: {}",
@@ -147,7 +147,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_from_purse_to_account() {
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    let error_msg = builder.exec_error_message(0).expect("should have error");
+    let error_msg = builder.get_error_message().expect("should have error");
     assert!(
         error_msg.contains(EXPECTED_ERROR),
         "Got error: {}",
@@ -215,7 +215,7 @@ fn should_not_be_able_to_transfer_funds_with_transfer_to_account() {
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    let error_msg = builder.exec_error_message(0).expect("should have error");
+    let error_msg = builder.get_error_message().expect("should have error");
     assert!(
         error_msg.contains(EXPECTED_ERROR),
         "Got error: {}",
@@ -277,7 +277,7 @@ fn should_not_be_able_to_get_main_purse_in_invalid_builder() {
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
-    let error_msg = builder.exec_error_message(0).expect("should have error");
+    let error_msg = builder.get_error_message().expect("should have error");
     assert!(
         error_msg.contains(EXPECTED_ERROR),
         "Got error: {}",

@@ -172,7 +172,7 @@ impl BuilderExt for LmdbWasmTestBuilder {
 
         let current_entity_hash = package.current_entity_hash().unwrap();
         let current_contract_entity_key =
-            EntityAddr::new_contract_entity_addr(current_entity_hash.value());
+            EntityAddr::new_smart_contract(current_entity_hash.value());
 
         let cl_value = self
             .query(
@@ -3177,14 +3177,14 @@ mod payment {
                 ARG_CURRENT_DEPTH => 0u8,
                 mint::ARG_AMOUNT => approved_amount(call_depth),
             };
-            let deploy = DeployItemBuilder::new()
+            let deploy_item = DeployItemBuilder::new()
                 .with_address(sender)
                 .with_payment_code(CONTRACT_CALL_RECURSIVE_SUBCALL, args)
                 .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
                 .with_authorization_keys(&[sender])
                 .with_deploy_hash(deploy_hash)
                 .build();
-            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+            ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
         };
 
         super::execute_and_assert_result(
@@ -3212,7 +3212,7 @@ mod payment {
                 mint::ARG_AMOUNT => approved_amount(call_depth),
             };
 
-            let deploy = DeployItemBuilder::new()
+            let deploy_item = DeployItemBuilder::new()
                 .with_address(sender)
                 .with_stored_versioned_payment_contract_by_name(
                     CONTRACT_PACKAGE_NAME,
@@ -3225,7 +3225,7 @@ mod payment {
                 .with_deploy_hash(deploy_hash)
                 .build();
 
-            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+            ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
         };
 
         super::execute_and_assert_result(
@@ -3251,7 +3251,7 @@ mod payment {
                 ARG_CURRENT_DEPTH => 0u8,
                 mint::ARG_AMOUNT => approved_amount(call_depth),
             };
-            let deploy = DeployItemBuilder::new()
+            let deploy_item = DeployItemBuilder::new()
                 .with_address(sender)
                 .with_stored_versioned_payment_contract_by_hash(
                     current_contract_package_hash,
@@ -3263,7 +3263,7 @@ mod payment {
                 .with_authorization_keys(&[sender])
                 .with_deploy_hash(deploy_hash)
                 .build();
-            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+            ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
         };
 
         super::execute_and_assert_result(
@@ -3291,7 +3291,7 @@ mod payment {
                 mint::ARG_AMOUNT => approved_amount(call_depth),
             };
 
-            let deploy = DeployItemBuilder::new()
+            let deploy_item = DeployItemBuilder::new()
                 .with_address(sender)
                 .with_stored_payment_named_key(
                     CONTRACT_NAME,
@@ -3303,7 +3303,7 @@ mod payment {
                 .with_deploy_hash(deploy_hash)
                 .build();
 
-            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+            ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
         };
 
         super::execute_and_assert_result(
@@ -3329,7 +3329,7 @@ mod payment {
                 ARG_CURRENT_DEPTH => 0u8,
                 mint::ARG_AMOUNT => approved_amount(call_depth),
             };
-            let deploy = DeployItemBuilder::new()
+            let deploy_item = DeployItemBuilder::new()
                 .with_address(sender)
                 .with_stored_payment_hash(
                     current_contract_hash.into(),
@@ -3340,7 +3340,7 @@ mod payment {
                 .with_authorization_keys(&[sender])
                 .with_deploy_hash(deploy_hash)
                 .build();
-            ExecuteRequestBuilder::new().push_deploy(deploy).build()
+            ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
         };
 
         let is_entry_point_type_session = true;

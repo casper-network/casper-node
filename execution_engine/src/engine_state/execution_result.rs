@@ -1,7 +1,5 @@
 //! Outcome of an `ExecutionRequest`.
 
-use std::collections::VecDeque;
-
 use casper_storage::data_access_layer::TransferResult;
 use casper_types::{
     bytesrepr::FromBytes,
@@ -10,7 +8,7 @@ use casper_types::{
     CLTyped, CLValue, Gas, Key, Motes, StoredValue, TransferAddr,
 };
 
-use super::Error;
+use super::error;
 use crate::execution::Error as ExecError;
 
 /// Represents the result of an execution specified by
@@ -20,11 +18,11 @@ pub enum ExecutionResult {
     /// An error condition that happened during execution
     Failure {
         /// Error causing this `Failure` variant.
-        error: Error,
+        error: error::Error,
         /// List of transfers that happened during execution up to the point of the failure.
         transfers: Vec<TransferAddr>,
         /// Gas consumed up to the point of the failure.
-        cost: Gas,
+        gas: Gas,
         /// Execution effects.
         effects: Effects,
         /// Messages emitted during execution.
@@ -34,17 +32,14 @@ pub enum ExecutionResult {
     Success {
         /// List of transfers.
         transfers: Vec<TransferAddr>,
-        /// Gas cost.
-        cost: Gas,
+        /// Gas consumed.
+        gas: Gas,
         /// Execution effects.
         effects: Effects,
         /// Messages emitted during execution.
         messages: Messages,
     },
 }
-
-/// A type alias that represents multiple execution results.
-pub type ExecutionResults = VecDeque<ExecutionResult>;
 
 /// Indicates the outcome of a transfer payment check.
 pub enum ForcedTransferResult {
@@ -60,11 +55,11 @@ impl ExecutionResult {
     /// Constructs [ExecutionResult::Failure] that has 0 cost and no effects.
     /// This is the case for failures that we can't (or don't want to) charge
     /// for, like `PreprocessingError` or `InvalidNonce`.
-    pub fn precondition_failure(error: Error) -> ExecutionResult {
+    pub fn precondition_failure(error: error::Error) -> ExecutionResult {
         ExecutionResult::Failure {
             error,
             transfers: Vec::default(),
-            cost: Gas::default(),
+            gas: Gas::zero(),
             effects: Effects::new(),
             messages: Vec::default(),
         }
@@ -92,18 +87,17 @@ impl ExecutionResult {
     /// effects, and has a gas cost of 0.
     pub fn has_precondition_failure(&self) -> bool {
         match self {
-            ExecutionResult::Failure { cost, effects, .. } => {
-                cost.value() == 0.into() && effects.is_empty()
+            ExecutionResult::Failure { gas, effects, .. } => {
+                *gas == Gas::zero() && effects.is_empty()
             }
             ExecutionResult::Success { .. } => false,
         }
     }
 
-    /// Returns gas cost of execution regardless of variant.
-    pub fn cost(&self) -> Gas {
+    /// Returns gas used during execution regardless of variant.
+    pub fn gas(&self) -> Gas {
         match self {
-            ExecutionResult::Failure { cost, .. } => *cost,
-            ExecutionResult::Success { cost, .. } => *cost,
+            ExecutionResult::Failure { gas, .. } | ExecutionResult::Success { gas, .. } => *gas,
         }
     }
 
@@ -124,11 +118,10 @@ impl ExecutionResult {
         }
     }
 
-    /// Returns a new execution result with updated gas cost.
+    /// Returns a new execution result with updated gas.
     ///
-    /// This method preserves the [`ExecutionResult`] variant and updates the cost field
-    /// only.
-    pub fn with_cost(self, cost: Gas) -> Self {
+    /// This method preserves the [`ExecutionResult`] variant and updates the gas field only.
+    pub fn with_gas(self, gas: Gas) -> Self {
         match self {
             ExecutionResult::Failure {
                 error,
@@ -139,7 +132,7 @@ impl ExecutionResult {
             } => ExecutionResult::Failure {
                 error,
                 transfers,
-                cost,
+                gas,
                 effects,
                 messages,
             },
@@ -150,7 +143,7 @@ impl ExecutionResult {
                 ..
             } => ExecutionResult::Success {
                 transfers,
-                cost,
+                gas,
                 effects,
                 messages,
             },
@@ -165,25 +158,25 @@ impl ExecutionResult {
         match self {
             ExecutionResult::Failure {
                 error,
-                cost,
+                gas,
                 effects,
                 messages,
                 ..
             } => ExecutionResult::Failure {
                 error,
                 transfers,
-                cost,
+                gas,
                 effects,
                 messages,
             },
             ExecutionResult::Success {
-                cost,
+                gas,
                 effects,
                 messages,
                 ..
             } => ExecutionResult::Success {
                 transfers,
-                cost,
+                gas,
                 effects,
                 messages,
             },
@@ -199,24 +192,24 @@ impl ExecutionResult {
             ExecutionResult::Failure {
                 error,
                 transfers,
-                cost,
+                gas,
                 effects: _,
                 messages,
             } => ExecutionResult::Failure {
                 error,
                 transfers,
-                cost,
+                gas,
                 effects,
                 messages,
             },
             ExecutionResult::Success {
                 transfers,
-                cost,
+                gas,
                 effects: _,
                 messages,
             } => ExecutionResult::Success {
                 transfers,
-                cost,
+                gas,
                 effects,
                 messages,
             },
@@ -225,19 +218,18 @@ impl ExecutionResult {
 
     /// Returns error value, if possible.
     ///
-    /// Returns a reference to a wrapped [`super::Error`]
-    /// instance if the object is a failure variant.
-    pub fn as_error(&self) -> Option<&Error> {
+    /// Returns a reference to a wrapped [`error::Error`] instance if the object is a failure
+    /// variant.
+    pub fn as_error(&self) -> Option<&error::Error> {
         match self {
             ExecutionResult::Failure { error, .. } => Some(error),
             ExecutionResult::Success { .. } => None,
         }
     }
 
-    /// Consumes [`ExecutionResult`] instance and optionally returns
-    /// [`super::Error`] instance for
+    /// Consumes [`ExecutionResult`] instance and optionally returns [`error::Error`] instance for
     /// [`ExecutionResult::Failure`] variant.
-    pub fn take_error(self) -> Option<Error> {
+    pub fn take_error(self) -> Option<error::Error> {
         match self {
             ExecutionResult::Failure { error, .. } => Some(error),
             ExecutionResult::Success { .. } => None,
@@ -258,7 +250,7 @@ impl ExecutionResult {
         payment_purse_balance: Motes,
         gas_price: u64,
     ) -> Option<ForcedTransferResult> {
-        let payment_result_cost = match Motes::from_gas(self.cost(), gas_price) {
+        let payment_result_cost = match Motes::from_gas(self.gas(), gas_price) {
             Some(cost) => cost,
             None => return Some(ForcedTransferResult::GasConversionOverflow),
         };
@@ -290,16 +282,16 @@ impl ExecutionResult {
     /// The effects that are produced as part of this process would subract `max_payment_cost` from
     /// account's main purse, and add `max_payment_cost` to proposer account's balance.
     pub fn new_payment_code_error(
-        error: Error,
+        error: error::Error,
         max_payment_cost: Motes,
         account_main_purse_balance: Motes,
-        gas_cost: Gas,
+        gas: Gas,
         account_main_purse_balance_key: Key,
         proposer_main_purse_balance_key: Key,
-    ) -> Result<ExecutionResult, Error> {
+    ) -> Result<ExecutionResult, error::Error> {
         let new_balance = account_main_purse_balance
             .checked_sub(max_payment_cost)
-            .ok_or(Error::InsufficientPayment)?;
+            .ok_or(error::Error::InsufficientPayment)?;
         let new_balance_value =
             StoredValue::CLValue(CLValue::from_t(new_balance.value()).map_err(ExecError::from)?);
         let mut effects = Effects::new();
@@ -316,7 +308,7 @@ impl ExecutionResult {
             error,
             effects,
             transfers,
-            cost: gas_cost,
+            gas,
             messages: Vec::default(),
         })
     }
@@ -333,7 +325,7 @@ impl ExecutionResult {
 
     /// A temporary measure to keep things functioning mid-refactor.
     #[allow(clippy::result_unit_err)]
-    pub fn from_transfer_result(transfer_result: TransferResult, cost: Gas) -> Result<Self, ()> {
+    pub fn from_transfer_result(transfer_result: TransferResult, gas: Gas) -> Result<Self, ()> {
         match transfer_result {
             TransferResult::RootNotFound => {
                 Err(())
@@ -345,16 +337,16 @@ impl ExecutionResult {
             } => {
                 Ok(ExecutionResult::Success {
                     transfers,
-                    cost,
+                    gas,
                     effects,
                     messages: Messages::default(),
                 })
             }
             TransferResult::Failure(te) => {
                 Ok(ExecutionResult::Failure {
-                    error: Error::Transfer(te),
+                    error: error::Error::Transfer(te),
                     transfers: vec![],
-                    cost,
+                    gas,
                     effects: Effects::default(), // currently not returning effects on failure
                     messages: Messages::default(),
                 })
@@ -364,6 +356,7 @@ impl ExecutionResult {
 }
 
 /// A versioned execution result and the messages produced by that execution.
+#[derive(Debug)]
 pub struct ExecutionResultAndMessages {
     /// Execution result
     pub execution_result: TypesExecutionResult,
@@ -376,28 +369,28 @@ impl From<ExecutionResult> for ExecutionResultAndMessages {
         match execution_result {
             ExecutionResult::Success {
                 transfers,
-                cost,
+                gas,
                 effects,
                 messages,
             } => ExecutionResultAndMessages {
                 execution_result: TypesExecutionResult::Success {
                     effects,
                     transfers,
-                    cost: cost.value(),
+                    gas,
                 },
                 messages,
             },
             ExecutionResult::Failure {
                 error,
                 transfers,
-                cost,
+                gas,
                 effects,
                 messages,
             } => ExecutionResultAndMessages {
                 execution_result: TypesExecutionResult::Failure {
                     effects,
                     transfers,
-                    cost: cost.value(),
+                    gas,
                     error_message: error.to_string(),
                 },
                 messages,
@@ -460,22 +453,22 @@ impl ExecutionResultBuilder {
     ///
     /// Takes a payment execution result, and a session execution result and returns a sum. If
     /// either a payment or session code is not specified then a 0 is used.
-    pub fn total_cost(&self) -> Gas {
-        let payment_cost = self
+    pub fn gas_used(&self) -> Gas {
+        let payment_gas = self
             .payment_execution_result
             .as_ref()
-            .map(ExecutionResult::cost)
+            .map(ExecutionResult::gas)
             .unwrap_or_default();
-        let session_cost = self
+        let session_gas = self
             .session_execution_result
             .as_ref()
-            .map(ExecutionResult::cost)
+            .map(ExecutionResult::gas)
             .unwrap_or_default();
         // TODO: Make sure this code isn't in production, as, even though it's highly unlikely
         // to happen, an integer overflow would be silently ignored in release builds.
         // NOTE: This code should have been removed in the fix of #1968, where arithmetic
         // operations on the Gas type were disabled.
-        payment_cost + session_cost
+        payment_gas + session_gas
     }
 
     /// Returns transfers from a session's execution result.
@@ -492,9 +485,9 @@ impl ExecutionResultBuilder {
     /// Builds a final [`ExecutionResult`] based on session result, payment result and a
     /// finalization result.
     pub fn build(self) -> Result<ExecutionResult, ExecutionResultBuilderError> {
-        let mut error: Option<Error> = None;
+        let mut error: Option<error::Error> = None;
         let mut transfers = self.transfers();
-        let cost = self.total_cost();
+        let gas = self.gas_used();
 
         let (mut all_effects, mut all_messages) = match self.payment_execution_result {
             Some(result @ ExecutionResult::Failure { .. }) => return Ok(result),
@@ -511,7 +504,7 @@ impl ExecutionResultBuilder {
                 error: session_error,
                 transfers: session_transfers,
                 effects: _,
-                cost: _,
+                gas: _,
                 messages,
             }) => {
                 error = Some(session_error);
@@ -530,7 +523,9 @@ impl ExecutionResultBuilder {
         match self.finalize_execution_result {
             Some(ExecutionResult::Failure { .. }) => {
                 // payment_code_spec_5_a: Finalization Error should only ever be raised here
-                return Ok(ExecutionResult::precondition_failure(Error::Finalization));
+                return Ok(ExecutionResult::precondition_failure(
+                    error::Error::Finalization,
+                ));
             }
             Some(ExecutionResult::Success {
                 effects, messages, ..
@@ -544,14 +539,14 @@ impl ExecutionResultBuilder {
         match error {
             None => Ok(ExecutionResult::Success {
                 transfers,
-                cost,
+                gas,
                 effects: all_effects,
                 messages: all_messages,
             }),
             Some(error) => Ok(ExecutionResult::Failure {
                 error,
                 transfers,
-                cost,
+                gas,
                 effects: all_effects,
                 messages: all_messages,
             }),

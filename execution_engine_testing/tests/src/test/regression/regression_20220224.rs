@@ -22,7 +22,7 @@ fn should_not_transfer_above_approved_limit_in_payment_code() {
         };
         let session_args = RuntimeArgs::default();
 
-        let deploy = DeployItemBuilder::new()
+        let deploy_item = DeployItemBuilder::new()
             .with_address(account_hash)
             .with_session_code(CONTRACT_REVERT, session_args)
             .with_payment_code(CONTRACT_REGRESSION_PAYMENT, payment_args)
@@ -30,7 +30,7 @@ fn should_not_transfer_above_approved_limit_in_payment_code() {
             .with_deploy_hash(deploy_hash)
             .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
+        ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
     builder.exec(exec_request).expect_failure().commit();

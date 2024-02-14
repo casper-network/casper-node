@@ -5,7 +5,9 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 use thiserror::Error;
 
-use casper_execution_engine::engine_state::{Error as EngineStateError, StepError};
+use casper_execution_engine::engine_state::{
+    Error as EngineStateError, NewRequestError, StepError,
+};
 use casper_storage::{
     global_state::error::Error as GlobalStateError, tracking_copy::TrackingCopyError,
 };
@@ -115,4 +117,11 @@ pub enum BlockExecutionError {
     /// A root state hash was not found.
     #[error("Root state hash not found in global state.")]
     RootNotFound(Digest),
+    /// An error that occurred while constructing the execution request.
+    #[error(transparent)]
+    NewRequest(
+        #[from]
+        #[serde(skip_serializing)]
+        NewRequestError,
+    ),
 }

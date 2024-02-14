@@ -4,7 +4,6 @@ use std::{
 };
 
 use datasize::DataSize;
-use num_traits::Zero;
 use thiserror::Error;
 
 use casper_types::{

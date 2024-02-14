@@ -1,7 +1,7 @@
 //! This file provides types to allow conversion from an EE `ExecutionResult` into a similar type
 //! which can be serialized to a valid binary or JSON representation.
 //!
-//! It is stored as metadata related to a given deploy, and made available to clients via the
+//! It is stored as metadata related to a given transaction, and made available to clients via the
 //! JSON-RPC API.
 
 #[cfg(any(feature = "testing", test))]
@@ -25,7 +25,7 @@ use super::{Transform, TransformKind};
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, RESULT_ERR_TAG, RESULT_OK_TAG, U8_SERIALIZED_LENGTH},
-    TransferAddr, U512,
+    Gas, TransferAddr,
 };
 #[cfg(feature = "json-schema")]
 use crate::{Key, KEY_HASH_LENGTH};
@@ -52,11 +52,11 @@ static EXECUTION_RESULT: Lazy<ExecutionResultV2> = Lazy::new(|| {
     ExecutionResultV2::Success {
         effects,
         transfers,
-        cost: U512::from(123_456),
+        gas: Gas::new(123_456),
     }
 });
 
-/// The result of executing a single deploy.
+/// The result of executing a single transaction.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
@@ -64,23 +64,23 @@ static EXECUTION_RESULT: Lazy<ExecutionResultV2> = Lazy::new(|| {
 pub enum ExecutionResultV2 {
     /// The result of a failed execution.
     Failure {
-        /// The effects of executing the deploy.
+        /// The effects of executing the transaction.
         effects: Effects,
-        /// A record of transfers performed while executing the deploy.
+        /// A record of transfers performed while executing the transaction.
         transfers: Vec<TransferAddr>,
-        /// The cost in Motes of executing the deploy.
-        cost: U512,
-        /// The error message associated with executing the deploy.
+        /// The gas consumed executing the transaction.
+        gas: Gas,
+        /// The error message associated with executing the transaction.
         error_message: String,
     },
     /// The result of a successful execution.
     Success {
-        /// The effects of executing the deploy.
+        /// The effects of executing the transaction.
         effects: Effects,
-        /// A record of transfers performed while executing the deploy.
+        /// A record of transfers performed while executing the transaction.
         transfers: Vec<TransferAddr>,
-        /// The cost in Motes of executing the deploy.
-        cost: U512,
+        /// The gas consumed executing the transaction.
+        gas: Gas,
     },
 }
 
@@ -99,14 +99,14 @@ impl Distribution<ExecutionResultV2> for Standard {
             ExecutionResultV2::Failure {
                 effects,
                 transfers,
-                cost: rng.gen::<u64>().into(),
+                gas: Gas::new(rng.gen::<u64>()),
                 error_message: format!("Error message {}", rng.gen::<u64>()),
             }
         } else {
             ExecutionResultV2::Success {
                 effects,
                 transfers,
-                cost: rng.gen::<u64>().into(),
+                gas: Gas::new(rng.gen::<u64>()),
             }
         }
     }
@@ -131,20 +131,20 @@ impl ExecutionResultV2 {
             transfers.push(TransferAddr::new(rng.gen()))
         }
 
-        let cost = U512::from(rng.gen::<u64>());
+        let gas = Gas::new(rng.gen::<u64>());
 
         if rng.gen() {
             ExecutionResultV2::Failure {
                 effects,
                 transfers,
-                cost,
+                gas,
                 error_message: format!("Error message {}", rng.gen::<u64>()),
             }
         } else {
             ExecutionResultV2::Success {
                 effects,
                 transfers,
-                cost,
+                gas,
             }
         }
     }
@@ -156,24 +156,24 @@ impl ToBytes for ExecutionResultV2 {
             ExecutionResultV2::Failure {
                 effects,
                 transfers,
-                cost,
+                gas,
                 error_message,
             } => {
                 RESULT_ERR_TAG.write_bytes(writer)?;
                 effects.write_bytes(writer)?;
                 transfers.write_bytes(writer)?;
-                cost.write_bytes(writer)?;
+                gas.write_bytes(writer)?;
                 error_message.write_bytes(writer)
             }
             ExecutionResultV2::Success {
                 effects,
                 transfers,
-                cost,
+                gas,
             } => {
                 RESULT_OK_TAG.write_bytes(writer)?;
                 effects.write_bytes(writer)?;
                 transfers.write_bytes(writer)?;
-                cost.write_bytes(writer)
+                gas.write_bytes(writer)
             }
         }
     }
@@ -190,22 +190,22 @@ impl ToBytes for ExecutionResultV2 {
                 ExecutionResultV2::Failure {
                     effects,
                     transfers,
-                    cost,
+                    gas,
                     error_message,
                 } => {
                     effects.serialized_length()
                         + transfers.serialized_length()
-                        + cost.serialized_length()
+                        + gas.serialized_length()
                         + error_message.serialized_length()
                 }
                 ExecutionResultV2::Success {
                     effects,
                     transfers,
-                    cost,
+                    gas,
                 } => {
                     effects.serialized_length()
                         + transfers.serialized_length()
-                        + cost.serialized_length()
+                        + gas.serialized_length()
                 }
             }
     }
@@ -218,12 +218,12 @@ impl FromBytes for ExecutionResultV2 {
             RESULT_ERR_TAG => {
                 let (effects, remainder) = Effects::from_bytes(remainder)?;
                 let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
-                let (cost, remainder) = U512::from_bytes(remainder)?;
+                let (gas, remainder) = Gas::from_bytes(remainder)?;
                 let (error_message, remainder) = String::from_bytes(remainder)?;
                 let execution_result = ExecutionResultV2::Failure {
                     effects,
                     transfers,
-                    cost,
+                    gas,
                     error_message,
                 };
                 Ok((execution_result, remainder))
@@ -231,11 +231,11 @@ impl FromBytes for ExecutionResultV2 {
             RESULT_OK_TAG => {
                 let (effects, remainder) = Effects::from_bytes(remainder)?;
                 let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
-                let (cost, remainder) = U512::from_bytes(remainder)?;
+                let (gas, remainder) = Gas::from_bytes(remainder)?;
                 let execution_result = ExecutionResultV2::Success {
                     effects,
                     transfers,
-                    cost,
+                    gas,
                 };
                 Ok((execution_result, remainder))
             }

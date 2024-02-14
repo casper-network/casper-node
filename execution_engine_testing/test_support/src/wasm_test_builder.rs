@@ -46,24 +46,24 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{
-            BidKind, EraValidators, UnbondingPurse, UnbondingPurses, ValidatorWeights,
-            WithdrawPurses, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
-            AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION, UNBONDING_DELAY_KEY,
+            BidKind, EraValidators, UnbondingPurses, ValidatorWeights, WithdrawPurses,
+            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY,
+            METHOD_RUN_AUCTION, UNBONDING_DELAY_KEY,
         },
         mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, ByteCodeAddr, ByteCodeHash,
-    CLTyped, CLValue, Contract, DeployHash, DeployInfo, Digest, EntityAddr, EraId, Gas,
-    HandlePaymentCosts, Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolUpgradeConfig,
-    ProtocolVersion, PublicKey, RefundHandling, StoredValue, SystemEntityRegistry, Transfer,
+    CLTyped, CLValue, Contract, Digest, EntityAddr, EraId, Gas, HandlePaymentCosts, Key, KeyTag,
+    MintCosts, Motes, Package, PackageHash, ProtocolUpgradeConfig, ProtocolVersion, PublicKey,
+    RefundHandling, StoredValue, SystemEntityRegistry, TransactionHash, TransactionInfo, Transfer,
     TransferAddr, URef, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 
 use crate::{
     chainspec_config::{ChainspecConfig, PRODUCTION_PATH},
-    utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_GAS_PRICE, DEFAULT_PROPOSER_ADDR,
+    ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_GAS_PRICE, DEFAULT_PROPOSER_ADDR,
     DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
 
@@ -114,10 +114,8 @@ pub type LmdbWasmTestBuilder = WasmTestBuilder<DataAccessLayer<LmdbGlobalState>>
 
 /// Builder for simple WASM test
 pub struct WasmTestBuilder<S> {
-    /// [`EngineState`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation.
     engine_state: Rc<EngineState<S>>,
-    /// [`ExecutionResult`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation.
-    exec_results: Vec<Vec<Rc<ExecutionResult>>>,
+    exec_results: Vec<ExecutionResult>,
     upgrade_results: Vec<ProtocolUpgradeResult>,
     prune_results: Vec<Result<PruneResult, Error>>,
     genesis_hash: Option<Digest>,
@@ -144,8 +142,6 @@ impl Default for LmdbWasmTestBuilder {
     }
 }
 
-// TODO: Deriving `Clone` for `WasmTestBuilder<S>` doesn't work correctly (unsure why), so
-// implemented by hand here.  Try to derive in the future with a different compiler version.
 impl<S> Clone for WasmTestBuilder<S> {
     fn clone(&self) -> Self {
         WasmTestBuilder {
@@ -508,26 +504,22 @@ impl LmdbWasmTestBuilder {
         // Scratch still requires that one deploy be executed and committed at a time.
         let exec_request = {
             let hash = self.post_state_hash.expect("expected post_state_hash");
-            exec_request.parent_state_hash = hash;
+            exec_request.pre_state_hash = hash;
             exec_request
         };
 
-        let mut exec_results = Vec::new();
         // First execute the request against our scratch global state.
-        let maybe_exec_results = cached_state.run_execute(exec_request);
-        for execution_result in maybe_exec_results.unwrap() {
-            let _post_state_hash = cached_state
-                .commit_effects(
-                    self.post_state_hash.expect("requires a post_state_hash"),
-                    execution_result.effects().clone(),
-                )
-                .expect("should commit");
+        let execution_result = cached_state.execute_transaction(exec_request).unwrap();
+        let _post_state_hash = cached_state
+            .commit_effects(
+                self.post_state_hash.expect("requires a post_state_hash"),
+                execution_result.effects().clone(),
+            )
+            .expect("should commit");
 
-            // Save transforms and execution results for WasmTestBuilder.
-            self.effects.push(execution_result.effects().clone());
-            exec_results.push(Rc::new(execution_result))
-        }
-        self.exec_results.push(exec_results);
+        // Save transforms and execution results for WasmTestBuilder.
+        self.effects.push(execution_result.effects().clone());
+        self.exec_results.push(execution_result);
         self
     }
 
@@ -588,15 +580,15 @@ where
         self
     }
 
-    fn query_system_contract_registry(
+    fn query_system_entity_registry(
         &self,
         post_state_hash: Option<Digest>,
     ) -> Option<SystemEntityRegistry> {
         match self.query(post_state_hash, Key::SystemEntityRegistry, &[]) {
             Ok(StoredValue::CLValue(cl_registry)) => {
-                let system_contract_registry =
+                let system_entity_registry =
                     CLValue::into_t::<SystemEntityRegistry>(cl_registry).unwrap();
-                Some(system_contract_registry)
+                Some(system_entity_registry)
             }
             Ok(_) => None,
             Err(_) => None,
@@ -633,7 +625,7 @@ where
     ) -> Result<StoredValue, String> {
         let entity_addr = self
             .get_entity_hash_by_account_hash(account_hash)
-            .map(|entity_hash| EntityAddr::new_account_entity_addr(entity_hash.value()))
+            .map(|entity_hash| EntityAddr::new_account(entity_hash.value()))
             .expect("must get EntityAddr");
         self.query_named_key(maybe_post_state, entity_addr, name)
     }
@@ -757,26 +749,11 @@ where
 
     /// Runs an [`ExecuteRequest`].
     pub fn exec(&mut self, mut exec_request: ExecuteRequest) -> &mut Self {
-        let exec_request = {
-            let hash = self.post_state_hash.expect("expected post_state_hash");
-            exec_request.parent_state_hash = hash;
-            exec_request
-        };
-
-        let maybe_exec_results = self.engine_state.run_execute(exec_request);
-        assert!(maybe_exec_results.is_ok());
-        // Parse deploy results
-        let execution_results = maybe_exec_results.as_ref().unwrap();
+        exec_request.pre_state_hash = self.post_state_hash.expect("expected post_state_hash");
+        let execution_result = self.engine_state.execute_transaction(exec_request).unwrap();
         // Cache transformations
-        self.effects
-            .extend(execution_results.iter().map(|res| res.effects().clone()));
-        self.exec_results.push(
-            maybe_exec_results
-                .unwrap()
-                .into_iter()
-                .map(Rc::new)
-                .collect(),
-        );
+        self.effects.push(execution_result.effects().clone());
+        self.exec_results.push(execution_result);
         self
     }
 
@@ -902,14 +879,9 @@ where
     /// Expects a successful run
     #[track_caller]
     pub fn expect_success(&mut self) -> &mut Self {
-        // Check first result, as only first result is interesting for a simple test
-        let exec_results = self
+        let exec_result = self
             .get_last_exec_result()
-            .expect("Expected to be called after run()");
-        let exec_result = exec_results
-            .get(0)
-            .expect("Unable to get first deploy result");
-
+            .expect("Expected to be called after exec()");
         if exec_result.is_failure() {
             panic!(
                 "Expected successful execution result, but instead got: {:#?}",
@@ -921,44 +893,46 @@ where
 
     /// Expects a failed run
     pub fn expect_failure(&mut self) -> &mut Self {
-        // Check first result, as only first result is interesting for a simple test
-        let exec_results = self
+        let exec_result = self
             .get_last_exec_result()
-            .expect("Expected to be called after run()");
-        let exec_result = exec_results
-            .get(0)
-            .expect("Unable to get first deploy result");
-
+            .expect("Expected to be called after exec()");
         if exec_result.is_success() {
             panic!(
                 "Expected failed execution result, but instead got: {:?}",
                 exec_result,
             );
         }
-
         self
     }
 
-    /// Returns `true` if the las exec had an error, otherwise returns false.
+    /// Returns `true` if the last exec had an error, otherwise returns false.
+    #[track_caller]
     pub fn is_error(&self) -> bool {
         self.get_last_exec_result()
-            .expect("Expected to be called after run()")
-            .get(0)
-            .expect("Unable to get first execution result")
+            .expect("Expected to be called after exec()")
             .is_failure()
     }
 
-    /// Returns an `Option<engine_state::Error>` if the last exec had an error.
+    /// Returns an `engine_state::Error` if the last exec had an error, otherwise `None`.
+    #[track_caller]
     pub fn get_error(&self) -> Option<Error> {
         self.get_last_exec_result()
-            .expect("Expected to be called after run()")
-            .get(0)
-            .expect("Unable to get first deploy result")
+            .expect("Expected to be called after exec()")
             .as_error()
             .cloned()
     }
 
+    /// Returns the error message of the last exec.
+    #[track_caller]
+    pub fn get_error_message(&self) -> Option<String> {
+        self.get_last_exec_result()
+            .expect("Expected to be called after exec()")
+            .as_error()
+            .map(Error::to_string)
+    }
+
     /// Gets `Effects` of all previous runs.
+    #[track_caller]
     pub fn get_effects(&self) -> Vec<Effects> {
         self.effects.clone()
     }
@@ -991,7 +965,7 @@ where
     }
 
     fn get_system_entity_hash(&self, contract_name: &str) -> Option<AddressableEntityHash> {
-        self.query_system_contract_registry(self.post_state_hash)?
+        self.query_system_entity_registry(self.post_state_hash)?
             .get(contract_name)
             .copied()
     }
@@ -1027,17 +1001,13 @@ where
     }
 
     /// Returns the last results execs.
-    pub fn get_last_exec_result(&self) -> Option<Vec<Rc<ExecutionResult>>> {
-        let exec_results = self.exec_results.last()?;
-
-        Some(exec_results.iter().map(Rc::clone).collect())
+    pub fn get_last_exec_result(&self) -> Option<ExecutionResult> {
+        self.exec_results.last().cloned()
     }
 
     /// Returns the owned results of a specific exec.
-    pub fn get_exec_result_owned(&self, index: usize) -> Option<Vec<Rc<ExecutionResult>>> {
-        let exec_results = self.exec_results.get(index)?;
-
-        Some(exec_results.iter().map(Rc::clone).collect())
+    pub fn get_exec_result_owned(&self, index: usize) -> Option<ExecutionResult> {
+        self.exec_results.get(index).cloned()
     }
 
     /// Returns a count of exec results.
@@ -1260,43 +1230,30 @@ where
         }
     }
 
-    /// Queries for deploy info by `DeployHash`.
-    pub fn get_deploy_info(&self, deploy_hash: DeployHash) -> Option<DeployInfo> {
-        let deploy_info_value: StoredValue = self
-            .query(None, Key::DeployInfo(deploy_hash), &[])
-            .expect("should have deploy info value");
+    /// Queries for transaction info by `TransactionHash`.
+    pub fn get_transaction_info(&self, txn_hash: TransactionHash) -> Option<TransactionInfo> {
+        let txn_info_value: StoredValue = self
+            .query(None, Key::TransactionInfo(txn_hash), &[])
+            .expect("should have transaction info value");
 
-        if let StoredValue::DeployInfo(deploy_info) = deploy_info_value {
-            Some(deploy_info)
+        if let StoredValue::TransactionInfo(txn_info) = txn_info_value {
+            Some(txn_info)
         } else {
             None
         }
     }
 
-    /// Returns a `Vec<Gas>` representing execution consts.
-    pub fn exec_costs(&self, index: usize) -> Vec<Gas> {
-        let exec_results = self
-            .get_exec_result_owned(index)
-            .expect("should have exec response");
-        utils::get_exec_costs(exec_results)
+    /// Returns execution cost.
+    pub fn exec_cost(&self, index: usize) -> Gas {
+        self.exec_results
+            .get(index)
+            .map(ExecutionResult::gas)
+            .unwrap()
     }
 
     /// Returns the `Gas` cost of the last exec.
     pub fn last_exec_gas_cost(&self) -> Gas {
-        let exec_results = self
-            .get_last_exec_result()
-            .expect("Expected to be called after run()");
-        let exec_result = exec_results.get(0).expect("should have result");
-        exec_result.cost()
-    }
-
-    /// Returns the result of the last exec.
-    pub fn last_exec_result(&self) -> &ExecutionResult {
-        let exec_results = self
-            .exec_results
-            .last()
-            .expect("Expected to be called after run()");
-        exec_results.get(0).expect("should have result").as_ref()
+        self.exec_results.last().map(ExecutionResult::gas).unwrap()
     }
 
     /// Assert that last error is the expected one.
@@ -1308,12 +1265,6 @@ where
             Some(error) => assert_eq!(format!("{:?}", expected_error), format!("{:?}", error)),
             None => panic!("expected error ({:?}) got success", expected_error),
         }
-    }
-
-    /// Returns the error message of the last exec.
-    pub fn exec_error_message(&self, index: usize) -> Option<String> {
-        let response = self.get_exec_result_owned(index)?;
-        Some(utils::get_error_message(response))
     }
 
     /// Gets [`EraValidators`].
@@ -1349,7 +1300,7 @@ where
         let entity_hash = self
             .get_entity_hash_by_account_hash(account_hash)
             .expect("must have entity hash");
-        let entity_addr = EntityAddr::new_account_entity_addr(entity_hash.value());
+        let entity_addr = EntityAddr::new_account(entity_hash.value());
         self.get_named_keys(entity_addr)
     }
 
@@ -1358,7 +1309,7 @@ where
         &self,
         contract_hash: AddressableEntityHash,
     ) -> NamedKeys {
-        let entity_addr = EntityAddr::new_contract_entity_addr(contract_hash.value());
+        let entity_addr = EntityAddr::new_smart_contract(contract_hash.value());
         self.get_named_keys(entity_addr)
     }
 
@@ -1650,40 +1601,6 @@ where
         }
 
         self
-    }
-
-    /// Returns the results of all execs.
-    #[deprecated(
-        since = "2.3.0",
-        note = "use `get_last_exec_results` or `get_exec_result_owned` instead"
-    )]
-    pub fn get_exec_results(&self) -> &Vec<Vec<Rc<ExecutionResult>>> {
-        &self.exec_results
-    }
-
-    /// Returns the results of a specific exec.
-    #[deprecated(since = "2.3.0", note = "use `get_exec_result_owned` instead")]
-    pub fn get_exec_result(&self, index: usize) -> Option<&Vec<Rc<ExecutionResult>>> {
-        self.exec_results.get(index)
-    }
-
-    /// Gets [`UnbondingPurses`].
-    #[deprecated(since = "2.3.0", note = "use `get_withdraw_purses` instead")]
-    pub fn get_withdraws(&mut self) -> UnbondingPurses {
-        let withdraw_purses = self.get_withdraw_purses();
-        let unbonding_purses: UnbondingPurses = withdraw_purses
-            .iter()
-            .map(|(key, withdraw_purse)| {
-                (
-                    key.to_owned(),
-                    withdraw_purse
-                        .iter()
-                        .map(|withdraw_purse| withdraw_purse.to_owned().into())
-                        .collect::<Vec<UnbondingPurse>>(),
-                )
-            })
-            .collect::<BTreeMap<AccountHash, Vec<UnbondingPurse>>>();
-        unbonding_purses
     }
 
     /// Calculates refunded amount from a last execution request.

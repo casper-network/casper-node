@@ -281,18 +281,18 @@ fn should_fail_bonding_with_insufficient_funds() {
 
     builder.exec(exec_request_2).commit();
 
-    let response = builder
+    let exec_result = builder
         .get_exec_result_owned(1)
-        .expect("should have a response");
-
-    assert_eq!(response.len(), 1);
-    let exec_result = response[0].as_error().expect("should have error");
+        .expect("should have a response")
+        .as_error()
+        .cloned()
+        .expect("should have error");
     assert!(
         matches!(
             exec_result,
             EngineError::Exec(Error::Revert(ApiError::Mint(mint_error))
         )
-        if *mint_error == mint::Error::InsufficientFunds as u8),
+        if mint_error == mint::Error::InsufficientFunds as u8),
         "{:?}",
         exec_result
     );
@@ -339,11 +339,7 @@ fn should_fail_unbonding_validator_with_locked_funds() {
 
     builder.exec(exec_request_2).commit();
 
-    let response = builder
-        .get_exec_result_owned(0)
-        .expect("should have a response");
-
-    let error_message = utils::get_error_message(response);
+    let error_message = builder.get_error_message().expect("should have a result");
 
     // handle_payment::Error::NotBonded => 0
     assert!(
@@ -375,11 +371,7 @@ fn should_fail_unbonding_validator_without_bonding_first() {
 
     builder.exec(exec_request).commit();
 
-    let response = builder
-        .get_exec_result_owned(0)
-        .expect("should have a response");
-
-    let error_message = utils::get_error_message(response);
+    let error_message = builder.get_error_message().expect("should have a result");
 
     assert!(
         error_message.contains(&format!(
@@ -591,7 +583,6 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
             "amount" => U512::from(TRANSFER_AMOUNT)
         },
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     builder.exec(exec_request).expect_success().commit();
@@ -609,7 +600,6 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
             ARG_DELEGATION_RATE => DELEGATION_RATE,
         },
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     builder.exec(exec_request_1).expect_success().commit();
@@ -646,7 +636,6 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
             ARG_PUBLIC_KEY => default_public_key_arg.clone(),
         },
     )
-    .with_protocol_version(new_protocol_version)
     .build();
 
     builder.exec(exec_request_2).expect_success().commit();
