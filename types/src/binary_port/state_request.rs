@@ -43,7 +43,7 @@ pub enum GlobalStateRequest {
 impl GlobalStateRequest {
     #[cfg(test)]
     pub(crate) fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..5) {
+        match rng.gen_range(0..3) {
             0 => {
                 let path_count = rng.gen_range(10..20);
                 let state_identifier = if rng.gen() {
