@@ -22,7 +22,7 @@ use casper_sdk::{
 
 const GREET_RETURN_VALUE: u64 = 123456789;
 
-#[casper(entry_points)]
+#[casper(trait_definition)]
 trait Trait1 {
     fn abstract_greet(&self);
 
@@ -39,7 +39,7 @@ struct CounterState {
     value: u64,
 }
 
-#[casper(entry_points)]
+#[casper(trait_definition)]
 trait Counter {
     fn increment(&mut self) {
         log!("Incrementing!");
@@ -68,9 +68,6 @@ struct HasTraits {
     counter_state: CounterState,
 }
 
-// Does not implement a manifest
-
-#[casper(entry_points)]
 impl Trait1 for HasTraits {
     fn abstract_greet(&self) {
         log!("Hello from abstract greet impl!");
@@ -81,7 +78,8 @@ impl Trait1 for HasTraits {
     }
 }
 
-#[casper(entry_points)]
+// Implementing traits does not require extra annotation as the trait dispatcher is generated at the
+// trait level.
 impl Counter for HasTraits {
     fn counter_state_mut(&mut self) -> &mut CounterState {
         &mut self.counter_state
@@ -91,9 +89,7 @@ impl Counter for HasTraits {
     }
 }
 
-// Generates a static manifest
-
-#[casper(entry_points)]
+#[casper(contract)]
 impl HasTraits {
     pub fn foobar(&self) {
         // Can extend contract that implements a trait to also call methods provided by a trait.
@@ -101,6 +97,8 @@ impl HasTraits {
         log!("Foobar! Counter value: {}", counter_state.value);
     }
 }
+
+// struct HasTraitsRef { foobar() }
 
 #[cfg(test)]
 mod tests {
@@ -138,6 +136,8 @@ mod tests {
     fn foo() {
         let _ = dispatch_with(Stub::default(), || {
             let manifest = HasTraits::default_create().expect("Create");
+
+            // <HasTraits as Trait1>::greet();
 
             {
                 let ret = host::call::<_, u64>(
