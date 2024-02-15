@@ -4,11 +4,15 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    DeployApproval, DeployHash, Transaction, TransactionHash, TransactionV1Approval,
-    TransactionV1Hash,
+    DeployApproval, DeployHash, Transaction, TransactionApproval, TransactionHash,
+    TransactionV1Approval, TransactionV1Hash,
 };
+use tracing::error;
 
-use super::{FinalizedApprovals, FinalizedDeployApprovals, FinalizedTransactionV1Approvals};
+use super::{
+    transaction_v1::TransactionV1HashWithApprovals, DeployHashWithApprovals, FinalizedApprovals,
+    FinalizedDeployApprovals, FinalizedTransactionV1Approvals,
+};
 
 #[allow(missing_docs)]
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -17,10 +21,7 @@ pub enum TransactionHashWithApprovals {
         deploy_hash: DeployHash,
         approvals: BTreeSet<DeployApproval>,
     },
-    V1 {
-        transaction_hash: TransactionV1Hash,
-        approvals: BTreeSet<TransactionV1Approval>,
-    },
+    V1(TransactionV1HashWithApprovals),
 }
 
 impl TransactionHashWithApprovals {
@@ -35,9 +36,43 @@ impl TransactionHashWithApprovals {
         transaction_hash: TransactionV1Hash,
         approvals: BTreeSet<TransactionV1Approval>,
     ) -> Self {
-        Self::V1 {
+        Self::V1(TransactionV1HashWithApprovals::new(
             transaction_hash,
             approvals,
+        ))
+    }
+
+    pub(crate) fn new_from_hash_and_approvals(
+        hash: &TransactionHash,
+        approvals: &BTreeSet<TransactionApproval>,
+    ) -> Self {
+        match hash {
+            TransactionHash::Deploy(deploy_hash) => {
+                let approvals: BTreeSet<_> = approvals
+                    .iter()
+                    .filter_map(|approval| match approval {
+                        TransactionApproval::Deploy(approval) => Some(approval.clone()),
+                        TransactionApproval::V1(_) => {
+                            error!("can not add 'transaction' approval to 'legacy deploy'");
+                            None
+                        }
+                    })
+                    .collect();
+                Self::new_deploy(*deploy_hash, approvals)
+            }
+            TransactionHash::V1(v1_hash) => {
+                let approvals: BTreeSet<_> = approvals
+                    .iter()
+                    .filter_map(|approval| match approval {
+                        TransactionApproval::Deploy(_) => {
+                            error!("can not add 'legacy deploy' approval to 'transaction'");
+                            None
+                        }
+                        TransactionApproval::V1(approval) => Some(approval.clone()),
+                    })
+                    .collect();
+                Self::new_v1(*v1_hash, approvals)
+            }
         }
     }
 
@@ -46,9 +81,9 @@ impl TransactionHashWithApprovals {
             TransactionHashWithApprovals::Deploy { deploy_hash, .. } => {
                 TransactionHash::from(deploy_hash)
             }
-            TransactionHashWithApprovals::V1 {
-                transaction_hash, ..
-            } => TransactionHash::from(transaction_hash),
+            TransactionHashWithApprovals::V1(thwa) => {
+                TransactionHash::from(thwa.transaction_hash())
+            }
         }
     }
 
@@ -63,14 +98,24 @@ impl TransactionHashWithApprovals {
                     FinalizedApprovals::Deploy(FinalizedDeployApprovals::new(approvals));
                 (hash, approvals)
             }
-            TransactionHashWithApprovals::V1 {
-                transaction_hash,
-                approvals,
-            } => {
-                let hash = TransactionHash::from(transaction_hash);
-                let approvals =
-                    FinalizedApprovals::V1(FinalizedTransactionV1Approvals::new(approvals));
+            TransactionHashWithApprovals::V1(thwa) => {
+                let hash = TransactionHash::from(thwa.transaction_hash());
+                let approvals = FinalizedApprovals::V1(FinalizedTransactionV1Approvals::new(
+                    thwa.take_approvals(),
+                ));
                 (hash, approvals)
+            }
+        }
+    }
+
+    /// Returns the approvals.
+    pub(crate) fn approvals(&self) -> BTreeSet<TransactionApproval> {
+        match self {
+            TransactionHashWithApprovals::Deploy { approvals, .. } => {
+                approvals.iter().map(Into::into).collect()
+            }
+            TransactionHashWithApprovals::V1(thwa) => {
+                thwa.approvals().iter().map(Into::into).collect()
             }
         }
     }
@@ -83,10 +128,15 @@ impl From<&Transaction> for TransactionHashWithApprovals {
                 deploy_hash: *deploy.hash(),
                 approvals: deploy.approvals().clone(),
             },
-            Transaction::V1(txn) => TransactionHashWithApprovals::V1 {
-                transaction_hash: *txn.hash(),
-                approvals: txn.approvals().clone(),
-            },
+            Transaction::V1(txn) => TransactionHashWithApprovals::V1(
+                TransactionV1HashWithApprovals::new(*txn.hash(), txn.approvals().clone()),
+            ),
         }
+    }
+}
+
+impl From<DeployHashWithApprovals> for TransactionHashWithApprovals {
+    fn from(deploy: DeployHashWithApprovals) -> Self {
+        TransactionHashWithApprovals::new_deploy(*deploy.deploy_hash(), deploy.approvals().clone())
     }
 }

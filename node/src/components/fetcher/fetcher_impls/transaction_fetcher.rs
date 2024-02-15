@@ -2,10 +2,8 @@ use std::{collections::HashMap, time::Duration};
 
 use async_trait::async_trait;
 use futures::FutureExt;
-use thiserror::Error;
-use tracing::error;
 
-use casper_types::{DeployConfigFailure, Transaction, TransactionId, TransactionV1ConfigFailure};
+use casper_types::{Transaction, TransactionConfigFailure, TransactionId};
 
 use crate::{
     components::fetcher::{
@@ -15,14 +13,6 @@ use crate::{
     effect::{requests::StorageRequest, EffectBuilder},
     types::{FinalizedApprovals, NodeId},
 };
-
-#[derive(Debug, Error)]
-pub(crate) enum TransactionConfigFailure {
-    #[error(transparent)]
-    Deploy(#[from] DeployConfigFailure),
-    #[error(transparent)]
-    V1(#[from] TransactionV1ConfigFailure),
-}
 
 impl FetchItem for Transaction {
     type Id = TransactionId;

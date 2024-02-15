@@ -6,8 +6,10 @@ mod initiator_addr_and_secret_key;
 mod package_identifier;
 mod pricing_mode;
 mod runtime_args;
+mod transaction_approval;
 mod transaction_approvals_hash;
 mod transaction_entry_point;
+mod transaction_footprint;
 mod transaction_hash;
 mod transaction_header;
 mod transaction_id;
@@ -20,6 +22,8 @@ mod transaction_v1;
 
 use alloc::{collections::BTreeSet, vec::Vec};
 use core::fmt::{self, Debug, Display, Formatter};
+#[cfg(feature = "std")]
+use std::error::Error as StdError;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -38,10 +42,10 @@ use crate::testing::TestRng;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Digest, Timestamp,
+    Digest, SecretKey, Timestamp,
 };
 #[cfg(feature = "json-schema")]
-use crate::{account::ACCOUNT_HASH_LENGTH, SecretKey, TimeDiff, URef};
+use crate::{account::ACCOUNT_HASH_LENGTH, TimeDiff, URef};
 pub use addressable_entity_identifier::AddressableEntityIdentifier;
 pub use deploy::{
     Deploy, DeployApproval, DeployApprovalsHash, DeployConfigFailure, DeployDecodeFromJsonError,
@@ -52,12 +56,14 @@ pub use deploy::{
 pub use deploy::{DeployBuilder, DeployBuilderError};
 pub use initiator_addr::InitiatorAddr;
 #[cfg(any(feature = "std", test))]
-use initiator_addr_and_secret_key::InitiatorAddrAndSecretKey;
+pub use initiator_addr_and_secret_key::InitiatorAddrAndSecretKey;
 pub use package_identifier::PackageIdentifier;
 pub use pricing_mode::PricingMode;
 pub use runtime_args::{NamedArg, RuntimeArgs};
+pub use transaction_approval::TransactionApproval;
 pub use transaction_approvals_hash::TransactionApprovalsHash;
 pub use transaction_entry_point::TransactionEntryPoint;
+pub use transaction_footprint::TransactionFootprint;
 pub use transaction_hash::TransactionHash;
 pub use transaction_header::TransactionHeader;
 pub use transaction_id::TransactionId;
@@ -68,8 +74,9 @@ pub use transaction_session_kind::TransactionSessionKind;
 pub use transaction_target::TransactionTarget;
 pub use transaction_v1::{
     TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash, TransactionV1Body,
-    TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError, TransactionV1Error,
-    TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
+    TransactionV1Category, TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError,
+    TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Footprint, TransactionV1Hash,
+    TransactionV1Header,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1::{TransactionV1Builder, TransactionV1BuilderError};
@@ -102,6 +109,46 @@ pub(super) static TRANSACTION: Lazy<Transaction> = Lazy::new(|| {
     Transaction::V1(v1_txn)
 });
 
+/// A representation of the way in which a transaction failed validation checks.
+#[derive(Debug)]
+pub enum TransactionConfigFailure {
+    /// Error details for the Deploy variant.
+    Deploy(DeployConfigFailure),
+    /// Error details for the TransactionV1 variant.
+    V1(TransactionV1ConfigFailure),
+}
+
+impl From<DeployConfigFailure> for TransactionConfigFailure {
+    fn from(value: DeployConfigFailure) -> Self {
+        Self::Deploy(value)
+    }
+}
+
+impl From<TransactionV1ConfigFailure> for TransactionConfigFailure {
+    fn from(value: TransactionV1ConfigFailure) -> Self {
+        Self::V1(value)
+    }
+}
+
+#[cfg(feature = "std")]
+impl StdError for TransactionConfigFailure {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        match self {
+            TransactionConfigFailure::Deploy(deploy) => deploy.source(),
+            TransactionConfigFailure::V1(v1) => v1.source(),
+        }
+    }
+}
+
+impl Display for TransactionConfigFailure {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            TransactionConfigFailure::Deploy(deploy) => write!(f, "{}", deploy),
+            TransactionConfigFailure::V1(v1) => write!(f, "{}", v1),
+        }
+    }
+}
+
 /// A versioned wrapper for a transaction or deploy.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 #[cfg_attr(
@@ -128,6 +175,39 @@ impl Transaction {
         }
     }
 
+    /// Returns `Ok` if the given transaction is valid. Verification procedure is delegated to the
+    /// implementation of the particular variant of the transaction.
+    pub fn verify(&self) -> Result<(), TransactionConfigFailure> {
+        match self {
+            Transaction::Deploy(deploy) => deploy.is_valid().map_err(Into::into),
+            Transaction::V1(v1) => v1.verify().map_err(Into::into),
+        }
+    }
+
+    /// Adds a signature of this transaction's hash to its approvals.
+    pub fn sign(&mut self, secret_key: &SecretKey) {
+        match self {
+            Transaction::Deploy(deploy) => deploy.sign(secret_key),
+            Transaction::V1(v1) => v1.sign(secret_key),
+        }
+    }
+
+    /// Returns the `TransactionFootprint`.
+    pub fn footprint(&self) -> Result<TransactionFootprint, TransactionError> {
+        Ok(match self {
+            Transaction::Deploy(deploy) => deploy.footprint()?.into(),
+            Transaction::V1(v1) => v1.footprint()?.into(),
+        })
+    }
+
+    /// Returns the `Approval`s for this transaction.
+    pub fn approvals(&self) -> BTreeSet<TransactionApproval> {
+        match self {
+            Transaction::Deploy(deploy) => deploy.approvals().iter().map(Into::into).collect(),
+            Transaction::V1(v1) => v1.approvals().iter().map(Into::into).collect(),
+        }
+    }
+
     /// Returns the computed approvals hash identifying this transaction's approvals.
     pub fn compute_approvals_hash(&self) -> Result<TransactionApprovalsHash, bytesrepr::Error> {
         let approvals_hash = match self {
@@ -137,6 +217,16 @@ impl Transaction {
             Transaction::V1(txn) => TransactionApprovalsHash::V1(txn.compute_approvals_hash()?),
         };
         Ok(approvals_hash)
+    }
+
+    /// Turns `self` into an invalid `Deploy` by clearing the `chain_name`, invalidating the deploy
+    /// hash.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn invalidate(&mut self) {
+        match self {
+            Transaction::Deploy(deploy) => deploy.invalidate(),
+            Transaction::V1(v1) => v1.invalidate(),
+        }
     }
 
     /// Returns the computed `TransactionId` uniquely identifying this transaction and its
@@ -283,6 +373,33 @@ impl Display for Transaction {
         match self {
             Transaction::Deploy(deploy) => Display::fmt(deploy, formatter),
             Transaction::V1(txn) => Display::fmt(txn, formatter),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum TransactionError {
+    Deploy(DeployError),
+    V1(TransactionV1Error),
+}
+
+impl From<TransactionV1Error> for TransactionError {
+    fn from(value: TransactionV1Error) -> Self {
+        Self::V1(value)
+    }
+}
+
+impl From<DeployError> for TransactionError {
+    fn from(value: DeployError) -> Self {
+        Self::Deploy(value)
+    }
+}
+
+impl Display for TransactionError {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            TransactionError::Deploy(deploy) => write!(formatter, "{}", deploy),
+            TransactionError::V1(v1) => write!(formatter, "{}", v1),
         }
     }
 }

@@ -26,9 +26,8 @@ use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, DeployId, EraId, FinalitySignature,
-    PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId,
-    U512,
+    Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, EraId, FinalitySignature, PublicKey,
+    TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader, U512,
 };
 
 #[cfg(test)]
@@ -40,7 +39,6 @@ use crate::{
         block_validator::{self, BlockValidator},
         consensus::{self, EraSupervisor},
         contract_runtime::ContractRuntime,
-        deploy_buffer::{self, DeployBuffer},
         diagnostics_port::DiagnosticsPort,
         event_stream_server::{self, EventStreamServer},
         gossiper::{self, GossipItem, Gossiper},
@@ -52,16 +50,17 @@ use crate::{
         storage::Storage,
         sync_leaper::SyncLeaper,
         transaction_acceptor::{self, TransactionAcceptor},
+        transaction_buffer::{self, TransactionBuffer},
         upgrade_watcher::{self, UpgradeWatcher},
         Component, ValidatorBoundComponent,
     },
     effect::{
         announcements::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, DeployBufferAnnouncement, FetchedNewBlockAnnouncement,
+            ControlAnnouncement, FetchedNewBlockAnnouncement,
             FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
-            PeerBehaviorAnnouncement, TransactionAcceptorAnnouncement, UnexecutedBlockAnnouncement,
-            UpgradeWatcherAnnouncement,
+            PeerBehaviorAnnouncement, TransactionAcceptorAnnouncement,
+            TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
         requests::{AcceptTransactionRequest, ChainspecRawBytesRequest},
@@ -104,7 +103,7 @@ pub(crate) use reactor_state::ReactorState;
 ///     D((Consensus))
 ///     K((Gossiper))
 ///     J((Fetcher))
-///     F((DeployBuffer))
+///     F((TransactionBuffer))
 ///
 ///     I -->|"❌<br/>Never get<br/>SyncLeap<br/>from storage"| H
 ///     linkStyle 0 fill:none,stroke:red,color:red
@@ -154,7 +153,7 @@ pub(crate) struct MainReactor {
 
     // transaction handling
     transaction_acceptor: TransactionAcceptor,
-    deploy_buffer: DeployBuffer,
+    transaction_buffer: TransactionBuffer,
 
     // gossiping components
     address_gossiper: Gossiper<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, GossipedAddress>,
@@ -430,13 +429,15 @@ impl reactor::Reactor for MainReactor {
             MainEvent::ConsensusAnnouncement(consensus_announcement) => {
                 match consensus_announcement {
                     ConsensusAnnouncement::Proposed(block) => {
-                        let reactor_event =
-                            MainEvent::DeployBuffer(deploy_buffer::Event::BlockProposed(block));
+                        let reactor_event = MainEvent::TransactionBuffer(
+                            transaction_buffer::Event::BlockProposed(block),
+                        );
                         self.dispatch_event(effect_builder, rng, reactor_event)
                     }
                     ConsensusAnnouncement::Finalized(block) => {
-                        let reactor_event =
-                            MainEvent::DeployBuffer(deploy_buffer::Event::BlockFinalized(block));
+                        let reactor_event = MainEvent::TransactionBuffer(
+                            transaction_buffer::Event::BlockFinalized(block),
+                        );
                         self.dispatch_event(effect_builder, rng, reactor_event)
                     }
                     ConsensusAnnouncement::Fault {
@@ -807,35 +808,28 @@ impl reactor::Reactor for MainReactor {
             ),
             MainEvent::TransactionGossiperAnnouncement(
                 GossiperAnnouncement::FinishedGossiping(gossiped_txn_id),
-            ) => match gossiped_txn_id {
-                TransactionId::Deploy {
-                    deploy_hash,
-                    approvals_hash,
-                } => {
-                    let deploy_id = DeployId::new(deploy_hash, approvals_hash);
-                    let reactor_event = MainEvent::DeployBuffer(
-                        deploy_buffer::Event::ReceiveDeployGossiped(deploy_id),
-                    );
-                    self.dispatch_event(effect_builder, rng, reactor_event)
-                }
-                TransactionId::V1 { .. } => {
-                    todo!("avoid match `gossiped_txn_id` once deploy buffer handles transactions");
-                }
-            },
-            MainEvent::DeployBuffer(event) => reactor::wrap_effects(
-                MainEvent::DeployBuffer,
-                self.deploy_buffer.handle_event(effect_builder, rng, event),
-            ),
-            MainEvent::DeployBufferRequest(req) => {
-                self.dispatch_event(effect_builder, rng, MainEvent::DeployBuffer(req.into()))
+            ) => {
+                let reactor_event = MainEvent::TransactionBuffer(
+                    transaction_buffer::Event::ReceiveTransactionGossiped(gossiped_txn_id),
+                );
+                self.dispatch_event(effect_builder, rng, reactor_event)
             }
-            MainEvent::DeployBufferAnnouncement(DeployBufferAnnouncement::DeploysExpired(
-                hashes,
-            )) => {
-                let reactor_event =
-                    MainEvent::EventStreamServer(event_stream_server::Event::TransactionsExpired(
-                        hashes.into_iter().map(TransactionHash::Deploy).collect(),
-                    ));
+            MainEvent::TransactionBuffer(event) => reactor::wrap_effects(
+                MainEvent::TransactionBuffer,
+                self.transaction_buffer
+                    .handle_event(effect_builder, rng, event),
+            ),
+            MainEvent::TransactionBufferRequest(req) => self.dispatch_event(
+                effect_builder,
+                rng,
+                MainEvent::TransactionBuffer(req.into()),
+            ),
+            MainEvent::TransactionBufferAnnouncement(
+                TransactionBufferAnnouncement::TransactionsExpired(hashes),
+            ) => {
+                let reactor_event = MainEvent::EventStreamServer(
+                    event_stream_server::Event::TransactionsExpired(hashes),
+                );
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
 
@@ -1162,8 +1156,11 @@ impl reactor::Reactor for MainReactor {
             UpgradeWatcher::new(chainspec.as_ref(), config.upgrade_watcher, &root_dir)?;
         let transaction_acceptor =
             TransactionAcceptor::new(config.transaction_acceptor, chainspec.as_ref(), registry)?;
-        let deploy_buffer =
-            DeployBuffer::new(chainspec.transaction_config, config.deploy_buffer, registry)?;
+        let transaction_buffer = TransactionBuffer::new(
+            chainspec.transaction_config,
+            config.transaction_buffer,
+            registry,
+        )?;
 
         let reactor = MainReactor {
             chainspec,
@@ -1184,7 +1181,7 @@ impl reactor::Reactor for MainReactor {
             transaction_gossiper,
             finality_signature_gossiper,
             sync_leaper,
-            deploy_buffer,
+            transaction_buffer,
             consensus,
             block_validator,
             block_accumulator,
@@ -1282,11 +1279,11 @@ impl MainReactor {
 
         if meta_block
             .mut_state()
-            .register_as_sent_to_deploy_buffer()
+            .register_as_sent_to_transaction_buffer()
             .was_updated()
         {
             debug!(
-                "MetaBlock: notifying deploy buffer: {} {}",
+                "MetaBlock: notifying transaction buffer: {} {}",
                 meta_block.height(),
                 meta_block.hash(),
             );
@@ -1294,21 +1291,21 @@ impl MainReactor {
             match &meta_block {
                 MetaBlock::Forward(fwd_meta_block) => {
                     effects.extend(reactor::wrap_effects(
-                        MainEvent::DeployBuffer,
-                        self.deploy_buffer.handle_event(
+                        MainEvent::TransactionBuffer,
+                        self.transaction_buffer.handle_event(
                             effect_builder,
                             rng,
-                            deploy_buffer::Event::Block(Arc::clone(&fwd_meta_block.block)),
+                            transaction_buffer::Event::Block(Arc::clone(&fwd_meta_block.block)),
                         ),
                     ));
                 }
                 MetaBlock::Historical(historical_meta_block) => {
                     effects.extend(reactor::wrap_effects(
-                        MainEvent::DeployBuffer,
-                        self.deploy_buffer.handle_event(
+                        MainEvent::TransactionBuffer,
+                        self.transaction_buffer.handle_event(
                             effect_builder,
                             rng,
-                            deploy_buffer::Event::VersionedBlock(Arc::clone(
+                            transaction_buffer::Event::VersionedBlock(Arc::clone(
                                 &historical_meta_block.block,
                             )),
                         ),

@@ -1,6 +1,11 @@
+#[cfg(test)]
+use std::collections::BTreeSet;
+
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+use casper_types::TransactionApproval;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     Transaction,
@@ -27,6 +32,20 @@ impl FinalizedApprovals {
             Transaction::V1(txn) => Self::V1(FinalizedTransactionV1Approvals::new(
                 txn.approvals().clone(),
             )),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn inner(&self) -> BTreeSet<TransactionApproval> {
+        match self {
+            FinalizedApprovals::Deploy(deploy) => deploy
+                .inner()
+                .iter()
+                .map(TransactionApproval::from)
+                .collect(),
+            FinalizedApprovals::V1(v1) => {
+                v1.inner().iter().map(TransactionApproval::from).collect()
+            }
         }
     }
 }

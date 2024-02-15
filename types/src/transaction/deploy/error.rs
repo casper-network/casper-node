@@ -299,7 +299,6 @@ impl Display for ExcessiveSizeError {
 
 #[cfg(feature = "std")]
 impl StdError for ExcessiveSizeError {}
-
 /// Errors other than validation failures relating to `Deploy`s.
 #[derive(Debug)]
 #[non_exhaustive]

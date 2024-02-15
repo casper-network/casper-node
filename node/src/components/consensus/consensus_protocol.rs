@@ -158,8 +158,8 @@ pub(crate) enum ProtocolOutcome<C: Context> {
     Disconnect(NodeId),
     /// We added a proposed block to the protocol state.
     ///
-    /// This is used to inform the deploy buffer, so we don't propose the same deploys again.
-    /// Does not need to be raised for proposals this node created itself.
+    /// This is used to inform the transaction buffer, so we don't propose the same transactions
+    /// again. Does not need to be raised for proposals this node created itself.
     HandledProposedBlock(ProposedBlock<C>),
 }
 

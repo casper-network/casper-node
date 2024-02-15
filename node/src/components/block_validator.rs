@@ -22,8 +22,8 @@ use datasize::DataSize;
 use tracing::{debug, error, trace, warn};
 
 use casper_types::{
-    Chainspec, DeployApprovalsHash, EraId, FinalitySignature, FinalitySignatureId, PublicKey,
-    RewardedSignatures, SingleBlockRewardedSignatures, Timestamp, Transaction, TransactionId,
+    Chainspec, EraId, FinalitySignature, FinalitySignatureId, PublicKey, RewardedSignatures,
+    SingleBlockRewardedSignatures, Timestamp, Transaction, TransactionApprovalsHash, TransactionId,
 };
 
 use crate::{
@@ -39,8 +39,8 @@ use crate::{
     },
     fatal,
     types::{
-        BlockWithMetadata, DeployHashWithApprovals, DeployOrTransferHash, NodeId,
-        TransactionHashWithApprovals, ValidatorMatrix,
+        BlockWithMetadata, DeployOrTransactionHash, NodeId, TransactionHashWithApprovals,
+        ValidatorMatrix,
     },
     NodeRng,
 };
@@ -55,36 +55,12 @@ impl ProposedBlock<ClContext> {
         self.context().timestamp()
     }
 
-    fn deploys(&self) -> Vec<DeployHashWithApprovals> {
-        self.value()
-            .standard()
-            .filter_map(|thwa| match thwa {
-                TransactionHashWithApprovals::Deploy {
-                    deploy_hash,
-                    approvals,
-                } => Some(DeployHashWithApprovals::new(
-                    *deploy_hash,
-                    approvals.clone(),
-                )),
-                TransactionHashWithApprovals::V1 { .. } => None,
-            })
-            .collect()
+    fn transactions(&self) -> Vec<TransactionHashWithApprovals> {
+        self.value().standard().cloned().collect()
     }
 
-    fn transfers(&self) -> Vec<DeployHashWithApprovals> {
-        self.value()
-            .transfer()
-            .filter_map(|thwa| match thwa {
-                TransactionHashWithApprovals::Deploy {
-                    deploy_hash,
-                    approvals,
-                } => Some(DeployHashWithApprovals::new(
-                    *deploy_hash,
-                    approvals.clone(),
-                )),
-                TransactionHashWithApprovals::V1 { .. } => None,
-            })
-            .collect()
+    fn transfers(&self) -> Vec<TransactionHashWithApprovals> {
+        self.value().transfer().cloned().collect()
     }
 }
 
@@ -524,7 +500,7 @@ impl BlockValidator {
     fn handle_transaction_fetched<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        dt_hash: DeployOrTransferHash,
+        dt_hash: DeployOrTransactionHash,
         result: FetchResult<Transaction>,
     ) -> Effects<Event>
     where
@@ -542,16 +518,12 @@ impl BlockValidator {
         }
         match result {
             Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => {
-                let item = match *item {
-                    Transaction::Deploy(deploy) => deploy,
-                    Transaction::V1(_) => unreachable!("we only fetch deploys for now"),
-                };
-                if DeployOrTransferHash::new(&item) != dt_hash {
+                if DeployOrTransactionHash::new(&item) != dt_hash {
                     warn!(
-                        deploy = %item,
-                        expected_deploy_or_transfer_hash = %dt_hash,
-                        actual_deploy_or_transfer_hash = %DeployOrTransferHash::new(&item),
-                        "deploy has incorrect deploy-or-transfer hash"
+                        transaction = %item,
+                        expected_deploy_or_transaction_hash = %dt_hash,
+                        actual_deploy_or_transaction_hash = %DeployOrTransactionHash::new(&item),
+                        "deploy has incorrect deploy-or-transaction hash"
                     );
                     // Hard failure - change state to Invalid.
                     let responders = self
@@ -560,14 +532,14 @@ impl BlockValidator {
                         .flat_map(|state| state.try_mark_invalid(&dt_hash));
                     return respond(false, responders);
                 }
-                let deploy_footprint = match item.footprint() {
+                let transaction_footprint = match item.footprint() {
                     Ok(footprint) => footprint,
                     Err(error) => {
                         warn!(
-                            deploy = %item,
+                            transaction = %item,
                             %dt_hash,
                             %error,
-                            "could not convert deploy",
+                            "could not convert transaction",
                         );
                         // Hard failure - change state to Invalid.
                         let responders = self
@@ -580,7 +552,8 @@ impl BlockValidator {
 
                 let mut effects = Effects::new();
                 for state in self.validation_states.values_mut() {
-                    let responders = state.try_add_deploy_footprint(&dt_hash, &deploy_footprint);
+                    let responders =
+                        state.try_add_transaction_footprint(&dt_hash, &transaction_footprint);
                     if !responders.is_empty() {
                         let is_valid = matches!(state, BlockValidationState::Valid(_));
                         effects.extend(respond(is_valid, responders));
@@ -797,7 +770,7 @@ where
 fn fetch_deploys_and_signatures<REv>(
     effect_builder: EffectBuilder<REv>,
     holder: NodeId,
-    missing_deploys: HashMap<DeployOrTransferHash, DeployApprovalsHash>,
+    missing_deploys: HashMap<DeployOrTransactionHash, TransactionApprovalsHash>,
     missing_signatures: HashSet<FinalitySignatureId>,
 ) -> Effects<Event>
 where
@@ -809,10 +782,31 @@ where
     let mut effects: Effects<Event> = missing_deploys
         .into_iter()
         .flat_map(|(dt_hash, approvals_hash)| {
-            let txn_id = TransactionId::Deploy {
-                deploy_hash: dt_hash.into(),
-                approvals_hash,
+            let txn_id = match (dt_hash, approvals_hash) {
+                (
+                    DeployOrTransactionHash::Deploy(dt_hash),
+                    TransactionApprovalsHash::Deploy(approvals_hash),
+                ) => TransactionId::Deploy {
+                    deploy_hash: dt_hash.into(),
+                    approvals_hash,
+                },
+                (
+                    DeployOrTransactionHash::V1(dt_hash),
+                    TransactionApprovalsHash::V1(approvals_hash),
+                ) => TransactionId::V1 {
+                    transaction_v1_hash: dt_hash.into(),
+                    approvals_hash,
+                },
+                (DeployOrTransactionHash::Deploy(_), TransactionApprovalsHash::V1(_)) => {
+                    error!("can not fetch 'legacy deploy' using 'transaction' approvals hash");
+                    return Effects::new();
+                }
+                (DeployOrTransactionHash::V1(_), TransactionApprovalsHash::Deploy(_)) => {
+                    error!("can not fetch 'transaction' using 'legacy deploy' approvals hash");
+                    return Effects::new();
+                }
             };
+
             effect_builder
                 .fetch::<Transaction>(txn_id, holder, Box::new(EmptyValidationMetadata))
                 .event(move |result| Event::TransactionFetched { dt_hash, result })

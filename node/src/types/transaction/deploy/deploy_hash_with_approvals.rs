@@ -7,7 +7,7 @@ use casper_types::{Deploy, DeployApproval, DeployHash};
 
 /// The hash of a deploy (or transfer) together with signatures approving it for execution.
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub(crate) struct DeployHashWithApprovals {
+pub struct DeployHashWithApprovals {
     /// The hash of the deploy.
     deploy_hash: DeployHash,
     /// The approvals for the deploy.

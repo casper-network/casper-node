@@ -160,19 +160,19 @@ use crate::{
 };
 use announcements::{
     BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-    ControlAnnouncement, DeployBufferAnnouncement, FatalAnnouncement, FetchedNewBlockAnnouncement,
+    ControlAnnouncement, FatalAnnouncement, FetchedNewBlockAnnouncement,
     FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
     PeerBehaviorAnnouncement, QueueDumpFormat, TransactionAcceptorAnnouncement,
-    UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+    TransactionBufferAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
     AcceptTransactionRequest, BeginGossipRequest, BlockAccumulatorRequest,
     BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
-    ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MakeBlockExecutableRequest,
-    MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-    ReactorStatusRequest, SetNodeStopRequest, StorageRequest, SyncGlobalStateRequest,
-    TrieAccumulatorRequest, UpgradeWatcherRequest,
+    ContractRuntimeRequest, FetcherRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest,
+    MetricsRequest, NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, SetNodeStopRequest,
+    StorageRequest, SyncGlobalStateRequest, TransactionBufferRequest, TrieAccumulatorRequest,
+    UpgradeWatcherRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -801,13 +801,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces which deploys have expired.
-    pub(crate) async fn announce_expired_deploys(self, hashes: Vec<DeployHash>)
+    pub(crate) async fn announce_expired_transactions(self, hashes: Vec<TransactionHash>)
     where
-        REv: From<DeployBufferAnnouncement>,
+        REv: From<TransactionBufferAnnouncement>,
     {
         self.event_queue
             .schedule(
-                DeployBufferAnnouncement::DeploysExpired(hashes),
+                TransactionBufferAnnouncement::TransactionsExpired(hashes),
                 QueueKind::Validation,
             )
             .await;
@@ -1759,10 +1759,10 @@ impl<REv> EffectBuilder<REv> {
     /// Passes the timestamp of a future block for which deploys are to be proposed.
     pub(crate) async fn request_appendable_block(self, timestamp: Timestamp, era_id: EraId) -> AppendableBlock
     where
-        REv: From<DeployBufferRequest>,
+        REv: From<TransactionBufferRequest>,
     {
         self.make_request(
-            |responder| DeployBufferRequest::GetAppendableBlock {
+            |responder| TransactionBufferRequest::GetAppendableBlock {
                 timestamp,
                 era_id,
                 responder,

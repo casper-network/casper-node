@@ -49,10 +49,7 @@ use crate::{
     testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
     },
-    types::{
-        AvailableBlockRange, BlockPayload, DeployOrTransferHash, DeployWithFinalizedApprovals,
-        ExitCode, NodeId, SyncHandling, TransactionWithFinalizedApprovals,
-    },
+    types::{AvailableBlockRange, BlockPayload, ExitCode, NodeId, SyncHandling},
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };
@@ -1190,7 +1187,9 @@ async fn should_store_finalized_approvals() {
     fixture.run_until_consensus_in_era(ERA_ONE, ONE_MIN).await;
 
     // Submit a deploy.
-    let mut deploy_alice_bob = Deploy::random_valid_native_transfer_without_deps(&mut fixture.rng);
+    let mut deploy_alice_bob = Transaction::from(
+        Deploy::random_valid_native_transfer_without_deps(&mut fixture.rng),
+    );
     let mut deploy_alice_bob_charlie = deploy_alice_bob.clone();
     let mut deploy_bob_alice = deploy_alice_bob.clone();
 
@@ -1218,10 +1217,11 @@ async fn should_store_finalized_approvals() {
         .collect();
     assert_ne!(bobs_original_approvals, expected_approvals);
 
-    let deploy_hash = *DeployOrTransferHash::new(&deploy_alice_bob).deploy_hash();
+    //    let deploy_hash = *DeployOrTransferHash::new(&deploy_alice_bob).deploy_hash();
+    let deploy_hash = deploy_alice_bob.hash();
 
     for runner in fixture.network.runners_mut() {
-        let deploy = if runner.main_reactor().consensus().public_key() == &alice_public_key {
+        let transaction = if runner.main_reactor().consensus().public_key() == &alice_public_key {
             // Alice will propose the deploy signed by Alice and Bob.
             deploy_alice_bob.clone()
         } else {
@@ -1231,17 +1231,14 @@ async fn should_store_finalized_approvals() {
         runner
             .process_injected_effects(|effect_builder| {
                 effect_builder
-                    .put_transaction_to_storage(Transaction::from(deploy.clone()))
+                    .put_transaction_to_storage(transaction.clone())
                     .ignore()
             })
             .await;
         runner
             .process_injected_effects(|effect_builder| {
                 effect_builder
-                    .announce_new_transaction_accepted(
-                        Arc::new(Transaction::from(deploy)),
-                        Source::Client,
-                    )
+                    .announce_new_transaction_accepted(Arc::new(transaction), Source::Client)
                     .ignore()
             })
             .await;
@@ -1253,7 +1250,7 @@ async fn should_store_finalized_approvals() {
             runner
                 .main_reactor()
                 .storage()
-                .read_execution_result(&TransactionHash::Deploy(deploy_hash))
+                .read_execution_result(&deploy_hash)
                 .is_some()
         })
     };
@@ -1264,14 +1261,7 @@ async fn should_store_finalized_approvals() {
         let maybe_dwa = runner
             .main_reactor()
             .storage()
-            .get_transaction_with_finalized_approvals_by_hash(&TransactionHash::from(deploy_hash))
-            .map(|transaction_wfa| match transaction_wfa {
-                TransactionWithFinalizedApprovals::Deploy {
-                    deploy,
-                    finalized_approvals,
-                } => DeployWithFinalizedApprovals::new(deploy, finalized_approvals),
-                _ => panic!("should receive deploy with finalized approvals"),
-            });
+            .get_transaction_with_finalized_approvals_by_hash(&deploy_hash);
         let maybe_finalized_approvals = maybe_dwa
             .as_ref()
             .and_then(|dwa| dwa.finalized_approvals())

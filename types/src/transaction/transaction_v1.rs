@@ -4,6 +4,8 @@ mod transaction_v1_approvals_hash;
 mod transaction_v1_body;
 #[cfg(any(feature = "std", test))]
 mod transaction_v1_builder;
+mod transaction_v1_category;
+mod transaction_v1_footprint;
 mod transaction_v1_hash;
 mod transaction_v1_header;
 
@@ -26,6 +28,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
+use self::errors_v1::CategorizationError;
+
 #[cfg(any(feature = "std", test))]
 use super::InitiatorAddrAndSecretKey;
 use super::{
@@ -37,7 +41,8 @@ use crate::testing::TestRng;
 use crate::TransactionConfig;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, Digest, DisplayIter, RuntimeArgs, SecretKey, TimeDiff, Timestamp,
+    crypto, Digest, DisplayIter, Gas, RuntimeArgs, SecretKey, TimeDiff, Timestamp,
+    TransactionSessionKind, U512,
 };
 pub use errors_v1::{
     DecodeFromJsonErrorV1 as TransactionV1DecodeFromJsonError, ErrorV1 as TransactionV1Error,
@@ -48,6 +53,8 @@ pub use transaction_v1_approvals_hash::TransactionV1ApprovalsHash;
 pub use transaction_v1_body::TransactionV1Body;
 #[cfg(any(feature = "std", test))]
 pub use transaction_v1_builder::{TransactionV1Builder, TransactionV1BuilderError};
+pub use transaction_v1_category::TransactionV1Category;
+pub use transaction_v1_footprint::TransactionV1Footprint;
 pub use transaction_v1_hash::TransactionV1Hash;
 pub use transaction_v1_header::TransactionV1Header;
 
@@ -87,7 +94,7 @@ pub struct TransactionV1 {
 impl TransactionV1 {
     /// Called by the `TransactionBuilder` to construct a new `TransactionV1`.
     #[cfg(any(feature = "std", test))]
-    pub(super) fn build(
+    pub fn build(
         chain_name: String,
         timestamp: Timestamp,
         ttl: TimeDiff,
@@ -295,6 +302,19 @@ impl TransactionV1 {
         Ok(())
     }
 
+    /// Returns the `TransactionV1Footprint`.
+    pub fn footprint(&self) -> Result<TransactionV1Footprint, TransactionV1Error> {
+        let header = self.header().clone();
+
+        let size_estimate = self.serialized_length();
+        Ok(TransactionV1Footprint {
+            header,
+            size_estimate,
+            category: self.category()?,
+            gas_estimate: Gas::new(U512::from(0)), // TODO[RC]: Implement gas estimation.
+        })
+    }
+
     /// Returns `Ok` if and only if:
     ///   * the chain_name is correct,
     ///   * the configured parameters are complied with at the given timestamp
@@ -374,6 +394,106 @@ impl TransactionV1 {
         TransactionV1Builder::new_random(rng).build().unwrap()
     }
 
+    /// Returns a random transaction with "transfer" category.
+    ///
+    /// Note that the [`TransactionV1Builder`] can be used to create a random transaction with
+    /// more specific values.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn random_transfer(
+        rng: &mut TestRng,
+        timestamp: Option<Timestamp>,
+        ttl: Option<TimeDiff>,
+    ) -> Self {
+        let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
+            rng,
+            &TransactionV1Category::Transfer,
+            timestamp,
+            ttl,
+        )
+        .build()
+        .unwrap();
+        assert!(matches!(
+            transaction.category(),
+            Ok(TransactionV1Category::Transfer)
+        ));
+        transaction
+    }
+
+    /// Returns a random transaction with "standard" category.
+    ///
+    /// Note that the [`TransactionV1Builder`] can be used to create a random transaction with
+    /// more specific values.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn random_standard(
+        rng: &mut TestRng,
+        timestamp: Option<Timestamp>,
+        ttl: Option<TimeDiff>,
+    ) -> Self {
+        let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
+            rng,
+            &TransactionV1Category::Standard,
+            timestamp,
+            ttl,
+        )
+        .build()
+        .unwrap();
+        assert!(matches!(
+            transaction.category(),
+            Ok(TransactionV1Category::Standard)
+        ));
+        transaction
+    }
+
+    /// Returns a random transaction with "install/upgrade" category.
+    ///
+    /// Note that the [`TransactionV1Builder`] can be used to create a random transaction with
+    /// more specific values.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn random_install_upgrade(
+        rng: &mut TestRng,
+        timestamp: Option<Timestamp>,
+        ttl: Option<TimeDiff>,
+    ) -> Self {
+        let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
+            rng,
+            &TransactionV1Category::InstallUpgrade,
+            timestamp,
+            ttl,
+        )
+        .build()
+        .unwrap();
+        assert!(matches!(
+            transaction.category(),
+            Ok(TransactionV1Category::InstallUpgrade)
+        ));
+        transaction
+    }
+
+    /// Returns a random transaction with "install/upgrade" category.
+    ///
+    /// Note that the [`TransactionV1Builder`] can be used to create a random transaction with
+    /// more specific values.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn random_staking(
+        rng: &mut TestRng,
+        timestamp: Option<Timestamp>,
+        ttl: Option<TimeDiff>,
+    ) -> Self {
+        let transaction = TransactionV1Builder::new_random_with_category_and_timestamp_and_ttl(
+            rng,
+            &TransactionV1Category::Staking,
+            timestamp,
+            ttl,
+        )
+        .build()
+        .unwrap();
+        assert!(matches!(
+            transaction.category(),
+            Ok(TransactionV1Category::Staking)
+        ));
+        transaction
+    }
+
     /// Turns `self` into an invalid transaction by clearing the `chain_name`, invalidating the
     /// transaction header hash.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
@@ -385,6 +505,40 @@ impl TransactionV1 {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub(super) fn apply_approvals(&mut self, approvals: Vec<TransactionV1Approval>) {
         self.approvals.extend(approvals);
+    }
+
+    /// Returns `true` if the transaction is a transfer.
+    pub fn is_transfer(&self) -> bool {
+        matches!(self.category(), Ok(TransactionV1Category::Transfer))
+    }
+
+    /// Returns transaction category.
+    fn category(&self) -> Result<TransactionV1Category, CategorizationError> {
+        let body = self.body();
+        let target = body.target();
+        let entry_point = body.entry_point();
+
+        Ok(match target {
+            TransactionTarget::Native if matches!(entry_point, TransactionEntryPoint::Transfer) => {
+                TransactionV1Category::Transfer
+            }
+            TransactionTarget::Native
+                if matches!(entry_point, TransactionEntryPoint::Custom(_)) =>
+            {
+                return Err(CategorizationError::NativeTargetWithCustomEntryPoint);
+            }
+            TransactionTarget::Native => TransactionV1Category::Staking,
+            TransactionTarget::Stored { .. } => TransactionV1Category::Standard,
+            TransactionTarget::Session { kind, .. }
+                if matches!(
+                    kind,
+                    TransactionSessionKind::Standard | TransactionSessionKind::Isolated
+                ) =>
+            {
+                TransactionV1Category::Standard
+            }
+            TransactionTarget::Session { .. } => TransactionV1Category::InstallUpgrade,
+        })
     }
 }
 

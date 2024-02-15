@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Changed
 * All SSE events are emitted via the `<IP:Port>/events` endpoint. None of the previous ones (`/events/main`, `/events/deploys`, and `/events/sigs`) is available any longer.
+* `DeployBuffer` was renamed to `TransactionBuffer` along with the related metrics.
 
 
 

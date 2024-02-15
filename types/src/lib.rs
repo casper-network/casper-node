@@ -167,17 +167,20 @@ pub use tagged::Tagged;
 #[cfg(any(feature = "std", test))]
 pub use timestamp::serde_option_time_diff;
 pub use timestamp::{TimeDiff, Timestamp};
+#[cfg(any(feature = "std", test))]
+pub use transaction::InitiatorAddrAndSecretKey;
 pub use transaction::{
     AddressableEntityIdentifier, Deploy, DeployApproval, DeployApprovalsHash, DeployConfigFailure,
     DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash,
     DeployHeader, DeployId, ExecutableDeployItem, ExecutableDeployItemIdentifier, InitiatorAddr,
-    NamedArg, PackageIdentifier, PricingMode, RuntimeArgs, Transaction, TransactionApprovalsHash,
-    TransactionEntryPoint, TransactionHash, TransactionHeader, TransactionId,
+    NamedArg, PackageIdentifier, PricingMode, RuntimeArgs, Transaction, TransactionApproval,
+    TransactionApprovalsHash, TransactionConfigFailure, TransactionEntryPoint,
+    TransactionFootprint, TransactionHash, TransactionHeader, TransactionId,
     TransactionInvocationTarget, TransactionRuntime, TransactionScheduling, TransactionSessionKind,
     TransactionTarget, TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash,
-    TransactionV1Body, TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError,
-    TransactionV1Error, TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header,
-    TransferTarget,
+    TransactionV1Body, TransactionV1Category, TransactionV1ConfigFailure,
+    TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
+    TransactionV1Footprint, TransactionV1Hash, TransactionV1Header, TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction::{

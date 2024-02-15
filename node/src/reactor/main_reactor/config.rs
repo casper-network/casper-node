@@ -6,10 +6,10 @@ use casper_types::Chainspec;
 
 use crate::{
     logging::LoggingConfig, types::NodeConfig, BlockAccumulatorConfig, BlockSynchronizerConfig,
-    BlockValidatorConfig, ConsensusConfig, ContractRuntimeConfig, DeployBufferConfig,
-    DiagnosticsPortConfig, EventStreamServerConfig, FetcherConfig, GossipConfig, NetworkConfig,
-    RestServerConfig, RpcServerConfig, SpeculativeExecConfig, StorageConfig,
-    TransactionAcceptorConfig, UpgradeWatcherConfig,
+    BlockValidatorConfig, ConsensusConfig, ContractRuntimeConfig, DiagnosticsPortConfig,
+    EventStreamServerConfig, FetcherConfig, GossipConfig, NetworkConfig, RestServerConfig,
+    RpcServerConfig, SpeculativeExecConfig, StorageConfig, TransactionAcceptorConfig,
+    TransactionBufferConfig, UpgradeWatcherConfig,
 };
 
 /// Root configuration.
@@ -43,8 +43,8 @@ pub struct Config {
     pub contract_runtime: ContractRuntimeConfig,
     /// Config values for the transaction acceptor.
     pub transaction_acceptor: TransactionAcceptorConfig,
-    /// Config values for the deploy buffer.
-    pub deploy_buffer: DeployBufferConfig,
+    /// Config values for the transaction buffer.
+    pub transaction_buffer: TransactionBufferConfig,
     /// Config values for the diagnostics port.
     pub diagnostics_port: DiagnosticsPortConfig,
     /// Config values for the block accumulator.
