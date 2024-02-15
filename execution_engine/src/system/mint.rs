@@ -16,6 +16,8 @@ use casper_types::{
     Key, Phase, PublicKey, StoredValue, URef, U512,
 };
 
+use detail::reduce_total_supply_unchecked;
+
 use crate::{
     core::engine_state::SystemContractRegistry,
     system::mint::{
@@ -70,9 +72,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             burned_amount += source_balance;
         }
 
-        self.reduce_total_supply(burned_amount)?;
-
-        Ok(())
+        reduce_total_supply_unchecked(self, burned_amount)
     }
 
     /// Reduce total supply by `amount`. Returns unit on success, otherwise
@@ -84,29 +84,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             return Err(Error::InvalidTotalSupplyReductionAttempt);
         }
 
-        if amount.is_zero() {
-            return Ok(()); // no change to supply
-        }
-
-        // get total supply or error
-        let total_supply_uref = match self.get_key(TOTAL_SUPPLY_KEY) {
-            Some(Key::URef(uref)) => uref,
-            Some(_) => return Err(Error::MissingKey), // TODO
-            None => return Err(Error::MissingKey),
-        };
-        let total_supply: U512 = self
-            .read(total_supply_uref)?
-            .ok_or(Error::TotalSupplyNotFound)?;
-
-        // decrease total supply
-        let reduced_total_supply = total_supply
-            .checked_sub(amount)
-            .ok_or(Error::ArithmeticOverflow)?;
-
-        // update total supply
-        self.write(total_supply_uref, reduced_total_supply)?;
-
-        Ok(())
+        reduce_total_supply_unchecked(self, amount)
     }
 
     /// Read balance of given `purse`.

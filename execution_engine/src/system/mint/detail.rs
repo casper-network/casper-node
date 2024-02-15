@@ -5,10 +5,17 @@ use casper_types::{
     Key, U512,
 };
 
-use super::super::mint::Mint;
+use crate::{
+    system::mint::{
+        runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+    },
+};
 
 // Please do not expose this to the user!
-pub(crate) fn reduce_total_supply_unchecked<T: Mint>(auction: &mut T, amount: U512) -> Result<(), mint::Error> {
+pub(crate) fn reduce_total_supply_unchecked<P>(auction: &mut P, amount: U512) -> Result<(), mint::Error> 
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
     if amount.is_zero() {
         return Ok(()); // no change to supply
     }

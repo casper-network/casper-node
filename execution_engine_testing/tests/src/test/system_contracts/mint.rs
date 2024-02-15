@@ -1,10 +1,5 @@
 use once_cell::sync::Lazy;
 
-// use casper_execution_engine::{
-//     DeployItemBuilder, ExecuteRequestBuilder,  DEFAULT_ACCOUNT_ADDR,
-//     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
-// };
-
 use casper_engine_test_support::{
     LmdbWasmTestBuilder,
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
@@ -12,8 +7,11 @@ use casper_engine_test_support::{
     transfer,
     auction
 };
-use casper_types::{account::AccountHash, Key, runtime_args, RuntimeArgs, U512, URef, CLValue};
+use casper_types::{account::AccountHash, Key, runtime_args, RuntimeArgs, U512, URef, CLValue,
+    system::mint::TOTAL_SUPPLY_KEY,
+};
 use tempfile::TempDir;
+use casper_types::bytesrepr::ToBytes;
 
 const TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE: u64 = 1_000_000 * 1_000_000_000;
 const CONTRACT_CREATE_PURSES: &str = "create_purses.wasm";
@@ -51,8 +49,6 @@ fn should_burn_tokens_from_provided_purse() {
             .collect::<Vec<_>>(),
         U512::from(TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE),
     );
-    // let contract_hash = builder.get_auction_contract_hash();
-    // let mut next_validator_iter = validator_keys.iter().cycle();
 
     let exec_request = ExecuteRequestBuilder::standard(
         source,
@@ -99,14 +95,74 @@ fn should_burn_tokens_from_provided_purse() {
         assert_eq!(balance, purse_amount);
     }
 
+    let total_supply_before_burning: U512 =
+        builder.get_value(builder.get_mint_contract_hash(), TOTAL_SUPPLY_KEY);
+
     let exec_request = ExecuteRequestBuilder::standard(
         source,
         CONTRACT_BURN,
         runtime_args! {
-            ARG_PURSES => urefs
+            ARG_PURSES => urefs.clone()
         },
     )
     .build();
 
     builder.exec(exec_request).expect_success().commit();
+
+    for uref in &urefs {
+        let balance = builder
+            .get_purse_balance_result(uref.clone())
+            .motes()
+            .cloned()
+            .unwrap();
+
+        assert_eq!(balance, U512::zero());
+    }
+
+    let total_supply_after_burning: U512 =
+        builder.get_value(builder.get_mint_contract_hash(), TOTAL_SUPPLY_KEY);
+
+    let total_supply_difference = total_supply_before_burning - total_supply_after_burning;
+
+    assert_eq!(total_supply_difference, U512::from(total_purses) * purse_amount);
+}
+
+#[ignore]
+#[test]
+fn should_fail_when_burning_with_no_access() {
+    let data_dir = TempDir::new().expect("should create temp dir");
+    let mut builder = LmdbWasmTestBuilder::new(data_dir.as_ref());
+    let purse_amount = U512::from(5000000000u64);
+    let total_purses = 2u64;
+    let source = DEFAULT_ACCOUNT_ADDR.clone();
+
+    let delegator_keys = auction::generate_public_keys(1);
+    let validator_keys = auction::generate_public_keys(1);
+
+    auction::run_genesis_and_create_initial_accounts(
+        &mut builder,
+        &validator_keys,
+        delegator_keys
+            .iter()
+            .map(|public_key| public_key.to_account_hash())
+            .collect::<Vec<_>>(),
+        U512::from(TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE),
+    );
+
+
+    let pk_bytes = [0; 32];
+    let pk = AccountHash::new(pk_bytes);
+
+    let exec_request = ExecuteRequestBuilder::standard(
+        pk,
+        CONTRACT_CREATE_PURSES,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(total_purses) * purse_amount,
+            ARG_TOTAL_PURSES => total_purses,
+            ARG_SEED_AMOUNT => purse_amount
+        },
+    )
+    .build();
+
+    builder.exec(exec_request).expect_failure().commit();
 }
