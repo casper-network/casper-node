@@ -1,7 +1,11 @@
 //! Costs of the standard payment system contract.
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use rand::{distributions::Standard, prelude::*, Rng};
+#[cfg(any(feature = "testing", test))]
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::bytesrepr::{self, FromBytes, ToBytes};
@@ -45,6 +49,7 @@ impl FromBytes for StandardPaymentCosts {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<StandardPaymentCosts> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> StandardPaymentCosts {
         StandardPaymentCosts { pay: rng.gen() }
