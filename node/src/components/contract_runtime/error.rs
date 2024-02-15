@@ -9,7 +9,7 @@ use casper_execution_engine::engine_state::{Error as EngineStateError, StepError
 use casper_storage::{
     global_state::error::Error as GlobalStateError, tracking_copy::TrackingCopyError,
 };
-use casper_types::{bytesrepr, CLValueError, PublicKey, U512};
+use casper_types::{bytesrepr, CLValueError, EraId, PublicKey, U512};
 
 use crate::{
     components::contract_runtime::ExecutionPreState,
@@ -112,4 +112,8 @@ pub enum BlockExecutionError {
         #[serde(skip_serializing)]
         TrackingCopyError,
     ),
+    #[error("Failed to get new era gas price when executing switch block")]
+    FailedToGetNewEraGasPrice {
+        era_id: EraId
+    }
 }

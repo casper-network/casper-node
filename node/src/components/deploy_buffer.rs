@@ -621,6 +621,7 @@ where
                 }
                 Event::Request(DeployBufferRequest::GetAppendableBlock {
                     timestamp,
+                    era_id,
                     responder,
                 }) => responder.respond(self.appendable_block(timestamp)).ignore(),
                 Event::BlockFinalized(finalized_block) => {

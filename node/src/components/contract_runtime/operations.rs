@@ -106,6 +106,12 @@ pub fn execute_finalized_block(
         });
     }
 
+    if maybe_next_gas_price.is_none() && executable_block.era_report.is_some() {
+        let era_id = executable_block.era_id;
+        return Err(BlockExecutionError::FailedToGetNewEraGasPrice {era_id});
+    }
+
+
     let pre_state_root_hash = execution_pre_state.pre_state_root_hash();
     let parent_hash = execution_pre_state.parent_hash();
     let parent_seed = execution_pre_state.parent_seed();
