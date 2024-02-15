@@ -109,6 +109,30 @@ impl Definition {
         // Empty struct should be equivalent to `()` in Rust in other languages.
         Definition::Tuple { items: Vec::new() }
     }
+
+    pub fn as_struct(&self) -> Option<&[StructField]> {
+        if let Self::Struct { items } = self {
+            Some(items.as_slice())
+        } else {
+            None
+        }
+    }
+
+    pub fn as_enum(&self) -> Option<&[EnumVariant]> {
+        if let Self::Enum { items } = self {
+            Some(items.as_slice())
+        } else {
+            None
+        }
+    }
+
+    pub fn as_tuple(&self) -> Option<&[Declaration]> {
+        if let Self::Tuple { items } = self {
+            Some(items.as_slice())
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Default, Debug, Serialize, Deserialize, Clone)]
@@ -135,7 +159,7 @@ impl Definitions {
         self.0.iter()
     }
 
-    pub fn get(&self, decl: &Declaration) -> Option<&Definition> {
+    pub fn get(&self, decl: &str) -> Option<&Definition> {
         self.0.get(decl)
     }
 

@@ -55,6 +55,10 @@ trait Counter {
         self.counter_state().value
     }
 
+    fn get_counter_state(&self) -> CounterState {
+        self.counter_state().clone()
+    }
+
     #[casper(private)]
     fn counter_state(&self) -> &CounterState;
 
@@ -98,20 +102,20 @@ impl HasTraits {
     }
 }
 
-// struct HasTraitsRef { foobar() }
-
 #[cfg(test)]
 mod tests {
     use crate::{CounterState, HasTraits, Trait1};
 
     use super::Trait1Ext;
+    use alloc::collections::BTreeSet;
     use casper_macros::selector;
     use casper_sdk::{
+        abi::{Definition, StructField},
         host::{
             self,
             native::{dispatch_with, Stub},
         },
-        types::ResultCode,
+        schema::CasperSchema,
         Contract,
     };
 
@@ -132,6 +136,66 @@ mod tests {
             }
         });
     }
+
+    use super::Counter;
+    use casper_sdk::abi::CasperABI;
+    #[test]
+    fn unit_test() {
+        let mut has_traits = HasTraits::default();
+        has_traits.increment();
+    }
+
+    #[test]
+    fn schema_has_traits() {
+        let schema = HasTraits::schema();
+
+        assert!(
+            schema.entry_points.iter().any(|e| e.name == "foobar"),
+            "Method inside impl block"
+        );
+
+        assert!(
+            schema.entry_points.iter().any(|e| e.name == "increment"),
+            "Method inside Counter trait"
+        );
+
+        let get_counter_state = schema
+            .entry_points
+            .iter()
+            .find(|e| e.name == "get_counter_state")
+            .unwrap();
+        let counter_state_def = schema
+            .definitions
+            .get(&get_counter_state.result)
+            .expect("Has counter state definition");
+
+        let expected_definition = vec![StructField {
+            name: "value".to_string(),
+            decl: <u64>::declaration(),
+        }];
+        assert_eq!(
+            counter_state_def
+                .as_struct()
+                .expect("Counter State is struct"),
+            expected_definition.as_slice()
+        );
+
+        assert!(
+            !schema
+                .entry_points
+                .iter()
+                .any(|e| e.name == "counter_state"),
+            "Trait method marked as private"
+        );
+        assert!(
+            !schema
+                .entry_points
+                .iter()
+                .any(|e| e.name == "counter_state_mut"),
+            "Trait method marked as private"
+        );
+    }
+
     #[test]
     fn foo() {
         let _ = dispatch_with(Stub::default(), || {

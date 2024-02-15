@@ -88,10 +88,19 @@ pub enum ApiError {
 }
 
 // A println! like macro that calls `host::print` function.
+#[cfg(target_arch = "wasm32")]
 #[macro_export]
 macro_rules! log {
     ($($arg:tt)*) => ({
         $crate::host::casper_print(&format!($($arg)*));
+    })
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[macro_export]
+macro_rules! log {
+    ($($arg:tt)*) => ({
+        eprintln!("📝 {}", format!($($arg)*));
     })
 }
 
