@@ -60,6 +60,7 @@ use std::{
 };
 
 use datasize::DataSize;
+use itertools::Itertools;
 use lmdb::{
     Database, DatabaseFlags, Environment, EnvironmentFlags, RwCursor, RwTransaction,
     Transaction as LmdbTransaction, WriteFlags,
@@ -204,6 +205,7 @@ pub struct Storage {
     metrics: Option<Metrics>,
     /// The maximum TTL of a deploy.
     max_ttl: MaxTtl,
+    utilization_tracker: BTreeMap<EraId, BTreeMap<u64, u64>>,
 }
 
 pub(crate) enum HighestOrphanedBlockResult {
@@ -473,6 +475,7 @@ impl Storage {
             serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
             recent_era_count,
             max_ttl,
+            utilization_tracker: BTreeMap::new(),
             metrics,
         };
 
@@ -1182,6 +1185,30 @@ impl Storage {
                     .respond(self.key_block_height_for_activation_point)
                     .ignore()
             }
+            StorageRequest::GetBlockUtilizationScore {
+                era_id,
+                block_height,
+                transaction_count,
+                responder
+            } => {
+                match self.utilization_tracker.get_mut(&era_id) {
+                    None => {
+                        responder.respond(Some((transaction_count, 1u64))).ignore()
+                    }
+                    Some(block_utilization) => {
+                        // TODO: Check the possiblity of an accidental upsert here
+                        block_utilization.insert(block_height, transaction_count);
+                        let raw_score = block_utilization
+                            .values()
+                            .sum();
+
+                        let block_count = block_utilization
+                            .len() as u64;
+
+                        responder.respond(Some((raw_score, block_count))).ignore()
+                    }
+                }
+            }
         })
     }
 
@@ -1208,9 +1235,11 @@ impl Storage {
         txn: &mut RwTransaction,
         block: &Block,
     ) -> Result<bool, FatalStorageError> {
+        let block_body = block.clone_body();
+
         if !self
             .block_body_dbs
-            .put(txn, block.body_hash(), &block.clone_body(), true)?
+            .put(txn, block.body_hash(), &block_body, true)?
         {
             error!(%block, "could not insert block body");
             return Ok(false);
@@ -1244,6 +1273,25 @@ impl Storage {
             block.era_id(),
             transaction_hashes,
         )?;
+
+        let transaction_hash_count = match block_body {
+            BlockBody::V1(_legacy_block_body) => {
+                // We shouldn't be tracking utilization for legacy blocks.
+                0u64
+            }
+            BlockBody::V2(block_body) => {
+                block_body
+                    .all_transactions()
+                    .collect_vec()
+                    .len() as u64
+            }
+        };
+
+        let era_id = block.era_id();
+
+        if let Some(block_score) = self.utilization_tracker.get_mut(&era_id) {
+            block_score.insert(block.height(), transaction_hash_count);
+        };
 
         Ok(true)
     }

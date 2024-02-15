@@ -23,6 +23,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     sync::{Arc, Mutex},
 };
+use num_rational::Ratio;
 use tracing::{debug, error, info};
 
 /// Maximum number of resource intensive tasks that can be run in parallel.
@@ -62,6 +63,7 @@ pub(super) async fn exec_or_requeue<REv>(
     mut executable_block: ExecutableBlock,
     key_block_height_for_activation_point: u64,
     mut meta_block_state: MetaBlockState,
+    current_gas_price: u8,
 ) where
     REv: From<ContractRuntimeRequest>
         + From<ContractRuntimeAnnouncement>
@@ -76,7 +78,16 @@ pub(super) async fn exec_or_requeue<REv>(
     let protocol_version = chainspec.protocol_version();
     let activation_point = chainspec.protocol_config.activation_point;
     let prune_batch_size = chainspec.core_config.prune_batch_size;
-    if executable_block.era_report.is_some() && executable_block.rewards.is_none() {
+    let block_max_install_upgrade_count = chainspec.transaction_config.block_max_install_upgrade_count;
+    let block_max_standard_count = chainspec.transaction_config.block_max_standard_count;
+    let block_max_transfer_count=     chainspec.transaction_config.block_max_transfer_count;
+    let block_max_staking_count = chainspec.transaction_config.block_max_staking_count;
+    let go_up = chainspec.transaction_config.go_up;
+    let go_down = chainspec.transaction_config.go_down;
+    let max = chainspec.transaction_config.max;
+    let min = chainspec.transaction_config.min;
+    let is_era_end = executable_block.era_report.is_some();
+    if  is_era_end && executable_block.rewards.is_none() {
         executable_block.rewards = Some(if chainspec.core_config.compute_rewards {
             let rewards = match rewards::fetch_data_and_calculate_rewards_for_era(
                 effect_builder,
@@ -100,6 +111,60 @@ pub(super) async fn exec_or_requeue<REv>(
         });
     }
 
+    // TODO: Make the call to determine gas price calc based on the tracking in storage here!
+    let maybe_next_era_gas_price = if is_era_end {
+        let era_id = executable_block.era_id;
+        let block_height = executable_block.height;
+
+        let switch_block_transaction_hashes = executable_block
+            .transactions
+            .len() as u64;
+
+        let maybe_utilization = effect_builder
+            .get_block_utilization(era_id, block_height, switch_block_transaction_hashes)
+            .await;
+
+        match maybe_utilization {
+            None => None,
+            Some((utilization, block_count)) =>  {
+                let per_block_capacity = {
+                    block_max_install_upgrade_count
+                    + block_max_standard_count
+                    + block_max_transfer_count
+                    + block_max_staking_count
+                } as u64;
+
+                let era_score = {
+                    let numerator = utilization * 100;
+                    let denominator = per_block_capacity * block_count;
+                    Ratio::new(numerator, denominator).to_integer()
+                };
+
+
+                let new_gas_price = if era_score >= go_up {
+                    let new_gas_price = current_gas_price + 1;
+                    if current_gas_price > max {
+                        max
+                    } else {
+                        new_gas_price
+                    }
+                } else if  era_score < go_down {
+                    let new_gas_price = current_gas_price - 1;
+                    if current_gas_price <= min {
+                       min
+                    } else {
+                        new_gas_price
+                    }
+                } else {
+                    current_gas_price
+                };
+                Some(new_gas_price)
+            }
+        }
+    } else {
+        None
+    };
+
     let BlockAndExecutionResults {
         block,
         approvals_hashes,
@@ -116,6 +181,7 @@ pub(super) async fn exec_or_requeue<REv>(
             activation_point.era_id(),
             key_block_height_for_activation_point,
             prune_batch_size,
+            maybe_next_era_gas_price
         )
     })
     .await

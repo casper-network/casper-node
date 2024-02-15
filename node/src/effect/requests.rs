@@ -504,6 +504,12 @@ pub(crate) enum StorageRequest {
     },
     /// Retrieve the height of the final block of the previous protocol version, if known.
     GetKeyBlockHeightForActivationPoint { responder: Responder<Option<u64>> },
+    GetBlockUtilizationScore {
+        era_id: EraId,
+        block_height: u64,
+        transaction_count: u64,
+        responder: Responder<Option<(u64, u64)>>,
+    }
 }
 
 impl Display for StorageRequest {
@@ -659,6 +665,12 @@ impl Display for StorageRequest {
                 write!(
                     formatter,
                     "get key block height for current activation point"
+                )
+            }
+            StorageRequest::GetBlockUtilizationScore { era_id, .. } => {
+                write!(
+                    formatter,
+                    "get utilization score for era {}", era_id
                 )
             }
         }

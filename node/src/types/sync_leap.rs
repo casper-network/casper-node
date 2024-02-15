@@ -2232,6 +2232,7 @@ mod tests {
                     Vec::from(rnd.inactive_validators()),
                     validators,
                     rnd.rewards().clone(),
+                    1u8,
                 )
             });
             let next_block_era_id = if is_successor_of_switch_block {

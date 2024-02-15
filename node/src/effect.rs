@@ -1130,6 +1130,21 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn get_block_utilization(self, era_id: EraId, block_height: u64, transaction_count: u64) -> Option<(u64, u64)>
+    where
+        REv: From<StorageRequest>
+    {
+        self.make_request(
+            |responder| StorageRequest::GetBlockUtilizationScore {
+                era_id,
+                block_height,
+                transaction_count,
+                responder,
+            },
+            QueueKind::FromStorage
+        ).await
+    }
+
     pub(crate) async fn is_block_stored(self, block_hash: BlockHash) -> bool
     where
         REv: From<StorageRequest>,

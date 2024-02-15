@@ -57,6 +57,10 @@ pub struct TransactionConfig {
     /// Maximum value to which `transaction_acceptor.timestamp_leeway` can be set in the
     /// config.toml file.
     pub max_timestamp_leeway: TimeDiff,
+    pub go_down: u64,
+    pub go_up: u64,
+    pub min: u8,
+    pub max: u8,
     /// Configuration values specific to Deploy transactions.
     #[serde(rename = "deploy")]
     pub deploy_config: DeployConfig,
@@ -96,6 +100,10 @@ impl TransactionConfig {
             block_gas_limit,
             native_transfer_minimum_motes,
             max_timestamp_leeway,
+            min: 1,
+            max: 3,
+            go_down: 90,
+            go_up: 50,
             deploy_config,
             transaction_v1_config,
         }
@@ -118,6 +126,10 @@ impl Default for TransactionConfig {
             block_gas_limit: 10_000_000_000_000,
             native_transfer_minimum_motes: DEFAULT_MIN_TRANSFER_MOTES,
             max_timestamp_leeway: TimeDiff::from_str("5sec").unwrap(),
+            min: 1,
+            max: 3,
+            go_down: 90,
+            go_up: 50,
             deploy_config: DeployConfig::default(),
             transaction_v1_config: TransactionV1Config::default(),
         }
@@ -137,6 +149,10 @@ impl ToBytes for TransactionConfig {
         self.block_gas_limit.write_bytes(writer)?;
         self.native_transfer_minimum_motes.write_bytes(writer)?;
         self.max_timestamp_leeway.write_bytes(writer)?;
+        self.min.write_bytes(writer)?;
+        self.max.write_bytes(writer)?;
+        self.go_down.write_bytes(writer)?;
+        self.go_up.write_bytes(writer)?;
         self.deploy_config.write_bytes(writer)?;
         self.transaction_v1_config.write_bytes(writer)
     }
@@ -159,6 +175,10 @@ impl ToBytes for TransactionConfig {
             + self.block_gas_limit.serialized_length()
             + self.native_transfer_minimum_motes.serialized_length()
             + self.max_timestamp_leeway.serialized_length()
+            + self.min.serialized_length()
+            + self.max.serialized_length()
+            + self.go_down.serialized_length()
+            + self.go_up.serialized_length()
             + self.deploy_config.serialized_length()
             + self.transaction_v1_config.serialized_length()
     }
@@ -177,8 +197,13 @@ impl FromBytes for TransactionConfig {
         let (block_gas_limit, remainder) = u64::from_bytes(remainder)?;
         let (native_transfer_minimum_motes, remainder) = u64::from_bytes(remainder)?;
         let (max_timestamp_leeway, remainder) = TimeDiff::from_bytes(remainder)?;
+        let (min, remainder) = u8::from_bytes(remainder)?;
+        let (max, remainder) = u8::from_bytes(remainder)?;
+        let (go_down, remainder) = u64::from_bytes(remainder)?;
+        let (go_up, remainder) = u64::from_bytes(remainder)?;
         let (deploy_config, remainder) = DeployConfig::from_bytes(remainder)?;
         let (transaction_v1_config, remainder) = TransactionV1Config::from_bytes(remainder)?;
+
         let config = TransactionConfig {
             max_ttl,
             max_transaction_size,
@@ -191,6 +216,10 @@ impl FromBytes for TransactionConfig {
             block_gas_limit,
             native_transfer_minimum_motes,
             max_timestamp_leeway,
+            min,
+            max,
+            go_down,
+            go_up,
             deploy_config,
             transaction_v1_config,
         };

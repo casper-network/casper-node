@@ -272,5 +272,6 @@ fn gen_era_end_v2(
         inactive_validators,
         next_era_validator_weights,
         rewards,
+        1u8
     )
 }

@@ -96,6 +96,7 @@ pub(crate) struct ContractRuntime {
     chainspec: Arc<Chainspec>,
     #[data_size(skip)]
     data_access_layer: Arc<DataAccessLayer<LmdbGlobalState>>,
+    current_gas_price: u8
 }
 
 impl Debug for ContractRuntime {
@@ -116,6 +117,8 @@ impl ContractRuntime {
 
         let data_access_layer = Self::data_access_layer(storage_dir, contract_runtime_config)
             .map_err(ConfigError::GlobalState)?;
+
+        let current_gas_price = chainspec.transaction_config.min;
 
         let engine_config = EngineConfigBuilder::new()
             .with_max_query_depth(contract_runtime_config.max_query_depth_or_default())
@@ -157,6 +160,7 @@ impl ContractRuntime {
             exec_queue: Default::default(),
             chainspec,
             data_access_layer,
+            current_gas_price
         })
     }
 
@@ -516,6 +520,7 @@ impl ContractRuntime {
                         let engine_state = Arc::clone(&self.engine_state);
                         let metrics = Arc::clone(&self.metrics);
                         let shared_pre_state = Arc::clone(&self.execution_pre_state);
+                        let current_gas_price = self.current_gas_price;
                         effects.extend(
                             exec_or_requeue(
                                 engine_state,
@@ -528,6 +533,7 @@ impl ContractRuntime {
                                 executable_block,
                                 key_block_height_for_activation_point,
                                 meta_block_state,
+                                current_gas_price
                             )
                             .ignore(),
                         )
