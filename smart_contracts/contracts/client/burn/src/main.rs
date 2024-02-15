@@ -8,8 +8,6 @@ use alloc::vec::Vec;
 use casper_contract::contract_api::{runtime, system};
 use casper_types::{runtime_args, system::mint, RuntimeArgs, URef};
 
-const ARG_PURSES: &str = "purses";
-
 fn burn(urefs: Vec<URef>) {
     let contract_hash = system::get_mint();
     let args = runtime_args! {
@@ -21,6 +19,6 @@ fn burn(urefs: Vec<URef>) {
 // Accepts a public key. Issues an activate-bid bid to the auction contract.
 #[no_mangle]
 pub extern "C" fn call() {
-    let urefs:Vec<URef> = runtime::get_named_arg(ARG_PURSES);
+    let urefs:Vec<URef> = runtime::get_named_arg(mint::ARG_PURSES);
     burn(urefs);
 }

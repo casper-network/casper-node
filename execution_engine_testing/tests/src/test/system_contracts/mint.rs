@@ -12,12 +12,13 @@ use casper_engine_test_support::{
     transfer,
     auction
 };
-use casper_types::{account::AccountHash, Key, runtime_args, RuntimeArgs, U512, URef};
+use casper_types::{account::AccountHash, Key, runtime_args, RuntimeArgs, U512, URef, CLValue};
 use tempfile::TempDir;
 
 const TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE: u64 = 1_000_000 * 1_000_000_000;
 const CONTRACT_CREATE_PURSES: &str = "create_purses.wasm";
-const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
+const CONTRACT_BURN: &str = "burn.wasm";
+// const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_ID: &str = "id";
@@ -26,6 +27,8 @@ const ARG_SEED_AMOUNT: &str = "seed_amount";
 const ARG_TOTAL_PURSES: &str = "total_purses";
 const ARG_TARGET: &str = "target";
 const ARG_TARGET_PURSE: &str = "target_purse";
+
+const ARG_PURSES: &str = "purses";
 
 #[ignore]
 #[test]
@@ -48,8 +51,8 @@ fn should_burn_tokens_from_provided_purse() {
             .collect::<Vec<_>>(),
         U512::from(TEST_DELEGATOR_INITIAL_ACCOUNT_BALANCE),
     );
-    let contract_hash = builder.get_auction_contract_hash();
-    let mut next_validator_iter = validator_keys.iter().cycle();
+    // let contract_hash = builder.get_auction_contract_hash();
+    // let mut next_validator_iter = validator_keys.iter().cycle();
 
     let exec_request = ExecuteRequestBuilder::standard(
         source,
@@ -83,18 +86,27 @@ fn should_burn_tokens_from_provided_purse() {
             *purse_uref
         })
         .collect();
-    // let mut builder = InMemoryWasmTestBuilder::default();
-    // builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    // let purse_amount = U512::from(1_000_000_000u64);
+    assert_eq!(urefs.len(), 2);
 
-    // let purses = transfer::create_test_purses(
-    //     &mut builder,
-    //     *DEFAULT_ACCOUNT_ADDR,
-    //     2,
-    //     purse_amount,
-    // );
+    for uref in &urefs {
+        let balance = builder
+            .get_purse_balance_result(uref.clone())
+            .motes()
+            .cloned()
+            .unwrap();
 
+        assert_eq!(balance, purse_amount);
+    }
 
-    // assert_eq!(purses.len(), 2);
+    let exec_request = ExecuteRequestBuilder::standard(
+        source,
+        CONTRACT_BURN,
+        runtime_args! {
+            ARG_PURSES => urefs
+        },
+    )
+    .build();
+
+    builder.exec(exec_request).expect_success().commit();
 }

@@ -1,6 +1,7 @@
 pub(crate) mod runtime_provider;
 pub(crate) mod storage_provider;
 pub(crate) mod system_provider;
+pub(crate) mod detail;
 
 use num_rational::Ratio;
 use num_traits::CheckedMul;
