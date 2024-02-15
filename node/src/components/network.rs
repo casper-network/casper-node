@@ -26,6 +26,7 @@
 pub(crate) mod blocklist;
 mod chain_info;
 mod config;
+mod conman;
 mod connection_id;
 mod error;
 mod event;
