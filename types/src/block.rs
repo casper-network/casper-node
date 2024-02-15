@@ -47,10 +47,7 @@ pub use rewarded_signatures::{RewardedSignatures, SingleBlockRewardedSignatures}
 pub use rewards::Rewards;
 pub use signed_block_header::{SignedBlockHeader, SignedBlockHeaderValidationError};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
-pub use test_block_builder::{
-    TestBlockV1Builder,
-    TestBlockBuilder,
-};
+pub use test_block_builder::{TestBlockBuilder, TestBlockV1Builder};
 
 #[cfg(feature = "json-schema")]
 static BLOCK: Lazy<Block> = Lazy::new(|| BlockV2::example().into());
