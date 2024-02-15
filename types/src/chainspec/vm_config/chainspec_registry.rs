@@ -130,7 +130,6 @@ impl CLTyped for ChainspecRegistry {
     }
 }
 
-#[cfg(any(feature = "testing", test))]
 impl Distribution<ChainspecRegistry> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ChainspecRegistry {
         ChainspecRegistry {
