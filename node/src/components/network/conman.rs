@@ -4,14 +4,22 @@
 //! network, reconnecting on connection loss and ensuring there is always exactly one [`juliet`]
 //! connection between peers.
 
-use std::{collections::HashMap, net::IpAddr, sync::RwLock, time::Instant};
+use std::{
+    collections::HashMap,
+    net::IpAddr,
+    sync::{Arc, RwLock},
+    time::Instant,
+};
 
-use futures::Future;
+use futures::FutureExt;
 use juliet::rpc::JulietRpcClient;
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{error_span, field::Empty, warn, Instrument};
 
-use crate::{types::NodeId, utils::display_error};
+use crate::{
+    types::NodeId,
+    utils::{display_error, DropSwitch, ObservableFuse},
+};
 
 use super::blocklist::BlocklistJustification;
 
@@ -22,49 +30,80 @@ use super::blocklist::BlocklistJustification;
 /// an incoming and outgoing connection, and back-off timers for connection attempts.
 ///
 /// `N` is the number of channels by the instantiated `juliet` protocol.
-///
-/// ## Usage
-///
-/// After constructing a new connection manager, the server process should be started using
-/// `run_incoming`.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct ConMan<const N: usize> {
-    state: RwLock<ConManState<N>>,
+    /// The shared connection manager state, which contains per-peer and per-address information.
+    state: Arc<RwLock<ConManState<N>>>,
+    /// A fuse used to cancel future execution.
+    shutdown: DropSwitch<ObservableFuse>,
 }
 
+/// Share state for [`ConMan`].
+///
+/// Tracks outgoing and incoming connections.
 #[derive(Debug, Default)]
 struct ConManState<const N: usize> {
+    /// A mapping of IP addresses that have been dialed, succesfully connected or backed off from.
+    /// This is strictly for outgoing connections.
     address_book: HashMap<IpAddr, AddressBookEntry>,
+    /// The current state per node ID, i.e. whether it is connected through an incoming or outgoing
+    /// connection, blocked or unknown.
     routing_table: HashMap<NodeId, Route<N>>,
 }
 
+/// An entry in the address book.
 #[derive(Debug)]
 enum AddressBookEntry {
+    /// There currently is a task in charge of this outgoing address and trying to establish a
+    /// connection.
     Connecting,
-    Outgoing { remote: NodeId },
-    BackOff { until: Instant },
+    /// An outgoing connection has been established to the given address.
+    Outgoing {
+        /// The node ID of the peer we are connected to at this address.
+        remote: NodeId,
+    },
+    /// A decision has been made to not reconnect to the given address for the time being.
+    BackOff {
+        /// When to clear the back-off state.
+        until: Instant,
+    },
+    // TODO: Consider adding `Incoming` as a hint to look up before attempting to connect.
 }
 
+/// A route to a peer.
 #[derive(Debug)]
 enum Route<const N: usize> {
+    /// Connected through an incoming connection (initated by peer).
     Incoming(PeerHandle<N>),
+    /// Connected through an outgoing connection (initiated by us).
     Outgoing(PeerHandle<N>),
+    /// The peer ID has been banned.
     Banned {
+        /// Time ban is lifted.
         until: Instant,
+        /// Justification for the ban.
         justification: BlocklistJustification,
     },
 }
 
+/// Data related to an established connection.
 #[derive(Debug)]
 struct PeerHandle<const N: usize> {
+    /// NodeId of the peer.
     peer: NodeId,
+    /// The established [`juliet`] RPC client, can be used to send requests to the peer.
     client: JulietRpcClient<N>,
 }
 
 impl<const N: usize> ConMan<N> {
-    /// Run the incoming server socket.
-    fn run_incoming(&self, listener: TcpListener) -> impl Future<Output = ()> {
-        async move {
+    /// Create a new connection manager.
+    ///
+    /// Immediately spawns a task accepting incoming connections on a tokio task, which will be
+    /// cancelled if the returned [`ConMan`] is dropped.
+    pub(crate) fn new(listener: TcpListener) -> Self {
+        let state: Arc<RwLock<ConManState<N>>> = Default::default();
+        let server_state = state.clone();
+        let server = async move {
             loop {
                 // We handle accept errors here, since they can be caused by a temporary resource
                 // shortage or the remote side closing the connection while it is waiting in
@@ -75,7 +114,9 @@ impl<const N: usize> ConMan<N> {
                         let span =
                             error_span!("incoming", %peer_addr, peer_id=Empty, consensus_key=Empty);
 
-                        tokio::spawn(handle_incoming(stream).instrument(span));
+                        tokio::spawn(
+                            handle_incoming(stream, server_state.clone()).instrument(span),
+                        );
                     }
 
                     // TODO: Handle resource errors gracefully. In general, two kinds of errors
@@ -94,8 +135,16 @@ impl<const N: usize> ConMan<N> {
                     }
                 }
             }
-        }
+        };
+
+        let shutdown = DropSwitch::new(ObservableFuse::new());
+        tokio::spawn(shutdown.inner().clone().cancellable(server).map(|_| ()));
+
+        Self { state, shutdown }
     }
 }
 
-async fn handle_incoming(stream: TcpStream) {}
+/// Handler for a new incoming connection.
+///
+/// Will complete the handshake, then check if the incoming connection should be kept.
+async fn handle_incoming<const N: usize>(stream: TcpStream, state: Arc<RwLock<ConManState<N>>>) {}
