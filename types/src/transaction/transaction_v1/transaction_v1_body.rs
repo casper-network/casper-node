@@ -6,7 +6,7 @@ use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(any(feature = "testing", test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use rand::{Rng, RngCore};
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
@@ -21,7 +21,7 @@ use super::TransactionV1;
 #[cfg(any(feature = "std", test))]
 use super::{TransactionConfig, TransactionV1ConfigFailure};
 use crate::bytesrepr::{self, FromBytes, ToBytes};
-#[cfg(any(feature = "testing", test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{
     bytesrepr::Bytes, testing::TestRng, PublicKey, TransactionInvocationTarget, TransactionRuntime,
     TransactionSessionKind,
@@ -174,7 +174,7 @@ impl TransactionV1Body {
     }
 
     /// Returns a random `TransactionV1Body`.
-    #[cfg(any(feature = "testing", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..8) {
             0 => {

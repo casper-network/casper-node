@@ -253,8 +253,6 @@ where
     /// contracts, sets up the genesis accounts, and sets up the auction state based on that. At
     /// the end of the process, [`SystemEntityRegistry`] is persisted under the special global
     /// state space [`Key::SystemEntityRegistry`].
-    ///
-    /// Returns a [`GenesisResult`].
     pub fn commit_genesis(&self, request: GenesisRequest) -> GenesisResult {
         self.state.genesis(request)
     }
@@ -262,8 +260,6 @@ where
     /// Commits upgrade.
     ///
     /// This process applies changes to the global state.
-    ///
-    /// Returns [`UpgradeSuccess`].
     pub fn commit_upgrade(&self, request: ProtocolUpgradeRequest) -> ProtocolUpgradeResult {
         self.state.protocol_upgrade(request)
     }
