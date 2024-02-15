@@ -7,6 +7,10 @@ use std::sync::{
 };
 
 use datasize::DataSize;
+use futures::{
+    future::{self, Either},
+    pin_mut, Future,
+};
 use tokio::sync::Notify;
 
 use super::leak;
@@ -115,7 +119,27 @@ impl ObservableFuse {
     pub(crate) async fn wait_owned(self) {
         self.wait().await;
     }
+
+    /// Runs a given future with a cancellation switch.
+    ///
+    /// Similar to [`tokio::time::timeout`], except instead of a duration, the cancellation of the
+    /// future depends on the given observable fuse.
+    pub(crate) async fn cancellable<T, F: Future<Output = T>>(self, f: F) -> Result<T, Cancelled> {
+        let wait = self.wait_owned();
+
+        pin_mut!(wait);
+        pin_mut!(f);
+
+        match future::select(wait, f).await {
+            Either::Left(((), _)) => Err(Cancelled),
+            Either::Right((rv, _)) => Ok(rv),
+        }
+    }
 }
+
+/// A future has been cancelled.
+#[derive(Copy, Clone, Debug)]
+pub struct Cancelled;
 
 impl Fuse for ObservableFuse {
     fn set(&self) {
