@@ -10,9 +10,8 @@ use rand::Rng;
 
 use casper_types::{
     bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng,
-    Chainspec, ChainspecRawBytes, Deploy, ExecutableDeployItem, InitiatorAddrAndSecretKey,
-    PricingMode, RuntimeArgs, SecretKey, TimeDiff, Transaction, TransactionHash, TransactionTarget,
-    TransactionV1, TransactionV1Body, U512,
+    Chainspec, ChainspecRawBytes, Deploy, ExecutableDeployItem, RuntimeArgs, SecretKey, TimeDiff,
+    Transaction, TransactionHash, TransactionV1, U512,
 };
 
 use crate::{
@@ -70,12 +69,12 @@ impl MockReactor {
         }
     }
 
-    async fn expect_fetch_deploys(
+    async fn expect_fetch_transactions(
         &self,
-        mut deploys_to_fetch: Vec<Transaction>,
-        mut deploys_to_not_fetch: HashSet<TransactionHash>,
+        mut transactions_to_fetch: Vec<Transaction>,
+        mut transactions_to_not_fetch: HashSet<TransactionHash>,
     ) {
-        while !deploys_to_fetch.is_empty() || !deploys_to_not_fetch.is_empty() {
+        while !transactions_to_fetch.is_empty() || !transactions_to_not_fetch.is_empty() {
             let ((_ancestor, reactor_event), _) = self.scheduler.pop().await;
             if let ReactorEvent::TransactionFetcher(FetcherRequest {
                 id,
@@ -84,17 +83,17 @@ impl MockReactor {
                 responder,
             }) = reactor_event
             {
-                if let Some((position, _)) = deploys_to_fetch
+                if let Some((position, _)) = transactions_to_fetch
                     .iter()
-                    .find_position(|&deploy| deploy.clone().fetch_id() == id)
+                    .find_position(|&transaction| transaction.fetch_id() == id)
                 {
-                    let transaction = deploys_to_fetch.remove(position);
+                    let transaction = transactions_to_fetch.remove(position);
                     let response = FetchedData::FromPeer {
                         item: Box::new(transaction),
                         peer,
                     };
                     responder.respond(Ok(response)).await;
-                } else if deploys_to_not_fetch.remove(&id.transaction_hash()) {
+                } else if transactions_to_not_fetch.remove(&id.transaction_hash()) {
                     responder
                         .respond(Err(fetcher::Error::Absent {
                             id: Box::new(id),
@@ -109,14 +108,6 @@ impl MockReactor {
             }
         }
     }
-}
-
-pub(super) enum NewTransactionKind {
-    // TODO[RC]: Remove if we're not concerned with these variants in BlockValidator.
-    _LegacyDeploy,
-    _LegacyTransfer,
-    V1Transaction,
-    V1Native,
 }
 
 pub(super) fn new_proposed_block(
@@ -141,7 +132,31 @@ pub(super) fn new_proposed_block(
     ProposedBlock::new(Arc::new(block_payload), block_context)
 }
 
-pub(super) fn new_deploy(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Deploy {
+pub(super) fn new_v1_standard(
+    rng: &mut TestRng,
+    timestamp: Timestamp,
+    ttl: TimeDiff,
+) -> TransactionV1 {
+    TransactionV1::random_standard(rng, Some(timestamp), Some(ttl))
+}
+
+pub(super) fn new_v1_staking(
+    rng: &mut TestRng,
+    timestamp: Timestamp,
+    ttl: TimeDiff,
+) -> TransactionV1 {
+    TransactionV1::random_staking(rng, Some(timestamp), Some(ttl))
+}
+
+pub(super) fn new_v1_install_upgrade(
+    rng: &mut TestRng,
+    timestamp: Timestamp,
+    ttl: TimeDiff,
+) -> TransactionV1 {
+    TransactionV1::random_install_upgrade(rng, Some(timestamp), Some(ttl))
+}
+
+pub(super) fn new_legacy_deploy(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Deploy {
     let secret_key = SecretKey::random(rng);
     let chain_name = "chain".to_string();
     let payment = ExecutableDeployItem::ModuleBytes {
@@ -168,75 +183,19 @@ pub(super) fn new_deploy(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff)
     )
 }
 
-pub(super) fn new_transaction_v1_native(
+pub(super) fn new_v1_transafer(
     rng: &mut TestRng,
     timestamp: Timestamp,
     ttl: TimeDiff,
 ) -> TransactionV1 {
-    let secret_key = SecretKey::random(rng);
-    let chain_name = "chain".to_string();
-    let payment = Some(1000);
-
-    let mut body: TransactionV1Body = TransactionV1Body::random(rng);
-    body.set_target(TransactionTarget::Native);
-    let pricing_mode = PricingMode::Fixed;
-    let initiator_addr_and_secret_key = InitiatorAddrAndSecretKey::SecretKey(&secret_key);
-
-    TransactionV1::build(
-        chain_name,
-        timestamp,
-        ttl,
-        body,
-        pricing_mode,
-        payment,
-        initiator_addr_and_secret_key,
-    )
+    TransactionV1::random_transfer(rng, Some(timestamp), Some(ttl))
 }
 
-pub(super) fn new_transaction_v1(
+pub(super) fn new_legacy_transfer(
     rng: &mut TestRng,
     timestamp: Timestamp,
     ttl: TimeDiff,
-) -> TransactionV1 {
-    let secret_key = SecretKey::random(rng);
-    let chain_name = "chain".to_string();
-    let payment = Some(1000);
-    let body: TransactionV1Body = TransactionV1Body::random(rng);
-    let pricing_mode = PricingMode::Fixed;
-    let initiator_addr_and_secret_key = InitiatorAddrAndSecretKey::SecretKey(&secret_key);
-
-    TransactionV1::build(
-        chain_name,
-        timestamp,
-        ttl,
-        body,
-        pricing_mode,
-        payment,
-        initiator_addr_and_secret_key,
-    )
-}
-
-pub(super) fn new_transaction(
-    rng: &mut TestRng,
-    timestamp: Timestamp,
-    ttl: TimeDiff,
-    kind: NewTransactionKind,
-) -> Transaction {
-    match kind {
-        NewTransactionKind::_LegacyDeploy => Transaction::Deploy(new_deploy(rng, timestamp, ttl)),
-        NewTransactionKind::_LegacyTransfer => {
-            Transaction::Deploy(new_transfer(rng, timestamp, ttl))
-        }
-        NewTransactionKind::V1Transaction => {
-            Transaction::V1(new_transaction_v1(rng, timestamp, ttl))
-        }
-        NewTransactionKind::V1Native => {
-            Transaction::V1(new_transaction_v1_native(rng, timestamp, ttl))
-        }
-    }
-}
-
-pub(super) fn new_transfer(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Deploy {
+) -> Deploy {
     let secret_key = SecretKey::random(rng);
     let chain_name = "chain".to_string();
     let payment = ExecutableDeployItem::ModuleBytes {
@@ -262,28 +221,67 @@ pub(super) fn new_transfer(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDif
     )
 }
 
+pub(super) fn new_transfer(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Transaction {
+    if rng.gen() {
+        new_v1_transafer(rng, timestamp, ttl).into()
+    } else {
+        new_legacy_transfer(rng, timestamp, ttl).into()
+    }
+}
+
+pub(super) fn new_standard(rng: &mut TestRng, timestamp: Timestamp, ttl: TimeDiff) -> Transaction {
+    if rng.gen() {
+        new_v1_standard(rng, timestamp, ttl).into()
+    } else {
+        new_legacy_deploy(rng, timestamp, ttl).into()
+    }
+}
+
+pub(super) fn new_transaction(
+    rng: &mut TestRng,
+    timestamp: Timestamp,
+    ttl: TimeDiff,
+) -> Transaction {
+    match rng.gen_range(0..3) {
+        0 => new_standard(rng, timestamp, ttl),
+        1 => new_v1_install_upgrade(rng, timestamp, ttl).into(), /*  */
+        2 => new_v1_staking(rng, timestamp, ttl).into(),
+        _ => unreachable!(),
+    }
+}
+
 /// Validates a block using a `BlockValidator` component, and returns the result.
 async fn validate_block(
     rng: &mut TestRng,
     timestamp: Timestamp,
-    deploys: Vec<Transaction>,
+    standards: Vec<Transaction>,
     transfers: Vec<Transaction>,
+    stakings: Vec<Transaction>,
+    installs_upgrades: Vec<Transaction>,
 ) -> bool {
     // Assemble the block to be validated.
     let transfers_for_block = transfers
         .iter()
-        .map(|deploy| TransactionHashWithApprovals::from(&deploy.clone()))
+        .map(|transaction| TransactionHashWithApprovals::from(&transaction.clone()))
         .collect_vec();
-    let standard_for_block = deploys
+    let standards_for_block = standards
         .iter()
-        .map(|deploy| TransactionHashWithApprovals::from(&deploy.clone()))
+        .map(|transaction| TransactionHashWithApprovals::from(&transaction.clone()))
+        .collect_vec();
+    let stakings_for_block = stakings
+        .iter()
+        .map(|transaction| TransactionHashWithApprovals::from(&transaction.clone()))
+        .collect_vec();
+    let installs_upgrades_for_block = installs_upgrades
+        .iter()
+        .map(|transaction| TransactionHashWithApprovals::from(&transaction.clone()))
         .collect_vec();
     let proposed_block = new_proposed_block(
         timestamp,
         transfers_for_block,
-        vec![],
-        vec![],
-        standard_for_block,
+        stakings_for_block,
+        installs_upgrades_for_block,
+        standards_for_block,
     );
 
     // Create the reactor and component.
@@ -325,11 +323,20 @@ async fn validate_block(
     let fetch_results: Vec<_> = effects.into_iter().map(tokio::spawn).collect();
 
     // We make our mock reactor answer with the expected deploys and transfers:
-    reactor
-        .expect_fetch_deploys(
-            deploys.into_iter().chain(transfers).collect(),
-            HashSet::new(),
+    let transactions: Vec<_> = standards
+        .iter()
+        .cloned()
+        .chain(
+            transfers.iter().cloned().chain(
+                stakings
+                    .iter()
+                    .cloned()
+                    .chain(installs_upgrades.iter().cloned()),
+            ),
         )
+        .collect();
+    reactor
+        .expect_fetch_transactions(transactions, HashSet::new())
         .await;
 
     // The resulting `FetchResult`s are passed back into the component. When any deploy turns out
@@ -354,7 +361,17 @@ async fn validate_block(
 /// Verifies that a block without any deploys or transfers is valid.
 #[tokio::test]
 async fn empty_block() {
-    assert!(validate_block(&mut TestRng::new(), 1000.into(), vec![], vec![]).await);
+    assert!(
+        validate_block(
+            &mut TestRng::new(),
+            1000.into(),
+            vec![],
+            vec![],
+            vec![],
+            vec![]
+        )
+        .await
+    );
 }
 
 /// Verifies that the block validator checks deploy and transfer timestamps and ttl.
@@ -364,34 +381,108 @@ async fn ttl() {
     // timestamp must be at least 1000 and at most 1100.
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
-
-    let deploys = vec![
-        new_transaction(
-            &mut rng,
-            1000.into(),
-            ttl,
-            NewTransactionKind::V1Transaction,
-        ),
-        new_transaction(&mut rng, 900.into(), ttl, NewTransactionKind::V1Transaction),
+    let transactions = vec![
+        new_transaction(&mut rng, 1000.into(), ttl),
+        new_transaction(&mut rng, 900.into(), ttl),
     ];
     let transfers = vec![
-        new_transaction(&mut rng, 1000.into(), ttl, NewTransactionKind::V1Native),
-        new_transaction(&mut rng, 900.into(), ttl, NewTransactionKind::V1Native),
+        new_transfer(&mut rng, 1000.into(), ttl),
+        new_transfer(&mut rng, 900.into(), ttl),
     ];
 
     // Both 1000 and 1100 are timestamps compatible with the deploys and transfers.
-    assert!(validate_block(&mut rng, 1000.into(), deploys.clone(), transfers.clone()).await);
-    assert!(validate_block(&mut rng, 1100.into(), deploys.clone(), transfers.clone()).await);
+    assert!(
+        validate_block(
+            &mut rng,
+            1000.into(),
+            transactions.clone(),
+            transfers.clone(),
+            vec![],
+            vec![]
+        )
+        .await
+    );
+    assert!(
+        validate_block(
+            &mut rng,
+            1100.into(),
+            transactions.clone(),
+            transfers.clone(),
+            vec![],
+            vec![]
+        )
+        .await
+    );
 
     // A block with timestamp 999 can't contain a transfer or deploy with timestamp 1000.
-    assert!(!validate_block(&mut rng, 999.into(), deploys.clone(), vec![]).await);
-    assert!(!validate_block(&mut rng, 999.into(), vec![], transfers.clone()).await);
-    assert!(!validate_block(&mut rng, 999.into(), deploys.clone(), transfers.clone()).await);
+    assert!(
+        !validate_block(
+            &mut rng,
+            999.into(),
+            transactions.clone(),
+            vec![],
+            vec![],
+            vec![]
+        )
+        .await
+    );
+    assert!(
+        !validate_block(
+            &mut rng,
+            999.into(),
+            vec![],
+            transfers.clone(),
+            vec![],
+            vec![]
+        )
+        .await
+    );
+    assert!(
+        !validate_block(
+            &mut rng,
+            999.into(),
+            transactions.clone(),
+            transfers.clone(),
+            vec![],
+            vec![]
+        )
+        .await
+    );
 
     // At time 1101, the deploy and transfer from time 900 have expired.
-    assert!(!validate_block(&mut rng, 1101.into(), deploys.clone(), vec![]).await);
-    assert!(!validate_block(&mut rng, 1101.into(), vec![], transfers.clone()).await);
-    assert!(!validate_block(&mut rng, 1101.into(), deploys, transfers).await);
+    assert!(
+        !validate_block(
+            &mut rng,
+            1101.into(),
+            transactions.clone(),
+            vec![],
+            vec![],
+            vec![]
+        )
+        .await
+    );
+    assert!(
+        !validate_block(
+            &mut rng,
+            1101.into(),
+            vec![],
+            transfers.clone(),
+            vec![],
+            vec![]
+        )
+        .await
+    );
+    assert!(
+        !validate_block(
+            &mut rng,
+            1101.into(),
+            transactions,
+            transfers,
+            vec![],
+            vec![]
+        )
+        .await
+    );
 }
 
 /// Verifies that a block is invalid if it contains a transfer in the `deploy_hashes` or a
@@ -401,47 +492,81 @@ async fn transfer_deploy_mixup_and_replay() {
     let mut rng = TestRng::new();
     let ttl = TimeDiff::from_millis(200);
     let timestamp = Timestamp::from(1000);
-
-    // TODO[RC]: Double check if this should still work with classic deploy? Do we validate such
-    // blocks? If yes, currently there is an issue in `BlockValidationState::new()`, which creates a
-    // State containing a classic "Deploy" with new "ApprovalsHashesV1" attached.
-    let deploy1 = new_transaction(&mut rng, timestamp, ttl, NewTransactionKind::V1Transaction);
-    let deploy2 = new_transaction(&mut rng, timestamp, ttl, NewTransactionKind::V1Transaction);
-    let transfer1 = new_transaction(&mut rng, timestamp, ttl, NewTransactionKind::V1Native);
-    let transfer2 = new_transaction(&mut rng, timestamp, ttl, NewTransactionKind::V1Native);
+    let deploy_legacy = Transaction::from(new_legacy_deploy(&mut rng, timestamp, ttl));
+    let transaction_v1 = Transaction::from(new_v1_standard(&mut rng, timestamp, ttl));
+    let transfer_legacy = Transaction::from(new_legacy_transfer(&mut rng, timestamp, ttl));
+    let transfer_v1 = Transaction::from(new_v1_transafer(&mut rng, timestamp, ttl));
 
     // First we make sure that our transfers and deploys would normally be valid.
-    let deploys = vec![deploy1.clone(), deploy2.clone()];
-    let transfers = vec![transfer1.clone(), transfer2.clone()];
-    assert!(validate_block(&mut rng, timestamp, deploys, transfers).await);
+    let deploys = vec![deploy_legacy.clone(), transaction_v1.clone()];
+    let transfers = vec![transfer_legacy.clone(), transfer_v1.clone()];
+    assert!(validate_block(&mut rng, timestamp, deploys, transfers, vec![], vec![]).await);
 
-    // Now we hide a transfer in the deploys section. This should be invalid.
+    // Now we test for different invalid combinations of deploys and transfers:
+    // 1. Legacy transfer in the deploys/transactions section.
+    let deploys = vec![
+        transfer_legacy.clone(),
+        transaction_v1.clone(),
+        deploy_legacy.clone(),
+    ];
+    let transfers = vec![transfer_legacy.clone(), transfer_v1.clone()];
+    assert!(!validate_block(&mut rng, timestamp, deploys, transfers, vec![], vec![]).await);
+    // 2. V1 transfer in the deploys/transactions section.
+    let deploys = vec![
+        transfer_v1.clone(),
+        transaction_v1.clone(),
+        deploy_legacy.clone(),
+    ];
+    let transfers = vec![transfer_legacy.clone(), transfer_v1.clone()];
+    assert!(!validate_block(&mut rng, timestamp, deploys, transfers, vec![], vec![]).await);
+    // 3. Legacy deploy in the transfers section.
+    let deploys = vec![transaction_v1.clone(), deploy_legacy.clone()];
+    let transfers = vec![
+        transfer_legacy.clone(),
+        transfer_v1.clone(),
+        deploy_legacy.clone(),
+    ];
+    assert!(!validate_block(&mut rng, timestamp, deploys, transfers, vec![], vec![]).await);
+    // 4. V1 transaction in the transfers section.
+    let deploys = vec![transaction_v1.clone(), deploy_legacy.clone()];
+    let transfers = vec![
+        transfer_legacy.clone(),
+        transfer_v1.clone(),
+        transaction_v1.clone(),
+    ];
+    assert!(!validate_block(&mut rng, timestamp, deploys, transfers, vec![], vec![]).await);
 
-    // TODO[RC]:
-    // This test-case currently fails because we cannot detect "transfer" sneaking as "deploy".
-    // There is a check in BlockValidator::handle_transaction_fetched():
-    //      if DeployOrTransactionHash::new(&item) != dt_hash {
-    // which is `true` on `feat-2.0`, but remains `false` on this branch.
-    // Before going down the rabbit-hole, first clarify if the Transfer/Deploy distinction is still
-    // the case for the new Transaction type.
-    // let deploys = vec![deploy1.clone(), deploy2.clone(), transfer2.clone()];
-    // let transfers = vec![transfer1.clone()];
-    // assert!(!validate_block(&mut rng, timestamp, deploys, transfers).await);
+    // Each transaction must be unique
+    let deploys = vec![
+        deploy_legacy.clone(),
+        transaction_v1.clone(),
+        deploy_legacy.clone(),
+    ];
+    let transfers = vec![transfer_legacy.clone(), transfer_v1.clone()];
+    assert!(!validate_block(&mut rng, timestamp, deploys, transfers, vec![], vec![]).await);
+    let deploys = vec![
+        transaction_v1.clone(),
+        deploy_legacy.clone(),
+        transaction_v1.clone(),
+    ];
+    let transfers = vec![transfer_legacy.clone(), transfer_v1.clone()];
+    assert!(!validate_block(&mut rng, timestamp, deploys, transfers, vec![], vec![]).await);
 
-    // A regular deploy in the transfers section is also invalid.
-    // let deploys = vec![deploy2.clone()];
-    // let transfers = vec![transfer1.clone(), deploy1.clone(), transfer2.clone()];
-    // assert!(!validate_block(&mut rng, timestamp, deploys, transfers).await);
-
-    // Each deploy must be unique
-    let deploys = vec![deploy1.clone(), deploy2.clone(), deploy1.clone()];
-    let transfers = vec![transfer1.clone(), transfer2.clone()];
-    assert!(!validate_block(&mut rng, timestamp, deploys, transfers).await);
-
-    // // And each transfer must be unique, too.
-    let deploys = vec![deploy1.clone(), deploy2.clone()];
-    let transfers = vec![transfer1.clone(), transfer2.clone(), transfer2.clone()];
-    assert!(!validate_block(&mut rng, timestamp, deploys, transfers).await);
+    // And each transfer must be unique, too.
+    let deploys = vec![deploy_legacy.clone(), transaction_v1.clone()];
+    let transfers = vec![
+        transfer_legacy.clone(),
+        transfer_v1.clone(),
+        transfer_legacy.clone(),
+    ];
+    assert!(!validate_block(&mut rng, timestamp, deploys, transfers, vec![], vec![]).await);
+    let deploys = vec![deploy_legacy.clone(), transaction_v1.clone()];
+    let transfers = vec![
+        transfer_legacy.clone(),
+        transfer_v1.clone(),
+        transfer_v1.clone(),
+    ];
+    assert!(!validate_block(&mut rng, timestamp, deploys, transfers, vec![], vec![]).await);
 }
 
 /// Verifies that the block validator fetches from multiple peers.
@@ -453,20 +578,20 @@ async fn should_fetch_from_multiple_peers() {
         let mut rng = TestRng::new();
         let ttl = TimeDiff::from_seconds(200);
         let deploys = (0..peer_count)
-            .map(|i| Transaction::from(new_deploy(&mut rng, (900 + i).into(), ttl)))
+            .map(|i| new_transaction(&mut rng, (900 + i).into(), ttl))
             .collect_vec();
         let transfers = (0..peer_count)
-            .map(|i| Transaction::from(new_transfer(&mut rng, (1000 + i).into(), ttl)))
+            .map(|i| new_transfer(&mut rng, (1000 + i).into(), ttl))
             .collect_vec();
 
         // Assemble the block to be validated.
         let transfers_for_block = transfers
             .iter()
-            .map(TransactionHashWithApprovals::from)
+            .map(|deploy| TransactionHashWithApprovals::from(&deploy.clone()))
             .collect_vec();
         let standard_for_block = deploys
             .iter()
-            .map(TransactionHashWithApprovals::from)
+            .map(|deploy| TransactionHashWithApprovals::from(&deploy.clone()))
             .collect_vec();
         let proposed_block = new_proposed_block(
             1100.into(),
@@ -528,7 +653,7 @@ async fn should_fetch_from_multiple_peers() {
         .into_iter()
         .collect();
         reactor
-            .expect_fetch_deploys(deploys_to_fetch, deploys_to_not_fetch)
+            .expect_fetch_transactions(deploys_to_fetch, deploys_to_not_fetch)
             .await;
 
         let mut missing = vec![];
@@ -567,7 +692,7 @@ async fn should_fetch_from_multiple_peers() {
             .filter(|deploy_hash| missing.contains(deploy_hash))
             .collect();
         reactor
-            .expect_fetch_deploys(deploys_to_fetch, deploys_to_not_fetch)
+            .expect_fetch_transactions(deploys_to_fetch, deploys_to_not_fetch)
             .await;
 
         missing.clear();
@@ -602,7 +727,7 @@ async fn should_fetch_from_multiple_peers() {
             .cloned()
             .collect();
         reactor
-            .expect_fetch_deploys(deploys_to_fetch, HashSet::new())
+            .expect_fetch_transactions(deploys_to_fetch, HashSet::new())
             .await;
 
         let mut effects = Effects::new();

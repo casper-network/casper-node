@@ -10,6 +10,7 @@ mod typed_transaction_hash;
 pub use deploy::DeployHashWithApprovals;
 pub(crate) use deploy::{
     DeployOrTransferHash, DeployWithFinalizedApprovals, FinalizedDeployApprovals, LegacyDeploy,
+    TransactionV1OrTransferV1Hash,
 };
 pub(crate) use deploy_or_transaction_hash::DeployOrTransactionHash;
 pub(crate) use execution_info::ExecutionInfo;

@@ -507,6 +507,12 @@ impl TransactionV1 {
         self.approvals.extend(approvals);
     }
 
+    /// Returns `true` if the transaction is a transfer.
+    pub fn is_transfer(&self) -> bool {
+        matches!(self.category(), Ok(TransactionV1Category::Transfer))
+    }
+
+    /// Returns transaction category.
     fn category(&self) -> Result<TransactionV1Category, CategorizationError> {
         let body = self.body();
         let target = body.target();

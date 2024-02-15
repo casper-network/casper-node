@@ -17,7 +17,7 @@ use crate::{
     effect::Responder,
     types::{
         appendable_block::AppendableBlock, DeployHashWithApprovals, DeployOrTransactionHash,
-        DeployOrTransferHash, NodeId, TransactionHashWithApprovals,
+        DeployOrTransferHash, NodeId, TransactionHashWithApprovals, TransactionV1OrTransferV1Hash,
     },
 };
 
@@ -152,9 +152,9 @@ impl BlockValidationState {
                 TransactionHashWithApprovals::Deploy { deploy_hash, .. } => {
                     DeployOrTransactionHash::from(DeployOrTransferHash::Deploy(*deploy_hash))
                 }
-                TransactionHashWithApprovals::V1(thwa) => {
-                    DeployOrTransactionHash::from(*thwa.transaction_hash())
-                }
+                TransactionHashWithApprovals::V1(thwa) => DeployOrTransactionHash::from(
+                    TransactionV1OrTransferV1Hash::Transaction(*thwa.transaction_hash()),
+                ),
             };
             (dt_hash, dhwa.approvals())
         });
@@ -163,9 +163,9 @@ impl BlockValidationState {
                 TransactionHashWithApprovals::Deploy { deploy_hash, .. } => {
                     DeployOrTransactionHash::from(DeployOrTransferHash::Transfer(*deploy_hash))
                 }
-                TransactionHashWithApprovals::V1(thwa) => {
-                    DeployOrTransactionHash::from(*thwa.transaction_hash())
-                }
+                TransactionHashWithApprovals::V1(thwa) => DeployOrTransactionHash::from(
+                    TransactionV1OrTransferV1Hash::Transfer(*thwa.transaction_hash()),
+                ),
             };
             (dt_hash, dhwa.approvals())
         });
@@ -378,24 +378,11 @@ impl BlockValidationState {
                 };
                 // Try adding the footprint to the appendable block to see if the block remains
                 // valid.
-                let transaction_hash: TransactionHash = (*dt_hash).into();
+                let transaction_hash: TransactionHash = dt_hash.transaction_hash();
                 let dhwa = TransactionHashWithApprovals::new_from_hash_and_approvals(
                     &transaction_hash,
                     &approvals_info.approvals,
                 );
-                // let add_result = match dt_hash {
-                //     DeployOrTransactionHash::Deploy(deploy) => match deploy {
-                //         DeployOrTransferHash::Deploy(_) => {
-                //             appendable_block.add_deploy(dhwa, footprint)
-                //         }
-                //         DeployOrTransferHash::Transfer(_) => {
-                //             appendable_block.add_transfer(dhwa, footprint)
-                //         }
-                //     },
-                //     DeployOrTransactionHash::V1(_) => {
-                //         appendable_block.add_transaction(dhwa, footprint)
-                //     }
-                // };
 
                 let add_result = match (dt_hash, dhwa) {
                     (
@@ -574,7 +561,7 @@ impl BlockValidationState {
                 .keys()
                 .map(|dt_hash| match dt_hash {
                     DeployOrTransactionHash::Deploy(deploy) => deploy.deploy_hash().into(),
-                    DeployOrTransactionHash::V1(v1) => v1.into(),
+                    DeployOrTransactionHash::V1(v1) => (*v1).into(),
                 })
                 .collect(),
             BlockValidationState::Valid(_) | BlockValidationState::Invalid(_) => vec![],
@@ -672,7 +659,7 @@ mod tests {
             let ttl = TimeDiff::from_seconds(10);
             let deploys: Vec<_> = (0..deploy_count)
                 .map(|index| {
-                    Transaction::from(new_deploy(
+                    Transaction::from(new_legacy_deploy(
                         &mut self.rng,
                         Timestamp::from(1000 + index),
                         ttl,
@@ -682,7 +669,7 @@ mod tests {
             self.deploys.extend(deploys);
             let transfers: Vec<_> = (0..transfer_count)
                 .map(|index| {
-                    Transaction::from(new_transfer(
+                    Transaction::from(new_legacy_transfer(
                         &mut self.rng,
                         Timestamp::from(1000 + deploy_count + index),
                         ttl,
@@ -799,7 +786,7 @@ mod tests {
 
         let timestamp = Timestamp::from(1000);
         let transfers =
-            vec![new_transfer(&mut fixture.rng, timestamp, TimeDiff::from_millis(200)); 2];
+            vec![new_legacy_transfer(&mut fixture.rng, timestamp, TimeDiff::from_millis(200)); 2];
 
         let transfers_for_block = transfers
             .iter()
@@ -1112,7 +1099,7 @@ mod tests {
         };
 
         // Create a new, random deploy.
-        let deploy = new_deploy(&mut fixture.rng, 1500.into(), TimeDiff::from_seconds(1));
+        let deploy = new_legacy_deploy(&mut fixture.rng, 1500.into(), TimeDiff::from_seconds(1));
         let dt_hash = DeployOrTransferHash::Deploy(*deploy.hash()).into();
         let footprint = deploy.footprint().unwrap().into();
 
@@ -1141,7 +1128,7 @@ mod tests {
         let mut fixture = Fixture::new();
         // Add an invalid (future-dated) deploy to the fixture.
         let invalid_deploy =
-            new_deploy(&mut fixture.rng, Timestamp::MAX, TimeDiff::from_seconds(1));
+            new_legacy_deploy(&mut fixture.rng, Timestamp::MAX, TimeDiff::from_seconds(1));
         let invalid_deploy_hash = *invalid_deploy.hash();
         let invalid_deploy = Transaction::from(invalid_deploy);
         fixture.deploys.push(invalid_deploy.clone());

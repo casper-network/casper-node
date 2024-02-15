@@ -794,7 +794,7 @@ where
                     DeployOrTransactionHash::V1(dt_hash),
                     TransactionApprovalsHash::V1(approvals_hash),
                 ) => TransactionId::V1 {
-                    transaction_v1_hash: dt_hash,
+                    transaction_v1_hash: dt_hash.into(),
                     approvals_hash,
                 },
                 (DeployOrTransactionHash::Deploy(_), TransactionApprovalsHash::V1(_)) => {
