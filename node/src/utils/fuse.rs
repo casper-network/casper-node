@@ -124,7 +124,7 @@ impl ObservableFuse {
     ///
     /// Similar to [`tokio::time::timeout`], except instead of a duration, the cancellation of the
     /// future depends on the given observable fuse.
-    pub(crate) async fn cancellable<T, F: Future<Output = T>>(self, f: F) -> Result<T, Cancelled> {
+    pub(crate) async fn cancellable<F: Future>(self, f: F) -> Result<F::Output, Cancelled> {
         let wait = self.wait_owned();
 
         pin_mut!(wait);
