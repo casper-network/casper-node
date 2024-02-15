@@ -178,7 +178,7 @@ where
     /// onto the queue.
     event_queue: Option<EventQueueHandle<REv>>,
     /// Our own [`NodeId`].
-    our_id: NodeId,
+    pub(super) our_id: NodeId,
     /// TLS certificate associated with this node's identity.
     our_cert: Arc<TlsCert>,
     /// TLS certificate authority associated with this node's identity.
