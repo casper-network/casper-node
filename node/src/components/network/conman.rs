@@ -8,10 +8,7 @@ use std::{
     collections::HashMap,
     fmt::Debug,
     net::IpAddr,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc, RwLock,
-    },
+    sync::{Arc, RwLock},
     time::Instant,
 };
 
@@ -21,7 +18,7 @@ use juliet::rpc::{IncomingRequest, JulietRpcClient, RpcBuilder};
 use strum::EnumCount;
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{
-    debug, error_span,
+    debug, error, error_span,
     field::{self, Empty},
     warn, Instrument, Span,
 };
@@ -97,10 +94,8 @@ enum AddressBookEntry {
 /// A route to a peer.
 #[derive(Debug)]
 enum Route {
-    /// Connected through an incoming connection (initated by peer).
-    Incoming(PeerHandle),
-    /// Connected through an outgoing connection (initiated by us).
-    Outgoing(PeerHandle),
+    /// Connected to peer.
+    Connected(PeerHandle),
     /// The peer ID has been banned.
     Banned {
         /// Time ban is lifted.
@@ -115,8 +110,6 @@ enum Route {
 struct PeerHandle {
     /// NodeId of the peer.
     peer: NodeId,
-    /// The ID of the task handling this connection.
-    task_id: TaskId,
     /// The established [`juliet`] RPC client, can be used to send requests to the peer.
     client: JulietRpcClient<{ super::Channel::COUNT }>,
 }
@@ -205,29 +198,12 @@ impl ConMan {
     }
 }
 
-impl Route {
-    /// Returns the task ID contained in the route.
-    ///
-    /// If there is no task ID found in `self`, returns 0.
-    fn task_id(&self) -> TaskId {
-        match self {
-            Route::Incoming(_) => todo!(),
-            Route::Outgoing(PeerHandle { task_id, .. }) => *task_id,
-            // There is no task running, so return ID 0.
-            Route::Banned { .. } => TaskId::invalid(),
-        }
-    }
-}
-
 /// Handler for a new incoming connection.
 ///
 /// Will complete the handshake, then check if the incoming connection should be kept.
 async fn handle_incoming(ctx: Arc<ConManContext>, stream: TcpStream) {
-    let task_id = TaskId::unique();
-    Span::current().record("task_id", u64::from(task_id));
-
     let ProtocolHandshakeOutcome {
-        our_id: _,
+        our_id,
         peer_id,
         handshake_outcome,
     } = match ctx.protocol_handler.setup_incoming(stream).await {
@@ -244,7 +220,17 @@ async fn handle_incoming(ctx: Arc<ConManContext>, stream: TcpStream) {
         Span::current().record("consensus_key", &field::display(public_key));
     }
 
-    debug!("Incoming connection established");
+    if !incoming_preferred(our_id, peer_id) {
+        // The connection is supposed to be outgoing from our perspective.
+        // TODO: Learn aobut outgoing address.
+        drop(handshake_outcome.public_addr); // TODO: Learn here instead.
+        debug!("incoming connection, but outgoing connection preferred");
+
+        // Drops the stream and thus closes the connection.
+        return;
+    }
+
+    debug!("incoming connection established");
 
     // At this point, the initial connection negotiation is complete. Setup the `juliet` RPC transport, which we will need regardless to send errors.
 
@@ -254,93 +240,82 @@ async fn handle_incoming(ctx: Arc<ConManContext>, stream: TcpStream) {
     let mut rpc_server = {
         let mut guard = ctx.state.write().expect("lock poisoned");
 
-        match guard.routing_table.get(&peer_id) {
-            Some(Route::Incoming(_)) => {
-                // We received an additional incoming connection, this should not be happening with
-                // well-behaved clients, unless there's a race in the underlying network layer.
-                // We'll disconnect and rely on timeouts to clean up.
-                debug!("ignoring additional incoming connection");
-                return;
-            }
-            Some(Route::Outgoing(_)) => {
-                todo!("disambiguate");
-            }
-            Some(Route::Banned {
-                until,
-                justification,
-            }) => {
-                let now = Instant::now();
-                if now <= *until {
-                    debug!(?until, %justification, "peer is still banned");
-                    // TODO: Send a proper error using RPC client/server here (requires appropriate
-                    //       Juliet API).
-                    drop(rpc_client);
-                    drop(rpc_server);
+        // Check if there already is a route registered.
+        if let Some(existing) = guard.routing_table.get(&peer_id) {
+            match existing {
+                Route::Connected(_) => {
+                    // We are already connected, meaning we got raced by another connection. Keep the
+                    // existing and exit.
+                    debug!("additional incoming connection ignored");
                     return;
                 }
-            }
-            None => {
-                // Fresh connection, just insert the rpc client.
-                guard.routing_table.insert(
-                    peer_id,
-                    Route::Incoming(PeerHandle {
-                        peer: peer_id,
-                        task_id,
-                        client: rpc_client,
-                    }),
-                );
+                Route::Banned {
+                    until,
+                    justification,
+                } => {
+                    let now = Instant::now();
+                    if now <= *until {
+                        debug!(?until, %justification, "peer is still banned");
+                        // TODO: Send a proper error using RPC client/server here (requires appropriate
+                        //       Juliet API).
+                        drop(rpc_client);
+                        drop(rpc_server);
+                        return;
+                    }
+                }
             }
         }
+
+        // At this point we are either replacing an expired ban or inserting a new entry.
+        guard.routing_table.insert(
+            peer_id,
+            Route::Connected(PeerHandle {
+                peer: peer_id,
+                client: rpc_client,
+            }),
+        );
 
         rpc_server
     };
 
     loop {
         match rpc_server.next_request().await {
-            Ok(None) => {
-                // The connection was closed. Not an issue, the peer will likely reconnect to us.
-                let mut guard = ctx.state.write().expect("lock poisoned");
-
-                match guard.routing_table.get(&peer_id) {
-                    Some(route) if route.task_id() == task_id => {
-                        debug!("regular connection closure, expecting peer to reconnect");
-                        // Route is unchanged, we need to remove it to ensure we can be
-                        // reconnected to.
-                        guard.routing_table.remove(&peer_id);
-                        // TODO: Do we need to shut down the juliet clients? Likely not, if the
-                        // server is shut down?
-                    }
-                    _ => {
-                        debug!("connection was already replaced");
-                        // We are no longer in charge of maintaining the entry, just shut down.
-                    }
-                }
-
-                return;
-            }
             Ok(Some(request)) => {
                 // Incoming requests are directly handed off to the protocol handler.
                 ctx.protocol_handler
                     .handle_incoming_request(peer_id, request);
             }
-            Err(err) => {
-                debug!(%err, "closing exiting incoming due to error");
-                let mut guard = ctx.state.write().expect("lock poisoned");
-
-                match guard.routing_table.get(&peer_id) {
-                    Some(route) if route.task_id() == task_id => {
-                        debug!(%err, "closing connection due to juliet error");
-                        guard.routing_table.remove(&peer_id);
-                        // TODO: Do we need to shut down the juliet clients? Likely not, if the
-                        // server is shut down?
-                    }
-                    _ => {
-                        debug!("cleaning up incoming that was already replaced");
-                    }
-                }
-
-                return;
+            Ok(None) => {
+                // The connection was closed. Not an issue, the peer will need to reconnect to us.
+                break;
             }
+            Err(err) => {
+                // TODO: this should not be a warning, downgrade to debug before shipping
+                warn!(%err, "closing incoming connection due to error");
+                break;
+            }
+        }
+    }
+
+    // Connection was closed, now update our state.
+    let mut guard = ctx.state.write().expect("lock poisoned");
+    match guard.routing_table.get(&peer_id) {
+        Some(Route::Connected(_)) => {
+            debug!("regular connection closure, expecting peer to reconnect");
+
+            // Route is unchanged, remove it to ensure we can be reconnected to.
+            guard.routing_table.remove(&peer_id);
+
+            // TODO: Do we need to shut down the juliet clients? Likely not, if the
+            // server is shut down?
+        }
+        Some(Route::Banned { .. }) => {
+            // Leave the ban in place.
+            debug!("connection closed and peer is banned");
+        }
+        None => {
+            // This should not occur.
+            error!("external source should never remove connection");
         }
     }
 }
@@ -355,58 +330,10 @@ impl Debug for ConManContext {
     }
 }
 
-/// A unique identifier for a task.
+/// Determine whether we should prefer an incoming connection to the peer over an outgoing one.
 ///
-/// Similar to `tokio::task::TaskId` (which is unstable), but "permanently" unique.
-///
-/// Every task that is potentially long running and manages the routing table gets assigned a unique
-/// task ID (through [`TaskId::unique`]), to allow the task itself to check if its routing entry has
-/// been stolen or not.
-#[derive(Copy, Clone, Debug)]
-struct TaskId(u64);
-
-impl TaskId {
-    /// Returns the "invalid" TaskId, which is never equal to any other TaskId.
-    fn invalid() -> TaskId {
-        TaskId(0)
-    }
-
-    /// Generates a new task ID.
-    fn unique() -> TaskId {
-        static COUNTER: AtomicU64 = AtomicU64::new(1);
-
-        TaskId(COUNTER.fetch_add(1, Ordering::Relaxed))
-    }
-}
-
-impl From<TaskId> for u64 {
-    #[inline(always)]
-    fn from(value: TaskId) -> Self {
-        value.0
-    }
-}
-
-impl PartialEq for TaskId {
-    #[inline(always)]
-    fn eq(&self, other: &Self) -> bool {
-        self.0 != 0 && self.0 == other.0
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::TaskId;
-
-    #[test]
-    fn task_id() {
-        let a = TaskId::unique();
-        let b = TaskId::unique();
-
-        assert_ne!(a, TaskId::invalid());
-        assert_ne!(b, TaskId::invalid());
-        assert_ne!(TaskId::invalid(), TaskId::invalid());
-        assert_ne!(a, b);
-        assert_eq!(a, a);
-        assert_eq!(b, b);
-    }
+/// Used to solve conflicts if two connections from/to the same peer are possible.
+#[inline(always)]
+fn incoming_preferred(our_id: NodeId, peer_id: NodeId) -> bool {
+    our_id <= peer_id
 }
