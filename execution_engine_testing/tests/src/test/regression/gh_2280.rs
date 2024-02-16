@@ -8,9 +8,9 @@ use casper_engine_test_support::{
 };
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AddressableEntityHash, EraId, Gas,
-    HostFunction, HostFunctionCost, HostFunctionCosts, Key, MintCosts, Motes, ProtocolVersion,
-    PublicKey, SecretKey, SystemConfig, UpgradeConfig, WasmConfig, DEFAULT_MAX_STACK_HEIGHT,
-    DEFAULT_WASM_MAX_MEMORY, U512,
+    HostFunction, HostFunctionCost, HostFunctionCosts, Key, MintCosts, Motes,
+    ProtocolUpgradeConfig, ProtocolVersion, PublicKey, SecretKey, SystemConfig, WasmConfig,
+    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
 const TRANSFER_TO_ACCOUNT_CONTRACT: &str = "transfer_to_account.wasm";
@@ -701,7 +701,7 @@ struct TestContext {
 
 fn setup() -> (LmdbWasmTestBuilder, TestContext) {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let session_args = runtime_args! {
         mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
@@ -717,13 +717,13 @@ fn setup() -> (LmdbWasmTestBuilder, TestContext) {
     builder.exec(install_request).expect_success().commit();
 
     let account = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let gh_2280_regression = account
         .named_keys()
         .get(HASH_KEY_NAME)
         .cloned()
-        .and_then(Key::into_entity_addr)
+        .and_then(Key::into_entity_hash_addr)
         .map(AddressableEntityHash::new)
         .expect("should have key");
 
@@ -762,7 +762,7 @@ fn make_wasm_config(
     )
 }
 
-fn make_upgrade_request() -> UpgradeConfig {
+fn make_upgrade_request() -> ProtocolUpgradeConfig {
     UpgradeRequestBuilder::new()
         .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
         .with_new_protocol_version(*NEW_PROTOCOL_VERSION)

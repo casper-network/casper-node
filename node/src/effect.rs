@@ -108,27 +108,29 @@ use std::{
 
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
-use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use serde::{Serialize, Serializer};
 use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 use tracing::{debug, error, warn};
 
-use casper_execution_engine::engine_state::{
-    self, era_validators::GetEraValidatorsError, BalanceRequest, BalanceResult, GetBidsRequest,
-    GetBidsResult, QueryRequest, QueryResult,
+use casper_execution_engine::engine_state::{self};
+use casper_storage::data_access_layer::{
+    BalanceRequest, BalanceResult, BidsRequest, BidsResult, QueryRequest, QueryResult,
 };
-use casper_storage::global_state::trie::TrieRaw;
+
+use casper_storage::data_access_layer::{
+    AddressableEntityResult, EraValidatorsRequest, EraValidatorsResult,
+    ExecutionResultsChecksumResult, PutTrieRequest, PutTrieResult, RoundSeigniorageRateRequest,
+    RoundSeigniorageRateResult, TotalSupplyRequest, TotalSupplyResult, TrieRequest, TrieResult,
+};
 use casper_types::{
-    bytesrepr::Bytes,
     contract_messages::Messages,
     execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},
     package::Package,
-    system::auction::EraValidators,
-    AddressableEntity, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes,
-    DeployHash, Digest, EraId, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key,
-    PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId,
+    Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, DeployHash, Digest,
+    EraId, FinalitySignature, FinalitySignatureId, FinalizedApprovals, Key, PublicKey, TimeDiff,
+    Timestamp, Transaction, TransactionHash, TransactionHeader, TransactionId,
     TransactionWithFinalizedApprovals, Transfer, U512,
 };
 
@@ -139,7 +141,6 @@ use crate::{
             TrieAccumulatorError, TrieAccumulatorResponse,
         },
         consensus::{ClContext, EraDump, ProposedBlock, ValidatorChange},
-        contract_runtime::{ContractRuntimeError, EraValidatorsRequest},
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
@@ -147,16 +148,13 @@ use crate::{
         transaction_acceptor,
         upgrade_watcher::NextUpgrade,
     },
-    contract_runtime::{
-        RoundSeigniorageRateRequest, SpeculativeExecutionState, TotalSupplyRequest,
-    },
+    contract_runtime::SpeculativeExecutionState,
     failpoints::FailpointActivation,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, AvailableBlockRange, BlockExecutionResultsOrChunk,
         BlockExecutionResultsOrChunkId, BlockWithMetadata, ExecutableBlock, ExecutionInfo,
-        FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState, NodeId, SignedBlock, TrieOrChunk,
-        TrieOrChunkId,
+        FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState, NodeId, SignedBlock,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -1399,24 +1397,6 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Get a trie or chunk by its ID.
-    pub(crate) async fn get_trie(
-        self,
-        trie_or_chunk_id: TrieOrChunkId,
-    ) -> Result<Option<TrieOrChunk>, ContractRuntimeError>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        self.make_request(
-            |responder| ContractRuntimeRequest::GetTrie {
-                trie_or_chunk_id,
-                responder,
-            },
-            QueueKind::ContractRuntime,
-        )
-        .await
-    }
-
     pub(crate) async fn get_reactor_status(self) -> (ReactorState, Timestamp)
     where
         REv: From<ReactorStatusRequest>,
@@ -1436,19 +1416,13 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Get a trie by its hash key.
-    pub(crate) async fn get_trie_full(
-        self,
-        trie_key: Digest,
-    ) -> Result<Option<Bytes>, engine_state::Error>
+    /// Get a trie or chunk by its ID.
+    pub(crate) async fn get_trie(self, request: TrieRequest) -> TrieResult
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::GetTrieFull {
-                trie_key,
-                responder,
-            },
+            |responder| ContractRuntimeRequest::GetTrie { request, responder },
             QueueKind::ContractRuntime,
         )
         .await
@@ -1459,16 +1433,13 @@ impl<REv> EffectBuilder<REv> {
     /// Returns the digest under which the trie was stored if successful.
     pub(crate) async fn put_trie_if_all_children_present(
         self,
-        trie_bytes: TrieRaw,
-    ) -> Result<Digest, engine_state::Error>
+        request: PutTrieRequest,
+    ) -> PutTrieResult
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::PutTrie {
-                trie_bytes,
-                responder,
-            },
+            |responder| ContractRuntimeRequest::PutTrie { request, responder },
             QueueKind::ContractRuntime,
         )
         .await
@@ -1946,18 +1917,12 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests a query be executed on the Contract Runtime component.
-    pub(crate) async fn query_global_state(
-        self,
-        query_request: QueryRequest,
-    ) -> Result<QueryResult, engine_state::Error>
+    pub(crate) async fn query_global_state(self, request: QueryRequest) -> QueryResult
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::Query {
-                query_request,
-                responder,
-            },
+            |responder| ContractRuntimeRequest::Query { request, responder },
             QueueKind::ContractRuntime,
         )
         .await
@@ -1968,7 +1933,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         state_root_hash: Digest,
         key: Key,
-    ) -> Option<AddressableEntity>
+    ) -> AddressableEntityResult
     where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1989,27 +1954,21 @@ impl<REv> EffectBuilder<REv> {
         REv: From<ContractRuntimeRequest>,
     {
         let query_request = QueryRequest::new(state_root_hash, key, vec![]);
-        match self.query_global_state(query_request).await {
-            Ok(QueryResult::Success { value, .. }) => {
-                value.as_package().map(|pkg| Box::new(pkg.clone()))
-            }
-            Ok(_) | Err(_) => None,
+
+        if let QueryResult::Success { value, .. } = self.query_global_state(query_request).await {
+            value.into_package().map(Box::new)
+        } else {
+            None
         }
     }
 
     /// Requests a query be executed on the Contract Runtime component.
-    pub(crate) async fn get_balance(
-        self,
-        balance_request: BalanceRequest,
-    ) -> Result<BalanceResult, engine_state::Error>
+    pub(crate) async fn get_balance(self, request: BalanceRequest) -> BalanceResult
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::GetBalance {
-                balance_request,
-                responder,
-            },
+            |responder| ContractRuntimeRequest::GetBalance { request, responder },
             QueueKind::ContractRuntime,
         )
         .await
@@ -2021,7 +1980,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_era_validators_from_contract_runtime(
         self,
         request: EraValidatorsRequest,
-    ) -> Result<EraValidators, GetEraValidatorsError>
+    ) -> EraValidatorsResult
     where
         REv: From<ContractRuntimeRequest>,
     {
@@ -2035,20 +1994,13 @@ impl<REv> EffectBuilder<REv> {
     /// Returns the total supply from the given `root_hash`.
     ///
     /// This operation is read only.
-    #[allow(unused)] //TODO remove in the next ticket implementation.
-    pub(crate) async fn get_total_supply(
-        self,
-        state_hash: Digest,
-    ) -> Result<U512, engine_state::Error>
+    pub(crate) async fn get_total_supply(self, state_hash: Digest) -> TotalSupplyResult
     where
         REv: From<ContractRuntimeRequest>,
     {
-        let total_supply_request = TotalSupplyRequest::new(state_hash);
+        let request = TotalSupplyRequest::new(state_hash);
         self.make_request(
-            move |responder| ContractRuntimeRequest::GetTotalSupply {
-                total_supply_request,
-                responder,
-            },
+            move |responder| ContractRuntimeRequest::GetTotalSupply { request, responder },
             QueueKind::ContractRuntime,
         )
         .await
@@ -2057,38 +2009,28 @@ impl<REv> EffectBuilder<REv> {
     /// Returns the seigniorage rate from the given `root_hash`.
     ///
     /// This operation is read only.
-    #[allow(unused)] //TODO remove in the next ticket implementation.
     pub(crate) async fn get_round_seigniorage_rate(
         self,
         state_hash: Digest,
-    ) -> Result<Ratio<U512>, engine_state::Error>
+    ) -> RoundSeigniorageRateResult
     where
         REv: From<ContractRuntimeRequest>,
     {
-        let round_seigniorage_rate_request = RoundSeigniorageRateRequest::new(state_hash);
+        let request = RoundSeigniorageRateRequest::new(state_hash);
         self.make_request(
-            move |responder| ContractRuntimeRequest::GetRoundSeigniorageRate {
-                round_seigniorage_rate_request,
-                responder,
-            },
+            move |responder| ContractRuntimeRequest::GetRoundSeigniorageRate { request, responder },
             QueueKind::ContractRuntime,
         )
         .await
     }
 
     /// Requests a query be executed on the Contract Runtime component.
-    pub(crate) async fn get_bids(
-        self,
-        get_bids_request: GetBidsRequest,
-    ) -> Result<GetBidsResult, engine_state::Error>
+    pub(crate) async fn get_bids(self, request: BidsRequest) -> BidsResult
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
-            |responder| ContractRuntimeRequest::GetBids {
-                get_bids_request,
-                responder,
-            },
+            |responder| ContractRuntimeRequest::GetBids { request, responder },
             QueueKind::ContractRuntime,
         )
         .await
@@ -2099,7 +2041,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_execution_results_checksum(
         self,
         state_root_hash: Digest,
-    ) -> Result<Option<Digest>, engine_state::Error>
+    ) -> ExecutionResultsChecksumResult
     where
         REv: From<ContractRuntimeRequest>,
     {

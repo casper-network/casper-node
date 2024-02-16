@@ -133,7 +133,7 @@ fn host_function_metrics_has_acceptable_gas_cost() {
 fn setup() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
     builder
-        .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
+        .run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone())
         .exec(create_account_exec_request(ACCOUNT0_ADDR))
         .expect_success()
         .commit()

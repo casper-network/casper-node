@@ -41,7 +41,7 @@ fn initialize() -> LmdbWasmTestBuilder {
     )
     .build();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder.exec(exec_request_1).expect_success().commit();
 
@@ -94,7 +94,7 @@ fn finalize_payment_should_refund_to_specified_purse() {
         ARG_PURSE_NAME => LOCAL_REFUND_PURSE,
     };
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let create_purse_request = {
         ExecuteRequestBuilder::standard(
@@ -205,7 +205,7 @@ fn get_named_account_balance(
     name: &str,
 ) -> Option<U512> {
     let account = builder
-        .get_entity_by_account_hash(account_address)
+        .get_entity_with_named_keys_by_account_hash(account_address)
         .expect("should have account");
 
     let purse = account

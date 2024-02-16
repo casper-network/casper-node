@@ -1,4 +1,6 @@
 use once_cell::sync::Lazy;
+use rand::Rng;
+use tempfile::TempDir;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
@@ -11,8 +13,6 @@ use casper_types::{
     system::mint::{ARG_AMOUNT, ARG_ID, ARG_TARGET},
     PublicKey, RuntimeArgs, SecretKey, U512,
 };
-use rand::Rng;
-use tempfile::TempDir;
 
 static TRANSFER_AMOUNT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
 
@@ -37,7 +37,7 @@ fn should_transfer_to_account_with_correct_balances() {
     let data_dir = TempDir::new().expect("should create temp dir");
     let mut builder = LmdbWasmTestBuilder::new(data_dir.path());
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let pre_state_hash = builder.get_post_state_hash();
 
@@ -94,7 +94,7 @@ fn should_transfer_from_default_and_then_to_another_account() {
     let data_dir = TempDir::new().expect("should create temp dir");
     let mut builder = LmdbWasmTestBuilder::new(data_dir.path());
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let pre_state_hash = builder.get_post_state_hash();
 

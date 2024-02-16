@@ -1,13 +1,13 @@
 use rand::Rng;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT,
+    DeployItemBuilder, EntityWithNamedKeys, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
 };
 use casper_execution_engine::engine_state::ExecuteRequest;
 use casper_types::{
-    account::AccountHash, bytesrepr::FromBytes, package::PackageKindTag, runtime_args,
-    system::mint, AddressableEntity, AddressableEntityHash, CLTyped, Key, PublicKey, URef, U512,
+    account::AccountHash, addressable_entity::EntityKindTag, bytesrepr::FromBytes, runtime_args,
+    system::mint, AddressableEntityHash, CLTyped, Key, PublicKey, URef, U512,
 };
 
 use super::{
@@ -388,11 +388,12 @@ pub fn get_faucet_entity_hash(
     installer_account: AccountHash,
 ) -> AddressableEntityHash {
     builder
-        .get_expected_addressable_entity_by_account_hash(installer_account)
+        .get_entity_with_named_keys_by_account_hash(installer_account)
+        .unwrap()
         .named_keys()
         .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
         .cloned()
-        .and_then(Key::into_entity_addr)
+        .and_then(Key::into_entity_hash_addr)
         .map(AddressableEntityHash::new)
         .expect("failed to find faucet contract")
 }
@@ -400,9 +401,12 @@ pub fn get_faucet_entity_hash(
 pub fn get_faucet_entity(
     builder: &LmdbWasmTestBuilder,
     installer_account: AccountHash,
-) -> AddressableEntity {
+) -> EntityWithNamedKeys {
     builder
-        .get_addressable_entity(get_faucet_entity_hash(builder, installer_account))
+        .get_entity_with_named_keys_by_entity_hash(get_faucet_entity_hash(
+            builder,
+            installer_account,
+        ))
         .expect("failed to find faucet contract")
 }
 
@@ -422,7 +426,7 @@ pub fn get_available_amount(
     builder
         .query(
             None,
-            Key::addressable_entity_key(PackageKindTag::SmartContract, faucet_contract_hash),
+            Key::addressable_entity_key(EntityKindTag::SmartContract, faucet_contract_hash),
             &[AVAILABLE_AMOUNT_NAMED_KEY.to_string()],
         )
         .expect("failed to find available amount named key")
@@ -440,7 +444,7 @@ pub fn get_remaining_requests(
     builder
         .query(
             None,
-            Key::addressable_entity_key(PackageKindTag::SmartContract, faucet_contract_hash),
+            Key::addressable_entity_key(EntityKindTag::SmartContract, faucet_contract_hash),
             &[REMAINING_REQUESTS_NAMED_KEY.to_string()],
         )
         .expect("failed to find available amount named key")

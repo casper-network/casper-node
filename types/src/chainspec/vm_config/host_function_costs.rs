@@ -85,6 +85,7 @@ const DEFAULT_DICTIONARY_PUT_VALUE_SIZE_WEIGHT: u32 = 520;
 pub const DEFAULT_NEW_DICTIONARY_COST: u32 = DEFAULT_NEW_UREF_COST;
 
 /// Host function cost unit for a new dictionary.
+#[allow(unused)]
 pub const DEFAULT_HOST_FUNCTION_NEW_DICTIONARY: HostFunction<[Cost; 1]> =
     HostFunction::new(DEFAULT_NEW_DICTIONARY_COST, [NOT_USED]);
 
@@ -841,6 +842,7 @@ impl FromBytes for HostFunctionCosts {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<HostFunctionCosts> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> HostFunctionCosts {
         HostFunctionCosts {

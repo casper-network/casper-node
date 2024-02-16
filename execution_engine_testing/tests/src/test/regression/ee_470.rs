@@ -27,7 +27,7 @@ fn regression_test_genesis_hash_mismatch() {
     .build();
 
     // Step 1.
-    let builder = builder_base.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    let builder = builder_base.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     // This is trie's post state hash after calling run_genesis endpoint.
     // Step 1a)
@@ -43,7 +43,7 @@ fn regression_test_genesis_hash_mismatch() {
                 LmdbTrieStore::new(&lmdb_environment, None, DatabaseFlags::default())
                     .expect("should create lmdb trie store");
 
-            LmdbGlobalState::empty(Arc::new(lmdb_environment), Arc::new(lmdb_trie_store))
+            LmdbGlobalState::empty(Arc::new(lmdb_environment), Arc::new(lmdb_trie_store), 6)
                 .expect("Empty GlobalState.")
         };
         gs.empty_root()
@@ -63,7 +63,7 @@ fn regression_test_genesis_hash_mismatch() {
 
     // No step 3.
     // Step 4.
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     // Step 4a)
     let second_genesis_run_hash = builder.get_genesis_hash();

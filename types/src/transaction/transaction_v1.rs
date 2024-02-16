@@ -627,7 +627,7 @@ mod tests {
         // approval where the signer is not the account holder.
         let account_holder = match transaction.initiator_addr() {
             InitiatorAddr::PublicKey(public_key) => public_key.clone(),
-            InitiatorAddr::AccountHash(_) | InitiatorAddr::EntityAddr(_) => unreachable!(),
+            InitiatorAddr::AccountHash(_) => unreachable!(),
         };
         let expected_index = transaction
             .approvals

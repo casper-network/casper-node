@@ -7,14 +7,11 @@ use casper_engine_test_support::{
     DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
-use casper_execution_engine::engine_state::{
-    engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
-    genesis::ExecConfigBuilder,
-    run_genesis_request::RunGenesisRequest,
-};
+use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
-    account::AccountHash, package::PackageKindTag, system::auction::DelegationRate, GenesisAccount,
-    GenesisValidator, Key, Motes, ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
+    account::AccountHash, addressable_entity::EntityKindTag, system::auction::DelegationRate,
+    GenesisAccount, GenesisConfigBuilder, GenesisValidator, Key, Motes, ProtocolVersion, PublicKey,
+    SecretKey, StoredValue, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING, U512,
 };
 
 const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];
@@ -75,7 +72,7 @@ fn should_run_genesis() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let _system_account = builder
         .get_entity_by_account_hash(PublicKey::System.to_account_hash())
@@ -96,9 +93,9 @@ fn should_run_genesis() {
     assert_eq!(account_2_balance_actual, U512::from(ACCOUNT_2_BALANCE));
 
     let mint_contract_key =
-        Key::addressable_entity_key(PackageKindTag::System, builder.get_mint_contract_hash());
+        Key::addressable_entity_key(EntityKindTag::System, builder.get_mint_contract_hash());
     let handle_payment_contract_key = Key::addressable_entity_key(
-        PackageKindTag::System,
+        EntityKindTag::System,
         builder.get_handle_payment_contract_hash(),
     );
 
@@ -133,7 +130,7 @@ fn should_track_total_token_supply_in_mint() {
     let genesis_timestamp = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
     let refund_handling = DEFAULT_REFUND_HANDLING;
     let fee_handling = DEFAULT_FEE_HANDLING;
-    let ee_config = ExecConfigBuilder::default()
+    let config = GenesisConfigBuilder::default()
         .with_accounts(accounts.clone())
         .with_wasm_config(wasm_config)
         .with_system_config(system_config)
@@ -147,16 +144,16 @@ fn should_track_total_token_supply_in_mint() {
         .with_fee_handling(fee_handling)
         .build();
 
-    let run_genesis_request = RunGenesisRequest::new(
+    let genesis_request = GenesisRequest::new(
         GENESIS_CONFIG_HASH.into(),
         protocol_version,
-        ee_config,
+        config,
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(genesis_request);
 
     let total_supply = builder.total_supply(None);
 

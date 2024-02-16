@@ -15,17 +15,17 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     engine_state::{
-        self, engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, genesis::ExecConfigBuilder,
-        EngineConfigBuilder, Error, RunGenesisRequest,
+        self, engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, EngineConfigBuilder, Error,
     },
     execution,
 };
+use casper_storage::data_access_layer::GenesisRequest;
 
 use casper_types::{
     self,
     account::AccountHash,
+    addressable_entity::EntityKindTag,
     api_error::ApiError,
-    package::PackageKindTag,
     runtime_args,
     system::{
         self,
@@ -35,8 +35,8 @@ use casper_types::{
             ARG_PUBLIC_KEY, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
-    EraId, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion, PublicKey, SecretKey,
-    U256, U512,
+    EntityAddr, EraId, GenesisAccount, GenesisConfigBuilder, GenesisValidator, Key, Motes,
+    ProtocolVersion, PublicKey, SecretKey, U256, U512,
 };
 
 const ARG_TARGET: &str = "target";
@@ -175,7 +175,7 @@ fn should_add_new_bid() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *BID_ACCOUNT_1_ADDR,
@@ -219,7 +219,7 @@ fn should_increase_existing_bid() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *BID_ACCOUNT_1_ADDR,
@@ -278,7 +278,7 @@ fn should_decrease_existing_bid() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let bid_request = ExecuteRequestBuilder::standard(
         *BID_ACCOUNT_1_ADDR,
@@ -346,7 +346,7 @@ fn should_run_delegate_and_undelegate() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let transfer_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -395,7 +395,7 @@ fn should_run_delegate_and_undelegate() {
     );
     assert_eq!(*active_bid.delegation_rate(), ADD_BID_DELEGATION_RATE_1);
 
-    let auction_key = Key::addressable_entity_key(PackageKindTag::System, auction_hash);
+    let auction_key = Key::addressable_entity_key(EntityKindTag::System, auction_hash);
 
     let auction_stored_value = builder
         .query(None, auction_key, &[])
@@ -543,7 +543,7 @@ fn should_calculate_era_validators() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let transfer_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -597,7 +597,7 @@ fn should_calculate_era_validators() {
 
     builder.exec(add_bid_request_1).commit().expect_success();
 
-    let pre_era_id: EraId = builder.get_value(auction_hash, ERA_ID_KEY);
+    let pre_era_id: EraId = builder.get_value(EntityAddr::System(auction_hash.value()), ERA_ID_KEY);
     assert_eq!(pre_era_id, EraId::from(0));
 
     builder.run_auction(
@@ -605,7 +605,8 @@ fn should_calculate_era_validators() {
         Vec::new(),
     );
 
-    let post_era_id: EraId = builder.get_value(auction_hash, ERA_ID_KEY);
+    let post_era_id: EraId =
+        builder.get_value(EntityAddr::System(auction_hash.value()), ERA_ID_KEY);
     assert_eq!(post_era_id, EraId::from(1));
 
     let era_validators: EraValidators = builder.get_era_validators();
@@ -699,12 +700,12 @@ fn should_get_first_seigniorage_recipients() {
 
     // We can't use `utils::create_run_genesis_request` as the snapshot used an auction delay of 3.
     let auction_delay = 3;
-    let exec_config = ExecConfigBuilder::new()
+    let exec_config = GenesisConfigBuilder::new()
         .with_accounts(accounts)
         .with_auction_delay(auction_delay)
         .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
         .build();
-    let run_genesis_request = RunGenesisRequest::new(
+    let run_genesis_request = GenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
         exec_config,
@@ -713,7 +714,7 @@ fn should_get_first_seigniorage_recipients() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let transfer_request_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -868,12 +869,12 @@ fn should_release_founder_stake() {
 
     //let run_genesis_request = utils::create_run_genesis_request(accounts);
     let run_genesis_request = {
-        let exec_config = ExecConfigBuilder::default()
+        let exec_config = GenesisConfigBuilder::default()
             .with_accounts(accounts)
             .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
             .build();
 
-        RunGenesisRequest::new(
+        GenesisRequest::new(
             *DEFAULT_GENESIS_CONFIG_HASH,
             *DEFAULT_PROTOCOL_VERSION,
             exec_config,
@@ -888,7 +889,7 @@ fn should_release_founder_stake() {
 
     let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(custom_engine_config);
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let fund_system_account = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -1018,7 +1019,7 @@ fn should_fail_to_get_era_validators() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     assert_eq!(
         builder.get_validator_weights(EraId::MAX),
@@ -1049,7 +1050,7 @@ fn should_use_era_validators_endpoint_for_first_era() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let validator_weights = builder
         .get_validator_weights(INITIAL_ERA_ID)
@@ -1107,7 +1108,7 @@ fn should_calculate_era_validators_multiple_new_bids() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let genesis_validator_weights = builder
         .get_validator_weights(INITIAL_ERA_ID)
@@ -1276,7 +1277,7 @@ fn undelegated_funds_should_be_released() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -1402,7 +1403,7 @@ fn fully_undelegated_funds_should_be_released() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -1563,7 +1564,7 @@ fn should_undelegate_delegators_when_validator_unbonds() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -1795,7 +1796,7 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -1979,7 +1980,7 @@ fn should_handle_evictions() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     builder.exec(system_fund_request).expect_success().commit();
 
@@ -2122,7 +2123,7 @@ fn should_validate_orphaned_genesis_delegators() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 }
 
 #[should_panic(expected = "DuplicatedDelegatorEntry")]
@@ -2177,7 +2178,7 @@ fn should_validate_duplicated_genesis_delegators() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 }
 
 #[should_panic(expected = "InvalidDelegationRate")]
@@ -2202,7 +2203,7 @@ fn should_validate_delegation_rate_of_genesis_validator() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 }
 
 #[should_panic(expected = "InvalidBondAmount")]
@@ -2224,7 +2225,7 @@ fn should_validate_bond_amount_of_genesis_validator() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 }
 
 #[ignore]
@@ -2261,7 +2262,7 @@ fn should_setup_genesis_delegators() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let _account_1 = builder
         .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
@@ -2331,7 +2332,7 @@ fn should_not_partially_undelegate_uninitialized_vesting_schedule() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let fund_delegator_account = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2405,7 +2406,7 @@ fn should_not_fully_undelegate_uninitialized_vesting_schedule() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let fund_delegator_account = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2476,12 +2477,12 @@ fn should_not_undelegate_vfta_holder_stake() {
     };
 
     let run_genesis_request = {
-        let exec_config = ExecConfigBuilder::default()
+        let exec_config = GenesisConfigBuilder::default()
             .with_accounts(accounts)
             .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
             .build();
 
-        RunGenesisRequest::new(
+        GenesisRequest::new(
             *DEFAULT_GENESIS_CONFIG_HASH,
             *DEFAULT_PROTOCOL_VERSION,
             exec_config,
@@ -2494,7 +2495,7 @@ fn should_not_undelegate_vfta_holder_stake() {
 
     let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(custom_engine_config);
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let post_genesis_requests = {
         let fund_delegator_account = ExecuteRequestBuilder::standard(
@@ -2675,12 +2676,12 @@ fn should_release_vfta_holder_stake() {
     };
 
     let run_genesis_request = {
-        let exec_config = ExecConfigBuilder::default()
+        let exec_config = GenesisConfigBuilder::default()
             .with_accounts(accounts)
             .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
             .build();
 
-        RunGenesisRequest::new(
+        GenesisRequest::new(
             *DEFAULT_GENESIS_CONFIG_HASH,
             *DEFAULT_PROTOCOL_VERSION,
             exec_config,
@@ -2695,7 +2696,7 @@ fn should_release_vfta_holder_stake() {
 
     let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(custom_engine_config);
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 
     let fund_delegator_account = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2970,7 +2971,7 @@ fn should_reset_delegators_stake_after_slashing() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     for request in post_genesis_requests {
         builder.exec(request).expect_success().commit();
@@ -3114,7 +3115,7 @@ fn should_validate_genesis_delegators_bond_amount() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 }
 
 fn check_validator_slots_for_accounts(accounts: usize) {
@@ -3148,7 +3149,7 @@ fn check_validator_slots_for_accounts(accounts: usize) {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&run_genesis_request);
+    builder.run_genesis(run_genesis_request);
 }
 
 #[should_panic(expected = "InvalidValidatorSlots")]
@@ -3252,7 +3253,7 @@ fn should_delegate_and_redelegate() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -3440,7 +3441,7 @@ fn should_handle_redelegation_to_inactive_validator() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -3526,7 +3527,7 @@ fn should_handle_redelegation_to_inactive_validator() {
 fn should_enforce_minimum_delegation_amount() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let transfer_to_validator_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -3607,7 +3608,7 @@ fn should_enforce_minimum_delegation_amount() {
 fn should_allow_delegations_with_minimal_floor_amount() {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let transfer_to_validator_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -3721,7 +3722,7 @@ fn should_enforce_max_delegators_per_validator_cap() {
     let data_dir = TempDir::new().expect("should create temp dir");
     let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir.path(), engine_config);
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let transfer_to_validator_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -4008,7 +4009,7 @@ fn should_transfer_to_main_purse_in_case_of_redelegation_past_max_delegation_cap
     let data_dir = TempDir::new().expect("should create temp dir");
     let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir.path(), engine_config);
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     for request in post_genesis_requests {
         builder.exec(request).expect_success().commit();
@@ -4156,7 +4157,7 @@ fn should_delegate_and_redelegate_with_eviction_regression_test() {
 
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     for request in post_genesis_requests {
         builder.exec(request).commit().expect_success();
@@ -4204,7 +4205,7 @@ fn should_increase_existing_delegation_when_limit_exceeded() {
     let data_dir = TempDir::new().expect("should create temp dir");
     let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir.path(), engine_config);
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let transfer_to_validator_1 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

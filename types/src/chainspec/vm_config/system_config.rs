@@ -1,6 +1,10 @@
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use rand::{distributions::Standard, prelude::*, Rng};
+#[cfg(any(feature = "testing", test))]
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -91,6 +95,7 @@ impl Default for SystemConfig {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<SystemConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SystemConfig {
         SystemConfig {

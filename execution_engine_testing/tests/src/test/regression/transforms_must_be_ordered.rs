@@ -21,7 +21,7 @@ fn contract_transforms_should_be_ordered_in_the_effects() {
     const N_OPS: usize = 1000;
 
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     let mut rng = StdRng::seed_from_u64(0);
 
@@ -36,12 +36,13 @@ fn contract_transforms_should_be_ordered_in_the_effects() {
     builder.exec(execution_request).expect_success().commit();
 
     let contract_hash = match builder
-        .get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_with_named_keys_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap()
         .named_keys()
         .get("ordered-transforms-contract-hash")
         .unwrap()
     {
-        Key::AddressableEntity(_package_kind, addr) => AddressableEntityHash::new(*addr),
+        Key::AddressableEntity(entity_addr) => AddressableEntityHash::new(entity_addr.value()),
         _ => panic!("Couldn't find ordered-transforms contract."),
     };
 
@@ -90,7 +91,9 @@ fn contract_transforms_should_be_ordered_in_the_effects() {
     assert_eq!(exec_result.len(), 1);
     let effects = exec_result[0].effects();
 
-    let contract = builder.get_addressable_entity(contract_hash).unwrap();
+    let contract = builder
+        .get_entity_with_named_keys_by_entity_hash(contract_hash)
+        .unwrap();
     let urefs: Vec<URef> = (0..N_UREFS)
         .map(
             |i| match contract.named_keys().get(&format!("uref-{}", i)).unwrap() {

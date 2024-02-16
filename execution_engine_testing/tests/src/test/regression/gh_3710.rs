@@ -1,13 +1,10 @@
-use std::{collections::BTreeSet, convert::TryInto, fmt, iter::FromIterator};
+use std::{collections::BTreeSet, convert::TryInto, iter::FromIterator};
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, WasmTestBuilder,
     DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PROPOSER_PUBLIC_KEY, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    engine_state::{self, PruneConfig, PruneResult},
-    execution,
-};
+use casper_execution_engine::engine_state::{PruneConfig, PruneResult};
 use casper_storage::global_state::state::{CommitProvider, StateProvider};
 use casper_types::{
     runtime_args,
@@ -134,8 +131,6 @@ const DEFAULT_REWARD_AMOUNT: u64 = 1_000_000;
 fn add_validator_and_wait_for_rotation<S>(builder: &mut WasmTestBuilder<S>, public_key: &PublicKey)
 where
     S: StateProvider + CommitProvider,
-    engine_state::Error: From<S::Error>,
-    S::Error: Into<execution::Error> + fmt::Debug,
 {
     const DELEGATION_RATE: DelegationRate = 10;
 
@@ -179,8 +174,6 @@ fn distribute_rewards<S>(
     amount: U512,
 ) where
     S: StateProvider + CommitProvider,
-    engine_state::Error: From<S::Error>,
-    S::Error: Into<execution::Error> + fmt::Debug,
 {
     builder
         .distribute(
@@ -197,7 +190,7 @@ fn distribute_rewards<S>(
 #[test]
 fn gh_3710_should_produce_era_summary_in_a_step() {
     let mut builder = LmdbWasmTestBuilder::default();
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     add_validator_and_wait_for_rotation(&mut builder, &DEFAULT_ACCOUNT_PUBLIC_KEY);
     distribute_rewards(&mut builder, 1, &DEFAULT_ACCOUNT_PUBLIC_KEY, 0.into());
@@ -269,6 +262,32 @@ mod fixture {
             let execute_request = ExecuteRequestBuilder::standard(
                 *DEFAULT_ACCOUNT_ADDR,
                 CONTRACT_RECURSIVE_SUBCALL,
+                runtime_args! {},
+            )
+            .build();
+
+            builder.exec(execute_request).expect_success().commit();
+        })
+        .unwrap();
+    }
+
+    #[ignore = "RUN_FIXTURE_GENERATORS env var should be enabled"]
+    #[test]
+    fn generate_groups_fixture() {
+        const GROUPS_FIXTURE: &str = "groups";
+        const GROUPS_WASM: &str = "groups.wasm";
+
+        if !lmdb_fixture::is_fixture_generator_enabled() {
+            println!("Enable the RUN_FIXTURE_GENERATORS variable");
+            return;
+        }
+
+        let genesis_request = PRODUCTION_RUN_GENESIS_REQUEST.clone();
+
+        lmdb_fixture::generate_fixture(GROUPS_FIXTURE, genesis_request, |builder| {
+            let execute_request = ExecuteRequestBuilder::standard(
+                *DEFAULT_ACCOUNT_ADDR,
+                GROUPS_WASM,
                 runtime_args! {},
             )
             .build();

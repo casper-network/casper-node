@@ -36,7 +36,7 @@ fn should_run_refund_purse_contract_account_1() {
 fn initialize() -> LmdbWasmTestBuilder {
     let mut builder = LmdbWasmTestBuilder::default();
 
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+    builder.run_genesis(PRODUCTION_RUN_GENESIS_REQUEST.clone());
 
     builder
 }

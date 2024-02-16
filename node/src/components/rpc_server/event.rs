@@ -5,10 +5,10 @@ use std::{
 
 use derive_more::From;
 
-use casper_execution_engine::engine_state::{
-    self, BalanceResult, GetBidsResult, GetEraValidatorsError, QueryResult,
+use casper_storage::data_access_layer::{
+    BalanceResult, BidsResult, EraValidatorsResult, QueryResult,
 };
-use casper_types::{system::auction::EraValidators, BlockHash, Transfer};
+use casper_types::{BlockHash, Transfer};
 
 use crate::{
     effect::{requests::RpcRequest, Responder},
@@ -26,24 +26,24 @@ pub(crate) enum Event {
         main_responder: Responder<Option<Vec<Transfer>>>,
     },
     QueryGlobalStateResult {
-        result: Result<QueryResult, engine_state::Error>,
-        main_responder: Responder<Result<QueryResult, engine_state::Error>>,
+        result: QueryResult,
+        main_responder: Responder<QueryResult>,
     },
     QueryEraValidatorsResult {
-        result: Result<EraValidators, GetEraValidatorsError>,
-        main_responder: Responder<Result<EraValidators, GetEraValidatorsError>>,
+        result: EraValidatorsResult,
+        main_responder: Responder<EraValidatorsResult>,
     },
     GetBidsResult {
-        result: Result<GetBidsResult, engine_state::Error>,
-        main_responder: Responder<Result<GetBidsResult, engine_state::Error>>,
+        result: BidsResult,
+        main_responder: Responder<BidsResult>,
     },
     GetPeersResult {
         peers: BTreeMap<NodeId, String>,
         main_responder: Responder<BTreeMap<NodeId, String>>,
     },
     GetBalanceResult {
-        result: Result<BalanceResult, engine_state::Error>,
-        main_responder: Responder<Result<BalanceResult, engine_state::Error>>,
+        result: BalanceResult,
+        main_responder: Responder<BalanceResult>,
     },
 }
 

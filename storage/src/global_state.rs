@@ -13,6 +13,8 @@ pub mod trie_store;
 
 const MAX_DBS: u32 = 2;
 
-pub(crate) const DEFAULT_TEST_MAX_DB_SIZE: usize = 52_428_800; // 50 MiB
+pub(crate) const DEFAULT_MAX_DB_SIZE: usize = 52_428_800; // 50 MiB
 
-pub(crate) const DEFAULT_TEST_MAX_READERS: u32 = 512;
+pub(crate) const DEFAULT_MAX_READERS: u32 = 512;
+
+pub(crate) const DEFAULT_MAX_QUERY_DEPTH: u64 = 6;

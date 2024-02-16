@@ -170,7 +170,7 @@ impl Deploy {
 
         let account = match initiator_addr_and_secret_key.initiator_addr() {
             InitiatorAddr::PublicKey(public_key) => public_key,
-            InitiatorAddr::AccountHash(_) | InitiatorAddr::EntityAddr(_) => unreachable!(),
+            InitiatorAddr::AccountHash(_) => unreachable!(),
         };
 
         let dependencies = dependencies.into_iter().unique().collect();

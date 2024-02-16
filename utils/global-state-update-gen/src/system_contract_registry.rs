@@ -4,11 +4,10 @@ use clap::ArgMatches;
 use lmdb::{self, Cursor, Environment, EnvironmentFlags, Transaction};
 
 use casper_engine_test_support::LmdbWasmTestBuilder;
-use casper_execution_engine::engine_state::SystemContractRegistry;
 use casper_types::{
     bytesrepr::FromBytes,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
-    AddressableEntityHash, CLValue, Key, StoredValue, KEY_HASH_LENGTH,
+    AddressableEntityHash, CLValue, Key, StoredValue, SystemEntityRegistry, KEY_HASH_LENGTH,
 };
 
 use crate::utils::{hash_from_str, print_entry};
@@ -92,14 +91,14 @@ fn generate_system_contract_registry_using_protocol_data(data_dir: &Path) {
         });
     assert!(remainder.is_empty());
 
-    let mut registry = SystemContractRegistry::new();
+    let mut registry = SystemEntityRegistry::new();
     registry.insert(MINT.to_string(), mint_hash);
     registry.insert(HANDLE_PAYMENT.to_string(), handle_payment_hash);
     registry.insert(STANDARD_PAYMENT.to_string(), standard_payment_hash);
     registry.insert(AUCTION.to_string(), auction_hash);
 
     print_entry(
-        &Key::SystemContractRegistry,
+        &Key::SystemEntityRegistry,
         &StoredValue::from(CLValue::from_t(registry).unwrap()),
     );
 }
@@ -112,13 +111,13 @@ fn generate_system_contract_registry_using_global_state(data_dir: &Path, state_h
     let handle_payment_hash = builder.get_system_handle_payment_hash();
     let auction_hash = builder.get_system_auction_hash();
 
-    let mut registry = SystemContractRegistry::new();
+    let mut registry = SystemEntityRegistry::new();
     registry.insert(MINT.to_string(), mint_hash);
     registry.insert(HANDLE_PAYMENT.to_string(), handle_payment_hash);
     registry.insert(AUCTION.to_string(), auction_hash);
 
     print_entry(
-        &Key::SystemContractRegistry,
+        &Key::SystemEntityRegistry,
         &StoredValue::from(CLValue::from_t(registry).unwrap()),
     );
 }

@@ -13,17 +13,16 @@ use casper_engine_test_support::{
     DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
-use casper_execution_engine::engine_state::{
-    genesis::ExecConfigBuilder, EngineConfig, EngineConfigBuilder, ExecConfig, RunGenesisRequest,
-};
+use casper_execution_engine::engine_state::{EngineConfig, EngineConfigBuilder};
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
+use casper_storage::data_access_layer::GenesisRequest;
 use casper_types::{
     account::AccountHash, system::auction::DELEGATION_RATE_DENOMINATOR, AdministratorAccount,
-    FeeHandling, GenesisAccount, GenesisValidator, HostFunction, HostFunctionCosts, MessageLimits,
-    Motes, OpcodeCosts, PublicKey, RefundHandling, SecretKey, StorageCosts, WasmConfig,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
+    FeeHandling, GenesisAccount, GenesisConfig, GenesisConfigBuilder, GenesisValidator,
+    HostFunction, HostFunctionCosts, MessageLimits, Motes, OpcodeCosts, PublicKey, RefundHandling,
+    SecretKey, StorageCosts, WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 use tempfile::TempDir;
 
@@ -139,8 +138,8 @@ const PRIVATE_CHAIN_REFUND_HANDLING: RefundHandling = RefundHandling::Refund {
 const PRIVATE_CHAIN_FEE_HANDLING: FeeHandling = FeeHandling::Accumulate;
 const PRIVATE_CHAIN_COMPUTE_REWARDS: bool = false;
 
-static DEFUALT_PRIVATE_CHAIN_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
-    ExecConfigBuilder::default()
+static DEFUALT_PRIVATE_CHAIN_EXEC_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {
+    GenesisConfigBuilder::default()
         .with_accounts(PRIVATE_CHAIN_DEFAULT_ACCOUNTS.clone())
         .with_wasm_config(*DEFAULT_WASM_CONFIG)
         .with_system_config(*DEFAULT_SYSTEM_CONFIG)
@@ -155,8 +154,8 @@ static DEFUALT_PRIVATE_CHAIN_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
         .build()
 });
 
-static DEFAULT_PRIVATE_CHAIN_GENESIS: Lazy<RunGenesisRequest> = Lazy::new(|| {
-    RunGenesisRequest::new(
+static DEFAULT_PRIVATE_CHAIN_GENESIS: Lazy<GenesisRequest> = Lazy::new(|| {
+    GenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
         DEFUALT_PRIVATE_CHAIN_EXEC_CONFIG.clone(),
@@ -180,7 +179,7 @@ fn custom_setup_genesis_only(
     );
     let data_dir = TempDir::new().expect("should create temp dir");
     let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir.as_ref(), engine_config);
-    builder.run_genesis(&DEFAULT_PRIVATE_CHAIN_GENESIS);
+    builder.run_genesis(DEFAULT_PRIVATE_CHAIN_GENESIS.clone());
     builder
 }
 

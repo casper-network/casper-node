@@ -1,16 +1,18 @@
 use std::{cell::RefCell, collections::BTreeSet, convert::TryFrom, rc::Rc};
 
-use casper_storage::global_state::state::StateReader;
-
+use casper_storage::{
+    global_state::{error::Error as GlobalStateError, state::StateReader},
+    tracking_copy::{TrackingCopy, TrackingCopyExt},
+    AddressGenerator,
+};
 use casper_types::{
     account::AccountHash,
-    addressable_entity::NamedKeys,
+    addressable_entity::{EntityKind, NamedKeys},
     bytesrepr::FromBytes,
-    package::PackageKind,
     system::{auction, handle_payment, mint, AUCTION, HANDLE_PAYMENT, MINT},
     AddressableEntity, AddressableEntityHash, ApiError, BlockTime, CLTyped, ContextAccessRights,
-    DeployHash, EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, Tagged,
-    URef, U512,
+    DeployHash, EntityAddr, EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs,
+    StoredValue, Tagged, URef, U512,
 };
 
 use crate::engine_state::TransferArgs;
@@ -19,10 +21,9 @@ use crate::{
     engine_state::{
         execution_kind::ExecutionKind, EngineConfig, Error as EngineStateError, ExecutionResult,
     },
-    execution::{address_generator::AddressGenerator, Error},
+    execution::Error,
     runtime::{Runtime, RuntimeStack},
     runtime_context::RuntimeContext,
-    tracking_copy::{TrackingCopy, TrackingCopyExt},
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -53,7 +54,7 @@ impl Executor {
         args: RuntimeArgs,
         entity_hash: AddressableEntityHash,
         entity: &AddressableEntity,
-        package_kind: PackageKind,
+        entity_kind: EntityKind,
         named_keys: &mut NamedKeys,
         access_rights: ContextAccessRights,
         authorization_keys: BTreeSet<AccountHash>,
@@ -67,8 +68,7 @@ impl Executor {
         stack: RuntimeStack,
     ) -> ExecutionResult
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<Error>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         let spending_limit: U512 = match try_get_amount(&args) {
             Ok(spending_limit) => spending_limit,
@@ -82,7 +82,7 @@ impl Executor {
             Rc::new(RefCell::new(generator))
         };
 
-        let entity_key = Key::addressable_entity_key(package_kind.tag(), entity_hash);
+        let entity_key = Key::addressable_entity_key(entity_kind.tag(), entity_hash);
 
         let context = self.create_runtime_context(
             named_keys,
@@ -90,7 +90,7 @@ impl Executor {
             entity_key,
             authorization_keys,
             access_rights,
-            package_kind,
+            entity_kind,
             account_hash,
             address_generator,
             tracking_copy,
@@ -146,7 +146,7 @@ impl Executor {
         direct_system_contract_call: DirectSystemContractCall,
         runtime_args: RuntimeArgs,
         entity: &AddressableEntity,
-        package_kind: PackageKind,
+        entity_kind: EntityKind,
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
@@ -159,8 +159,7 @@ impl Executor {
         remaining_spending_limit: U512,
     ) -> (Option<T>, ExecutionResult)
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<Error>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
         T: FromBytes + CLTyped,
     {
         let address_generator = {
@@ -208,22 +207,30 @@ impl Executor {
             }
         };
 
-        let contract = match tracking_copy.borrow_mut().get_contract(entity_hash) {
+        let contract = match tracking_copy
+            .borrow_mut()
+            .get_addressable_entity(entity_hash)
+        {
             Ok(contract) => contract,
             Err(error) => return (None, ExecutionResult::precondition_failure(error.into())),
         };
 
-        let mut named_keys = contract.named_keys().clone();
-        let access_rights = contract.extract_access_rights(entity_hash);
-        let entity_address = Key::addressable_entity_key(package_kind.tag(), entity_hash);
+        let entity_addr = EntityAddr::new_with_tag(entity_kind, entity_hash.value());
 
+        let mut named_keys = match tracking_copy.borrow_mut().get_named_keys(entity_addr) {
+            Ok(named_key) => named_key,
+            Err(error) => return (None, ExecutionResult::precondition_failure(error.into())),
+        };
+
+        let access_rights = contract.extract_access_rights(entity_hash, &named_keys);
+        let entity_address = entity_addr.into();
         let runtime_context = self.create_runtime_context(
             &mut named_keys,
             entity,
             entity_address,
             authorization_keys,
             access_rights,
-            package_kind,
+            entity_kind,
             account_hash,
             address_generator,
             tracking_copy,
@@ -285,7 +292,7 @@ impl Executor {
         entity_key: Key,
         authorization_keys: BTreeSet<AccountHash>,
         access_rights: ContextAccessRights,
-        package_kind: PackageKind,
+        entity_kind: EntityKind,
         account_hash: AccountHash,
         address_generator: Rc<RefCell<AddressGenerator>>,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -299,8 +306,7 @@ impl Executor {
         entry_point_type: EntryPointType,
     ) -> RuntimeContext<'a, R>
     where
-        R: StateReader<Key, StoredValue>,
-        R::Error: Into<Error>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
     {
         let gas_counter = Gas::default();
         let transfers = Vec::default();
@@ -311,7 +317,7 @@ impl Executor {
             entity_key,
             authorization_keys,
             access_rights,
-            package_kind,
+            entity_kind,
             account_hash,
             address_generator,
             tracking_copy,
@@ -335,7 +341,7 @@ impl Executor {
         &self,
         payment_args: RuntimeArgs,
         entity: &AddressableEntity,
-        package_kind: PackageKind,
+        entity_kind: EntityKind,
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
@@ -346,7 +352,7 @@ impl Executor {
         max_stack_height: usize,
     ) -> Result<ExecutionResult, EngineStateError>
     where
-        R: StateReader<Key, StoredValue>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
         R::Error: Into<Error>,
     {
         let payment_amount: U512 = match try_get_amount(&payment_args) {
@@ -360,7 +366,7 @@ impl Executor {
 
         let (maybe_purse, get_payment_result) = self.get_payment_purse(
             entity,
-            package_kind,
+            entity_kind,
             authorization_keys.clone(),
             account_hash,
             blocktime,
@@ -404,7 +410,7 @@ impl Executor {
         let (transfer_result, payment_result) = self.invoke_mint_to_transfer(
             runtime_args,
             entity,
-            package_kind,
+            entity_kind,
             authorization_keys,
             account_hash,
             blocktime,
@@ -438,7 +444,7 @@ impl Executor {
     pub(crate) fn get_payment_purse<R>(
         &self,
         entity: &AddressableEntity,
-        package_kind: PackageKind,
+        entity_kind: EntityKind,
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
@@ -449,14 +455,14 @@ impl Executor {
         stack: RuntimeStack,
     ) -> (Option<URef>, ExecutionResult)
     where
-        R: StateReader<Key, StoredValue>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
         R::Error: Into<Error>,
     {
         self.call_system_contract(
             DirectSystemContractCall::GetPaymentPurse,
             RuntimeArgs::new(),
             entity,
-            package_kind,
+            entity_kind,
             authorization_keys,
             account_hash,
             blocktime,
@@ -475,7 +481,7 @@ impl Executor {
         &self,
         runtime_args: RuntimeArgs,
         entity: &AddressableEntity,
-        package_kind: PackageKind,
+        entity_kind: EntityKind,
         authorization_keys: BTreeSet<AccountHash>,
         account_hash: AccountHash,
         blocktime: BlockTime,
@@ -487,14 +493,14 @@ impl Executor {
         spending_limit: U512,
     ) -> (Option<Result<(), u8>>, ExecutionResult)
     where
-        R: StateReader<Key, StoredValue>,
+        R: StateReader<Key, StoredValue, Error = GlobalStateError>,
         R::Error: Into<Error>,
     {
         self.call_system_contract(
             DirectSystemContractCall::Transfer,
             runtime_args,
             entity,
-            package_kind,
+            entity_kind,
             authorization_keys,
             account_hash,
             blocktime,

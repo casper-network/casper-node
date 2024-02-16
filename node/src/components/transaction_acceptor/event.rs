@@ -80,7 +80,7 @@ pub(crate) enum Event {
         block_header: Box<BlockHeader>,
         is_payment: bool,
         contract_hash: AddressableEntityHash,
-        maybe_contract: Option<AddressableEntity>,
+        maybe_entity: Option<AddressableEntity>,
     },
     /// The result of querying global state for a `Package` to verify the executable logic.
     GetPackageResult {
