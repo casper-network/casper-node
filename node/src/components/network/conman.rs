@@ -6,7 +6,7 @@
 
 use std::{
     collections::HashMap,
-    fmt::{Debug, Display},
+    fmt::Debug,
     net::IpAddr,
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -18,7 +18,6 @@ use std::{
 use async_trait::async_trait;
 use futures::FutureExt;
 use juliet::rpc::{IncomingRequest, JulietRpcClient, RpcBuilder};
-use serde::{Deserialize, Serialize};
 use strum::EnumCount;
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{
@@ -34,7 +33,6 @@ use crate::{
 
 use super::{
     blocklist::BlocklistJustification, error::ConnectionError, handshake::HandshakeOutcome,
-    MessageKind, Payload,
 };
 
 /// Connection manager.
@@ -354,31 +352,6 @@ impl Debug for ConManContext {
             .field("rpc_builder", &"...")
             .field("state", &self.state)
             .finish()
-    }
-}
-
-/// Dummy payload for handshake negotiation.
-///
-/// The handshaking functions are currently tied to a specific payload, even though they don't need
-/// to be for any other reason than backwards compatibility. This dummy payload is used instead of
-/// the real node payload, it should be binary-compatible with older versions if only used for
-/// handshaking purposes.
-#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
-struct DummyPayload;
-
-impl Payload for DummyPayload {
-    fn message_kind(&self) -> MessageKind {
-        MessageKind::Other
-    }
-
-    fn get_channel(&self) -> super::Channel {
-        super::Channel::Network
-    }
-}
-
-impl Display for DummyPayload {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("DummyPayload")
     }
 }
 
