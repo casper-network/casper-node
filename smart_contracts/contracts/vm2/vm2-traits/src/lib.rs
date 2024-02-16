@@ -115,13 +115,14 @@ mod tests {
             self,
             native::{dispatch_with, Stub},
         },
-        schema::CasperSchema,
+        schema::{CasperSchema, SchemaEntryPoint, SchemaType},
         Contract,
     };
+    use vm_common::flags::EntryPointFlags;
 
     #[should_panic(query = "Entry point exists")]
     #[test]
-    fn cant_call_private() {
+    fn cant_call_private1() {
         let _ = dispatch_with(Stub::default(), || {
             let manifest = HasTraits::default_create().expect("Create");
 
@@ -130,7 +131,25 @@ mod tests {
                 let _ret = host::casper_call(
                     &manifest.contract_address,
                     0,
-                    selector!("get_counter_state"),
+                    selector!("counter_state"),
+                    &[],
+                );
+            }
+        });
+    }
+
+    #[should_panic(query = "Entry point exists")]
+    #[test]
+    fn cant_call_private2() {
+        let _ = dispatch_with(Stub::default(), || {
+            let manifest = HasTraits::default_create().expect("Create");
+
+            // TODO: native impl currently is panicking, fix error handling in it
+            {
+                let _ret = host::casper_call(
+                    &manifest.contract_address,
+                    0,
+                    selector!("counter_state_mut"),
                     &[],
                 );
             }
@@ -146,8 +165,59 @@ mod tests {
     }
 
     #[test]
+    fn trait_has_schema() {
+        // We can't attach methods to trait itself, but we can generate an "${TRAIT}Ext" struct and
+        // attach extra information to it. let schema = Trait1::schema();
+        let counter_schema = super::CounterExt::schema();
+
+        assert_eq!(counter_schema.type_, SchemaType::Interface);
+
+        // Order of entry point definitions is not guaranteed.
+        assert_eq!(
+            BTreeSet::from_iter(counter_schema.entry_points.clone()),
+            BTreeSet::from_iter([
+                SchemaEntryPoint {
+                    name: "get_counter_value".to_string(),
+                    selector: selector!("get_counter_value").get(),
+                    arguments: vec![],
+                    result: "U64".to_string(),
+                    flags: EntryPointFlags::empty()
+                },
+                SchemaEntryPoint {
+                    name: "get_counter_state".to_string(),
+                    selector: selector!("get_counter_state").get(),
+                    arguments: vec![],
+                    result: "vm2_trait::CounterState".to_string(),
+                    flags: EntryPointFlags::empty()
+                },
+                SchemaEntryPoint {
+                    name: "decrement".to_string(),
+                    selector: selector!("decrement").get(),
+                    arguments: vec![],
+                    result: "()".to_string(),
+                    flags: EntryPointFlags::empty()
+                },
+                SchemaEntryPoint {
+                    name: "increment".to_string(),
+                    selector: selector!("increment").get(),
+                    arguments: vec![],
+                    result: "()".to_string(),
+                    flags: EntryPointFlags::empty()
+                },
+            ])
+        );
+    }
+
+    #[test]
     fn schema_has_traits() {
         let schema = HasTraits::schema();
+
+        assert_eq!(
+            schema.type_,
+            SchemaType::Contract {
+                state: "vm2_trait::HasTraits".to_string()
+            }
+        );
 
         assert!(
             schema.entry_points.iter().any(|e| e.name == "foobar"),

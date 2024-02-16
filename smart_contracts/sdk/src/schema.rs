@@ -1,4 +1,4 @@
-pub trait CasperSchema: Contract {
+pub trait CasperSchema {
     fn schema() -> Schema;
 }
 
@@ -41,13 +41,13 @@ where
 
 pub mod schema_helper;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct SchemaArgument {
     pub name: String,
     pub decl: abi::Declaration,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Clone)]
 
 pub struct SchemaEntryPoint {
     pub name: String,
@@ -60,11 +60,22 @@ pub struct SchemaEntryPoint {
     )]
     pub flags: EntryPointFlags,
 }
-#[derive(Debug, Serialize, Deserialize)]
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[serde(tag = "type")]
+pub enum SchemaType {
+    /// Contract schemas contain a state structure that we want to mark in the schema.
+    Contract { state: Declaration },
+    /// Schemas of interface type does not contain state.
+    Interface,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Schema {
     pub name: String,
     pub version: Option<String>,
-    pub state: Declaration,
+    #[serde(rename = "type")]
+    pub type_: SchemaType,
     pub definitions: Definitions,
     pub entry_points: Vec<SchemaEntryPoint>,
 }
@@ -89,8 +100,4 @@ pub unsafe fn register_func(name: &str, f: extern "C" fn() -> ()) {
 
 pub fn register_entrypoint<'a, F: fmt::Debug + Fn()>(entrypoint: EntryPoint<'a, F>) {
     dbg!(entrypoint);
-    // dbg!(&entrypoint);
-    // unsafe {
-    //     register_func(entrypoint.name, entrypoint.fptr);
-    // }
 }

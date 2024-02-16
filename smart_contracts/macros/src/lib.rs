@@ -219,9 +219,6 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                 }
                             });
 
-                            // if func.sig.inputs.first().is_none() {
-                            //     todo!("No inputs");
-                            // }
                             let handle_dispatch = match func.sig.inputs.first() {
                                 Some(syn::FnArg::Receiver(_receiver)) => {
                                     quote! {
@@ -303,16 +300,9 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
 
                 let ext_struct_name = format_ident!("{trait_name}Ext");
 
-                // let container_name = format_ident!("{trait_name}_DISPATCH_TABLE");
-
                 let manifest_data_len = dispatch_table.len();
 
                 let extension_struct = quote! {
-
-                    // #[doc(hidden)]
-                    // const #container_name: [(casper_sdk::Selector, fn(&mut dyn #trait_name) -> ()); #manifest_data_len] = [
-                    // #(#manifest_data,)*
-                    // ];
 
                     #[doc(hidden)]
                     #vis struct #ext_struct_name([casper_sdk::sys::EntryPoint; #manifest_data_len]);
@@ -320,6 +310,8 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                     impl #ext_struct_name {
                         #[doc(hidden)]
                         #vis const fn new<T: #trait_name + borsh::BorshDeserialize + borsh::BorshSerialize + casper_sdk::Contract + Default>() -> Self {
+                            // This will create set of extern "C" function pointers that will dispatch to a concerete implementation.
+                            // Essentially, this constructor provides 'late binding' and crates function pointers for any concrete implementation of given trait.
                             Self([
                                 #(#dispatch_table,)*
                             ])
@@ -336,50 +328,27 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         }
                     }
 
+                        impl casper_sdk::schema::CasperSchema for #ext_struct_name {
+                            fn schema() -> casper_sdk::schema::Schema {
+                                const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-                    // impl #ext_struct_name {
-                    //     // impl casper_sdk::schema::CasperSchema for #name {
-                    //     //     fn schema() -> casper_sdk::schema::Schema {
-                    //     //         const VERSION: &str = env!("CARGO_PKG_VERSION");
+                                let entry_points = Self::__casper_schema_entry_points();
 
-                    //     //         let entry_points = vec![
-                    //     //             #(#defs,)*
-                    //     //         ];
+                                let definitions = {
+                                    let mut definitions = casper_sdk::abi::Definitions::default();
+                                    Self::__casper_populate_definitions(&mut definitions);
+                                    definitions
+                                };
 
-                    //     //         let definitions = {
-                    //     //             let mut definitions = casper_sdk::abi::Definitions::default();
-                    //     //             // <#struct_name as casper_sdk::abi::CasperABI>::populate_definitions(&mut definitions);
-                    //     //             #(#populate_definitions)*;
-                    //     //             definitions
-                    //     //         };
-
-                    //     //         let state = <#struct_name as casper_sdk::abi::CasperABI>::declaration();
-                    //     //         casper_sdk::schema::Schema {
-                    //     //             name: stringify!(#struct_name).into(),
-                    //     //             version: Some(VERSION.into()),
-                    //     //             definitions,
-                    //     //             state,
-                    //     //             entry_points,
-                    //     //         }
-                    //     //     }
-                    //     // }
-                    // }
-
-
-                    // #vis extern "C" fn #dispatch_func_name<T: #trait_name + borsh::BorshDeserialize + casper_sdk::Contract + Default, const SELECTOR: u32>() {
-
-                    //     match SELECTOR {
-                    //         #(#dispatch_table,)*
-                    //     }
-                    //     // let (_selector, ptr) = #container_name[N];
-                    //     // todo!("Dispatcher impl")
-                    //     // let inst =
-                    //     // let mut instance: T = casper_sdk::host::read_state().unwrap();
-                    //     // ptr(&mut instance);
-
-                    //     // todo ret?
-
-                    // }
+                                casper_sdk::schema::Schema {
+                                    name: stringify!(#trait_name).into(),
+                                    version: Some(VERSION.into()),
+                                    type_: casper_sdk::schema::SchemaType::Interface,
+                                    definitions,
+                                    entry_points,
+                                }
+                            }
+                        }
                 };
 
                 return quote! {
@@ -392,7 +361,6 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                 .into();
             }
 
-            // proc_macro::TokenTree::Ident(ident) if ident.to_string() == "extension" => {
             proc_macro::TokenTree::Ident(ident) if ident.to_string() == "contract" => {
                 // if let
                 if let Ok(mut entry_points) = syn::parse::<ItemImpl>(item.clone()) {
@@ -839,9 +807,11 @@ pub fn casper(attrs: TokenStream, item: TokenStream) -> TokenStream {
                                     let state = <#struct_name as casper_sdk::abi::CasperABI>::declaration();
                                     casper_sdk::schema::Schema {
                                         name: stringify!(#struct_name).into(),
+                                        type_: casper_sdk::schema::SchemaType::Contract {
+                                            state,
+                                        },
                                         version: Some(VERSION.into()),
                                         definitions,
-                                        state,
                                         entry_points,
                                     }
                                 }

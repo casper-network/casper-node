@@ -81,7 +81,7 @@ impl CEP18 {
     }
 }
 
-#[casper(entry_points)]
+#[casper(contract)]
 impl CEP18 {
     #[casper(constructor)]
     pub fn new(token_name: String) -> Self {

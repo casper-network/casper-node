@@ -2,7 +2,7 @@ pub mod support;
 
 use casper_sdk::{
     abi::{Declaration, Definition, Primitive},
-    schema::Schema,
+    schema::{Schema, SchemaType},
 };
 use codegen::{Field, Impl, Scope, Struct, Type};
 use indexmap::IndexMap;
@@ -91,12 +91,17 @@ impl Codegen {
             .first()
             .expect("No definitions found.");
 
-        if !self.schema.definitions.has_definition(&self.schema.state) {
-            panic!(
-                "Missing state definition. Expected to find a definition for {}.",
-                &self.schema.state
-            )
-        };
+        match &self.schema.type_ {
+            SchemaType::Contract { state } => {
+                if !self.schema.definitions.has_definition(&state) {
+                    panic!(
+                        "Missing state definition. Expected to find a definition for {}.",
+                        &state
+                    )
+                };
+            }
+            SchemaType::Interface => {}
+        }
 
         // Initialize a queue with the first definition
         let mut queue = VecDeque::new();
@@ -530,7 +535,7 @@ impl Codegen {
             func.line("let value = 0; // TODO: Transferring values");
 
             let input_struct_name =
-                format!("{}_{}", slugify_type(&self.schema.state), &entry_point.name);
+                format!("{}_{}", slugify_type(&self.schema.name), &entry_point.name);
 
             if entry_point.arguments.is_empty() {
                 func.line(format!(r#"let call_data = {input_struct_name};"#));
@@ -562,8 +567,7 @@ impl Codegen {
 
         for entry_point in &self.schema.entry_points {
             // Generate arg structure similar to what casper-macros is doing
-            let state_name = slugify_type(&self.schema.state);
-            let struct_name = format!("{}_{}", &state_name, &entry_point.name);
+            let struct_name = format!("{}_{}", &self.schema.name, &entry_point.name);
             let input_struct = scope.new_struct(&struct_name);
 
             for trait_name in DEFAULT_DERIVED_TRAITS {

@@ -1,246 +1,241 @@
 {
   "name": "CEP18",
   "version": "0.1.0",
-  "state": "vm2_cep18::contract::CEP18",
+  "type": {
+    "type": "Contract",
+    "state": "vm2_cep18::contract::CEP18"
+  },
   "definitions": {
     "()": {
-      "Tuple": {
-        "items": []
-      }
+      "type": "Tuple",
+      "items": []
     },
     "([U8; 32], [U8; 32])": {
-      "Tuple": {
-        "items": [
-          "[U8; 32]",
-          "[U8; 32]"
-        ]
-      }
+      "type": "Tuple",
+      "items": [
+        "[U8; 32]",
+        "[U8; 32]"
+      ]
     },
     "Bool": {
-      "Primitive": "Bool"
+      "type": "Primitive",
+      "Bool": null
     },
     "Map<([U8; 32], [U8; 32]), U64>": {
-      "Struct": {
-        "items": [
-          {
-            "name": "prefix",
-            "decl": "U64"
-          }
-        ]
-      }
+      "type": "Struct",
+      "items": [
+        {
+          "name": "prefix",
+          "decl": "U64"
+        }
+      ]
     },
     "Map<[U8; 32], U64>": {
-      "Struct": {
-        "items": [
-          {
-            "name": "prefix",
-            "decl": "U64"
-          }
-        ]
-      }
+      "type": "Struct",
+      "items": [
+        {
+          "name": "prefix",
+          "decl": "U64"
+        }
+      ]
     },
     "Map<[U8; 32], vm2_cep18::security_badge::SecurityBadge>": {
-      "Struct": {
-        "items": [
-          {
-            "name": "prefix",
-            "decl": "U64"
-          }
-        ]
-      }
+      "type": "Struct",
+      "items": [
+        {
+          "name": "prefix",
+          "decl": "U64"
+        }
+      ]
     },
     "Result<(), vm2_cep18::error::Cep18Error>": {
-      "Enum": {
-        "items": [
-          {
-            "name": "Ok",
-            "discriminant": 0,
-            "decl": "()"
-          },
-          {
-            "name": "Err",
-            "discriminant": 1,
-            "decl": "vm2_cep18::error::Cep18Error"
-          }
-        ]
-      }
+      "type": "Enum",
+      "items": [
+        {
+          "name": "Ok",
+          "discriminant": 0,
+          "decl": "()"
+        },
+        {
+          "name": "Err",
+          "discriminant": 1,
+          "decl": "vm2_cep18::error::Cep18Error"
+        }
+      ]
     },
     "String": {
-      "Sequence": {
-        "decl": "Char"
-      }
+      "type": "Sequence",
+      "decl": "Char"
     },
     "U64": {
-      "Primitive": "U64"
+      "type": "Primitive",
+      "U64": null
     },
     "U8": {
-      "Primitive": "U8"
+      "type": "Primitive",
+      "U8": null
     },
     "[U8; 32]": {
-      "FixedSequence": {
-        "length": 32,
-        "decl": "U8"
-      }
+      "type": "FixedSequence",
+      "length": 32,
+      "decl": "U8"
     },
     "vm2_cep18::contract::CEP18": {
-      "Struct": {
-        "items": [
-          {
-            "name": "name",
-            "decl": "String"
-          },
-          {
-            "name": "symbol",
-            "decl": "String"
-          },
-          {
-            "name": "decimals",
-            "decl": "U8"
-          },
-          {
-            "name": "total_supply",
-            "decl": "U64"
-          },
-          {
-            "name": "balances",
-            "decl": "Map<[U8; 32], U64>"
-          },
-          {
-            "name": "allowances",
-            "decl": "Map<([U8; 32], [U8; 32]), U64>"
-          },
-          {
-            "name": "security_badges",
-            "decl": "Map<[U8; 32], vm2_cep18::security_badge::SecurityBadge>"
-          },
-          {
-            "name": "enable_mint_burn",
-            "decl": "Bool"
-          }
-        ]
-      }
+      "type": "Struct",
+      "items": [
+        {
+          "name": "name",
+          "decl": "String"
+        },
+        {
+          "name": "symbol",
+          "decl": "String"
+        },
+        {
+          "name": "decimals",
+          "decl": "U8"
+        },
+        {
+          "name": "total_supply",
+          "decl": "U64"
+        },
+        {
+          "name": "balances",
+          "decl": "Map<[U8; 32], U64>"
+        },
+        {
+          "name": "allowances",
+          "decl": "Map<([U8; 32], [U8; 32]), U64>"
+        },
+        {
+          "name": "security_badges",
+          "decl": "Map<[U8; 32], vm2_cep18::security_badge::SecurityBadge>"
+        },
+        {
+          "name": "enable_mint_burn",
+          "decl": "Bool"
+        }
+      ]
     },
     "vm2_cep18::error::Cep18Error": {
-      "Enum": {
-        "items": [
-          {
-            "name": "InvalidContext",
-            "discriminant": 0,
-            "decl": "()"
-          },
-          {
-            "name": "InsufficientBalance",
-            "discriminant": 1,
-            "decl": "()"
-          },
-          {
-            "name": "InsufficientAllowance",
-            "discriminant": 2,
-            "decl": "()"
-          },
-          {
-            "name": "Overflow",
-            "discriminant": 3,
-            "decl": "()"
-          },
-          {
-            "name": "PackageHashMissing",
-            "discriminant": 4,
-            "decl": "()"
-          },
-          {
-            "name": "PackageHashNotPackage",
-            "discriminant": 5,
-            "decl": "()"
-          },
-          {
-            "name": "InvalidEventsMode",
-            "discriminant": 6,
-            "decl": "()"
-          },
-          {
-            "name": "MissingEventsMode",
-            "discriminant": 7,
-            "decl": "()"
-          },
-          {
-            "name": "Phantom",
-            "discriminant": 8,
-            "decl": "()"
-          },
-          {
-            "name": "FailedToGetArgBytes",
-            "discriminant": 9,
-            "decl": "()"
-          },
-          {
-            "name": "InsufficientRights",
-            "discriminant": 10,
-            "decl": "()"
-          },
-          {
-            "name": "InvalidAdminList",
-            "discriminant": 11,
-            "decl": "()"
-          },
-          {
-            "name": "InvalidMinterList",
-            "discriminant": 12,
-            "decl": "()"
-          },
-          {
-            "name": "InvalidNoneList",
-            "discriminant": 13,
-            "decl": "()"
-          },
-          {
-            "name": "InvalidEnableMBFlag",
-            "discriminant": 14,
-            "decl": "()"
-          },
-          {
-            "name": "AlreadyInitialized",
-            "discriminant": 15,
-            "decl": "()"
-          },
-          {
-            "name": "MintBurnDisabled",
-            "discriminant": 16,
-            "decl": "()"
-          },
-          {
-            "name": "CannotTargetSelfUser",
-            "discriminant": 17,
-            "decl": "()"
-          },
-          {
-            "name": "InvalidBurnTarget",
-            "discriminant": 18,
-            "decl": "()"
-          }
-        ]
-      }
+      "type": "Enum",
+      "items": [
+        {
+          "name": "InvalidContext",
+          "discriminant": 0,
+          "decl": "()"
+        },
+        {
+          "name": "InsufficientBalance",
+          "discriminant": 1,
+          "decl": "()"
+        },
+        {
+          "name": "InsufficientAllowance",
+          "discriminant": 2,
+          "decl": "()"
+        },
+        {
+          "name": "Overflow",
+          "discriminant": 3,
+          "decl": "()"
+        },
+        {
+          "name": "PackageHashMissing",
+          "discriminant": 4,
+          "decl": "()"
+        },
+        {
+          "name": "PackageHashNotPackage",
+          "discriminant": 5,
+          "decl": "()"
+        },
+        {
+          "name": "InvalidEventsMode",
+          "discriminant": 6,
+          "decl": "()"
+        },
+        {
+          "name": "MissingEventsMode",
+          "discriminant": 7,
+          "decl": "()"
+        },
+        {
+          "name": "Phantom",
+          "discriminant": 8,
+          "decl": "()"
+        },
+        {
+          "name": "FailedToGetArgBytes",
+          "discriminant": 9,
+          "decl": "()"
+        },
+        {
+          "name": "InsufficientRights",
+          "discriminant": 10,
+          "decl": "()"
+        },
+        {
+          "name": "InvalidAdminList",
+          "discriminant": 11,
+          "decl": "()"
+        },
+        {
+          "name": "InvalidMinterList",
+          "discriminant": 12,
+          "decl": "()"
+        },
+        {
+          "name": "InvalidNoneList",
+          "discriminant": 13,
+          "decl": "()"
+        },
+        {
+          "name": "InvalidEnableMBFlag",
+          "discriminant": 14,
+          "decl": "()"
+        },
+        {
+          "name": "AlreadyInitialized",
+          "discriminant": 15,
+          "decl": "()"
+        },
+        {
+          "name": "MintBurnDisabled",
+          "discriminant": 16,
+          "decl": "()"
+        },
+        {
+          "name": "CannotTargetSelfUser",
+          "discriminant": 17,
+          "decl": "()"
+        },
+        {
+          "name": "InvalidBurnTarget",
+          "discriminant": 18,
+          "decl": "()"
+        }
+      ]
     },
     "vm2_cep18::security_badge::SecurityBadge": {
-      "Enum": {
-        "items": [
-          {
-            "name": "Admin",
-            "discriminant": 0,
-            "decl": "()"
-          },
-          {
-            "name": "Minter",
-            "discriminant": 1,
-            "decl": "()"
-          },
-          {
-            "name": "None",
-            "discriminant": 2,
-            "decl": "()"
-          }
-        ]
-      }
+      "type": "Enum",
+      "items": [
+        {
+          "name": "Admin",
+          "discriminant": 0,
+          "decl": "()"
+        },
+        {
+          "name": "Minter",
+          "discriminant": 1,
+          "decl": "()"
+        },
+        {
+          "name": "None",
+          "discriminant": 2,
+          "decl": "()"
+        }
+      ]
     }
   },
   "entry_points": [

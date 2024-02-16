@@ -70,7 +70,7 @@ impl IntoResult<(), vm2_cep18__error__Cep18Error> for Result_____vm2_cep18__erro
 
 pub type Char = char;
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
-struct vm2_cep18__CEP18 {
+struct vm2_cep18__contract__CEP18 {
     /// Declared as String
     name: String,
     /// Declared as String
@@ -108,7 +108,7 @@ impl CEP18Client {
     {
         const SELECTOR: Selector = Selector::new(2611912030);
         let value = 0; // TODO: Transferring values
-        let call_data = vm2_cep18__CEP18_new { 
+        let call_data = CEP18_new { 
         token_name,
         };
         let create_result = C::create(call_data)?;
@@ -119,35 +119,35 @@ impl CEP18Client {
     pub fn name(&self) -> Result<casper_sdk::host::CallResult<String>, casper_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(987428621);
         let value = 0; // TODO: Transferring values
-        let call_data = vm2_cep18__CEP18_name;
+        let call_data = CEP18_name;
         casper_sdk::host::call(&self.address, value, call_data)
     }
 
     pub fn symbol(&self) -> Result<casper_sdk::host::CallResult<String>, casper_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(2614203198);
         let value = 0; // TODO: Transferring values
-        let call_data = vm2_cep18__CEP18_symbol;
+        let call_data = CEP18_symbol;
         casper_sdk::host::call(&self.address, value, call_data)
     }
 
     pub fn decimals(&self) -> Result<casper_sdk::host::CallResult<U8>, casper_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(2176884103);
         let value = 0; // TODO: Transferring values
-        let call_data = vm2_cep18__CEP18_decimals;
+        let call_data = CEP18_decimals;
         casper_sdk::host::call(&self.address, value, call_data)
     }
 
     pub fn total_supply(&self) -> Result<casper_sdk::host::CallResult<U64>, casper_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(3680728488);
         let value = 0; // TODO: Transferring values
-        let call_data = vm2_cep18__CEP18_total_supply;
+        let call_data = CEP18_total_supply;
         casper_sdk::host::call(&self.address, value, call_data)
     }
 
     pub fn balance_of(&self, address: FixedSequence0_32_U8) -> Result<casper_sdk::host::CallResult<U64>, casper_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(259349078);
         let value = 0; // TODO: Transferring values
-        let call_data = vm2_cep18__CEP18_balance_of { 
+        let call_data = CEP18_balance_of { 
         address,
         };
         casper_sdk::host::call(&self.address, value, call_data)
@@ -156,7 +156,7 @@ impl CEP18Client {
     pub fn allowance(&self, spender: FixedSequence0_32_U8, owner: FixedSequence0_32_U8) -> Result<casper_sdk::host::CallResult<()>, casper_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(1778390622);
         let value = 0; // TODO: Transferring values
-        let call_data = vm2_cep18__CEP18_allowance { 
+        let call_data = CEP18_allowance { 
         spender,
         owner,
         };
@@ -166,7 +166,7 @@ impl CEP18Client {
     pub fn approve(&self, spender: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(1746036384);
         let value = 0; // TODO: Transferring values
-        let call_data = vm2_cep18__CEP18_approve { 
+        let call_data = CEP18_approve { 
         spender,
         amount,
         };
@@ -176,7 +176,7 @@ impl CEP18Client {
     pub fn decrease_allowance(&self, spender: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(4187548633);
         let value = 0; // TODO: Transferring values
-        let call_data = vm2_cep18__CEP18_decrease_allowance { 
+        let call_data = CEP18_decrease_allowance { 
         spender,
         amount,
         };
@@ -186,7 +186,7 @@ impl CEP18Client {
     pub fn increase_allowance(&self, spender: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(4115780642);
         let value = 0; // TODO: Transferring values
-        let call_data = vm2_cep18__CEP18_increase_allowance { 
+        let call_data = CEP18_increase_allowance { 
         spender,
         amount,
         };
@@ -196,7 +196,7 @@ impl CEP18Client {
     pub fn transfer(&self, recipient: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(2225167777);
         let value = 0; // TODO: Transferring values
-        let call_data = vm2_cep18__CEP18_transfer { 
+        let call_data = CEP18_transfer { 
         recipient,
         amount,
         };
@@ -206,7 +206,7 @@ impl CEP18Client {
     pub fn transfer_from(&self, owner: FixedSequence0_32_U8, recipient: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(188313368);
         let value = 0; // TODO: Transferring values
-        let call_data = vm2_cep18__CEP18_transfer_from { 
+        let call_data = CEP18_transfer_from { 
         owner,
         recipient,
         amount,
@@ -217,7 +217,7 @@ impl CEP18Client {
     pub fn mint(&self, owner: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(3487406754);
         let value = 0; // TODO: Transferring values
-        let call_data = vm2_cep18__CEP18_mint { 
+        let call_data = CEP18_mint { 
         owner,
         amount,
         };
@@ -227,7 +227,7 @@ impl CEP18Client {
     pub fn burn(&self, owner: FixedSequence0_32_U8, amount: U64) -> Result<casper_sdk::host::CallResult<Result_____vm2_cep18__error__Cep18Error_>, casper_sdk::types::CallError> {
         const SELECTOR: Selector = Selector::new(2985279867);
         let value = 0; // TODO: Transferring values
-        let call_data = vm2_cep18__CEP18_burn { 
+        let call_data = CEP18_burn { 
         owner,
         amount,
         };
@@ -236,11 +236,11 @@ impl CEP18Client {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
-struct vm2_cep18__CEP18_new {
+struct CEP18_new {
     token_name: String,
 }
 
-impl ToCallData for vm2_cep18__CEP18_new {
+impl ToCallData for CEP18_new {
      const SELECTOR: Selector = Selector::new(2611912030);
     fn input_data(&self) -> Option<Vec<u8>> {
         let input_data = borsh::to_vec(&self).expect("Serialization to succeed");
@@ -249,9 +249,9 @@ impl ToCallData for vm2_cep18__CEP18_new {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
-struct vm2_cep18__CEP18_name;
+struct CEP18_name;
 
-impl ToCallData for vm2_cep18__CEP18_name {
+impl ToCallData for CEP18_name {
      const SELECTOR: Selector = Selector::new(987428621);
     fn input_data(&self) -> Option<Vec<u8>> {
         None
@@ -259,9 +259,9 @@ impl ToCallData for vm2_cep18__CEP18_name {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
-struct vm2_cep18__CEP18_symbol;
+struct CEP18_symbol;
 
-impl ToCallData for vm2_cep18__CEP18_symbol {
+impl ToCallData for CEP18_symbol {
      const SELECTOR: Selector = Selector::new(2614203198);
     fn input_data(&self) -> Option<Vec<u8>> {
         None
@@ -269,9 +269,9 @@ impl ToCallData for vm2_cep18__CEP18_symbol {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
-struct vm2_cep18__CEP18_decimals;
+struct CEP18_decimals;
 
-impl ToCallData for vm2_cep18__CEP18_decimals {
+impl ToCallData for CEP18_decimals {
      const SELECTOR: Selector = Selector::new(2176884103);
     fn input_data(&self) -> Option<Vec<u8>> {
         None
@@ -279,9 +279,9 @@ impl ToCallData for vm2_cep18__CEP18_decimals {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
-struct vm2_cep18__CEP18_total_supply;
+struct CEP18_total_supply;
 
-impl ToCallData for vm2_cep18__CEP18_total_supply {
+impl ToCallData for CEP18_total_supply {
      const SELECTOR: Selector = Selector::new(3680728488);
     fn input_data(&self) -> Option<Vec<u8>> {
         None
@@ -289,11 +289,11 @@ impl ToCallData for vm2_cep18__CEP18_total_supply {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
-struct vm2_cep18__CEP18_balance_of {
+struct CEP18_balance_of {
     address: FixedSequence0_32_U8,
 }
 
-impl ToCallData for vm2_cep18__CEP18_balance_of {
+impl ToCallData for CEP18_balance_of {
      const SELECTOR: Selector = Selector::new(259349078);
     fn input_data(&self) -> Option<Vec<u8>> {
         let input_data = borsh::to_vec(&self).expect("Serialization to succeed");
@@ -302,12 +302,12 @@ impl ToCallData for vm2_cep18__CEP18_balance_of {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
-struct vm2_cep18__CEP18_allowance {
+struct CEP18_allowance {
     spender: FixedSequence0_32_U8,
     owner: FixedSequence0_32_U8,
 }
 
-impl ToCallData for vm2_cep18__CEP18_allowance {
+impl ToCallData for CEP18_allowance {
      const SELECTOR: Selector = Selector::new(1778390622);
     fn input_data(&self) -> Option<Vec<u8>> {
         let input_data = borsh::to_vec(&self).expect("Serialization to succeed");
@@ -316,12 +316,12 @@ impl ToCallData for vm2_cep18__CEP18_allowance {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
-struct vm2_cep18__CEP18_approve {
+struct CEP18_approve {
     spender: FixedSequence0_32_U8,
     amount: U64,
 }
 
-impl ToCallData for vm2_cep18__CEP18_approve {
+impl ToCallData for CEP18_approve {
      const SELECTOR: Selector = Selector::new(1746036384);
     fn input_data(&self) -> Option<Vec<u8>> {
         let input_data = borsh::to_vec(&self).expect("Serialization to succeed");
@@ -330,12 +330,12 @@ impl ToCallData for vm2_cep18__CEP18_approve {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
-struct vm2_cep18__CEP18_decrease_allowance {
+struct CEP18_decrease_allowance {
     spender: FixedSequence0_32_U8,
     amount: U64,
 }
 
-impl ToCallData for vm2_cep18__CEP18_decrease_allowance {
+impl ToCallData for CEP18_decrease_allowance {
      const SELECTOR: Selector = Selector::new(4187548633);
     fn input_data(&self) -> Option<Vec<u8>> {
         let input_data = borsh::to_vec(&self).expect("Serialization to succeed");
@@ -344,12 +344,12 @@ impl ToCallData for vm2_cep18__CEP18_decrease_allowance {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
-struct vm2_cep18__CEP18_increase_allowance {
+struct CEP18_increase_allowance {
     spender: FixedSequence0_32_U8,
     amount: U64,
 }
 
-impl ToCallData for vm2_cep18__CEP18_increase_allowance {
+impl ToCallData for CEP18_increase_allowance {
      const SELECTOR: Selector = Selector::new(4115780642);
     fn input_data(&self) -> Option<Vec<u8>> {
         let input_data = borsh::to_vec(&self).expect("Serialization to succeed");
@@ -358,12 +358,12 @@ impl ToCallData for vm2_cep18__CEP18_increase_allowance {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
-struct vm2_cep18__CEP18_transfer {
+struct CEP18_transfer {
     recipient: FixedSequence0_32_U8,
     amount: U64,
 }
 
-impl ToCallData for vm2_cep18__CEP18_transfer {
+impl ToCallData for CEP18_transfer {
      const SELECTOR: Selector = Selector::new(2225167777);
     fn input_data(&self) -> Option<Vec<u8>> {
         let input_data = borsh::to_vec(&self).expect("Serialization to succeed");
@@ -372,13 +372,13 @@ impl ToCallData for vm2_cep18__CEP18_transfer {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
-struct vm2_cep18__CEP18_transfer_from {
+struct CEP18_transfer_from {
     owner: FixedSequence0_32_U8,
     recipient: FixedSequence0_32_U8,
     amount: U64,
 }
 
-impl ToCallData for vm2_cep18__CEP18_transfer_from {
+impl ToCallData for CEP18_transfer_from {
      const SELECTOR: Selector = Selector::new(188313368);
     fn input_data(&self) -> Option<Vec<u8>> {
         let input_data = borsh::to_vec(&self).expect("Serialization to succeed");
@@ -387,12 +387,12 @@ impl ToCallData for vm2_cep18__CEP18_transfer_from {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
-struct vm2_cep18__CEP18_mint {
+struct CEP18_mint {
     owner: FixedSequence0_32_U8,
     amount: U64,
 }
 
-impl ToCallData for vm2_cep18__CEP18_mint {
+impl ToCallData for CEP18_mint {
      const SELECTOR: Selector = Selector::new(3487406754);
     fn input_data(&self) -> Option<Vec<u8>> {
         let input_data = borsh::to_vec(&self).expect("Serialization to succeed");
@@ -401,12 +401,12 @@ impl ToCallData for vm2_cep18__CEP18_mint {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, BorshSerialize, BorshDeserialize)]
-struct vm2_cep18__CEP18_burn {
+struct CEP18_burn {
     owner: FixedSequence0_32_U8,
     amount: U64,
 }
 
-impl ToCallData for vm2_cep18__CEP18_burn {
+impl ToCallData for CEP18_burn {
      const SELECTOR: Selector = Selector::new(2985279867);
     fn input_data(&self) -> Option<Vec<u8>> {
         let input_data = borsh::to_vec(&self).expect("Serialization to succeed");

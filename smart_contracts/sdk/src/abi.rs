@@ -64,6 +64,7 @@ pub trait Keyable {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
+#[serde(tag = "type")]
 pub enum Definition {
     /// Primitive type.
     ///
@@ -135,7 +136,7 @@ impl Definition {
     }
 }
 
-#[derive(Default, Debug, Serialize, Deserialize, Clone)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Definitions(BTreeMap<Declaration, Definition>);
 
 impl Definitions {
