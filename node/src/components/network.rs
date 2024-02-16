@@ -184,10 +184,6 @@ where
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
 
-    /// Builder for new node-to-node RPC instances.
-    #[data_size(skip)]
-    rpc_builder: RpcBuilder<{ Channel::COUNT }>,
-
     /// Networking metrics.
     #[data_size(skip)]
     net_metrics: Arc<Metrics>,
@@ -264,6 +260,7 @@ where
             node_key_pair.map(NodeKeyPair::new),
             chain_info,
             &net_metrics,
+            rpc_builder,
         ));
 
         let component = Network {
@@ -279,7 +276,6 @@ where
             state: ComponentState::Uninitialized,
             shutdown_fuse: DropSwitch::new(ObservableFuse::new()),
             server_join_handle: None,
-            rpc_builder,
             _payload: PhantomData,
         };
 
@@ -679,7 +675,8 @@ where
 
                 let (read_half, write_half) = tokio::io::split(transport);
 
-                let (rpc_client, rpc_server) = self.rpc_builder.build(read_half, write_half);
+                let (rpc_client, rpc_server) =
+                    self.context.rpc_builder.build(read_half, write_half);
 
                 // Now we can start the message reader.
                 let boxed_span = Box::new(span.clone());
@@ -859,7 +856,8 @@ where
 
                 let (read_half, write_half) = tokio::io::split(transport);
 
-                let (rpc_client, rpc_server) = self.rpc_builder.build(read_half, write_half);
+                let (rpc_client, rpc_server) =
+                    self.context.rpc_builder.build(read_half, write_half);
 
                 let handle = OutgoingHandle {
                     rpc_client,

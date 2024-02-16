@@ -21,6 +21,7 @@ use openssl::{
     x509::X509,
 };
 use serde::de::DeserializeOwned;
+use strum::EnumCount;
 use tokio::net::TcpStream;
 use tokio_openssl::SslStream;
 use tracing::{
@@ -206,6 +207,8 @@ where
     tarpit_duration: TimeDiff,
     /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
     tarpit_chance: f32,
+    /// Builder for new node-to-node RPC instances.
+    pub(super) rpc_builder: juliet::rpc::RpcBuilder<{ Channel::COUNT }>,
 }
 
 impl<REv> NetworkContext<REv> {
@@ -216,6 +219,7 @@ impl<REv> NetworkContext<REv> {
         node_key_pair: Option<NodeKeyPair>,
         chain_info: ChainInfo,
         net_metrics: &Arc<Metrics>,
+        rpc_builder: juliet::rpc::RpcBuilder<{ Channel::COUNT }>,
     ) -> Self {
         let Identity {
             secret_key,
@@ -240,6 +244,7 @@ impl<REv> NetworkContext<REv> {
             tarpit_duration: cfg.tarpit_duration,
             tarpit_chance: cfg.tarpit_chance,
             keylog,
+            rpc_builder,
         }
     }
 
