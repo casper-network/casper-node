@@ -57,13 +57,10 @@ use crate::{
 /// Low-level TLS connection function.
 ///
 /// Performs the actual TCP+TLS connection setup.
-async fn tls_connect<REv>(
-    context: &NetworkContext<REv>,
+async fn tls_connect(
+    context: &TlsConfiguration,
     peer_addr: SocketAddr,
-) -> Result<(NodeId, Transport), ConnectionError>
-where
-    REv: 'static,
-{
+) -> Result<(NodeId, Transport), ConnectionError> {
     let stream = TcpStream::connect(peer_addr)
         .await
         .map_err(ConnectionError::TcpConnection)?;
@@ -112,19 +109,21 @@ where
     REv: 'static,
     P: Payload,
 {
-    let (peer_id, transport) =
-        match tokio::time::timeout(context.tcp_timeout.into(), tls_connect(&context, peer_addr))
-            .await
-        {
-            Ok(Ok(value)) => value,
-            Ok(Err(error)) => return OutgoingConnection::FailedEarly { peer_addr, error },
-            Err(_elapsed) => {
-                return OutgoingConnection::FailedEarly {
-                    peer_addr,
-                    error: ConnectionError::TcpConnectionTimeout,
-                }
+    let (peer_id, transport) = match tokio::time::timeout(
+        context.tcp_timeout.into(),
+        tls_connect(&context.tls_configuration, peer_addr),
+    )
+    .await
+    {
+        Ok(Ok(value)) => value,
+        Ok(Err(error)) => return OutgoingConnection::FailedEarly { peer_addr, error },
+        Err(_elapsed) => {
+            return OutgoingConnection::FailedEarly {
+                peer_addr,
+                error: ConnectionError::TcpConnectionTimeout,
             }
-        };
+        }
+    };
 
     // Register the `peer_id` on the [`Span`].
     Span::current().record("peer_id", &field::display(peer_id));
@@ -178,16 +177,10 @@ where
     /// The handle to the reactor's event queue, used by incoming message handlers to put events
     /// onto the queue.
     event_queue: Option<EventQueueHandle<REv>>,
+    /// TLS parameters.
+    pub(super) tls_configuration: TlsConfiguration,
     /// Our own [`NodeId`].
     pub(super) our_id: NodeId,
-    /// TLS certificate associated with this node's identity.
-    our_cert: Arc<TlsCert>,
-    /// TLS certificate authority associated with this node's identity.
-    network_ca: Option<Arc<X509>>,
-    /// Secret key associated with `our_cert`.
-    pub(super) secret_key: Arc<PKey<Private>>,
-    /// Logfile to log TLS keys to. If given, automatically enables logging.
-    pub(super) keylog: Option<LockedLineWriter>,
     /// Weak reference to the networking metrics shared by all sender/receiver tasks.
     #[allow(dead_code)] // TODO: Readd once metrics are tracked again.
     net_metrics: Weak<Metrics>,
@@ -228,13 +221,18 @@ impl<REv> NetworkContext<REv> {
         } = our_identity;
         let our_id = NodeId::from(tls_certificate.public_key_fingerprint());
 
+        let tls_configuration = TlsConfiguration {
+            network_ca,
+            our_cert: tls_certificate,
+            secret_key,
+            keylog,
+        };
+
         NetworkContext {
             our_id,
             public_addr: None,
             event_queue: None,
-            our_cert: tls_certificate,
-            network_ca,
-            secret_key,
+            tls_configuration,
             net_metrics: Arc::downgrade(net_metrics),
             chain_info,
             node_key_pair,
@@ -243,7 +241,6 @@ impl<REv> NetworkContext<REv> {
             tarpit_version_threshold: cfg.tarpit_version_threshold,
             tarpit_duration: cfg.tarpit_duration,
             tarpit_chance: cfg.tarpit_chance,
-            keylog,
             rpc_builder,
         }
     }
@@ -270,17 +267,6 @@ impl<REv> NetworkContext<REv> {
     /// Chain info extract from chainspec.
     pub(super) fn chain_info(&self) -> &ChainInfo {
         &self.chain_info
-    }
-
-    pub(crate) fn validate_peer_cert(&self, peer_cert: X509) -> Result<TlsCert, ValidationError> {
-        match &self.network_ca {
-            Some(ca_cert) => tls::validate_cert_with_authority(peer_cert, ca_cert),
-            None => tls::validate_self_signed_cert(peer_cert),
-        }
-    }
-
-    pub(crate) fn network_ca(&self) -> Option<&Arc<X509>> {
-        self.network_ca.as_ref()
     }
 
     pub(crate) fn node_key_pair(&self) -> Option<&NodeKeyPair> {
@@ -312,7 +298,7 @@ where
     REv: From<Event<P>> + 'static,
     P: Payload,
 {
-    let (peer_id, transport) = match server_setup_tls(&context, stream).await {
+    let (peer_id, transport) = match server_setup_tls(&context.tls_configuration, stream).await {
         Ok(value) => value,
         Err(error) => {
             return IncomingConnection::FailedEarly { peer_addr, error };
@@ -359,11 +345,32 @@ where
     }
 }
 
+/// TLS configuration data required to setup a connection.
+pub(super) struct TlsConfiguration {
+    /// TLS certificate authority associated with this node's identity.
+    pub(super) network_ca: Option<Arc<X509>>,
+    /// TLS certificate associated with this node's identity.
+    pub(super) our_cert: Arc<TlsCert>,
+    /// Secret key associated with `our_cert`.
+    pub(super) secret_key: Arc<PKey<Private>>,
+    /// Logfile to log TLS keys to. If given, automatically enables logging.
+    pub(super) keylog: Option<LockedLineWriter>,
+}
+
+impl TlsConfiguration {
+    pub(crate) fn validate_peer_cert(&self, peer_cert: X509) -> Result<TlsCert, ValidationError> {
+        match &self.network_ca {
+            Some(ca_cert) => tls::validate_cert_with_authority(peer_cert, ca_cert),
+            None => tls::validate_self_signed_cert(peer_cert),
+        }
+    }
+}
+
 /// Server-side TLS setup.
 ///
 /// This function groups the TLS setup into a convenient function, enabling the `?` operator.
-pub(super) async fn server_setup_tls<REv>(
-    context: &NetworkContext<REv>,
+pub(super) async fn server_setup_tls(
+    context: &TlsConfiguration,
     stream: TcpStream,
 ) -> Result<(NodeId, Transport), ConnectionError> {
     let mut tls_stream = tls::create_tls_acceptor(
